@@ -15,6 +15,10 @@ import { productService } from '@/app/services/productService';
 import { postSaleDocumentAccounting, reverseSaleDocumentAccounting } from './documentPostingEngine';
 import { auditLogService } from './auditLogService';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import {
+  syncJournalEntryDateByDocumentRefs,
+  syncJournalEntryDateByPaymentId,
+} from '@/app/services/journalTransactionDateSyncService';
 
 /** Enrich sales with creator full_name. sales.created_by stores auth.users.id; resolve via users.auth_user_id. */
 async function enrichSalesWithCreatorNames(sales: any[]): Promise<void> {
@@ -136,29 +140,47 @@ function finalSaleDocumentSequenceKey(row: Record<string, unknown>): 'SL' | 'STD
   return 'SL';
 }
 
-/** Allocate SL/STD/PS invoice_no when final if missing or still SDR/SQT/SOR. */
+/** True when DB rejected insert/update because (company_id, invoice_no) already exists. */
+export function isSalesInvoiceNoUniqueViolation(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err || err.code !== '23505') return false;
+  const m = String(err.message || '');
+  return m.includes('idx_sales_company_invoice_no_when_set') || (m.includes('invoice_no') && m.includes('duplicate key'));
+}
+
+/** Allocate SL/STD/PS invoice_no when final if missing or still SDR/SQT/SOR. Retries on rare RPC/DB drift duplicates. */
 async function ensureFinalSaleInvoiceNoAllocated(saleId: string, row: Record<string, unknown>) {
   if (!saleRowNeedsFinalInvoiceAllocation(row)) return row;
   const companyId = String(row.company_id ?? '');
   if (!companyId) throw new Error('Cannot finalize: company_id missing.');
   const seq = finalSaleDocumentSequenceKey(row);
-  let nextNo: string;
-  try {
-    nextNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, seq);
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`Cannot finalize: could not allocate invoice number (${seq}). ${msg}`);
-  }
-  const { data: patched, error } = await supabase
-    .from('sales')
-    .update({ invoice_no: nextNo })
-    .eq('id', saleId)
-    .select()
-    .single();
-  if (error) {
+  const maxAttempts = 12;
+  let lastDup: string | undefined;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let nextNo: string;
+    try {
+      nextNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, seq);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`Cannot finalize: could not allocate invoice number (${seq}). ${msg}`);
+    }
+    const { data: patched, error } = await supabase
+      .from('sales')
+      .update({ invoice_no: nextNo })
+      .eq('id', saleId)
+      .select()
+      .single();
+    if (!error) {
+      return (patched ?? { ...row, invoice_no: nextNo }) as Record<string, unknown>;
+    }
+    if (isSalesInvoiceNoUniqueViolation(error)) {
+      lastDup = nextNo;
+      continue;
+    }
     throw new Error(`Cannot finalize: failed to save invoice number: ${error.message}`);
   }
-  return (patched ?? { ...row, invoice_no: nextNo }) as Record<string, unknown>;
+  throw new Error(
+    `Cannot finalize: invoice number still conflicts after ${maxAttempts} attempts (last tried: ${lastDup ?? 'n/a'}).`
+  );
 }
 
 export const saleService = {
@@ -231,6 +253,78 @@ export const saleService = {
         const { error: upErr } = await supabase.from('sales').update({ deadline: sale.deadline }).eq('id', saleData.id);
         if (upErr) console.warn('[SALE SERVICE] deadline update failed:', upErr.message);
         (saleData as any).deadline = upErr ? null : sale.deadline;
+      } else if (isSalesInvoiceNoUniqueViolation(saleError)) {
+        // 409 / 23505 on invoice_no: final sales get a fresh invoice; studio/order-stage rows use order_no (STD) — duplicate can happen when DB trigger or drift collides; non-final was previously not recovered.
+        const studioOrderStage =
+          !canPostAccountingForSaleStatus(sale.status) &&
+          ((sale as { is_studio?: boolean }).is_studio === true ||
+            /^STD-/i.test(String(sale.order_no ?? '').trim()) ||
+            /^ST-/i.test(String(sale.order_no ?? '').trim()));
+
+        if (canPostAccountingForSaleStatus(sale.status)) {
+          const retryRow = { ...insertRow, invoice_no: null as string | null };
+          const retry = await supabase.from('sales').insert(retryRow).select().single();
+          if (retry.error) {
+            const miss2 = retry.error.message?.includes('deadline') || retry.error.code === '42703';
+            if (miss2 && sale.deadline) {
+              const { deadline: _d2, ...noDl } = retryRow;
+              const r2 = await supabase.from('sales').insert(noDl).select().single();
+              if (r2.error) throw r2.error;
+              saleData = r2.data;
+              const { error: upErr } = await supabase.from('sales').update({ deadline: sale.deadline }).eq('id', saleData.id);
+              if (upErr) console.warn('[SALE SERVICE] deadline update failed:', upErr.message);
+              (saleData as any).deadline = upErr ? null : sale.deadline;
+            } else {
+              throw retry.error;
+            }
+          } else {
+            saleData = retry.data;
+          }
+          const mergedForAlloc = {
+            ...saleData,
+            company_id: sale.company_id,
+            is_studio: (sale as { is_studio?: boolean }).is_studio,
+            order_no: sale.order_no,
+          } as Record<string, unknown>;
+          saleData = (await ensureFinalSaleInvoiceNoAllocated(String(saleData.id), mergedForAlloc)) as typeof saleData;
+          if (import.meta.env?.DEV) {
+            console.warn('[SALE SERVICE] Recovered from duplicate invoice_no; allocated new number:', (saleData as any)?.invoice_no);
+          }
+        } else if (studioOrderStage && sale.company_id) {
+          let freshStd: string;
+          try {
+            freshStd = await documentNumberService.getNextDocumentNumberGlobal(String(sale.company_id), 'STD');
+          } catch {
+            throw saleError;
+          }
+          const retryRow = {
+            ...insertRow,
+            invoice_no: null as string | null,
+            order_no: freshStd,
+          };
+          const retry = await supabase.from('sales').insert(retryRow).select().single();
+          if (retry.error) {
+            const miss2 = retry.error.message?.includes('deadline') || retry.error.code === '42703';
+            if (miss2 && sale.deadline) {
+              const { deadline: _d2, ...noDl } = retryRow;
+              const r2 = await supabase.from('sales').insert(noDl).select().single();
+              if (r2.error) throw r2.error;
+              saleData = r2.data;
+              const { error: upErr } = await supabase.from('sales').update({ deadline: sale.deadline }).eq('id', saleData.id);
+              if (upErr) console.warn('[SALE SERVICE] deadline update failed:', upErr.message);
+              (saleData as any).deadline = upErr ? null : sale.deadline;
+            } else {
+              throw retry.error;
+            }
+          } else {
+            saleData = retry.data;
+          }
+          if (import.meta.env?.DEV) {
+            console.warn('[SALE SERVICE] Recovered studio order duplicate; fresh order_no:', freshStd);
+          }
+        } else {
+          throw saleError;
+        }
       } else {
         throw saleError;
       }
@@ -597,7 +691,7 @@ export const saleService = {
     return match ? parseInt(match[1], 10) + 1 : 1;
   },
 
-  // Get sales for Studio Sales list by invoice_no prefix 'STD-%'. Optional pagination: opts = { limit?, offset? } returns { data, total }.
+  // Get studio sales (is_studio/order_no/invoice_no). Optional pagination: opts = { limit?, offset? } returns { data, total }.
   async getStudioSales(
     companyId: string,
     branchId?: string,
@@ -618,7 +712,9 @@ export const saleService = {
         .from('sales')
         .select(selectWithItems(itemsTable), useRange ? { count: 'exact' } : undefined)
         .eq('company_id', companyId)
-        .ilike('invoice_no', 'STD-%');
+        // Studio identity can be on is_studio flag or order/invoice prefixes depending on lifecycle stage.
+        .or('is_studio.eq.true,order_no.ilike.STD-%,order_no.ilike.ST-%,invoice_no.ilike.STD-%,invoice_no.ilike.ST-%')
+        .neq('status', 'cancelled');
       if (hideConverted && schemaFlags.salesConvertedColumn) q = q.eq('converted', false);
       if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
       q = q.order(orderBy, { ascending: false });
@@ -882,6 +978,18 @@ export const saleService = {
 
     if (error) throw error;
 
+    if ('invoice_date' in updates && updates.invoice_date != null && data) {
+      const cid = (data as any).company_id;
+      if (cid) {
+        syncJournalEntryDateByDocumentRefs({
+          companyId: cid,
+          referenceTypes: ['sale', 'sale_adjustment'],
+          referenceId: id,
+          entryDate: String(updates.invoice_date),
+        }).catch((e) => console.warn('[saleService] journal entry_date sync:', e));
+      }
+    }
+
     // Accounting: if sale just became final for the first time, create journal entry
     const prevStatus = (existingSale as any)?.status;
     const newStatus = updates.status ?? (data as any)?.status;
@@ -1139,7 +1247,7 @@ export const saleService = {
     const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
     
     // CRITICAL FIX: Normalize payment method to lowercase enum values
-    // Enum expects: 'cash', 'bank', 'card', 'other' (lowercase)
+    // DB / Roznamcha: use cash, bank, card, mobile_wallet, other (lowercase). Wallet must not map to `other` or cash book misses method-based hints.
     // PaymentMethod type uses: 'Cash', 'Bank', 'Mobile Wallet' (capitalized)
     const normalizedPaymentMethod = paymentMethod.toLowerCase().trim();
     const paymentMethodMap: Record<string, string> = {
@@ -1151,11 +1259,11 @@ export const saleService = {
       'Card': 'card',
       'cheque': 'other',
       'Cheque': 'other',
-      'mobile wallet': 'other',
-      'Mobile Wallet': 'other',
-      'mobile_wallet': 'other',
-      'wallet': 'other',
-      'Wallet': 'other',
+      'mobile wallet': 'mobile_wallet',
+      'Mobile Wallet': 'mobile_wallet',
+      'mobile_wallet': 'mobile_wallet',
+      'wallet': 'mobile_wallet',
+      'Wallet': 'mobile_wallet',
     };
     // Try exact match first, then normalized match, then default to 'cash'
     const enumPaymentMethod = paymentMethodMap[paymentMethod] || paymentMethodMap[normalizedPaymentMethod] || 'cash';
@@ -1272,8 +1380,8 @@ export const saleService = {
     const normalizedPaymentMethod = (paymentMethod || 'cash').toLowerCase().trim();
     const paymentMethodMap: Record<string, string> = {
       cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', card: 'card', Card: 'card',
-      cheque: 'other', Cheque: 'other', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
-      mobile_wallet: 'other', wallet: 'other', Wallet: 'other',
+      cheque: 'other', Cheque: 'other', 'mobile wallet': 'mobile_wallet', 'Mobile Wallet': 'mobile_wallet',
+      mobile_wallet: 'mobile_wallet', wallet: 'mobile_wallet', Wallet: 'mobile_wallet',
     };
     const enumPaymentMethod = paymentMethodMap[paymentMethod] || paymentMethodMap[normalizedPaymentMethod] || 'cash';
     const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
@@ -1381,11 +1489,11 @@ export const saleService = {
           'Card': 'card',
           'cheque': 'other',
           'Cheque': 'other',
-          'mobile wallet': 'other',
-          'Mobile Wallet': 'other',
-          'mobile_wallet': 'other',
-          'wallet': 'other',
-          'Wallet': 'other',
+          'mobile wallet': 'mobile_wallet',
+          'Mobile Wallet': 'mobile_wallet',
+          'mobile_wallet': 'mobile_wallet',
+          'wallet': 'mobile_wallet',
+          'Wallet': 'mobile_wallet',
         };
         normalizedPaymentMethod = paymentMethodMap[updates.paymentMethod] || paymentMethodMap[normalized] || 'cash';
       }
@@ -1518,6 +1626,13 @@ export const saleService = {
       }
 
       console.log('[SALE SERVICE] Payment updated successfully');
+      if (updates.paymentDate && (data as any)?.company_id) {
+        syncJournalEntryDateByPaymentId({
+          companyId: (data as any).company_id,
+          paymentId,
+          entryDate: updates.paymentDate,
+        }).catch((e) => console.warn('[saleService] payment journal entry_date sync:', e));
+      }
       if ((data as any)?.company_id) dispatchContactBalancesRefresh(String((data as any).company_id));
       return data;
     } catch (error: any) {
@@ -1543,6 +1658,18 @@ export const saleService = {
 
   // Get a single payment by ID (for ledger detail panel)
   async getPaymentById(paymentId: string) {
+    let id = paymentId;
+    // Synthetic allocation row id from payment history — resolve to parent payments.id
+    if (typeof paymentId === 'string' && paymentId.startsWith('alloc:')) {
+      const allocId = paymentId.slice('alloc:'.length);
+      const { data: allocRow } = await supabase
+        .from('payment_allocations')
+        .select('payment_id')
+        .eq('id', allocId)
+        .maybeSingle();
+      if (!allocRow?.payment_id) return null;
+      id = allocRow.payment_id as string;
+    }
     const { data, error } = await supabase
       .from('payments')
       .select(`
@@ -1552,13 +1679,14 @@ export const saleService = {
         amount,
         payment_method,
         payment_account_id,
+        contact_id,
         reference_id,
         reference_type,
         notes,
         created_at,
         account:accounts(id, name)
       `)
-      .eq('id', paymentId)
+      .eq('id', id)
       .single();
 
     if (error || !data) return null;
@@ -1571,6 +1699,7 @@ export const saleService = {
       method: p.payment_method || 'cash',
       accountId: p.payment_account_id,
       accountName: p.account?.name || '',
+      contactId: p.contact_id || null,
       referenceId: p.reference_id,
       referenceType: p.reference_type,
       notes: p.notes || '',
@@ -1578,9 +1707,22 @@ export const saleService = {
     };
   },
 
-  // Get payments for a specific sale (by sale ID)
-  async getSalePayments(saleId: string) {
+  /** Final invoices with open balance for a customer (manual receipt allocation picker). */
+  async listOpenFinalInvoicesForCustomer(companyId: string, customerId: string) {
+    const { data, error } = await supabase
+      .from('sales')
+      .select('id, invoice_no, due_amount, total, invoice_date, payment_status')
+      .eq('company_id', companyId)
+      .eq('customer_id', customerId)
+      .eq('status', 'final')
+      .gt('due_amount', 0.009)
+      .order('invoice_date', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  },
 
+  // Get payments for a specific sale (by sale ID), including manual_receipt allocations
+  async getSalePayments(saleId: string) {
     const selectWithAttachments = `
       id,
       payment_date,
@@ -1632,9 +1774,9 @@ export const saleService = {
       console.error('[SALE SERVICE] Error fetching payments:', error);
     }
 
+    const directRows: any[] = [];
     if (data && data.length > 0) {
       console.log('[SALE SERVICE] Found', data.length, 'payments for sale:', saleId);
-      // Resolve received_by (auth.users.id) to full_name via users.auth_user_id
       const receivedByIds = [...new Set((data as any[]).map((p: any) => p.received_by).filter(Boolean))] as string[];
       const nameByReceivedBy = new Map<string, string>();
       if (receivedByIds.length > 0) {
@@ -1643,7 +1785,7 @@ export const saleService = {
           if (u?.auth_user_id) nameByReceivedBy.set(u.auth_user_id, u.full_name || u.email || '');
         });
       }
-      return data.map((p: any) => {
+      for (const p of data as any[]) {
         let att = p.attachments;
         if (typeof att === 'string' && att) {
           try {
@@ -1652,7 +1794,7 @@ export const saleService = {
             att = null;
           }
         }
-        return {
+        directRows.push({
           id: p.id,
           date: p.payment_date,
           referenceNo: p.reference_number || '',
@@ -1665,12 +1807,65 @@ export const saleService = {
           createdAt: p.created_at,
           updatedAt: p.updated_at ?? p.created_at,
           receivedBy: p.received_by ? (nameByReceivedBy.get(p.received_by) || null) : null,
-        };
-      });
+          source: 'sale_payment' as const,
+        });
+      }
     }
 
+    const allocRows: any[] = [];
+    try {
+      const { data: allocs, error: aErr } = await supabase
+        .from('payment_allocations')
+        .select('id, allocated_amount, allocation_date, payment_id, allocation_order')
+        .eq('sale_id', saleId);
+      if (!aErr && allocs && allocs.length > 0) {
+        const payIds = [...new Set(allocs.map((a: any) => a.payment_id).filter(Boolean))];
+        const { data: parents } = await supabase
+          .from('payments')
+          .select(
+            `id, payment_date, reference_number, amount, payment_method, payment_account_id, notes, attachments, account:accounts(id, name)`
+          )
+          .in('id', payIds);
+        const parentById = new Map((parents || []).map((p: any) => [p.id, p]));
+        for (const a of allocs as any[]) {
+          const p = parentById.get(a.payment_id);
+          const ord = Number(a.allocation_order) || 0;
+          allocRows.push({
+            id: `alloc:${a.id}`,
+            date: p?.payment_date || a.allocation_date,
+            referenceNo: p?.reference_number || '',
+            allocationBadge: `Receipt alloc #${ord || '—'}`,
+            amount: parseFloat(a.allocated_amount || 0),
+            /** Parent payment header amount — required so Edit opens UnifiedPaymentDialog with full receipt, not alloc slice */
+            parentPaymentAmount: parseFloat(p?.amount || 0),
+            method: p?.payment_method || 'cash',
+            accountId: p?.payment_account_id,
+            accountName: p?.account?.name || '',
+            notes: p?.notes || '',
+            attachments: p?.attachments ?? null,
+            createdAt: p?.created_at,
+            updatedAt: p?.updated_at ?? p?.created_at,
+            receivedBy: null,
+            source: 'manual_receipt_allocation' as const,
+            parentPaymentId: a.payment_id,
+            allocationOrder: ord,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[SALE SERVICE] payment_allocations fetch skipped:', e);
+    }
+
+    const combined = [...directRows, ...allocRows].sort((x, y) => {
+      const dx = new Date(x.date).getTime();
+      const dy = new Date(y.date).getTime();
+      if (dy !== dx) return dy - dx;
+      return String(y.referenceNo).localeCompare(String(x.referenceNo));
+    });
+
+    if (combined.length > 0) return combined;
+
     // FALLBACK: If no payments found by reference_id, check if sale has paid_amount > 0
-    // This handles cases where paid_amount was set but payment records are missing (e.g. legacy data)
     try {
       const { data: saleData } = await supabase
         .from('sales')
@@ -1679,14 +1874,17 @@ export const saleService = {
         .single();
 
       if (saleData && saleData.paid_amount > 0) {
-        // Warn only once per sale per session to avoid console spam when SalesPage loads many sales
         if (!(saleService as any)._paidAmountWarningIds) (saleService as any)._paidAmountWarningIds = new Set<string>();
         const warned = (saleService as any)._paidAmountWarningIds as Set<string>;
         if (!warned.has(saleId)) {
           warned.add(saleId);
-          console.warn('[SALE SERVICE] Sale has paid_amount > 0 but no payment rows in payments table (legacy or missing sync). Sale:', saleData.invoice_no, 'Paid:', saleData.paid_amount);
+          console.warn(
+            '[SALE SERVICE] Sale has paid_amount > 0 but no payment rows in payments table (legacy or missing sync). Sale:',
+            saleData.invoice_no,
+            'Paid:',
+            saleData.paid_amount
+          );
         }
-        // Return empty array - UI will show paid_amount from sale; consider creating payment records via Accounting or repair script
       }
     } catch (saleError) {
       console.error('[SALE SERVICE] Error checking sale paid_amount:', saleError);
@@ -1853,5 +2051,11 @@ export const saleService = {
     } catch (e) {
       console.warn('[SALE SERVICE] log_print failed (RPC may not exist):', e);
     }
+  },
+
+  /** Rerun FIFO invoice allocations for a manual_receipt payment (e.g. after amount or customer change). */
+  async rebuildManualReceiptAllocations(paymentId: string): Promise<void> {
+    const { rebuildManualReceiptFifoAllocations } = await import('@/app/services/paymentAllocationService');
+    await rebuildManualReceiptFifoAllocations({ paymentId });
   },
 };

@@ -1,28 +1,59 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Loader2, FileText, FileSpreadsheet, Calendar } from 'lucide-react';
+import { Loader2, FileText, FileSpreadsheet, Calendar, Users } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/app/components/ui/dialog';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
-import { accountingReportsService, BalanceSheetResult } from '@/app/services/accountingReportsService';
+import { accountingReportsService, BalanceSheetResult, type BalanceSheetLineItem } from '@/app/services/accountingReportsService';
+import type { BalanceSheetAssetGroup } from '@/app/lib/accountHierarchy';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
+import { fetchControlAccountBreakdown, type ControlAccountBreakdownResult } from '@/app/services/controlAccountBreakdownService';
+import { supabase } from '@/lib/supabase';
 
 // Group account items into standard Balance Sheet subgroups with subtotals
 type GroupKey = string;
 interface GroupedItem {
   groupLabel: string;
-  items: { name: string; amount: number; code?: string }[];
+  items: BalanceSheetLineItem[];
   subtotal: number;
 }
 
-function groupAssets(items: { name: string; amount: number; code?: string }[]): GroupedItem[] {
-  const groups: Record<GroupKey, { label: string; items: typeof items }> = {
-    cash_bank: { label: 'Cash & Bank', items: [] },
+function groupAssets(items: BalanceSheetLineItem[]): GroupedItem[] {
+  const groups: Record<GroupKey, { label: string; items: BalanceSheetLineItem[] }> = {
+    cash_bank: { label: 'Cash & Cash Equivalents', items: [] },
     inventory: { label: 'Inventory', items: [] },
     receivables: { label: 'Receivables', items: [] },
+    advances: { label: 'Advances & prepayments', items: [] },
     other: { label: 'Other Assets', items: [] },
   };
   items.forEach((i) => {
+    const g = i.bs_asset_group as BalanceSheetAssetGroup | undefined;
+    if (g === 'cash_bank') {
+      groups.cash_bank.items.push(i);
+      return;
+    }
+    if (g === 'inventory') {
+      groups.inventory.items.push(i);
+      return;
+    }
+    if (g === 'receivables') {
+      groups.receivables.items.push(i);
+      return;
+    }
+    if (g === 'advances') {
+      groups.advances.items.push(i);
+      return;
+    }
+    if (g === 'other') {
+      groups.other.items.push(i);
+      return;
+    }
     const n = (i.name || '').toLowerCase();
     const c = (i.code || '').toLowerCase();
     if (n.includes('cash') || n.includes('bank') || n.includes('wallet') || c.includes('1000') || c.includes('1010') || c.includes('1020')) {
@@ -31,6 +62,8 @@ function groupAssets(items: { name: string; amount: number; code?: string }[]): 
       groups.inventory.items.push(i);
     } else if (n.includes('receivable') || n.includes('receivables') || c.includes('1100')) {
       groups.receivables.items.push(i);
+    } else if (n.includes('advance') && n.includes('worker')) {
+      groups.advances.items.push(i);
     } else {
       groups.other.items.push(i);
     }
@@ -44,18 +77,41 @@ function groupAssets(items: { name: string; amount: number; code?: string }[]): 
     }));
 }
 
-function groupLiabilities(items: { name: string; amount: number; code?: string }[]): GroupedItem[] {
-  const groups: Record<GroupKey, { label: string; items: typeof items }> = {
-    payables: { label: 'Payables', items: [] },
-    courier: { label: 'Courier Payables', items: [] },
-    other: { label: 'Other Liabilities', items: [] },
+function groupLiabilities(items: BalanceSheetLineItem[]): GroupedItem[] {
+  const groups: Record<GroupKey, { label: string; items: BalanceSheetLineItem[] }> = {
+    trade_payables: { label: 'Trade & other payables', items: [] },
+    payroll_related: { label: 'Payroll & worker', items: [] },
+    deposits_and_advances: { label: 'Deposits & advances held', items: [] },
+    courier: { label: 'Courier payables', items: [] },
+    other: { label: 'Other liabilities', items: [] },
   };
   items.forEach((i) => {
+    const lg = i.bs_liability_group;
+    if (lg === 'courier') {
+      groups.courier.items.push(i);
+      return;
+    }
+    if (lg === 'payroll_related') {
+      groups.payroll_related.items.push(i);
+      return;
+    }
+    if (lg === 'deposits_and_advances') {
+      groups.deposits_and_advances.items.push(i);
+      return;
+    }
+    if (lg === 'trade_payables') {
+      groups.trade_payables.items.push(i);
+      return;
+    }
     const n = (i.name || '').toLowerCase();
     if (n.includes('courier')) {
       groups.courier.items.push(i);
+    } else if (n.includes('worker') && n.includes('payable')) {
+      groups.payroll_related.items.push(i);
+    } else if (n.includes('deposit') || n.includes('rental advance')) {
+      groups.deposits_and_advances.items.push(i);
     } else if (n.includes('payable') || n.includes('payables')) {
-      groups.payables.items.push(i);
+      groups.trade_payables.items.push(i);
     } else {
       groups.other.items.push(i);
     }
@@ -121,11 +177,13 @@ function SectionBlock({
   grouped,
   formatCurrency,
   sectionTotal,
+  onPartyDrilldown,
 }: {
   title: string;
   grouped: GroupedItem[];
   formatCurrency: (n: number) => string;
   sectionTotal: number;
+  onPartyDrilldown?: (kind: 'ar' | 'ap') => void;
 }) {
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6">
@@ -136,9 +194,22 @@ function SectionBlock({
             <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{g.groupLabel}</div>
             <ul className="space-y-1.5 pl-2">
               {g.items.map((i) => (
-                <li key={i.code || i.name} className="flex justify-between text-sm">
-                  <span className="text-gray-300">{i.name}</span>
-                  <span className="text-white tabular-nums">{formatCurrency(i.amount)}</span>
+                <li key={i.code || i.name} className="flex justify-between items-center gap-2 text-sm">
+                  <span className="text-gray-300 flex items-center gap-2 min-w-0">
+                    {i.name}
+                    {i.drilldownControl && onPartyDrilldown && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-indigo-400 shrink-0"
+                        onClick={() => onPartyDrilldown(i.drilldownControl!)}
+                      >
+                        <Users className="w-3.5 h-3.5 mr-1" /> Parties
+                      </Button>
+                    )}
+                  </span>
+                  <span className="text-white tabular-nums shrink-0">{formatCurrency(i.amount)}</span>
                 </li>
               ))}
             </ul>
@@ -165,6 +236,9 @@ export const BalanceSheetPage: React.FC<{
   const [asOfDate, setAsOfDate] = useState(defaultDate);
   const [data, setData] = useState<BalanceSheetResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [partyKind, setPartyKind] = useState<'ar' | 'ap' | null>(null);
+  const [partyLoading, setPartyLoading] = useState(false);
+  const [partyBreakdown, setPartyBreakdown] = useState<ControlAccountBreakdownResult | null>(null);
 
   useEffect(() => {
     if (!companyId || !asOfDate) {
@@ -191,6 +265,39 @@ export const BalanceSheetPage: React.FC<{
   const handleExportExcel = () => {
     if (!data) return;
     exportToExcel(toExport(data, formatCurrency), 'Balance_Sheet');
+  };
+
+  const openPartyDrilldown = async (kind: 'ar' | 'ap') => {
+    if (!companyId) return;
+    setPartyKind(kind);
+    setPartyLoading(true);
+    setPartyBreakdown(null);
+    try {
+      const code = kind === 'ar' ? '1100' : '2000';
+      const { data: acc } = await supabase
+        .from('accounts')
+        .select('id, code, name')
+        .eq('company_id', companyId)
+        .eq('code', code)
+        .maybeSingle();
+      if (!acc?.id) {
+        setPartyBreakdown(null);
+        return;
+      }
+      const b = await fetchControlAccountBreakdown({
+        companyId,
+        branchId: branchId === 'all' ? null : branchId ?? null,
+        accountId: acc.id,
+        accountCode: String(acc.code || code),
+        accountName: String(acc.name || ''),
+        controlKind: kind === 'ar' ? 'ar' : 'ap',
+      });
+      setPartyBreakdown(b);
+    } catch {
+      setPartyBreakdown(null);
+    } finally {
+      setPartyLoading(false);
+    }
   };
 
   if (loading) {
@@ -242,12 +349,14 @@ export const BalanceSheetPage: React.FC<{
           grouped={groupedAssets.length > 0 ? groupedAssets : [{ groupLabel: 'Assets', items: data.assets.items, subtotal: data.totalAssets }]}
           formatCurrency={formatCurrency}
           sectionTotal={data.totalAssets}
+          onPartyDrilldown={openPartyDrilldown}
         />
         <SectionBlock
           title={data.liabilities.label}
           grouped={groupedLiabilities.length > 0 ? groupedLiabilities : [{ groupLabel: 'Liabilities', items: data.liabilities.items, subtotal: data.liabilities.total }]}
           formatCurrency={formatCurrency}
           sectionTotal={data.liabilities.total}
+          onPartyDrilldown={openPartyDrilldown}
         />
         <SectionBlock
           title={data.equity.label}
@@ -260,6 +369,35 @@ export const BalanceSheetPage: React.FC<{
         <span className="font-medium text-white">Total Liabilities + Equity</span>
         <span className="text-white tabular-nums">{formatCurrency(data.totalLiabilitiesAndEquity)}</span>
       </div>
+
+      <Dialog open={partyKind !== null} onOpenChange={(o) => !o && setPartyKind(null)}>
+        <DialogContent className="max-w-lg bg-gray-900 border-gray-800 text-white">
+          <DialogHeader>
+            <DialogTitle>
+              {partyKind === 'ar' ? 'Receivables — party breakdown' : partyKind === 'ap' ? 'Payables — party breakdown' : 'Party breakdown'}
+            </DialogTitle>
+          </DialogHeader>
+          {partyLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
+            </div>
+          ) : partyBreakdown?.partyRows?.length ? (
+            <ul className="space-y-2 max-h-[360px] overflow-y-auto text-sm">
+              {partyBreakdown.partyRows.map((r) => (
+                <li key={r.contactId} className="flex justify-between gap-2 border-b border-gray-800 pb-2">
+                  <span className="text-gray-300 truncate">{r.name}</span>
+                  <span className="tabular-nums text-white shrink-0">{formatCurrency(r.glAmount)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-gray-500">No party rows or data unavailable (ensure GL mapping RPC is applied).</p>
+          )}
+          {partyBreakdown?.partySectionNote && (
+            <p className="text-xs text-amber-200/90">{partyBreakdown.partySectionNote}</p>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

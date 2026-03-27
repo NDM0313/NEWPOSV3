@@ -2,10 +2,10 @@
  * Sale Accounting Service (Phase 4: one contract)
  *
  * Source lock: journal_entries + journal_entry_lines + accounts only.
- * COA: 1100 AR, 4000 Sales Revenue, 4100 Shipping Income, 5200 Discount Allowed, 5300 Extra Expense, 5000 COGS, 1200 Inventory, 2000 AP.
+ * COA: 1100 AR, 4000 Sales Revenue, 4110 Shipping Income, 5200 Discount Allowed, 5300 Extra Expense, 5000 COGS, 1200 Inventory, 2000 AP.
  * Payment isolation: document JEs never touch payment_id; payment has its own flow.
  *
- * Sale create: Dr AR (total), Dr Discount (if any), Cr Sales Revenue (product), Cr Shipping Income (4100, if shipmentCharges), COGS/Inventory.
+ * Sale create: Dr AR (total), Dr Discount (if any), Cr Sales Revenue (product), Cr Shipping Income (4110, if shipmentCharges), COGS/Inventory.
  * Sale edit: delta JEs only (revenue, discount, shipping, extra); no blanket reversal; payment untouched unless payment changed.
  * Sale cancel: reversal JE matching create (Sales Revenue, Shipping Income, Discount, AR, COGS/Inventory).
  */
@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabase';
 import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
+import { resolveReceivablePostingAccountId } from './partySubledgerAccountService';
 
 /**
  * Canonical sale **document** JE (Dr AR / Cr Revenue / COGS — Phase 4):
@@ -146,6 +147,16 @@ async function ensureARAccount(companyId: string): Promise<{ id: string } | null
   return null;
 }
 
+/** AR line account: party subledger under 1100 when customer is set, else control 1100. */
+async function resolveArLineAccountForSale(companyId: string, saleId: string): Promise<{ id: string } | null> {
+  const { data, error } = await supabase.from('sales').select('customer_id').eq('id', saleId).maybeSingle();
+  if (error) return ensureARAccount(companyId);
+  const customerId = (data as { customer_id?: string | null } | null)?.customer_id ?? null;
+  const arId = await resolveReceivablePostingAccountId(companyId, customerId || undefined);
+  if (arId) return { id: arId };
+  return ensureARAccount(companyId);
+}
+
 /** Ensure Sales Revenue (4000) exists for the company; create if missing. */
 async function ensureRevenueAccount(companyId: string): Promise<{ id: string } | null> {
   let account = await accountHelperService.getAccountByCode('4000', companyId);
@@ -250,19 +261,28 @@ async function ensureAPAccount(companyId: string): Promise<{ id: string } | null
   return null;
 }
 
-/** Phase 4: Shipping Income (4100) – Cr when shipping charged to customer (COA mapping). */
+/** Shipping income — code 4110 only (4100 is Sales Revenue in default COA; posting shipping to 4100 mixed product + shipping revenue). */
 async function ensureShippingIncomeAccount(companyId: string): Promise<{ id: string } | null> {
-  const existing = await accountHelperService.getAccountByCode('4100', companyId);
+  const existing = await accountHelperService.getAccountByCode('4110', companyId);
   if (existing?.id) return existing;
+  const parent = await accountHelperService.getAccountByCode('4050', companyId);
   try {
     const { data, error } = await supabase
       .from('accounts')
-      .insert({ company_id: companyId, code: '4100', name: 'Shipping Income', type: 'revenue', balance: 0, is_active: true })
+      .insert({
+        company_id: companyId,
+        code: '4110',
+        name: 'Shipping Income',
+        type: 'revenue',
+        balance: 0,
+        is_active: true,
+        ...(parent?.id ? { parent_id: parent.id } : {}),
+      })
       .select('id')
       .single();
     if (!error && data?.id) return data;
   } catch (e) {
-    console.warn('[saleAccountingService] Could not auto-create Shipping Income account (4100):', e);
+    console.warn('[saleAccountingService] Could not auto-create Shipping Income account (4110):', e);
   }
   return null;
 }
@@ -357,7 +377,7 @@ export const saleAccountingService = {
   /**
    * Create journal entry when sale is finalized (Phase 4: one contract).
    *
-   * Dr AR (1100) = total. Cr: Sales Revenue (4000) for product, Shipping Income (4100) for shipping, Discount (5200) if any.
+   * Dr AR (1100) = total. Cr: Sales Revenue (4000) for product, Shipping Income (4110) for shipping, Discount (5200) if any.
    * COGS: Dr Cost of Production (5000), Cr Inventory (1200).
    * Safe to call multiple times — duplicate is detected and skipped.
    */
@@ -367,7 +387,7 @@ export const saleAccountingService = {
     branchId?: string | null;
     total: number;
     discountAmount?: number;
-    /** Phase 4: Shipping charged to customer → Cr Shipping Income (4100). */
+    /** Shipping charged to customer → Cr Shipping Income (4110). */
     shipmentCharges?: number;
     invoiceNo: string;
     performedBy?: string | null;
@@ -396,7 +416,7 @@ export const saleAccountingService = {
       return existingDocId;
     }
 
-    const arAccount = await ensureARAccount(companyId);
+    const arAccount = await resolveArLineAccountForSale(companyId, saleId);
     const revenueAccount = await ensureRevenueAccount(companyId);
 
     if (!arAccount?.id || !revenueAccount?.id) {
@@ -628,7 +648,7 @@ export const saleAccountingService = {
       return null;
     }
 
-    const arAccount = await ensureARAccount(companyId);
+    const arAccount = await resolveArLineAccountForSale(companyId, saleId);
     const revenueAccount = await ensureRevenueAccount(companyId);
 
     if (!arAccount?.id || !revenueAccount?.id) {
@@ -788,7 +808,7 @@ export const saleAccountingService = {
     const eligible = await assertSaleEligibleForDocumentJournal(saleId, invoiceNo);
     if (!eligible) return { adjustmentCount: 0 };
 
-    const arAccount = await ensureARAccount(companyId);
+    const arAccount = await resolveArLineAccountForSale(companyId, saleId);
     const revenueAccount = await ensureRevenueAccount(companyId);
     const discountAccount = await ensureDiscountAllowedAccount(companyId);
     if (!arAccount?.id || !revenueAccount?.id) return { adjustmentCount };
@@ -856,7 +876,7 @@ export const saleAccountingService = {
       }
     }
 
-    // 4) Shipping (charged to customer) delta – Phase 4: Cr Shipping Income (4100), not Sales Revenue
+    // 4) Shipping (charged to customer) delta – Cr Shipping Income (4110), not Sales Revenue
     const deltaShipping = Math.round((newSnapshot.shippingCharges - oldSnapshot.shippingCharges) * 100) / 100;
     if (deltaShipping !== 0) {
       const shippingIncomeAccount = await ensureShippingIncomeAccount(companyId);
@@ -978,13 +998,23 @@ export async function ensureSalePaymentJournalIfMissing(paymentId: string): Prom
     .maybeSingle();
   if (existing?.id) return existing.id as string;
 
-  const arAccount = await ensureARAccount(p.company_id);
+  const { data: saleRow } = await supabase
+    .from('sales')
+    .select('invoice_no, customer_id')
+    .eq('id', p.reference_id)
+    .maybeSingle();
+  const arId =
+    (await resolveReceivablePostingAccountId(
+      p.company_id,
+      (saleRow as { customer_id?: string | null } | null)?.customer_id ?? undefined
+    )) || (await ensureARAccount(p.company_id))?.id;
+  const arAccount = arId ? { id: arId } : null;
   if (!arAccount?.id || !p.payment_account_id) {
     console.error('[saleAccountingService] ensureSalePaymentJournalIfMissing: missing AR (1100) or payment_account_id', paymentId);
     return null;
   }
 
-  const { data: sale } = await supabase.from('sales').select('invoice_no').eq('id', p.reference_id).maybeSingle();
+  const sale = saleRow;
   const inv = String((sale as { invoice_no?: string } | null)?.invoice_no || '').trim();
 
   const { data: auth } = await supabase.auth.getUser();
@@ -1068,7 +1098,10 @@ export async function ensureOnAccountCustomerJournalIfMissing(
     .maybeSingle();
   if (existing?.id) return existing.id as string;
 
-  const arAccount = await ensureARAccount(p.company_id);
+  const arId =
+    (await resolveReceivablePostingAccountId(p.company_id, p.contact_id || undefined)) ||
+    (await ensureARAccount(p.company_id))?.id;
+  const arAccount = arId ? { id: arId } : null;
   if (!arAccount?.id) return null;
 
   const { data: auth } = await supabase.auth.getUser();

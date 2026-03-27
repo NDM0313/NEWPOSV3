@@ -7,7 +7,12 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { saleService, Sale as SupabaseSale, SaleItem as SupabaseSaleItem } from '@/app/services/saleService';
+import {
+  saleService,
+  Sale as SupabaseSale,
+  SaleItem as SupabaseSaleItem,
+  isSalesInvoiceNoUniqueViolation,
+} from '@/app/services/saleService';
 import { productService } from '@/app/services/productService';
 import { branchService } from '@/app/services/branchService';
 import { comboService } from '@/app/services/comboService';
@@ -22,6 +27,8 @@ import {
   canPostStockForSaleStatus,
 } from '@/app/lib/postingStatusGate';
 import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
+import { assertDomainEditSafetyTestMode, classifySalesEdit } from '@/app/lib/accountingEditClassification';
+import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -443,6 +450,14 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     else setLoading(false);
   }, [companyId, loadSales]);
 
+  useEffect(() => {
+    const onSaleUpdated = () => {
+      if (companyId) loadSales();
+    };
+    window.addEventListener('saleUpdated', onSaleUpdated);
+    return () => window.removeEventListener('saleUpdated', onSaleUpdated);
+  }, [companyId, loadSales]);
+
   // When page changes we do not refetch; SalesPage slices the loaded sales for display
 
   // Get sale by ID
@@ -646,16 +661,33 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       } catch (insertError: any) {
         const msg = insertError?.message || '';
-        const isDuplicateInvoice = insertError?.code === '23505' || (msg && String(msg).includes('sales_company_branch_invoice_unique'));
+        // PostgREST returns HTTP 409 for unique violations; Postgres code 23505. Only retry for invoice number collisions (not other unique indexes).
+        const isDuplicateInvoice =
+          isSalesInvoiceNoUniqueViolation(insertError) ||
+          (msg && String(msg).includes('sales_company_branch_invoice_unique'));
         if (isDuplicateInvoice) {
-          // Retry with fresh number from DB (single source of truth; avoids race with hook state)
+          // Retry with fresh number from DB. Studio uses order_no (STD), not invoice_no — setting invoice_no duplicated STD vs trigger and caused 409.
           try {
             effectiveInvoiceNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, sequenceType);
-            supabaseSale.invoice_no = effectiveInvoiceNo;
+            if (docType === 'studio') {
+              supabaseSale.order_no = effectiveInvoiceNo;
+              delete (supabaseSale as { invoice_no?: string | null }).invoice_no;
+            } else if (docType === 'invoice' || docType === 'pos') {
+              supabaseSale.invoice_no = effectiveInvoiceNo;
+            } else if (docType === 'draft') {
+              supabaseSale.draft_no = effectiveInvoiceNo;
+              delete (supabaseSale as { invoice_no?: string | null }).invoice_no;
+            } else if (docType === 'quotation') {
+              supabaseSale.quotation_no = effectiveInvoiceNo;
+              delete (supabaseSale as { invoice_no?: string | null }).invoice_no;
+            } else if (docType === 'order') {
+              supabaseSale.order_no = effectiveInvoiceNo;
+              delete (supabaseSale as { invoice_no?: string | null }).invoice_no;
+            }
             result = await saleService.createSale(supabaseSale, supabaseItems, {
               allowNegativeStock,
             });
-            console.warn('[SALES CONTEXT] Duplicate invoice number; retried with DB number', effectiveInvoiceNo);
+            console.warn('[SALES CONTEXT] Duplicate document number; retried with DB number', docType, effectiveInvoiceNo);
           } catch (retryErr: any) {
             throw retryErr;
           }
@@ -1056,6 +1088,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
   // Update sale
   const updateSale = async (id: string, updates: Partial<Sale>): Promise<void> => {
+    const traceId = createAccountingEditTraceId(id);
     try {
       // CRITICAL FIX: Handle full sale update (not just status)
       const supabaseUpdates: any = {};
@@ -1118,6 +1151,65 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // 🔒 CRITICAL FIX: Calculate stock movement DELTA BEFORE updating sale_items
       // This must happen BEFORE sale_items are deleted/updated so we can fetch old items
       const sale = getSaleById(id);
+      pushAccountingEditTrace({
+        traceId,
+        ts: new Date().toISOString(),
+        module: 'sales',
+        entityType: 'sale',
+        entityId: id,
+        companyId: companyId || null,
+        branchId: branchId || null,
+        phase: 'start',
+        data: { updates },
+      });
+      if (sale) {
+        const salesClassification = classifySalesEdit({
+          oldSnap: {
+            notes: sale.notes || '',
+            referenceNo: sale.invoiceNo || '',
+            date: sale.date || '',
+            customerId: sale.customerId || '',
+            itemQtyTotal: (sale.items || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0),
+            itemRateTotal: (sale.items || []).reduce((s, it) => s + (Number(it.price) || 0), 0),
+            discount: Number(sale.discount || 0),
+            shipping: Number((sale as any).shippingCharges || 0),
+            paymentAccountId: (sale as any).paymentAccountId || '',
+            branchId: sale.location || '',
+            paymentStatus: sale.paymentStatus || '',
+            saleType: sale.type || '',
+          },
+          newSnap: {
+            notes: updates.notes ?? sale.notes ?? '',
+            referenceNo: (updates as any).referenceNo ?? sale.invoiceNo ?? '',
+            date: updates.date ?? sale.date ?? '',
+            customerId: updates.customer ?? sale.customerId ?? '',
+            itemQtyTotal: Array.isArray((updates as any).items)
+              ? (updates as any).items.reduce((s: number, it: any) => s + (Number(it.quantity) || 0), 0)
+              : (sale.items || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0),
+            itemRateTotal: Array.isArray((updates as any).items)
+              ? (updates as any).items.reduce((s: number, it: any) => s + (Number(it.price || it.unitPrice) || 0), 0)
+              : (sale.items || []).reduce((s, it) => s + (Number(it.price) || 0), 0),
+            discount: updates.discount ?? sale.discount ?? 0,
+            shipping: (updates as any).shippingCharges ?? (sale as any).shippingCharges ?? 0,
+            paymentAccountId: (updates as any).paymentAccountId ?? (sale as any).paymentAccountId ?? '',
+            branchId: updates.location ?? sale.location ?? '',
+            paymentStatus: updates.paymentStatus ?? sale.paymentStatus ?? '',
+            saleType: updates.type ?? sale.type ?? '',
+          },
+        });
+        assertDomainEditSafetyTestMode(salesClassification, 'sales updateSale');
+        pushAccountingEditTrace({
+          traceId,
+          ts: new Date().toISOString(),
+          module: 'sales',
+          entityType: 'sale',
+          entityId: id,
+          companyId: companyId || null,
+          branchId: branchId || null,
+          phase: 'classified',
+          data: salesClassification,
+        });
+      }
       const newStatusForGate =
         updates.status !== undefined
           ? (updates.status === 'invoice' ? 'final' : String(updates.status))
@@ -1866,8 +1958,29 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (!isPOS) toast.success('Sale updated successfully!');
       // Notify views (e.g. Studio Sale Detail, Studio Sales List) to refetch so UI shows updated data
       window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: id } }));
+      pushAccountingEditTrace({
+        traceId,
+        ts: new Date().toISOString(),
+        module: 'sales',
+        entityType: 'sale',
+        entityId: id,
+        companyId: companyId || null,
+        branchId: branchId || null,
+        phase: 'done',
+      });
     } catch (error: any) {
       console.error('[SALES CONTEXT] Error updating sale:', error);
+      pushAccountingEditTrace({
+        traceId,
+        ts: new Date().toISOString(),
+        module: 'sales',
+        entityType: 'sale',
+        entityId: id,
+        companyId: companyId || null,
+        branchId: branchId || null,
+        phase: 'error',
+        data: { message: error?.message || String(error) },
+      });
       toast.error(`Failed to update sale: ${error.message || 'Unknown error'}`);
       throw error;
     }

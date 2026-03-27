@@ -5,6 +5,7 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { branchService, Branch } from '@/app/services/branchService';
 import { contactService } from '@/app/services/contactService';
 import { purchaseService } from '@/app/services/purchaseService';
+import { resolvePaymentRowForEdit, resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
 import { activityLogService } from '@/app/services/activityLogService';
 import { UnifiedPurchaseInvoiceView } from '@/app/documents';
 import { PaymentDeleteConfirmationModal } from '../shared/PaymentDeleteConfirmationModal';
@@ -1552,6 +1553,11 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                                   {payment.referenceNo}
                                 </code>
                               )}
+                              {payment.source === 'manual_payment_allocation' && (
+                                <Badge className="text-[10px] font-medium bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                                  Add Entry · AP allocation
+                                </Badge>
+                              )}
                             </div>
                             <p className="text-sm text-gray-400">
                               {formatDate(payment.date)}
@@ -1599,11 +1605,15 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                               <>
                             <button
                               onClick={() => {
-                                setPaymentToEdit(payment);
-                                setEditPaymentDialogOpen(true);
+                                try {
+                                  setPaymentToEdit(resolvePaymentRowForEdit(payment as any));
+                                  setEditPaymentDialogOpen(true);
+                                } catch (e: any) {
+                                  toast.error(e?.message || 'Cannot edit this payment line');
+                                }
                               }}
                               className="p-1.5 rounded-lg hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 transition-colors"
-                              title="Edit Payment"
+                              title="Edit payment (allocation lines edit the parent payment)"
                             >
                               <Edit size={14} />
                             </button>
@@ -1826,7 +1836,8 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             
             setIsDeletingPayment(true);
             try {
-              const deletePromise = purchaseService.deletePayment(paymentToDelete.id, purchase.id);
+              const pid = resolvePaymentIdForMutation(paymentToDelete as any);
+              const deletePromise = purchaseService.deletePayment(pid, purchase.id);
               const timeoutPromise = new Promise((_, reject) => 
                 setTimeout(() => reject(new Error('Payment deletion timed out. Please try again.')), 15000)
               );
@@ -1908,6 +1919,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
             referenceNumber: paymentToEdit.referenceNo || paymentToEdit.reference_number,
             notes: paymentToEdit.notes,
             attachments: paymentToEdit.attachments,
+            parentPaymentId: (paymentToEdit as { parentPaymentId?: string }).parentPaymentId,
           }}
           onSuccess={async () => {
             toast.success('Payment updated successfully');

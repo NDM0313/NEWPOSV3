@@ -6,13 +6,17 @@ import { ReportActions } from './ReportActions';
 import { DateRangePicker } from '../ui/DateRangePicker';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
 import { Button } from '../ui/button';
-import { Loader2, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react';
+import { Loader2, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown, Pencil } from 'lucide-react';
 import { cn } from '../ui/utils';
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
 
 export interface DayBookEntry {
   id: string;
-  /** For two-line display (date + time) */
+  /** journal_entries.id — use for unified edit / UUID lookup */
+  journalEntryId: string;
+  /** Business / entry_date (primary for lists) */
+  entryDate: Date;
+  /** For audit: journal created_at */
   createdAt: Date;
   /** Display: date + time string (for export) */
   dateTime: string;
@@ -43,12 +47,14 @@ function refTypeToDisplayType(ref: string): DayBookEntry['type'] {
 export interface DayBookReportProps {
   /** When provided, voucher number is clickable and opens transaction detail (e.g. in Accounting module). */
   onVoucherClick?: (voucher: string) => void;
+  /** Opens the same unified transaction detail + editor flow using journal entry UUID. */
+  onEditJournalEntry?: (journalEntryId: string) => void;
   /** When provided, use global filter date range instead of local picker (aligns with TopHeader). */
   globalStartDate?: string | null;
   globalEndDate?: string | null;
 }
 
-export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }: DayBookReportProps) => {
+export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartDate, globalEndDate }: DayBookReportProps) => {
   const { companyId } = useSupabase();
   const { formatDateTime } = useFormatDate();
   const today = new Date();
@@ -105,6 +111,9 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
       for (const je of data || []) {
         const lines = (je.lines as Array<{ id?: string; debit?: number; credit?: number; description?: string; account?: { name?: string } | null }>) ?? [];
         const createdAt = je.created_at ? new Date(je.created_at as string) : new Date();
+        const entryDate = je.entry_date
+          ? new Date(String(je.entry_date).slice(0, 10) + 'T12:00:00')
+          : createdAt;
         const dateTimeStr = formatDateTime(createdAt);
         const timeStr = createdAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
         const voucher = String(je.entry_no ?? `JE-${String(je.id ?? '').slice(0, 8)}`);
@@ -114,6 +123,7 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
         const desc = String(je.description ?? '') + descSuffix;
         const type = refTypeToDisplayType(refType);
 
+        let lineIdx = 0;
         for (const line of lines) {
           const debit = Number(line.debit ?? 0);
           const credit = Number(line.credit ?? 0);
@@ -121,8 +131,12 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
           const acc = line.account;
           const accountName = Array.isArray(acc) ? (acc[0] as { name?: string })?.name : (acc as { name?: string } | null)?.name;
           const accountNameStr = accountName ?? 'Unknown Account';
+          const lineId = line.id != null ? String(line.id) : `i${lineIdx}`;
+          lineIdx += 1;
           list.push({
-            id: `${je.id}-${line.id ?? Math.random()}`,
+            id: `${je.id}-${lineId}`,
+            journalEntryId: String(je.id),
+            entryDate,
             createdAt,
             dateTime: dateTimeStr,
             time: timeStr,
@@ -143,7 +157,7 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
   const getSortValue = (e: DayBookEntry, key: DayBookSortKey): string | number => {
     switch (key) {
       case 'date':
-        return e.createdAt.getTime();
+        return e.entryDate.getTime();
       case 'voucher':
         return (e.voucher ?? '').toLowerCase();
       case 'account':
@@ -210,8 +224,9 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
   const displayTotalCredit = totalCredit + adjustmentCredit;
 
   const exportData = {
-    headers: ['Date & Time', 'Voucher #', 'Account', 'Description', 'Debit (₨)', 'Credit (₨)', 'Type'],
+    headers: ['Txn date', 'Posted', 'Voucher #', 'Account', 'Description', 'Debit (₨)', 'Credit (₨)', 'Type'],
     rows: sortedEntries.map((e) => [
+      e.entryDate.toISOString().slice(0, 10),
       e.dateTime,
       e.voucher,
       e.account,
@@ -261,7 +276,7 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
                 <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
                   <tr>
                     {([
-                      { key: 'date' as const, label: 'Date & Time', className: 'w-40', align: 'left' },
+                      { key: 'date' as const, label: 'Txn date / posted', className: 'w-44', align: 'left' },
                       { key: 'voucher' as const, label: 'Voucher #', className: 'w-24', align: 'left' },
                       { key: 'account' as const, label: 'Account', className: '', align: 'left' },
                       { key: 'description' as const, label: 'Description', className: '', align: 'left' },
@@ -298,13 +313,19 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
                         </th>
                       );
                     })}
+                    {onEditJournalEntry && (
+                      <th className="px-4 py-3 text-right font-medium text-gray-400 w-24">Edit</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800">
                   {paginatedEntries.map((e, i) => (
                   <tr key={e.id} className={cn('hover:bg-gray-800/30', i % 2 === 0 ? 'bg-gray-950/30' : 'bg-gray-900/20')}>
                     <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
-                      <DateTimeDisplay date={e.createdAt} className="flex flex-col leading-tight" />
+                      <div className="flex flex-col gap-0.5">
+                        <DateTimeDisplay date={e.entryDate} dateOnly className="text-gray-300" />
+                        <DateTimeDisplay date={e.createdAt} className="opacity-80 scale-95 origin-top-left" />
+                      </div>
                     </td>
                     <td className="px-4 py-3 font-mono text-gray-300">
                       {onVoucherClick ? (
@@ -342,6 +363,20 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
                         {e.type}
                       </span>
                     </td>
+                    {onEditJournalEntry && (
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-sky-400 hover:text-sky-300"
+                          onClick={() => onEditJournalEntry(e.journalEntryId)}
+                        >
+                          <Pencil size={14} className="mr-1 inline" />
+                          Edit
+                        </Button>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {!isBalanced && (adjustmentDebit > 0 || adjustmentCredit > 0) && (
@@ -359,6 +394,7 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
                     <td className="px-4 py-3 text-center">
                       <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400">Journal</span>
                     </td>
+                    {onEditJournalEntry && <td className="px-4 py-3" />}
                   </tr>
                 )}
               </tbody>
@@ -374,6 +410,7 @@ export const DayBookReport = ({ onVoucherClick, globalStartDate, globalEndDate }
                     ₨ {displayTotalCredit.toLocaleString()}
                   </td>
                   <td />
+                  {onEditJournalEntry && <td />}
                 </tr>
               </tfoot>
             </table>

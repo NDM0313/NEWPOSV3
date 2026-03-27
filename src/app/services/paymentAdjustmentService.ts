@@ -8,6 +8,13 @@ import { supabase } from '@/lib/supabase';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 
+/** Journal rows linked to a payment but not the PF-14 adjustment layer (those use reference_id only). */
+function isPrimaryPaymentLinkedJe(je: { reference_type?: string | null; payment_id?: string | null }): boolean {
+  const rt = String(je.reference_type || '').toLowerCase();
+  if (!je.payment_id) return false;
+  return rt !== 'payment_adjustment';
+}
+
 export type PaymentContext = 'sale' | 'purchase';
 
 /**
@@ -192,22 +199,67 @@ export async function postPaymentAccountAdjustment(params: {
 }
 
 /**
- * Sync ledger with payments table: for any sale payment where the effective debit account
- * (from all payment + payment_adjustment JEs) differs from payment.payment_account_id,
- * post the missing account-adjustment JE so Cash/Bank ledgers show correctly.
- * Single source of truth = payments.payment_account_id; ledger is built from JEs only.
- * Call once per company when loading accounting (idempotent).
+ * Liquidity leg on the *primary* payment JE (the row with journal_entries.payment_id set, not payment_adjustment).
+ * - Sale receipt: Dr Cash/Bank, Cr AR → liquidity = account that is not AR (1100).
+ * - Supplier payment: Dr AP, Cr Cash/Bank → liquidity = account that is not AP (2000).
+ * Previous bug: used "max net debit account" globally, which picks AP on purchase payments → bogus
+ * Dr Bank / Cr AP "adjustment" stacked on every accounting load. See postingDuplicateRepairService for duplicate JE scans.
  */
-export async function syncPaymentAccountAdjustmentsForCompany(companyId: string): Promise<{ synced: number; errors: number }> {
-  if (!companyId) return { synced: 0, errors: 0 };
+function liquidityAccountOnPrimaryJe(
+  lines: { account_id?: string | null; debit?: number | null; credit?: number | null }[],
+  apAccountId: string | null,
+  arAccountId: string | null
+): string | null {
+  const cleaned = (lines || []).filter((l) => l.account_id && (Number(l.debit) > 0 || Number(l.credit) > 0));
+  if (cleaned.length < 2) return null;
+  const ap = apAccountId || '';
+  const ar = arAccountId || '';
+  const nonAp = cleaned.filter((l) => String(l.account_id) !== ap);
+  const nonAr = cleaned.filter((l) => String(l.account_id) !== ar);
+  const hasApDebit = cleaned.some((l) => String(l.account_id) === ap && Number(l.debit) > 0);
+  const hasArCredit = cleaned.some((l) => String(l.account_id) === ar && Number(l.credit) > 0);
+  if (hasApDebit && nonAp.length === 1) return String(nonAp[0].account_id);
+  if (hasArCredit && nonAr.length === 1) return String(nonAr[0].account_id);
+  if (ap && ar) {
+    const neither = cleaned.filter((l) => String(l.account_id) !== ap && String(l.account_id) !== ar);
+    if (neither.length === 1) return String(neither[0].account_id);
+  }
+  return null;
+}
+
+function paymentAdjustmentContextFromPrimaryLines(
+  lines: { account_id?: string | null; debit?: number | null; credit?: number | null }[],
+  apAccountId: string | null
+): PaymentContext {
+  const ap = apAccountId || '';
+  const hasApDebit = (lines || []).some((l) => String(l.account_id) === ap && Number(l.debit) > 0);
+  return hasApDebit ? 'purchase' : 'sale';
+}
+
+/**
+ * Sync ledger with payments.payment_account_id using only the canonical primary JE per payment.
+ * Skips payments with 0 or 2+ primary JEs (duplicates — repair via postingDuplicateRepairService).
+ */
+export async function syncPaymentAccountAdjustmentsForCompany(companyId: string): Promise<{
+  synced: number;
+  errors: number;
+  skippedDuplicates: number;
+  skippedAmbiguous: number;
+}> {
+  if (!companyId) return { synced: 0, errors: 0, skippedDuplicates: 0, skippedAmbiguous: 0 };
+
+  const apAccount = await accountHelperService.getAccountByCode('2000', companyId);
+  const arAccount = await accountHelperService.getAccountByCode('1100', companyId);
+  const apId = apAccount?.id ?? null;
+  const arId = arAccount?.id ?? null;
 
   const { data: payments, error: payErr } = await supabase
     .from('payments')
-    .select('id, amount, payment_account_id, payment_date, company_id, branch_id, reference_id')
+    .select('id, amount, payment_account_id, payment_date, company_id, branch_id, reference_id, reference_type')
     .eq('company_id', companyId)
     .not('payment_account_id', 'is', null);
 
-  if (payErr || !payments?.length) return { synced: 0, errors: 0 };
+  if (payErr || !payments?.length) return { synced: 0, errors: 0, skippedDuplicates: 0, skippedAmbiguous: 0 };
 
   const paymentIds = payments.map((p: any) => p.id);
   const { data: paymentJEs } = await supabase
@@ -219,98 +271,84 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
       reference_id,
       entry_date,
       branch_id,
+      created_at,
       lines:journal_entry_lines(account_id, debit, credit)
     `)
     .eq('company_id', companyId)
-    .in('payment_id', paymentIds);
+    .in('payment_id', paymentIds)
+    .or('is_void.is.null,is_void.eq.false')
+    .neq('reference_type', 'payment_adjustment');
 
-  const { data: adjustmentJEs } = await supabase
-    .from('journal_entries')
-    .select(`
-      id,
-      payment_id,
-      reference_type,
-      reference_id,
-      entry_date,
-      branch_id,
-      lines:journal_entry_lines(account_id, debit, credit)
-    `)
-    .eq('company_id', companyId)
-    .eq('reference_type', 'payment_adjustment')
-    .in('reference_id', paymentIds);
-
-  const journalEntries = [...(paymentJEs || []), ...(adjustmentJEs || [])];
-  if (!journalEntries.length) return { synced: 0, errors: 0 };
-
-  const byPayment = new Map<string, { debitByAccount: Map<string, number>; creditByAccount: Map<string, number>; entryDate: string; branchId: string | null; referenceId: string }>();
-  for (const je of journalEntries as any[]) {
-    const paymentId = je.payment_id || je.reference_id;
-    if (!paymentId || !paymentIds.includes(paymentId)) continue;
-    if (!byPayment.has(paymentId)) {
-      byPayment.set(paymentId, {
-        debitByAccount: new Map(),
-        creditByAccount: new Map(),
-        entryDate: je.entry_date || new Date().toISOString().slice(0, 10),
-        branchId: je.branch_id ?? null,
-        referenceId: (payments.find((p: any) => p.id === paymentId) as any)?.reference_id ?? '',
-      });
-    }
-    const rec = byPayment.get(paymentId)!;
-    const lines = je.lines ?? [];
-    for (const line of lines) {
-      const aid = line.account_id ?? '';
-      if (!aid) continue;
-      const d = (rec.debitByAccount.get(aid) ?? 0) + Number(line.debit ?? 0);
-      const c = (rec.creditByAccount.get(aid) ?? 0) + Number(line.credit ?? 0);
-      rec.debitByAccount.set(aid, d);
-      rec.creditByAccount.set(aid, c);
-    }
+  const byPaymentPrimary = new Map<string, any[]>();
+  for (const je of paymentJEs || []) {
+    const row = je as any;
+    if (!isPrimaryPaymentLinkedJe(row)) continue;
+    const pid = row.payment_id;
+    if (!pid) continue;
+    if (!byPaymentPrimary.has(pid)) byPaymentPrimary.set(pid, []);
+    byPaymentPrimary.get(pid)!.push(row);
   }
 
   let synced = 0;
   let errors = 0;
+  let skippedDuplicates = 0;
+  let skippedAmbiguous = 0;
+
   for (const p of payments as any[]) {
     const paymentId = p.id;
     const currentAccountId = p.payment_account_id ?? '';
     if (!currentAccountId) continue;
-    const rec = byPayment.get(paymentId);
-    if (!rec) continue;
 
-    let effectiveDebitAccount = '';
-    let netDebit = 0;
-    for (const [aid, debit] of rec.debitByAccount) {
-      const credit = rec.creditByAccount.get(aid) ?? 0;
-      const net = debit - credit;
-      if (net > 0 && net > netDebit) {
-        netDebit = net;
-        effectiveDebitAccount = aid;
+    const primaries = byPaymentPrimary.get(paymentId) || [];
+    if (primaries.length === 0) continue;
+    if (primaries.length > 1) {
+      skippedDuplicates++;
+      if (import.meta.env?.DEV) {
+        console.warn('[paymentAdjustmentService] Skip sync: multiple primary JEs for payment', paymentId);
       }
+      continue;
     }
-    if (!effectiveDebitAccount || effectiveDebitAccount === currentAccountId) continue;
+
+    const primary = primaries[0];
+    const lines = primary.lines ?? [];
+    const effectiveLiquidity = liquidityAccountOnPrimaryJe(lines, apId, arId);
+    if (!effectiveLiquidity) {
+      skippedAmbiguous++;
+      continue;
+    }
+    if (effectiveLiquidity === currentAccountId) continue;
 
     const amount = Math.round((p.amount ?? 0) * 100) / 100;
     if (amount <= 0) continue;
 
+    const context = paymentAdjustmentContextFromPrimaryLines(lines, apId);
+    const refType = String(p.reference_type || '');
+    const invoiceNoOrRef =
+      refType === 'purchase' && p.reference_id
+        ? `PUR-${String(p.reference_id).slice(0, 8)}`
+        : refType === 'sale' && p.reference_id
+          ? `Sale ${String(p.reference_id).slice(0, 8)}`
+          : `Payment ${paymentId.slice(0, 8)}`;
+
     try {
-      const invoiceNoOrRef = p.reference_id ? `Sale ${p.reference_id.slice(0, 8)}` : `Payment ${paymentId.slice(0, 8)}`;
       await postPaymentAccountAdjustment({
-        context: 'sale',
+        context,
         companyId: p.company_id,
-        branchId: rec.branchId,
+        branchId: primary.branch_id ?? p.branch_id ?? null,
         paymentId,
-        referenceId: rec.referenceId || p.reference_id || paymentId,
-        oldAccountId: effectiveDebitAccount,
+        referenceId: p.reference_id || paymentId,
+        oldAccountId: effectiveLiquidity,
         newAccountId: currentAccountId,
         amount,
         invoiceNoOrRef,
-        entryDate: (p.payment_date || rec.entryDate || new Date().toISOString().slice(0, 10)).toString().slice(0, 10),
+        entryDate: (p.payment_date || primary.entry_date || new Date().toISOString().slice(0, 10)).toString().slice(0, 10),
         createdBy: null,
       });
       synced++;
-    } catch (e) {
+    } catch {
       errors++;
     }
   }
-  return { synced, errors };
+  return { synced, errors, skippedDuplicates, skippedAmbiguous };
 }
 

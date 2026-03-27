@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useRentals } from '@/app/context/RentalContext';
-import { useAccounting } from '@/app/context/AccountingContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { rentalService } from '@/app/services/rentalService';
 import { productService } from '@/app/services/productService';
@@ -52,6 +51,16 @@ import { Check, ChevronsUpDown, User, PlusCircle } from "lucide-react";
 import { Label } from "../ui/label";
 import { RentalProductSearch, SearchProduct } from './RentalProductSearch';
 import { ProductImage } from '../products/ProductImage';
+import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/app/components/ui/dialog';
+import { getPrimaryProductImageUrl } from '@/app/utils/productImageResolve';
 import { toast } from 'sonner';
 
 // NEW: Import rental types and utilities
@@ -83,7 +92,6 @@ interface RentalBookingDrawerProps {
 export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBookingDrawerProps) => {
   const { companyId, branchId, user } = useSupabase();
   const { refreshRentals } = useRentals();
-  const accounting = useAccounting();
   const { formatCurrency } = useFormatCurrency();
   const { openDrawer, createdContactId, setCreatedContactId } = useNavigation();
   const [existingBookings, setExistingBookings] = useState<RentalBooking[]>([]);
@@ -167,6 +175,19 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   // Booking save state
   const [saving, setSaving] = useState(false);
 
+  /** After save: user may collect typed advance via payment dialog (no silent posting). */
+  const [advancePromptOpen, setAdvancePromptOpen] = useState(false);
+  const [advancePaymentOpen, setAdvancePaymentOpen] = useState(false);
+  const [pendingBooking, setPendingBooking] = useState<{
+    id: string;
+    booking_no: string;
+    advanceAmount: number;
+    customerId: string;
+    customerName: string;
+    bookingDate: string;
+    totalRent: number;
+  } | null>(null);
+
   // Populate form when editing
   useEffect(() => {
     if (isOpen && editRental) {
@@ -195,6 +216,12 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           retailPrice: 0,
         };
         setSelectedProduct(product);
+        productService.getProduct(String(firstItem.productId)).then((row) => {
+          const img = getPrimaryProductImageUrl(row as Record<string, unknown>);
+          setSelectedProduct((prev) =>
+            prev && String(prev.id) === String(firstItem.productId) ? { ...prev, image: img } : prev
+          );
+        }).catch(() => {});
         setManualRentPrice(String(rentVal || editRental.totalAmount || ''));
       }
     } else if (isOpen && !editRental) {
@@ -261,7 +288,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
         id: p.id || '',
         name: p.name || '',
         sku: p.sku || '',
-        image: (Array.isArray(p.image_urls) && p.image_urls[0]) ? p.image_urls[0] : (p.image_url || p.thumbnail || ''),
+        image: getPrimaryProductImageUrl(p as Record<string, unknown>),
         status,
         unavailableReason,
         rentPrice: p.rental_price_daily || 0,
@@ -381,7 +408,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
         });
         toast.success('Booking updated successfully');
       } else {
-        const paidAmt = parseFloat(advancePaid) || 0;
+        const advanceIntent = parseFloat(advancePaid) || 0;
         const result = await rentalService.createBooking({
           companyId,
           branchId,
@@ -393,22 +420,25 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           returnDate: returnDate.toISOString().split('T')[0],
           rentalCharges: rentAmount,
           securityDeposit: 0,
-          paidAmount: paidAmt,
+          paidAmount: 0,
           notes: null,
           items,
         });
-        if (paidAmt > 0) {
-          accounting.recordRentalBooking({
-            bookingId: result.id,
-            customerName: getCustomerName(),
+        toast.success(`Booking ${result.booking_no} saved.`);
+        if (advanceIntent > 0.009) {
+          setPendingBooking({
+            id: result.id,
+            booking_no: result.booking_no,
+            advanceAmount: advanceIntent,
             customerId: selectedCustomer,
-            advanceAmount: paidAmt,
-            securityDepositAmount: 0,
-            securityDepositType: 'Document',
-            paymentMethod: 'Cash',
-          }).catch((err) => console.warn('[RentalBookingDrawer] Ledger advance posting:', err));
+            customerName: getCustomerName(),
+            bookingDate: bookingDate.toISOString().split('T')[0],
+            totalRent: rentAmount,
+          });
+          setAdvancePromptOpen(true);
+          setSaving(false);
+          return;
         }
-        toast.success(`Booking ${result.booking_no} created successfully`);
       }
       await refreshRentals();
       await loadExistingBookings();
@@ -440,6 +470,27 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const hasConflict = conflictCheck.hasConflict;
   const isManualRent = selectedProduct && (selectedProduct.rentPrice === null || selectedProduct.rentPrice === 0);
   const currentRentPrice = parseFloat(manualRentPrice) || 0;
+  const advanceIntentNum = parseFloat(advancePaid) || 0;
+
+  const finishAfterNewBooking = async () => {
+    await refreshRentals();
+    await loadExistingBookings();
+    setSelectedProduct(null);
+    setManualRentPrice('');
+    setAdvancePaid('');
+    setPendingBooking(null);
+    onClose();
+  };
+
+  const handleAdvanceSkipOrCancel = async () => {
+    setAdvancePromptOpen(false);
+    await finishAfterNewBooking();
+  };
+
+  const handleAdvanceCollectNow = () => {
+    setAdvancePromptOpen(false);
+    setAdvancePaymentOpen(true);
+  };
 
   // Auto-update product list with conflict indicators
   const productsWithConflicts = mappedProducts.map(product => {
@@ -840,7 +891,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                           <span className="text-white font-medium">{formatCurrency(currentRentPrice)}</span>
                       </div>
                       <div className="flex justify-between items-center text-sm text-gray-400">
-                          <span>Advance / Booking Amount</span>
+                          <span>Advance to collect (intent)</span>
                           <div className="w-32">
                               <Input 
                                 className="h-8 text-right bg-gray-900 border-gray-700 text-white"
@@ -850,12 +901,21 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                               />
                           </div>
                       </div>
+                      <p className="text-[11px] text-gray-500 leading-snug">
+                        Not received until you confirm payment. If you skip the payment step, full rent stays due.
+                      </p>
                       <div className="flex justify-between text-sm font-bold text-white pt-2 border-t border-gray-800">
-                          <span>Balance Due</span>
+                          <span>Balance due (confirmed)</span>
                           <span className="text-pink-500">
-                              {formatCurrency(Math.max(0, currentRentPrice - (parseFloat(advancePaid) || 0)))}
+                              {formatCurrency(Math.max(0, currentRentPrice))}
                           </span>
                       </div>
+                      {advanceIntentNum > 0.009 && (
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>After advance is collected</span>
+                          <span>{formatCurrency(Math.max(0, currentRentPrice - advanceIntentNum))}</span>
+                        </div>
+                      )}
                   </div>
                   
                   <Button 
@@ -868,6 +928,49 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
               </div>
           </div>
         </div>
+
+        <Dialog open={advancePromptOpen} onOpenChange={(o) => !o && setAdvancePromptOpen(false)}>
+          <DialogContent className="bg-gray-950 border-gray-800 text-white sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Collect advance now?</DialogTitle>
+              <DialogDescription className="text-gray-400">
+                Booking is saved. You can record the advance to a specific cash/bank account, continue without payment, or dismiss.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button variant="outline" className="w-full sm:w-auto" onClick={handleAdvanceSkipOrCancel}>
+                Save without payment
+              </Button>
+              <Button variant="secondary" className="w-full sm:w-auto" onClick={handleAdvanceSkipOrCancel}>
+                Cancel
+              </Button>
+              <Button className="w-full sm:w-auto bg-pink-600 hover:bg-pink-500" onClick={handleAdvanceCollectNow}>
+                Collect payment now
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {pendingBooking && (
+          <UnifiedPaymentDialog
+            isOpen={advancePaymentOpen}
+            onClose={() => {
+              setAdvancePaymentOpen(false);
+              setPendingBooking(null);
+              void finishAfterNewBooking();
+            }}
+            context="rental"
+            entityName={pendingBooking.customerName}
+            entityId={pendingBooking.customerId}
+            outstandingAmount={pendingBooking.advanceAmount}
+            totalAmount={pendingBooking.totalRent}
+            paidAmount={0}
+            referenceNo={pendingBooking.booking_no}
+            referenceId={pendingBooking.id}
+            rentalPaymentKind="advance"
+            defaultPaymentNotes={`Advance received for rental booking ${pendingBooking.booking_no}`}
+          />
+        )}
 
         {/* Return Modal (Attached here for demo context) */}
         {showReturnModal && (

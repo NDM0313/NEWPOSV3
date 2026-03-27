@@ -46,7 +46,19 @@ interface AddExpenseDrawerProps {
   onClose: () => void;
   onSuccess?: () => void;
   /** When provided, opens in edit mode with form pre-filled */
-  expenseToEdit?: { id: string; expenseNo?: string; category: string; description: string; amount: number; date: string; paymentMethod: string; payeeName?: string; location?: string } | null;
+  expenseToEdit?: {
+    id: string;
+    expenseNo?: string;
+    category: string;
+    description: string;
+    amount: number;
+    date: string;
+    paymentMethod: string;
+    payeeName?: string;
+    location?: string;
+    status?: string;
+    paymentAccountId?: string;
+  } | null;
 }
 
 const FALLBACK_CATEGORIES: { id: ExpenseCategory; name: string; slug: string; icon: typeof Building2; color: string }[] = [
@@ -117,7 +129,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
     }).catch(() => setPaymentAccounts([]));
   }, [isOpen, companyId, coaAccounts]);
 
-  // Pre-fill form when editing
+  // Pre-fill form when editing (depend on full expenseToEdit so switching rows refreshes the form)
   useEffect(() => {
     if (isOpen && expenseToEdit) {
       setDate(expenseToEdit.date ? new Date(expenseToEdit.date) : new Date());
@@ -126,6 +138,9 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
       const catSlug = typeof expenseToEdit.category === 'string' ? expenseToEdit.category.toLowerCase().replace(/\s+/g, '_') : '';
       setCategorySlug(catSlug);
       if (expenseToEdit.location) setSelectedBranchId(expenseToEdit.location);
+      if (expenseToEdit.paymentAccountId && /^[0-9a-f-]{36}$/i.test(expenseToEdit.paymentAccountId)) {
+        setPaidFromAccountId(expenseToEdit.paymentAccountId);
+      }
     } else if (isOpen && !expenseToEdit) {
       setDate(new Date());
       setAmount('');
@@ -137,7 +152,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
       setSalaryUserSearch('');
       setPaidFromAccountId('');
     }
-  }, [isOpen, expenseToEdit?.id]);
+  }, [isOpen, expenseToEdit]);
 
   const currentBranch = branches.find(b => b.id === selectedBranchId) || branches[0];
   const selectedMain = categoryTree.find((m) => m.id === mainCategoryId);
@@ -213,6 +228,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   }, []);
 
   const handleSave = async () => {
+    if (saving) return;
     const amt = Number(amount?.replace(/,/g, '')) || 0;
     if (amt <= 0) {
       toast.error("Please enter a valid amount");
@@ -241,6 +257,8 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
     setSaving(true);
     try {
       if (expenseToEdit) {
+        const paymentAccountId =
+          paidFromAccountId && /^[0-9a-f-]{36}$/i.test(paidFromAccountId) ? paidFromAccountId : undefined;
         await updateExpense(expenseToEdit.id, {
           category: effectiveSlug,
           description: description.trim() || (isSalaryCategory && selectedSalaryUser ? `${selectedSalaryUser.full_name} – Salary` : selectedSub?.name ?? selectedMain?.name ?? effectiveSlug),
@@ -249,6 +267,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
           paymentMethod: paymentMethodName,
           payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : "",
           location: effectiveBranchId,
+          ...(paymentAccountId ? { paymentAccountId } : {}),
         });
       } else {
         await createExpense(

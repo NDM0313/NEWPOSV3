@@ -170,6 +170,8 @@ export const PurchasesPage = () => {
   
   // STEP 2 FIX: View Payments Modal state (like Sale module)
   const [viewPaymentsOpen, setViewPaymentsOpen] = useState(false);
+  /** When set, UnifiedPaymentDialog opens in edit mode (parity with Sales payment history) */
+  const [purchasePaymentToEdit, setPurchasePaymentToEdit] = useState<any>(null);
   
   // State for viewing attachments
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
@@ -232,6 +234,7 @@ export const PurchasesPage = () => {
   // Handle Add Payment from ViewPaymentsModal
   const handleAddPaymentFromModal = () => {
     setViewPaymentsOpen(false);
+    setPurchasePaymentToEdit(null);
     setIsPaymentDialogOpen(true);
   };
 
@@ -1737,6 +1740,11 @@ export const PurchasesPage = () => {
             referenceType: 'purchase', // 🔒 UUID ARCHITECTURE: Explicit entity type (no pattern matching)
           }}
           onAddPayment={handleAddPaymentFromModal}
+          onEditPayment={(payment) => {
+            setPurchasePaymentToEdit(payment);
+            setViewPaymentsOpen(false);
+            setIsPaymentDialogOpen(true);
+          }}
           onDeletePayment={async (paymentId: string) => {
             if (!selectedPurchase?.uuid || !paymentId) {
               throw new Error('Purchase or Payment ID not found');
@@ -1762,6 +1770,7 @@ export const PurchasesPage = () => {
           isOpen={isPaymentDialogOpen}
           onClose={() => {
             setIsPaymentDialogOpen(false);
+            setPurchasePaymentToEdit(null);
             // Re-open View Payments modal after payment is cancelled (like Sale module)
             if (!viewPaymentsOpen) {
               setViewPaymentsOpen(true);
@@ -1775,8 +1784,24 @@ export const PurchasesPage = () => {
           paidAmount={selectedPurchase.grandTotal - selectedPurchase.paymentDue}
           referenceNo={selectedPurchase.poNo}
           referenceId={selectedPurchase.uuid}
+          editMode={!!purchasePaymentToEdit}
+          paymentToEdit={
+            purchasePaymentToEdit
+              ? {
+                  id: purchasePaymentToEdit.id,
+                  amount: purchasePaymentToEdit.amount,
+                  method: purchasePaymentToEdit.method,
+                  accountId: purchasePaymentToEdit.accountId,
+                  date: purchasePaymentToEdit.date,
+                  referenceNumber: purchasePaymentToEdit.referenceNo,
+                  notes: purchasePaymentToEdit.notes,
+                  attachments: purchasePaymentToEdit.attachments,
+                  parentPaymentId: (purchasePaymentToEdit as { parentPaymentId?: string }).parentPaymentId,
+                }
+              : undefined
+          }
           onSuccess={async () => {
-            toast.success('Payment recorded successfully');
+            toast.success(purchasePaymentToEdit ? 'Payment updated successfully' : 'Payment recorded successfully');
             
             // CRITICAL FIX: Reload specific purchase from database to get updated paid_amount/due_amount
             if (selectedPurchase?.uuid) {
@@ -1822,7 +1847,8 @@ export const PurchasesPage = () => {
             // Reload all purchases list
             await loadPurchases();
             setIsPaymentDialogOpen(false);
-            
+            setPurchasePaymentToEdit(null);
+
             // Re-open View Payments modal to show updated data
             setViewPaymentsOpen(true);
           }}

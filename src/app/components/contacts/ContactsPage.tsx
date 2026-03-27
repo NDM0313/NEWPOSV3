@@ -807,27 +807,32 @@ export const ContactsPage = () => {
       {/* Sticky top section: header + summary + toolbar - prevents overlap with content */}
       <div className="shrink-0 sticky top-0 z-20 bg-[#0B0F19] flex flex-col">
       {/* Page Header */}
-      <div className="px-6 py-4 border-b border-gray-800">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Contacts</h1>
-            <p className="text-sm text-gray-400 mt-0.5">Manage your suppliers, customers, and workers</p>
-            <p className="text-xs text-gray-500 mt-2 max-w-3xl leading-relaxed">
-              <strong className="text-gray-400">Receivables / Payables</strong> columns = operational open-document balances from{' '}
-              <code className="text-gray-500 text-[10px]">get_contact_balances_summary</code>
-              {operationalEngine === 'rpc' && ' (loaded via RPC). '}
-              {operationalEngine === 'fallback' && (
-                <span className="text-amber-400/90"> (summary RPC unavailable or empty — merged from sales/purchases). </span>
-              )}
-              {operationalEngine === null && !listLoading && contacts.length > 0 && <span> (resolving…). </span>}
-              Values are <strong className="text-gray-400">not</strong> swapped for GL. Amber icon on a row = operational total differs from party-attributed GL (
-              <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code>
-              ); use the party statement <strong className="text-gray-400">GL</strong> tab. Control-account reconciliation remains in the strip below.
-            </p>
+      <div className="px-6 py-3 border-b border-gray-800">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl font-bold text-white sm:text-2xl">Contacts</h1>
+            <p className="text-xs text-gray-400 mt-0.5 sm:text-sm">Manage your suppliers, customers, and workers</p>
+            <details className="mt-2 text-xs text-gray-500 max-w-3xl group">
+              <summary className="cursor-pointer text-gray-400 hover:text-gray-300 list-none flex items-center gap-1 [&::-webkit-details-marker]:hidden">
+                <span className="underline-offset-2 group-open:underline">Balance &amp; GL notes</span>
+              </summary>
+              <p className="mt-2 leading-relaxed pl-0 border-l-2 border-gray-700 pl-3">
+                <strong className="text-gray-400">Receivables / Payables</strong> columns = operational open-document balances from{' '}
+                <code className="text-gray-500 text-[10px]">get_contact_balances_summary</code>
+                {operationalEngine === 'rpc' && ' (loaded via RPC). '}
+                {operationalEngine === 'fallback' && (
+                  <span className="text-amber-400/90"> (summary RPC unavailable or empty — merged from sales/purchases). </span>
+                )}
+                {operationalEngine === null && !listLoading && contacts.length > 0 && <span> (resolving…). </span>}
+                Values are <strong className="text-gray-400">not</strong> swapped for GL. Amber icon on a row = operational total differs from party-attributed GL (
+                <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code>
+                ); use the party statement <strong className="text-gray-400">GL</strong> tab. Control-account reconciliation remains in the strip below.
+              </p>
+            </details>
           </div>
-          <Button 
+          <Button
             onClick={() => openDrawer('addContact')}
-            className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
+            className="bg-blue-600 hover:bg-blue-500 text-white h-9 gap-2 shrink-0 sm:h-10 w-full sm:w-auto"
           >
             <Users size={16} />
             Add Contact
@@ -835,7 +840,7 @@ export const ContactsPage = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 mt-3 sm:gap-2">
           {[
             { key: 'all', label: 'All Contacts', count: tabCounts.all },
             { key: 'customers', label: 'Customers', count: tabCounts.customers },
@@ -846,7 +851,7 @@ export const ContactsPage = () => {
               key={tab.key}
               onClick={() => setActiveTab(tab.key as ContactType)}
               className={cn(
-                "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                "px-3 py-1.5 rounded-lg text-xs font-medium transition-all sm:px-4 sm:py-2 sm:text-sm",
                 activeTab === tab.key
                   ? "bg-blue-600 text-white"
                   : "bg-gray-800 text-gray-400 hover:bg-gray-750 hover:text-white"
@@ -858,77 +863,333 @@ export const ContactsPage = () => {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="px-6 py-4 bg-[#0F1419] border-b border-gray-800">
-        <div className="grid grid-cols-3 gap-4">
+      {/* Summary totals + search / tools — two columns on xl to free vertical space for the list */}
+      <div className="px-6 py-3 bg-[#0F1419] border-b border-gray-800">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 xl:items-start">
+          <div className="grid grid-cols-3 gap-2 min-w-0 sm:gap-3">
           {/* Total Receivables */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-2.5 sm:rounded-xl sm:p-3">
+            <div className="flex items-start justify-between gap-1">
               <div className="min-w-0 flex-1">
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Receivables</p>
-                <p className="text-[10px] text-amber-500/90 font-medium uppercase tracking-wide">Operational · open documents</p>
-                <p className={cn('text-2xl font-bold text-green-400 mt-1 tabular-nums', balanceColumnsPending && 'animate-pulse')}>
+                <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold sm:text-xs">Recv.</p>
+                <p className={cn('text-base font-bold text-green-400 mt-0.5 tabular-nums sm:text-lg', balanceColumnsPending && 'animate-pulse')}>
                   {balanceColumnsPending ? '—' : formatCurrency(summary.totalReceivables)}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">Not statutory GL; see reconciliation below</p>
+                <p className="text-[9px] text-gray-600 mt-0.5 hidden sm:block">Operational</p>
                 {balancesStale && (
-                  <p className="text-[10px] text-amber-400/95 mt-1">Operational totals incomplete — refresh to reload.</p>
+                  <p className="text-[9px] text-amber-400/95 mt-0.5">Incomplete</p>
                 )}
                 {balancesLoading && !balancesStale && (
-                  <p className="text-[10px] text-blue-400/90 mt-1 flex items-center gap-1">
-                    <Loader2 size={10} className="animate-spin shrink-0" />
-                    Syncing invoice balances…
+                  <p className="text-[9px] text-blue-400/90 mt-0.5 flex items-center gap-1">
+                    <Loader2 size={9} className="animate-spin shrink-0" />
+                    Sync…
                   </p>
                 )}
               </div>
-              <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-                <DollarSign size={24} className="text-green-500" />
+              <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center shrink-0 sm:w-9 sm:h-9">
+                <DollarSign size={16} className="text-green-500" />
               </div>
             </div>
           </div>
 
           {/* Total Payables */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
+          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-2.5 sm:rounded-xl sm:p-3">
+            <div className="flex items-start justify-between gap-1">
               <div className="min-w-0 flex-1">
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Payables</p>
-                <p className="text-[10px] text-amber-500/90 font-medium uppercase tracking-wide">Operational · open documents</p>
-                <p className={cn('text-2xl font-bold text-red-400 mt-1 tabular-nums', balanceColumnsPending && 'animate-pulse')}>
+                <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold sm:text-xs">Pay.</p>
+                <p className={cn('text-base font-bold text-red-400 mt-0.5 tabular-nums sm:text-lg', balanceColumnsPending && 'animate-pulse')}>
                   {balanceColumnsPending ? '—' : formatCurrency(summary.totalPayables)}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">Not statutory GL; see reconciliation below</p>
+                <p className="text-[9px] text-gray-600 mt-0.5 hidden sm:block">Operational</p>
                 {balancesLoading && !balancesStale && (
-                  <p className="text-[10px] text-blue-400/90 mt-1 flex items-center gap-1">
-                    <Loader2 size={10} className="animate-spin shrink-0" />
-                    Syncing supplier/worker dues…
+                  <p className="text-[9px] text-blue-400/90 mt-0.5 flex items-center gap-1">
+                    <Loader2 size={9} className="animate-spin shrink-0" />
+                    Sync…
                   </p>
                 )}
               </div>
-              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
-                <DollarSign size={24} className="text-red-500" />
+              <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center shrink-0 sm:w-9 sm:h-9">
+                <DollarSign size={16} className="text-red-500" />
               </div>
             </div>
           </div>
 
           {/* Active Contacts */}
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Active {activeTab === 'all' ? 'Contacts' : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</p>
-                <p className="text-2xl font-bold text-white mt-1">{summary.activeCount}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  out of {summary.totalCount} total
-                </p>
+          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-2.5 sm:rounded-xl sm:p-3">
+            <div className="flex items-start justify-between gap-1">
+              <div className="min-w-0">
+                <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold sm:text-xs leading-tight">Active</p>
+                <p className="text-base font-bold text-white mt-0.5 sm:text-lg">{summary.activeCount}</p>
+                <p className="text-[9px] text-gray-500 mt-0.5">/ {summary.totalCount}</p>
               </div>
-              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
-                <UserCheck size={24} className="text-blue-500" />
+              <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 sm:w-9 sm:h-9">
+                <UserCheck size={16} className="text-blue-500" />
               </div>
             </div>
           </div>
         </div>
 
+        {/* Column 2: search + page size + actions (same row on sm+) */}
+        <div className="flex flex-col gap-2 min-w-0 xl:min-h-0">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="flex-1 min-w-[min(100%,200px)] relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search name, code, phone…"
+                className="pl-9 bg-gray-900 border-gray-700 text-white h-9 sm:h-10 text-sm"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors p-1"
+                  aria-label="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <CustomSelect
+                value={pageSize}
+                onChange={handlePageSizeChange}
+                options={[
+                  { value: 25, label: '25' },
+                  { value: 50, label: '50' },
+                  { value: 100, label: '100' },
+                  { value: 500, label: '500' },
+                  { value: 1000, label: '1000' },
+                  { value: filteredContacts.length, label: `All (${filteredContacts.length})` },
+                ]}
+              />
+              <div ref={filterRef} className="relative">
+                <Button
+                  ref={filterTriggerRef}
+                  variant="outline"
+                  onClick={() => setFilterOpen(!filterOpen)}
+                  className={cn(
+                    'h-9 gap-1.5 bg-gray-900 border-gray-700 sm:h-10 sm:gap-2',
+                    activeFilterCount > 0 && 'border-blue-500 text-blue-400'
+                  )}
+                >
+                  <Filter size={16} />
+                  <span className="hidden sm:inline">Filter</span>
+                  {activeFilterCount > 0 && (
+                    <Badge className="ml-0.5 bg-blue-600 text-white text-xs px-1.5 py-0 h-5 flex items-center justify-center min-w-[20px]">
+                      {activeFilterCount}
+                    </Badge>
+                  )}
+                </Button>
+                {filterOpen && typeof document !== 'undefined' && createPortal(
+                  <>
+                    <div
+                      className="fixed inset-0 z-[9998]"
+                      onClick={() => setFilterOpen(false)}
+                      aria-hidden
+                    />
+                    <div
+                      className="fixed w-80 max-w-[calc(100vw-2rem)] bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-[9999]"
+                      style={{ top: filterPosition.top, left: filterPosition.left }}
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-semibold text-white">Advanced Filters</h3>
+                        <button
+                          type="button"
+                          onClick={clearAllFilters}
+                          className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                        >
+                          Clear All
+                        </button>
+                      </div>
+
+                      <div className="space-y-4 max-h-[min(500px,70vh)] overflow-y-auto">
+                        <div>
+                          <label className="text-xs text-gray-400 mb-2 block font-medium">Contact Type</label>
+                          <div className="space-y-2">
+                            {[
+                              { value: 'customer', label: 'Customer' },
+                              { value: 'supplier', label: 'Supplier' },
+                              { value: 'worker', label: 'Worker' },
+                            ].map(opt => (
+                              <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={typeFilter.includes(opt.value)}
+                                  onChange={() => toggleTypeFilter(opt.value)}
+                                  className="w-4 h-4 rounded bg-gray-950 border-gray-700"
+                                />
+                                <span className="text-sm text-gray-300">{opt.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        {(typeFilter.includes('worker') || activeTab === 'workers') && (
+                          <div>
+                            <label className="text-xs text-gray-400 mb-2 block font-medium">Worker Role</label>
+                            <div className="space-y-2">
+                              {Object.entries(workerRoleLabels).map(([key, label]) => (
+                                <label key={key} className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={workerRoleFilter.includes(key as WorkerRole)}
+                                    onChange={() => toggleWorkerRoleFilter(key as WorkerRole)}
+                                    className="w-4 h-4 rounded bg-gray-950 border-gray-700"
+                                  />
+                                  <span className="text-sm text-gray-300">{label}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="text-xs text-gray-400 mb-2 block font-medium">Status</label>
+                          <div className="space-y-2">
+                            {[
+                              { value: 'all', label: 'All Status' },
+                              { value: 'active', label: 'Active' },
+                              { value: 'onhold', label: 'On Hold' },
+                              { value: 'inactive', label: 'Inactive' },
+                            ].map(opt => (
+                              <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="status"
+                                  checked={statusFilter === opt.value}
+                                  onChange={() => setStatusFilter(opt.value as StatusType)}
+                                  className="w-4 h-4 bg-gray-950 border-gray-700"
+                                />
+                                <span className="text-sm text-gray-300">{opt.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-gray-400 mb-2 block font-medium">Payment Status</label>
+                          <div className="space-y-2">
+                            {[
+                              { value: 'all', label: 'All Balances' },
+                              { value: 'due', label: 'Due (Has Balance)' },
+                              { value: 'paid', label: 'Paid (Zero Balance)' },
+                            ].map(opt => (
+                              <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="balance"
+                                  checked={balanceFilter === opt.value}
+                                  onChange={() => setBalanceFilter(opt.value as BalanceType)}
+                                  className="w-4 h-4 bg-gray-950 border-gray-700"
+                                />
+                                <span className="text-sm text-gray-300">{opt.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-gray-400 mb-2 block font-medium">Branch</label>
+                          <div className="space-y-2">
+                            {[
+                              { value: 'all', label: 'All Branches' },
+                              { value: 'Main Branch (HQ)', label: 'Main Branch (HQ)' },
+                              { value: 'Mall Outlet', label: 'Mall Outlet' },
+                              { value: 'Warehouse', label: 'Warehouse' },
+                            ].map(opt => (
+                              <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="branch"
+                                  checked={branchFilter === opt.value}
+                                  onChange={() => setBranchFilter(opt.value)}
+                                  className="w-4 h-4 bg-gray-950 border-gray-700"
+                                />
+                                <span className="text-sm text-gray-300">{opt.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-gray-400 mb-2 block font-medium">Phone Number</label>
+                          <div className="space-y-2">
+                            {[
+                              { value: 'all', label: 'All Contacts' },
+                              { value: 'has', label: 'Has Phone Number' },
+                              { value: 'no', label: 'No Phone Number' },
+                            ].map(opt => (
+                              <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="phone"
+                                  checked={phoneFilter === opt.value}
+                                  onChange={() => setPhoneFilter(opt.value as 'all' | 'has' | 'no')}
+                                  className="w-4 h-4 bg-gray-950 border-gray-700"
+                                />
+                                <span className="text-sm text-gray-300">{opt.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>,
+                  document.body
+                )}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 gap-1.5 bg-gray-900 border-gray-700 relative z-10 sm:h-10 sm:gap-2"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setImportModalOpen(true);
+                }}
+              >
+                <Upload size={16} />
+                Import
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="h-9 gap-1.5 bg-gray-900 border-gray-700 sm:h-10 sm:gap-2">
+                    <Download size={16} />
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white">
+                  <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                    <FileText size={14} className="mr-2 text-green-400" />
+                    Export as Excel
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                    <FileText size={14} className="mr-2 text-blue-400" />
+                    Export as CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-gray-700" />
+                  <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
+                    <Download size={14} className="mr-2 text-purple-400" />
+                    Download Sample Template
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </div>
+        </div>
+
         {!listLoading && reconSnapshot && (
-          <div className="mt-4 rounded-xl border border-blue-500/25 bg-blue-950/20 p-4 space-y-3">
+          <details className="mt-3 rounded-xl border border-blue-500/25 bg-blue-950/20 group">
+            <summary className="cursor-pointer list-none px-3 py-2.5 flex flex-wrap items-center justify-between gap-2 text-sm font-medium text-white hover:bg-blue-950/30 rounded-xl [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center gap-2">
+                <Scale className="w-4 h-4 text-blue-400 shrink-0" />
+                Reconciliation · tab vs GL
+              </span>
+              <span className="text-xs text-gray-400 font-normal">Expand</span>
+            </summary>
+          <div className="px-3 pb-3 pt-0 space-y-3 border-t border-blue-500/15">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-start gap-2">
                 <Scale className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
@@ -1034,11 +1295,20 @@ export const ContactsPage = () => {
               </div>
             </div>
           </div>
+          </details>
         )}
 
         {!listLoading && subledgerVsGl && (subledgerVsGl.ar || subledgerVsGl.ap) && (
-          <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-4 text-xs text-gray-300 space-y-3">
-            <div className="flex items-start gap-2 text-amber-200/95">
+          <details className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] text-xs text-gray-300 group">
+            <summary className="cursor-pointer list-none px-3 py-2.5 flex items-center justify-between gap-2 text-sm font-medium text-amber-100 hover:bg-amber-500/10 rounded-xl [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center gap-2">
+                <AlertCircle size={16} className="text-amber-400 shrink-0" />
+                Contacts vs GL (same branch)
+              </span>
+              <span className="text-xs text-gray-500 font-normal">Expand</span>
+            </summary>
+          <div className="px-3 pb-3 pt-0 space-y-3 border-t border-amber-500/20">
+            <div className="flex items-start gap-2 text-amber-200/95 pt-2">
               <AlertCircle size={16} className="shrink-0 mt-0.5" />
               <div>
                 <p className="font-semibold text-amber-100">Contacts vs general ledger (same branch)</p>
@@ -1099,310 +1369,50 @@ export const ContactsPage = () => {
               </div>
             )}
           </div>
+          </details>
         )}
-      </div>
-
-      {/* Search & Actions Bar */}
-      <div className="px-6 py-3 bg-[#0B0F19] border-b border-gray-800">
-        <div className="flex items-center gap-3">
-          {/* Search */}
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-            <Input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by name, code, phone, email or branch..."
-              className="pl-10 bg-gray-900 border-gray-700 text-white h-10"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
-              >
-                <X size={16} />
-              </button>
-            )}
-          </div>
-
-          {/* Rows Per Page Selector - Custom Styled */}
-          <CustomSelect
-            value={pageSize}
-            onChange={handlePageSizeChange}
-            options={[
-              { value: 25, label: '25' },
-              { value: 50, label: '50' },
-              { value: 100, label: '100' },
-              { value: 500, label: '500' },
-              { value: 1000, label: '1000' },
-              { value: filteredContacts.length, label: `All (${filteredContacts.length})` },
-            ]}
-          />
-
-          {/* Filter Button */}
-          <div ref={filterRef} className="relative">
-            <Button
-              ref={filterTriggerRef}
-              variant="outline"
-              onClick={() => setFilterOpen(!filterOpen)}
-              className={cn(
-                "h-10 gap-2 bg-gray-900 border-gray-700",
-                activeFilterCount > 0 && "border-blue-500 text-blue-400"
-              )}
-            >
-              <Filter size={16} />
-              Filter
-              {activeFilterCount > 0 && (
-                <Badge className="ml-1 bg-blue-600 text-white text-xs px-1.5 py-0 h-5 flex items-center justify-center min-w-[20px]">
-                  {activeFilterCount}
-                </Badge>
-              )}
-            </Button>
-
-            {/* Filter Dropdown - Portal to body to avoid overflow clipping */}
-            {filterOpen && typeof document !== 'undefined' && createPortal(
-              <>
-                <div
-                  className="fixed inset-0 z-[9998]"
-                  onClick={() => setFilterOpen(false)}
-                  aria-hidden
-                />
-                <div
-                  className="fixed w-80 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl p-4 z-[9999]"
-                  style={{ top: filterPosition.top, left: filterPosition.left }}
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-semibold text-white">Advanced Filters</h3>
-                    <button
-                      onClick={clearAllFilters}
-                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                    >
-                      Clear All
-                    </button>
-                  </div>
-
-                  <div className="space-y-4 max-h-[500px] overflow-y-auto">
-                    {/* Contact Type Filter */}
-                    <div>
-                      <label className="text-xs text-gray-400 mb-2 block font-medium">Contact Type</label>
-                      <div className="space-y-2">
-                        {[
-                          { value: 'customer', label: 'Customer' },
-                          { value: 'supplier', label: 'Supplier' },
-                          { value: 'worker', label: 'Worker' },
-                        ].map(opt => (
-                          <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={typeFilter.includes(opt.value)}
-                              onChange={() => toggleTypeFilter(opt.value)}
-                              className="w-4 h-4 rounded bg-gray-950 border-gray-700"
-                            />
-                            <span className="text-sm text-gray-300">{opt.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Worker Role Filter - Show only when Worker is selected */}
-                    {(typeFilter.includes('worker') || activeTab === 'workers') && (
-                      <div>
-                        <label className="text-xs text-gray-400 mb-2 block font-medium">Worker Role</label>
-                        <div className="space-y-2">
-                          {Object.entries(workerRoleLabels).map(([key, label]) => (
-                            <label key={key} className="flex items-center gap-2 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={workerRoleFilter.includes(key as WorkerRole)}
-                                onChange={() => toggleWorkerRoleFilter(key as WorkerRole)}
-                                className="w-4 h-4 rounded bg-gray-950 border-gray-700"
-                              />
-                              <span className="text-sm text-gray-300">{label}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Status Filter */}
-                    <div>
-                      <label className="text-xs text-gray-400 mb-2 block font-medium">Status</label>
-                      <div className="space-y-2">
-                        {[
-                          { value: 'all', label: 'All Status' },
-                          { value: 'active', label: 'Active' },
-                          { value: 'onhold', label: 'On Hold' },
-                          { value: 'inactive', label: 'Inactive' },
-                        ].map(opt => (
-                          <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="status"
-                              checked={statusFilter === opt.value}
-                              onChange={() => setStatusFilter(opt.value as StatusType)}
-                              className="w-4 h-4 bg-gray-950 border-gray-700"
-                            />
-                            <span className="text-sm text-gray-300">{opt.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Payment Status / Balance Filter */}
-                    <div>
-                      <label className="text-xs text-gray-400 mb-2 block font-medium">Payment Status</label>
-                      <div className="space-y-2">
-                        {[
-                          { value: 'all', label: 'All Balances' },
-                          { value: 'due', label: 'Due (Has Balance)' },
-                          { value: 'paid', label: 'Paid (Zero Balance)' },
-                        ].map(opt => (
-                          <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="balance"
-                              checked={balanceFilter === opt.value}
-                              onChange={() => setBalanceFilter(opt.value as BalanceType)}
-                              className="w-4 h-4 bg-gray-950 border-gray-700"
-                            />
-                            <span className="text-sm text-gray-300">{opt.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Branch Filter */}
-                    <div>
-                      <label className="text-xs text-gray-400 mb-2 block font-medium">Branch</label>
-                      <div className="space-y-2">
-                        {[
-                          { value: 'all', label: 'All Branches' },
-                          { value: 'Main Branch (HQ)', label: 'Main Branch (HQ)' },
-                          { value: 'Mall Outlet', label: 'Mall Outlet' },
-                          { value: 'Warehouse', label: 'Warehouse' },
-                        ].map(opt => (
-                          <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="branch"
-                              checked={branchFilter === opt.value}
-                              onChange={() => setBranchFilter(opt.value)}
-                              className="w-4 h-4 bg-gray-950 border-gray-700"
-                            />
-                            <span className="text-sm text-gray-300">{opt.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Phone Number Filter */}
-                    <div>
-                      <label className="text-xs text-gray-400 mb-2 block font-medium">Phone Number</label>
-                      <div className="space-y-2">
-                        {[
-                          { value: 'all', label: 'All Contacts' },
-                          { value: 'has', label: 'Has Phone Number' },
-                          { value: 'no', label: 'No Phone Number' },
-                        ].map(opt => (
-                          <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="phone"
-                              checked={phoneFilter === opt.value}
-                              onChange={() => setPhoneFilter(opt.value as 'all' | 'has' | 'no')}
-                              className="w-4 h-4 bg-gray-950 border-gray-700"
-                            />
-                            <span className="text-sm text-gray-300">{opt.label}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </>,
-              document.body
-            )}
-          </div>
-
-          {/* Import Button */}
-          <Button
-            type="button"
-            variant="outline"
-            className="h-10 gap-2 bg-gray-900 border-gray-700 relative z-10"
-            onClick={(e) => {
-              e.stopPropagation();
-              setImportModalOpen(true);
-            }}
-          >
-            <Upload size={16} />
-            Import
-          </Button>
-
-          {/* Export Button */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="h-10 gap-2 bg-gray-900 border-gray-700">
-                <Download size={16} />
-                Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white">
-              <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
-                <FileText size={14} className="mr-2 text-green-400" />
-                Export as Excel
-              </DropdownMenuItem>
-              <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
-                <FileText size={14} className="mr-2 text-blue-400" />
-                Export as CSV
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-gray-700" />
-              <DropdownMenuItem className="hover:bg-gray-800 cursor-pointer">
-                <Download size={14} className="mr-2 text-purple-400" />
-                Download Sample Template
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
       </div>
       </div>
 
       {/* Contacts Table - Scrollable (min-h-0 lets flex-1 shrink so overflow works) */}
-      <div className="flex-1 min-h-0 overflow-auto px-6 py-4">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden min-h-[280px]">
+      <div className="flex-1 min-h-0 overflow-auto px-6 py-3">
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden min-h-[200px]">
           {listLoading ? (
-            <div className="p-6 md:p-8">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto mb-8">
-                <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900 to-gray-950 p-4 animate-pulse">
-                  <div className="h-3 w-28 bg-gray-700 rounded mb-3" />
-                  <div className="h-9 w-36 bg-green-900/40 rounded-md mb-2" />
-                  <p className="text-[11px] text-gray-500">Receivables (due from customers)</p>
+            <div className="p-4 md:p-5">
+              <div className="grid grid-cols-2 gap-3 max-w-md mx-auto mb-4">
+                <div className="rounded-lg border border-gray-800 bg-gray-900/80 p-3 animate-pulse">
+                  <div className="h-2.5 w-20 bg-gray-700 rounded mb-2" />
+                  <div className="h-7 w-24 bg-green-900/40 rounded mb-1" />
+                  <p className="text-[10px] text-gray-500">Receivables</p>
                 </div>
-                <div className="rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900 to-gray-950 p-4 animate-pulse">
-                  <div className="h-3 w-28 bg-gray-700 rounded mb-3" />
-                  <div className="h-9 w-36 bg-red-900/40 rounded-md mb-2" />
-                  <p className="text-[11px] text-gray-500">Payables (due to suppliers)</p>
+                <div className="rounded-lg border border-gray-800 bg-gray-900/80 p-3 animate-pulse">
+                  <div className="h-2.5 w-20 bg-gray-700 rounded mb-2" />
+                  <div className="h-7 w-24 bg-red-900/40 rounded mb-1" />
+                  <p className="text-[10px] text-gray-500">Payables</p>
                 </div>
               </div>
-              <div className="space-y-2 max-w-4xl mx-auto mb-6">
-                {Array.from({ length: 8 }).map((_, i) => (
+              <div className="space-y-1.5 max-w-4xl mx-auto mb-4">
+                {Array.from({ length: 5 }).map((_, i) => (
                   <div
                     key={i}
-                    className="h-14 rounded-lg bg-gray-800/35 border border-gray-800/60 animate-pulse"
-                    style={{ animationDelay: `${i * 40}ms` }}
+                    className="h-11 rounded-md bg-gray-800/35 border border-gray-800/60 animate-pulse"
+                    style={{ animationDelay: `${i * 35}ms` }}
                   />
                 ))}
               </div>
-              <div className="text-center space-y-3">
-                <p className="text-sm text-gray-400 flex items-center justify-center gap-2">
-                  <Loader2 size={18} className="text-blue-500 animate-spin" />
+              <div className="text-center space-y-2">
+                <p className="text-xs text-gray-400 flex items-center justify-center gap-2">
+                  <Loader2 size={16} className="text-blue-500 animate-spin" />
                   Loading contacts &amp; due balances…
                 </p>
                 <Button
                   type="button"
                   variant="outline"
+                  size="sm"
                   className="border-gray-600 text-gray-300 hover:bg-gray-800"
                   onClick={() => openDrawer('addContact')}
                 >
-                  <Users size={16} className="mr-2" />
+                  <Users size={14} className="mr-2" />
                   Add Contact
                 </Button>
               </div>

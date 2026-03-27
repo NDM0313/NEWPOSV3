@@ -40,6 +40,11 @@ function TransactionRowGroup({
   const isStudioSale = transaction.documentType === 'Studio Sale';
   const products = isSale ? getSaleProductsFromBackend(transaction, saleItemsMap) : [];
   const hasProducts = products.length > 0;
+  const paymentBreakdown = transaction.ledgerExpandRows?.length
+    ? transaction.ledgerExpandRows
+    : undefined;
+  const hasPaymentBreakdown = Boolean(paymentBreakdown?.length);
+  const hasExpandable = hasProducts || hasPaymentBreakdown;
   const studioDetails = isStudioSale && transaction.id ? studioDetailsMap.get(transaction.id) : undefined;
 
   const getDescription = (transaction: Transaction) => {
@@ -62,11 +67,11 @@ function TransactionRowGroup({
     <>
       {/* Main Transaction Row */}
       <tr
-        className={`cursor-pointer transition-colors border-b border-gray-800 ${index % 2 === 0 ? 'bg-gray-900/50' : 'bg-gray-900/30'} hover:bg-gray-800/50`}
-        onClick={() => hasProducts && onToggle()}
+        className={`${hasExpandable ? 'cursor-pointer' : ''} transition-colors border-b border-gray-800 ${index % 2 === 0 ? 'bg-gray-900/50' : 'bg-gray-900/30'} hover:bg-gray-800/50`}
+        onClick={() => hasExpandable && onToggle()}
       >
         <td className="px-4 py-3 w-10">
-          {hasProducts && (
+          {hasExpandable && (
             <div className="text-gray-500">
               {isExpanded ? (
                 <ChevronDown className="w-4 h-4" />
@@ -84,10 +89,13 @@ function TransactionRowGroup({
           })}
         </td>
         <td className="px-4 py-3 text-sm font-semibold text-blue-400">
-          <span className="inline-flex items-center gap-2">
+          <span className="inline-flex items-center gap-2 flex-wrap">
             {transaction.referenceNo}
             {transaction.referenceStatus === 'cancelled' && (
               <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs">Cancelled</Badge>
+            )}
+            {transaction.ledgerPaymentLifecycle === 'voided' && (
+              <Badge className="bg-red-500/15 text-red-300 border-red-500/30 text-xs">Voided</Badge>
             )}
           </span>
         </td>
@@ -123,6 +131,27 @@ function TransactionRowGroup({
       </tr>
 
       {/* Expandable Product Breakdown – 1:1 with sale_items: Product Name, Variation, Packing, Qty, Unit, Unit Price, Discount, Tax, Line Total */}
+      {isExpanded && hasPaymentBreakdown && (
+        <tr className="bg-gray-950/80 border-b border-gray-800">
+          <td colSpan={9} className="px-0 py-0">
+            <div className="pt-3 pb-3 pl-14 pr-4 border-t border-gray-800 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Receipt allocation</p>
+              <ul className="space-y-1.5 text-sm">
+                {paymentBreakdown!.map((row, i) => (
+                  <li key={i} className="flex justify-between gap-4 text-gray-300">
+                    <span>
+                      <span className="text-white">{row.label}</span>
+                      {row.sublabel ? <span className="text-gray-500 text-xs block">{row.sublabel}</span> : null}
+                    </span>
+                    <span className="tabular-nums text-emerald-400 font-medium">{row.amount.toLocaleString('en-PK')}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </td>
+        </tr>
+      )}
+
       {isExpanded && hasProducts && (() => {
         return (
         <tr className="bg-gray-950/80 border-b border-gray-800">

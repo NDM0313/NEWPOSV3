@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  BookMarked,
   CheckCircle2,
   ClipboardList,
   Download,
@@ -16,6 +17,7 @@ import {
   Scale,
   Search,
   ShieldAlert,
+  Wrench,
   XCircle,
 } from 'lucide-react';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -68,6 +70,12 @@ import { AccountingRefDisplayCell } from '@/app/components/accounting/Accounting
 import type { AccountingUiRef } from '@/app/lib/accountingDisplayReference';
 import { toast } from 'sonner';
 import { PartyTieOutRepairPanel } from '@/app/components/admin/PartyTieOutRepairPanel';
+import { runFullAccountingAudit, type FullAccountingAuditResult } from '@/app/services/fullAccountingAuditService';
+import { defaultAccountsService } from '@/app/services/defaultAccountsService';
+import {
+  previewDuplicatePrimaryPaymentJournals,
+  runFullPostingRepair,
+} from '@/app/services/postingDuplicateRepairService';
 
 const CONTROL_ACCOUNT_CODES = ['1100', '1180', '1195', '2000', '2010', '5000', '1000', '1010', '1020'];
 
@@ -145,6 +153,14 @@ export default function DeveloperIntegrityLabPage() {
   const [hideReviewed, setHideReviewed] = useState(false);
   const [fixUiByIssueId, setFixUiByIssueId] = useState<Map<string, AccountingUiRef>>(new Map());
 
+  const [coaAuditLoading, setCoaAuditLoading] = useState(false);
+  const [coaAuditResult, setCoaAuditResult] = useState<FullAccountingAuditResult | null>(null);
+  const [coaSeedLoading, setCoaSeedLoading] = useState(false);
+
+  const [postingPreviewLoading, setPostingPreviewLoading] = useState(false);
+  const [postingRepairLoading, setPostingRepairLoading] = useState(false);
+  const [postingRepairJson, setPostingRepairJson] = useState<string | null>(null);
+
   const effBranch = filterBranch !== 'all' ? filterBranch : null;
 
   const loadBranches = useCallback(async () => {
@@ -211,6 +227,70 @@ export default function DeveloperIntegrityLabPage() {
       setFixLoading(false);
     }
   }, [companyId, hideResolved, hideReviewed]);
+
+  const runCoaAudit = useCallback(async () => {
+    if (!companyId) return;
+    setCoaAuditLoading(true);
+    try {
+      const r = await runFullAccountingAudit(companyId);
+      setCoaAuditResult(r);
+      toast.success(`COA audit — ${r.scannedAccounts} accounts, ${r.issueCount} issue(s)`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'COA audit failed');
+      setCoaAuditResult(null);
+    } finally {
+      setCoaAuditLoading(false);
+    }
+  }, [companyId]);
+
+  const repairCoaStructure = useCallback(async () => {
+    if (!companyId) return;
+    setCoaSeedLoading(true);
+    try {
+      await defaultAccountsService.ensureDefaultAccounts(companyId);
+      toast.success('Default COA structure ensured (idempotent seed + parent repair)');
+      await runCoaAudit();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'COA repair failed');
+    } finally {
+      setCoaSeedLoading(false);
+    }
+  }, [companyId, runCoaAudit]);
+
+  const previewPostingDuplicates = useCallback(async () => {
+    if (!companyId) return;
+    setPostingPreviewLoading(true);
+    try {
+      const p = await previewDuplicatePrimaryPaymentJournals(companyId);
+      setPostingRepairJson(JSON.stringify(p, null, 2));
+      toast.success(
+        p.duplicateCount > 0
+          ? `Duplicate primary JEs: ${p.duplicateCount} row(s) / ${p.duplicatePrimaryGroups.length} payment(s)`
+          : 'No duplicate primary payment journals'
+      );
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Preview failed');
+    } finally {
+      setPostingPreviewLoading(false);
+    }
+  }, [companyId]);
+
+  const runPostingDuplicateRepair = useCallback(async () => {
+    if (!companyId) return;
+    setPostingRepairLoading(true);
+    try {
+      const r = await runFullPostingRepair(companyId, { voidDuplicates: true, dryRun: false });
+      setPostingRepairJson(JSON.stringify(r, null, 2));
+      if (r.errors.length) toast.error(r.errors.join('; '));
+      else toast.success(
+        `Voided ${r.voidedJournalEntryIds.length} duplicate JE(s); payment-account sync +${r.sync.synced} (skipped dup=${r.sync.skippedDuplicates}, ambiguous=${r.sync.skippedAmbiguous})`
+      );
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Repair failed');
+    } finally {
+      setPostingRepairLoading(false);
+    }
+  }, [companyId]);
 
   const loadExplorer = useCallback(async () => {
     if (!companyId) return;
@@ -570,6 +650,7 @@ export default function DeveloperIntegrityLabPage() {
           <TabsTrigger value="journal">E · Journal explorer</TabsTrigger>
           <TabsTrigger value="fix">F · Fix queue</TabsTrigger>
           <TabsTrigger value="party-tieout">G · Party tie-out</TabsTrigger>
+          <TabsTrigger value="coa-audit">H · COA audit</TabsTrigger>
         </TabsList>
 
         <TabsContent value="trace" className="space-y-4">
@@ -981,6 +1062,44 @@ export default function DeveloperIntegrityLabPage() {
         </TabsContent>
 
         <TabsContent value="fix" className="space-y-3">
+          <Card className="border-amber-900/40 bg-amber-950/20">
+            <CardHeader className="py-3">
+              <CardTitle className="text-sm text-amber-200">Duplicate payment posting (global)</CardTitle>
+              <CardDescription className="text-xs text-amber-200/70">
+                Detects multiple active primary JEs per <code className="text-[10px]">payments.id</code>, voids extras (keeps
+                oldest), then runs fixed payment-account sync (purchase Dr AP / Cr bank was mis-detected before).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 pt-0">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-700 text-amber-100"
+                  onClick={previewPostingDuplicates}
+                  disabled={postingPreviewLoading || !companyId}
+                >
+                  {postingPreviewLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Search className="h-4 w-4 mr-1" />}
+                  Preview duplicates
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="bg-amber-900/50 text-amber-50 border border-amber-700"
+                  onClick={runPostingDuplicateRepair}
+                  disabled={postingRepairLoading || !companyId}
+                >
+                  {postingRepairLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Wrench className="h-4 w-4 mr-1" />}
+                  Void duplicates + sync accounts
+                </Button>
+              </div>
+              {postingRepairJson ? (
+                <pre className="text-[10px] text-gray-400 max-h-40 overflow-auto rounded border border-gray-800 bg-black/40 p-2">
+                  {postingRepairJson}
+                </pre>
+              ) : null}
+            </CardContent>
+          </Card>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="secondary" onClick={pushErrorsToQueue}>
               <ClipboardList className="h-4 w-4 mr-1" /> Push actionable items to queue
@@ -1072,6 +1191,110 @@ export default function DeveloperIntegrityLabPage() {
 
         <TabsContent value="party-tieout" className="space-y-4">
           <PartyTieOutRepairPanel branchId={effBranch} />
+        </TabsContent>
+
+        <TabsContent value="coa-audit" className="space-y-4">
+          <Card className="border-gray-800 bg-gray-900/40">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <BookMarked className="h-5 w-5 text-violet-400" />
+                Chart of accounts audit
+              </CardTitle>
+              <CardDescription>
+                Read-only checks: hierarchy rules, unexpected root accounts, orphan parent references, and parent/child
+                statement-section alignment. GL truth is unchanged (journal SOT). Run after migration{' '}
+                <code className="text-gray-500 text-[10px]">20260347_account_is_group_coa_headers</code> for{' '}
+                <code className="text-gray-500 text-[10px]">is_group</code> on header rows.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={runCoaAudit} disabled={coaAuditLoading || !companyId}>
+                  {coaAuditLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Search className="h-4 w-4 mr-1" />}
+                  Run full COA audit
+                </Button>
+                <Button variant="secondary" onClick={repairCoaStructure} disabled={coaSeedLoading || !companyId}>
+                  {coaSeedLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Wrench className="h-4 w-4 mr-1" />}
+                  Ensure default COA + repair parents
+                </Button>
+                {coaAuditResult ? (
+                  <Button
+                    variant="outline"
+                    className="border-gray-600"
+                    onClick={() => {
+                      const blob = new Blob([JSON.stringify(coaAuditResult, null, 2)], { type: 'application/json' });
+                      const a = document.createElement('a');
+                      a.href = URL.createObjectURL(blob);
+                      a.download = `coa-audit-${coaAuditResult.companyId.slice(0, 8)}.json`;
+                      a.click();
+                      URL.revokeObjectURL(a.href);
+                      toast.success('Downloaded COA audit JSON');
+                    }}
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    Export JSON
+                  </Button>
+                ) : null}
+              </div>
+
+              {coaAuditResult ? (
+                <div className="rounded-lg border border-gray-800 bg-gray-950/50 p-4 space-y-3">
+                  <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <span className="text-gray-400">
+                      Scanned <strong className="text-white">{coaAuditResult.scannedAccounts}</strong> accounts
+                    </span>
+                    <span className="text-gray-600">·</span>
+                    <span className="text-gray-400">
+                      Issues <strong className={coaAuditResult.issueCount > 0 ? 'text-amber-400' : 'text-emerald-400'}>{coaAuditResult.issueCount}</strong>
+                    </span>
+                    <span className="text-gray-600">·</span>
+                    <span className="text-gray-400">
+                      Hierarchy rules <strong className="text-white">{coaAuditResult.hierarchyIssueCount}</strong>
+                    </span>
+                  </div>
+                  <ScrollArea className="h-[min(420px,50vh)] rounded-md border border-gray-800">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-gray-900 text-gray-500 uppercase tracking-wide">
+                        <tr>
+                          <th className="text-left p-2 font-medium">Sev</th>
+                          <th className="text-left p-2 font-medium">Category</th>
+                          <th className="text-left p-2 font-medium">Code</th>
+                          <th className="text-left p-2 font-medium">Account</th>
+                          <th className="text-left p-2 font-medium">Rule</th>
+                          <th className="text-left p-2 font-medium">Message</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {coaAuditResult.issues.map((iss, i) => (
+                          <tr key={`${iss.code}-${iss.accountId ?? i}`} className="border-t border-gray-800/80 text-gray-300">
+                            <td className="p-2 align-top">
+                              {iss.severity === 'error' ? (
+                                <Badge className="bg-red-900/80 text-red-200 border-0 text-[10px]">err</Badge>
+                              ) : (
+                                <Badge className="bg-amber-900/60 text-amber-200 border-0 text-[10px]">warn</Badge>
+                              )}
+                            </td>
+                            <td className="p-2 align-top font-mono text-[10px] text-violet-300">{iss.category}</td>
+                            <td className="p-2 align-top font-mono text-gray-400">{iss.accountCode || '—'}</td>
+                            <td className="p-2 align-top max-w-[140px] truncate" title={iss.accountName}>
+                              {iss.accountName || '—'}
+                            </td>
+                            <td className="p-2 align-top font-mono text-[10px] text-slate-400">{iss.code}</td>
+                            <td className="p-2 align-top text-gray-400">{iss.message}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {coaAuditResult.issues.length === 0 && (
+                      <p className="p-6 text-center text-gray-500 text-sm">No issues reported for this company.</p>
+                    )}
+                  </ScrollArea>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">Run the audit to load results for the current company.</p>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

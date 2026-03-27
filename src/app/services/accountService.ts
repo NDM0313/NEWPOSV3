@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { COA_HEADER_CODES } from '@/app/data/defaultCoASeed';
 
 export interface Account {
   id?: string;
@@ -10,6 +11,8 @@ export interface Account {
   balance: number;
   parent_id?: string | null;
   is_active?: boolean;
+  /** COA section header — excluded from payment account pickers. */
+  is_group?: boolean;
   // Optional fields that may not exist in all schema versions
   subtype?: string;
   opening_balance?: number;
@@ -18,6 +21,8 @@ export interface Account {
   description?: string;
   created_at?: string;
   updated_at?: string;
+  /** Party subledger: FK to contacts (migration 20260364). */
+  linked_contact_id?: string | null;
 }
 
 export const accountService = {
@@ -99,9 +104,12 @@ export const accountService = {
     const name = (a: any) => String(a.name ?? '').toLowerCase();
     const code = (a: any) => String(a.code ?? '').toLowerCase();
     const operational = active.filter((a: any) => {
+      if (a.is_group === true) return false;
       const r = roleOrType(a);
       const n = name(a);
-      const c = code(a);
+      const rawCode = String(a.code ?? '').trim();
+      if (COA_HEADER_CODES.has(rawCode)) return false;
+      const c = rawCode.toLowerCase();
       // Exclude non-payment: payable, receivable, expense, revenue, production, shipping
       if (n.includes('payable') || n.includes('receivable') || n.includes('ar ') || n.includes(' ap ') || c.startsWith('2') || c === '1100' || c === '2000' || c === '2010') return false;
       if (n.includes('expense') && !n.includes('payment')) return false;
@@ -145,11 +153,25 @@ export const accountService = {
     if (account.description !== undefined && account.description !== null && String(account.description).trim() !== '') {
       cleanData.description = String(account.description).trim();
     }
+    if (account.is_group !== undefined) {
+      cleanData.is_group = !!account.is_group;
+    }
+    if (account.linked_contact_id !== undefined && account.linked_contact_id !== null && String(account.linked_contact_id).trim() !== '') {
+      cleanData.linked_contact_id = String(account.linked_contact_id).trim();
+    }
 
     let result = await supabase.from('accounts').insert(cleanData).select().single();
 
     if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('description')) {
       delete cleanData.description;
+      result = await supabase.from('accounts').insert(cleanData).select().single();
+    }
+    if (result.error && result.error.code === 'PGRST204' && String(result.error.message || '').includes('is_group')) {
+      delete cleanData.is_group;
+      result = await supabase.from('accounts').insert(cleanData).select().single();
+    }
+    if (result.error && result.error.code === 'PGRST204' && String(result.error.message || '').includes('linked_contact')) {
+      delete cleanData.linked_contact_id;
       result = await supabase.from('accounts').insert(cleanData).select().single();
     }
 
@@ -169,11 +191,18 @@ export const accountService = {
     if (updates.is_active !== undefined) cleanData.is_active = updates.is_active;
     if (updates.parent_id !== undefined) cleanData.parent_id = updates.parent_id;
     if (updates.description !== undefined) cleanData.description = updates.description === '' ? null : updates.description;
+    if (updates.is_group !== undefined) cleanData.is_group = updates.is_group;
+    if (updates.linked_contact_id !== undefined) {
+      cleanData.linked_contact_id =
+        updates.linked_contact_id === null || updates.linked_contact_id === ''
+          ? null
+          : String(updates.linked_contact_id).trim();
+    }
     
     // DO NOT include: account_type, branch_id, branch_name, subtype, opening_balance, current_balance, is_system, is_default_cash, is_default_bank
     
     // Filter out any non-existent fields that might have been passed
-    const allowedFields = ['code', 'name', 'type', 'balance', 'is_active', 'parent_id', 'description'];
+    const allowedFields = ['code', 'name', 'type', 'balance', 'is_active', 'parent_id', 'description', 'is_group', 'linked_contact_id'];
     const filteredData: any = {};
     for (const key of allowedFields) {
       if (cleanData[key] !== undefined) {
@@ -184,6 +213,10 @@ export const accountService = {
     let result = await supabase.from('accounts').update(filteredData).eq('id', id).select().single();
     if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('description')) {
       delete filteredData.description;
+      result = await supabase.from('accounts').update(filteredData).eq('id', id).select().single();
+    }
+    if (result.error && result.error.code === 'PGRST204' && String(result.error.message || '').includes('is_group')) {
+      delete filteredData.is_group;
       result = await supabase.from('accounts').update(filteredData).eq('id', id).select().single();
     }
     if (result.error) throw result.error;

@@ -52,6 +52,8 @@ interface ViewRentalDetailsDrawerProps {
   onRefresh?: () => Promise<void>;
   onEdit?: (rental: RentalUI) => void;
   onAddPayment?: () => void;
+  /** Edit rental payment (opens unified payment dialog on parent) */
+  onEditPayment?: (rental: RentalUI, payment: import('@/app/components/sales/ViewPaymentsModal').Payment) => void;
   /** Called when Add Payment is clicked from within PickupModal - opens payment dialog */
   onAddPaymentForPickup?: (rental: RentalUI) => void;
   onReceiveReturn?: () => void;
@@ -66,6 +68,7 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
   onRefresh,
   onEdit,
   onAddPayment,
+  onEditPayment,
   onAddPaymentForPickup,
   onReceiveReturn,
   onDelete,
@@ -573,6 +576,14 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
             setViewPaymentsModalOpen(false);
             onAddPayment?.();
           }}
+          onEditPayment={
+            onEditPayment && r
+              ? (payment) => {
+                  onEditPayment(r, payment);
+                  setViewPaymentsModalOpen(false);
+                }
+              : undefined
+          }
           onDeletePayment={async (paymentId) => {
             if (r) {
               await rentalService.deletePayment(paymentId, r.id, companyId!);

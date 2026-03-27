@@ -1050,15 +1050,16 @@ export const EnhancedProductForm = ({
 
         const result = await productService.updateProduct(productId, productData);
 
-        // If product had no movements and we have opening stock at parent, add one (only when no variations)
-        if (!hasVariations && movementCount === 0 && initialStock > 0 && finalCompanyId) {
+        // Parent-level opening: insert (no movements) or update single opening row + canonical GL
+        if (!hasVariations && finalCompanyId) {
           const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
-          const { error: movErr } = await inventoryService.insertOpeningBalanceMovement(
+          const { error: movErr } = await inventoryService.reconcileParentLevelOpeningStock(
             finalCompanyId,
             branchIdOrNull,
             productId,
             initialStock,
-            Number(data.purchasePrice) || 0
+            Number(data.purchasePrice) || 0,
+            movementCount
           );
           if (movErr) {
             console.error('[PRODUCT FORM] Opening balance movement failed:', movErr);

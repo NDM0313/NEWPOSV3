@@ -9,6 +9,23 @@ import type { LedgerData, Transaction, Invoice } from '@/app/services/customerLe
 
 export type LedgerEntityType = 'supplier' | 'user' | 'worker';
 
+/** Operational document date when header date is null (aligns with COALESCE patterns in summary RPCs). */
+function effectiveYmdFromDoc(doc: { invoice_date?: unknown; po_date?: unknown; created_at?: unknown }): string {
+  const primary =
+    doc.invoice_date != null && String(doc.invoice_date).trim() !== ''
+      ? doc.invoice_date
+      : doc.po_date != null && String(doc.po_date).trim() !== ''
+        ? doc.po_date
+        : null;
+  if (primary != null && String(primary).trim() !== '') return String(primary).slice(0, 10);
+  const c = doc.created_at;
+  if (!c) return '';
+  if (typeof c === 'string' && c.length >= 10) return c.slice(0, 10);
+  const t = new Date(c as string).getTime();
+  if (Number.isNaN(t)) return '';
+  return new Date(t).toISOString().slice(0, 10);
+}
+
 /**
  * @deprecated Alias for {@link getSupplierOperationalLedgerData} (legacy duplicate subledger removed).
  */
@@ -47,20 +64,21 @@ export async function getSupplierOperationalLedgerData(
 
   const { data: purchases } = await supabase
     .from('purchases')
-    .select('id, po_date, po_no, total, paid_amount, due_amount, status')
+    .select('id, po_date, po_no, total, paid_amount, due_amount, status, created_at')
     .eq('company_id', companyId)
     .eq('supplier_id', supplierId);
 
+  /** Same posted scope as get_contact_balances_summary payables (final | received). */
   const purchaseRows = (purchases || []).filter((p: { status?: string }) => {
-    const s = String(p.status || '').toLowerCase();
-    return s !== 'cancelled' && s !== 'draft';
+    const s = String(p.status || '').toLowerCase().trim();
+    return s === 'final' || s === 'received';
   });
 
   const supplierPurchaseIds = new Set(purchaseRows.map((p: { id: string }) => p.id));
 
   const { data: payments } = await supabase
     .from('payments')
-    .select('id, payment_date, amount, reference_number, reference_type, reference_id, contact_id, payment_type, notes')
+    .select('id, payment_date, amount, reference_number, reference_type, reference_id, contact_id, payment_type, notes, voided_at')
     .eq('company_id', companyId)
     .eq('payment_type', 'paid');
 
@@ -78,7 +96,7 @@ export async function getSupplierOperationalLedgerData(
   const events: Ev[] = [];
 
   purchaseRows.forEach((p: any) => {
-    const d = (p.po_date || '').toString().slice(0, 10);
+    const d = effectiveYmdFromDoc({ po_date: p.po_date, created_at: p.created_at });
     if (!d) return;
     const total = Number(p.total) || 0;
     events.push({
@@ -95,6 +113,7 @@ export async function getSupplierOperationalLedgerData(
   });
 
   (payments || []).forEach((p: any) => {
+    if (p.voided_at) return;
     const rt = String(p.reference_type || '').toLowerCase();
     const isSupplier =
       p.contact_id === supplierId ||
@@ -155,7 +174,7 @@ export async function getSupplierOperationalLedgerData(
   }
 
   purchaseRows.forEach((p: any) => {
-    const d = (p.po_date || '').toString().slice(0, 10);
+    const d = effectiveYmdFromDoc({ po_date: p.po_date, created_at: p.created_at });
     if (!d) return;
     const ts = new Date(d + 'T12:00:00').getTime();
     if (ts < fromTs || ts > toTs) return;
@@ -223,7 +242,7 @@ export async function getUserLedgerData(
 
   const { data: commSales } = await supabase
     .from('sales')
-    .select('id, invoice_no, invoice_date, commission_amount')
+    .select('id, invoice_no, invoice_date, commission_amount, created_at')
     .eq('company_id', companyId)
     .eq('salesman_id', userId)
     .eq('commission_status', 'posted');
@@ -270,7 +289,7 @@ export async function getUserLedgerData(
   (commSales || []).forEach((s: any) => {
     const amt = Number(s.commission_amount) || 0;
     if (amt <= 0) return;
-    const d = (s.invoice_date || '').toString().slice(0, 10);
+    const d = effectiveYmdFromDoc({ invoice_date: s.invoice_date, created_at: s.created_at });
     if (!d) return;
     const ref = s.invoice_no || `SL-${String(s.id).slice(0, 8)}`;
     events.push({
@@ -365,6 +384,25 @@ export async function getUserLedgerData(
   };
 }
 
+/** Parse YYYY-MM-DD as local calendar day bounds (avoids UTC shift dropping rows). */
+function localDayBounds(fromYmd: string, toYmd: string): { fromMs: number; toMs: number } {
+  const fromMs = new Date(`${fromYmd}T00:00:00`).getTime();
+  const toMs = new Date(`${toYmd}T23:59:59.999`).getTime();
+  return { fromMs, toMs };
+}
+
+function rowTimestampMs(r: {
+  status?: string;
+  created_at?: string;
+  paid_at?: string;
+}): number {
+  const paid = String(r.status || '').toLowerCase() === 'paid';
+  const raw = paid ? (r.paid_at || r.created_at) : (r.created_at || r.paid_at);
+  if (!raw) return 0;
+  const t = new Date(raw).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
 /** Worker: Production-based. Job complete → payable (Debit), Payment → Credit. Job name + sale ref from stages. */
 export async function getWorkerLedgerData(
   companyId: string,
@@ -373,6 +411,14 @@ export async function getWorkerLedgerData(
   fromDate: string,
   toDate: string
 ): Promise<LedgerData> {
+  const { data: contact } = await supabase
+    .from('contacts')
+    .select('opening_balance')
+    .eq('id', workerId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  const contactOpeningSeed = Math.max(0, Number((contact as { opening_balance?: number } | null)?.opening_balance) || 0);
+
   const { data: allEntries, error } = await supabase
     .from('worker_ledger_entries')
     .select('*')
@@ -394,10 +440,13 @@ export async function getWorkerLedgerData(
     document_no?: string | null;
   }>;
 
-  // ONE REAL PAYMENT = ONE DISPLAY ROW. Dedupe by (reference_type, reference_id) keeping first (already ordered by created_at desc).
+  // Dedupe only when both reference_type and reference_id are set (avoids collapsing many rows with empty keys).
   const seen = new Set<string>();
   allRows = allRows.filter((r) => {
-    const key = `${r.reference_type ?? ''}\t${r.reference_id ?? ''}`;
+    const rt = String(r.reference_type ?? '').trim();
+    const rid = String(r.reference_id ?? '').trim();
+    if (!rt || !rid) return true;
+    const key = `${rt.toLowerCase()}\t${rid}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -433,28 +482,25 @@ export async function getWorkerLedgerData(
     } catch (_) {}
   }
 
-  const fromTs = new Date(fromDate).getTime();
-  const toTs = new Date(toDate + 'T23:59:59').getTime();
-  const getRowDate = (r: { created_at?: string; paid_at?: string }) => {
-    const t = r.created_at || r.paid_at || '';
-    return t ? new Date(t).getTime() : 0;
-  };
+  const { fromMs, toMs } = localDayBounds(fromDate, toDate);
 
-  let openingBalance = 0;
+  /** Opening at start of range: contact seed + net worker_ledger activity before fromDate (unpaid = owed, paid = reduced). */
+  let openingBalance = contactOpeningSeed;
   allRows.forEach((r) => {
-    const t = getRowDate(r);
-    if (t < fromTs) {
-      const amt = Number(r.amount || 0);
-      if ((r.status || 'unpaid').toLowerCase() !== 'paid') openingBalance += amt;
-    }
+    const t = rowTimestampMs(r);
+    if (t === 0 || t >= fromMs) return;
+    const amt = Number(r.amount || 0);
+    const isPaid = String(r.status || 'unpaid').toLowerCase() === 'paid';
+    if (isPaid) openingBalance -= amt;
+    else openingBalance += amt;
   });
 
   const rows = allRows
     .filter((r) => {
-      const t = getRowDate(r);
-      return t >= fromTs && t <= toTs;
+      const t = rowTimestampMs(r);
+      return t >= fromMs && t <= toMs;
     })
-    .sort((a, b) => getRowDate(a) - getRowDate(b)); // Oldest first so running balance = debit - credit in correct order
+    .sort((a, b) => rowTimestampMs(a) - rowTimestampMs(b));
 
   const transactions: Transaction[] = [];
   const invoices: Invoice[] = [];
@@ -464,8 +510,12 @@ export async function getWorkerLedgerData(
 
   for (const e of rows) {
     const amt = Number(e.amount || 0);
-    const date = (e.created_at || '').split('T')[0];
-    const isPaid = (e.status || 'unpaid').toLowerCase() === 'paid';
+    const isPaid = String(e.status || 'unpaid').toLowerCase() === 'paid';
+    const rawTs = isPaid ? e.paid_at || e.created_at : e.created_at || e.paid_at;
+    const date =
+      rawTs && String(rawTs).length >= 10
+        ? String(rawTs).slice(0, 10)
+        : fromDate;
 
     if (isPaid) {
       totalCredit += amt;
@@ -475,7 +525,7 @@ export async function getWorkerLedgerData(
         date,
         referenceNo: e.payment_reference || `Payment ${e.id.slice(0, 8)}`,
         documentType: 'Payment',
-        description: `Worker payment`,
+        description: e.payment_reference ? `Worker payment — ${e.payment_reference}` : 'Worker payment',
         paymentAccount: '—',
         notes: e.payment_reference || '',
         debit: 0,

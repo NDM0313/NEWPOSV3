@@ -11,7 +11,25 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { COA_HEADER_CODES } from '@/app/data/defaultCoASeed';
 import { assertGlTruthQueryTable } from '@/app/services/accountingCanonicalGuard';
+import {
+  buildAccountMapById,
+  classifyBalanceSheetAsset,
+  classifyBalanceSheetLiability,
+  type BalanceSheetAssetGroup,
+  type BalanceSheetLiabilityGroup,
+} from '@/app/lib/accountHierarchy';
+
+/** Branch-scoped reports include JEs with NULL branch_id (company-wide openings and legacy rows). */
+function journalEntryMatchesBranchFilter(
+  jeBranchId: string | null | undefined,
+  filterBranchId?: string | null
+): boolean {
+  if (!filterBranchId || filterBranchId === 'all') return true;
+  if (jeBranchId == null || jeBranchId === '') return true;
+  return jeBranchId === filterBranchId;
+}
 
 /** Fetch sale line items: sales_items first (canonical), fallback to sale_items for backward compatibility. */
 async function getSaleLineItems<T = any>(selectColumns: string, saleIds: string[]): Promise<T[]> {
@@ -27,6 +45,8 @@ async function getSaleLineItems<T = any>(selectColumns: string, saleIds: string[
   return (fromSaleItems || []) as T[];
 }
 
+export type TrialBalanceArApMode = 'flat' | 'summary' | 'expanded';
+
 export interface TrialBalanceRow {
   account_id: string;
   account_code: string;
@@ -35,6 +55,8 @@ export interface TrialBalanceRow {
   debit: number;
   credit: number;
   balance: number; // debit positive, credit negative for display
+  /** Indented child row under AR/AP control (expanded mode). */
+  presentationIndent?: number;
 }
 
 export interface TrialBalanceResult {
@@ -42,6 +64,102 @@ export interface TrialBalanceResult {
   totalDebit: number;
   totalCredit: number;
   difference: number;
+}
+
+type AccountMetaRow = { id: string; code?: string; name?: string; type?: string; parent_id?: string | null };
+
+function controlIdByCode(accounts: AccountMetaRow[], code: string): string | undefined {
+  const c = code.trim();
+  return accounts.find((a) => String(a.code || '').trim() === c)?.id;
+}
+
+function childIdsUnderParent(accounts: AccountMetaRow[], parentId: string | undefined): Set<string> {
+  const s = new Set<string>();
+  if (!parentId) return s;
+  accounts.forEach((a) => {
+    if (a.parent_id === parentId) s.add(a.id);
+  });
+  return s;
+}
+
+/** Summary: one row per AR/AP family (no double count in totals — same as flat). Expanded: group + indent party subledgers. */
+function applyTrialBalanceArApPresentation(
+  rows: TrialBalanceRow[],
+  accounts: AccountMetaRow[],
+  mode: TrialBalanceArApMode
+): TrialBalanceRow[] {
+  if (mode === 'flat' || !rows.length) return rows;
+
+  const arControlId = controlIdByCode(accounts, '1100');
+  const apControlId = controlIdByCode(accounts, '2000');
+  const arChildren = childIdsUnderParent(accounts, arControlId);
+  const apChildren = childIdsUnderParent(accounts, apControlId);
+
+  const arFamily = new Set<string>([...(arControlId ? [arControlId] : []), ...arChildren]);
+  const apFamily = new Set<string>([...(apControlId ? [apControlId] : []), ...apChildren]);
+
+  if (mode === 'summary') {
+    const rowMap = new Map(rows.map((r) => [r.account_id, r]));
+    const sumFamily = (family: Set<string>, controlId: string | undefined): TrialBalanceRow | null => {
+      let debit = 0;
+      let credit = 0;
+      family.forEach((id) => {
+        const r = rowMap.get(id);
+        if (r) {
+          debit += r.debit;
+          credit += r.credit;
+        }
+      });
+      debit = Math.round(debit * 100) / 100;
+      credit = Math.round(credit * 100) / 100;
+      if (debit === 0 && credit === 0) return null;
+      const meta = accounts.find((a) => a.id === controlId);
+      if (!controlId || !meta) return null;
+      return {
+        account_id: controlId,
+        account_code: meta.code || '',
+        account_name: `${meta.name || ''} (subledger total)`,
+        account_type: meta.type || '',
+        debit,
+        credit,
+        balance: debit - credit,
+      };
+    }
+
+    const rest = rows.filter((r) => !arFamily.has(r.account_id) && !apFamily.has(r.account_id));
+    const arRoll = sumFamily(arFamily, arControlId);
+    const apRoll = sumFamily(apFamily, apControlId);
+    const out = [...rest];
+    if (arRoll) out.push(arRoll);
+    if (apRoll) out.push(apRoll);
+    return out.sort((a, b) => (a.account_code || '').localeCompare(b.account_code || ''));
+  }
+
+  // expanded
+  const rest = rows
+    .filter((r) => !arFamily.has(r.account_id) && !apFamily.has(r.account_id))
+    .map((r) => ({ ...r, presentationIndent: undefined }));
+
+  const block = (family: Set<string>, controlId: string | undefined): TrialBalanceRow[] => {
+    const slice = rows.filter((r) => family.has(r.account_id));
+    if (!slice.length) return [];
+    slice.sort((a, b) => {
+      if (controlId) {
+        if (a.account_id === controlId) return -1;
+        if (b.account_id === controlId) return 1;
+      }
+      return (a.account_name || '').localeCompare(b.account_name || '');
+    });
+    return slice.map((r) => ({
+      ...r,
+      presentationIndent: controlId && r.account_id !== controlId ? 1 : 0,
+    }));
+  };
+
+  const arB = block(arFamily, arControlId);
+  const apB = block(apFamily, apControlId);
+  const merged = [...rest.sort((a, b) => (a.account_code || '').localeCompare(b.account_code || '')), ...arB, ...apB];
+  return merged;
 }
 
 export interface ProfitLossSection {
@@ -71,9 +189,21 @@ export interface ProfitLossResult {
   comparison?: ProfitLossComparison;
 }
 
+export interface BalanceSheetLineItem {
+  name: string;
+  amount: number;
+  code?: string;
+  /** Populated for assets: drives Cash & Bank vs Other grouping (parent chain + DB type). */
+  bs_asset_group?: BalanceSheetAssetGroup;
+  /** Populated for liabilities: trade vs payroll vs deposits (type + parent chain). */
+  bs_liability_group?: BalanceSheetLiabilityGroup;
+  /** Party drilldown in UI (1100 / 2000 control lines). */
+  drilldownControl?: 'ar' | 'ap';
+}
+
 export interface BalanceSheetSection {
   label: string;
-  items: { name: string; amount: number; code?: string }[];
+  items: BalanceSheetLineItem[];
   total: number;
 }
 
@@ -123,14 +253,14 @@ export interface InventoryValuationResult {
 }
 
 // Normalize account type for grouping (DB may use asset, liability, revenue, expense, equity)
-// P&L: Revenue (Sales Revenue 4000, Shipping Income 4100), Expenses (Cost of Production 5000, Shipping Expense 5100, Discount Allowed 5200, Extra Expense 5300)
+// P&L: Discount Allowed (5200) and Extra Expense (5300) are operating expenses — not cost of sales (see PF-06).
 const REVENUE_TYPES = ['revenue', 'income'];
 const EXPENSE_TYPES = ['expense', 'cost of sales', 'cogs'];
 const ASSET_TYPES = ['asset', 'cash', 'bank', 'mobile_wallet', 'receivable', 'inventory'];
-const LIABILITY_TYPES = ['liability'];
+const LIABILITY_TYPES = ['liability', 'payable'];
 const EQUITY_TYPES = ['equity'];
-/** PF-06: Production/studio cost account codes – P&L shows these under Cost of Sales, not Operating Expenses. Phase 2: 5110 = Sales Commission Expense. */
-const COST_OF_PRODUCTION_CODES = new Set(['5000', '5010', '5100', '5110', '5200', '5300']);
+/** PF-06: Production/studio/shipping-to-fulfill — P&L Cost of Sales section. Excludes 5200/5300 (discount/extra). */
+const COST_OF_PRODUCTION_CODES = new Set(['5000', '5010', '5100', '5110']);
 
 function accountTypeCategory(type: string): 'revenue' | 'expense' | 'asset' | 'liability' | 'equity' {
   const t = (type || '').toLowerCase();
@@ -204,15 +334,25 @@ export const accountingReportsService = {
     companyId: string,
     startDate: string,
     endDate: string,
-    branchId?: string
+    branchId?: string,
+    options?: { arApMode?: TrialBalanceArApMode }
   ): Promise<TrialBalanceResult> {
     assertGlTruthQueryTable('accountingReportsService.getTrialBalance', 'accounts');
     assertGlTruthQueryTable('accountingReportsService.getTrialBalance', 'journal_entry_lines');
-    const { data: accounts } = await supabase
+    let accountsQuery = supabase
       .from('accounts')
-      .select('id, code, name, type')
+      .select('id, code, name, type, parent_id')
       .eq('company_id', companyId)
       .eq('is_active', true);
+    let { data: accounts, error: accErr } = await accountsQuery;
+    if (accErr && String(accErr.message || '').includes('parent_id')) {
+      const retry = await supabase
+        .from('accounts')
+        .select('id, code, name, type')
+        .eq('company_id', companyId)
+        .eq('is_active', true);
+      accounts = retry.data;
+    }
     if (!accounts?.length) {
       return { rows: [], totalDebit: 0, totalCredit: 0, difference: 0 };
     }
@@ -255,7 +395,7 @@ export const accountingReportsService = {
       if ((je as any).is_void === true) return;
       const ed = (je.entry_date || '').slice(0, 10);
       if (ed < start || ed > end) return;
-      if (branchId && je.branch_id !== branchId) return;
+      if (!journalEntryMatchesBranchFilter(je.branch_id, branchId)) return;
       const accId = line.account_id;
       if (!byAccount[accId]) byAccount[accId] = { debit: 0, credit: 0 };
       byAccount[accId].debit += Number(line.debit) || 0;
@@ -289,7 +429,12 @@ export const accountingReportsService = {
     const totalDebit = Math.round(rawTotalDebit * 100) / 100;
     const totalCredit = Math.round(rawTotalCredit * 100) / 100;
     const difference = Math.round((totalDebit - totalCredit) * 100) / 100;
-    return { rows, totalDebit, totalCredit, difference };
+    const mode = options?.arApMode || 'flat';
+    const presented =
+      mode === 'flat'
+        ? rows
+        : applyTrialBalanceArApPresentation(rows, (accounts || []) as AccountMetaRow[], mode);
+    return { rows: presented, totalDebit, totalCredit, difference };
   },
 
   /**
@@ -394,29 +539,97 @@ export const accountingReportsService = {
 
     const { data: accounts } = await supabase
       .from('accounts')
-      .select('id, code, name, type')
+      .select('id, code, name, type, parent_id, is_group')
       .eq('company_id', companyId)
       .eq('is_active', true);
 
-    const assetItems: { name: string; amount: number; code?: string }[] = [];
-    const liabilityItems: { name: string; amount: number; code?: string }[] = [];
-    const equityItems: { name: string; amount: number; code?: string }[] = [];
+    const hierarchyRows = (accounts || []).map((a: any) => ({
+      id: a.id,
+      code: a.code,
+      name: a.name,
+      type: a.type,
+      parent_id: a.parent_id,
+    }));
+    const accountMapForBs = buildAccountMapById(hierarchyRows);
+
+    const arControl = (accounts || []).find((x: any) => String(x.code || '').trim() === '1100');
+    const apControl = (accounts || []).find((x: any) => String(x.code || '').trim() === '2000');
+    const arChildIds = new Set(
+      (accounts || []).filter((x: any) => x.parent_id && arControl && x.parent_id === arControl.id).map((x: any) => x.id)
+    );
+    const apChildIds = new Set(
+      (accounts || []).filter((x: any) => x.parent_id && apControl && x.parent_id === apControl.id).map((x: any) => x.id)
+    );
+    const rolledArBalance = (): number => {
+      if (!arControl?.id) return 0;
+      const ids = [arControl.id as string, ...arChildIds];
+      return ids.reduce((s, id) => s + (balanceByAccountId.get(id) ?? 0), 0);
+    };
+    const rolledApBalance = (): number => {
+      if (!apControl?.id) return 0;
+      const ids = [apControl.id as string, ...apChildIds];
+      return ids.reduce((s, id) => s + (balanceByAccountId.get(id) ?? 0), 0);
+    };
+
+    const assetItems: BalanceSheetLineItem[] = [];
+    const liabilityItems: BalanceSheetLineItem[] = [];
+    const equityItems: BalanceSheetLineItem[] = [];
 
     let totalAssets = 0;
     let totalLiabilities = 0;
     let totalEquity = 0;
     let revenueExpenseBalanceSum = 0;
     (accounts || []).forEach((a: any) => {
+      const codeTrim = String(a.code || '').trim();
+      if (COA_HEADER_CODES.has(codeTrim)) return;
+      if (a.is_group === true) return;
+      if (arChildIds.has(a.id) || apChildIds.has(a.id)) return;
+
       const cat = accountTypeCategory(a.type || '');
-      const amount = balanceByAccountId.get(a.id) ?? 0;
+      let amount = balanceByAccountId.get(a.id) ?? 0;
+      if (arControl && a.id === arControl.id) {
+        amount = rolledArBalance();
+      } else if (apControl && a.id === apControl.id) {
+        amount = rolledApBalance();
+      }
       if (cat === 'asset') {
         const displayAmount = amount > 0 ? amount : -amount;
         totalAssets += displayAmount;
-        assetItems.push({ name: a.name || '', amount: displayAmount, code: a.code || '' });
+        const bs_asset_group = classifyBalanceSheetAsset(
+          {
+            code: a.code,
+            name: a.name,
+            type: a.type,
+            parent_id: a.parent_id,
+          },
+          accountMapForBs
+        );
+        assetItems.push({
+          name: a.name || '',
+          amount: displayAmount,
+          code: a.code || '',
+          bs_asset_group,
+          drilldownControl: codeTrim === '1100' ? 'ar' : undefined,
+        });
       } else if (cat === 'liability') {
         const displayAmount = amount < 0 ? -amount : amount;
         totalLiabilities += displayAmount;
-        liabilityItems.push({ name: a.name || '', amount: displayAmount, code: a.code || '' });
+        const bs_liability_group = classifyBalanceSheetLiability(
+          {
+            code: a.code,
+            name: a.name,
+            type: a.type,
+            parent_id: a.parent_id,
+          },
+          accountMapForBs
+        );
+        liabilityItems.push({
+          name: a.name || '',
+          amount: displayAmount,
+          code: a.code || '',
+          bs_liability_group,
+          drilldownControl: codeTrim === '2000' ? 'ap' : undefined,
+        });
       } else if (cat === 'equity') {
         const displayAmount = amount < 0 ? -amount : amount;
         totalEquity += displayAmount;
@@ -713,7 +926,7 @@ export const accountingReportsService = {
     cashLines.forEach((line: any) => {
       const je = line.journal_entry;
       if (!je || je.company_id !== companyId) return;
-      if (branchId && je.branch_id !== branchId) return;
+      if (!journalEntryMatchesBranchFilter(je.branch_id, branchId)) return;
       const types = entryAccountTypes[line.journal_entry_id] || [];
       const isRev = types.some((t) => REVENUE_TYPES.some((r) => t.includes(r)));
       const isExp = types.some((t) => EXPENSE_TYPES.some((e) => t.includes(e)));

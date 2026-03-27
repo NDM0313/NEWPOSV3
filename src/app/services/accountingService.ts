@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { fetchCustomerLedgerSalesForRange } from '@/app/services/customerLedgerApi';
 
 export interface JournalEntry {
   id: string;
@@ -58,6 +59,8 @@ export interface AccountLedgerEntry {
   document_type?: string; // Document Type (Sale, Payment, etc.)
   /** GL account code on the viewed line (e.g. 2000, 2010) for multi-account party views */
   gl_account_code?: string;
+  /** correction_reversal rows; UI can style distinctly */
+  ledger_kind?: 'standard' | 'reversal';
 }
 
 export const accountingService = {
@@ -89,8 +92,9 @@ export const accountingService = {
         .order('entry_date', { ascending: false })
         .order('created_at', { ascending: false });
 
+      // Include company-wide JEs (NULL branch) when a branch is selected — matches TB / party GL readers.
       if (branchId) {
-        query = query.eq('branch_id', branchId);
+        query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
       }
 
       if (startStr) {
@@ -412,6 +416,8 @@ export const accountingService = {
    * Create a safe reversal journal entry for manual correction (PF-07).
    * Creates a new JE with same accounts but swapped debit/credit; links via reference_type
    * 'correction_reversal' and reference_id = original JE id. No deletes; reports stay consistent.
+   *
+   * Idempotent: at most one active correction_reversal per original JE (race-safe with DB unique index).
    */
   async createReversalEntry(
     companyId: string,
@@ -419,7 +425,29 @@ export const accountingService = {
     originalJournalEntryId: string,
     createdBy?: string | null,
     reason?: string
-  ): Promise<{ id: string } | null> {
+  ): Promise<{ id: string; alreadyExisted: boolean } | null> {
+    console.log('[PAYMENT_REVERSAL_TRACE]', JSON.stringify({ phase: 'start', companyId, originalJournalEntryId }));
+    const findActiveReversal = async (): Promise<string | null> => {
+      const { data, error } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('reference_type', 'correction_reversal')
+        .eq('reference_id', originalJournalEntryId)
+        .or('is_void.is.null,is_void.eq.false')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (error || !data) return null;
+      return (data as { id: string }).id;
+    };
+
+    const existingId = await findActiveReversal();
+    if (existingId) {
+      console.log('[PAYMENT_REVERSAL_TRACE]', JSON.stringify({ phase: 'already_exists', originalJournalEntryId, reversalId: existingId }));
+      return { id: existingId, alreadyExisted: true };
+    }
+
     const original = await this.getEntry(originalJournalEntryId).catch(() => null);
     if (!original || (original as any).company_id !== companyId) {
       return null;
@@ -449,8 +477,68 @@ export const accountingService = {
       credit: line.debit || 0,
       description: line.description ? `Reversal: ${line.description}` : undefined,
     }));
-    const result = await this.createEntry(reversalEntry, reversalLines);
-    return result ? { id: (result as any).id } : null;
+    try {
+      const result = await this.createEntry(reversalEntry, reversalLines);
+      if (!result) return null;
+      console.log('[PAYMENT_REVERSAL_TRACE]', JSON.stringify({ phase: 'reversal_je_created', originalJournalEntryId, reversalId: (result as any).id }));
+      // Live customer ledger: reversing the posted receipt/payment JE voids linked operational payment rows
+      // (manual_receipt / on_account) so FIFO allocations clear and sale due recomputes.
+      try {
+        const pid = (original as any).payment_id as string | null | undefined;
+        if (pid) {
+          const { data: prow } = await supabase
+            .from('payments')
+            .select('id, reference_type, voided_at')
+            .eq('id', pid)
+            .eq('company_id', companyId)
+            .maybeSingle();
+          const rt = String((prow as any)?.reference_type || '');
+          if (
+            prow &&
+            !(prow as any).voided_at &&
+            (rt === 'manual_receipt' || rt === 'on_account' || rt === 'manual_payment')
+          ) {
+            const { voidPaymentAfterJournalReversal } = await import('@/app/services/paymentLifecycleService');
+            await voidPaymentAfterJournalReversal({ companyId, paymentId: pid });
+            console.log('[PAYMENT_REVERSAL_TRACE]', JSON.stringify({ phase: 'payment_voided', paymentId: pid, reference_type: rt }));
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('paymentAdded'));
+              if (rt === 'manual_payment') {
+                const cid = (prow as any).contact_id as string | null | undefined;
+                window.dispatchEvent(
+                  new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: cid || undefined } })
+                );
+              } else {
+                window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer' } }));
+              }
+            }
+          }
+        }
+      } catch (voidErr: any) {
+        console.warn('[ACCOUNTING] Reversal posted but linked payment void failed:', voidErr?.message || voidErr);
+      }
+      // Rental module: rental_payments rows (not in payments table) — void + recompute paid/due
+      try {
+        const { rentalService } = await import('@/app/services/rentalService');
+        const rv = await rentalService.voidRentalPaymentByReversedJournal(companyId, originalJournalEntryId);
+        if (rv && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
+        }
+      } catch (rentalVoidErr: any) {
+        console.warn('[ACCOUNTING] Reversal posted but rental payment void failed:', rentalVoidErr?.message || rentalVoidErr);
+      }
+      return { id: (result as any).id, alreadyExisted: false };
+    } catch (e: any) {
+      const dup =
+        e?.code === '23505' ||
+        String(e?.message || '').toLowerCase().includes('duplicate') ||
+        String(e?.message || '').toLowerCase().includes('unique');
+      if (dup) {
+        const again = await findActiveReversal();
+        if (again) return { id: again, alreadyExisted: true };
+      }
+      throw e;
+    }
   },
 
   // Get journal entry by reference number
@@ -854,8 +942,10 @@ export const accountingService = {
         if (startDate && entryDate < startDate) return false;
         if (endDate && entryDate > endDate) return false;
         
-        // Apply branch filter if provided
-        if (branchId && entry.branch_id !== branchId) return false;
+        // Include NULL branch_id JEs when a branch is selected (company-wide openings).
+        if (branchId && entry.branch_id != null && entry.branch_id !== '' && entry.branch_id !== branchId) {
+          return false;
+        }
         
         // Apply search filter if provided
         if (searchTerm && searchTerm.trim()) {
@@ -874,14 +964,14 @@ export const accountingService = {
         return true;
       });
 
-      // Sort by Date ASC, then ID ASC
+      // Sort by posting date ASC, then created_at (time) ASC, then JE id (stable)
       filteredLines.sort((a: any, b: any) => {
         const dateA = new Date(a.journal_entry?.entry_date || 0).getTime();
         const dateB = new Date(b.journal_entry?.entry_date || 0).getTime();
-        if (dateA !== dateB) {
-          return dateA - dateB; // Date ASC
-        }
-        // If dates are equal, sort by ID ASC
+        if (dateA !== dateB) return dateA - dateB;
+        const tA = a.journal_entry?.created_at ? new Date(a.journal_entry.created_at).getTime() : 0;
+        const tB = b.journal_entry?.created_at ? new Date(b.journal_entry.created_at).getTime() : 0;
+        if (tA !== tB) return tA - tB;
         const idA = a.journal_entry?.id || '';
         const idB = b.journal_entry?.id || '';
         return idA.localeCompare(idB);
@@ -903,6 +993,54 @@ export const accountingService = {
         }
       }
 
+      // Reversal rows: resolve original JE entry_no for clear pairing (avoids "duplicate" confusion)
+      const reversalTargetIds = [
+        ...new Set(
+          filteredLines
+            .map((l: any) => l.journal_entry)
+            .filter(
+              (e: any) =>
+                e && String(e.reference_type || '').toLowerCase() === 'correction_reversal' && e.reference_id
+            )
+            .map((e: any) => e.reference_id as string)
+        ),
+      ];
+      const reversedEntryNoByJeId = new Map<string, string>();
+      if (reversalTargetIds.length > 0) {
+        const { data: origJes } = await supabase
+          .from('journal_entries')
+          .select('id, entry_no')
+          .eq('company_id', companyId)
+          .in('id', reversalTargetIds);
+        (origJes || []).forEach((r: any) => {
+          if (r?.id) reversedEntryNoByJeId.set(r.id, String(r.entry_no || '').trim() || r.id.slice(0, 8));
+        });
+      }
+
+      // Expense documents: show EXP-no · JE-no so two postings for same expense are distinguishable
+      const expenseDocIds = [
+        ...new Set(
+          filteredLines
+            .map((l: any) => l.journal_entry)
+            .filter((e: any) => {
+              const rt = String(e?.reference_type || '').toLowerCase();
+              return e?.reference_id && (rt === 'expense' || rt === 'extra_expense');
+            })
+            .map((e: any) => e.reference_id as string)
+        ),
+      ];
+      const expenseNoById = new Map<string, string>();
+      if (expenseDocIds.length > 0) {
+        const { data: exRows } = await supabase
+          .from('expenses')
+          .select('id, expense_no')
+          .eq('company_id', companyId)
+          .in('id', expenseDocIds);
+        (exRows || []).forEach((r: any) => {
+          if (r?.id && r.expense_no) expenseNoById.set(r.id, String(r.expense_no).trim());
+        });
+      }
+
       // Opening balance = current balance minus sum of movements in this range (so running balance is correct for each row)
       const totalMovementInRange = filteredLines.reduce(
         (sum: number, line: any) => sum + ((line.debit || 0) - (line.credit || 0)),
@@ -920,34 +1058,65 @@ export const accountingService = {
           const entry = line.journal_entry;
           runningBalance += (line.debit || 0) - (line.credit || 0);
 
-          // Determine source module
+          const refType = String(entry.reference_type || '').toLowerCase();
+          let ledgerKind: 'standard' | 'reversal' | undefined;
+
           let sourceModule = 'Accounting';
-          if (entry.reference_type === 'sale') {
+          if (refType === 'sale') {
             sourceModule = 'Sales';
+          } else if (refType === 'correction_reversal') {
+            sourceModule = 'Reversal';
           } else if (entry.payment_id) {
             sourceModule = 'Payment';
           }
 
-          // Use entry_no if it's in short format (EXP-0001, JE-0001, etc.)
           let referenceNumber = entry.entry_no;
           const isUUID = referenceNumber && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(referenceNumber);
           const isShortFormat = referenceNumber && /^[A-Z]+-[0-9]+$/.test(referenceNumber);
-          if (!referenceNumber || referenceNumber.length > 20 || isUUID || !isShortFormat) {
+
+          if (refType === 'correction_reversal') {
+            ledgerKind = 'reversal';
+            const origNo = entry.reference_id ? reversedEntryNoByJeId.get(entry.reference_id) : '';
+            const selfJe =
+              entry.entry_no && /^[A-Z]+-[0-9]+$/i.test(String(entry.entry_no))
+                ? String(entry.entry_no)
+                : `JE-${String(entry.id).slice(0, 4).toUpperCase()}`;
+            referenceNumber = origNo ? `REV of ${origNo}` : `${selfJe} (reversal)`;
+          } else if (!referenceNumber || referenceNumber.length > 20 || isUUID || !isShortFormat) {
             if (entry.payment_id && paymentRefsMap.has(entry.payment_id)) {
               referenceNumber = paymentRefsMap.get(entry.payment_id)!;
-            } else if (entry.reference_type === 'expense' || entry.reference_type === 'extra_expense') {
+            } else if (refType === 'expense' || refType === 'extra_expense') {
               referenceNumber = `EXP-${entry.id.substring(0, 4).toUpperCase()}`;
-            } else if (entry.reference_type === 'sale') {
+            } else if (refType === 'sale') {
               referenceNumber = `JE-${entry.id.substring(0, 4).toUpperCase()}`;
             } else {
               referenceNumber = `JE-${entry.id.substring(0, 4).toUpperCase()}`;
             }
           }
 
-          // Human-readable description: avoid showing UUIDs; use reference_type + reference number
+          if ((refType === 'expense' || refType === 'extra_expense') && entry.reference_id) {
+            const expNo = expenseNoById.get(entry.reference_id);
+            const jeNo =
+              entry.entry_no && /^[A-Z]+-[0-9]+$/i.test(String(entry.entry_no)) ? String(entry.entry_no) : null;
+            if (expNo && jeNo) {
+              referenceNumber = `${expNo} · ${jeNo}`;
+            } else if (expNo) {
+              referenceNumber = expNo;
+            }
+          }
+
           let description = entry.description || line.description || '';
-          if (isUuidOrBad(description)) {
-            const refType = (entry.reference_type || '').toLowerCase();
+          if (refType === 'correction_reversal') {
+            const origNo = entry.reference_id ? reversedEntryNoByJeId.get(entry.reference_id) : '';
+            const base = (entry.description || line.description || '').trim();
+            if (origNo) {
+              description = base.toLowerCase().includes('reversal of')
+                ? base
+                : `Reversal of ${origNo}${base ? ` — ${base}` : ''}`;
+            } else if (isUuidOrBad(description)) {
+              description = `Reversal ${referenceNumber}`;
+            }
+          } else if (isUuidOrBad(description)) {
             if (refType === 'payment') description = `Payment ${referenceNumber}`;
             else if (refType === 'sale' || refType === 'sale_adjustment') description = `Sale ${referenceNumber}`;
             else if (refType === 'purchase') description = `Purchase ${referenceNumber}`;
@@ -964,6 +1133,7 @@ export const accountingService = {
             date: entry.entry_date,
             created_at: (entry as any).created_at,
             reference_number: referenceNumber,
+            entry_no: entry.entry_no,
             description,
             debit: line.debit || 0,
             credit: line.credit || 0,
@@ -976,6 +1146,7 @@ export const accountingService = {
             branch_id: entry.branch_id,
             branch_name: branchName,
             counter_account: counterAccount ?? undefined,
+            ledger_kind: ledgerKind,
           };
         });
 
@@ -1082,15 +1253,10 @@ export const accountingService = {
       // Use RPC get_customer_ledger_sales so we get sales regardless of branch (SECURITY DEFINER bypasses RLS)
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 2: Fetching sales via RPC', { customerId, companyId });
       
-      const rpcSales = await supabase.rpc('get_customer_ledger_sales', {
-        p_company_id: companyId,
-        p_customer_id: customerId,
-        p_from_date: glJournalOnly ? null : startDate || null,
-        p_to_date: glJournalOnly ? null : endDate || null,
-      });
-      const customerSales = !rpcSales.error ? (rpcSales.data ?? []) : [];
+      // All final sales for party (same reader as customer statement); date scope for synthetic rows applied below.
+      const customerSales = await fetchCustomerLedgerSalesForRange(companyId, customerId);
       const saleIds = customerSales.map((s: any) => s.id);
-      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Customer sales found (RPC):', saleIds.length);
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Customer sales (canonical fetch):', saleIds.length);
       
       // Get payments via RPC so we get them regardless of branch (SECURITY DEFINER bypasses RLS)
       let customerPayments: any[] = [];
@@ -1113,7 +1279,8 @@ export const accountingService = {
         .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id')
         .eq('company_id', companyId)
         .eq('contact_id', customerId)
-        .eq('reference_type', 'on_account');
+        .eq('reference_type', 'on_account')
+        .is('voided_at', null);
       if (onAccountData?.length) {
         const dateFiltered = glJournalOnly
           ? (onAccountData as any[])
@@ -1132,7 +1299,8 @@ export const accountingService = {
         .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id')
         .eq('company_id', companyId)
         .eq('contact_id', customerId)
-        .eq('reference_type', 'manual_receipt');
+        .eq('reference_type', 'manual_receipt')
+        .is('voided_at', null);
       if (manualReceiptData?.length) {
         const dateFiltered = glJournalOnly
           ? (manualReceiptData as any[])
@@ -1315,6 +1483,14 @@ export const accountingService = {
           return true;
         }
 
+        if (
+          entry.reference_type === 'opening_balance_contact_ar' &&
+          entry.reference_id &&
+          String(entry.reference_id) === String(customerId)
+        ) {
+          return true;
+        }
+
         // Pattern 3: reference_type='rental' – EXCLUDE from journal path; rentals are shown via synthetic
         // (Rental JEs use Cash+Revenue or AR+Revenue; synthetic gives full charge + payments correctly)
         if (entry.reference_type === 'rental') {
@@ -1341,9 +1517,12 @@ export const accountingService = {
         }))
       });
 
-      // Filter by branch first (applies to all lines)
+      // Filter by branch: keep company-wide (NULL branch) JEs in every branch view
       const branchFiltered = branchId
-        ? customerLines.filter((line: any) => line.journal_entry?.branch_id === branchId)
+        ? customerLines.filter((line: any) => {
+            const bid = line.journal_entry?.branch_id;
+            return bid == null || bid === '' || bid === branchId;
+          })
         : customerLines;
 
       // Opening balance = sum of (debit - credit) for ALL lines BEFORE startDate (from customer data, not from date-filtered set)
@@ -1853,11 +2032,15 @@ export const accountingService = {
         if (rt === 'payment' && rid && supplierPaymentIds.has(rid)) return true;
         if (rt === 'on_account' && rid && String(rid) === String(supplierId)) return true;
         if (rt === 'manual_payment' && rid && String(rid) === String(supplierId)) return true;
+        if (rt === 'opening_balance_contact_ap' && rid && String(rid) === String(supplierId)) return true;
         return false;
       });
 
       const branchFiltered = branchId
-        ? supplierLines.filter((line: any) => line.journal_entry?.branch_id === branchId)
+        ? supplierLines.filter((line: any) => {
+            const bid = line.journal_entry?.branch_id;
+            return bid == null || bid === '' || bid === branchId;
+          })
         : supplierLines;
 
       let openingBalance = 0;
@@ -2001,12 +2184,18 @@ export const accountingService = {
         if ((rt === 'worker_payment' || rt === 'worker_advance_settlement') && rid && String(rid) === String(workerId)) {
           return true;
         }
+        if (rt === 'opening_balance_contact_worker' && rid && String(rid) === String(workerId)) {
+          return true;
+        }
         if (entry.payment_id && workerPaymentIds.has(entry.payment_id)) return true;
         return false;
       });
 
       const branchFiltered = branchId
-        ? workerLines.filter((line: any) => line.journal_entry?.branch_id === branchId)
+        ? workerLines.filter((line: any) => {
+            const bid = line.journal_entry?.branch_id;
+            return bid == null || bid === '' || bid === branchId;
+          })
         : workerLines;
 
       let openWp = 0;
@@ -2247,6 +2436,26 @@ export const accountingService = {
         return { ...existing, lines: [] };
       }
     }
+    if (dup && entry.reference_type === 'correction_reversal' && insertData.reference_id) {
+      const { data: existingRows } = await supabase
+        .from('journal_entries')
+        .select('*')
+        .eq('company_id', entry.company_id)
+        .eq('reference_type', 'correction_reversal')
+        .eq('reference_id', insertData.reference_id)
+        .or('is_void.is.null,is_void.eq.false')
+        .order('created_at', { ascending: true })
+        .limit(1);
+      const existing = (existingRows as Record<string, unknown>[] | null)?.[0] as
+        | { id: string; is_void?: boolean }
+        | undefined;
+      if (existing?.id && existing.is_void !== true) {
+        if (import.meta.env?.DEV) {
+          console.warn('[accountingService] Duplicate correction_reversal — returning existing row:', existing.id);
+        }
+        return { ...existing, lines: [] };
+      }
+    }
     if (dup && insertData.action_fingerprint) {
       const { data: fpRow } = await supabase
         .from('journal_entries')
@@ -2288,5 +2497,136 @@ export const accountingService = {
         id: `temp-${idx}`,
       })),
     };
+  },
+
+  /**
+   * Expense: update latest active expense JE (+ lines) and latest expense payment date — no reversal.
+   * Use for HEADER_ONLY edits (same-month date move, description-only) after document row is updated.
+   */
+  async patchExpensePostingPresentation(params: {
+    companyId: string;
+    expenseId: string;
+    entryDate?: string;
+    journalDescription?: string;
+  }): Promise<{ ok: boolean; error?: string }> {
+    const { companyId, expenseId, entryDate, journalDescription } = params;
+    if (!journalDescription && !entryDate) return { ok: true };
+
+    const { data: jeRows, error: jeSelErr } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'expense')
+      .eq('reference_id', expenseId)
+      .or('is_void.is.null,is_void.eq.false')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (jeSelErr) return { ok: false, error: jeSelErr.message };
+    const jeId = (jeRows as { id: string }[] | null)?.[0]?.id;
+    if (!jeId) return { ok: false, error: 'No active expense journal for this document' };
+
+    const jePatch: Record<string, unknown> = {};
+    if (entryDate) jePatch.entry_date = String(entryDate).slice(0, 10);
+    if (journalDescription !== undefined) jePatch.description = journalDescription;
+    if (Object.keys(jePatch).length > 0) {
+      const { error: jeUpdErr } = await supabase
+        .from('journal_entries')
+        .update(jePatch)
+        .eq('id', jeId)
+        .eq('company_id', companyId);
+      if (jeUpdErr) return { ok: false, error: jeUpdErr.message };
+    }
+
+    if (journalDescription !== undefined) {
+      const { error: lineErr } = await supabase
+        .from('journal_entry_lines')
+        .update({ description: journalDescription })
+        .eq('journal_entry_id', jeId);
+      if (lineErr) return { ok: false, error: lineErr.message };
+    }
+
+    const payDate = entryDate ? String(entryDate).slice(0, 10) : null;
+    if (payDate) {
+      const { data: payRows, error: paySelErr } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('reference_type', 'expense')
+        .eq('reference_id', expenseId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (paySelErr) return { ok: false, error: paySelErr.message };
+      const payId = (payRows as { id: string }[] | null)?.[0]?.id;
+      if (payId) {
+        const { error: payUpdErr } = await supabase
+          .from('payments')
+          .update({ payment_date: payDate })
+          .eq('id', payId)
+          .eq('company_id', companyId);
+        if (payUpdErr) return { ok: false, error: payUpdErr.message };
+      }
+    }
+
+    return { ok: true };
+  },
+
+  /**
+   * Pure manual journal (reference_type = journal): update header and/or replace lines. Does not touch created_at.
+   */
+  async updateManualJournalEntry(
+    companyId: string,
+    journalEntryId: string,
+    patch: {
+      entry_date?: string;
+      description?: string | null;
+      lines?: { account_id: string; debit: number; credit: number; description?: string | null }[];
+    }
+  ): Promise<{ ok: boolean; error?: string }> {
+    const { data: row, error: selErr } = await supabase
+      .from('journal_entries')
+      .select('id, reference_type, is_void')
+      .eq('company_id', companyId)
+      .eq('id', journalEntryId)
+      .maybeSingle();
+
+    if (selErr) return { ok: false, error: selErr.message };
+    if (!row) return { ok: false, error: 'Journal not found' };
+    if ((row as { is_void?: boolean }).is_void) return { ok: false, error: 'Void journal cannot be edited' };
+    const rt = String((row as { reference_type?: string }).reference_type || '').toLowerCase();
+    if (rt !== 'journal') {
+      return { ok: false, error: 'Only manual (journal) entries can be edited here; use Edit source for posted documents.' };
+    }
+
+    if (patch.entry_date !== undefined || patch.description !== undefined) {
+      const header: Record<string, unknown> = {};
+      if (patch.entry_date !== undefined) header.entry_date = String(patch.entry_date).slice(0, 10);
+      if (patch.description !== undefined) header.description = patch.description;
+      const { error: up } = await supabase
+        .from('journal_entries')
+        .update(header)
+        .eq('id', journalEntryId)
+        .eq('company_id', companyId);
+      if (up) return { ok: false, error: up.message };
+    }
+
+    if (patch.lines && patch.lines.length > 0) {
+      const td = patch.lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
+      const tc = patch.lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
+      if (Math.abs(td - tc) > 0.02) return { ok: false, error: 'Journal lines are not balanced' };
+      const { error: delErr } = await supabase.from('journal_entry_lines').delete().eq('journal_entry_id', journalEntryId);
+      if (delErr) return { ok: false, error: delErr.message };
+      const inserts = patch.lines.map((l) => ({
+        journal_entry_id: journalEntryId,
+        account_id: l.account_id,
+        debit: Number(l.debit) || 0,
+        credit: Number(l.credit) || 0,
+        description: l.description ?? null,
+      }));
+      const { error: insErr } = await supabase.from('journal_entry_lines').insert(inserts);
+      if (insErr) return { ok: false, error: insErr.message };
+    }
+
+    return { ok: true };
   },
 };

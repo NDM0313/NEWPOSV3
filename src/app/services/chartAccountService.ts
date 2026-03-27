@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { accountService } from './accountService';
+import { defaultAccountsService } from './defaultAccountsService';
+import { resolveCanonicalParentId, type AccountRow } from '@/app/lib/accountHierarchy';
 
 function roundMoneyOpening(n: number): number {
   return Math.round((Number(n) || 0) * 100) / 100;
@@ -49,11 +51,17 @@ export interface ChartAccount {
 // Map existing account_type enum to ChartAccount category
 function mapTypeToCategory(type: string): AccountCategory {
   const typeMap: Record<string, AccountCategory> = {
-    'asset': 'Assets',
-    'liability': 'Liabilities',
-    'equity': 'Equity',
-    'revenue': 'Income',
-    'expense': 'Expenses',
+    asset: 'Assets',
+    cash: 'Assets',
+    bank: 'Assets',
+    mobile_wallet: 'Assets',
+    receivable: 'Assets',
+    payable: 'Liabilities',
+    liability: 'Liabilities',
+    equity: 'Equity',
+    revenue: 'Income',
+    income: 'Income',
+    expense: 'Expenses',
   };
   return typeMap[type.toLowerCase()] || 'Expenses';
 }
@@ -92,8 +100,16 @@ function mapSubCategoryToSubtype(subCategory: string, category: AccountCategory)
 // Map existing accounts table row to ChartAccount
 function mapAccountToChartAccount(account: any, companyId: string): ChartAccount {
   // Determine nature based on type
-  const nature: AccountNature = 
-    account.type === 'asset' || account.type === 'expense' ? 'Debit' : 'Credit';
+  const tlow = String(account.type || '').toLowerCase();
+  const nature: AccountNature =
+    tlow === 'asset' ||
+    tlow === 'expense' ||
+    tlow === 'cash' ||
+    tlow === 'bank' ||
+    tlow === 'mobile_wallet' ||
+    tlow === 'receivable'
+      ? 'Debit'
+      : 'Credit';
   
   // Map subtype to sub_category (reverse mapping)
   const subCategoryMap: Record<string, string> = {
@@ -238,6 +254,32 @@ export const chartAccountService = {
       // Add optional parent_id only if provided
       if (accountData.parent_id) {
         cleanData.parent_id = accountData.parent_id;
+      }
+
+      await defaultAccountsService.ensureDefaultAccounts(companyId);
+      const subNorm = String(account.sub_category || '').trim().toLowerCase();
+      const liquidityBySub: Record<string, 'cash' | 'bank' | 'mobile_wallet'> = {
+        'cash — operating (child of 1000)': 'cash',
+        'bank — operating (child of 1010)': 'bank',
+        'mobile wallet — operating (child of 1020)': 'mobile_wallet',
+      };
+      const liqEntry = Object.entries(liquidityBySub).find(([k]) => k.toLowerCase() === subNorm);
+      if (account.category === 'Assets' && liqEntry) {
+        const liqRole = liqEntry[1];
+        cleanData.type = liqRole;
+        if (!cleanData.parent_id) {
+          const allRows = await accountService.getAllAccounts(companyId);
+          const rows: AccountRow[] = (allRows || []).map((a: any) => ({
+            id: a.id,
+            code: a.code,
+            name: a.name,
+            type: a.type,
+            parent_id: a.parent_id,
+            is_active: a.is_active,
+          }));
+          const pid = resolveCanonicalParentId(rows, liqRole);
+          if (pid) cleanData.parent_id = pid;
+        }
       }
       
       // Explicitly exclude fields that don't exist in schema:

@@ -39,6 +39,7 @@ export const ViewProductDetailsDrawer: React.FC<ViewProductDetailsDrawerProps> =
   isOpen,
   onClose,
   product,
+  onOpenStockHistory,
 }) => {
   const [productDetails, setProductDetails] = useState<any>(null);
   const [loading, setLoading] = useState(false);

@@ -25,6 +25,14 @@ export interface Transaction {
   linkedPayments?: string[];
   /** Set when reference (sale/purchase) is cancelled – show Cancelled badge and reversal text */
   referenceStatus?: 'cancelled';
+  /** Resolved GL cash/bank/wallet account name when payment_account_id is set */
+  paymentAccountDisplay?: string;
+  /** Raw payment_method from payments row (cash / bank / …) */
+  paymentMethodKind?: string;
+  /** Live ledger excludes voided; audit scope may show voided rows with this badge */
+  ledgerPaymentLifecycle?: 'active' | 'voided';
+  /** Manual receipt: invoice allocations + unapplied credit (expand in table views) */
+  ledgerExpandRows?: { label: string; sublabel?: string; amount: number }[];
 }
 
 /** Build transaction list with Opening Balance as first entry (for all views). */
@@ -77,6 +85,7 @@ export interface Payment {
   referenceNo: string;
   appliedInvoices: string[];
   status: 'Completed' | 'Pending' | 'Failed';
+  ledgerLifecycle?: 'active' | 'voided';
 }
 
 export interface DetailTransaction extends Transaction {

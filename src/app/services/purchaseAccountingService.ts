@@ -12,6 +12,7 @@
 import { supabase } from '@/lib/supabase';
 import { canPostAccountingForPurchaseStatus } from '@/app/lib/postingStatusGate';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
+import { resolvePayablePostingAccountId } from './partySubledgerAccountService';
 
 export type PurchaseAccountingSnapshot = {
   total: number;
@@ -165,6 +166,9 @@ export async function createPurchaseJournalEntry(params: {
     return existingId;
   }
 
+  const { data: purRow } = await supabase.from('purchases').select('supplier_id').eq('id', purchaseId).maybeSingle();
+  const supplierContactId = (purRow as { supplier_id?: string | null } | null)?.supplier_id ?? null;
+
   let inventoryAccountId: string | null = null;
   let apAccountId: string | null = null;
   let discountAccountId: string | null = null;
@@ -190,6 +194,8 @@ export async function createPurchaseJournalEntry(params: {
     .or('name.ilike.%Accounts Payable%,code.eq.2000');
   const apList = (apRows || []) as { id: string; code: string }[];
   apAccountId = apList.find((a) => a.code === '2000')?.id ?? apList[0]?.id ?? null;
+  const apPartyCreate = await resolvePayablePostingAccountId(companyId, supplierContactId || undefined);
+  if (apPartyCreate) apAccountId = apPartyCreate;
   const { data: discRows } = await supabase
     .from('accounts')
     .select('id, code')
@@ -302,6 +308,9 @@ export async function postPurchaseEditAdjustments(params: {
 
   const branchIdSafe = branchId && branchId !== 'all' ? branchId : undefined;
 
+  const { data: purSupplier } = await supabase.from('purchases').select('supplier_id').eq('id', purchaseId).maybeSingle();
+  const supplierContactId = (purSupplier as { supplier_id?: string | null } | null)?.supplier_id ?? null;
+
   // Phase 3: Payment isolation – only document deltas (inventory, AP, discount); never touch payment_id JEs.
   // Resolve accounts once. Phase 2: Inventory canonical = 1200; fallback 1500 then name.
   let inventoryAccountId: string | null = null;
@@ -319,11 +328,13 @@ export async function postPurchaseEditAdjustments(params: {
   const { data: apRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('name.ilike.%Accounts Payable%,code.eq.2000');
   const apList = (apRows || []) as { id: string; code: string }[];
   apAccountId = apList.find((a) => a.code === '2000')?.id ?? apList[0]?.id ?? null;
+  const apPartyId = await resolvePayablePostingAccountId(companyId, supplierContactId || undefined);
+  const effectiveApId = apPartyId || apAccountId;
   const { data: discRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('code.eq.5210,name.ilike.%Discount Received%,name.ilike.%Purchase Discount%,name.ilike.%Operating Expense%');
   const discList = (discRows || []) as { id: string; code: string }[];
   discountAccountId = discList.find((a) => a.code === '5210')?.id ?? discList[0]?.id ?? null;
 
-  if (!inventoryAccountId || !apAccountId) {
+  if (!inventoryAccountId || !effectiveApId) {
     console.warn('[purchaseAccountingService] Missing Inventory or AP account, skipping adjustments');
     return { adjustmentCount };
   }
@@ -337,12 +348,12 @@ export async function postPurchaseEditAdjustments(params: {
     if (deltaSubtotal > 0) {
       await postPurchaseAdjustmentJE(companyId, branchIdSafe, purchaseId, entryDate, createdBy, desc, [
         { accountId: inventoryAccountId, debit: deltaSubtotal, credit: 0, description: `Inventory – ${poNo}` },
-        { accountId: apAccountId, debit: 0, credit: deltaSubtotal, description: `Payable – ${supplierName}` },
+        { accountId: effectiveApId!, debit: 0, credit: deltaSubtotal, description: `Payable – ${supplierName}` },
       ]);
       adjustmentCount++;
     } else {
       await postPurchaseAdjustmentJE(companyId, branchIdSafe, purchaseId, entryDate, createdBy, desc, [
-        { accountId: apAccountId, debit: -deltaSubtotal, credit: 0, description: `Payable reversal – ${poNo}` },
+        { accountId: effectiveApId!, debit: -deltaSubtotal, credit: 0, description: `Payable reversal – ${poNo}` },
         { accountId: inventoryAccountId, debit: 0, credit: -deltaSubtotal, description: `Inventory reversal – ${poNo}` },
       ]);
       adjustmentCount++;
@@ -355,14 +366,14 @@ export async function postPurchaseEditAdjustments(params: {
     const desc = `Purchase adjustment – discount change (was Rs ${fmt(oldSnapshot.discount)}, now Rs ${fmt(newSnapshot.discount)}) – ${poNo}`;
     if (deltaDiscount > 0) {
       await postPurchaseAdjustmentJE(companyId, branchIdSafe, purchaseId, entryDate, createdBy, desc, [
-        { accountId: apAccountId, debit: deltaDiscount, credit: 0, description: `Purchase discount – ${poNo}` },
+        { accountId: effectiveApId!, debit: deltaDiscount, credit: 0, description: `Purchase discount – ${poNo}` },
         { accountId: discountAccountId, debit: 0, credit: deltaDiscount, description: `Discount received – ${poNo}` },
       ]);
       adjustmentCount++;
     } else {
       await postPurchaseAdjustmentJE(companyId, branchIdSafe, purchaseId, entryDate, createdBy, desc, [
         { accountId: discountAccountId, debit: -deltaDiscount, credit: 0, description: `Discount reversal – ${poNo}` },
-        { accountId: apAccountId, debit: 0, credit: -deltaDiscount, description: `Payable reversal – ${poNo}` },
+        { accountId: effectiveApId!, debit: 0, credit: -deltaDiscount, description: `Payable reversal – ${poNo}` },
       ]);
       adjustmentCount++;
     }
@@ -375,12 +386,12 @@ export async function postPurchaseEditAdjustments(params: {
     if (deltaOther > 0) {
       await postPurchaseAdjustmentJE(companyId, branchIdSafe, purchaseId, entryDate, createdBy, desc, [
         { accountId: inventoryAccountId, debit: deltaOther, credit: 0, description: `Freight/expense – ${poNo}` },
-        { accountId: apAccountId, debit: 0, credit: deltaOther, description: `Payable – ${poNo}` },
+        { accountId: effectiveApId!, debit: 0, credit: deltaOther, description: `Payable – ${poNo}` },
       ]);
       adjustmentCount++;
     } else {
       await postPurchaseAdjustmentJE(companyId, branchIdSafe, purchaseId, entryDate, createdBy, desc, [
-        { accountId: apAccountId, debit: -deltaOther, credit: 0, description: `Payable reversal – ${poNo}` },
+        { accountId: effectiveApId!, debit: -deltaOther, credit: 0, description: `Payable reversal – ${poNo}` },
         { accountId: inventoryAccountId, debit: 0, credit: -deltaOther, description: `Freight/expense reversal – ${poNo}` },
       ]);
       adjustmentCount++;

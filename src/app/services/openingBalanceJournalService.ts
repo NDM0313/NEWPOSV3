@@ -14,6 +14,8 @@ export const OPENING_BALANCE_REFERENCE = {
   CONTACT_AP: 'opening_balance_contact_ap',
   CONTACT_WORKER: 'opening_balance_contact_worker',
   GL_ACCOUNT: 'opening_balance_account',
+  /** One active JE per opening stock_movements row (reference_id = movement id). Dr Inventory / Cr Equity. */
+  INVENTORY_OPENING: 'opening_balance_inventory',
 } as const;
 
 const MONEY_EPS = 0.02;
@@ -84,6 +86,28 @@ async function voidJournalEntry(journalEntryId: string): Promise<void> {
   if (error) throw error;
 }
 
+/** Legacy: trigger posted stock_adjustment + expense; opening must use equity instead. */
+async function voidMisclassifiedStockAdjustmentJesForMovement(movementId: string): Promise<void> {
+  const { data: rows } = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('reference_type', 'stock_adjustment')
+    .eq('reference_id', movementId)
+    .or('is_void.is.null,is_void.eq.false');
+  for (const r of rows || []) {
+    await voidJournalEntry((r as { id: string }).id);
+  }
+}
+
+async function resolveInventoryAssetAccountId(companyId: string): Promise<string | null> {
+  await defaultAccountsService.ensureDefaultAccounts(companyId);
+  let id = await findAccountIdByCode(companyId, '1200');
+  if (id) return id;
+  const rows = await accountService.getAllAccounts(companyId);
+  const hit = (rows || []).find((a: any) => String(a.type ?? '').toLowerCase() === 'inventory');
+  return hit?.id ?? null;
+}
+
 async function sumLineOnAccount(journalEntryId: string, accountId: string): Promise<{ debit: number; credit: number }> {
   const { data, error } = await supabase
     .from('journal_entry_lines')
@@ -129,6 +153,8 @@ async function postBalancedOpening(params: {
   description: string;
   lines: { account_id: string; debit: number; credit: number; description: string }[];
   entryDate: string;
+  /** Optional stable entry_no (e.g. INV-OB-{movementPrefix}) */
+  entryNo?: string;
 }): Promise<void> {
   const totalDebit = roundMoney(params.lines.reduce((s, l) => s + l.debit, 0));
   const totalCredit = roundMoney(params.lines.reduce((s, l) => s + l.credit, 0));
@@ -141,6 +167,7 @@ async function postBalancedOpening(params: {
     id: '',
     company_id: params.companyId,
     branch_id: params.branchId,
+    entry_no: params.entryNo ?? `JE-OB-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
     entry_date: params.entryDate.slice(0, 10),
     description: params.description,
     reference_type: params.referenceType,
@@ -418,6 +445,79 @@ export const openingBalanceJournalService = {
       description: `Opening balance — account ${label}`,
       lines,
       entryDate: openingEntryDate(),
+    });
+  },
+
+  /**
+   * Canonical GL for `stock_movements` with reference_type = opening_balance.
+   * Dr Inventory (1200 or type inventory) / Cr Owner Capital (3000). reference_id = movement id.
+   * Voids active `stock_adjustment` JEs on the same movement (legacy wrong contra account).
+   */
+  async syncInventoryOpeningFromStockMovementId(movementId: string): Promise<void> {
+    const { data: m, error } = await supabase.from('stock_movements').select('*').eq('id', movementId).maybeSingle();
+    if (error || !m) {
+      if (error) console.warn('[openingBalanceJournalService] syncInventoryOpening load movement:', error.message);
+      return;
+    }
+    if (String(m.reference_type || '').toLowerCase().trim() !== 'opening_balance') return;
+    if (String(m.movement_type || '').toLowerCase().trim() !== 'adjustment') return;
+
+    const companyId = m.company_id as string;
+    await voidMisclassifiedStockAdjustmentJesForMovement(movementId);
+
+    const amt = roundMoney(
+      Number(m.total_cost) || (Number(m.quantity) || 0) * (Number(m.unit_cost) || 0) || 0
+    );
+
+    const invId = await resolveInventoryAssetAccountId(companyId);
+    if (!invId) {
+      console.warn(
+        '[openingBalanceJournalService] No inventory account (code 1200 or type inventory) for company',
+        companyId
+      );
+      return;
+    }
+
+    await defaultAccountsService.ensureDefaultAccounts(companyId);
+    const equityId = await resolveOpeningEquityAccountId(companyId);
+    const branchId = normalizeBranchId(m.branch_id as string | null);
+    const entryDate = String(m.created_at || new Date().toISOString()).slice(0, 10);
+
+    if (amt < MONEY_EPS) {
+      const ex = await findActiveOpeningEntry(companyId, OPENING_BALANCE_REFERENCE.INVENTORY_OPENING, movementId);
+      if (ex) await voidJournalEntry(ex.id);
+      return;
+    }
+
+    const ok = await reconcileOrVoidOpeningJe({
+      companyId,
+      referenceType: OPENING_BALANCE_REFERENCE.INVENTORY_OPENING,
+      referenceId: movementId,
+      primaryAccountId: invId,
+      expectedPrimaryNet: amt,
+    });
+    if (ok) return;
+
+    let productLabel = '';
+    try {
+      const { data: p } = await supabase.from('products').select('sku, name').eq('id', m.product_id).maybeSingle();
+      if (p) productLabel = `${(p as { sku?: string }).sku || ''} ${(p as { name?: string }).name || ''}`.trim();
+    } catch {
+      /* ignore */
+    }
+
+    await postBalancedOpening({
+      companyId,
+      branchId,
+      referenceType: OPENING_BALANCE_REFERENCE.INVENTORY_OPENING,
+      referenceId: movementId,
+      description: `Opening inventory${productLabel ? ` — ${productLabel}` : ''}`,
+      lines: [
+        { account_id: invId, debit: amt, credit: 0, description: 'Opening inventory (asset)' },
+        { account_id: equityId, debit: 0, credit: amt, description: 'Opening inventory offset (Owner Capital)' },
+      ],
+      entryDate,
+      entryNo: `INV-OB-${String(movementId).replace(/-/g, '').slice(0, 12)}`,
     });
   },
 };

@@ -77,6 +77,8 @@ export default function CustomerLedgerPageOriginal({
   const [reconLoading, setReconLoading] = useState(false);
   const [reconError, setReconError] = useState<string | null>(null);
   const [balanceRefreshTick, setBalanceRefreshTick] = useState(0);
+  /** When true, operational ledger includes voided manual/on-account/sale-linked payments (audit). Default: live only. */
+  const [showAuditPayments, setShowAuditPayments] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
   const [saleItemsMap, setSaleItemsMap] = useState<Map<string, any[]>>(new Map());
   const [studioDetailsMap, setStudioDetailsMap] = useState<Map<string, { notes?: string; productionStatus?: string }>>(new Map());
@@ -110,18 +112,22 @@ export default function CustomerLedgerPageOriginal({
       setOperationalError(null);
 
       // Load all data in parallel
+      const payScope = showAuditPayments ? 'audit' : 'live';
+      const ledgerOpts = { paymentScope: payScope as const };
       const [summary, transactions, invoices, payments, aging] = await Promise.all([
         customerLedgerAPI.getLedgerSummary(
           selectedCustomer.id,
           companyId,
           dateRange.from,
-          dateRange.to
+          dateRange.to,
+          ledgerOpts
         ),
         customerLedgerAPI.getTransactions(
           selectedCustomer.id,
           companyId,
           dateRange.from,
-          dateRange.to
+          dateRange.to,
+          ledgerOpts
         ),
         customerLedgerAPI.getInvoices(
           selectedCustomer.id,
@@ -133,7 +139,8 @@ export default function CustomerLedgerPageOriginal({
           selectedCustomer.id,
           companyId,
           dateRange.from,
-          dateRange.to
+          dateRange.to,
+          ledgerOpts
         ),
         customerLedgerAPI.getAgingReport(selectedCustomer.id, companyId),
       ]);
@@ -172,7 +179,7 @@ export default function CustomerLedgerPageOriginal({
     if (selectedCustomer && companyId) {
       loadLedgerData();
     }
-  }, [selectedCustomer, dateRange, companyId]);
+  }, [selectedCustomer, dateRange, companyId, showAuditPayments]);
 
   // Same refresh pattern as supplier/worker/user: listen for sale/payment/ledger events
   const loadLedgerRef = useRef<() => void>(() => {});
@@ -561,6 +568,15 @@ export default function CustomerLedgerPageOriginal({
               dateRange={dateRange}
               onApply={setDateRange}
             />
+            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none whitespace-nowrap">
+              <input
+                type="checkbox"
+                className="rounded border-gray-600 bg-gray-900"
+                checked={showAuditPayments}
+                onChange={(e) => setShowAuditPayments(e.target.checked)}
+              />
+              Show voided / audit payments
+            </label>
           </div>
         </header>
       )}
@@ -572,7 +588,18 @@ export default function CustomerLedgerPageOriginal({
             </Badge>
             Choose engine below; each tab has its own source of truth.
           </p>
-          <ModernDateFilter dateRange={dateRange} onApply={setDateRange} />
+          <div className="flex flex-wrap items-center gap-4">
+            <ModernDateFilter dateRange={dateRange} onApply={setDateRange} />
+            <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="rounded border-gray-600 bg-gray-900"
+                checked={showAuditPayments}
+                onChange={(e) => setShowAuditPayments(e.target.checked)}
+              />
+              Show voided / audit payments
+            </label>
+          </div>
         </div>
       )}
       <div className={embedded ? '' : 'flex-1 overflow-auto px-6 py-4'}>

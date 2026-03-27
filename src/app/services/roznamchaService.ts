@@ -5,7 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 
-export type AccountFilter = 'all' | 'cash' | 'bank';
+export type AccountFilter = 'all' | 'cash' | 'bank' | 'wallet';
 
 export interface RoznamchaRow {
   id: string;
@@ -22,7 +22,7 @@ export interface RoznamchaRow {
   cashOut: number;
   direction: 'IN' | 'OUT';
   amount: number;
-  accountType: 'cash' | 'bank' | null;
+  accountType: 'cash' | 'bank' | 'wallet' | null;
   /** Display label for Account column: "Cash", "Bank", "JazzCash", etc. */
   accountLabel: string;
   /** Resolved account name from accounts table when payment_account_id is set (e.g. "HBL Main", "CASH IN HAND") */
@@ -41,6 +41,7 @@ export interface RoznamchaSummary {
 export interface RoznamchaCashSplit {
   cash: number;
   bank: number;
+  wallet: number;
   total: number;
 }
 
@@ -74,6 +75,145 @@ function getTypeLabel(referenceType: string): string {
     manual_payment: 'Manual Payment',
   };
   return m[(referenceType || '').toLowerCase()] || referenceType || 'Payment';
+}
+
+/** Liquidity bucket for Roznamcha filters and cash split (payment account + method). */
+export type RoznamchaLiquidity = 'cash' | 'bank' | 'wallet';
+
+/** COA: mobile wallet / e-money sub-accounts use 102x (see AddAccountDrawer 1020, UnifiedPaymentDialog 102*). */
+function isWalletAccountCode(accountCode: string | null | undefined): boolean {
+  const c = String(accountCode || '').trim();
+  if (!c) return false;
+  const head = c.split(/[-–—\s]/)[0]?.replace(/\D/g, '') || '';
+  return head.length >= 3 && head.startsWith('102');
+}
+
+function walletDisplayLabel(accountName: string | null | undefined, methodHint: string): string {
+  const raw = (accountName || '').trim();
+  const low = raw.toLowerCase();
+  const mh = (methodHint || '').toLowerCase();
+  if (/jazz|jazzcash/i.test(raw) || /jazz|jazzcash/i.test(mh)) return 'JazzCash';
+  if (raw) return raw.length > 32 ? `${raw.slice(0, 29)}…` : raw;
+  if (/jazz|jazzcash/i.test(mh)) return 'JazzCash';
+  return 'Wallet';
+}
+
+/** Name / method hints for PK mobile wallets when DB stores method as `other` and type as `asset`. */
+function nameOrMethodLooksLikeWallet(name: string, method: string): boolean {
+  const n = name;
+  const m = method;
+  return (
+    /\bndm\b/i.test(n) ||
+    /\bndm\s*easy\b/i.test(n) ||
+    /\beasypaisa\b/i.test(n) ||
+    /\beasy\s*paisa\b/i.test(n) ||
+    /\bmobicash\b/i.test(n) ||
+    /\bfinja\b/i.test(n) ||
+    /\bupaisa\b/i.test(n) ||
+    /\bsadapay\b/i.test(n) ||
+    /\bnayapay\b/i.test(n) ||
+    /\bwallet\b/i.test(n) ||
+    /\bndm\b/i.test(m) ||
+    /\beasypaisa\b/i.test(m) ||
+    /\beasy\s*paisa\b/i.test(m) ||
+    /\bmobicash\b/i.test(m)
+  );
+}
+
+/**
+ * Classify a payment row for Roznamcha. Uses `accounts.type` and `accounts.code` (102x = wallet) so
+ * NDM Easy / custom wallet names work when `payment_method` is `other`.
+ */
+export function classifyRoznamchaLiquidity(
+  paymentMethod: string,
+  accountType: string | null | undefined,
+  accountName: string | null | undefined,
+  accountCode?: string | null | undefined
+): { liquidity: RoznamchaLiquidity | null; shortLabel: string } {
+  const m = (paymentMethod || '').toLowerCase().trim();
+  const t = String(accountType || '').toLowerCase().trim();
+  const n = (accountName || '').toLowerCase().trim();
+
+  if (isWalletAccountCode(accountCode)) {
+    return { liquidity: 'wallet', shortLabel: walletDisplayLabel(accountName, paymentMethod) };
+  }
+
+  if (t === 'mobile_wallet' || t === 'wallet') {
+    return { liquidity: 'wallet', shortLabel: walletDisplayLabel(accountName, paymentMethod) };
+  }
+  if (t === 'bank' || t === 'card') {
+    return { liquidity: 'bank', shortLabel: 'Bank' };
+  }
+  if (t === 'cash' || t === 'pos') {
+    return { liquidity: 'cash', shortLabel: 'Cash' };
+  }
+
+  if (
+    m === 'mobile_wallet' ||
+    /jazz|easypaisa|jazzcash|sadapay|nayapay|upaisa|ndm|mobicash|finja/.test(m) ||
+    /\bmobile[_\s-]*wallet\b/.test(m)
+  ) {
+    return { liquidity: 'wallet', shortLabel: walletDisplayLabel(accountName, paymentMethod) };
+  }
+  if (m === 'bank' || m === 'card' || /bank|card/.test(m)) {
+    return { liquidity: 'bank', shortLabel: 'Bank' };
+  }
+  if (m === 'cash' || /cash|drawer/.test(m)) {
+    return { liquidity: 'cash', shortLabel: 'Cash' };
+  }
+
+  if (n && nameOrMethodLooksLikeWallet(n, m)) {
+    return { liquidity: 'wallet', shortLabel: walletDisplayLabel(accountName, paymentMethod) };
+  }
+
+  if (m === 'other' && n) {
+    if (
+      /\b(jazz|easypaisa|jazzcash|sadapay|nayapay|mobile\s*wallet|ndm|mobicash|finja)\b/i.test(accountName || '') ||
+      /\bwallet\b/i.test(n)
+    ) {
+      return { liquidity: 'wallet', shortLabel: walletDisplayLabel(accountName, paymentMethod) };
+    }
+  }
+
+  return { liquidity: null, shortLabel: '—' };
+}
+
+/**
+ * Ref column for Roznamcha: expense rows show EXP-* (expense document / JE), not PAY-*.
+ * Does not affect referenceDisplay (payment ref + by user stays as-is).
+ */
+function roznamchaExpenseRefColumn(
+  p: { id: string; reference_type?: string | null; reference_id?: string | null; reference_number?: string | null },
+  expenseNoById: Map<string, string>,
+  jeByPaymentId: Map<string, string>
+): string {
+  const refType = String(p.reference_type || '').toLowerCase();
+  const defaultRef =
+    (p.reference_number && String(p.reference_number)) ||
+    `${p.reference_type || 'payment'}-${String(p.reference_id || '').slice(0, 8)}`;
+
+  if (refType !== 'expense') {
+    return defaultRef;
+  }
+
+  const eid = p.reference_id ? String(p.reference_id) : '';
+  if (eid && expenseNoById.has(eid)) {
+    return expenseNoById.get(eid)!;
+  }
+
+  const jeNo = (jeByPaymentId.get(p.id) || '').trim();
+  if (jeNo && /^EXP-/i.test(jeNo)) {
+    return jeNo;
+  }
+
+  const payRef = String(p.reference_number || '').trim();
+  const payMatch = payRef.match(/^PAY-(\d+)$/i);
+  if (payMatch) {
+    return `EXP-${payMatch[1]}`;
+  }
+
+  if (jeNo) return jeNo;
+  return defaultRef;
 }
 
 /** Fetch payments as roznamcha transactions (cash movements only) */
@@ -113,18 +253,73 @@ async function fetchPaymentRows(
   const { data, error } = await q;
   if (error) return [];
 
+  const paymentList = data || [];
+  const accountIds = [...new Set(paymentList.map((p: any) => p.payment_account_id).filter(Boolean))] as string[];
+  const expensePayments = paymentList.filter(
+    (p: any) => String((p as any).reference_type || '').toLowerCase() === 'expense'
+  );
+  const expenseEntityIds = [...new Set(expensePayments.map((p: any) => p.reference_id).filter(Boolean))] as string[];
+  const expensePaymentIds = expensePayments.map((p: any) => p.id as string);
+
+  const [accRes, expRes, jeRes] = await Promise.all([
+    accountIds.length > 0
+      ? supabase.from('accounts').select('id, name, type, code').in('id', accountIds)
+      : Promise.resolve({ data: [] as { id: string; name: string; type: string; code?: string | null }[] }),
+    expenseEntityIds.length > 0
+      ? supabase.from('expenses').select('id, expense_no').in('id', expenseEntityIds)
+      : Promise.resolve({ data: [] as { id: string; expense_no: string }[] }),
+    expensePaymentIds.length > 0
+      ? supabase
+          .from('journal_entries')
+          .select('payment_id, entry_no')
+          .in('payment_id', expensePaymentIds)
+          .eq('reference_type', 'expense')
+          .eq('company_id', companyId)
+      : Promise.resolve({ data: [] as { payment_id: string; entry_no: string }[] }),
+  ]);
+
+  const accountById = new Map<string, { name: string; type: string; code: string | null }>();
+  (accRes.data || []).forEach((a: any) => {
+    if (a?.id) {
+      accountById.set(a.id, {
+        name: (a.name || '').trim(),
+        type: String(a.type || ''),
+        code: a.code != null ? String(a.code).trim() : null,
+      });
+    }
+  });
+
+  const expenseNoById = new Map<string, string>();
+  (expRes.data || []).forEach((e: any) => {
+    if (e?.id && e.expense_no) expenseNoById.set(String(e.id), String(e.expense_no).trim());
+  });
+
+  const jeByPaymentId = new Map<string, string>();
+  for (const je of jeRes.data || []) {
+    const pid = (je as any).payment_id as string | undefined;
+    if (!pid) continue;
+    const eno = String((je as any).entry_no || '').trim();
+    const prev = jeByPaymentId.get(pid);
+    if (!prev) jeByPaymentId.set(pid, eno);
+    else if (/^EXP-/i.test(eno) && !/^EXP-/i.test(prev)) jeByPaymentId.set(pid, eno);
+  }
+
   const rows: RoznamchaRow[] = [];
-  for (const p of data || []) {
-    const method = String((p as any).payment_method || '').toLowerCase();
-    const isCash = method === 'cash' || /cash|drawer/i.test(method);
-    const isBank = method === 'bank' || /bank|card/i.test(method);
-    const isJazzCash = /jazz|mobile|wallet|easypaisa|jazzcash/i.test(method);
-    const accountType: 'cash' | 'bank' | null = isCash ? 'cash' : isBank ? 'bank' : null;
-    const accountLabel = isCash ? 'Cash' : isBank ? 'Bank' : isJazzCash ? 'JazzCash' : '—';
+  for (const p of paymentList) {
+    const aid = (p as any).payment_account_id as string | null | undefined;
+    const meta = aid ? accountById.get(aid) : undefined;
+    const methodRaw = String((p as any).payment_method || '');
+    const { liquidity, shortLabel } = classifyRoznamchaLiquidity(
+      methodRaw,
+      meta?.type,
+      meta?.name,
+      meta?.code
+    );
 
     if (accountFilter !== 'all') {
-      if (accountFilter === 'cash' && !isCash) continue;
-      if (accountFilter === 'bank' && !isBank) continue;
+      if (accountFilter === 'cash' && liquidity !== 'cash') continue;
+      if (accountFilter === 'bank' && liquidity !== 'bank') continue;
+      if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
     }
 
     const amount = Number(p.amount) || 0;
@@ -132,7 +327,16 @@ async function fetchPaymentRows(
     const dateStr = (p as any).payment_date || '';
     const createdAt = (p as any).created_at ? new Date((p as any).created_at) : new Date();
     const timeStr = createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-    const ref = (p as any).reference_number || (p as any).reference_type + '-' + String((p as any).reference_id || '').slice(0, 8);
+    const ref = roznamchaExpenseRefColumn(
+      {
+        id: (p as any).id,
+        reference_type: (p as any).reference_type,
+        reference_id: (p as any).reference_id,
+        reference_number: (p as any).reference_number,
+      },
+      expenseNoById,
+      jeByPaymentId
+    );
     const details = getTypeLabel((p as any).reference_type) || (p as any).notes || '—';
     // referenceDisplay set below from sale invoice_no / purchase po_no when applicable
     const referenceDisplay = '';
@@ -149,16 +353,17 @@ async function fetchPaymentRows(
       cashOut: direction === 'OUT' ? amount : 0,
       direction,
       amount,
-      accountType,
-      accountLabel,
+      accountType: liquidity,
+      accountLabel: shortLabel,
+      accountName: meta?.name || null,
       branchId: (p as any).branch_id ?? null,
       type: getTypeLabel((p as any).reference_type),
     } as RoznamchaRow);
   }
 
   // Resolve referenceDisplay: sale → Invoice SL-xxx, purchase → PO-xxx, else payment reference_number or notes
-  const saleIds = [...new Set((data || []).filter((p: any) => (p as any).reference_type === 'sale').map((p: any) => (p as any).reference_id).filter(Boolean))] as string[];
-  const purchaseIds = [...new Set((data || []).filter((p: any) => (p as any).reference_type === 'purchase').map((p: any) => (p as any).reference_id).filter(Boolean))] as string[];
+  const saleIds = [...new Set(paymentList.filter((p: any) => (p as any).reference_type === 'sale').map((p: any) => (p as any).reference_id).filter(Boolean))] as string[];
+  const purchaseIds = [...new Set(paymentList.filter((p: any) => (p as any).reference_type === 'purchase').map((p: any) => (p as any).reference_id).filter(Boolean))] as string[];
 
   const saleInvoiceByRefId = new Map<string, string>();
   const purchasePoByRefId = new Map<string, string>();
@@ -175,7 +380,7 @@ async function fetchPaymentRows(
     });
   }
 
-  const paymentById = new Map((data || []).map((p: any) => [(p as any).id, p]));
+  const paymentById = new Map(paymentList.map((p: any) => [(p as any).id, p]));
   rows.forEach((r) => {
     const pay = paymentById.get(r.id) as any;
     if (!pay) return;
@@ -192,7 +397,7 @@ async function fetchPaymentRows(
 
   // Resolve "by [user]" from created_by || received_by (sale = received_by, purchase = received_by, old rows may have created_by only)
   const allUserIds = [...new Set(
-    (data || []).flatMap((p: any) => [(p as any).created_by, (p as any).received_by].filter(Boolean))
+    paymentList.flatMap((p: any) => [(p as any).created_by, (p as any).received_by].filter(Boolean))
   )] as string[];
   if (allUserIds.length > 0) {
     const nameByUserId = new Map<string, string>();
@@ -214,18 +419,6 @@ async function fetchPaymentRows(
     });
   }
 
-  // Resolve payment_account_id to actual account name from accounts table
-  const accountIds = [...new Set((data || []).map((p: any) => (p as any).payment_account_id).filter(Boolean))] as string[];
-  if (accountIds.length > 0) {
-    const { data: accounts } = await supabase.from('accounts').select('id, name').in('id', accountIds);
-    const nameByAccountId = new Map<string, string>((accounts || []).map((a: any) => [a.id, (a.name || '').trim()]));
-    rows.forEach((r) => {
-      const p = paymentById.get(r.id) as any;
-      const aid = p?.payment_account_id;
-      if (aid) r.accountName = nameByAccountId.get(aid) || null;
-    });
-  }
-
   return rows;
 }
 
@@ -238,7 +431,7 @@ export async function getOpeningBalance(
 ): Promise<number> {
   let q = supabase
     .from('payments')
-    .select('amount, payment_type, payment_method')
+    .select('amount, payment_type, payment_method, payment_account_id')
     .eq('company_id', companyId)
     .lt('payment_date', beforeDate);
 
@@ -246,14 +439,36 @@ export async function getOpeningBalance(
   const { data, error } = await q;
   if (error) return 0;
 
+  const list = data || [];
+  const obAccountIds = [...new Set(list.map((p: any) => p.payment_account_id).filter(Boolean))] as string[];
+  const obAccountById = new Map<string, { name: string; type: string; code: string | null }>();
+  if (obAccountIds.length > 0) {
+    const { data: accounts } = await supabase.from('accounts').select('id, name, type, code').in('id', obAccountIds);
+    (accounts || []).forEach((a: any) => {
+      if (a?.id) {
+        obAccountById.set(a.id, {
+          name: (a.name || '').trim(),
+          type: String(a.type || ''),
+          code: a.code != null ? String(a.code).trim() : null,
+        });
+      }
+    });
+  }
+
   let total = 0;
-  for (const p of data || []) {
+  for (const p of list) {
+    const aid = (p as any).payment_account_id as string | null | undefined;
+    const meta = aid ? obAccountById.get(aid) : undefined;
+    const { liquidity } = classifyRoznamchaLiquidity(
+      String((p as any).payment_method || ''),
+      meta?.type,
+      meta?.name,
+      meta?.code
+    );
     if (accountFilter !== 'all') {
-      const method = String((p as any).payment_method || '').toLowerCase();
-      const isCash = method === 'cash' || /cash|drawer/i.test(method);
-      const isBank = method === 'bank' || /bank|card/i.test(method);
-      if (accountFilter === 'cash' && !isCash) continue;
-      if (accountFilter === 'bank' && !isBank) continue;
+      if (accountFilter === 'cash' && liquidity !== 'cash') continue;
+      if (accountFilter === 'bank' && liquidity !== 'bank') continue;
+      if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
     }
     const amount = Number(p.amount) || 0;
     const dir = getDirection((p as any).payment_type);
@@ -280,16 +495,19 @@ function buildSummaryAndRunning(
 
   let cash = 0;
   let bank = 0;
+  let wallet = 0;
   for (const r of rows) {
     const delta = r.direction === 'IN' ? r.amount : -r.amount;
-    if (r.accountType === 'cash') cash += delta;
+    if (r.accountType === 'wallet') wallet += delta;
     else if (r.accountType === 'bank') bank += delta;
+    else if (r.accountType === 'cash') cash += delta;
     else cash += delta;
   }
   cash += openingBalance;
   const cashSplit: RoznamchaCashSplit = {
     cash: Math.round(cash * 100) / 100,
     bank: Math.round(bank * 100) / 100,
+    wallet: Math.round(wallet * 100) / 100,
     total: closingBalance,
   };
 

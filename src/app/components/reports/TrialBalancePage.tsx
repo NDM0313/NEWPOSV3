@@ -4,7 +4,12 @@ import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
-import { accountingReportsService, TrialBalanceResult, TrialBalanceRow } from '@/app/services/accountingReportsService';
+import {
+  accountingReportsService,
+  TrialBalanceResult,
+  TrialBalanceRow,
+  type TrialBalanceArApMode,
+} from '@/app/services/accountingReportsService';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
 import { AccountLedgerView } from '@/app/components/accounting/AccountLedgerView';
 
@@ -49,6 +54,7 @@ export const TrialBalancePage: React.FC<{
   const [data, setData] = useState<TrialBalanceResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [ledgerRow, setLedgerRow] = useState<TrialBalanceRow | null>(null);
+  const [arApMode, setArApMode] = useState<TrialBalanceArApMode>('flat');
 
   useEffect(() => {
     if (!companyId || !startDate || !endDate) {
@@ -58,11 +64,11 @@ export const TrialBalancePage: React.FC<{
     }
     setLoading(true);
     accountingReportsService
-      .getTrialBalance(companyId, startDate, endDate, branchId)
+      .getTrialBalance(companyId, startDate, endDate, branchId, { arApMode })
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [companyId, startDate, endDate, branchId]);
+  }, [companyId, startDate, endDate, branchId, arApMode]);
 
   /** Debit−Credit; negative on receivable-type assets usually indicates mis-posting or legacy journals. */
   const creditHeavyAssetRows = useMemo(() => {
@@ -124,6 +130,20 @@ export const TrialBalancePage: React.FC<{
         </div>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="text-xs text-gray-500 flex items-center gap-2">
+            AR / AP view
+            <select
+              value={arApMode}
+              onChange={(e) => setArApMode(e.target.value as TrialBalanceArApMode)}
+              className="bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-white"
+            >
+              <option value="flat">All accounts (GL lines)</option>
+              <option value="summary">Summary (AR + AP rolled to control)</option>
+              <option value="expanded">Expanded (control + party subledgers)</option>
+            </select>
+          </label>
+        </div>
         <p className="text-sm text-gray-400">
           Period: {startDate} to {endDate}
           {data.rows.length > 0 && (
@@ -176,8 +196,16 @@ export const TrialBalancePage: React.FC<{
                   key={row.account_id}
                   className={creditHeavyAsset ? 'bg-amber-500/10 hover:bg-amber-500/15' : 'hover:bg-gray-800/30'}
                 >
-                  <td className="p-3 font-mono text-gray-300">{row.account_code}</td>
-                  <td className="p-3 text-white">{row.account_name}</td>
+                  <td className="p-3 font-mono text-gray-300">
+                    <span style={{ paddingLeft: (row.presentationIndent || 0) * 16 }} className="inline-block">
+                      {row.account_code}
+                    </span>
+                  </td>
+                  <td className="p-3 text-white">
+                    <span style={{ paddingLeft: (row.presentationIndent || 0) * 16 }} className="inline-block">
+                      {row.account_name}
+                    </span>
+                  </td>
                   <td className="p-3 text-gray-400">{row.account_type}</td>
                   <td className="p-3 text-right text-gray-300">{row.debit ? formatCurrency(row.debit) : '—'}</td>
                   <td className="p-3 text-right text-gray-300">{row.credit ? formatCurrency(row.credit) : '—'}</td>

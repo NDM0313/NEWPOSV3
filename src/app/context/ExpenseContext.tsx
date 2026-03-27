@@ -3,11 +3,27 @@
 // ============================================
 // Manages expenses with auto-numbering and accounting integration
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { expenseService, Expense as SupabaseExpense } from '@/app/services/expenseService';
+import { accountingService } from '@/app/services/accountingService';
+import { voidJournalEntries } from '@/app/services/accountingIntegrityService';
+import {
+  assertDomainEditSafetyTestMode,
+  buildExpenseCanonicalComparisonRows,
+  classifyPaidExpenseEdit,
+  type ExpenseEditClassification,
+  type PaidExpenseSnapshot,
+} from '@/app/lib/accountingEditClassification';
+import { normalizeNullableText } from '@/app/lib/expenseEditCanonical';
+import { formatFieldChangeLines, logDocumentEditActivity } from '@/app/lib/documentEditActivityLog';
+import {
+  createExpenseEditTraceId,
+  pushExpenseEditTrace,
+} from '@/app/lib/expenseEditTrace';
+import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
 // ============================================
@@ -33,6 +49,8 @@ export interface Expense {
   amount: number;
   date: string;
   paymentMethod: string;
+  /** Chart payment account UUID when stored on the expense row */
+  paymentAccountId?: string;
   payeeName: string;
   location: string;
   status: ExpenseStatus;
@@ -50,7 +68,7 @@ interface ExpenseContextType {
   loading: boolean;
   getExpenseById: (id: string) => Expense | undefined;
   createExpense: (expense: Omit<Expense, 'id' | 'expenseNo' | 'createdAt' | 'updatedAt'> & { category: ExpenseCategory | string }, options?: { branchId?: string; payment_account_id?: string; paidToUserId?: string }) => Promise<Expense>;
-  updateExpense: (id: string, updates: Partial<Expense>) => Promise<void>;
+  updateExpense: (id: string, updates: Partial<Expense>, options?: { silent?: boolean }) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   approveExpense: (id: string, approvedBy: string) => Promise<void>;
   rejectExpense: (id: string) => Promise<void>;
@@ -79,7 +97,9 @@ export const useExpenses = () => {
         loading: false,
         getExpenseById: () => undefined,
         createExpense: defaultError,
-        updateExpense: defaultError,
+        updateExpense: async () => {
+          defaultError();
+        },
         deleteExpense: defaultError,
         recordPayment: defaultError,
         getExpensesByDateRange: () => [],
@@ -101,6 +121,8 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const accounting = useAccounting();
   const { companyId, branchId, user, requiresBranchSelection } = useSupabase();
+  /** Serialize updates per expense so two saves cannot both reverse+repost the same JE. */
+  const expenseUpdateChainRef = useRef<Map<string, Promise<unknown>>>(new Map());
 
   // Map category from app format to Supabase format (accepts slug string from expense_categories)
   const mapCategoryToSupabase = (category: ExpenseCategory | string): string => {
@@ -148,7 +170,12 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       amount: supabaseExpense.amount || 0,
       date: supabaseExpense.expense_date || new Date().toISOString().split('T')[0],
       paymentMethod: supabaseExpense.payment_method || 'Cash',
-      payeeName: supabaseExpense.vendor_name || '',
+      paymentAccountId: supabaseExpense.payment_account_id || undefined,
+      payeeName:
+        supabaseExpense.vendor_name ||
+        supabaseExpense.supplier_name ||
+        supabaseExpense.payee_name ||
+        '',
       location: supabaseExpense.branch_id || '',
       status: supabaseExpense.status || 'draft',
       submittedBy: supabaseExpense.created_by_user?.full_name || supabaseExpense.created_by || '',
@@ -224,6 +251,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       };
       if (options?.payment_account_id) supabaseExpense.payment_account_id = options.payment_account_id;
       if (options?.paidToUserId) (supabaseExpense as any).paid_to_user_id = options.paidToUserId;
+      if (expenseData.payeeName?.trim()) (supabaseExpense as any).vendor_name = expenseData.payeeName.trim();
 
       // Save to Supabase
       const result = await expenseService.createExpense(supabaseExpense);
@@ -243,11 +271,9 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       if (newExpense.status === 'paid') {
         accounting.recordExpense({
           expenseId: newExpense.id,
-          expenseNo: newExpense.expenseNo,
           category: newExpense.category,
           amount: newExpense.amount,
           paymentMethod: newExpense.paymentMethod,
-          payeeName: newExpense.payeeName,
           date: newExpense.date,
           description: newExpense.description,
         });
@@ -264,10 +290,56 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Update expense
-  const updateExpense = async (id: string, updates: Partial<Expense>): Promise<void> => {
+  const updateExpense = async (
+    id: string,
+    updates: Partial<Expense> & { paymentAccountId?: string },
+    options?: { silent?: boolean }
+  ): Promise<void> => {
+    const prev = expenseUpdateChainRef.current.get(id) ?? Promise.resolve();
+    const next = prev.then(() => updateExpenseBody(id, updates, options));
+    expenseUpdateChainRef.current.set(id, next);
     try {
-      // Convert updates to Supabase format
-      const supabaseUpdates: any = {};
+      await next;
+    } finally {
+      if (expenseUpdateChainRef.current.get(id) === next) {
+        expenseUpdateChainRef.current.delete(id);
+      }
+    }
+  };
+
+  const updateExpenseBody = async (
+    id: string,
+    updates: Partial<Expense> & { paymentAccountId?: string },
+    options?: { silent?: boolean }
+  ): Promise<void> => {
+    const traceId = createExpenseEditTraceId(id);
+    try {
+      const existing = getExpenseById(id);
+      if (!existing) throw new Error('Expense not found');
+      pushExpenseEditTrace({
+        traceId,
+        ts: new Date().toISOString(),
+        expenseId: id,
+        companyId: companyId || null,
+        phase: 'start',
+        data: {
+          oldSnapshot: {
+            status: existing.status,
+            amount: existing.amount,
+            category: existing.category,
+            paymentMethod: existing.paymentMethod,
+            paymentAccountId: existing.paymentAccountId || null,
+            date: existing.date,
+            location: existing.location,
+            description: existing.description,
+            notes: existing.notes || null,
+            payeeName: existing.payeeName || null,
+          },
+          updates,
+        },
+      });
+
+      const supabaseUpdates: Record<string, unknown> = {};
       if (updates.category !== undefined) supabaseUpdates.category = mapCategoryToSupabase(updates.category);
       if (updates.status !== undefined) supabaseUpdates.status = updates.status;
       if (updates.amount !== undefined) supabaseUpdates.amount = updates.amount;
@@ -277,20 +349,380 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       if (updates.notes !== undefined) supabaseUpdates.notes = updates.notes;
       if (updates.approvedBy !== undefined) supabaseUpdates.approved_by = updates.approvedBy;
       if (updates.approvedDate !== undefined) supabaseUpdates.approved_at = updates.approvedDate;
+      if (updates.date !== undefined) supabaseUpdates.expense_date = updates.date;
+      if (updates.location !== undefined) supabaseUpdates.branch_id = updates.location;
+      const pAcc = updates.paymentAccountId;
+      if (pAcc !== undefined) supabaseUpdates.payment_account_id = pAcc || null;
 
-      // Update in Supabase
-      await expenseService.updateExpense(id, supabaseUpdates);
-      
-      // Update local state
-      setExpenses(prev => prev.map(expense => 
-        expense.id === id 
-          ? { ...expense, ...updates, updatedAt: new Date().toISOString() }
-          : expense
-      ));
-      
-      toast.success('Expense updated successfully!');
+      const mergedPaymentMethod = updates.paymentMethod ?? existing.paymentMethod;
+      const mergedAmount = updates.amount ?? existing.amount;
+      const mergedCategory = updates.category ?? existing.category;
+      const mergedDescription = updates.description ?? existing.description;
+      const mergedDate = updates.date ?? existing.date;
+
+      const existingSnap: PaidExpenseSnapshot = {
+        status: existing.status,
+        amount: Number(existing.amount) || 0,
+        paymentMethod: existing.paymentMethod,
+        date: existing.date,
+        location: existing.location,
+        paymentAccountId: existing.paymentAccountId,
+        category: String(existing.category),
+        description: existing.description || '',
+        notes: existing.notes ?? null,
+        payeeName: existing.payeeName ?? null,
+      };
+
+      const classification: ExpenseEditClassification = companyId
+        ? classifyPaidExpenseEdit(existingSnap, updates, companyId)
+        : {
+            kind: 'NO_POSTING_CHANGE',
+            reasons: ['no company context'],
+            changedFields: [],
+            postingChangedFields: [],
+            headerOnlyChangedFields: [],
+            nonPostingChangedFields: [],
+            affectedDomains: [],
+            domains: { header: false, accounting: false, inventory: false, payments: false },
+            headerChangedFields: [],
+            accountingChangedFields: [],
+            inventoryChangedFields: [],
+            actionPlan: {
+              updateHeader: false,
+              adjustAccounting: false,
+              adjustInventory: false,
+              touchPayments: false,
+            },
+            rollbackReversalOnRepostFailure: false,
+          };
+      assertDomainEditSafetyTestMode(classification, 'expense updateExpense');
+      pushExpenseEditTrace({
+        traceId,
+        ts: new Date().toISOString(),
+        expenseId: id,
+        companyId: companyId || null,
+        phase: 'classified',
+        data: {
+          classifier: classification.kind,
+          affectedDomains: classification.affectedDomains,
+          actionPlan: classification.actionPlan,
+          reasons: classification.reasons,
+          changedFields: classification.changedFields || [],
+          postingChangedFields: classification.postingChangedFields || [],
+          headerOnlyChangedFields: classification.headerOnlyChangedFields || [],
+          nonPostingChangedFields: classification.nonPostingChangedFields || [],
+          headerChangedFields: classification.headerChangedFields || [],
+          accountingChangedFields: classification.accountingChangedFields || [],
+          inventoryChangedFields: classification.inventoryChangedFields || [],
+          canonicalComparison: buildExpenseCanonicalComparisonRows(existingSnap, updates),
+        },
+      });
+
+      const hardBlockPosting = (op: 'reversal' | 'repost') => {
+        if (classification.kind === 'FULL_REVERSE_REPOST' || classification.kind === 'DELTA_ADJUSTMENT') return;
+        const stack = new Error(`[EXPENSE EDIT] blocked ${op} for ${classification.kind}`).stack;
+        pushExpenseEditTrace({
+          traceId,
+          ts: new Date().toISOString(),
+          expenseId: id,
+          companyId: companyId || null,
+          phase: 'error',
+          data: {
+            blockedOperation: op,
+            classifier: classification.kind,
+            stack,
+          },
+        });
+        throw new Error(`Blocked ${op}: classifier=${classification.kind}. This edit is non-financial.`);
+      };
+
+      const persistExpenseRow = async () => {
+        if (Object.keys(supabaseUpdates).length > 0) {
+          pushExpenseEditTrace({
+            traceId,
+            ts: new Date().toISOString(),
+            expenseId: id,
+            companyId: companyId || null,
+            phase: 'db_update',
+            data: { supabaseUpdates },
+          });
+          await expenseService.updateExpense(id, supabaseUpdates as Partial<SupabaseExpense>);
+        }
+      };
+
+      const logHeaderOnlyActivity = async () => {
+        if (!companyId || !user?.id) return;
+        const rows: Parameters<typeof formatFieldChangeLines>[0] = [];
+        if (updates.date !== undefined && updates.date !== existing.date) {
+          rows.push({
+            field: 'expense_date',
+            label: 'Expense date',
+            oldValue: existing.date,
+            newValue: updates.date,
+          });
+        }
+        if (
+          updates.notes !== undefined &&
+          normalizeNullableText(updates.notes) !== normalizeNullableText(existing.notes)
+        ) {
+          rows.push({
+            field: 'notes',
+            label: 'Notes',
+            oldValue: existing.notes ?? '',
+            newValue: updates.notes ?? '',
+          });
+        }
+        if (
+          updates.description !== undefined &&
+          String(updates.description ?? '').trim() !== String(existing.description ?? '').trim()
+        ) {
+          rows.push({
+            field: 'description',
+            label: 'Description',
+            oldValue: existing.description,
+            newValue: updates.description,
+          });
+        }
+        if (
+          updates.payeeName !== undefined &&
+          normalizeNullableText(updates.payeeName) !== normalizeNullableText(existing.payeeName)
+        ) {
+          rows.push({
+            field: 'payee',
+            label: 'Payee',
+            oldValue: existing.payeeName ?? '',
+            newValue: updates.payeeName ?? '',
+          });
+        }
+        const lines = formatFieldChangeLines(rows);
+        if (lines.length === 0) return;
+        await logDocumentEditActivity({
+          companyId,
+          module: 'expense',
+          entityId: id,
+          entityReference: existing.expenseNo,
+          action: 'expense_header_edited',
+          lines,
+          performedBy: user.id,
+        });
+      };
+
+      if (classification.kind === 'BLOCKED_CLOSED_PERIOD') {
+        throw new Error('This expense date falls in a locked accounting period. Change the date or ask an admin.');
+      }
+
+      if (classification.kind === 'NO_POSTING_CHANGE') {
+        await persistExpenseRow();
+        await logHeaderOnlyActivity();
+      } else if (classification.kind === 'HEADER_ONLY_CHANGE') {
+        await persistExpenseRow();
+        await logHeaderOnlyActivity();
+        const presentation = classification.presentation || {};
+        const patch = await accountingService.patchExpensePostingPresentation({
+          companyId: companyId!,
+          expenseId: id,
+          entryDate: presentation.entryDate,
+          journalDescription: presentation.journalDescription,
+        });
+        if (!patch.ok) {
+          throw new Error(patch.error || 'Could not update expense journal header (no reversal was posted).');
+        }
+        pushExpenseEditTrace({
+          traceId,
+          ts: new Date().toISOString(),
+          expenseId: id,
+          companyId: companyId || null,
+          phase: 'header_patch',
+          data: {
+            entryDate: presentation.entryDate || null,
+            journalDescription: presentation.journalDescription || null,
+          },
+        });
+      } else if (
+        (classification.kind === 'FULL_REVERSE_REPOST' || classification.kind === 'DELTA_ADJUSTMENT') &&
+        companyId
+      ) {
+        const { data: jeRow } = await supabase
+          .from('journal_entries')
+          .select('id')
+          .eq('company_id', companyId)
+          .eq('reference_type', 'expense')
+          .eq('reference_id', id)
+          .or('is_void.is.null,is_void.eq.false')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const jeId = (jeRow as { id?: string } | null)?.id;
+        if (jeId) {
+          const { data: revRow } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('company_id', companyId)
+            .eq('reference_type', 'correction_reversal')
+            .eq('reference_id', jeId)
+            .or('is_void.is.null,is_void.eq.false')
+            .limit(1)
+            .maybeSingle();
+
+          const { data: auth } = await supabase.auth.getUser();
+          const uid = (auth?.user as { id?: string } | undefined)?.id ?? null;
+          const validBranchId = branchId && branchId !== 'all' ? branchId : null;
+
+          let newReversalId: string | null = null;
+          try {
+            if (!revRow) {
+              hardBlockPosting('reversal');
+              pushExpenseEditTrace({
+                traceId,
+                ts: new Date().toISOString(),
+                expenseId: id,
+                companyId: companyId || null,
+                phase: 'reversal_start',
+                data: { originalJournalEntryId: jeId },
+              });
+              const revResult = await accountingService.createReversalEntry(
+                companyId,
+                validBranchId,
+                jeId,
+                uid,
+                'Expense edit — reverse prior posting'
+              );
+              if (!revResult) {
+                throw new Error('Could not reverse the posted journal entry. Nothing was changed.');
+              }
+              if (!revResult.alreadyExisted) newReversalId = revResult.id;
+              pushExpenseEditTrace({
+                traceId,
+                ts: new Date().toISOString(),
+                expenseId: id,
+                companyId: companyId || null,
+                phase: 'reversal_done',
+                data: {
+                  reversalId: revResult.id,
+                  alreadyExisted: revResult.alreadyExisted,
+                },
+              });
+            }
+            hardBlockPosting('repost');
+            pushExpenseEditTrace({
+              traceId,
+              ts: new Date().toISOString(),
+              expenseId: id,
+              companyId: companyId || null,
+              phase: 'repost_start',
+              data: {
+                amount: Number(mergedAmount) || 0,
+                paymentMethod: mergedPaymentMethod,
+                date: mergedDate,
+                category: String(mergedCategory),
+              },
+            });
+            const reposted = await accounting.recordExpense({
+              expenseId: id,
+              category: String(mergedCategory),
+              amount: Number(mergedAmount) || 0,
+              paymentMethod: mergedPaymentMethod as any,
+              description: mergedDescription || String(mergedCategory),
+              date: mergedDate,
+            });
+            if (!reposted) {
+              throw new Error('Reposting the expense failed. Check Accounting and retry.');
+            }
+            pushExpenseEditTrace({
+              traceId,
+              ts: new Date().toISOString(),
+              expenseId: id,
+              companyId: companyId || null,
+              phase: 'repost_done',
+              data: { reposted: true },
+            });
+          } catch (repostErr) {
+            if (newReversalId) {
+              try {
+                await voidJournalEntries(
+                  companyId,
+                  [newReversalId],
+                  'Expense repost failed — voided compensating reversal (books restored to pre-edit posting).'
+                );
+                pushExpenseEditTrace({
+                  traceId,
+                  ts: new Date().toISOString(),
+                  expenseId: id,
+                  companyId: companyId || null,
+                  phase: 'compensating_void',
+                  data: { reversalId: newReversalId, ok: true },
+                });
+              } catch (voidErr) {
+                console.error(
+                  '[EXPENSE CONTEXT] CRITICAL: repost failed and compensating void failed — manual JE cleanup may be required',
+                  voidErr
+                );
+                pushExpenseEditTrace({
+                  traceId,
+                  ts: new Date().toISOString(),
+                  expenseId: id,
+                  companyId: companyId || null,
+                  phase: 'compensating_void',
+                  data: { reversalId: newReversalId, ok: false, error: (voidErr as any)?.message || String(voidErr) },
+                });
+              }
+            }
+            throw repostErr;
+          }
+        }
+        await persistExpenseRow();
+      } else {
+        await persistExpenseRow();
+      }
+
+      setExpenses((prev) =>
+        prev.map((expense) => {
+          if (expense.id !== id) return expense;
+          return {
+            ...expense,
+            ...updates,
+            paymentAccountId:
+              updates.paymentAccountId !== undefined ? updates.paymentAccountId : expense.paymentAccountId,
+            category:
+              updates.category !== undefined
+                ? mapCategoryFromSupabase(mapCategoryToSupabase(updates.category))
+                : expense.category,
+            payeeName:
+              updates.payeeName !== undefined ? updates.payeeName || '' : expense.payeeName,
+            notes: updates.notes !== undefined ? updates.notes : expense.notes,
+            description:
+              updates.description !== undefined ? updates.description : expense.description,
+            date: updates.date !== undefined ? updates.date : expense.date,
+            amount: updates.amount !== undefined ? updates.amount : expense.amount,
+            paymentMethod:
+              updates.paymentMethod !== undefined ? updates.paymentMethod : expense.paymentMethod,
+            location: updates.location !== undefined ? updates.location : expense.location,
+            status: updates.status !== undefined ? updates.status : expense.status,
+            updatedAt: new Date().toISOString(),
+          };
+        })
+      );
+
+      if (!options?.silent) toast.success('Expense updated successfully!');
+      void accounting.refreshEntries();
+      pushExpenseEditTrace({
+        traceId,
+        ts: new Date().toISOString(),
+        expenseId: id,
+        companyId: companyId || null,
+        phase: 'done',
+        data: { classifier: classification.kind },
+      });
     } catch (error: any) {
       console.error('[EXPENSE CONTEXT] Error updating expense:', error);
+      pushExpenseEditTrace({
+        traceId,
+        ts: new Date().toISOString(),
+        expenseId: id,
+        companyId: companyId || null,
+        phase: 'error',
+        data: { message: error?.message || String(error) },
+      });
       toast.error(`Failed to update expense: ${error.message || 'Unknown error'}`);
       throw error;
     }
@@ -362,24 +794,30 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      await updateExpense(id, { 
-        status: 'paid',
-        paymentMethod 
-      });
+      await updateExpense(
+        id,
+        {
+          status: 'paid',
+          paymentMethod,
+        },
+        { silent: true }
+      );
 
-      // Auto-post to accounting
-      accounting.recordExpense({
+      const ok = await accounting.recordExpense({
         expenseId: expense.id,
-        expenseNo: expense.expenseNo,
-        category: expense.category,
+        category: String(expense.category),
         description: expense.description,
         amount: expense.amount,
         paymentMethod: paymentMethod as any,
-        date: new Date().toISOString(),
-        payeeName: expense.payeeName,
+        date: expense.date,
       });
 
-      toast.success(`${expense.expenseNo} marked as paid and posted to accounting!`);
+      if (!ok) {
+        toast.error('Expense marked paid but accounting post failed. Check Chart of Accounts.');
+      } else {
+        toast.success(`${expense.expenseNo} marked as paid and posted to accounting!`);
+      }
+      void accounting.refreshEntries();
     } catch (error) {
       throw error;
     }

@@ -576,6 +576,7 @@ export const productService = {
             quantity: retryMovement2.quantity
           });
           if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('inventory-updated'));
+          await inventoryService.syncOpeningJournalIfApplicable(retryMovement2);
           return retryMovement2;
         }
         
@@ -585,6 +586,7 @@ export const productService = {
           quantity: retryMovement.quantity
         });
         if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('inventory-updated'));
+        await inventoryService.syncOpeningJournalIfApplicable(retryMovement);
         return retryMovement;
       }
       
@@ -610,6 +612,7 @@ export const productService = {
       created_at: movement.created_at
     });
     if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('inventory-updated'));
+    await inventoryService.syncOpeningJournalIfApplicable(movement);
     return movement;
   },
 };

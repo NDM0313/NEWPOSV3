@@ -15,7 +15,8 @@ export const COA_CODES = {
   SALESMAN_PAYABLE: '2040',
   CAPITAL: '3000',
   SALES_REVENUE: '4000',
-  SHIPPING_INCOME: '4100',
+  /** Product sales revenue in seed (`4100`); shipping charged to customer posts to `4110` to avoid mixing with Sales Revenue. */
+  SHIPPING_INCOME: '4110',
   COGS: '5000',
   SHIPPING_EXPENSE: '5100',
   SALES_COMMISSION_EXPENSE: '5110',

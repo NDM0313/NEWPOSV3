@@ -191,6 +191,14 @@ export const contactService = {
 
     if (!error) {
       await syncOpeningGlForContact((data as { id?: string })?.id);
+      const newId = (data as { id?: string; type?: string })?.id;
+      if (newId) {
+        import('./partySubledgerAccountService')
+          .then(({ ensurePartySubledgersForContact }) =>
+            ensurePartySubledgersForContact(String(payload.company_id), newId, String((data as { type?: string }).type || payload.type))
+          )
+          .catch(() => {});
+      }
       return data;
     }
 
@@ -217,6 +225,14 @@ export const contactService = {
         .single();
       if (!retryError) {
         await syncOpeningGlForContact((retryData as { id?: string })?.id);
+        const newId = (retryData as { id?: string; type?: string })?.id;
+        if (newId) {
+          import('./partySubledgerAccountService')
+            .then(({ ensurePartySubledgersForContact }) =>
+              ensurePartySubledgersForContact(String(payload.company_id), newId, String((retryData as { type?: string }).type || payload.type))
+            )
+            .catch(() => {});
+        }
         return retryData;
       }
     }
@@ -238,6 +254,14 @@ export const contactService = {
       .single();
     if (!minimalError) {
       await syncOpeningGlForContact((minimalData as { id?: string })?.id);
+      const newId = (minimalData as { id?: string; type?: string })?.id;
+      if (newId) {
+        import('./partySubledgerAccountService')
+          .then(({ ensurePartySubledgersForContact }) =>
+            ensurePartySubledgersForContact(String(payload.company_id), newId, String((minimalData as { type?: string }).type || payload.type))
+          )
+          .catch(() => {});
+      }
       return minimalData;
     }
 

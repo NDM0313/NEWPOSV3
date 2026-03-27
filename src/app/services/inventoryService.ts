@@ -13,6 +13,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { openingBalanceJournalService } from '@/app/services/openingBalanceJournalService';
 
 // Dedupe negative-stock warnings per product so console isn't flooded when multiple forms call getInventoryOverview
 const negativeStockWarnedIds = new Set<string>();
@@ -251,9 +252,12 @@ export const inventoryService = {
       let totalBoxes = 0;
       let totalPieces = 0;
       if (hasVariations) {
-        totalStock = (variationMap[p.id] || []).reduce((sum, v) => sum + (variationStockMap[v.id] || 0), 0);
-        totalBoxes = (variationMap[p.id] || []).reduce((sum, v) => sum + (variationBoxMap[v.id] || 0), 0);
-        totalPieces = (variationMap[p.id] || []).reduce((sum, v) => sum + (variationPieceMap[v.id] || 0), 0);
+        // Variation lines + parent-level movements (variation_id null): sales/production sometimes post without variation_id
+        const variationSum = (variationMap[p.id] || []).reduce((sum, v) => sum + (variationStockMap[v.id] || 0), 0);
+        const orphanParent = productStockMap[p.id] || 0;
+        totalStock = variationSum + orphanParent;
+        totalBoxes = (variationMap[p.id] || []).reduce((sum, v) => sum + (variationBoxMap[v.id] || 0), 0) + (productBoxMap[p.id] || 0);
+        totalPieces = (variationMap[p.id] || []).reduce((sum, v) => sum + (variationPieceMap[v.id] || 0), 0) + (productPieceMap[p.id] || 0);
       } else {
         totalStock = productStockMap[p.id] || 0;
         totalBoxes = productBoxMap[p.id] || 0;
@@ -506,6 +510,67 @@ export const inventoryService = {
    * Insert a single opening-balance stock movement (accounting standard: stock comes from movements).
    * When variationId is provided, stock is at variation level (RULE 1: parent cannot hold stock when has_variations).
    */
+  /**
+   * Parent-level opening stock: insert when there are no movements yet; if exactly one opening row exists, update qty/cost and resync GL.
+   */
+  async reconcileParentLevelOpeningStock(
+    companyId: string,
+    branchId: string | null,
+    productId: string,
+    quantity: number,
+    unitCost: number,
+    totalMovementCount: number
+  ): Promise<{ error: any }> {
+    const b = branchId && branchId !== 'all' ? branchId : null;
+    let q = supabase
+      .from('stock_movements')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('product_id', productId)
+      .is('variation_id', null)
+      .eq('movement_type', 'adjustment')
+      .eq('reference_type', 'opening_balance');
+    if (b) q = q.eq('branch_id', b);
+    else q = q.is('branch_id', null);
+
+    const { data: openings, error: qerr } = await q;
+    if (qerr) return { error: qerr };
+
+    const qty = Number(quantity) || 0;
+    const uc = Number(unitCost) || 0;
+    const totalCost = qty * uc;
+
+    if (!openings?.length) {
+      if (totalMovementCount === 0 && qty > 0) {
+        return this.insertOpeningBalanceMovement(companyId, b, productId, qty, uc);
+      }
+      return { error: null };
+    }
+    if (openings.length > 1) {
+      console.warn(
+        '[INVENTORY] Multiple parent-level opening_balance movements; edit skipped for GL reconciliation',
+        productId
+      );
+      return { error: null };
+    }
+    const id = openings[0].id as string;
+    const { error: uerr } = await supabase
+      .from('stock_movements')
+      .update({
+        quantity: qty,
+        unit_cost: uc,
+        total_cost: totalCost,
+      })
+      .eq('id', id);
+    if (uerr) return { error: uerr };
+    try {
+      await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(id);
+    } catch (jeErr) {
+      console.warn('[INVENTORY] Opening stock updated but GL sync failed:', jeErr);
+    }
+    return { error: null };
+  },
+
   async insertOpeningBalanceMovement(
     companyId: string,
     branchId: string | null,
@@ -515,19 +580,45 @@ export const inventoryService = {
     variationId?: string | null
   ): Promise<{ error: any }> {
     const totalCost = quantity * unitCost;
-    const { error } = await supabase.from('stock_movements').insert({
-      company_id: companyId,
-      branch_id: branchId && branchId !== 'all' ? branchId : null,
-      product_id: productId,
-      variation_id: variationId ?? null,
-      movement_type: 'adjustment',
-      quantity: Number(quantity),
-      unit_cost: unitCost,
-      total_cost: totalCost,
-      reference_type: 'opening_balance',
-      reference_id: null,
-      notes: variationId ? 'Opening stock (variation)' : 'Opening stock',
-    });
+    const { data, error } = await supabase
+      .from('stock_movements')
+      .insert({
+        company_id: companyId,
+        branch_id: branchId && branchId !== 'all' ? branchId : null,
+        product_id: productId,
+        variation_id: variationId ?? null,
+        movement_type: 'adjustment',
+        quantity: Number(quantity),
+        unit_cost: unitCost,
+        total_cost: totalCost,
+        reference_type: 'opening_balance',
+        reference_id: null,
+        notes: variationId ? 'Opening stock (variation)' : 'Opening stock',
+      })
+      .select('id')
+      .single();
+    if (!error && data?.id) {
+      try {
+        await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(data.id as string);
+      } catch (jeErr) {
+        console.warn('[INVENTORY] Opening stock saved but GL sync failed:', jeErr);
+      }
+    }
     return { error };
+  },
+
+  /**
+   * After insert via generic paths: sync GL only for opening_balance + adjustment (avoids extra DB read for normal movements).
+   */
+  async syncOpeningJournalIfApplicable(movement: {
+    id: string;
+    reference_type?: string | null;
+    movement_type?: string | null;
+    type?: string | null;
+  }): Promise<void> {
+    const ref = String(movement.reference_type || '').toLowerCase().trim();
+    const mt = String(movement.movement_type || movement.type || '').toLowerCase().trim();
+    if (ref !== 'opening_balance' || mt !== 'adjustment') return;
+    await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(movement.id);
   },
 };

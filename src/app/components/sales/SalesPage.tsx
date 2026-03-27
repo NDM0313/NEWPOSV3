@@ -2398,6 +2398,7 @@ export const SalesPage = () => {
             referenceNumber: paymentToEdit.referenceNo,
             notes: paymentToEdit.notes,
             attachments: paymentToEdit.attachments,
+            parentPaymentId: (paymentToEdit as { parentPaymentId?: string }).parentPaymentId,
           } : undefined}
           onSuccess={async () => {
             toast.success(paymentToEdit ? 'Payment updated successfully' : 'Payment recorded successfully');

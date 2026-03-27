@@ -5,6 +5,7 @@ import { useSettings } from '@/app/context/SettingsContext';
 import { branchService, Branch } from '@/app/services/branchService';
 import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
+import { resolvePaymentRowForEdit, resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
 import { saleReturnService } from '@/app/services/saleReturnService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { studioProductionService } from '@/app/services/studioProductionService';
@@ -1547,11 +1548,15 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                               <>
                             <button
                               onClick={() => {
-                                setPaymentToEdit(payment);
-                                setEditPaymentDialogOpen(true);
+                                try {
+                                  setPaymentToEdit(resolvePaymentRowForEdit(payment as any));
+                                  setEditPaymentDialogOpen(true);
+                                } catch (e: any) {
+                                  toast.error(e?.message || 'Cannot edit this payment line');
+                                }
                               }}
                               className="p-1.5 rounded-lg hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 transition-colors"
-                              title="Edit Payment"
+                              title="Edit payment (allocation lines edit the parent receipt)"
                             >
                               <Edit size={14} />
                             </button>
@@ -1794,7 +1799,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             
             setIsDeletingPayment(true);
             try {
-              const deletePromise = saleService.deletePayment(paymentToDelete.id, sale.id);
+              const pid = resolvePaymentIdForMutation(paymentToDelete as any);
+              const deletePromise = saleService.deletePayment(pid, sale.id);
               const timeoutPromise = new Promise((_, reject) => 
                 setTimeout(() => reject(new Error('Payment deletion timed out. Please try again.')), 15000)
               );
@@ -1871,6 +1877,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             referenceNumber: paymentToEdit.referenceNo || paymentToEdit.reference_number,
             notes: paymentToEdit.notes,
             attachments: paymentToEdit.attachments,
+            parentPaymentId: (paymentToEdit as { parentPaymentId?: string }).parentPaymentId,
           }}
           onSuccess={async () => {
             toast.success('Payment updated successfully');

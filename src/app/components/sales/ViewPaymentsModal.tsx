@@ -45,25 +45,25 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import { AttachmentPreviewRow } from '@/app/components/shared/AttachmentPreviewRow';
+import {
+  resolvePaymentRowForEdit,
+  resolvePaymentIdForMutation,
+  type PaymentHistoryRowLike,
+} from '@/app/lib/paymentRowEditRouting';
+import { supabase } from '@/lib/supabase';
 
 // ============================================
 // TYPES
 // ============================================
 
-export interface Payment {
-  id: string;
+export interface Payment extends PaymentHistoryRowLike {
   date: string;
   referenceNo: string;
-  amount: number;
-  method: string;
-  accountId?: string;
-  accountName?: string;
-  notes?: string;
-  createdAt?: string;
-  /** When set and after createdAt, row was edited — show “Adjusted” in list (audit trail stays in activity). */
-  updatedAt?: string;
-  /** User who received/recorded the payment (auth.users.id → users.full_name). */
-  receivedBy?: string | null;
+  /** Display id; may be `alloc:<uuid>` for payment_allocations breakdown rows — use resolve helpers before mutations */
+  id: string;
+  allocationOrder?: number;
+  /** Rental: advance vs remaining */
+  rentalPaymentKind?: 'advance' | 'remaining';
 }
 
 export interface InvoiceDetails {
@@ -166,6 +166,20 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const bump = () => setRefreshTick((t) => t + 1);
+    window.addEventListener('accountingEntriesChanged', bump);
+    window.addEventListener('paymentAdded', bump);
+    window.addEventListener('rentalPaymentsChanged', bump);
+    return () => {
+      window.removeEventListener('accountingEntriesChanged', bump);
+      window.removeEventListener('paymentAdded', bump);
+      window.removeEventListener('rentalPaymentsChanged', bump);
+    };
+  }, [isOpen]);
 
   // Fetch payments when modal opens or refreshes
   useEffect(() => {
@@ -201,15 +215,28 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
             try {
               const { rentalService } = await import('@/app/services/rentalService');
               const fetchedPayments = await rentalService.getRentalPayments(invoice.id);
-              setPayments((fetchedPayments || []).map((p: any) => ({
-                id: p.id,
-                date: p.payment_date || p.created_at?.split('T')[0] || '',
-                referenceNo: p.reference || '',
-                amount: Number(p.amount) || 0,
-                method: p.method || 'cash',
-                notes: p.reference,
-                createdAt: p.created_at,
-              })));
+              const raw = fetchedPayments || [];
+              const accountIds = [...new Set(raw.map((p: any) => p.payment_account_id).filter(Boolean))] as string[];
+              let nameById = new Map<string, string>();
+              if (accountIds.length > 0) {
+                const { data: accs } = await supabase.from('accounts').select('id, name').in('id', accountIds);
+                (accs || []).forEach((a: any) => nameById.set(String(a.id), String(a.name || '').trim() || 'Account'));
+              }
+              setPayments(
+                raw.map((p: any) => ({
+                  id: p.id,
+                  date: p.payment_date || p.created_at?.split('T')[0] || '',
+                  referenceNo: p.reference || '',
+                  amount: Number(p.amount) || 0,
+                  method: p.method || 'cash',
+                  notes: p.reference,
+                  createdAt: p.created_at,
+                  updatedAt: p.updated_at ?? p.created_at,
+                  accountId: p.payment_account_id,
+                  accountName: p.payment_account_id ? nameById.get(String(p.payment_account_id)) : undefined,
+                  rentalPaymentKind: p.payment_type === 'advance' ? 'advance' : 'remaining',
+                }))
+              );
             } catch (rentalError: any) {
               console.error('[VIEW PAYMENTS] Error fetching rental payments:', rentalError);
               // 🔒 GOLDEN RULE: Payment history = payments table ONLY
@@ -259,7 +286,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
       // If modal not open or invoice missing, show empty (not invoice.payments)
       setPayments([]);
     }
-  }, [isOpen, invoice?.id]);
+  }, [isOpen, invoice?.id, refreshTick]);
 
   if (!isOpen || !invoice) return null;
 
@@ -282,9 +309,16 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
 
     setIsDeleting(true);
     try {
+      let paymentIdForDelete: string;
+      try {
+        paymentIdForDelete = resolvePaymentIdForMutation(paymentToDelete);
+      } catch (e: any) {
+        toast.error(e?.message || 'Cannot delete this payment line');
+        return;
+      }
       // CRITICAL FIX: Increased timeout to 30 seconds for complex delete operations
       // Delete involves: payment deletion, journal entry reversal, activity logging, balance updates
-      const deletePromise = onDeletePayment(paymentToDelete.id);
+      const deletePromise = onDeletePayment(paymentIdForDelete);
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Payment deletion is taking longer than expected. Please wait or try again.')), 30000)
       );
@@ -295,11 +329,36 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
       setDeleteConfirmOpen(false);
       setPaymentToDelete(null);
       
-      // CRITICAL FIX: Refetch payments after deletion
+      // Refetch payments after deletion (entity-aware — was incorrectly sale-only)
       if (invoice?.id) {
-        const { saleService } = await import('@/app/services/saleService');
-        const fetchedPayments = await saleService.getSalePayments(invoice.id);
-        setPayments(fetchedPayments);
+        let refType = invoice.referenceType;
+        if (!refType) {
+          const invoiceNoUpper = (invoice.invoiceNo || '').toUpperCase();
+          if (invoiceNoUpper.startsWith('PUR-') || invoiceNoUpper.startsWith('PUR') || invoiceNoUpper.startsWith('PO-') || invoiceNoUpper.startsWith('PO')) refType = 'purchase';
+          else if (invoiceNoUpper.startsWith('RNT-') || invoiceNoUpper.startsWith('RN-')) refType = 'rental';
+          else refType = 'sale';
+        }
+        if (refType === 'purchase') {
+          const { purchaseService } = await import('@/app/services/purchaseService');
+          setPayments(await purchaseService.getPurchasePayments(invoice.id));
+        } else if (refType === 'rental') {
+          const { rentalService } = await import('@/app/services/rentalService');
+          const raw = await rentalService.getRentalPayments(invoice.id);
+          setPayments(
+            (raw || []).map((p: any) => ({
+              id: p.id,
+              date: p.payment_date || p.created_at?.split('T')[0] || '',
+              referenceNo: p.reference || '',
+              amount: Number(p.amount) || 0,
+              method: p.method || 'cash',
+              notes: p.reference,
+              createdAt: p.created_at,
+            }))
+          );
+        } else {
+          const { saleService } = await import('@/app/services/saleService');
+          setPayments(await saleService.getSalePayments(invoice.id));
+        }
       }
       
       // CRITICAL FIX: Call refresh callback
@@ -470,7 +529,12 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                           <p className="text-sm text-white">{formatDate(payment.date)}</p>
                         </div>
                         <div className="col-span-2">
-                          <p className="text-xs font-mono text-gray-400">{payment.referenceNo || '—'}</p>
+                          <p className="text-xs font-mono text-gray-400 break-words">{payment.referenceNo || '—'}</p>
+                          {payment.allocationBadge && (
+                            <Badge className="mt-1 text-[9px] font-medium bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                              {payment.allocationBadge}
+                            </Badge>
+                          )}
                         </div>
                         <div className="col-span-2 text-right">
                           <p className="text-sm font-semibold text-green-400">
@@ -497,9 +561,16 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                         <div className="col-span-2 flex items-center justify-center gap-1">
                           {onEditPayment && (
                             <button
-                              onClick={() => onEditPayment(payment)}
+                              onClick={() => {
+                                try {
+                                  const normalized = resolvePaymentRowForEdit(payment);
+                                  onEditPayment(normalized);
+                                } catch (e: any) {
+                                  toast.error(e?.message || 'Cannot open payment editor for this line');
+                                }
+                              }}
                               className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-blue-400 transition-colors"
-                              title="Edit Payment"
+                              title="Edit payment (allocation lines edit the parent receipt/payment)"
                             >
                               <Edit2 size={14} />
                             </button>

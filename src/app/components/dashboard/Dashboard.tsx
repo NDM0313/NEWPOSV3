@@ -262,6 +262,8 @@ export const Dashboard = () => {
       bank_balance: 0,
       receivables,
       payables,
+      period_purchases: periodPurchases,
+      period_operating_expenses: periodExpensesOnly,
       sales_trend,
       expense_trend,
       profit_trend,
@@ -285,6 +287,31 @@ export const Dashboard = () => {
     }
     return displayMetrics;
   }, [displayMetrics, accounting.accounts]);
+
+  const ymdToday = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const dashboardRangeLabel = useMemo(() => {
+    if (periodStart && periodEnd) {
+      if (periodStart === periodEnd) {
+        return periodStart === ymdToday ? 'Today' : periodStart;
+      }
+      return `${periodStart} → ${periodEnd}`;
+    }
+    return 'Selected period';
+  }, [periodStart, periodEnd, ymdToday]);
+  const isCalendarTodayOnly =
+    Boolean(periodStart && periodEnd && periodStart === periodEnd && periodStart === ymdToday);
+  const salesCardTitle = isCalendarTodayOnly ? 'Today sales' : 'Period sales';
+  const profitCardTitle = isCalendarTodayOnly
+    ? 'Today profit'
+    : 'Period net profit';
+  const purchasesCardTitle = 'Purchases (period)';
+  const operatingExpCardTitle = 'Operating expenses';
+  const pu = Number(displayMetricsWithCashBank.period_purchases) || 0;
+  const opEx = Number(displayMetricsWithCashBank.period_operating_expenses) || 0;
+  const combinedOutflows = Number(displayMetricsWithCashBank.monthly_expenses) || 0;
+  /** Old get_dashboard_metrics JSON had no split; infer combined-only card when totals disagree with zero parts. */
+  const showLegacyCombinedExpenses =
+    pu === 0 && opEx === 0 && combinedOutflows > 0;
 
   // Generate chart data from date range (or last 7 days if no range)
   const chartData = useMemo(() => {
@@ -389,7 +416,11 @@ export const Dashboard = () => {
 
       {/* Executive financial summary (Phase-2 Intelligence) */}
       <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
-        <h3 className="text-lg font-bold text-white mb-4">Executive summary</h3>
+        <h3 className="text-lg font-bold text-white mb-1">Executive summary</h3>
+        <p className="text-xs text-[#9CA3AF] mb-4">
+          Cards follow the <span className="text-gray-300">global date filter</span>
+          {periodStart && periodEnd ? ` (${dashboardRangeLabel}).` : '.'} Period net = sales − purchases − operating expenses (not the same as cash).
+        </p>
         {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 h-24 items-center justify-center">
             <Loader2 className="w-8 h-8 animate-spin text-[#3B82F6] col-span-2 md:col-span-3 lg:col-span-5 justify-self-center" />
@@ -397,20 +428,33 @@ export const Dashboard = () => {
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-              <StatCard title="Today Sales" value={formatCurrency(displayMetricsWithCashBank.today_sales)} change="—" icon={DollarSign} trend="up" iconColor="text-[#10B981]" />
-              <StatCard title="Today Profit" value={formatCurrency(displayMetricsWithCashBank.today_profit)} change="—" icon={TrendingUp} trend={displayMetricsWithCashBank.today_profit >= 0 ? 'up' : 'down'} iconColor="text-[#3B82F6]" />
-              <StatCard title="Monthly Revenue" value={formatCurrency(displayMetricsWithCashBank.monthly_revenue)} change="—" icon={ShoppingBag} trend="up" iconColor="text-[#8B5CF6]" />
-              <StatCard title="Monthly Expenses" value={formatCurrency(displayMetricsWithCashBank.monthly_expenses)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
-              <StatCard title="Profit Margin" value={`${displayMetricsWithCashBank.profit_margin_pct}%`} change="—" icon={TrendingUp} trend={displayMetricsWithCashBank.profit_margin_pct >= 0 ? 'up' : 'down'} iconColor="text-[#06B6D4]" />
-              <StatCard title="Cash Balance" value={formatCurrency(displayMetricsWithCashBank.cash_balance)} change="—" icon={Wallet} trend="up" iconColor="text-[#10B981]" />
-              <StatCard title="Bank Balance" value={formatCurrency(displayMetricsWithCashBank.bank_balance)} change="—" icon={Building2} trend="up" iconColor="text-[#3B82F6]" />
+              <StatCard title={salesCardTitle} value={formatCurrency(displayMetricsWithCashBank.today_sales)} change="—" icon={DollarSign} trend="up" iconColor="text-[#10B981]" />
+              <StatCard title={profitCardTitle} value={formatCurrency(displayMetricsWithCashBank.today_profit)} change="—" icon={TrendingUp} trend={displayMetricsWithCashBank.today_profit >= 0 ? 'up' : 'down'} iconColor="text-[#3B82F6]" />
+              {showLegacyCombinedExpenses ? (
+                <StatCard
+                  title="Outflows (combined)"
+                  value={formatCurrency(combinedOutflows)}
+                  change="purchases + OpEx"
+                  icon={ArrowUpRight}
+                  trend="down"
+                  iconColor="text-[#F59E0B]"
+                />
+              ) : (
+                <>
+                  <StatCard title={purchasesCardTitle} value={formatCurrency(pu)} change="—" icon={ShoppingBag} trend="down" iconColor="text-[#8B5CF6]" />
+                  <StatCard title={operatingExpCardTitle} value={formatCurrency(opEx)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
+                </>
+              )}
+              <StatCard title="Profit margin" value={`${displayMetricsWithCashBank.profit_margin_pct}%`} change="—" icon={TrendingUp} trend={displayMetricsWithCashBank.profit_margin_pct >= 0 ? 'up' : 'down'} iconColor="text-[#06B6D4]" />
+              <StatCard title="Cash balance" value={formatCurrency(displayMetricsWithCashBank.cash_balance)} change="—" icon={Wallet} trend="up" iconColor="text-[#10B981]" />
+              <StatCard title="Bank balance" value={formatCurrency(displayMetricsWithCashBank.bank_balance)} change="—" icon={Building2} trend="up" iconColor="text-[#3B82F6]" />
               <StatCard title="Receivables" value={formatCurrency(displayMetricsWithCashBank.receivables)} change="—" icon={ArrowDownRight} trend="up" iconColor="text-[#3B82F6]" />
               <StatCard title="Payables" value={formatCurrency(displayMetricsWithCashBank.payables)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
             </div>
             {(displayMetricsWithCashBank.sales_trend?.length > 0 || displayMetricsWithCashBank.expense_trend?.length > 0 || displayMetricsWithCashBank.profit_trend?.length > 0) && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="bg-[#1F2937]/50 rounded-lg p-4 border border-[#374151]">
-                  <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Sales trend (7d)</h4>
+                  <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Sales trend (range)</h4>
                   <div className="h-24">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={(displayMetricsWithCashBank.sales_trend || []).map((t) => ({ name: t.date.slice(5), value: t.value }))}>
@@ -422,7 +466,7 @@ export const Dashboard = () => {
                   </div>
                 </div>
                 <div className="bg-[#1F2937]/50 rounded-lg p-4 border border-[#374151]">
-                  <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Expense trend (7d)</h4>
+                  <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Outflows trend (purchases + OpEx)</h4>
                   <div className="h-24">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={(displayMetricsWithCashBank.expense_trend || []).map((t) => ({ name: t.date.slice(5), value: t.value }))}>
@@ -434,7 +478,7 @@ export const Dashboard = () => {
                   </div>
                 </div>
                 <div className="bg-[#1F2937]/50 rounded-lg p-4 border border-[#374151]">
-                  <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Profit trend (7d)</h4>
+                  <h4 className="text-sm font-medium text-[#9CA3AF] mb-2">Net profit trend (range)</h4>
                   <div className="h-24">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={(displayMetricsWithCashBank.profit_trend || []).map((t) => ({ name: t.date.slice(5), value: t.value }))}>

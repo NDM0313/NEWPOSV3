@@ -103,6 +103,15 @@ const AccountingTestBenchPage = lazy(() =>
 const ArApReconciliationCenterPage = lazy(() =>
   import('./components/accounting/ArApReconciliationCenterPage').then((m) => ({ default: m.default }))
 );
+const AccountsHierarchyTestPage = lazy(() =>
+  import('./components/test/AccountsHierarchyTestPage').then((m) => ({ default: m.default }))
+);
+const ExpenseEditTraceTestPage = lazy(() =>
+  import('./components/test/ExpenseEditTraceTestPage').then((m) => ({ default: m.default }))
+);
+const AccountingEditTracePage = lazy(() =>
+  import('./components/test/AccountingEditTracePage').then((m) => ({ default: m.default }))
+);
 
 // v1.0.1 - Enhanced Product Form with SKU auto-generation and global access
 
@@ -124,6 +133,40 @@ const AppContent = () => {
 
   // 🎯 Enable global keyboard shortcuts
   useKeyboardShortcuts();
+
+  // Dev UI: Accounting accounts hierarchy (route: /test/accounting-accounts-hierarchy)
+  if (pathname === '/test/accounting-accounts-hierarchy') {
+    return (
+      <Layout>
+        <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading…</div>}>
+          <AccountsHierarchyTestPage />
+        </Suspense>
+        <GlobalDrawer />
+      </Layout>
+    );
+  }
+
+  if (pathname === '/test/expense-edit-trace') {
+    return (
+      <Layout>
+        <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading…</div>}>
+          <ExpenseEditTraceTestPage />
+        </Suspense>
+        <GlobalDrawer />
+      </Layout>
+    );
+  }
+
+  if (pathname === '/test/accounting-edit-trace') {
+    return (
+      <Layout>
+        <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading…</div>}>
+          <AccountingEditTracePage />
+        </Suspense>
+        <GlobalDrawer />
+      </Layout>
+    );
+  }
 
   // Admin-only Permission Inspector (route: /admin/permission-inspector)
   if (pathname === '/admin/permission-inspector' || currentView === 'permission-inspector') {

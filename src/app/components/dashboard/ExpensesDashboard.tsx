@@ -49,6 +49,14 @@ import { useExpenses } from '../../context/ExpenseContext';
 import { useAccounting } from '../../context/AccountingContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { expenseCategoryService, type ExpenseCategoryRow, type ExpenseCategoryTreeItem } from '../../services/expenseCategoryService';
+import { expenseService } from '../../services/expenseService';
+import { normalizeCategoryForComparison } from '@/app/lib/expenseEditCanonical';
+import {
+  EXPENSE_LIST_TRACE,
+  isExpenseListDiagnosticsEnabled,
+  logExpenseListTrace,
+  setExpenseListDiagnosticsEnabled,
+} from '@/app/lib/expenseListDiagnostics';
 
 const getCategoryBadgeStyle = (category: string) => {
   switch (category) {
@@ -118,7 +126,29 @@ export const ExpensesDashboard = () => {
   const [accountFilter, setAccountFilter] = useState<string>('all');
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
-  
+  /** Expense documents whose GL posting was reversed (correction_reversal on the expense JE). */
+  const [reversedExpenseIds, setReversedExpenseIds] = useState<Set<string>>(() => new Set());
+  const [showReversedExpenses, setShowReversedExpenses] = useState(false);
+  const [showFetchDiagnostics, setShowFetchDiagnostics] = useState(() => isExpenseListDiagnosticsEnabled());
+  const [diagnosticWatchId, setDiagnosticWatchId] = useState('');
+
+  useEffect(() => {
+    if (!companyId || expenses.length === 0) {
+      setReversedExpenseIds(new Set());
+      return;
+    }
+    const ids = expenses.map((e) => e.id);
+    expenseService
+      .getReversedExpenseIds(companyId, ids)
+      .then(setReversedExpenseIds)
+      .catch(() => setReversedExpenseIds(new Set()));
+  }, [companyId, expenses]);
+
+  const operationalExpenses = useMemo(() => {
+    if (showReversedExpenses) return expenses;
+    return expenses.filter((e) => !reversedExpenseIds.has(e.id));
+  }, [expenses, reversedExpenseIds, showReversedExpenses]);
+
   // 🎯 NEW: Action Handlers
   const handleExpenseAction = (expense: any, action: string) => {
     setSelectedExpense(expense);
@@ -188,7 +218,7 @@ export const ExpensesDashboard = () => {
   // Calculate chart data from real expenses
   const chartData = useMemo(() => {
     const categoryTotals: Record<string, number> = {};
-    expenses.forEach(exp => {
+    operationalExpenses.forEach(exp => {
       const cat = exp.category || 'Other';
       categoryTotals[cat] = (categoryTotals[cat] || 0) + (exp.amount || 0);
     });
@@ -199,12 +229,12 @@ export const ExpensesDashboard = () => {
       value,
       color: colors[index % colors.length],
     }));
-  }, [expenses]);
+  }, [operationalExpenses]);
 
   // Total expense amount for Expense Breakdown center display (from real DB)
   const totalExpenseAmount = useMemo(
-    () => expenses.reduce((sum, e) => sum + (e.amount || 0), 0),
-    [expenses]
+    () => operationalExpenses.reduce((sum, e) => sum + (e.amount || 0), 0),
+    [operationalExpenses]
   );
 
   // Categories list: from expense_categories (DB) when available, else from expense counts
@@ -215,11 +245,11 @@ export const ExpensesDashboard = () => {
         ...cat,
         icon: ICON_BY_SLUG[cat.icon] || Receipt,
         color: cat.color?.startsWith('bg-') ? cat.color : `bg-${cat.color || 'gray'}-500`,
-        count: expenses.filter((e) => (e.category || '') === cat.name).length,
+        count: operationalExpenses.filter((e) => (e.category || '') === cat.name).length,
       }));
     }
     const categoryCounts: Record<string, number> = {};
-    expenses.forEach(exp => {
+    operationalExpenses.forEach(exp => {
       const cat = exp.category || 'Other';
       categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
     });
@@ -238,35 +268,75 @@ export const ExpensesDashboard = () => {
       color: colorMap[name] || 'bg-gray-500',
       count,
     }));
-  }, [expenses, categoriesFromDb]);
+  }, [operationalExpenses, categoriesFromDb]);
 
   // Filtered expenses (search, category, account, date range)
   const filteredExpenses = useMemo(() => {
-    return expenses.filter(expense => {
+    return operationalExpenses.filter((expense) => {
+      let filterReason: string | undefined;
+
       // Search filter
       if (searchTerm) {
         const search = searchTerm.toLowerCase();
-        const matchesSearch = (expense.expenseNo || '').toLowerCase().includes(search) ||
-               (expense.category || '').toLowerCase().includes(search) ||
-               (expense.description || '').toLowerCase().includes(search) ||
-               (expense.payeeName || '').toLowerCase().includes(search);
-        if (!matchesSearch) return false;
+        const matchesSearch =
+          (expense.expenseNo || '').toLowerCase().includes(search) ||
+          (expense.category || '').toLowerCase().includes(search) ||
+          (expense.description || '').toLowerCase().includes(search) ||
+          (expense.payeeName || '').toLowerCase().includes(search);
+        if (!matchesSearch) filterReason = 'search_term_mismatch';
       }
 
-      // Category filter
-      if (categoryFilter !== 'all' && (expense.category || '') !== categoryFilter) return false;
+      // Category filter (exact match on display label — slug/category mismatch hides rows)
+      if (!filterReason && categoryFilter !== 'all' && (expense.category || '') !== categoryFilter) {
+        filterReason = `category_filter: list shows "${expense.category}" but filter is "${categoryFilter}"`;
+      }
 
       // Account filter
-      if (accountFilter !== 'all' && (expense.paymentMethod || '') !== accountFilter) return false;
+      if (!filterReason && accountFilter !== 'all' && (expense.paymentMethod || '') !== accountFilter) {
+        filterReason = 'account_filter_mismatch';
+      }
 
       // Date filter (From Date – To Date)
       const expenseDate = expense.date ? new Date(expense.date).toISOString().slice(0, 10) : '';
-      if (fromDate && expenseDate < fromDate) return false;
-      if (toDate && expenseDate > toDate) return false;
+      if (!filterReason && fromDate && expenseDate < fromDate) filterReason = 'before_from_date';
+      if (!filterReason && toDate && expenseDate > toDate) filterReason = 'after_to_date';
 
-      return true;
+      const watch = diagnosticWatchId.trim().toLowerCase();
+      const isWatched =
+        showFetchDiagnostics &&
+        watch &&
+        (expense.id.toLowerCase() === watch || (expense.expenseNo || '').toLowerCase() === watch);
+
+      if (isWatched) {
+        const inOperational = !reversedExpenseIds.has(expense.id);
+        logExpenseListTrace('row pipeline', {
+          expenseId: expense.id,
+          reference: expense.expenseNo,
+          status: expense.status,
+          expense_date: expenseDate,
+          branchOrLocation: expense.location,
+          categoryRaw: expense.category,
+          categoryNormalized: normalizeCategoryForComparison(expense.category),
+          inOperationalList: inOperational,
+          operationalReason: inOperational ? undefined : 'hidden: latest expense JE has active correction_reversal (or no newer JE)',
+          passedFilters: !filterReason,
+          filterReason: filterReason || null,
+        });
+      }
+
+      return !filterReason;
     });
-  }, [expenses, searchTerm, categoryFilter, accountFilter, fromDate, toDate]);
+  }, [
+    operationalExpenses,
+    searchTerm,
+    categoryFilter,
+    accountFilter,
+    fromDate,
+    toDate,
+    showFetchDiagnostics,
+    diagnosticWatchId,
+    reversedExpenseIds,
+  ]);
 
   // Pagination
   const paginatedExpenses = useMemo(() => {
@@ -280,7 +350,7 @@ export const ExpensesDashboard = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, categoryFilter, accountFilter, fromDate, toDate]);
+  }, [searchTerm, categoryFilter, accountFilter, fromDate, toDate, showReversedExpenses]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -296,7 +366,8 @@ export const ExpensesDashboard = () => {
     categoryFilter !== 'all',
     accountFilter !== 'all',
     !!fromDate,
-    !!toDate
+    !!toDate,
+    showReversedExpenses,
   ].filter(Boolean).length;
 
   // Clear filters
@@ -305,6 +376,7 @@ export const ExpensesDashboard = () => {
     setAccountFilter('all');
     setFromDate('');
     setToDate('');
+    setShowReversedExpenses(false);
   };
 
   // Bottom summary: total of filtered expenses
@@ -424,7 +496,7 @@ export const ExpensesDashboard = () => {
                 <div>
                   <p className="text-gray-400 text-sm font-medium">Total Monthly Expense</p>
                   <h3 className="text-2xl font-bold text-white mt-2">
-                    {formatCurrency(expenses.reduce((sum, e) => sum + (e.amount || 0), 0))}
+                    {formatCurrency(operationalExpenses.reduce((sum, e) => sum + (e.amount || 0), 0))}
                   </h3>
                 </div>
                 <div className="bg-red-500/10 p-2 rounded-lg">
@@ -432,7 +504,7 @@ export const ExpensesDashboard = () => {
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2 text-xs">
-                <span className="text-gray-500">{expenses.length} expenses this month</span>
+                <span className="text-gray-500">{operationalExpenses.length} expenses this month</span>
               </div>
             </div>
 
@@ -524,6 +596,36 @@ export const ExpensesDashboard = () => {
       ) : activeTab === 'list' ? (
         /* All Expenses List Tab */
         <div className="space-y-4 animate-in slide-in-from-bottom-2 duration-300">
+          <div className="rounded-lg border border-amber-800/50 bg-amber-950/30 p-4 space-y-3">
+            <label className="flex items-center gap-2 text-sm text-amber-100 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showFetchDiagnostics}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setShowFetchDiagnostics(on);
+                  setExpenseListDiagnosticsEnabled(on);
+                }}
+                className="rounded border-gray-600"
+              />
+              Show fetch diagnostics (console: {EXPENSE_LIST_TRACE})
+            </label>
+            {showFetchDiagnostics && (
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                <input
+                  type="text"
+                  value={diagnosticWatchId}
+                  onChange={(e) => setDiagnosticWatchId(e.target.value)}
+                  placeholder="Expense UUID or EXP-… to trace"
+                  className="flex-1 bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-500"
+                />
+                <p className="text-xs text-gray-400 max-w-xl">
+                  Open DevTools → Console. Each filter pass logs the watched row; a summary effect logs pipeline
+                  (operational list → filters → current page).
+                </p>
+              </div>
+            )}
+          </div>
           {/* GLOBAL SEARCH & ACTION BAR */}
           <ListToolbar
             search={{
@@ -618,6 +720,16 @@ export const ExpensesDashboard = () => {
                         <option value="JazzCash">JazzCash</option>
                       </select>
                     </div>
+
+                    <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={showReversedExpenses}
+                        onChange={(e) => setShowReversedExpenses(e.target.checked)}
+                        className="rounded border-gray-600 bg-gray-950"
+                      />
+                      Show reversed in journal (offset in GL)
+                    </label>
                   </div>
                 </div>
               )

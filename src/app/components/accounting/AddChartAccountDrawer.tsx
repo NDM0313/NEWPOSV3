@@ -17,10 +17,13 @@ import * as Dialog from '@radix-ui/react-dialog';
 
 const subCategoryOptions: Record<AccountCategory, string[]> = {
   'Assets': [
+    'Cash — operating (child of 1000)',
+    'Bank — operating (child of 1010)',
+    'Mobile Wallet — operating (child of 1020)',
     'Current Assets',
     'Non-Current Assets',
     'Fixed Assets',
-    'Intangible Assets'
+    'Intangible Assets',
   ],
   'Liabilities': [
     'Current Liabilities',
@@ -218,7 +221,7 @@ export const AddChartAccountDrawer = ({
         name: accountName,
         category: accountType,
         sub_category: subCategory,
-        parent_account_id: parentAccount || null,
+        parent_account_id: parentAccount && parentAccount !== 'none' ? parentAccount : null,
         modules: selectedModules,
         opening_balance: balance,
         current_balance: account?.current_balance ?? balance,

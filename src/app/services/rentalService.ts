@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { activityLogService } from '@/app/services/activityLogService';
 import { settingsService } from '@/app/services/settingsService';
 import { checkRentalAvailabilityForItems } from '@/app/services/rentalAvailabilityService';
+import { syncJournalEntryDateByDocumentRefs } from '@/app/services/journalTransactionDateSyncService';
 
 export type RentalStatus = 'draft' | 'booked' | 'rented' | 'returned' | 'overdue' | 'cancelled';
 
@@ -57,6 +58,9 @@ export interface RentalPayment {
   payment_date?: string;
   created_by?: string | null;
   created_at?: string;
+  journal_entry_id?: string | null;
+  voided_at?: string | null;
+  payment_account_id?: string | null;
 }
 
 function normalizePaymentMethod(method: string): string {
@@ -66,6 +70,33 @@ function normalizePaymentMethod(method: string): string {
     cheque: 'other', 'mobile wallet': 'other', wallet: 'other',
   };
   return map[m] || 'cash';
+}
+
+/** Sum non-voided rental_payments and update rentals.paid_amount / due_amount */
+async function recomputeRentalPaidDueFromActivePayments(rentalId: string): Promise<void> {
+  const { data: active, error } = await supabase
+    .from('rental_payments')
+    .select('amount')
+    .eq('rental_id', rentalId)
+    .is('voided_at', null);
+  if (error) {
+    const { data: fallback } = await supabase.from('rental_payments').select('amount').eq('rental_id', rentalId);
+    if (!fallback) return;
+    const sum = (fallback as { amount?: number }[]).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const { data: r } = await supabase.from('rentals').select('total_amount').eq('id', rentalId).maybeSingle();
+    const total = Number((r as { total_amount?: number })?.total_amount ?? 0) || 0;
+    const newDue = Math.max(0, total - sum);
+    await supabase.from('rentals').update({ paid_amount: sum, due_amount: newDue }).eq('id', rentalId).catch(() => {});
+    return;
+  }
+  const sum = (active || []).reduce((s, r: { amount?: number }) => s + (Number(r.amount) || 0), 0);
+  const { data: r } = await supabase.from('rentals').select('total_amount').eq('id', rentalId).maybeSingle();
+  const total = Number((r as { total_amount?: number })?.total_amount ?? 0) || 0;
+  const newDue = Math.max(0, total - sum);
+  const { error: uErr } = await supabase.from('rentals').update({ paid_amount: sum, due_amount: newDue }).eq('id', rentalId);
+  if (uErr && (String(uErr.message || '').includes('due_amount') || String(uErr.code || '') === 'PGRST204')) {
+    await supabase.from('rentals').update({ paid_amount: sum }).eq('id', rentalId);
+  }
 }
 
 export const rentalService = {
@@ -178,7 +209,7 @@ export const rentalService = {
       returnDate,
       rentalCharges,
       securityDeposit = 0,
-      paidAmount = 0,
+      paidAmount: _paidAmountIgnored = 0,
       notes = null,
       items,
     } = params;
@@ -206,7 +237,9 @@ export const rentalService = {
 
     const durationDays = Math.ceil((ret.getTime() - pickup.getTime()) / (1000 * 60 * 60 * 24)) || 1;
     const totalAmount = rentalCharges + securityDeposit;
-    const dueAmount = Math.max(0, totalAmount - paidAmount);
+    // Advance is never applied at create — user must confirm receiving account in payment dialog (see RentalBookingDrawer).
+    const effectivePaid = 0;
+    const dueAmount = Math.max(0, totalAmount - effectivePaid);
 
     const bookingNo = await settingsService.getNextDocumentNumber(companyId, branchId, 'rental');
 
@@ -226,7 +259,8 @@ export const rentalService = {
         rental_charges: rentalCharges,
         security_deposit: securityDeposit,
         total_amount: totalAmount,
-        paid_amount: paidAmount,
+        paid_amount: effectivePaid,
+        due_amount: dueAmount,
         notes: notes || null,
         created_by: createdBy || null,
       })
@@ -250,19 +284,6 @@ export const rentalService = {
     if (itemsError) {
       await supabase.from('rentals').delete().eq('id', rentalData.id);
       throw itemsError;
-    }
-
-    // Insert advance payment into rental_payments so it shows in payment history
-    if (paidAmount > 0) {
-      await supabase.from('rental_payments').insert({
-        rental_id: rentalData.id,
-        amount: paidAmount,
-        method: 'cash',
-        reference: 'Advance at booking',
-        payment_date: bookingDate,
-        payment_type: 'advance',
-        created_by: createdBy || null,
-      });
     }
 
     await activityLogService
@@ -796,15 +817,17 @@ export const rentalService = {
     amount: number,
     method: string,
     reference?: string,
-    performedBy?: string | null
+    performedBy?: string | null,
+    options?: { paymentType?: 'advance' | 'remaining'; paymentDate?: string; paymentAccountId?: string }
   ): Promise<RentalPayment> {
+    // Schema variants: some DBs have booking_no only (no rental_no); due_amount may be missing (derive from total − paid).
     const { data: rental, error: fetchErr } = await supabase
       .from('rentals')
-      .select('id, status, paid_amount, due_amount, booking_no')
+      .select('id, status, paid_amount, total_amount, booking_no')
       .eq('id', rentalId)
-      .single();
+      .maybeSingle();
 
-    if (fetchErr || !rental) throw new Error('Rental not found');
+    if (fetchErr || !rental) throw new Error(fetchErr?.message || 'Rental not found');
     const r = rental as any;
     // Allow payment: booked (at pickup), rented/overdue (active), picked_up/active (DB), returned (outstanding after return)
     const allowPayment = ['booked', 'rented', 'overdue', 'picked_up', 'active', 'returned', 'closed'].includes(r.status || '');
@@ -812,29 +835,55 @@ export const rentalService = {
       throw new Error('Payment allowed only for booked, active/rented or overdue rentals');
     }
 
-    const { data: payment, error: payErr } = await supabase
-      .from('rental_payments')
-      .insert({
-        rental_id: rentalId,
-        amount,
-        method: normalizePaymentMethod(method),
-        reference: reference || null,
-        payment_date: new Date().toISOString().split('T')[0],
-        payment_type: 'remaining',
-        created_by: performedBy || null,
-      })
-      .select('*')
-      .single();
+    const payType = options?.paymentType ?? 'remaining';
+    const payDay = (options?.paymentDate || new Date().toISOString()).split('T')[0];
 
+    const insertPayload: Record<string, unknown> = {
+      rental_id: rentalId,
+      amount,
+      method: normalizePaymentMethod(method),
+      reference: reference || null,
+      payment_date: payDay,
+      created_by: performedBy || null,
+    };
+    insertPayload.payment_type = payType;
+    if (options?.paymentAccountId) {
+      insertPayload.payment_account_id = options.paymentAccountId;
+    }
+
+    let { data: payment, error: payErr } = await supabase.from('rental_payments').insert(insertPayload).select('*').single();
+    if (payErr && String(payErr.message || '').includes('payment_type')) {
+      delete insertPayload.payment_type;
+      const retry = await supabase.from('rental_payments').insert(insertPayload).select('*').single();
+      payment = retry.data;
+      payErr = retry.error;
+    }
+    if (
+      payErr &&
+      (String(payErr.message || '').toLowerCase().includes('payment_account') ||
+        String(payErr.message || '').includes('payment_account_id'))
+    ) {
+      delete (insertPayload as any).payment_account_id;
+      const retry2 = await supabase.from('rental_payments').insert(insertPayload).select('*').single();
+      payment = retry2.data;
+      payErr = retry2.error;
+    }
     if (payErr) throw payErr;
 
     const newPaid = (r.paid_amount ?? 0) + amount;
-    const newDue = Math.max(0, (r.due_amount ?? 0) - amount);
+    const totalAmt = Number(r.total_amount ?? 0);
+    const newDue = Math.max(0, totalAmt - newPaid);
 
-    await supabase
+    const { error: updErr } = await supabase
       .from('rentals')
       .update({ paid_amount: newPaid, due_amount: newDue })
       .eq('id', rentalId);
+
+    if (updErr && (String(updErr.message || '').includes('due_amount') || String(updErr.code || '') === 'PGRST204')) {
+      await supabase.from('rentals').update({ paid_amount: newPaid }).eq('id', rentalId);
+    } else if (updErr) {
+      throw updErr;
+    }
 
     await activityLogService.logActivity({
       companyId,
@@ -845,10 +894,168 @@ export const rentalService = {
       amount,
       paymentMethod: method,
       performedBy: performedBy || undefined,
-      description: `Payment ${amount} added to rental ${r.rental_no}`,
+      description: `Payment ${amount} added to rental ${r.rental_no || r.booking_no || rentalId}`,
     }).catch(() => {});
 
     return payment as RentalPayment;
+  },
+
+  async linkJournalEntryToRentalPayment(rentalPaymentId: string, journalEntryId: string): Promise<void> {
+    const { error } = await supabase
+      .from('rental_payments')
+      .update({ journal_entry_id: journalEntryId })
+      .eq('id', rentalPaymentId);
+    if (error && !String(error.message || '').toLowerCase().includes('journal_entry')) {
+      console.warn('[rentalService] linkJournalEntryToRentalPayment:', error.message);
+    }
+  },
+
+  /** Resolve the JE created for this rental payment (link row after posting). */
+  async findLatestJournalEntryForRental(companyId: string, rentalId: string, createdAfterIso: string): Promise<string | null> {
+    const { data } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'rental')
+      .eq('reference_id', rentalId)
+      .gte('created_at', createdAfterIso)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return (data as { id?: string } | null)?.id ?? null;
+  },
+
+  /**
+   * After journal reversal (correction_reversal), void the rental_payments row linked to the original JE
+   * and recompute rental paid/due. Journal remains audit trail.
+   */
+  async voidRentalPaymentByReversedJournal(companyId: string, originalJournalEntryId: string): Promise<boolean> {
+    let linked: { id: string; rental_id: string } | null = null;
+    const q1 = await supabase
+      .from('rental_payments')
+      .select('id, rental_id, amount')
+      .eq('journal_entry_id', originalJournalEntryId)
+      .is('voided_at', null)
+      .maybeSingle();
+    if (!q1.error && q1.data) linked = q1.data as { id: string; rental_id: string };
+    else if (q1.error && String(q1.error.message || '').toLowerCase().includes('voided')) {
+      const q2 = await supabase
+        .from('rental_payments')
+        .select('id, rental_id, amount')
+        .eq('journal_entry_id', originalJournalEntryId)
+        .maybeSingle();
+      if (q2.data && !(q2.data as any).voided_at) linked = q2.data as { id: string; rental_id: string };
+    }
+
+    if (linked?.id) {
+      await supabase
+        .from('rental_payments')
+        .update({ voided_at: new Date().toISOString() })
+        .eq('id', linked.id);
+      await recomputeRentalPaidDueFromActivePayments(String((linked as { rental_id: string }).rental_id));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
+        window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+      }
+      return true;
+    }
+
+    const { data: je } = await supabase
+      .from('journal_entries')
+      .select('id, reference_type, reference_id, entry_date')
+      .eq('id', originalJournalEntryId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (!je || String((je as any).reference_type || '').toLowerCase() !== 'rental' || !(je as any).reference_id) {
+      return false;
+    }
+    const rentalId = String((je as any).reference_id);
+    const { data: lines } = await supabase
+      .from('journal_entry_lines')
+      .select('debit, credit')
+      .eq('journal_entry_id', originalJournalEntryId);
+    let jeAmount = 0;
+    (lines || []).forEach((ln: any) => {
+      jeAmount = Math.max(jeAmount, Number(ln.debit) || 0, Number(ln.credit) || 0);
+    });
+    let { data: candidates, error: candErr } = await supabase
+      .from('rental_payments')
+      .select('id, amount, voided_at')
+      .eq('rental_id', rentalId)
+      .is('voided_at', null);
+    if (candErr) {
+      const r2 = await supabase.from('rental_payments').select('id, amount, voided_at').eq('rental_id', rentalId);
+      candidates = ((r2.data || []) as any[]).filter((p) => !p.voided_at);
+    }
+    const match = (candidates || []).find((c: any) => Math.abs(Number(c.amount) - jeAmount) < 0.02);
+    if (!match) return false;
+    await supabase
+      .from('rental_payments')
+      .update({ voided_at: new Date().toISOString(), journal_entry_id: originalJournalEntryId })
+      .eq('id', (match as { id: string }).id);
+    await recomputeRentalPaidDueFromActivePayments(rentalId);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
+      window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+    }
+    return true;
+  },
+
+  async updateRentalPayment(
+    rentalId: string,
+    paymentId: string,
+    companyId: string,
+    updates: {
+      amount: number;
+      paymentDate: string;
+      method: string;
+      reference?: string;
+      notes?: string;
+      accountId?: string;
+    }
+  ): Promise<void> {
+    const { data: row, error: fetchErr } = await supabase
+      .from('rental_payments')
+      .select('id, amount, journal_entry_id, voided_at')
+      .eq('id', paymentId)
+      .eq('rental_id', rentalId)
+      .maybeSingle();
+    if (fetchErr || !row) throw new Error('Payment not found');
+    if ((row as { voided_at?: string }).voided_at) throw new Error('Cannot edit a voided rental payment');
+
+    const payDay = String(updates.paymentDate).slice(0, 10);
+    const patch: Record<string, unknown> = {
+      amount: updates.amount,
+      payment_date: payDay,
+      method: normalizePaymentMethod(updates.method),
+      reference: (updates.reference ?? updates.notes ?? '').trim() || null,
+    };
+    if (updates.accountId) patch.payment_account_id = updates.accountId;
+
+    const { error: upErr } = await supabase.from('rental_payments').update(patch).eq('id', paymentId);
+    if (upErr && String(upErr.message || '').toLowerCase().includes('payment_account')) {
+      delete patch.payment_account_id;
+      const { error: e2 } = await supabase.from('rental_payments').update(patch).eq('id', paymentId);
+      if (e2) throw e2;
+    } else if (upErr) throw upErr;
+
+    const jeId = (row as { journal_entry_id?: string | null }).journal_entry_id;
+    if (jeId) {
+      await supabase.from('journal_entries').update({ entry_date: payDay }).eq('id', jeId).eq('company_id', companyId);
+    } else {
+      await syncJournalEntryDateByDocumentRefs({
+        companyId,
+        referenceTypes: ['rental'],
+        referenceId: rentalId,
+        entryDate: payDay,
+      });
+    }
+
+    await recomputeRentalPaidDueFromActivePayments(rentalId);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
+      window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+    }
   },
 
   async deletePayment(
@@ -893,13 +1100,25 @@ export const rentalService = {
     }).catch(() => {});
   },
 
-  async getRentalPayments(rentalId: string): Promise<RentalPayment[]> {
-    const { data, error } = await supabase
-      .from('rental_payments')
-      .select('*')
-      .eq('rental_id', rentalId)
-      .order('created_at', { ascending: false });
-
+  async getRentalPayments(rentalId: string, options?: { includeVoided?: boolean }): Promise<RentalPayment[]> {
+    let q = supabase.from('rental_payments').select('*').eq('rental_id', rentalId).order('payment_date', { ascending: false }).order('created_at', { ascending: false });
+    if (!options?.includeVoided) {
+      q = q.is('voided_at', null);
+    }
+    let { data, error } = await q;
+    if (error && (String(error.message || '').toLowerCase().includes('voided') || String(error.code || '') === '42703')) {
+      const r2 = await supabase
+        .from('rental_payments')
+        .select('*')
+        .eq('rental_id', rentalId)
+        .order('payment_date', { ascending: false })
+        .order('created_at', { ascending: false });
+      data = r2.data;
+      error = r2.error;
+      if (data && !options?.includeVoided) {
+        data = (data as any[]).filter((p: any) => !p.voided_at);
+      }
+    }
     if (error) throw error;
     return (data || []) as RentalPayment[];
   },

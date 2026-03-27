@@ -535,7 +535,10 @@ export const StudioDashboardNew = () => {
     if (!companyId) return;
     setLoading(true);
     try {
-      await ensureStudioProductionsForCompany(companyId);
+      // Do not block initial list render on backfill; run in background.
+      void ensureStudioProductionsForCompany(companyId).catch((e) => {
+        console.warn('[STUDIO DASHBOARD] ensureStudioProductionsForCompany background failed:', e);
+      });
       const effectiveBranchId = branchId === 'all' ? undefined : branchId || undefined;
       const result = await saleService
         .getStudioSales(companyId, effectiveBranchId, { limit: 100, offset: 0 })

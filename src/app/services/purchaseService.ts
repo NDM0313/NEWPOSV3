@@ -7,6 +7,10 @@ import { createSupplierPayment } from '@/app/services/supplierPaymentService';
 import { PURCHASE_HEADER_COLUMNS } from '@/app/lib/purchaseDbConstants';
 import { postPurchaseDocumentAccounting, reversePurchaseDocumentAccounting } from '@/app/services/documentPostingEngine';
 import { documentNumberService } from '@/app/services/documentNumberService';
+import {
+  syncJournalEntryDateByDocumentRefs,
+  syncJournalEntryDateByPaymentId,
+} from '@/app/services/journalTransactionDateSyncService';
 
 function purchaseRowNeedsPostedPoAllocation(row: Record<string, unknown>): boolean {
   const po = String(row.po_no ?? '').trim();
@@ -842,6 +846,19 @@ export const purchaseService = {
       .single();
 
     if (error) throw error;
+
+    if (Object.prototype.hasOwnProperty.call(sanitized, 'po_date') && sanitized.po_date != null && data) {
+      const cid = (data as any).company_id;
+      if (cid) {
+        syncJournalEntryDateByDocumentRefs({
+          companyId: cid,
+          referenceTypes: ['purchase', 'purchase_adjustment'],
+          referenceId: id,
+          entryDate: String(sanitized.po_date),
+        }).catch((e) => console.warn('[purchaseService] journal entry_date sync:', e));
+      }
+    }
+
     return data;
   },
 
@@ -1155,11 +1172,11 @@ export const purchaseService = {
           'Card': 'card',
           'cheque': 'other',
           'Cheque': 'other',
-          'mobile wallet': 'other',
-          'Mobile Wallet': 'other',
-          'mobile_wallet': 'other',
-          'wallet': 'other',
-          'Wallet': 'other',
+          'mobile wallet': 'mobile_wallet',
+          'Mobile Wallet': 'mobile_wallet',
+          'mobile_wallet': 'mobile_wallet',
+          'wallet': 'mobile_wallet',
+          'Wallet': 'mobile_wallet',
         };
         normalizedPaymentMethod = paymentMethodMap[updates.paymentMethod] || paymentMethodMap[normalized] || 'cash';
       }
@@ -1258,7 +1275,17 @@ export const purchaseService = {
       }
 
       console.log('[PURCHASE SERVICE] Payment updated successfully');
+      if (updates.paymentDate && (data as any)?.company_id) {
+        syncJournalEntryDateByPaymentId({
+          companyId: (data as any).company_id,
+          paymentId,
+          entryDate: updates.paymentDate,
+        }).catch((e) => console.warn('[purchaseService] payment journal entry_date sync:', e));
+      }
       if ((data as any)?.company_id) dispatchContactBalancesRefresh(String((data as any).company_id));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+      }
       return data;
     } catch (error: any) {
       console.error('[PURCHASE SERVICE] Error updating payment:', error);
@@ -1266,64 +1293,178 @@ export const purchaseService = {
     }
   },
 
-  // Get purchase payments (STEP 2 FIX: Like Sale module)
+  // Get purchase payments: direct purchase-linked rows + manual_payment allocations (Add Entry / AP), like getSalePayments.
   async getPurchasePayments(purchaseId: string) {
-    console.log('[PURCHASE SERVICE] getPurchasePayments called with purchaseId:', purchaseId);
-    
-    const { data, error } = await supabase
+    const selectWithAttachments = `
+      id,
+      payment_date,
+      reference_number,
+      amount,
+      payment_method,
+      payment_account_id,
+      notes,
+      attachments,
+      created_at,
+      updated_at,
+      voided_at,
+      account:accounts(id, name)
+    `;
+    let result = await supabase
       .from('payments')
-      .select(`
-        id,
-        payment_date,
-        reference_number,
-        amount,
-        payment_method,
-        payment_account_id,
-        notes,
-        attachments,
-        created_at,
-        updated_at,
-        account:accounts(id, name)
-      `)
+      .select(selectWithAttachments)
       .eq('reference_type', 'purchase')
       .eq('reference_id', purchaseId)
       .order('payment_date', { ascending: false })
       .order('created_at', { ascending: false });
 
-    console.log('[PURCHASE SERVICE] Payment query result:', { 
-      dataCount: data?.length || 0, 
-      error: error?.message,
-      purchaseId 
+    if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('attachments')) {
+      result = await supabase
+        .from('payments')
+        .select(
+          `
+          id,
+          payment_date,
+          reference_number,
+          amount,
+          payment_method,
+          payment_account_id,
+          notes,
+          created_at,
+          updated_at,
+          voided_at,
+          account:accounts(id, name)
+        `
+        )
+        .eq('reference_type', 'purchase')
+        .eq('reference_id', purchaseId)
+        .order('payment_date', { ascending: false })
+        .order('created_at', { ascending: false });
+    }
+
+    const data = result.data;
+    const error = result.error;
+    if (error) {
+      console.error('[PURCHASE SERVICE] Error fetching direct payments:', error);
+    }
+
+    const directRows: any[] = [];
+    if (data && data.length > 0) {
+      for (const p of data as any[]) {
+        if (p.voided_at) continue;
+        let att = p.attachments;
+        if (typeof att === 'string' && att) {
+          try {
+            att = JSON.parse(att);
+          } catch {
+            att = null;
+          }
+        }
+        directRows.push({
+          id: p.id,
+          date: p.payment_date || p.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+          referenceNo: p.reference_number || '',
+          amount: parseFloat(p.amount || 0),
+          method: p.payment_method || 'cash',
+          accountId: p.payment_account_id,
+          accountName: p.account?.name || '',
+          notes: p.notes || '',
+          attachments: att ?? null,
+          createdAt: p.created_at,
+          updatedAt: p.updated_at ?? p.created_at,
+          source: 'purchase_payment' as const,
+        });
+      }
+    }
+
+    const allocRows: any[] = [];
+    try {
+      const { data: allocs, error: aErr } = await supabase
+        .from('payment_allocations')
+        .select('id, allocated_amount, allocation_date, payment_id, allocation_order')
+        .eq('purchase_id', purchaseId);
+      if (!aErr && allocs && allocs.length > 0) {
+        const payIds = [...new Set(allocs.map((a: any) => a.payment_id).filter(Boolean))];
+        const { data: parents } = await supabase
+          .from('payments')
+          .select(
+            `id, reference_type, payment_date, reference_number, amount, payment_method, payment_account_id, notes, attachments, voided_at, created_at, updated_at, account:accounts(id, name)`
+          )
+          .in('id', payIds);
+        const parentById = new Map((parents || []).map((p: any) => [p.id, p]));
+        /** One display row per parent manual payment (sum allocations); date = parent payment_date so edits show immediately */
+        const grouped = new Map<
+          string,
+          { payment_id: string; sum: number; primaryAllocId: string; minOrder: number; allocCount: number }
+        >();
+        for (const a of allocs as any[]) {
+          const p = parentById.get(a.payment_id);
+          if (!p || (p as any).voided_at) continue;
+          if (String((p as any).reference_type || '').toLowerCase() !== 'manual_payment') continue;
+          const pid = String(a.payment_id);
+          const amt = parseFloat(a.allocated_amount || 0);
+          const ord = Number(a.allocation_order) || 0;
+          const g = grouped.get(pid);
+          if (!g) {
+            grouped.set(pid, {
+              payment_id: pid,
+              sum: amt,
+              primaryAllocId: String(a.id),
+              minOrder: ord,
+              allocCount: 1,
+            });
+          } else {
+            g.sum += amt;
+            g.allocCount += 1;
+            if (ord < g.minOrder) g.minOrder = ord;
+          }
+        }
+        for (const [, g] of grouped) {
+          const p = parentById.get(g.payment_id);
+          if (!p) continue;
+          const payDate = (p as any)?.payment_date || new Date().toISOString().split('T')[0];
+          let att = (p as any).attachments;
+          if (typeof att === 'string' && att) {
+            try {
+              att = JSON.parse(att);
+            } catch {
+              att = null;
+            }
+          }
+          allocRows.push({
+            id: `alloc:${g.primaryAllocId}`,
+            date: payDate,
+            referenceNo: (p as any)?.reference_number || '',
+            allocationBadge:
+              g.allocCount > 1
+                ? `AP alloc · ${g.allocCount} lines`
+                : `AP alloc #${g.minOrder || 1}`,
+            amount: g.sum,
+            parentPaymentAmount: parseFloat((p as any)?.amount || 0),
+            method: (p as any)?.payment_method || 'cash',
+            accountId: (p as any)?.payment_account_id,
+            accountName: (p as any)?.account?.name || '',
+            notes: (p as any)?.notes || '',
+            attachments: att ?? null,
+            createdAt: (p as any)?.created_at,
+            updatedAt: (p as any)?.updated_at ?? (p as any)?.created_at,
+            source: 'manual_payment_allocation' as const,
+            parentPaymentId: g.payment_id,
+            allocationOrder: g.minOrder,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[PURCHASE SERVICE] payment_allocations fetch skipped:', e);
+    }
+
+    const combined = [...directRows, ...allocRows].sort((x, y) => {
+      const dx = new Date(x.date).getTime();
+      const dy = new Date(y.date).getTime();
+      if (dy !== dx) return dy - dx;
+      return String(y.referenceNo).localeCompare(String(x.referenceNo));
     });
 
-    if (error) {
-      console.error('[PURCHASE SERVICE] Error fetching payments:', error);
-      // Don't throw - return empty array and log warning
-    }
-
-    // 🔒 GOLDEN RULE: Payment history = payments table ONLY (no fallback to paid_amount)
-    if (data && data.length > 0) {
-      console.log('[PURCHASE SERVICE] Found', data.length, 'payments for purchase:', purchaseId);
-      return data.map((p: any) => ({
-        id: p.id,
-        date: p.payment_date || p.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
-        referenceNo: p.reference_number || '',
-        amount: parseFloat(p.amount || 0),
-        method: p.payment_method || 'cash',
-        accountId: p.payment_account_id,
-        accountName: p.account?.name || '',
-        notes: p.notes || '',
-        attachments: p.attachments || null,
-        createdAt: p.created_at,
-        updatedAt: p.updated_at ?? p.created_at,
-      }));
-    }
-
-    // 🔒 GOLDEN RULE: Return empty array if no payments found (never fallback to paid_amount)
-    console.log('[PURCHASE SERVICE] No payments found in payments table for purchase:', purchaseId);
-    return [];
-
-    return [];
+    return combined;
   },
 
   // Delete payment (similar to saleService.deletePayment)

@@ -33,6 +33,7 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { expenseService } from '@/app/services/expenseService';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import {
@@ -78,7 +79,7 @@ export const ReportsDashboardEnhanced = () => {
   const { formatCurrency } = useFormatCurrency();
   const { formatDate } = useFormatDate();
   const { canViewReports } = useCheckPermission();
-  const { branchId } = useSupabase();
+  const { branchId, companyId } = useSupabase();
   const globalFilter = useGlobalFilter();
   const { startDate: globalStart, endDate: globalEnd, setCurrentModule, getDateRangeLabel } = globalFilter;
   const dateRangeLabel = getDateRangeLabel();
@@ -89,6 +90,21 @@ export const ReportsDashboardEnhanced = () => {
 
   const [reportType, setReportType] = useState<'overview' | 'sales' | 'purchases' | 'expenses' | 'financial' | 'commission'>('overview');
   const [financialReportType, setFinancialReportType] = useState<'trial-balance' | 'profit-loss' | 'balance-sheet' | 'sales-profit' | 'inventory-valuation'>('trial-balance');
+  /** Expenses whose original expense JE has a correction_reversal — hidden from reports by default. */
+  const [reversedExpenseIds, setReversedExpenseIds] = useState<Set<string>>(() => new Set());
+  const [showReversedExpenses, setShowReversedExpenses] = useState(false);
+
+  React.useEffect(() => {
+    if (!companyId || expenses.expenses.length === 0) {
+      setReversedExpenseIds(new Set());
+      return;
+    }
+    const ids = expenses.expenses.map((e) => e.id);
+    expenseService
+      .getReversedExpenseIds(companyId, ids)
+      .then(setReversedExpenseIds)
+      .catch(() => setReversedExpenseIds(new Set()));
+  }, [companyId, expenses.expenses]);
 
   const reportStartDate = globalStart ? globalStart.slice(0, 10) : '1900-01-01';
   const reportEndDate = globalEnd ? globalEnd.slice(0, 10) : new Date().toISOString().slice(0, 10);
@@ -113,6 +129,11 @@ export const ReportsDashboardEnhanced = () => {
     [expenses.expenses, filterByRange]
   );
 
+  const reportableExpenses = useMemo(() => {
+    if (showReversedExpenses) return filteredExpenses;
+    return filteredExpenses.filter((e) => !reversedExpenseIds.has(e.id));
+  }, [filteredExpenses, reversedExpenseIds, showReversedExpenses]);
+
   // ============================================
   // METRICS (from filtered data) – ERP golden rule: only FINAL/posted
   // ============================================
@@ -122,7 +143,7 @@ export const ReportsDashboardEnhanced = () => {
   const metrics = useMemo(() => {
     const totalSales = finalSales.reduce((sum, sale) => sum + (sale.total ?? 0), 0);
     const totalPurchases = finalPurchases.reduce((sum, p) => sum + (p.total ?? 0), 0);
-    const totalExpenses = filteredExpenses
+    const totalExpenses = reportableExpenses
       .filter((e) => e.status === 'paid')
       .reduce((sum, e) => sum + e.amount, 0);
     const totalReceivables = finalSales.reduce((sum, s) => sum + (s.due ?? 0), 0);
@@ -140,9 +161,9 @@ export const ReportsDashboardEnhanced = () => {
       profitMargin,
       salesCount: finalSales.length,
       purchasesCount: finalPurchases.length,
-      expensesCount: filteredExpenses.filter((e) => e.status === 'paid').length,
+      expensesCount: reportableExpenses.filter((e) => e.status === 'paid').length,
     };
-  }, [finalSales, finalPurchases, filteredExpenses]);
+  }, [finalSales, finalPurchases, reportableExpenses]);
 
   const salesByStatus = useMemo(() => {
     const paid = finalSales.filter((s) => s.paymentStatus === 'paid').length;
@@ -156,7 +177,7 @@ export const ReportsDashboardEnhanced = () => {
   }, [finalSales]);
 
   const expensesByCategory = useMemo(() => {
-    const paidExpenses = filteredExpenses.filter((e) => e.status === 'paid');
+    const paidExpenses = reportableExpenses.filter((e) => e.status === 'paid');
     const byCat: Record<string, number> = {};
     paidExpenses.forEach((e) => {
       const cat = e.category || 'Other';
@@ -167,7 +188,7 @@ export const ReportsDashboardEnhanced = () => {
       amount: byCat[name],
       color: COLORS[i % COLORS.length],
     })).filter((item) => item.amount > 0);
-  }, [filteredExpenses]);
+  }, [reportableExpenses]);
 
   // Monthly trend from real data (last 6 months)
   const monthlyTrend = useMemo(() => {
@@ -189,7 +210,7 @@ export const ReportsDashboardEnhanced = () => {
       const monthPurchases = filteredPurchases
         .filter((p) => p.date && new Date(p.date) >= monthStart && new Date(p.date) <= monthEnd)
         .reduce((sum, p) => sum + p.total, 0);
-      const monthExpenses = filteredExpenses
+      const monthExpenses = reportableExpenses
         .filter((e) => e.status === 'paid' && e.date && new Date(e.date) >= monthStart && new Date(e.date) <= monthEnd)
         .reduce((sum, e) => sum + (e.amount || 0), 0);
       result.push({
@@ -201,7 +222,7 @@ export const ReportsDashboardEnhanced = () => {
       });
     }
     return result;
-  }, [filteredSales, filteredPurchases, filteredExpenses]);
+  }, [filteredSales, filteredPurchases, reportableExpenses]);
 
   // Export data for current report type
   const getExportData = useCallback((): { headers: string[]; rows: (string | number)[][]; title: string } => {
@@ -255,7 +276,7 @@ export const ReportsDashboardEnhanced = () => {
         return {
           title,
           headers: ['Date', 'Ref #', 'Category', 'Description', 'Amount', 'Payment', 'Status'],
-          rows: filteredExpenses.map((e) => [
+          rows: reportableExpenses.map((e) => [
             e.date || '',
             e.expenseNo || '',
             e.category || '',
@@ -281,7 +302,7 @@ export const ReportsDashboardEnhanced = () => {
       default:
         return { title, headers: [], rows: [] };
     }
-  }, [reportType, dateRangeLabel, metrics, filteredSales, filteredPurchases, filteredExpenses]);
+  }, [reportType, dateRangeLabel, metrics, filteredSales, filteredPurchases, reportableExpenses]);
 
   const handleExportPDF = () => {
     const data = getExportData();
@@ -580,6 +601,15 @@ export const ReportsDashboardEnhanced = () => {
         {/* Expenses Tab */}
         {reportType === 'expenses' && (
           <>
+            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer mb-2">
+              <input
+                type="checkbox"
+                checked={showReversedExpenses}
+                onChange={(e) => setShowReversedExpenses(e.target.checked)}
+                className="rounded border-gray-600 bg-gray-950"
+              />
+              Show reversed expenses (offset in GL)
+            </label>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <MetricCard title="Total Expenses" value={formatCurrency(metrics.totalExpenses)} change={`${metrics.expensesCount} paid`} trend="up" icon={DollarSign} iconColor="text-orange-400" iconBg="bg-orange-400/10" />
               <StatCard icon={DollarSign} label="Paid Expenses" value={metrics.expensesCount} color="bg-orange-500/10 text-orange-400" />
@@ -622,10 +652,10 @@ export const ReportsDashboardEnhanced = () => {
                     <tr><th className="py-2 pr-4">Date</th><th className="py-2 pr-4">Ref #</th><th className="py-2 pr-4">Category</th><th className="py-2 pr-4">Description</th><th className="py-2 pr-4">Amount</th><th className="py-2 pr-4">Payment</th><th className="py-2 pr-4">Status</th></tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
-                    {filteredExpenses.length === 0 ? (
+                    {reportableExpenses.length === 0 ? (
                       <tr><td colSpan={7} className="py-8 text-center text-gray-500">No expenses in selected period</td></tr>
                     ) : (
-                      filteredExpenses.map((e) => (
+                      reportableExpenses.map((e) => (
                         <tr key={e.id} className="text-gray-300">
                           <td className="py-2 pr-4">{e.date ? formatDate(new Date(e.date)) : '—'}</td>
                           <td className="py-2 pr-4 font-mono">{e.expenseNo || '—'}</td>

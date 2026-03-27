@@ -58,6 +58,19 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), studio
     return amount > 0 ? amount.toLocaleString('en-PK') : '-';
   };
 
+  const paymentLinkageText = (t: Transaction): string | null => {
+    if (!(t.documentType === 'Payment' || t.documentType === 'On-account Payment' || t.documentType === 'Return Payment')) return null;
+    if (t.ledgerExpandRows && t.ledgerExpandRows.length > 0) {
+      const allocCount = t.ledgerExpandRows.filter((r) => r.label.toLowerCase().includes('allocated')).length;
+      if (allocCount > 0) return allocCount === 1 ? '1 invoice linked' : `${allocCount} invoices linked`;
+      return 'Unapplied';
+    }
+    if (t.linkedInvoices && t.linkedInvoices.length > 0) {
+      return t.linkedInvoices.length === 1 ? `${t.linkedInvoices[0]} linked` : `${t.linkedInvoices.length} invoices linked`;
+    }
+    return 'Unapplied';
+  };
+
   const getDocumentIcon = (type: string) => {
     switch (type) {
       case 'Opening Balance':
@@ -192,8 +205,16 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), studio
     totalDebit: periodTransactions.reduce((sum, t) => sum + t.debit, 0),
     totalCredit: periodTransactions.reduce((sum, t) => sum + t.credit, 0),
     netBalance: periodTransactions.reduce((sum, t) => sum + t.debit - t.credit, 0),
-    salesCount: periodTransactions.filter(t => t.documentType === 'Sale' || t.documentType === 'Studio Sale').length,
-    paymentsCount: periodTransactions.filter(t => t.documentType === 'Payment').length,
+    salesCount: periodTransactions.filter(
+      t => t.documentType === 'Sale' || t.documentType === 'Studio Sale' || t.documentType === 'Rental'
+    ).length,
+    paymentsCount: periodTransactions.filter(
+      t =>
+        t.documentType === 'Payment' ||
+        t.documentType === 'On-account Payment' ||
+        t.documentType === 'Return Payment' ||
+        t.documentType === 'Rental Payment'
+    ).length,
     discountsCount: periodTransactions.filter(t => t.documentType === 'Discount').length,
     avgTransaction: periodTransactions.length > 0
       ? (periodTransactions.reduce((sum, t) => sum + (t.debit || t.credit), 0) / periodTransactions.length)
@@ -614,6 +635,9 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), studio
                               {transaction.referenceStatus === 'cancelled' && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">Cancelled</span>
                               )}
+                              {transaction.ledgerPaymentLifecycle === 'voided' && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500/15 text-red-300 border border-red-500/30">Voided</span>
+                              )}
                               <Eye className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                             </div>
                             {transaction.linkedInvoices && transaction.linkedInvoices.length > 0 && (
@@ -636,6 +660,12 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), studio
                       {visibleColumns.description && (
                         <td className="px-5 py-4 max-w-md text-white">
                           <div className="text-sm font-medium mb-1 text-white">{transaction.description}</div>
+                          {paymentLinkageText(transaction) && (
+                            <div className="text-[11px] text-blue-300/90 mb-1 inline-flex items-center gap-1">
+                              <Link2 className="w-3 h-3" />
+                              {paymentLinkageText(transaction)}
+                            </div>
+                          )}
                           {transaction.notes && (
                             <div className="flex items-start gap-2 mt-2 p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
                               <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-yellow-400" />
@@ -784,6 +814,14 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), studio
                       <div className="flex items-center gap-2">
                         {transaction.notes && <MessageSquare className="w-3.5 h-3.5 text-amber-500" />}
                         {transaction.linkedInvoices && transaction.linkedInvoices.length > 0 && <Link2 className="w-3.5 h-3.5 text-blue-500" />}
+                        {paymentLinkageText(transaction) && (
+                          <span className="text-[10px] text-blue-300/90">{paymentLinkageText(transaction)}</span>
+                        )}
+                        {transaction.ledgerPaymentLifecycle === 'voided' && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-red-500/15 text-red-300 border border-red-500/30">
+                            Voided
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-6">

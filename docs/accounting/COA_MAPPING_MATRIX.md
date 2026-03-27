@@ -9,10 +9,10 @@
 
 | Component | Canonical code | Account name | Used for |
 |-----------|----------------|-------------|----------|
-| **Sale revenue** | 4000 | Sales Revenue | Cr on sale finalize; sale edit revenue delta |
+| **Sale revenue** | 4000 (sale JEs) / **4100** (default COA seed) | Sales Revenue | Cr product revenue on sale finalize |
 | **Accounts receivable** | 1100 | Accounts Receivable | Dr on credit sale; Cr on customer payment |
 | **Sales discount** | 5200 | Discount Allowed | Dr on sale discount (contra-revenue) |
-| **Shipping income** | 4100 | Shipping Income | Cr when shipping charged to customer |
+| **Shipping income** | **4110** | Shipping Income | Cr when shipping charged to customer (not 4100 — that is Sales Revenue in seed) |
 | **Sale extra expense** | 5300 | Extra Expense | Dr when sale has extra expense; Cr = Cash (1000) or **AP 2000** (not 2020) |
 | **Inventory** | **1200** | Inventory | Dr purchase; Cr COGS; single asset account for stock |
 | **COGS** | 5000 | Cost of Production | Dr on sale (COGS); Cr on reversal |
@@ -56,8 +56,9 @@
 | 203x | Courier Payable (per courier) | Canonical active |
 | 2040 | Salesman Payable | Canonical active |
 | 3000 | Capital | Canonical active |
-| 4000 | Sales Revenue | Canonical active |
-| 4100 | Shipping Income | Canonical active |
+| 4000 | Sales Revenue | Canonical active (saleAccountingService product lines) |
+| 4100 | Sales Revenue | Canonical active (default COA seed) |
+| 4110 | Shipping Income | Canonical active |
 | 5000 | Cost of Production | Canonical active |
 | 5100 | Shipping Expense | Canonical active (do not use for commission) |
 | 5110 | Sales Commission Expense | Canonical when created; preferred for commission |

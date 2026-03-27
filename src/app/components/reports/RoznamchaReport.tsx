@@ -26,17 +26,28 @@ import {
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
-import { Loader2, BookOpen, Wallet, Building2, CreditCard } from 'lucide-react';
+import { Loader2, BookOpen, Wallet, Building2, CreditCard, Smartphone } from 'lucide-react';
 import { cn } from '../ui/utils';
 import { format } from 'date-fns';
 
-function AccountBadge({ accountLabel }: { accountLabel: string }) {
+function AccountBadge({
+  accountLabel,
+  liquidity,
+}: {
+  accountLabel: string;
+  liquidity?: 'cash' | 'bank' | 'wallet' | null;
+}) {
   const label = accountLabel || '—';
   const icon =
-    label === 'Cash' ? <Wallet className="w-3.5 h-3.5" /> :
-    label === 'Bank' ? <Building2 className="w-3.5 h-3.5" /> :
-    label === 'JazzCash' ? <CreditCard className="w-3.5 h-3.5" /> :
-    <CreditCard className="w-3.5 h-3.5" />;
+    liquidity === 'cash' || label === 'Cash' ? (
+      <Wallet className="w-3.5 h-3.5" />
+    ) : liquidity === 'bank' || label === 'Bank' ? (
+      <Building2 className="w-3.5 h-3.5" />
+    ) : liquidity === 'wallet' || label === 'Wallet' || label === 'JazzCash' ? (
+      <Smartphone className="w-3.5 h-3.5" />
+    ) : (
+      <CreditCard className="w-3.5 h-3.5" />
+    );
   return (
     <span className={cn(
       'inline-flex items-center gap-1 bg-gray-800 px-2 py-1 rounded-md text-sm',
@@ -189,12 +200,14 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                 <SelectItem value="all">All</SelectItem>
                 <SelectItem value="cash">Cash</SelectItem>
                 <SelectItem value="bank">Bank</SelectItem>
+                <SelectItem value="wallet">Wallet</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
         <p className="text-xs text-gray-500 mt-2">
-          Date: {dateFrom} → {dateTo} · Branch: {selectedBranchLabel} · Account: {accountFilter === 'all' ? 'All' : accountFilter}
+          Date: {dateFrom} → {dateTo} · Branch: {selectedBranchLabel} · Account:{' '}
+          {accountFilter === 'all' ? 'All' : accountFilter === 'wallet' ? 'Wallet' : accountFilter}
         </p>
       </div>
 
@@ -233,7 +246,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           {/* 3. CASH SPLIT */}
           <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
             <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Cash Split</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="flex items-center justify-between rounded-lg bg-gray-950 border border-gray-800 px-4 py-3">
                 <span className="text-gray-400 flex items-center gap-2">
                   <Wallet size={18} /> Cash
@@ -248,6 +261,14 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                 </span>
                 <span className="font-mono font-semibold text-white">
                   {data.cashSplit.bank.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-gray-950 border border-gray-800 px-4 py-3">
+                <span className="text-gray-400 flex items-center gap-2">
+                  <Smartphone size={18} /> Wallet
+                </span>
+                <span className="font-mono font-semibold text-white">
+                  {data.cashSplit.wallet.toLocaleString()}
                 </span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-gray-800 border border-gray-700 px-4 py-3">
@@ -322,7 +343,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <AccountBadge accountLabel={r.accountName ?? r.accountLabel} />
+                        <AccountBadge accountLabel={r.accountName ?? r.accountLabel} liquidity={r.accountType} />
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-green-400">
                         {r.cashIn > 0 ? r.cashIn.toLocaleString() : '—'}

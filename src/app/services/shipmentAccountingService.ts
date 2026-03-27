@@ -5,7 +5,7 @@
  *
  * CASE A — Customer shipping charge:
  *   Dr  Accounts Receivable (1100)   charged_to_customer
- *   Cr  Shipping Income      (4100)  charged_to_customer
+ *   Cr  Shipping Income      (4110)  charged_to_customer
  *
  * CASE B — Courier expense (per-courier sub-ledger 2031, 2032, …):
  *   Dr  Shipping Expense (5100)   actual_cost
@@ -216,7 +216,7 @@ export const shipmentAccountingService = {
    * Create journal entries for a shipment.
    *
    * Case A (charged_to_customer > 0):
-   *   Dr Accounts Receivable (1100)  /  Cr Shipping Income (4100)
+   *   Dr Accounts Receivable (1100)  /  Cr Shipping Income (4110)
    *
    * Case B (actual_cost > 0):
    *   Dr Shipping Expense (5100)  /  Cr Courier Payable (2030)
@@ -264,7 +264,7 @@ export const shipmentAccountingService = {
     const label = invoiceNo ? ` – ${invoiceNo}` : '';
     const [arAccount, shippingIncomeAccount, shippingExpenseAccount] = await Promise.all([
       ensureAccount('1100', 'Accounts Receivable', 'asset', companyId),
-      ensureAccount('4100', 'Shipping Income', 'Revenue', companyId),
+      ensureAccount('4110', 'Shipping Income', 'Revenue', companyId),
       ensureAccount('5100', 'Shipping Expense', 'Expense', companyId),
     ]);
 
@@ -381,7 +381,7 @@ export const shipmentAccountingService = {
     const [arAccount, shippingIncomeAccount, shippingExpenseAccount, courierPayableAccountId] =
       await Promise.all([
         ensureAccount('1100', 'Accounts Receivable', 'asset', companyId),
-        ensureAccount('4100', 'Shipping Income', 'Revenue', companyId),
+        ensureAccount('4110', 'Shipping Income', 'Revenue', companyId),
         ensureAccount('5100', 'Shipping Expense', 'Expense', companyId),
         getCourierPayableAccountIdForShipment(shipmentId),
       ]);

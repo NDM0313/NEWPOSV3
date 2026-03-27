@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { Plus, LayoutList, Calendar as CalendarIcon, Truck, CornerDownLeft, DollarSign } from 'lucide-react';
 import { Button } from '../ui/button';
 import { RentalBookingDrawer } from './RentalBookingDrawer';
@@ -41,6 +42,27 @@ export const RentalDashboard = () => {
     setIsDrawerOpen(false);
     setEditRental(null);
   };
+
+  /** Deep-link from accounting unified edit (rental JE): open booking drawer after navigating to Rentals. */
+  useEffect(() => {
+    const pending = typeof window !== 'undefined' ? sessionStorage.getItem('pendingRentalDetailsId') : null;
+    if (!pending) return;
+    sessionStorage.removeItem('pendingRentalDetailsId');
+    void (async () => {
+      try {
+        await refreshRentals();
+      } catch {
+        /* non-fatal */
+      }
+      const r = getRentalById(pending);
+      if (r) {
+        setActiveTab('list');
+        setViewRental(r);
+      } else {
+        toast.message('Rental not in the loaded list yet — open it from the Rentals list, or refresh.');
+      }
+    })();
+  }, [refreshRentals, getRentalById]);
 
   return (
     <div className="h-screen flex flex-col bg-[#0B0F19]">

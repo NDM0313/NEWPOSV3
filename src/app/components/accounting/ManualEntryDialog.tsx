@@ -37,6 +37,11 @@ interface SupplierOption {
   name: string;
 }
 
+interface CustomerOption {
+  id: string;
+  name: string;
+}
+
 export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, onClose }) => {
   const accounting = useAccounting();
   const { companyId } = useSupabase();
@@ -54,9 +59,17 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
   const [supplierName, setSupplierName] = useState('');
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [suppliersLoading, setSuppliersLoading] = useState(false);
+  const [customerId, setCustomerId] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
 
   const isWorkerPayableDebit = debitAccount === 'Worker Payable';
   const isAccountsPayableDebit = debitAccount === 'Accounts Payable';
+  /** Dr cash/bank/wallet + Cr AR = customer receipt (FIFO invoice apply in backend). */
+  const isDebitReceivingAccount =
+    debitAccount.startsWith('Cash ') || debitAccount.startsWith('Bank ') || debitAccount.startsWith('Mobile Wallet ');
+  const isCustomerReceiptToAr = isDebitReceivingAccount && creditAccount === 'Accounts Receivable';
 
   useEffect(() => {
     if (!isOpen || !companyId) return;
@@ -82,7 +95,25 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
       setSupplierId('');
       setSupplierName('');
     }
-  }, [isOpen, companyId, isWorkerPayableDebit, isAccountsPayableDebit, workers.length, suppliers.length]);
+    if (isCustomerReceiptToAr && customers.length === 0 && companyId) {
+      setCustomersLoading(true);
+      contactService
+        .getAllContacts(companyId, 'customer')
+        .then((list) => {
+          setCustomers(
+            (list || [])
+              .filter((c: any) => c.type === 'customer' || c.type === 'both')
+              .map((c: any) => ({ id: c.id, name: c.name || '' }))
+          );
+          setCustomersLoading(false);
+        })
+        .catch(() => setCustomersLoading(false));
+    }
+    if (!isCustomerReceiptToAr) {
+      setCustomerId('');
+      setCustomerName('');
+    }
+  }, [isOpen, companyId, isWorkerPayableDebit, isAccountsPayableDebit, isCustomerReceiptToAr, workers.length, suppliers.length, customers.length]);
 
   // Reset form
   const resetForm = () => {
@@ -95,6 +126,8 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
     setWorkerName('');
     setSupplierId('');
     setSupplierName('');
+    setCustomerId('');
+    setCustomerName('');
   };
 
   // Handle submit
@@ -117,11 +150,22 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
       toast.error('When debiting Accounts Payable, you must select the supplier so the payment appears in Supplier Ledger.');
       return;
     }
+    if (isCustomerReceiptToAr && (!customerId || !customerName)) {
+      toast.error('When recording a customer receipt (Dr Cash/Bank/Wallet, Cr Accounts Receivable), select the customer so the amount can apply to open invoices (FIFO).');
+      return;
+    }
 
     setIsProcessing(true);
 
     try {
-      const metadata: { workerId?: string; workerName?: string; contactId?: string; contactName?: string } = {};
+      const metadata: {
+        workerId?: string;
+        workerName?: string;
+        contactId?: string;
+        contactName?: string;
+        customerId?: string;
+        customerName?: string;
+      } = {};
       if (isWorkerPayableDebit && workerId && workerName) {
         metadata.workerId = workerId;
         metadata.workerName = workerName;
@@ -129,6 +173,10 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
       if (isAccountsPayableDebit && supplierId && supplierName) {
         metadata.contactId = supplierId;
         metadata.contactName = supplierName;
+      }
+      if (isCustomerReceiptToAr && customerId && customerName) {
+        metadata.customerId = customerId;
+        metadata.customerName = customerName;
       }
       const success = await accounting.createEntry({
         date: new Date(),
@@ -284,6 +332,35 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
               </div>
             )}
 
+            {/* Customer (required when Dr receiving account + Cr AR — same FIFO as Add Entry V2) */}
+            {isCustomerReceiptToAr && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  Customer <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={customerId}
+                  onChange={(e) => {
+                    const opt = customers.find((c) => c.id === e.target.value);
+                    setCustomerId(e.target.value);
+                    setCustomerName(opt?.name ?? '');
+                  }}
+                  disabled={customersLoading}
+                  className="w-full bg-gray-950 border-2 border-gray-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 transition-colors"
+                >
+                  <option value="">Select customer (required — open invoices settle FIFO)</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name || c.id}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  One receipt in Roznamcha; amounts apply automatically to oldest open invoices first. Leftover stays as unapplied credit.
+                </p>
+              </div>
+            )}
+
             {/* Amount */}
             <div>
               <label className="block text-sm font-semibold text-gray-300 mb-2">
@@ -353,7 +430,8 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
                 amount <= 0 ||
                 isProcessing ||
                 (isWorkerPayableDebit && (!workerId || workersLoading)) ||
-                (isAccountsPayableDebit && (!supplierId || suppliersLoading))
+                (isAccountsPayableDebit && (!supplierId || suppliersLoading)) ||
+                (isCustomerReceiptToAr && (!customerId || customersLoading))
               }
               className="bg-blue-600 hover:bg-blue-500 text-white min-w-[120px]"
             >

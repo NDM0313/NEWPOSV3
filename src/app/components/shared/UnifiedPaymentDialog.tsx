@@ -13,6 +13,9 @@ import { toast } from 'sonner';
 import { getAttachmentOpenUrl, getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
 import { showStorageRlsToast, MAX_FILE_SIZE_BYTES, showFileTooLargeToast } from '@/app/utils/uploadTransactionAttachments';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
+import { rebuildManualReceiptFifoAllocations, rebuildManualSupplierFifoAllocations } from '@/app/services/paymentAllocationService';
+import { syncJournalEntryDateByPaymentId } from '@/app/services/journalTransactionDateSyncService';
 
 // ============================================
 // 🎯 TYPES
@@ -40,6 +43,10 @@ export interface PaymentDialogProps {
   previousPayments?: PreviousPayment[]; // Payment history for this invoice
   referenceNo?: string; // Invoice number (string) for display
   referenceId?: string; // UUID of sale/purchase/rental (for journal entry reference_id)
+  /** Rental: booking advance vs balance — drives JE (Rental Advance vs revenue) and rental_payments.payment_type */
+  rentalPaymentKind?: 'advance' | 'remaining';
+  /** Pre-fill notes when dialog opens (e.g. rental advance explanation) */
+  defaultPaymentNotes?: string;
   /** When context=worker and paying for specific stage (Pay Now), pass stageId so ledger uses markStageLedgerPaid */
   workerStageId?: string;
   onSuccess?: (paymentRef?: string, amountPaid?: number) => void;
@@ -56,6 +63,8 @@ export interface PaymentDialogProps {
     referenceNumber?: string;
     notes?: string;
     attachments?: any; // saved: { url, name }[] or url string
+    /** When id is `alloc:<uuid>`, parent payments.id (set by payment history normalizers) */
+    parentPaymentId?: string;
   };
 }
 
@@ -95,6 +104,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   previousPayments = [],
   referenceNo,
   referenceId, // CRITICAL FIX: UUID for journal entry reference_id
+  rentalPaymentKind = 'remaining',
+  defaultPaymentNotes = '',
   workerStageId,
   onSuccess,
   initialAttachmentFiles,
@@ -181,7 +192,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
         setAmount(workerStageId ? 0 : Math.max(0, effectiveOutstanding));
         setPaymentMethod('Cash');
         setSelectedAccount('');
-        setNotes('');
+        setNotes(defaultPaymentNotes || '');
         setExistingAttachments([]);
         const now = new Date();
         const year = now.getFullYear();
@@ -197,7 +208,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     } else {
       prevOpenRef.current = false;
     }
-  }, [isOpen, editMode, paymentToEdit, initialAttachmentFiles, effectiveOutstanding, workerStageId]);
+  }, [isOpen, editMode, paymentToEdit, initialAttachmentFiles, effectiveOutstanding, workerStageId, defaultPaymentNotes]);
 
   // Refresh accounts when dialog opens so user-assigned accounts (user_account_access) are visible after RLS
   React.useEffect(() => {
@@ -358,6 +369,16 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           icon: '👷'
         };
       case 'rental':
+        if (rentalPaymentKind === 'advance') {
+          return {
+            title: 'Receive rental advance',
+            entityLabel: 'Rental booking',
+            actionButton: 'Receive payment',
+            successMessage: 'Rental advance recorded',
+            badge: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+            icon: '🏠'
+          };
+        }
         return {
           title: 'Pay Rental',
           entityLabel: 'Rental',
@@ -458,13 +479,74 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           notes: notes || undefined,
           attachments: mergedAttachments.length ? mergedAttachments : undefined,
         };
+        let paymentIdForUpdate: string;
+        try {
+          paymentIdForUpdate = resolvePaymentIdForMutation({
+            id: paymentToEdit.id,
+            parentPaymentId: paymentToEdit.parentPaymentId,
+          });
+        } catch (e: any) {
+          toast.error(e?.message || 'Invalid payment id — refresh payment history and try again.');
+          setIsProcessing(false);
+          return;
+        }
         if (context === 'customer' && referenceId) {
           const { saleService } = await import('@/app/services/saleService');
-          await saleService.updatePayment(paymentToEdit.id, referenceId, updatePayload);
+          await saleService.updatePayment(paymentIdForUpdate, referenceId, updatePayload);
           success = true;
         } else if (context === 'supplier' && referenceId) {
           const { purchaseService } = await import('@/app/services/purchaseService');
-          await purchaseService.updatePayment(paymentToEdit.id, referenceId, updatePayload);
+          await purchaseService.updatePayment(paymentIdForUpdate, referenceId, updatePayload);
+          success = true;
+        } else if (context === 'rental' && referenceId && companyId) {
+          const { rentalService } = await import('@/app/services/rentalService');
+          await rentalService.updateRentalPayment(referenceId, paymentIdForUpdate, companyId, {
+            amount,
+            paymentDate,
+            method: paymentMethod,
+            reference: (paymentToEdit as any).referenceNumber ?? notes,
+            notes: notes || undefined,
+            accountId: selectedAccount,
+          });
+          success = true;
+        } else {
+          // Manual / on-account payment edits may not have source referenceId.
+          const paymentMethodMap: Record<string, string> = {
+            cash: 'cash',
+            bank: 'bank',
+            'mobile wallet': 'wallet',
+            wallet: 'wallet',
+            easypaisa: 'wallet',
+            jazzcash: 'wallet',
+          };
+          const pm = String(paymentMethod || '').toLowerCase().trim();
+          const normalizedPm = paymentMethodMap[pm] || 'cash';
+          const patch: any = {
+            amount,
+            payment_method: normalizedPm,
+            payment_account_id: selectedAccount || null,
+            payment_date: paymentDate,
+            notes: notes || null,
+            updated_at: new Date().toISOString(),
+          };
+          if (mergedAttachments.length) patch.attachments = mergedAttachments;
+          const { data: updatedPayment, error: upErr } = await supabase
+            .from('payments')
+            .update(patch)
+            .eq('id', paymentIdForUpdate)
+            .select('id, company_id, reference_type')
+            .single();
+          if (upErr) throw upErr;
+          const rt = String((updatedPayment as any)?.reference_type || '').toLowerCase();
+          if (rt === 'manual_receipt') await rebuildManualReceiptFifoAllocations({ paymentId: paymentIdForUpdate });
+          if (rt === 'manual_payment') await rebuildManualSupplierFifoAllocations({ paymentId: paymentIdForUpdate });
+          if (companyId && paymentDate) {
+            await syncJournalEntryDateByPaymentId({
+              companyId,
+              paymentId: paymentIdForUpdate,
+              entryDate: paymentDate,
+            });
+          }
           success = true;
         }
       } else {
@@ -750,24 +832,64 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           }
           try {
             const { rentalService } = await import('@/app/services/rentalService');
-            await rentalService.addPayment(
+            const payDay = paymentDateTime.split('T')[0];
+            const noteText =
+              notes?.trim() ||
+              (rentalPaymentKind === 'advance' && referenceNo
+                ? `Advance received for rental booking ${referenceNo}`
+                : undefined);
+            const journalSince = new Date(Date.now() - 8_000).toISOString();
+            const rp = await rentalService.addPayment(
               referenceId,
               companyId,
               amount,
               paymentMethod,
-              notes || undefined,
-              user?.id ?? undefined
+              noteText,
+              user?.id ?? undefined,
+              {
+                paymentType: rentalPaymentKind === 'advance' ? 'advance' : 'remaining',
+                paymentDate: payDay,
+                paymentAccountId: selectedAccount,
+              }
             );
-            // Post to ledger: Debit Cash/Bank, Credit Rental Income
-            await accounting.recordRentalDelivery({
-              bookingId: referenceId,
-              customerName: entityName,
-              customerId: entityId || '',
-              remainingAmount: amount,
-              paymentMethod,
-            }).catch((err) => {
-              console.warn('[UnifiedPaymentDialog] Ledger posting failed (payment recorded):', err);
-            });
+            if (rentalPaymentKind === 'advance') {
+              await accounting
+                .recordRentalBooking({
+                  bookingId: referenceId,
+                  customerName: entityName,
+                  customerId: entityId || '',
+                  advanceAmount: amount,
+                  securityDepositAmount: 0,
+                  securityDepositType: 'Document',
+                  paymentMethod,
+                  paymentAccountId: selectedAccount,
+                  paymentDate: payDay,
+                })
+                .catch((err) => {
+                  console.warn('[UnifiedPaymentDialog] Rental advance JE failed (payment recorded):', err);
+                });
+            } else {
+              await accounting
+                .recordRentalDelivery({
+                  bookingId: referenceId,
+                  customerName: entityName,
+                  customerId: entityId || '',
+                  remainingAmount: amount,
+                  paymentMethod,
+                  paymentAccountId: selectedAccount,
+                  paymentDate: payDay,
+                })
+                .catch((err) => {
+                  console.warn('[UnifiedPaymentDialog] Ledger posting failed (payment recorded):', err);
+                });
+            }
+            const jeId = await rentalService.findLatestJournalEntryForRental(companyId, referenceId, journalSince);
+            if (rp?.id && jeId) {
+              await rentalService.linkJournalEntryToRentalPayment(rp.id, jeId);
+            }
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
+            }
             success = true;
           } catch (rentalError: any) {
             toast.error(rentalError?.message || 'Rental payment failed');
@@ -807,17 +929,20 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop — match AddEntryV2 (click-outside + aria) */}
       <div
         className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] animate-in fade-in duration-200"
         onClick={onClose}
+        aria-hidden="true"
       />
 
-      {/* Dialog - COMPACT LAYOUT */}
+      {/* Dialog shell — same tokens as AddEntryV2 */}
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 pointer-events-none overflow-y-auto">
         <div
-          className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl pointer-events-auto animate-in zoom-in-95 duration-200 my-8"
+          className="bg-gray-900 border border-gray-700/80 rounded-2xl shadow-2xl shadow-black/40 w-full max-w-4xl pointer-events-auto animate-in zoom-in-95 duration-200 my-6 max-h-[92vh] overflow-y-auto ring-1 ring-white/5"
           onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
         >
           {/* Header */}
           <div className="flex items-center justify-between p-5 border-b border-gray-800 bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
@@ -881,11 +1006,12 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                       </div>
                     )}
                     <div className="flex items-center justify-between pt-2 border-t border-gray-800">
-                      <span className="text-xs text-gray-400">Outstanding Amount</span>
+                      <span className="text-xs text-gray-400">Due / outstanding</span>
                       <span className="text-xl font-bold text-yellow-400">
                         {formatCurrency(effectiveOutstanding)}
                       </span>
                     </div>
+                    <p className="text-[10px] text-gray-500 pt-1">Amount owed on this document or party for this payment context.</p>
                   </div>
                 </div>
                 
@@ -1055,19 +1181,32 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   )}
                   {selectedAccount && (() => {
                     const account = accounting.accounts.find(a => a.id === selectedAccount);
-                    if (account && amount > account.balance) {
+                    const bal = account ? Number(account.balance) || 0 : 0;
+                    if (account && amount > bal) {
                       return (
-                        <div className="flex items-center gap-2 mt-2 text-orange-400 text-xs bg-orange-500/10 border border-orange-500/20 rounded-lg p-2">
-                          <AlertCircle size={14} />
-                          <span>Warning: Amount exceeds GL (journal) balance</span>
+                        <div className="space-y-2 mt-3">
+                          <div className="flex items-center justify-between rounded-lg border border-gray-800 bg-gray-900/80 px-3 py-2">
+                            <span className="text-xs text-gray-400">Account balance (GL)</span>
+                            <span className="text-sm font-bold text-emerald-400 tabular-nums">{formatCurrency(bal)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-orange-400 text-xs bg-orange-500/10 border border-orange-500/20 rounded-lg p-2">
+                            <AlertCircle size={14} />
+                            <span>Payment amount exceeds this account&apos;s GL (journal) balance.</span>
+                          </div>
                         </div>
                       );
                     }
                     if (account) {
                       return (
-                        <div className="mt-2 text-xs text-gray-400">
-                        Selected: <span className="text-white font-medium">{account.name}</span>
-                      </div>
+                        <div className="mt-3 space-y-2">
+                          <div className="text-xs text-gray-400">
+                            Selected: <span className="text-white font-medium">{account.name}</span>
+                          </div>
+                          <div className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                            <span className="text-xs text-gray-400">Account balance (GL)</span>
+                            <span className="text-base font-bold text-emerald-400 tabular-nums">{formatCurrency(bal)}</span>
+                          </div>
+                        </div>
                       );
                     }
                     return null;

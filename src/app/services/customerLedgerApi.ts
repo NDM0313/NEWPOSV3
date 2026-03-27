@@ -5,7 +5,454 @@
  */
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/app/utils/formatCurrency';
-import type { Customer, Transaction, Invoice, Payment, LedgerData } from './customerLedgerTypes';
+import type { Customer, Transaction, Invoice, Payment, LedgerData, DetailTransaction } from './customerLedgerTypes';
+
+/** Live = effective customer position; audit = include voided/superseded payment rows (journal history stays full). */
+export type CustomerLedgerPaymentScope = 'live' | 'audit';
+
+export interface CustomerLedgerQueryOptions {
+  paymentScope?: CustomerLedgerPaymentScope;
+}
+
+function isLiveScope(scope: CustomerLedgerPaymentScope | undefined): boolean {
+  return !scope || scope === 'live';
+}
+
+function logEffectivePaymentsTrace(payload: Record<string, unknown>) {
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[LEDGER_EFFECTIVE_PAYMENTS_TRACE]', JSON.stringify(payload));
+  }
+}
+
+/** PostgREST `.in()` + RPC arrays: chunk sale IDs when loading payments for a customer. */
+const LEDGER_SALE_IDS_CHUNK = 200;
+
+/**
+ * Sale-linked payments are filtered by payment_date, but must include all of the customer's final
+ * sale IDs — not only sales whose invoice_date falls in the statement range (otherwise payments
+ * in-range against older invoices never appear in operational ledger).
+ */
+async function fetchSaleLinkedPaymentsInDateRange(
+  companyId: string,
+  saleIds: string[],
+  fromDate?: string,
+  toDate?: string,
+  scope: CustomerLedgerPaymentScope = 'live'
+): Promise<any[]> {
+  const out: any[] = [];
+  const seen = new Set<string>();
+  if (saleIds.length === 0) return out;
+
+  for (let i = 0; i < saleIds.length; i += LEDGER_SALE_IDS_CHUNK) {
+    const chunk = saleIds.slice(i, i + LEDGER_SALE_IDS_CHUNK);
+    let rows: any[] = [];
+    const rpc = await supabase.rpc('get_customer_ledger_payments', {
+      p_company_id: companyId,
+      p_sale_ids: chunk,
+      p_from_date: fromDate || null,
+      p_to_date: toDate || null,
+      p_include_voided: scope === 'audit',
+    });
+    if (!rpc.error) {
+      rows = rpc.data ?? [];
+    } else {
+      let q = supabase
+        .from('payments')
+        .select(
+          'id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id, voided_at, reference_type'
+        )
+        .eq('company_id', companyId)
+        .eq('reference_type', 'sale')
+        .in('reference_id', chunk);
+      if (isLiveScope(scope)) q = q.is('voided_at', null);
+      if (fromDate) q = q.gte('payment_date', fromDate);
+      if (toDate) q = q.lte('payment_date', toDate);
+      const payResult = await q.order('payment_date', { ascending: false });
+      if (payResult.error) {
+        console.error('[CUSTOMER LEDGER API] fetchSaleLinkedPaymentsInDateRange fallback:', payResult.error);
+      } else {
+        rows = payResult.data ?? [];
+      }
+    }
+    for (const p of rows) {
+      const id = String((p as any).id ?? '');
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        out.push({ ...(p as any), reference_type: (p as any).reference_type || 'sale' });
+      }
+    }
+  }
+  return out;
+}
+
+async function sumSaleLinkedPaymentsInDateRange(
+  companyId: string,
+  saleIds: string[],
+  fromDate?: string,
+  toDate?: string,
+  scope: CustomerLedgerPaymentScope = 'live'
+): Promise<number> {
+  let sum = 0;
+  if (saleIds.length === 0) return 0;
+  for (let i = 0; i < saleIds.length; i += LEDGER_SALE_IDS_CHUNK) {
+    const chunk = saleIds.slice(i, i + LEDGER_SALE_IDS_CHUNK);
+    const rpc = await supabase.rpc('get_customer_ledger_payments', {
+      p_company_id: companyId,
+      p_sale_ids: chunk,
+      p_from_date: fromDate || null,
+      p_to_date: toDate || null,
+      p_include_voided: scope === 'audit',
+    });
+    if (!rpc.error) {
+      sum += (rpc.data ?? []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+      continue;
+    }
+    let q = supabase
+      .from('payments')
+      .select('amount')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'sale')
+      .in('reference_id', chunk);
+    if (isLiveScope(scope)) q = q.is('voided_at', null);
+    if (fromDate) q = q.gte('payment_date', fromDate);
+    if (toDate) q = q.lte('payment_date', toDate);
+    const { data, error } = await q;
+    if (error) {
+      console.error('[CUSTOMER LEDGER API] sumSaleLinkedPaymentsInDateRange fallback:', error);
+      continue;
+    }
+    sum += (data || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+  }
+  return sum;
+}
+
+/** On-account + manual_receipt credits for contact in date range (operational ledger). */
+async function sumOnAccountAndManualReceiptPaymentsInDateRange(
+  companyId: string,
+  contactId: string,
+  fromDate?: string,
+  toDate?: string,
+  scope: CustomerLedgerPaymentScope = 'live'
+): Promise<number> {
+  let q = supabase
+    .from('payments')
+    .select('amount')
+    .eq('company_id', companyId)
+    .eq('contact_id', contactId)
+    .in('reference_type', ['on_account', 'manual_receipt']);
+  if (isLiveScope(scope)) q = q.is('voided_at', null);
+  if (fromDate) q = q.gte('payment_date', fromDate);
+  if (toDate) q = q.lte('payment_date', toDate);
+  const { data, error } = await q;
+  if (error) {
+    console.error('[CUSTOMER LEDGER API] sumOnAccountAndManualReceiptPaymentsInDateRange:', error);
+    return 0;
+  }
+  return (data || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
+}
+
+async function enrichCustomerLedgerPaymentTransactions(
+  _companyId: string,
+  transactions: Transaction[],
+  paymentsBundle: any[],
+  invoiceNoBySaleId: Map<string, string>
+): Promise<void> {
+  logEffectivePaymentsTrace({ phase: 'enrich_start', paymentsCount: paymentsBundle.length, transactions: transactions.length });
+  const byPayId = new Map<string, any>();
+  for (const p of paymentsBundle) {
+    if (p?.id) byPayId.set(String(p.id), p);
+  }
+  const accountIds = [...new Set(paymentsBundle.map((p) => p.payment_account_id).filter(Boolean))] as string[];
+  const accountById = new Map<string, string>();
+  if (accountIds.length > 0) {
+    const { data: accs } = await supabase.from('accounts').select('id, name').in('id', accountIds);
+    (accs || []).forEach((a: any) => accountById.set(String(a.id), String(a.name || '').trim() || 'Account'));
+  }
+  const manualIds = paymentsBundle.filter((p) => String(p.reference_type || '').toLowerCase() === 'manual_receipt').map((p) => String(p.id));
+  const allocByPayment = new Map<string, { invoiceNo: string; amount: number }[]>();
+  if (manualIds.length > 0) {
+    const { data: allocs } = await supabase
+      .from('payment_allocations')
+      .select('payment_id, allocated_amount, sale_id')
+      .in('payment_id', manualIds);
+    const saleIds = [...new Set((allocs || []).map((a: any) => a.sale_id).filter(Boolean))] as string[];
+    const invBySale = new Map(invoiceNoBySaleId);
+    if (saleIds.length > 0) {
+      const { data: sales } = await supabase.from('sales').select('id, invoice_no').in('id', saleIds);
+      (sales || []).forEach((s: any) => invBySale.set(String(s.id), String(s.invoice_no || '').trim()));
+    }
+    for (const a of allocs || []) {
+      const pid = String((a as any).payment_id);
+      const list = allocByPayment.get(pid) || [];
+      const inv = invBySale.get(String((a as any).sale_id)) || String((a as any).sale_id).slice(0, 8);
+      list.push({ invoiceNo: inv, amount: Number((a as any).allocated_amount) || 0 });
+      allocByPayment.set(pid, list);
+    }
+  }
+
+  for (const t of transactions) {
+    if (t.credit <= 0) continue;
+    if (
+      t.documentType !== 'Payment' &&
+      t.documentType !== 'On-account Payment' &&
+      t.documentType !== 'Return Payment'
+    ) {
+      continue;
+    }
+    const pr = byPayId.get(String(t.id));
+    if (!pr) continue;
+    const method = String(pr.payment_method || 'other').toLowerCase();
+    const accName = pr.payment_account_id ? accountById.get(String(pr.payment_account_id)) : undefined;
+    t.paymentMethodKind = method;
+    t.paymentAccountDisplay = accName || method;
+    t.paymentAccount = accName ? `${accName} (${method})` : method;
+    const voided = pr.voided_at != null && String(pr.voided_at).length > 0;
+    t.ledgerPaymentLifecycle = voided ? 'voided' : 'active';
+    if (String(pr.reference_type || '').toLowerCase() !== 'manual_receipt') continue;
+    const total = Number(pr.amount) || 0;
+    const allocs = allocByPayment.get(String(pr.id)) || [];
+    const allocSum = allocs.reduce((s, x) => s + x.amount, 0);
+    const unapplied = Math.max(0, Math.round((total - allocSum) * 100) / 100);
+    const expand: NonNullable<Transaction['ledgerExpandRows']> = [];
+    for (const x of allocs) {
+      expand.push({
+        label: `Allocated — ${x.invoiceNo}`,
+        sublabel: 'Manual receipt allocation',
+        amount: x.amount,
+      });
+    }
+    if (unapplied > 0.02) {
+      expand.push({
+        label: 'Unapplied customer credit',
+        sublabel: 'Not yet matched to open invoices',
+        amount: unapplied,
+      });
+    }
+    if (expand.length > 0) t.ledgerExpandRows = expand;
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(
+        '[PAYMENT_ALLOCATION_LIVE_TRACE]',
+        JSON.stringify({
+          payment_id: pr.id,
+          status: t.ledgerPaymentLifecycle || 'active',
+          account: t.paymentAccountDisplay || t.paymentAccount,
+          allocated_lines: allocs.length,
+          allocated_total: allocSum,
+          unapplied,
+        })
+      );
+    }
+  }
+}
+
+/** Aligns with get_contact_balances_summary: customer receivable seed (non-negative). */
+async function getContactReceivableOpeningSeed(companyId: string, contactId: string): Promise<number> {
+  const { data } = await supabase
+    .from('contacts')
+    .select('opening_balance')
+    .eq('id', contactId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  return Math.max(0, Number((data as { opening_balance?: number })?.opening_balance) || 0);
+}
+
+/** YMD for range checks when invoice_date is null (use created_at). */
+function effectiveSaleDateYmd(s: { invoice_date?: unknown; created_at?: unknown }): string {
+  const inv = s.invoice_date;
+  if (inv != null && String(inv).trim() !== '') {
+    return String(inv).slice(0, 10);
+  }
+  const c = s.created_at;
+  if (!c) return '';
+  if (typeof c === 'string' && c.length >= 10) return c.slice(0, 10);
+  const t = new Date(c as string).getTime();
+  if (Number.isNaN(t)) return '';
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+/**
+ * Direct-query merge: picks up final sales with NULL invoice_date when created_at falls in range.
+ * Prefer fetchCustomerLedgerSalesForRange (RPC + wide fallback) for the main set.
+ */
+async function mergeSalesWithNullInvoiceDateInRange(
+  companyId: string,
+  cId: string,
+  sales: any[],
+  fromDate?: string,
+  toDate?: string
+): Promise<any[]> {
+  if (!fromDate && !toDate) return [...(sales || [])];
+  const byId = new Map((sales || []).map((s: any) => [s.id, { ...s }]));
+  let data: any[] | null = null;
+  let error: { message?: string } | null = null;
+  const fullSelect =
+    'id, invoice_no, invoice_date, total, paid_amount, due_amount, payment_status, status, created_at, shipment_charges, discount_amount, tax_amount, expenses';
+  const minimalSelect =
+    'id, invoice_no, invoice_date, total, paid_amount, due_amount, payment_status, status, created_at';
+  let res = await supabase
+    .from('sales')
+    .select(fullSelect)
+    .eq('company_id', companyId)
+    .eq('customer_id', cId)
+    .is('invoice_date', null);
+  if (res.error && (res.error.code === '42703' || String(res.error.message || '').includes('column'))) {
+    res = await supabase
+      .from('sales')
+      .select(minimalSelect)
+      .eq('company_id', companyId)
+      .eq('customer_id', cId)
+      .is('invoice_date', null);
+  }
+  data = res.data;
+  error = res.error;
+  if (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[LEDGER] mergeSalesWithNullInvoiceDateInRange:', error.message);
+    }
+    return Array.from(byId.values());
+  }
+  for (const s of (data || []).filter(
+    (row: any) => String(row.status || '').toLowerCase().trim() === 'final'
+  )) {
+    if (byId.has(s.id)) continue;
+    const d = effectiveSaleDateYmd(s);
+    if (!d) continue;
+    if (fromDate && d < fromDate) continue;
+    if (toDate && d > toDate) continue;
+    byId.set(s.id, { ...s, invoice_date: d });
+  }
+  return Array.from(byId.values());
+}
+
+/**
+ * Final sales for customer operational ledger — aligned with get_contact_balances_summary (case-insensitive final).
+ * Prefer SECURITY DEFINER RPC; if a dated RPC returns zero rows but a range was requested, wide-fetch all finals and filter by effective date in JS (stale DB predicates on raw invoice_date only).
+ */
+/** Exported for accountingService / GL merge paths — same operational sales set as customer statements. */
+export async function fetchCustomerLedgerSalesForRange(
+  companyId: string,
+  cId: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<any[]> {
+  const rpcDated = await supabase.rpc('get_customer_ledger_sales', {
+    p_company_id: companyId,
+    p_customer_id: cId,
+    p_from_date: fromDate ?? null,
+    p_to_date: toDate ?? null,
+  });
+
+  let sales: any[] = [];
+
+  if (!rpcDated.error) {
+    sales = rpcDated.data ?? [];
+    const hasRange = Boolean(fromDate || toDate);
+    if (sales.length === 0 && hasRange) {
+      const wide = await supabase.rpc('get_customer_ledger_sales', {
+        p_company_id: companyId,
+        p_customer_id: cId,
+        p_from_date: null,
+        p_to_date: null,
+      });
+      if (!wide.error && (wide.data?.length ?? 0) > 0) {
+        const filtered = (wide.data as any[]).filter((row) => {
+          const ymd = effectiveSaleDateYmd(row);
+          if (!ymd) return false;
+          if (fromDate && ymd < fromDate) return false;
+          if (toDate && ymd > toDate) return false;
+          return true;
+        });
+        if (filtered.length > 0) {
+          sales = filtered;
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn(
+              '[LEDGER] Dated get_customer_ledger_sales returned 0 rows; recovered via wide RPC + client date filter.',
+              { companyId, customerId: cId, fromDate, toDate, recovered: filtered.length }
+            );
+          }
+        }
+      }
+    }
+  } else {
+    let salesQuery = supabase
+      .from('sales')
+      .select(
+        'id, invoice_no, invoice_date, total, paid_amount, due_amount, payment_status, shipment_charges, created_at, discount_amount, tax_amount, expenses, status'
+      )
+      .eq('company_id', companyId)
+      .eq('customer_id', cId);
+    if (fromDate) salesQuery = salesQuery.gte('invoice_date', fromDate);
+    if (toDate) salesQuery = salesQuery.lte('invoice_date', toDate);
+    const result = await salesQuery.order('invoice_date', { ascending: false });
+    if (result.error) {
+      console.error('[CUSTOMER LEDGER API] fetchCustomerLedgerSalesForRange fallback:', result.error, rpcDated.error);
+    }
+    sales = (result.data || []).filter(
+      (s: any) => String(s.status || '').toLowerCase().trim() === 'final'
+    );
+    if (result.error && sales.length === 0) {
+      let retryQuery = supabase
+        .from('sales')
+        .select(
+          'id, invoice_no, invoice_date, total, paid_amount, due_amount, shipment_charges, created_at, discount_amount, tax_amount, expenses, status'
+        )
+        .eq('company_id', companyId)
+        .eq('customer_id', cId);
+      if (fromDate) retryQuery = retryQuery.gte('invoice_date', fromDate);
+      if (toDate) retryQuery = retryQuery.lte('invoice_date', toDate);
+      const retry = await retryQuery.order('invoice_date', { ascending: false });
+      if (!retry.error) {
+        sales = (retry.data || []).filter(
+          (s: any) => String(s.status || '').toLowerCase().trim() === 'final'
+        );
+      }
+    }
+  }
+
+  return mergeSalesWithNullInvoiceDateInRange(companyId, cId, sales, fromDate, toDate);
+}
+
+/** One-line description: invoice + discount / tax / extra / shipping (amounts are informational; total is authoritative). */
+function describeCustomerSaleLedgerLine(sale: any, isStudioSale: boolean): string {
+  const inv = sale.invoice_no || '';
+  const head = isStudioSale ? `Studio Sale ${inv}` : `Sale Invoice ${inv}`;
+  const bits: string[] = [];
+  const disc = Number(sale.discount_amount);
+  if (disc > 0) bits.push(`discount ${disc}`);
+  const tax = Number(sale.tax_amount);
+  if (tax > 0) bits.push(`tax ${tax}`);
+  const extra = Number(sale.expenses);
+  if (extra > 0) bits.push(`extra ${extra}`);
+  const ship = Number(sale.shipment_charges);
+  if (!isStudioSale && ship > 0) bits.push(`shipping ${ship}`);
+  if (bits.length === 0) return head;
+  return `${head} — ${bits.join(', ')}`;
+}
+
+function saleLedgerBreakdownChildren(sale: any, isStudioSale: boolean): DetailTransaction['children'] | undefined {
+  const rows: NonNullable<DetailTransaction['children']> = [];
+  const disc = Number(sale.discount_amount);
+  if (disc > 0) rows.push({ type: 'Discount', description: 'Invoice discount', amount: disc });
+  const tax = Number(sale.tax_amount);
+  if (tax > 0) rows.push({ type: 'Extra Charge', description: 'Tax', amount: tax });
+  const ex = Number(sale.expenses);
+  if (ex > 0) rows.push({ type: 'Extra Charge', description: 'Extra / other charges', amount: ex });
+  const ship = Number(sale.shipment_charges);
+  if (!isStudioSale && ship > 0) {
+    rows.push({ type: 'Extra Charge', description: 'Shipping (in receivable)', amount: ship });
+  }
+  return rows.length ? rows : undefined;
+}
+
+/** Gross receivable for one sale row (studio extra charges + shipment on regular sales). */
+function saleGrossForLedger(s: any, studioChargesBySaleId: Map<string, number>): number {
+  const base = Number(s.total) || 0;
+  const inv = (s.invoice_no || '').toString().trim().toUpperCase();
+  const isStudio = inv.startsWith('STD-') || inv.startsWith('ST-');
+  const studioCharges = isStudio ? studioChargesBySaleId.get(s.id) || 0 : 0;
+  const ship = Number(s.shipment_charges) || 0;
+  return isStudio ? base + studioCharges : base + ship;
+}
 
 export interface CustomerLedgerSummary {
   openingBalance: number;
@@ -126,8 +573,10 @@ export const customerLedgerAPI = {
     customerId: string,
     companyId: string,
     fromDate?: string,
-    toDate?: string
+    toDate?: string,
+    options?: CustomerLedgerQueryOptions
   ): Promise<CustomerLedgerSummary> {
+    const scope: CustomerLedgerPaymentScope = options?.paymentScope ?? 'live';
     const cId = String(customerId ?? '').trim();
     if (!cId) {
       return {
@@ -144,31 +593,12 @@ export const customerLedgerAPI = {
         unpaid: 0,
       };
     }
-    // Prefer RPC so ledger sees all sales for customer (bypasses branch RLS)
-    let sales: any[] | null = null;
-    const rpcSales = await supabase.rpc('get_customer_ledger_sales', {
-      p_company_id: companyId,
-      p_customer_id: cId,
-      p_from_date: fromDate || null,
-      p_to_date: toDate || null,
-    });
-    if (!rpcSales.error) {
-      sales = rpcSales.data ?? [];
-    } else {
-      let salesQuery = supabase
-        .from('sales')
-        .select('id, invoice_no, total, paid_amount, due_amount, payment_status, invoice_date')
-        .eq('company_id', companyId)
-        .eq('customer_id', cId)
-        .eq('status', 'final');
-      if (fromDate) salesQuery = salesQuery.gte('invoice_date', fromDate);
-      if (toDate) salesQuery = salesQuery.lte('invoice_date', toDate);
-      const res = await salesQuery;
-      sales = res.data ?? [];
-      if (res.error) console.error('[CUSTOMER LEDGER API] Error fetching sales for summary:', res.error);
-    }
+    const allFinalForPayments = await fetchCustomerLedgerSalesForRange(companyId, cId);
+    const allSaleIdsForPayments = (allFinalForPayments || [])
+      .map((r: any) => r.id)
+      .filter(Boolean) as string[];
 
-    const invoices = sales || [];
+    let invoices = await fetchCustomerLedgerSalesForRange(companyId, cId, fromDate, toDate);
     const totalInvoices = invoices.length;
 
     // Ensure invoice_no for studio detection (RPC may not return it)
@@ -219,13 +649,14 @@ export const customerLedgerAPI = {
       }
     }
 
-    const totalInvoiceAmount = invoices.reduce((sum, s) => {
-      const base = Number(s.total) || 0;
-      const inv = (s.invoice_no || '').toString().trim().toUpperCase();
-      const studioCharges = (inv.startsWith('STD-') || inv.startsWith('ST-')) ? (studioChargesBySaleId.get(s.id) || 0) : 0;
-      return sum + base + studioCharges;
-    }, 0);
-    const totalPaymentReceived = invoices.reduce((sum, s) => sum + (s.paid_amount || 0), 0);
+    const totalInvoiceAmount = invoices.reduce(
+      (sum, s) => sum + saleGrossForLedger(s, studioChargesBySaleId),
+      0
+    );
+    /** Sale-linked + on-account + manual_receipt in range (voided excluded in live scope). */
+    const totalPaymentReceived =
+      (await sumSaleLinkedPaymentsInDateRange(companyId, allSaleIdsForPayments, fromDate, toDate, scope)) +
+      (await sumOnAccountAndManualReceiptPaymentsInDateRange(companyId, cId, fromDate, toDate, scope));
     // Sale returns (final) in date range – CREDIT, reduce customer balance
     let returnsInRange = 0;
     let returnsQuery = supabase.from('sale_returns').select('id, total').eq('company_id', companyId).eq('customer_id', cId).eq('status', 'final');
@@ -235,58 +666,35 @@ export const customerLedgerAPI = {
     const saleReturnIdsInRange = (rangeReturns || []).map((r: any) => r.id);
     returnsInRange = (rangeReturns || []).reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0);
     const pendingAmount = Math.max(0, invoices.reduce((sum, s) => {
-      const base = Number(s.total) || 0;
       const paid = Number(s.paid_amount) || 0;
-      const inv = (s.invoice_no || '').toString().trim().toUpperCase();
-      const studioCharges = (inv.startsWith('STD-') || inv.startsWith('ST-')) ? (studioChargesBySaleId.get(s.id) || 0) : 0;
-      const effectiveTotal = base + studioCharges;
-      return sum + Math.max(0, effectiveTotal - paid);
+      const gross = saleGrossForLedger(s, studioChargesBySaleId);
+      return sum + Math.max(0, gross - paid);
     }, 0) - returnsInRange);
-    const fullyPaid = invoices.filter(s => {
-      const base = Number(s.total) || 0;
+    const fullyPaid = invoices.filter((s) => {
       const paid = Number(s.paid_amount) || 0;
-      const inv = (s.invoice_no || '').toString().trim().toUpperCase();
-      const studioCharges = (inv.startsWith('STD-') || inv.startsWith('ST-')) ? (studioChargesBySaleId.get(s.id) || 0) : 0;
-      return paid >= base + studioCharges;
+      return paid >= saleGrossForLedger(s, studioChargesBySaleId);
     }).length;
-    const partiallyPaid = invoices.filter(s => {
-      const base = Number(s.total) || 0;
+    const partiallyPaid = invoices.filter((s) => {
       const paid = Number(s.paid_amount) || 0;
-      const inv = (s.invoice_no || '').toString().trim().toUpperCase();
-      const studioCharges = (inv.startsWith('STD-') || inv.startsWith('ST-')) ? (studioChargesBySaleId.get(s.id) || 0) : 0;
-      const effectiveTotal = base + studioCharges;
-      return paid > 0 && paid < effectiveTotal;
+      const gross = saleGrossForLedger(s, studioChargesBySaleId);
+      return paid > 0 && paid < gross;
     }).length;
     const unpaid = totalInvoices - fullyPaid - partiallyPaid;
 
-    // Calculate opening balance (sales - paid - sale returns before fromDate)
-    let openingBalance = 0;
+    // Calculate opening balance: contact opening seed (operational policy) + net activity before fromDate
+    const contactOpening = await getContactReceivableOpeningSeed(companyId, cId);
+    let openingBalance = contactOpening;
     if (fromDate) {
       const dayBeforeFrom = (() => {
         const d = new Date(fromDate + 'T12:00:00Z');
         d.setUTCDate(d.getUTCDate() - 1);
         return d.toISOString().split('T')[0];
       })();
-      let previousSales: any[] = [];
-      const rpcPrev = await supabase.rpc('get_customer_ledger_sales', {
-        p_company_id: companyId,
-        p_customer_id: cId,
-        p_from_date: null,
-        p_to_date: dayBeforeFrom,
-      });
-      if (!rpcPrev.error) {
-        previousSales = rpcPrev.data ?? [];
-      } else {
-        const res = await supabase
-          .from('sales')
-          .select('total, paid_amount')
-          .eq('company_id', companyId)
-          .eq('customer_id', cId)
-          .eq('status', 'final')
-          .lt('invoice_date', fromDate);
-        previousSales = res.data ?? [];
-      }
-      const previousTotal = previousSales.reduce((sum, s) => sum + (s.total || 0), 0);
+      const previousSales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, null, dayBeforeFrom);
+      const previousTotal = previousSales.reduce(
+        (sum, s: any) => sum + (Number(s.total) || 0) + (Number(s.shipment_charges) || 0),
+        0
+      );
       const previousPaid = previousSales.reduce((sum, s) => sum + (s.paid_amount || 0), 0);
       const { data: previousReturns } = await supabase
         .from('sale_returns')
@@ -340,24 +748,38 @@ export const customerLedgerAPI = {
         }
       } catch (_) {}
       // On-account payments before fromDate (credit to customer, reduce opening balance)
-      const { data: prevOnAccount } = await supabase
+      let prevOnAccQ = supabase
         .from('payments')
         .select('amount')
         .eq('company_id', companyId)
         .eq('contact_id', cId)
         .eq('reference_type', 'on_account')
         .lt('payment_date', fromDate);
+      if (isLiveScope(scope)) prevOnAccQ = prevOnAccQ.is('voided_at', null);
+      const { data: prevOnAccount } = await prevOnAccQ;
       const prevOnAccountTotal = (prevOnAccount || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
       // Manual receipt (Add Entry V2) before fromDate – credit to customer
-      const { data: prevManualReceipt } = await supabase
+      let prevManQ = supabase
         .from('payments')
         .select('amount')
         .eq('company_id', companyId)
         .eq('contact_id', cId)
         .eq('reference_type', 'manual_receipt')
         .lt('payment_date', fromDate);
+      if (isLiveScope(scope)) prevManQ = prevManQ.is('voided_at', null);
+      const { data: prevManualReceipt } = await prevManQ;
       const prevManualReceiptTotal = (prevManualReceipt || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
-      openingBalance = previousTotal - previousPaid - previousReturnsTotal - prevReturnPaymentsTotal + prevStudioOrderNet + prevRentalTotal - prevRentalPaid - prevOnAccountTotal - prevManualReceiptTotal;
+      openingBalance =
+        contactOpening +
+        previousTotal -
+        previousPaid -
+        previousReturnsTotal -
+        prevReturnPaymentsTotal +
+        prevStudioOrderNet +
+        prevRentalTotal -
+        prevRentalPaid -
+        prevOnAccountTotal -
+        prevManualReceiptTotal;
     }
 
     // Studio: legacy studio_orders dropped; studio charges are in sales.studio_charges (included in sales above)
@@ -372,6 +794,7 @@ export const customerLedgerAPI = {
       .eq('company_id', companyId)
       .eq('contact_id', cId)
       .eq('reference_type', 'on_account');
+    if (isLiveScope(scope)) onAccountQuery = onAccountQuery.is('voided_at', null);
     if (fromDate) onAccountQuery = onAccountQuery.gte('payment_date', fromDate);
     if (toDate) onAccountQuery = onAccountQuery.lte('payment_date', toDate);
     const { data: onAccountInRange } = await onAccountQuery;
@@ -385,6 +808,7 @@ export const customerLedgerAPI = {
       .eq('company_id', companyId)
       .eq('contact_id', cId)
       .eq('reference_type', 'manual_receipt');
+    if (isLiveScope(scope)) manualReceiptQuery = manualReceiptQuery.is('voided_at', null);
     if (fromDate) manualReceiptQuery = manualReceiptQuery.gte('payment_date', fromDate);
     if (toDate) manualReceiptQuery = manualReceiptQuery.lte('payment_date', toDate);
     const { data: manualReceiptInRange } = await manualReceiptQuery;
@@ -459,98 +883,52 @@ export const customerLedgerAPI = {
     customerId: string,
     companyId: string,
     fromDate?: string,
-    toDate?: string
+    toDate?: string,
+    options?: CustomerLedgerQueryOptions
   ): Promise<Transaction[]> {
+    const scope: CustomerLedgerPaymentScope = options?.paymentScope ?? 'live';
     const cId = String(customerId ?? '').trim();
     if (!cId) return [];
 
-    // Prefer RPC so ledger sees all sales/payments for customer (bypasses branch RLS)
-    let sales: any[] | null = null;
-    let salesError: any = null;
-    const rpcSales = await supabase.rpc('get_customer_ledger_sales', {
-      p_company_id: companyId,
-      p_customer_id: cId,
-      p_from_date: fromDate || null,
-      p_to_date: toDate || null,
-    });
+    const sales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, fromDate, toDate);
     if (process.env.NODE_ENV !== 'production') {
-      console.log('[LEDGER] get_customer_ledger_sales', {
+      console.log('[LEDGER] fetchCustomerLedgerSalesForRange', {
         companyId,
         customerId: cId,
         fromDate: fromDate || null,
         toDate: toDate || null,
-        rpcError: rpcSales.error?.message ?? null,
-        salesCount: (rpcSales.data ?? []).length,
+        salesCount: sales.length,
       });
-    }
-    if (!rpcSales.error) {
-      sales = rpcSales.data ?? [];
-    } else {
-      // Fallback: direct query (subject to RLS – may miss rows if user lacks branch access)
-      let salesQuery = supabase
-        .from('sales')
-        .select('id, invoice_no, invoice_date, total, paid_amount, due_amount, payment_status')
-        .eq('company_id', companyId)
-        .eq('customer_id', cId)
-        .eq('status', 'final');
-      if (fromDate) salesQuery = salesQuery.gte('invoice_date', fromDate);
-      if (toDate) salesQuery = salesQuery.lte('invoice_date', toDate);
-      const result = await salesQuery.order('invoice_date', { ascending: false });
-      sales = result.data;
-      salesError = result.error;
-      if (salesError) {
-        console.error('[CUSTOMER LEDGER API] Error fetching sales:', salesError);
-        let retryQuery = supabase
-          .from('sales')
-          .select('id, invoice_no, invoice_date, total, paid_amount, due_amount')
-          .eq('company_id', companyId)
-          .eq('customer_id', cId)
-          .eq('status', 'final');
-        if (fromDate) retryQuery = retryQuery.gte('invoice_date', fromDate);
-        if (toDate) retryQuery = retryQuery.lte('invoice_date', toDate);
-        const retry = await retryQuery.order('invoice_date', { ascending: false });
-        if (!retry.error) {
-          sales = retry.data;
-          salesError = null;
-        }
-      }
     }
 
     const saleIds = (sales || []).map((s: any) => s.id);
-    let payments: any[] = [];
-    if (saleIds.length > 0) {
-      const rpcPayments = await supabase.rpc('get_customer_ledger_payments', {
-        p_company_id: companyId,
-        p_sale_ids: saleIds,
-        p_from_date: fromDate || null,
-        p_to_date: toDate || null,
-      });
-      if (!rpcPayments.error) {
-        payments = rpcPayments.data ?? [];
-      }
-    }
-    if (payments.length === 0 && saleIds.length > 0) {
-      let paymentsQuery = supabase
-        .from('payments')
-        .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id')
-        .eq('company_id', companyId)
-        .eq('reference_type', 'sale')
-        .in('reference_id', saleIds);
-      if (fromDate) paymentsQuery = paymentsQuery.gte('payment_date', fromDate);
-      if (toDate) paymentsQuery = paymentsQuery.lte('payment_date', toDate);
-      const payResult = await paymentsQuery.order('payment_date', { ascending: false });
-      payments = payResult.data ?? [];
-      if (payResult.error) {
-        console.error('[CUSTOMER LEDGER API] Error fetching payments:', payResult.error);
-      }
-    }
+
+    const allFinalLedger = await fetchCustomerLedgerSalesForRange(companyId, cId);
+    const allSaleIdsForPayments = (allFinalLedger || [])
+      .map((r: any) => r.id)
+      .filter(Boolean) as string[];
+    const invoiceNoBySaleId = new Map<string, string>(
+      (allFinalLedger || []).map((r: any) => [String(r.id), String(r.invoice_no || '').trim()])
+    );
+
+    let payments: any[] = await fetchSaleLinkedPaymentsInDateRange(
+      companyId,
+      allSaleIdsForPayments,
+      fromDate,
+      toDate,
+      scope
+    );
     // On-account payments for this contact (can exist with or without sales)
-    const { data: onAccountPayments } = await supabase
+    let onAccFetch = supabase
       .from('payments')
-      .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id')
+      .select(
+        'id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id, voided_at, reference_type'
+      )
       .eq('company_id', companyId)
       .eq('contact_id', cId)
       .eq('reference_type', 'on_account');
+    if (isLiveScope(scope)) onAccFetch = onAccFetch.is('voided_at', null);
+    const { data: onAccountPayments } = await onAccFetch;
     const onAccountList = (onAccountPayments || []).filter((p: any) => {
       const d = (p.payment_date || '').toString().slice(0, 10);
       if (fromDate && d < fromDate) return false;
@@ -565,12 +943,16 @@ export const customerLedgerAPI = {
       }
     });
     // Add Entry V2: manual_receipt (customer receipt) – must appear in customer ledger
-    const { data: manualReceiptPayments } = await supabase
+    let manFetch = supabase
       .from('payments')
-      .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id')
+      .select(
+        'id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id, voided_at, reference_type'
+      )
       .eq('company_id', companyId)
       .eq('contact_id', cId)
       .eq('reference_type', 'manual_receipt');
+    if (isLiveScope(scope)) manFetch = manFetch.is('voided_at', null);
+    const { data: manualReceiptPayments } = await manFetch;
     const manualReceiptList = (manualReceiptPayments || []).filter((p: any) => {
       const d = (p.payment_date || '').toString().slice(0, 10);
       if (fromDate && d < fromDate) return false;
@@ -674,20 +1056,24 @@ export const customerLedgerAPI = {
       const isStudioSale = inv.startsWith('STD-') || inv.startsWith('ST-');
       const baseTotal = Number(sale.total) || 0;
       const studioCharges = studioChargesBySaleId.get(sale.id) || 0;
-      const debitAmount = isStudioSale ? baseTotal + studioCharges : baseTotal;
+      const ship = Number(sale.shipment_charges) || 0;
+      const debitAmount = isStudioSale ? baseTotal + studioCharges : baseTotal + ship;
+      const rowDate = sale.invoice_date || effectiveSaleDateYmd(sale);
+      const breakdown = saleLedgerBreakdownChildren(sale, isStudioSale);
       transactions.push({
         id: sale.id,
-        date: sale.invoice_date,
+        date: rowDate,
         referenceNo: sale.invoice_no || '',
         documentType: isStudioSale ? ('Studio Sale' as const) : ('Sale' as const),
-        description: isStudioSale ? `Studio Sale ${sale.invoice_no || ''}` : `Sale Invoice ${sale.invoice_no}`,
+        description: describeCustomerSaleLedgerLine(sale, isStudioSale),
         paymentAccount: '',
         notes: saleNotesMap.get(sale.id) || '',
         debit: debitAmount,
         credit: 0,
         runningBalance: 0, // Will be calculated
         linkedInvoices: [sale.invoice_no],
-      });
+        ...(breakdown ? { children: breakdown } : {}),
+      } as Transaction);
     });
 
     // Studio: legacy studio_orders table dropped; studio sales appear above as Sales with documentType 'Studio Sale' (sales.studio_charges included in total)
@@ -794,6 +1180,11 @@ export const customerLedgerAPI = {
       } else if (isManualReceipt) {
         documentType = 'Payment';
         description = payment.notes ? `Receipt – ${payment.notes}` : `Manual receipt via ${payment.payment_method || 'other'}`;
+      } else if (payment.reference_id) {
+        const invNo = invoiceNoBySaleId.get(String(payment.reference_id));
+        if (invNo) {
+          description = `Payment for ${invNo} via ${payment.payment_method || 'other'}`;
+        }
       }
       transactions.push({
         id: payment.id,
@@ -844,36 +1235,25 @@ export const customerLedgerAPI = {
       });
     });
 
+    await enrichCustomerLedgerPaymentTransactions(companyId, transactions, payments, invoiceNoBySaleId);
+
     // Sort by date
     transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    // When date range is applied, running balance must start from opening balance (before fromDate)
-    let runningBalance = 0;
+    // Running balance: contact opening seed + net activity before fromDate (matches getLedgerSummary)
+    const contactOpeningForRun = await getContactReceivableOpeningSeed(companyId, cId);
+    let runningBalance = contactOpeningForRun;
     if (fromDate) {
       const dayBeforeFrom = (() => {
         const d = new Date(fromDate + 'T12:00:00Z');
         d.setUTCDate(d.getUTCDate() - 1);
         return d.toISOString().split('T')[0];
       })();
-      let prevSales: any[] = [];
-      const rpcPrev = await supabase.rpc('get_customer_ledger_sales', {
-        p_company_id: companyId,
-        p_customer_id: cId,
-        p_from_date: null,
-        p_to_date: dayBeforeFrom,
-      });
-      if (!rpcPrev.error) prevSales = rpcPrev.data ?? [];
-      else {
-        const res = await supabase
-          .from('sales')
-          .select('total, paid_amount')
-          .eq('company_id', companyId)
-          .eq('customer_id', cId)
-          .eq('status', 'final')
-          .lt('invoice_date', fromDate);
-        prevSales = res.data ?? [];
-      }
-      const prevTotal = prevSales.reduce((sum, s) => sum + (s.total || 0), 0);
+      const prevSales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, null, dayBeforeFrom);
+      const prevTotal = prevSales.reduce(
+        (sum, s: any) => sum + (Number(s.total) || 0) + (Number(s.shipment_charges) || 0),
+        0
+      );
       const prevPaid = prevSales.reduce((sum, s) => sum + (s.paid_amount || 0), 0);
       const { data: prevReturns } = await supabase
         .from('sale_returns')
@@ -899,22 +1279,26 @@ export const customerLedgerAPI = {
       const prevStudioOrderNet = 0;
 
       // On-account payments before fromDate (credit to customer)
-      const { data: prevOnAcc } = await supabase
+      let prevOnAccBal = supabase
         .from('payments')
         .select('amount')
         .eq('company_id', companyId)
         .eq('contact_id', cId)
         .eq('reference_type', 'on_account')
         .lt('payment_date', fromDate);
+      if (isLiveScope(scope)) prevOnAccBal = prevOnAccBal.is('voided_at', null);
+      const { data: prevOnAcc } = await prevOnAccBal;
       const prevOnAccountPmts = (prevOnAcc || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
       // Manual receipt (Add Entry V2) before fromDate – credit to customer
-      const { data: prevManualRec } = await supabase
+      let prevManBal = supabase
         .from('payments')
         .select('amount')
         .eq('company_id', companyId)
         .eq('contact_id', cId)
         .eq('reference_type', 'manual_receipt')
         .lt('payment_date', fromDate);
+      if (isLiveScope(scope)) prevManBal = prevManBal.is('voided_at', null);
+      const { data: prevManualRec } = await prevManBal;
       const prevManualReceiptPmts = (prevManualRec || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
 
       // Rentals before fromDate: total charges - rental payments
@@ -940,7 +1324,17 @@ export const customerLedgerAPI = {
         }
       } catch (_) {}
 
-      runningBalance = prevTotal - prevPaid - prevReturnsTotal - prevReturnPmts + prevStudioOrderNet + prevRentalTotal - prevRentalPaid - prevOnAccountPmts - prevManualReceiptPmts;
+      runningBalance =
+        contactOpeningForRun +
+        prevTotal -
+        prevPaid -
+        prevReturnsTotal -
+        prevReturnPmts +
+        prevStudioOrderNet +
+        prevRentalTotal -
+        prevRentalPaid -
+        prevOnAccountPmts -
+        prevManualReceiptPmts;
     }
     transactions.forEach(t => {
       runningBalance += t.debit - t.credit;
@@ -970,6 +1364,8 @@ export const customerLedgerAPI = {
         paid_amount,
         due_amount,
         payment_status,
+        shipment_charges,
+        created_at,
         items:sales_items(
           product_name,
           quantity,
@@ -998,7 +1394,56 @@ export const customerLedgerAPI = {
     const { data: salesData, error } = await query.order('invoice_date', { ascending: false });
 
     if (error) throw error;
-    const sales = salesData || [];
+    let sales: any[] = salesData || [];
+
+    const invoiceSalesSelect = `
+        id,
+        invoice_no,
+        invoice_date,
+        total,
+        paid_amount,
+        due_amount,
+        payment_status,
+        shipment_charges,
+        created_at,
+        items:sales_items(
+          product_name,
+          quantity,
+          unit,
+          unit_price,
+          discount_amount,
+          tax_amount,
+          total,
+          packing_type,
+          packing_quantity,
+          packing_unit,
+          variation_id
+        )
+      `;
+    const { data: nullInvoiceRows, error: nullInvErr } = await supabase
+      .from('sales')
+      .select(invoiceSalesSelect)
+      .eq('company_id', companyId)
+      .eq('customer_id', customerId)
+      .eq('status', 'final')
+      .is('invoice_date', null);
+    if (!nullInvErr && nullInvoiceRows?.length) {
+      const seen = new Set(sales.map((s: any) => s.id));
+      for (const r of nullInvoiceRows) {
+        if (seen.has(r.id)) continue;
+        const d = effectiveSaleDateYmd(r);
+        if (!d) continue;
+        if (fromDate && d < fromDate) continue;
+        if (toDate && d > toDate) continue;
+        sales.push({ ...r, invoice_date: d });
+        seen.add(r.id);
+      }
+      sales.sort((a: any, b: any) => {
+        const da = String(a.invoice_date || '').slice(0, 10);
+        const db = String(b.invoice_date || '').slice(0, 10);
+        return db.localeCompare(da);
+      });
+    }
 
     // Studio sales: add production stage costs to invoice total (same as getTransactions)
     const studioSaleIds = sales
@@ -1044,7 +1489,8 @@ export const customerLedgerAPI = {
       const isStudioSale = inv.startsWith('STD-') || inv.startsWith('ST-');
       const baseTotal = Number(sale.total) || 0;
       const studioCharges = studioChargesBySaleId.get(sale.id) || 0;
-      const invoiceTotal = isStudioSale ? baseTotal + studioCharges : baseTotal;
+      const ship = Number(sale.shipment_charges) || 0;
+      const invoiceTotal = isStudioSale ? baseTotal + studioCharges : baseTotal + ship;
       const paidAmount = Number(sale.paid_amount) || 0;
       const pendingAmount = Math.max(0, invoiceTotal - paidAmount);
       const status = pendingAmount <= 0 ? 'Fully Paid' as const : paidAmount > 0 ? 'Partially Paid' as const : 'Unpaid' as const;
@@ -1072,25 +1518,22 @@ export const customerLedgerAPI = {
     customerId: string,
     companyId: string,
     fromDate?: string,
-    toDate?: string
+    toDate?: string,
+    options?: CustomerLedgerQueryOptions
   ): Promise<Payment[]> {
+    const scope: CustomerLedgerPaymentScope = options?.paymentScope ?? 'live';
     const result: Payment[] = [];
-    const saleIds: string[] = [];
-    const { data: sales } = await supabase
-      .from('sales')
-      .select('id')
-      .eq('company_id', companyId)
-      .eq('customer_id', customerId)
-      .eq('status', 'final');
-    if (sales?.length) saleIds.push(...sales.map(s => s.id));
+    const finalRows = await fetchCustomerLedgerSalesForRange(companyId, String(customerId ?? '').trim());
+    const saleIds: string[] = (finalRows || []).map((s: any) => s.id).filter(Boolean);
 
     if (saleIds.length > 0) {
       let query = supabase
         .from('payments')
-        .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id')
+        .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id, voided_at')
         .eq('company_id', companyId)
         .eq('reference_type', 'sale')
         .in('reference_id', saleIds);
+      if (isLiveScope(scope)) query = query.is('voided_at', null);
       if (fromDate) query = query.gte('payment_date', fromDate);
       if (toDate) query = query.lte('payment_date', toDate);
       const { data: salePayments, error } = await query.order('payment_date', { ascending: false });
@@ -1100,64 +1543,93 @@ export const customerLedgerAPI = {
         .select('id, invoice_no')
         .in('id', (salePayments || []).map((p: any) => p.reference_id).filter(Boolean));
       const invoiceMap = new Map((relatedSales || []).map((s: any) => [s.id, s.invoice_no]));
+      const accIds = [...new Set((salePayments || []).map((p: any) => p.payment_account_id).filter(Boolean))] as string[];
+      const accNameById = new Map<string, string>();
+      if (accIds.length > 0) {
+        const { data: accs } = await supabase.from('accounts').select('id, name').in('id', accIds);
+        (accs || []).forEach((a: any) => accNameById.set(String(a.id), String(a.name || '').trim()));
+      }
       (salePayments || []).forEach((payment: any) => {
+        const acc = payment.payment_account_id ? accNameById.get(String(payment.payment_account_id)) : undefined;
+        const pm = String(payment.payment_method || 'other');
         result.push({
           id: payment.id,
           paymentNo: payment.reference_number || '',
           date: payment.payment_date,
           amount: payment.amount || 0,
-          method: payment.payment_method || '',
+          method: acc ? `${acc} (${pm})` : pm,
           referenceNo: payment.reference_number || '',
           appliedInvoices: invoiceMap.get(payment.reference_id) ? [invoiceMap.get(payment.reference_id)!] : [],
           status: 'Completed' as const,
+          ledgerLifecycle: payment.voided_at ? ('voided' as const) : ('active' as const),
         });
       });
     }
 
     let onAccountQuery = supabase
       .from('payments')
-      .select('id, reference_number, payment_date, amount, payment_method, notes')
+      .select('id, reference_number, payment_date, amount, payment_method, notes, payment_account_id, voided_at')
       .eq('company_id', companyId)
       .eq('contact_id', customerId)
       .eq('reference_type', 'on_account');
+    if (isLiveScope(scope)) onAccountQuery = onAccountQuery.is('voided_at', null);
     if (fromDate) onAccountQuery = onAccountQuery.gte('payment_date', fromDate);
     if (toDate) onAccountQuery = onAccountQuery.lte('payment_date', toDate);
     const { data: onAccountPayments, error: onAccErr } = await onAccountQuery.order('payment_date', { ascending: false });
     if (!onAccErr && onAccountPayments?.length) {
+      const oaAccIds = [...new Set(onAccountPayments.map((p: any) => p.payment_account_id).filter(Boolean))] as string[];
+      const oaAccName = new Map<string, string>();
+      if (oaAccIds.length > 0) {
+        const { data: accs } = await supabase.from('accounts').select('id, name').in('id', oaAccIds);
+        (accs || []).forEach((a: any) => oaAccName.set(String(a.id), String(a.name || '').trim()));
+      }
       onAccountPayments.forEach((payment: any) => {
+        const acc = payment.payment_account_id ? oaAccName.get(String(payment.payment_account_id)) : undefined;
+        const pm = String(payment.payment_method || 'other');
         result.push({
           id: payment.id,
           paymentNo: payment.reference_number || '',
           date: payment.payment_date,
           amount: payment.amount || 0,
-          method: payment.payment_method || '',
+          method: acc ? `${acc} (${pm})` : pm,
           referenceNo: payment.reference_number || '',
           appliedInvoices: [],
           status: 'Completed' as const,
+          ledgerLifecycle: payment.voided_at ? ('voided' as const) : ('active' as const),
         });
       });
     }
     // Add Entry V2: manual_receipt (customer receipt)
     let manualReceiptQuery = supabase
       .from('payments')
-      .select('id, reference_number, payment_date, amount, payment_method, notes')
+      .select('id, reference_number, payment_date, amount, payment_method, notes, payment_account_id, voided_at')
       .eq('company_id', companyId)
       .eq('contact_id', customerId)
       .eq('reference_type', 'manual_receipt');
+    if (isLiveScope(scope)) manualReceiptQuery = manualReceiptQuery.is('voided_at', null);
     if (fromDate) manualReceiptQuery = manualReceiptQuery.gte('payment_date', fromDate);
     if (toDate) manualReceiptQuery = manualReceiptQuery.lte('payment_date', toDate);
     const { data: manualReceiptPayments, error: manualRecErr } = await manualReceiptQuery.order('payment_date', { ascending: false });
     if (!manualRecErr && manualReceiptPayments?.length) {
+      const mrAccIds = [...new Set(manualReceiptPayments.map((p: any) => p.payment_account_id).filter(Boolean))] as string[];
+      const mrAccName = new Map<string, string>();
+      if (mrAccIds.length > 0) {
+        const { data: accs } = await supabase.from('accounts').select('id, name').in('id', mrAccIds);
+        (accs || []).forEach((a: any) => mrAccName.set(String(a.id), String(a.name || '').trim()));
+      }
       manualReceiptPayments.forEach((payment: any) => {
+        const acc = payment.payment_account_id ? mrAccName.get(String(payment.payment_account_id)) : undefined;
+        const pm = String(payment.payment_method || 'other');
         result.push({
           id: payment.id,
           paymentNo: payment.reference_number || '',
           date: payment.payment_date,
           amount: payment.amount || 0,
-          method: payment.payment_method || '',
+          method: acc ? `${acc} (${pm})` : pm,
           referenceNo: payment.reference_number || '',
           appliedInvoices: [],
           status: 'Completed' as const,
+          ledgerLifecycle: payment.voided_at ? ('voided' as const) : ('active' as const),
         });
       });
     }

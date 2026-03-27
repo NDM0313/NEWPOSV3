@@ -16,9 +16,16 @@ export function OverviewTab({ ledgerData, onTransactionClick }: OverviewTabProps
   const overdueInvoices = ledgerData.invoices.filter(inv => inv.status === 'Unpaid');
   const partiallyPaid = ledgerData.invoices.filter(inv => inv.status === 'Partially Paid');
 
-  // Calculate payment trends
-  const totalPayments = ledgerData.transactions.filter(t => t.documentType === 'Payment').length;
-  const totalSales = ledgerData.transactions.filter(t => t.documentType === 'Sale' || t.documentType === 'Studio Sale').length;
+  const totalPayments = ledgerData.transactions.filter(
+    t =>
+      t.documentType === 'Payment' ||
+      t.documentType === 'On-account Payment' ||
+      t.documentType === 'Return Payment' ||
+      t.documentType === 'Rental Payment'
+  ).length;
+  const totalSales = ledgerData.transactions.filter(
+    t => t.documentType === 'Sale' || t.documentType === 'Studio Sale' || t.documentType === 'Rental'
+  ).length;
 
   return (
     <div className="space-y-6">

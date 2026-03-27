@@ -184,6 +184,9 @@ type ResolutionMaps = {
 function resolvePartyId(je: JeMini, maps: ResolutionMaps): string | null {
   const rt = String(je.reference_type || '').toLowerCase().trim();
   const rid = je.reference_id ? String(je.reference_id) : '';
+  if (rt === 'opening_balance_contact_ar' && rid) return rid;
+  if (rt === 'opening_balance_contact_ap' && rid) return rid;
+  if (rt === 'opening_balance_contact_worker' && rid) return rid;
   if (rt === 'manual_receipt' && rid) return rid;
   if (rt === 'manual_payment' && rid) return rid;
   if (['sale', 'sale_return', 'sale_adjustment', 'sale_extra_expense'].includes(rt) && rid) {
@@ -306,6 +309,7 @@ async function collectJournalIdsForParty(
       ors.push(`and(reference_type.eq.rental,reference_id.in.(${rentalIds.join(',')}))`);
     }
     ors.push(`and(reference_type.eq.manual_receipt,reference_id.eq.${pid})`);
+    ors.push(`and(reference_type.eq.opening_balance_contact_ar,reference_id.eq.${pid})`);
 
     const payIds = [...ids]
       .filter((k) => k.startsWith('pay:'))
@@ -371,6 +375,14 @@ async function collectJournalIdsForParty(
       .eq('reference_type', 'manual_payment')
       .eq('reference_id', pid);
     (mo || []).forEach((j: any) => ids.add(j.id));
+
+    const { data: obap } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'opening_balance_contact_ap')
+      .eq('reference_id', pid);
+    (obap || []).forEach((j: any) => ids.add(j.id));
   }
 
   if (partyType === 'worker') {
@@ -379,7 +391,7 @@ async function collectJournalIdsForParty(
       .select('id')
       .eq('company_id', companyId)
       .eq('reference_id', pid)
-      .in('reference_type', ['worker_payment', 'worker_advance_settlement']);
+      .in('reference_type', ['worker_payment', 'worker_advance_settlement', 'opening_balance_contact_worker']);
     (jw || []).forEach((j: any) => ids.add(j.id));
 
     const { data: stages } = await supabase

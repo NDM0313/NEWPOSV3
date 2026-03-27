@@ -298,3 +298,68 @@ export async function uploadJournalEntryAttachments(
   }
   return results;
 }
+
+/**
+ * Same storage layout as UnifiedPaymentDialog manual flows:
+ * `{companyId}/{segment}/{timestamp}_{index}_{safeName}` in bucket `payment-attachments`.
+ */
+export async function uploadUnifiedStylePaymentAttachments(
+  companyId: string,
+  segment: string,
+  files: File[]
+): Promise<AttachmentResult[]> {
+  if (!files.length || !companyId) return [];
+  const bucket = 'payment-attachments';
+  const safeSeg = segment.replace(/[^a-zA-Z0-9/_-]/g, '_').replace(/\/+/g, '/');
+  const prefix = `${companyId}/${safeSeg}/${Date.now()}`;
+  const results: AttachmentResult[] = [];
+  let anyUploadFailed = false;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      anyUploadFailed = true;
+      showFileTooLargeToast(file.name);
+      continue;
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `${prefix}_${i}_${safeName}`;
+    try {
+      const { error } = await supabase.storage.from(bucket).upload(path, file, {
+        upsert: true,
+        contentType: file.type || 'application/octet-stream',
+      });
+      if (error) {
+        anyUploadFailed = true;
+        console.error(`[UPLOAD MANUAL PAYMENT ATTACHMENTS] Failed to upload ${file.name}:`, error);
+        const errorMsg = String(error?.message || '').toLowerCase();
+        if (isStorageRlsError(error)) {
+          showStorageRlsToast();
+          break;
+        }
+        if (isFileTooLargeError(error)) {
+          showFileTooLargeToast(file.name);
+          continue;
+        }
+        if (isBucketNotFoundError(error)) {
+          showBucketNotFoundToast('payment-attachments');
+          break;
+        }
+      } else {
+        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+        results.push({ url: urlData?.publicUrl || path, name: file.name });
+      }
+    } catch (err: unknown) {
+      anyUploadFailed = true;
+      console.error(`[UPLOAD MANUAL PAYMENT ATTACHMENTS] Exception uploading ${file.name}:`, err);
+      if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
+      else if (isStorageRlsError(err as { message?: string })) showStorageRlsToast();
+    }
+  }
+  if (anyUploadFailed && results.length === 0) {
+    toast.warning('Attachment upload failed. Entry will save without files.');
+  } else if (anyUploadFailed && results.length < files.length) {
+    toast.warning(`Only ${results.length} of ${files.length} file(s) uploaded.`);
+  }
+  return results;
+}

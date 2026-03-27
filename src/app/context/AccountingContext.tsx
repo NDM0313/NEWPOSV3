@@ -11,24 +11,48 @@ import { toast } from 'sonner';
 import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { warnIfUsingStoredBalanceAsTruth } from '@/app/services/accountingCanonicalGuard';
 
+/** Leading numeric segment of account code (e.g. "1021-NDM" → "1021"). */
+function accountCodeDigits(acc: { code?: string } | null): string {
+  const raw = String(acc?.code || '').trim();
+  if (!raw) return '';
+  const head = raw.split(/[-–—\s]/)[0] ?? raw;
+  return head.replace(/\D/g, '');
+}
+
 /** True if account is a payment account (Cash/Bank/Mobile Wallet) – used for Manual Entry → Roznamcha rule */
-function isPaymentAccount(acc: { code?: string; type?: string; name?: string } | null): boolean {
+function isPaymentAccount(acc: { code?: string; type?: string; name?: string; accountType?: string } | null): boolean {
   if (!acc) return false;
   const code = (acc.code || '').trim();
+  const digits = accountCodeDigits(acc);
   const type = (acc.type || acc.accountType || '').toLowerCase();
   const name = (acc.name || '').toLowerCase();
   if (['1000', '1010', '1020'].includes(code)) return true;
-  if (['cash', 'bank'].includes(type)) return true;
-  if (/cash|bank|mobile wallet|wallet|jazz|easypaisa/.test(name)) return true;
+  // Sub-wallets under 102x (NDM Easy, etc.) — must count as payment so expense → payments row → Roznamcha
+  if (digits.length >= 3 && digits.startsWith('102')) return true;
+  if (['cash', 'bank', 'mobile_wallet', 'wallet', 'card', 'pos'].includes(type)) return true;
+  if (/cash|bank|mobile wallet|wallet|jazz|easypaisa|ndm|easy\s*paisa|mobicash|finja|upaisa|sadapay|nayapay/.test(name)) {
+    return true;
+  }
   return false;
 }
 
 /** Infer payments.payment_method from payment account (for manual payment/receipt) */
-function paymentMethodFromAccount(acc: { code?: string; type?: string; name?: string }): string {
+function paymentMethodFromAccount(acc: { code?: string; type?: string; name?: string; accountType?: string }): string {
   const code = (acc.code || '').trim();
+  const digits = accountCodeDigits(acc);
+  const type = (acc.type || acc.accountType || '').toLowerCase();
   const name = (acc.name || '').toLowerCase();
-  if (code === '1000' || name.includes('cash')) return 'cash';
-  if (code === '1010' || name.includes('bank')) return 'bank';
+  if (code === '1000' || name.includes('cash') || type === 'cash' || type === 'pos') return 'cash';
+  if (code === '1010' || name.includes('bank') || type === 'bank' || type === 'card') return 'bank';
+  if (
+    code === '1020' ||
+    type === 'mobile_wallet' ||
+    type === 'wallet' ||
+    (digits.length >= 3 && digits.startsWith('102')) ||
+    /wallet|jazz|easypaisa|ndm|mobicash|finja|upaisa|sadapay|nayapay/.test(name)
+  ) {
+    return 'mobile_wallet';
+  }
   return 'other';
 }
 
@@ -97,6 +121,8 @@ export interface AccountingEntry {
     /** PF-14.3B: Root document for grouping (e.g. sale_id so sale + sale_adjustment + payment_adjustment show as one row). */
     rootReferenceId?: string;
     rootReferenceType?: string;
+    /** Journal + payment date (yyyy-MM-dd) when not using “today” (e.g. expense repost). */
+    postingDate?: string;
   };
 }
 
@@ -183,6 +209,10 @@ export interface RentalBookingParams {
   securityDepositAmount: number;
   securityDepositType: 'Cash' | 'Document';
   paymentMethod: PaymentMethod;
+  /** When set, debit line posts to this payment account (cash/bank/wallet) — required for confirmed advances. */
+  paymentAccountId?: string;
+  /** Journal / payment date (YYYY-MM-DD). */
+  paymentDate?: string;
 }
 
 export interface RentalDeliveryParams {
@@ -191,6 +221,8 @@ export interface RentalDeliveryParams {
   customerId?: string;
   remainingAmount: number;
   paymentMethod: PaymentMethod;
+  paymentAccountId?: string;
+  paymentDate?: string;
 }
 
 export interface RentalReturnParams {
@@ -240,6 +272,8 @@ export interface ExpenseParams {
   amount: number;
   paymentMethod: PaymentMethod;
   description: string;
+  /** Expense document date for journal/payment posting (yyyy-MM-dd). */
+  date?: string;
 }
 
 export interface PurchaseParams {
@@ -297,6 +331,10 @@ export interface Account {
   branchId?: string; // UUID for branch filter in payment dialog
   isActive: boolean;
   code?: string; // Add code for account lookup
+  /** Chart hierarchy: child of canonical group (1000/1010/1020/1100/2000, etc.) */
+  parent_id?: string | null;
+  /** COA section header row (non-selectable as payment account). */
+  is_group?: boolean;
 }
 
 // ============================================
@@ -343,6 +381,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       branchId: supabaseAccount.branch_id || undefined, // For payment dialog branch filter
       isActive: supabaseAccount.is_active !== false,
       code: supabaseAccount.code || undefined, // CRITICAL FIX: Include code for account lookup
+      parent_id: supabaseAccount.parent_id ?? null,
+      is_group: supabaseAccount.is_group === true,
     };
   }, []);
   
@@ -647,7 +687,9 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       normalizedCreditAccount = accountNameMap[entry.creditAccount] || entry.creditAccount;
       // Generate entry number
       const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-      const entryDate = new Date().toISOString().split('T')[0];
+      const entryDate =
+        (entry.metadata as { postingDate?: string } | undefined)?.postingDate?.slice(0, 10) ||
+        new Date().toISOString().split('T')[0];
 
       // Find account IDs for debit and credit (case-insensitive)
       // When metadata.debitAccountId is set (e.g. on-account payment), use that for debit
@@ -878,7 +920,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         if (debitIsPayment && !creditIsPayment) {
           const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment').catch(() => generatePaymentReference(null));
           const { data: { user } } = await supabase.auth.getUser();
-          const { data: row, error } = await supabase.from('payments').insert({
+          const manualCustomerId = (entry.metadata as { customerId?: string } | undefined)?.customerId ?? null;
+          const manualReceiptPayload: Record<string, unknown> = {
             company_id: companyId,
             branch_id: validBranchId,
             payment_type: 'received',
@@ -891,7 +934,9 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
             reference_number: refNo,
             received_by: (user as any)?.id ?? null,
             created_by: currentUserId ?? null,
-          }).select('id').single();
+          };
+          if (manualCustomerId) manualReceiptPayload.contact_id = manualCustomerId;
+          const { data: row, error } = await supabase.from('payments').insert(manualReceiptPayload).select('id').single();
           if (!error && row) { manualPaymentId = (row as { id: string }).id; manualRefType = 'manual_receipt'; }
         } else if (!debitIsPayment && creditIsPayment) {
           const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment').catch(() => generatePaymentReference(null));
@@ -981,13 +1026,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         reference_type: manualRefType || (isWorkerPayment ? 'worker_payment' : entry.source.toLowerCase()),
         reference_id: isWorkerPayment
           ? entry.metadata.workerId
-          : (prelinkedCustomerPaymentId ||
-              entry.metadata?.purchaseReturnId ||
-              entry.metadata?.saleId ||
-              entry.metadata?.purchaseId ||
-              entry.metadata?.expenseId ||
-              entry.metadata?.bookingId ||
-              null),
+          : manualRefType === 'manual_receipt' && (entry.metadata as { customerId?: string })?.customerId
+            ? (entry.metadata as { customerId?: string }).customerId
+            : (prelinkedCustomerPaymentId ||
+                entry.metadata?.purchaseReturnId ||
+                entry.metadata?.saleId ||
+                entry.metadata?.purchaseId ||
+                entry.metadata?.expenseId ||
+                entry.metadata?.bookingId ||
+                null),
         created_by: currentUserId || null,
         attachments: entry.metadata?.attachments && entry.metadata.attachments.length > 0 ? entry.metadata.attachments : undefined,
       };
@@ -1018,11 +1065,86 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         });
       }
 
-      // Manual supplier payment: refresh supplier statement (operational = payments + purchases)
-      if (manualRefType === 'manual_payment' && manualPaymentId && companyId && entry.debitAccount === 'Accounts Payable') {
-        const supplierContactId = (entry.metadata as any)?.contactId;
-        if (supplierContactId && typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierContactId } }));
+      // Manual customer receipt (Dr cash/bank/wallet, Cr AR): FIFO allocate to open invoices — same as Add Entry V2.
+      if (manualRefType === 'manual_receipt' && manualPaymentId && companyId) {
+        const customerId = (entry.metadata as { customerId?: string } | undefined)?.customerId;
+        const creditCode = String((creditAccountObj as { code?: string } | undefined)?.code ?? '');
+        const creditName = String((creditAccountObj as { name?: string } | undefined)?.name ?? '').toLowerCase();
+        const creditIsAr =
+          entry.creditAccount === 'Accounts Receivable' ||
+          creditCode === '1100' ||
+          creditName.includes('receivable');
+        if (customerId && creditIsAr && debitIsPayment) {
+          try {
+            const { data: payRow } = await supabase
+              .from('payments')
+              .select('reference_number, payment_date, amount')
+              .eq('id', manualPaymentId)
+              .single();
+            const { applyManualReceiptAllocations } = await import('@/app/services/paymentAllocationService');
+            await applyManualReceiptAllocations({
+              companyId,
+              branchId: validBranchId,
+              paymentId: manualPaymentId,
+              customerId,
+              amount: Number(entry.amount) || 0,
+              paymentDate: String((payRow as any)?.payment_date || entryDate),
+              referenceNumber: String((payRow as any)?.reference_number || ''),
+              createdBy: currentUserId ?? null,
+              explicitAllocations: null,
+            });
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+              window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
+            }
+          } catch (allocErr: any) {
+            console.warn('[ACCOUNTING] Manual receipt saved but FIFO allocation failed:', allocErr?.message || allocErr);
+            toast.error(allocErr?.message || 'Receipt saved; invoice allocation failed — check open invoices and migration 20260356.');
+          }
+        }
+      }
+
+      // Manual supplier payment (Dr AP, Cr cash/bank/wallet): FIFO allocate to open purchase bills — same as Add Entry V2.
+      if (manualRefType === 'manual_payment' && manualPaymentId && companyId) {
+        const supplierId = (entry.metadata as { contactId?: string } | undefined)?.contactId;
+        const debitCode = String((debitAccountObj as { code?: string } | undefined)?.code ?? '');
+        const debitName = String((debitAccountObj as { name?: string } | undefined)?.name ?? '').toLowerCase();
+        const debitIsAp =
+          entry.debitAccount === 'Accounts Payable' ||
+          debitCode === '2000' ||
+          debitName.includes('accounts payable') ||
+          debitName.includes('payable');
+        if (supplierId && debitIsAp && creditIsPayment) {
+          try {
+            const { data: payRow } = await supabase
+              .from('payments')
+              .select('reference_number, payment_date, amount')
+              .eq('id', manualPaymentId)
+              .single();
+            const { applyManualSupplierPaymentAllocations } = await import('@/app/services/paymentAllocationService');
+            await applyManualSupplierPaymentAllocations({
+              companyId,
+              branchId: validBranchId,
+              paymentId: manualPaymentId,
+              supplierId,
+              amount: Number(entry.amount) || 0,
+              paymentDate: String((payRow as any)?.payment_date || entryDate),
+              referenceNumber: String((payRow as any)?.reference_number || ''),
+              createdBy: currentUserId ?? null,
+              explicitAllocations: null,
+            });
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+              window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
+            }
+          } catch (allocErr: any) {
+            console.warn('[ACCOUNTING] Manual supplier payment saved but FIFO allocation failed:', allocErr?.message || allocErr);
+            toast.error(allocErr?.message || 'Payment saved; bill allocation failed — check open bills and migration 20260361.');
+          }
+        } else if ((entry.metadata as any)?.contactId && typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: (entry.metadata as any).contactId } })
+          );
         }
       }
 
@@ -1367,31 +1489,57 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   // ============================================
 
   const recordRentalBooking = async (params: RentalBookingParams): Promise<boolean> => {
-    const { bookingId, customerName, customerId, advanceAmount, securityDepositAmount, securityDepositType, paymentMethod } = params;
+    const {
+      bookingId,
+      customerName,
+      customerId,
+      advanceAmount,
+      securityDepositAmount,
+      securityDepositType,
+      paymentMethod,
+      paymentAccountId,
+      paymentDate,
+    } = params;
 
-    // Record advance
+    const postingDate = paymentDate?.slice(0, 10) || new Date().toISOString().split('T')[0];
+    const advanceMeta: Record<string, unknown> = {
+      customerId,
+      customerName,
+      bookingId,
+      postingDate,
+      ...(paymentAccountId ? { debitAccountId: paymentAccountId } : {}),
+    };
+
+    // Record advance (debit = user-selected payment account when paymentAccountId set)
     const advanceSuccess = await createEntry({
       source: 'Rental',
       referenceNo: bookingId,
-      debitAccount: paymentMethod as AccountType,
+      debitAccount: (paymentAccountId ? 'Cash' : paymentMethod) as AccountType,
       creditAccount: 'Rental Advance',
       amount: advanceAmount,
       description: `Rental booking advance - ${customerName}`,
       module: 'Rental',
-      metadata: { customerId, customerName, bookingId }
+      metadata: advanceMeta,
     });
 
     // Record security deposit (only if cash)
     if (securityDepositType === 'Cash' && securityDepositAmount > 0) {
+      const sdMeta: Record<string, unknown> = {
+        customerId,
+        customerName,
+        bookingId,
+        postingDate,
+        ...(paymentAccountId ? { debitAccountId: paymentAccountId } : {}),
+      };
       await createEntry({
         source: 'Rental',
         referenceNo: bookingId,
-        debitAccount: paymentMethod as AccountType,
+        debitAccount: (paymentAccountId ? 'Cash' : paymentMethod) as AccountType,
         creditAccount: 'Security Deposit',
         amount: securityDepositAmount,
         description: `Security deposit (Cash) - ${customerName}`,
         module: 'Rental',
-        metadata: { customerId, customerName, bookingId }
+        metadata: sdMeta,
       });
     }
 
@@ -1399,18 +1547,25 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   };
 
   const recordRentalDelivery = async (params: RentalDeliveryParams): Promise<boolean> => {
-    const { bookingId, customerName, customerId, remainingAmount, paymentMethod } = params;
+    const { bookingId, customerName, customerId, remainingAmount, paymentMethod, paymentAccountId, paymentDate } = params;
 
+    const postingDate = paymentDate?.slice(0, 10) || new Date().toISOString().split('T')[0];
     // Use Sales Revenue (code 4000) - exists in default accounts; Rental Income falls back to it
     return await createEntry({
       source: 'Rental',
       referenceNo: bookingId,
-      debitAccount: paymentMethod as AccountType,
+      debitAccount: (paymentAccountId ? 'Cash' : paymentMethod) as AccountType,
       creditAccount: 'Sales Revenue',
       amount: remainingAmount,
       description: `Rental remaining payment - ${customerName}`,
       module: 'Rental',
-      metadata: { customerId, customerName, bookingId }
+      metadata: {
+        customerId,
+        customerName,
+        bookingId,
+        postingDate,
+        ...(paymentAccountId ? { debitAccountId: paymentAccountId } : {}),
+      },
     });
   };
 
@@ -1588,7 +1743,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   // ============================================
 
   const recordExpense = async (params: ExpenseParams): Promise<boolean> => {
-    const { expenseId, category, amount, paymentMethod, description } = params;
+    const { expenseId, category, amount, paymentMethod, description, date } = params;
 
     return await createEntry({
       source: 'Expense',
@@ -1598,7 +1753,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       amount: amount,
       description: `${category} - ${description}`,
       module: 'Expenses',
-      metadata: { expenseId }
+      metadata: { expenseId, ...(date ? { postingDate: date.slice(0, 10) } : {}) },
     });
   };
 
@@ -1742,7 +1897,9 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       );
       if (result) {
         await refreshEntries();
-        toast.success('Reversal entry created');
+        if (!result.alreadyExisted) {
+          toast.success('Reversal entry created');
+        }
         return true;
       }
       toast.error('Could not create reversal (entry not found or wrong company)');

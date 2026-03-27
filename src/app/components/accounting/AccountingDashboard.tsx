@@ -21,7 +21,6 @@ import {
   BarChart3,
   TestTube,
   Edit,
-  MoreVertical,
   XCircle,
   Star,
   List,
@@ -66,6 +65,10 @@ const USE_ADD_ENTRY_V2 = true;
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { accountService } from '@/app/services/accountService';
 import { toast } from 'sonner';
+import { getControlAccountKind } from '@/app/lib/accountControlKind';
+import { AccountsHierarchyList } from '@/app/components/accounting/AccountsHierarchyList';
+import { useAccountsHierarchyModel } from '@/app/components/accounting/useAccountsHierarchyModel';
+import { AccountingDashboardAccountRowMenu } from '@/app/components/accounting/AccountingDashboardAccountRowMenu';
 
 const StudioCostsTab = lazy(() => import('./StudioCostsTab').then((m) => ({ default: m.StudioCostsTab })));
 const DepositsTab = lazy(() => import('./DepositsTab').then((m) => ({ default: m.DepositsTab })));
@@ -95,6 +98,47 @@ import {
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
+
+/** Journal list: line amount is stored positive; classify by module/source (sign-based Income/Expense was wrong for all rows). */
+function journalRowPresentation(entry: AccountingEntry): {
+  typeLabel: string;
+  amountClass: string;
+  badgeClass: string;
+} {
+  if (entry.source === 'Reversal') {
+    return {
+      typeLabel: 'Reversal',
+      amountClass: 'text-amber-400',
+      badgeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+    };
+  }
+  if (entry.module === 'Expenses' || entry.source === 'Expense') {
+    return {
+      typeLabel: 'Expense',
+      amountClass: 'text-red-400',
+      badgeClass: 'bg-red-500/20 text-red-400 border-red-500/30',
+    };
+  }
+  if (entry.module === 'Purchases' || entry.source === 'Purchase') {
+    return {
+      typeLabel: 'Purchase',
+      amountClass: 'text-orange-400',
+      badgeClass: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+    };
+  }
+  if (entry.source === 'Sale' || entry.source === 'Payment' || entry.module === 'Sales') {
+    return {
+      typeLabel: 'Income',
+      amountClass: 'text-green-400',
+      badgeClass: 'bg-green-500/20 text-green-400 border-green-500/30',
+    };
+  }
+  return {
+    typeLabel: 'Journal',
+    amountClass: 'text-gray-300',
+    badgeClass: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  };
+}
 import { Switch } from '@/app/components/ui/switch';
 
 // Account type sets used for summary card calculations (module-level constants)
@@ -107,26 +151,6 @@ const EXPENSE_ACCOUNTS = new Set([
 ]);
 const AR_ACCOUNTS = new Set(['Accounts Receivable']);
 const AP_ACCOUNTS = new Set(['Accounts Payable', 'Worker Payable']);
-
-/** COA row → GL control bucket for breakdown + actions (code first, then name). */
-function getControlAccountKind(account: {
-  name?: string;
-  code?: string;
-}): ControlAccountBreakdownResult['controlKind'] | null {
-  const c = String(account.code || '').trim();
-  if (c === '1100') return 'ar';
-  if (c === '2000') return 'ap';
-  if (c === '2010') return 'worker_payable';
-  if (c === '1180') return 'worker_advance';
-  if (c === '1195') return 'suspense';
-  const n = (account.name || '').trim().toLowerCase();
-  if (n === 'accounts receivable' || (n.includes('receivable') && c.startsWith('11'))) return 'ar';
-  if (n === 'accounts payable') return 'ap';
-  if (n.includes('worker payable')) return 'worker_payable';
-  if (n.includes('worker advance')) return 'worker_advance';
-  if (n.includes('suspense') || n.includes('reconciliation suspense')) return 'suspense';
-  return null;
-}
 
 export const AccountingDashboard = () => {
   const { canAccessAccounting, canPostAccounting } = useCheckPermission();
@@ -154,7 +178,7 @@ export const AccountingDashboard = () => {
   
   // UI-only view mode: Operational (day-to-day accounts) vs Professional (full Chart of Accounts)
   const [accountsViewMode, setAccountsViewMode] = useState<'operational' | 'professional'>('operational');
-  const [showSubAccounts, setShowSubAccounts] = useState(false);
+  const [showSubAccounts, setShowSubAccounts] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
@@ -162,6 +186,7 @@ export const AccountingDashboard = () => {
   
   // 🎯 Add Entry flow (type selector + modals, same as Accounting Test page)
   const [addEntryFlowOpen, setAddEntryFlowOpen] = useState(false);
+  const [addEntryInitialType, setAddEntryInitialType] = useState<import('./AddEntryV2').AddEntryV2Type | undefined>(undefined);
   // Legacy manual-entry-only dialog (kept for any direct use)
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
   
@@ -170,7 +195,9 @@ export const AccountingDashboard = () => {
   const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
   const [payCourierOpen, setPayCourierOpen] = useState(false);
-  
+  /** Parent row id → collapsed (children hidden). Empty = all groups expanded. */
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(new Set());
+
   // 🎯 Ledger & Transaction State
   const [ledgerAccount, setLedgerAccount] = useState<any>(null);
   const [controlBreakdown, setControlBreakdown] = useState<{
@@ -180,6 +207,8 @@ export const AccountingDashboard = () => {
   const [transactionReference, setTransactionReference] = useState<string | null>(null);
   /** PF-14.3B: When opening a grouped journal row, pass all entries in the group for the detail trail. */
   const [selectedGroupEntries, setSelectedGroupEntries] = useState<AccountingEntry[] | null>(null);
+  /** Open TransactionDetailModal and immediately run unified source-aware edit when true. */
+  const [transactionDetailAutoEdit, setTransactionDetailAutoEdit] = useState(false);
   /** PF-14.3B: Default = grouped (one logical row per sale); audit = all raw JEs. */
   const [journalViewMode, setJournalViewMode] = useState<'grouped' | 'audit'>('grouped');
   
@@ -200,6 +229,18 @@ export const AccountingDashboard = () => {
   const transactions = useMemo(() => {
     return accounting.entries;
   }, [accounting.entries]);
+
+  useEffect(() => {
+    const handleOpenAddEntryV2 = (event: Event) => {
+      const d = (event as CustomEvent).detail || {};
+      const requested = d.entryType as import('./AddEntryV2').AddEntryV2Type | undefined;
+      setAddEntryInitialType(requested);
+      setActiveTab('journal_entries');
+      setAddEntryFlowOpen(true);
+    };
+    window.addEventListener('openAddEntryV2', handleOpenAddEntryV2 as EventListener);
+    return () => window.removeEventListener('openAddEntryV2', handleOpenAddEntryV2 as EventListener);
+  }, []);
   
   // Calculate summary stats from journal entries (uses module-level account sets above)
   const summary = useMemo(() => {
@@ -239,7 +280,16 @@ export const AccountingDashboard = () => {
       netProfit: totalIncome - totalExpense,
     };
   }, [transactions]);
-  
+
+  const { hierarchyRows } = useAccountsHierarchyModel(
+    accounting.accounts,
+    transactions,
+    accountsViewMode,
+    showSubAccounts,
+    collapsedGroupIds,
+    setCollapsedGroupIds
+  );
+
   // Tab configuration: Journal Entries | Day Book | Roznamcha | Accounts | Ledger | Receivables | Payables | Studio Costs | Account Statements
   const allTabs = [
     { key: 'journal_entries', label: 'Journal Entries', icon: Receipt },
@@ -448,7 +498,10 @@ export const AccountingDashboard = () => {
           </div>
           {canAccessAccounting && canPostAccounting && activeTab === 'journal_entries' && (
             <Button 
-              onClick={() => setAddEntryFlowOpen(true)}
+              onClick={() => {
+                setAddEntryInitialType(undefined);
+                setAddEntryFlowOpen(true);
+              }}
               className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2 shadow-lg shadow-blue-900/30"
             >
               <Plus size={16} />
@@ -688,7 +741,7 @@ export const AccountingDashboard = () => {
                             const module = entry.module || 'Accounting';
                             const amount = entry.amount || 0;
                             const paymentMethod = (entry.metadata as any)?.paymentMethod || 'N/A';
-                            const type = amount >= 0 ? 'Income' : 'Expense';
+                            const pres = journalRowPresentation(entry);
                             const isReversal = entry.source === 'Reversal';
                             const adjustmentCount = group.entries.length > 1 ? group.entries.length - 1 : 0;
                             return (
@@ -696,16 +749,24 @@ export const AccountingDashboard = () => {
                                 key={group.rootKey}
                                 className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
                                 onClick={() => {
+                                  setTransactionDetailAutoEdit(false);
                                   setTransactionReference(referenceNumber);
                                   setSelectedGroupEntries(group.entries);
                                 }}
                               >
                                 <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
                                   {entry.date ? (
-                                    <DateTimeDisplay
-                                      date={(entry.metadata as { createdAt?: string } | undefined)?.createdAt ?? entry.date}
-                                      className="flex flex-col leading-tight"
-                                    />
+                                    <div className="flex flex-col gap-0.5">
+                                      <DateTimeDisplay date={entry.date} dateOnly className="text-gray-300" />
+                                      {(entry.metadata as { createdAt?: string } | undefined)?.createdAt ? (
+                                        <span className="text-[10px] text-gray-600">
+                                          Posted{' '}
+                                          {new Date(
+                                            (entry.metadata as { createdAt?: string }).createdAt!
+                                          ).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                                        </span>
+                                      ) : null}
+                                    </div>
                                   ) : (
                                     'N/A'
                                   )}
@@ -714,6 +775,7 @@ export const AccountingDashboard = () => {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      setTransactionDetailAutoEdit(false);
                                       setTransactionReference(referenceNumber);
                                       setSelectedGroupEntries(group.entries);
                                     }}
@@ -737,12 +799,12 @@ export const AccountingDashboard = () => {
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
-                                  <Badge className={type === 'Income' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}>
-                                    {type}
+                                  <Badge className={pres.badgeClass}>
+                                    {pres.typeLabel}
                                   </Badge>
                                 </td>
                                 <td className="px-4 py-3 text-sm text-gray-400 capitalize">{paymentMethod}</td>
-                                <td className={cn("px-4 py-3 text-sm font-semibold text-right tabular-nums", amount >= 0 ? "text-green-400" : "text-red-400")}>
+                                <td className={cn('px-4 py-3 text-sm font-semibold text-right tabular-nums', pres.amountClass)}>
                                   {formatCurrency(Math.abs(amount))}
                                 </td>
                                 <td className="px-4 py-3 text-xs text-gray-400">{entry.source || 'Manual'}</td>
@@ -753,22 +815,44 @@ export const AccountingDashboard = () => {
                                 </td>
                                 {canPostAccounting && (
                                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                                    {!isReversal && (
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-                                        onClick={() => {
-                                          if (window.confirm('Create a reversal entry for this journal entry? This will post a new entry that offsets the original.')) {
-                                            accounting.createReversalEntry(entry.id);
-                                          }
-                                        }}
-                                        title="Create reversal (manual correction)"
-                                      >
-                                        <RotateCcw className="w-4 h-4 mr-1" />
-                                        Reverse
-                                      </Button>
-                                    )}
+                                    <div className="flex flex-wrap items-center gap-1">
+                                      {!isReversal && (
+                                        <>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
+                                            onClick={() => {
+                                              setSelectedGroupEntries(group.entries);
+                                              setTransactionDetailAutoEdit(true);
+                                              setTransactionReference(entry.id);
+                                            }}
+                                            title="Open unified editor (same as transaction detail)"
+                                          >
+                                            <Edit className="w-4 h-4 mr-1" />
+                                            Edit
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                                            onClick={() => {
+                                              if (
+                                                window.confirm(
+                                                  'Create a reversal entry for this journal entry? This will post a new entry that offsets the original.'
+                                                )
+                                              ) {
+                                                accounting.createReversalEntry(entry.id);
+                                              }
+                                            }}
+                                            title="Create reversal (manual correction)"
+                                          >
+                                            <RotateCcw className="w-4 h-4 mr-1" />
+                                            Reverse
+                                          </Button>
+                                        </>
+                                      )}
+                                    </div>
                                   </td>
                                 )}
                               </tr>
@@ -779,23 +863,31 @@ export const AccountingDashboard = () => {
                             const module = entry.module || 'Accounting';
                             const amount = entry.amount || 0;
                             const paymentMethod = (entry.metadata as any)?.paymentMethod || 'N/A';
-                            const type = amount >= 0 ? 'Income' : 'Expense';
+                            const pres = journalRowPresentation(entry);
                             const isReversal = entry.source === 'Reversal';
                             return (
                               <tr
                                 key={entry.id}
                                 className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
                                 onClick={() => {
+                                  setTransactionDetailAutoEdit(false);
                                   setTransactionReference(referenceNumber);
                                   setSelectedGroupEntries(null);
                                 }}
                               >
                                 <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
                                   {entry.date ? (
-                                    <DateTimeDisplay
-                                      date={(entry.metadata as { createdAt?: string } | undefined)?.createdAt ?? entry.date}
-                                      className="flex flex-col leading-tight"
-                                    />
+                                    <div className="flex flex-col gap-0.5">
+                                      <DateTimeDisplay date={entry.date} dateOnly className="text-gray-300" />
+                                      {(entry.metadata as { createdAt?: string } | undefined)?.createdAt ? (
+                                        <span className="text-[10px] text-gray-600">
+                                          Posted{' '}
+                                          {new Date(
+                                            (entry.metadata as { createdAt?: string }).createdAt!
+                                          ).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                                        </span>
+                                      ) : null}
+                                    </div>
                                   ) : (
                                     'N/A'
                                   )}
@@ -804,6 +896,7 @@ export const AccountingDashboard = () => {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      setTransactionDetailAutoEdit(false);
                                       setTransactionReference(referenceNumber);
                                       setSelectedGroupEntries(null);
                                     }}
@@ -821,12 +914,12 @@ export const AccountingDashboard = () => {
                                   {entry.description || 'No description'}
                                 </td>
                                 <td className="px-4 py-3">
-                                  <Badge className={type === 'Income' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}>
-                                    {type}
+                                  <Badge className={pres.badgeClass}>
+                                    {pres.typeLabel}
                                   </Badge>
                                 </td>
                                 <td className="px-4 py-3 text-sm text-gray-400 capitalize">{paymentMethod}</td>
-                                <td className={cn("px-4 py-3 text-sm font-semibold text-right tabular-nums", amount >= 0 ? "text-green-400" : "text-red-400")}>
+                                <td className={cn('px-4 py-3 text-sm font-semibold text-right tabular-nums', pres.amountClass)}>
                                   {formatCurrency(Math.abs(amount))}
                                 </td>
                                 <td className="px-4 py-3 text-xs text-gray-400">{entry.source || 'Manual'}</td>
@@ -837,22 +930,44 @@ export const AccountingDashboard = () => {
                                 </td>
                                 {canPostAccounting && (
                                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                                    {!isReversal && (
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-                                        onClick={() => {
-                                          if (window.confirm('Create a reversal entry for this journal entry? This will post a new entry that offsets the original.')) {
-                                            accounting.createReversalEntry(entry.id);
-                                          }
-                                        }}
-                                        title="Create reversal (manual correction)"
-                                      >
-                                        <RotateCcw className="w-4 h-4 mr-1" />
-                                        Reverse
-                                      </Button>
-                                    )}
+                                    <div className="flex flex-wrap items-center gap-1">
+                                      {!isReversal && (
+                                        <>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
+                                            onClick={() => {
+                                              setSelectedGroupEntries(null);
+                                              setTransactionDetailAutoEdit(true);
+                                              setTransactionReference(entry.id);
+                                            }}
+                                            title="Open unified editor (same as transaction detail)"
+                                          >
+                                            <Edit className="w-4 h-4 mr-1" />
+                                            Edit
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                                            onClick={() => {
+                                              if (
+                                                window.confirm(
+                                                  'Create a reversal entry for this journal entry? This will post a new entry that offsets the original.'
+                                                )
+                                              ) {
+                                                accounting.createReversalEntry(entry.id);
+                                              }
+                                            }}
+                                            title="Create reversal (manual correction)"
+                                          >
+                                            <RotateCcw className="w-4 h-4 mr-1" />
+                                            Reverse
+                                          </Button>
+                                        </>
+                                      )}
+                                    </div>
                                   </td>
                                 )}
                               </tr>
@@ -917,7 +1032,15 @@ export const AccountingDashboard = () => {
             <p className="text-sm text-gray-400 mb-4">Click voucher number to open transaction detail</p>
             <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
               <DayBookReport
-                onVoucherClick={(voucher) => setTransactionReference(voucher)}
+                onVoucherClick={(voucher) => {
+                  setTransactionDetailAutoEdit(false);
+                  setTransactionReference(voucher);
+                }}
+                onEditJournalEntry={(journalEntryId) => {
+                  setSelectedGroupEntries(null);
+                  setTransactionDetailAutoEdit(true);
+                  setTransactionReference(journalEntryId);
+                }}
                 globalStartDate={globalStartDate}
                 globalEndDate={globalEndDate}
               />
@@ -996,333 +1119,62 @@ export const AccountingDashboard = () => {
               </div>
             </div>
 
-            {/* Accounts Table */}
-            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-              {accounting.accounts.length === 0 ? (
-                <div className="text-center py-12">
-                  <Wallet size={48} className="mx-auto text-gray-600 mb-3" />
-                  <p className="text-gray-400 text-sm">No accounts found</p>
-                  <p className="text-gray-600 text-xs mt-1">Create your first account to get started</p>
-                  <Button
-                    onClick={() => setIsAddAccountOpen(true)}
-                    className="mt-4 bg-blue-600 hover:bg-blue-500 text-white"
-                  >
-                    <Plus size={16} className="mr-2" /> Create Account
-                  </Button>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-900 border-b border-gray-800">
-                      <tr className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                        <th className="px-4 py-3 text-left">Account Name</th>
-                        {accountsViewMode === 'professional' && (
-                          <>
-                            <th className="px-4 py-3 text-left">Account Type</th>
-                            <th className="px-4 py-3 text-left">Scope</th>
-                          </>
-                        )}
-                        <th className="px-4 py-3 text-right">
-                          <span className="block">Balance</span>
-                          <span className="block text-[10px] font-normal text-gray-500 normal-case tracking-normal">
-                            GL (journal)
-                          </span>
-                        </th>
-                        <th className="px-4 py-3 text-left">Status</th>
-                        <th className="px-4 py-3 text-left">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {/* Operational: Cash, Bank, Wallet, Expense, Income, Payable, Receivable only */}
-                      {/* Professional: Top-level by default; optional "Show sub-accounts" to include courier children */}
-                      {(accountsViewMode === 'operational'
-                        ? accounting.accounts.filter(acc => {
-                            const t = String(acc.type || acc.accountType || acc.code || '').toLowerCase();
-                            return (
-                              t.includes('cash') || t.includes('bank') || t.includes('wallet') ||
-                              t.includes('expense') || t.includes('revenue') || t.includes('income') ||
-                              t.includes('receivable') || t.includes('payable') || t.includes('advance') ||
-                              t.includes('suspense') ||
-                              acc.code === '1000' || acc.code === '1010' || acc.code === '1020' ||
-                              acc.code === '1100' || acc.code === '2000' ||
-                              acc.code === '2010' || acc.code === '1180' || acc.code === '1195'
-                            );
-                          })
-                        : showSubAccounts
-                          ? accounting.accounts
-                          : accounting.accounts.filter(acc => !(acc as any).parent_id)
-                      ).map((account) => {
-                        const controlKind = getControlAccountKind({
-                          name: account.name,
-                          code: (account as any).code,
-                        });
-                        return (
-                        <tr 
-                          key={account.id} 
-                          className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
-                        >
-                          <td className="px-4 py-3 text-sm text-gray-300 font-medium">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {account.name}
-                              {(account as any).is_default_cash && (
-                                <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
-                                  Default Cash
-                                </Badge>
-                              )}
-                              {(account as any).is_default_bank && (
-                                <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">
-                                  Default Bank
-                                </Badge>
-                              )}
-                              {controlKind && (
-                                <Badge className="bg-indigo-500/15 text-indigo-300 border-indigo-500/35 text-[10px] uppercase tracking-wide">
-                                  GL control
-                                </Badge>
-                              )}
-                              {controlKind && account.id && (
-                                <button
-                                  type="button"
-                                  title="Control breakdown (GL / operational / party)"
-                                  onClick={() =>
-                                    setControlBreakdown({
-                                      account: {
-                                        id: account.id!,
-                                        name: account.name || '',
-                                        code: (account as any).code,
-                                      },
-                                      kind: controlKind,
-                                    })
-                                  }
-                                  className="p-1 rounded-md text-indigo-300 hover:bg-indigo-500/15 border border-indigo-500/25 shrink-0"
-                                >
-                                  <ChevronRight className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                          {accountsViewMode === 'professional' && (
-                              <>
-                              <td className="px-4 py-3 text-xs">
-                                <Badge className="bg-gray-800 text-gray-300 border-gray-700">
-                                  {account.type || account.accountType || 'Asset'}
-                                </Badge>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-400">
-                                {account.branch ? 'Branch' : 'Global'}
-                              </td>
-                            </>
-                          )}
-                          <td className={cn(
-                            "px-4 py-3 text-sm font-semibold text-right tabular-nums",
-                            account.balance >= 0 ? "text-green-400" : "text-red-400"
-                          )}>
-                            {formatCurrency(account.balance)}
-                          </td>
-                          <td className="px-4 py-3 text-xs">
-                            {account.isActive ? (
-                              <Badge className="bg-green-500/10 text-green-400 border-green-500/30">
-                                Active
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-gray-500/10 text-gray-400 border-gray-500/30">
-                                Inactive
-                              </Badge>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                  <MoreVertical size={16} className="text-gray-400" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="bg-gray-900 border-gray-800">
-                                {/* View Ledger - standard for all accounts (operational + professional) */}
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setLedgerAccount({
-                                      id: account.id,
-                                      name: account.name,
-                                      code: (account as any).code,
-                                      type: account.type || account.accountType || 'Asset',
-                                    });
-                                  }}
-                                  className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
-                                >
-                                  <FileText size={14} className="mr-2" />{' '}
-                                  {controlKind ? 'Open GL ledger' : 'View Ledger'}
-                                </DropdownMenuItem>
-                                {controlKind && (
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      setControlBreakdown({
-                                        account: {
-                                          id: account.id!,
-                                          name: account.name || '',
-                                          code: (account as any).code,
-                                        },
-                                        kind: controlKind,
-                                      })
-                                    }
-                                    className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
-                                  >
-                                    <BarChart3 size={14} className="mr-2" /> Control breakdown…
-                                  </DropdownMenuItem>
-                                )}
-                                {controlKind && controlKind !== 'suspense' && (
-                                  <>
-                                    <DropdownMenuItem
-                                      onClick={() => {
-                                        setCurrentView('contacts');
-                                        toast.info(
-                                          controlKind === 'ar'
-                                            ? 'Operational: Contacts → Customers tab → party statement (Operational / GL / Reconciliation).'
-                                            : controlKind === 'ap'
-                                              ? 'Operational: Contacts → Suppliers tab.'
-                                              : 'Operational: Contacts → Workers tab.'
-                                        );
-                                      }}
-                                      className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
-                                    >
-                                      <Users size={14} className="mr-2" /> Open operational (Contacts)
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() => {
-                                        setCurrentView('contacts');
-                                        toast.info(
-                                          'On Contacts, use reconciliation copy vs GL control for variance context.'
-                                        );
-                                      }}
-                                      className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
-                                    >
-                                      <Scale size={14} className="mr-2" /> Open reconciliation (Contacts)
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() => setCurrentView('ar-ap-reconciliation-center')}
-                                      className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
-                                    >
-                                      <ShieldAlert size={14} className="mr-2" /> AR/AP Reconciliation Center
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                                {controlKind === 'suspense' && (
-                                  <DropdownMenuItem
-                                    onClick={() => setCurrentView('ar-ap-reconciliation-center')}
-                                    className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
-                                  >
-                                    <ShieldAlert size={14} className="mr-2" /> Reconciliation Center (suspense)
-                                  </DropdownMenuItem>
-                                )}
-                                {/* Professional mode: extra account actions */}
-                                {accountsViewMode === 'professional' && (
-                                  <>
-                                    <DropdownMenuItem
-                                      onClick={() => toast.info('View Transactions - Coming soon')}
-                                      className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
-                                    >
-                                      <List size={14} className="mr-2" /> View Transactions
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onClick={() => toast.info('Account Summary - Coming soon')}
-                                      className="text-gray-300 hover:text-white hover:bg-gray-800 cursor-pointer"
-                                    >
-                                      <BarChart3 size={14} className="mr-2" /> Account Summary
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                                <DropdownMenuSeparator className="bg-gray-700" />
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setEditingAccount(account);
-                                    setIsEditAccountOpen(true);
-                                  }}
-                                  className="text-gray-300 hover:text-white hover:bg-gray-800"
-                                >
-                                  <Edit size={14} className="mr-2" /> Edit Account
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={async () => {
-                                    try {
-                                      await accountService.updateAccount(account.id!, {
-                                        is_active: !account.isActive
-                                      });
-                                      await accounting.refreshEntries();
-                                      toast.success(`Account ${account.isActive ? 'deactivated' : 'activated'}`);
-                                    } catch (error: any) {
-                                      toast.error(`Failed to update account: ${error.message}`);
-                                    }
-                                  }}
-                                  className="text-gray-300 hover:text-white hover:bg-gray-800"
-                                >
-                                  {account.isActive ? (
-                                    <>
-                                      <XCircle size={14} className="mr-2" /> Deactivate Account
-                                    </>
-                                  ) : (
-                                    <>
-                                      <CheckCircle2 size={14} className="mr-2" /> Activate Account
-                                    </>
-                                  )}
-                                </DropdownMenuItem>
-                                {(account.type === 'Cash' || account.accountType === 'Cash') && (
-                                  <DropdownMenuItem
-                                    onClick={async () => {
-                                      try {
-                                        // Unset other default cash accounts first
-                                        const cashAccounts = accounting.accounts.filter(
-                                          a => (a.type === 'Cash' || a.accountType === 'Cash') && a.id !== account.id
-                                        );
-                                        for (const acc of cashAccounts) {
-                                          await accountService.updateAccount(acc.id!, { is_default_cash: false });
-                                        }
-                                        // Set this as default
-                                        await accountService.updateAccount(account.id!, { is_default_cash: true });
-                                        await accounting.refreshEntries();
-                                        toast.success('Set as default Cash account');
-                                      } catch (error: any) {
-                                        toast.error(`Failed to set default: ${error.message}`);
-                                      }
-                                    }}
-                                    className="text-gray-300 hover:text-white hover:bg-gray-800"
-                                  >
-                                    <Star size={14} className="mr-2" /> Set as Default Cash
-                                  </DropdownMenuItem>
-                                )}
-                                {(account.type === 'Bank' || account.accountType === 'Bank') && (
-                                  <DropdownMenuItem
-                                    onClick={async () => {
-                                      try {
-                                        // Unset other default bank accounts first
-                                        const bankAccounts = accounting.accounts.filter(
-                                          a => (a.type === 'Bank' || a.accountType === 'Bank') && a.id !== account.id
-                                        );
-                                        for (const acc of bankAccounts) {
-                                          await accountService.updateAccount(acc.id!, { is_default_bank: false });
-                                        }
-                                        // Set this as default
-                                        await accountService.updateAccount(account.id!, { is_default_bank: true });
-                                        await accounting.refreshEntries();
-                                        toast.success('Set as default Bank account');
-                                      } catch (error: any) {
-                                        toast.error(`Failed to set default: ${error.message}`);
-                                      }
-                                    }}
-                                    className="text-gray-300 hover:text-white hover:bg-gray-800"
-                                  >
-                                    <Star size={14} className="mr-2" /> Set as Default Bank
-                                  </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </td>
-                        </tr>
-                      );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            {accounting.accounts.length === 0 ? (
+              <div className="rounded-xl border border-gray-800 bg-gray-900/50 text-center py-12">
+                <Wallet size={48} className="mx-auto text-gray-600 mb-3" />
+                <p className="text-gray-400 text-sm">No accounts found</p>
+                <p className="text-gray-600 text-xs mt-1">Create your first account to get started</p>
+                <Button
+                  onClick={() => setIsAddAccountOpen(true)}
+                  className="mt-4 bg-blue-600 hover:bg-blue-500 text-white"
+                >
+                  <Plus size={16} className="mr-2" /> Create Account
+                </Button>
+              </div>
+            ) : (
+              <AccountsHierarchyList
+                rows={hierarchyRows}
+                accountsViewMode={accountsViewMode}
+                formatCurrency={formatCurrency}
+                renderRowInlineExtra={(row) => {
+                  const account = row.account;
+                  const ck = getControlAccountKind({ name: account.name, code: (account as { code?: string }).code });
+                  if (!ck || !account.id) return null;
+                  return (
+                    <button
+                      type="button"
+                      title="Control breakdown (GL / operational / party)"
+                      onClick={() =>
+                        setControlBreakdown({
+                          account: {
+                            id: account.id!,
+                            name: account.name || '',
+                            code: (account as { code?: string }).code,
+                          },
+                          kind: ck,
+                        })
+                      }
+                      className="p-1 rounded-md text-blue-300 hover:bg-blue-500/15 border border-blue-500/25 shrink-0"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  );
+                }}
+                renderRowMenu={(row) => (
+                  <AccountingDashboardAccountRowMenu
+                    row={row}
+                    accountsViewMode={accountsViewMode}
+                    accounting={accounting}
+                    setLedgerAccount={setLedgerAccount}
+                    setControlBreakdown={setControlBreakdown}
+                    setEditingAccount={setEditingAccount}
+                    setIsEditAccountOpen={setIsEditAccountOpen}
+                    setCurrentView={setCurrentView}
+                    onOpenAccountStatements={() => setActiveTab('account_statements')}
+                  />
+                )}
+              />
+            )}
           </div>
         )}
 
@@ -1515,8 +1367,10 @@ export const AccountingDashboard = () => {
       {/* Add Entry flow: V2 (default) or legacy */}
       {addEntryFlowOpen && USE_ADD_ENTRY_V2 && (
         <AddEntryV2
+          initialEntryType={addEntryInitialType}
           onClose={() => {
             setAddEntryFlowOpen(false);
+            setAddEntryInitialType(undefined);
             accounting.refreshEntries();
           }}
         />
@@ -1620,16 +1474,23 @@ export const AccountingDashboard = () => {
           onClose={() => {
             setTransactionReference(null);
             setSelectedGroupEntries(null);
+            setTransactionDetailAutoEdit(false);
           }}
           referenceNumber={transactionReference}
           groupEntries={selectedGroupEntries ?? undefined}
+          autoLaunchUnifiedEdit={transactionDetailAutoEdit}
+          onAutoLaunchUnifiedEditConsumed={() => setTransactionDetailAutoEdit(false)}
         />
       )}
 
       {/* Listen for transaction detail events */}
       {typeof window !== 'undefined' && (
         <TransactionDetailListener
-          onOpen={(referenceNumber) => setTransactionReference(referenceNumber)}
+          onOpen={(referenceNumber, opts) => {
+            setTransactionReference(referenceNumber);
+            setSelectedGroupEntries(null);
+            setTransactionDetailAutoEdit(!!opts?.autoLaunchUnifiedEdit);
+          }}
         />
       )}
     </div>
@@ -1637,10 +1498,14 @@ export const AccountingDashboard = () => {
 };
 
 // Component to listen for transaction detail events
-const TransactionDetailListener: React.FC<{ onOpen: (ref: string) => void }> = ({ onOpen }) => {
+const TransactionDetailListener: React.FC<{
+  onOpen: (ref: string, opts?: { autoLaunchUnifiedEdit?: boolean }) => void;
+}> = ({ onOpen }) => {
   React.useEffect(() => {
     const handleOpen = (event: CustomEvent) => {
-      onOpen(event.detail.referenceNumber);
+      const d = event.detail || {};
+      if (d.referenceNumber == null || d.referenceNumber === '') return;
+      onOpen(String(d.referenceNumber), { autoLaunchUnifiedEdit: !!d.autoLaunchUnifiedEdit });
     };
 
     window.addEventListener('openTransactionDetail' as any, handleOpen);

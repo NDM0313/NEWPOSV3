@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from '@/app/services/accountingService';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import { applyManualReceiptAllocations, applyManualSupplierPaymentAllocations } from '@/app/services/paymentAllocationService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
 import {
   getWorkerAdvanceAccountId,
@@ -78,10 +79,11 @@ export interface CreatePureJournalParams {
   amount: number;
   description?: string | null;
   createdBy?: string | null;
+  attachments?: { url: string; name: string }[] | null;
 }
 
 export async function createPureJournalEntry(params: CreatePureJournalParams): Promise<{ journalEntryId: string }> {
-  const { companyId, branchId, entryDate, debitAccountId, creditAccountId, amount, description, createdBy } = params;
+  const { companyId, branchId, entryDate, debitAccountId, creditAccountId, amount, description, createdBy, attachments } = params;
   if (!companyId || !debitAccountId || !creditAccountId || amount <= 0) throw new Error('Invalid pure journal params');
   const branch = validBranchId(branchId);
   const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
@@ -94,6 +96,7 @@ export async function createPureJournalEntry(params: CreatePureJournalParams): P
     reference_type: 'journal',
     reference_id: undefined,
     created_by: createdBy ?? undefined,
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
   };
   const lines: JournalEntryLine[] = [
     { account_id: debitAccountId, debit: amount, credit: 0, description: description || undefined },
@@ -114,10 +117,13 @@ export interface CreateCustomerReceiptParams {
   paymentDate: string;
   paymentMethod: string;
   notes?: string | null;
+  attachments?: { url: string; name: string }[] | null;
+  /** Optional override: explicit invoice splits; otherwise FIFO auto-allocation to open invoices. */
+  invoiceAllocations?: { saleId: string; amount: number; invoiceNo?: string }[];
 }
 
 export async function createCustomerReceiptEntry(params: CreateCustomerReceiptParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
-  const { companyId, branchId, customerId, customerName, amount, paymentAccountId, paymentDate, paymentMethod, notes } = params;
+  const { companyId, branchId, customerId, customerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments, invoiceAllocations } = params;
   if (!companyId || !customerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid customer receipt params');
   const branch = validBranchId(branchId);
   const refNo = await getPayRef(companyId, branch);
@@ -128,7 +134,7 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
   const arId = (arAccounts?.[0] as { id: string })?.id;
   if (!arId) throw new Error('Accounts Receivable account (1100) not found');
 
-  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert({
+  const receiptPayload: Record<string, unknown> = {
     company_id: companyId,
     branch_id: branch,
     payment_type: 'received',
@@ -143,7 +149,9 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
     notes: notes || undefined,
     received_by: uid,
     created_by: uid,
-  }).select('id').single();
+  };
+  if (attachments && attachments.length > 0) receiptPayload.attachments = attachments;
+  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(receiptPayload).select('id').single();
   if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
   const paymentId = (paymentRow as { id: string }).id;
 
@@ -164,8 +172,22 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
     { account_id: arId, debit: 0, credit: amount, description: desc },
   ];
   const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
+
+  await applyManualReceiptAllocations({
+    companyId,
+    branchId: branch,
+    paymentId,
+    customerId,
+    amount,
+    paymentDate,
+    referenceNumber: refNo,
+    createdBy: uid,
+    explicitAllocations: invoiceAllocations && invoiceAllocations.length > 0 ? invoiceAllocations : null,
+  });
+
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
+    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
   }
   if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
     console.log('[AddEntryV2] createCustomerReceiptEntry:', {
@@ -190,17 +212,18 @@ export interface CreateSupplierPaymentParams {
   paymentDate: string;
   paymentMethod: string;
   notes?: string | null;
+  attachments?: { url: string; name: string }[] | null;
 }
 
 export async function createSupplierPaymentEntry(params: CreateSupplierPaymentParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
-  const { companyId, branchId, supplierContactId, supplierName, amount, paymentAccountId, paymentDate, paymentMethod, notes } = params;
+  const { companyId, branchId, supplierContactId, supplierName, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments } = params;
   if (!companyId || !supplierContactId || amount <= 0 || !paymentAccountId) throw new Error('Invalid supplier payment params');
   const branch = validBranchId(branchId);
   const refNo = await getPayRef(companyId, branch);
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
 
-  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert({
+  const supplierPayPayload: Record<string, unknown> = {
     company_id: companyId,
     branch_id: branch,
     payment_type: 'paid',
@@ -215,7 +238,9 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
     notes: notes || undefined,
     received_by: uid,
     created_by: uid,
-  }).select('id').single();
+  };
+  if (attachments && attachments.length > 0) supplierPayPayload.attachments = attachments;
+  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(supplierPayPayload).select('id').single();
   if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
   const paymentId = (paymentRow as { id: string }).id;
 
@@ -238,8 +263,21 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
   ];
   const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
 
+  await applyManualSupplierPaymentAllocations({
+    companyId,
+    branchId: branch,
+    paymentId,
+    supplierId: supplierContactId,
+    amount,
+    paymentDate,
+    referenceNumber: refNo,
+    createdBy: uid,
+    explicitAllocations: null,
+  });
+
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierContactId } }));
+    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
   }
   return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
 }
@@ -257,17 +295,18 @@ export interface CreateWorkerPaymentParams {
   /** Pay Now: when set, routing uses this stage's bill row if present */
   stageId?: string | null;
   notes?: string | null;
+  attachments?: { url: string; name: string }[] | null;
 }
 
 export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
-  const { companyId, branchId, workerId, workerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, stageId } = params;
+  const { companyId, branchId, workerId, workerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, stageId, attachments } = params;
   if (!companyId || !workerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid worker payment params');
   const branch = validBranchId(branchId);
   const refNo = await getPayRef(companyId, branch);
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
 
-  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert({
+  const workerPayPayload: Record<string, unknown> = {
     company_id: companyId,
     branch_id: branch,
     payment_type: 'paid',
@@ -281,7 +320,9 @@ export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams
     notes: notes || undefined,
     received_by: uid,
     created_by: uid,
-  }).select('id').single();
+  };
+  if (attachments && attachments.length > 0) workerPayPayload.attachments = attachments;
+  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(workerPayPayload).select('id').single();
   if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
   const paymentId = (paymentRow as { id: string }).id;
 
@@ -393,10 +434,11 @@ export interface CreateInternalTransferParams {
   entryDate: string;
   description?: string | null;
   createdBy?: string | null;
+  attachments?: { url: string; name: string }[] | null;
 }
 
 export async function createInternalTransferEntry(params: CreateInternalTransferParams): Promise<{ journalEntryId: string }> {
-  const { companyId, branchId, fromAccountId, toAccountId, amount, entryDate, description, createdBy } = params;
+  const { companyId, branchId, fromAccountId, toAccountId, amount, entryDate, description, createdBy, attachments } = params;
   if (!companyId || !fromAccountId || !toAccountId || amount <= 0) throw new Error('Invalid transfer params');
   const branch = validBranchId(branchId);
   const desc = description || 'Internal transfer';
@@ -410,6 +452,7 @@ export async function createInternalTransferEntry(params: CreateInternalTransfer
     reference_type: 'transfer',
     reference_id: undefined,
     created_by: createdBy ?? undefined,
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
   };
   const lines: JournalEntryLine[] = [
     { account_id: toAccountId, debit: amount, credit: 0, description: desc },
@@ -431,10 +474,11 @@ export interface CreateCourierPaymentParams {
   paymentDate: string;
   paymentMethod: string;
   notes?: string | null;
+  attachments?: { url: string; name: string }[] | null;
 }
 
 export async function createCourierPaymentEntry(params: CreateCourierPaymentParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
-  const { companyId, branchId, courierId, courierName, courierContactId, amount, paymentAccountId, paymentDate, paymentMethod, notes } = params;
+  const { companyId, branchId, courierId, courierName, courierContactId, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments } = params;
   if (!companyId || !courierId || amount <= 0 || !paymentAccountId) throw new Error('Invalid courier payment params');
   const branch = validBranchId(branchId);
   const refNo = await getPayRef(companyId, branch);
@@ -467,6 +511,7 @@ export async function createCourierPaymentEntry(params: CreateCourierPaymentPara
     received_by: uid,
     created_by: uid,
   };
+  if (attachments && attachments.length > 0) paymentPayload.attachments = attachments;
   if (contactIdForPayments != null) {
     paymentPayload.contact_id = contactIdForPayments;
   }

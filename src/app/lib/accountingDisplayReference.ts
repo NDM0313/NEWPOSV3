@@ -48,6 +48,7 @@ export function sourceLabelFromReferenceType(referenceType: string | null | unde
   if (rt === 'worker_advance_settlement') return 'Studio / Worker';
   if (rt === 'manual_receipt') return 'Customer receipt';
   if (rt === 'manual_payment') return 'Supplier payment';
+  if (rt === 'opening_balance_inventory') return 'Opening inventory';
   if (rt === 'payment_adjustment' || rt === 'payment') return 'Payment';
   if (rt === 'expense' || rt === 'extra_expense') return 'Expense';
   if (rt.includes('expense')) return 'Expense';

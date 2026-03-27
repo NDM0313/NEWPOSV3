@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Download, Calendar, Search } from 'lucide-react';
+import { X, Download, Calendar, Search, Edit } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -205,13 +205,17 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                       <th className="px-4 py-3 text-right">Debit</th>
                       <th className="px-4 py-3 text-right">Credit</th>
                       <th className="px-4 py-3 text-right">Running Balance</th>
+                      <th className="px-4 py-3 text-right w-24">Edit</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredEntries.map((entry, index) => (
                       <tr
                         key={`${entry.journal_entry_id}-${index}`}
-                        className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors"
+                        className={cn(
+                          'border-b border-gray-800 hover:bg-gray-800/50 transition-colors',
+                          entry.ledger_kind === 'reversal' && 'bg-amber-500/5 border-amber-900/40'
+                        )}
                       >
                         <td className="px-4 py-3 text-sm text-gray-300">
                           {format(new Date(entry.date), 'dd MMM yyyy')}
@@ -219,11 +223,13 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                         <td className="px-4 py-3">
                           <button
                             onClick={() => {
-                              // Will be handled by parent to open transaction detail
                               if (window.dispatchEvent) {
                                 window.dispatchEvent(
                                   new CustomEvent('openTransactionDetail', {
-                                    detail: { referenceNumber: entry.reference_number },
+                                    detail: {
+                                      referenceNumber: entry.entry_no || entry.reference_number,
+                                      autoLaunchUnifiedEdit: false,
+                                    },
                                   })
                                 );
                               }
@@ -269,6 +275,29 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                         <td className="px-4 py-3 text-xs text-gray-400">
                           {entry.created_by ? 'User' : 'System'}
                         </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-sky-400 hover:text-sky-300"
+                            onClick={() => {
+                              if (window.dispatchEvent) {
+                                window.dispatchEvent(
+                                  new CustomEvent('openTransactionDetail', {
+                                    detail: {
+                                      referenceNumber: entry.journal_entry_id,
+                                      autoLaunchUnifiedEdit: true,
+                                    },
+                                  })
+                                );
+                              }
+                            }}
+                          >
+                            <Edit size={14} className="mr-1" />
+                            Edit
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -297,6 +326,7 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                           })}
                         </span>
                       </td>
+                      <td className="px-4 py-3" />
                     </tr>
                   </tfoot>
                 </table>

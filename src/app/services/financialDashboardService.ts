@@ -18,6 +18,10 @@ export interface FinancialDashboardMetrics {
   bank_balance: number;
   receivables: number;
   payables: number;
+  /** Purchases (final/received) in the same window as today_sales / monthly_revenue (not operating expenses). */
+  period_purchases?: number;
+  /** Expenses module (paid) only — excludes purchase inventory spend. */
+  period_operating_expenses?: number;
   sales_trend: { date: string; value: number }[];
   expense_trend: { date: string; value: number }[];
   profit_trend: { date: string; value: number }[];
@@ -58,6 +62,8 @@ export async function getFinancialDashboardMetrics(
       bank_balance: Number(raw.bank_balance) ?? 0,
       receivables: Number(raw.receivables) ?? 0,
       payables: Number(raw.payables) ?? 0,
+      period_purchases: Number(raw.period_purchases) || 0,
+      period_operating_expenses: Number(raw.period_operating_expenses) || 0,
       sales_trend: Array.isArray(raw.sales_trend)
         ? (raw.sales_trend as { date: string; value: number }[])
         : [],
@@ -87,6 +93,8 @@ function getEmptyMetrics(): FinancialDashboardMetrics {
     bank_balance: 0,
     receivables: 0,
     payables: 0,
+    period_purchases: 0,
+    period_operating_expenses: 0,
     sales_trend: [],
     expense_trend: [],
     profit_trend: [],
@@ -195,6 +203,8 @@ async function getMetricsFallback(companyId: string): Promise<FinancialDashboard
     bank_balance,
     receivables,
     payables,
+    period_purchases: monthlyPurchases,
+    period_operating_expenses: monthlyExpenses,
     sales_trend,
     expense_trend,
     profit_trend,
@@ -274,6 +284,8 @@ function parseFinancialMetrics(raw: Record<string, unknown>): FinancialDashboard
     bank_balance: Number(raw.bank_balance) ?? 0,
     receivables: Number(raw.receivables) ?? 0,
     payables: Number(raw.payables) ?? 0,
+    period_purchases: Number(raw.period_purchases) || 0,
+    period_operating_expenses: Number(raw.period_operating_expenses) || 0,
     sales_trend: Array.isArray(raw.sales_trend) ? (raw.sales_trend as { date: string; value: number }[]) : [],
     expense_trend: Array.isArray(raw.expense_trend) ? (raw.expense_trend as { date: string; value: number }[]) : [],
     profit_trend: Array.isArray(raw.profit_trend) ? (raw.profit_trend as { date: string; value: number }[]) : [],

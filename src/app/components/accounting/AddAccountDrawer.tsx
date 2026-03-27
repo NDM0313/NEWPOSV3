@@ -9,6 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Textarea } from "../ui/textarea";
 import { accountService } from '@/app/services/accountService';
 import type { AccountCategory } from '@/app/services/chartAccountService';
+import { defaultAccountsService } from '@/app/services/defaultAccountsService';
+import { resolveCanonicalParentId } from '@/app/lib/accountHierarchy';
+import { accountMatchesProfessionalCategory } from '@/app/lib/accountProfessionalCategory';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { toast } from 'sonner';
 
@@ -98,18 +101,28 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
     return existingAccounts.some((a) => (a.code || '').trim() === reserved);
   };
 
-  /** For Operational tab: get code to use (reserved if free, else next e.g. 1001, 1011). */
-  const getOperationalCode = (): string | undefined => {
+  /** For Operational tab: get code to use (reserved if free, else next in series). */
+  const getOperationalCode = (list: typeof existingAccounts = existingAccounts): string | undefined => {
+    const codes = list.map((a) => (a.code || '').trim()).filter(Boolean);
     const reserved = getReservedCodeForRole(operationalRole);
-    const prefix = reserved ? reserved.slice(0, 3) : '';
-    const codes = existingAccounts.map((a) => (a.code || '').trim()).filter(Boolean);
     if (reserved && !codes.includes(reserved)) return reserved;
-    if (prefix) {
-      let n = reserved ? parseInt(reserved.slice(3), 10) : 0;
+    if (reserved) {
+      const prefix = reserved.slice(0, 3);
+      let n = parseInt(reserved.slice(3), 10) || 0;
       while (codes.includes(prefix + n)) n += 1;
       return prefix + n;
     }
-    return undefined;
+    const seriesPrefix: Record<string, string> = {
+      receivable: '110',
+      payable: '200',
+      expense: '600',
+      income: '400',
+    };
+    const sp = seriesPrefix[operationalRole];
+    if (!sp) return undefined;
+    let n = 1;
+    while (codes.includes(sp + n)) n += 1;
+    return sp + n;
   };
 
   const operationalValidation = (): string | null => {
@@ -117,15 +130,23 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
     return null;
   };
 
+  /** Group headers use cash/bank/mobile_wallet types; children are often `asset` — allow those pairings. */
   const professionalValidation = (): string | null => {
     if (!accountName.trim()) return 'Account name is required';
     if (!parentId) return null;
     const parent = existingAccounts.find((a) => a.id === parentId);
     if (!parent) return null;
-    const parentType = String(parent.type || '').toLowerCase().trim();
+    const p = String(parent.type || '').toLowerCase().trim();
     const childType = professionalCategory;
-    if (parentType !== childType) {
-      return `Parent account type (${parentType}) must match category (${childType}) for sub-accounts.`;
+    const compatible =
+      p === childType ||
+      (childType === 'asset' && ['cash', 'bank', 'mobile_wallet', 'asset'].includes(p)) ||
+      (childType === 'liability' && ['liability', 'payable'].includes(p)) ||
+      (childType === 'equity' && p === 'equity') ||
+      (childType === 'revenue' && ['revenue', 'income'].includes(p)) ||
+      (childType === 'expense' && p === 'expense');
+    if (!compatible) {
+      return `Parent type "${p}" is not valid for category "${childType}" (e.g. link bank sub-accounts under the Bank group 1010).`;
     }
     return null;
   };
@@ -153,10 +174,21 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
 
     setIsSaving(true);
     try {
+      await defaultAccountsService.ensureDefaultAccounts(companyId);
+      const refreshed = await accountService.getAllAccounts(companyId);
+      setExistingAccounts(refreshed || []);
+
+      const acctList = refreshed || [];
       const code =
         activeTab === 'operational'
-          ? getOperationalCode()
+          ? getOperationalCode(acctList)
           : accountCode.trim() || undefined;
+
+      if (activeTab === 'operational' && !code) {
+        toast.error('Could not assign account code', { description: 'Refresh and try again.' });
+        setIsSaving(false);
+        return;
+      }
 
       const payload: Parameters<typeof accountService.createAccount>[0] = {
         company_id: companyId,
@@ -169,6 +201,8 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
 
       if (activeTab === 'operational') {
         payload.type = operationalRole;
+        const pid = resolveCanonicalParentId(acctList, operationalRole);
+        if (pid) payload.parent_id = pid;
       } else {
         payload.type = professionalCategory;
         if (parentId) payload.parent_id = parentId;
@@ -255,7 +289,10 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-gray-500">Category is set automatically. No parent or hierarchy.</p>
+                  <p className="text-xs text-gray-500">
+                    Cash / Bank / Wallet / AR / AP sub-accounts are linked under the canonical group (1000, 1010, 1020, 1100, 2000) for
+                    chart and Balance Sheet grouping. Expense and Income stay top-level unless you use Professional → parent.
+                  </p>
                 </div>
 
                 <div className="space-y-3">
@@ -336,7 +373,7 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
                     <SelectContent className="bg-gray-800 border-gray-700 text-white">
                       <SelectItem value="__none__">None (top-level)</SelectItem>
                       {existingAccounts
-                        .filter((a) => String(a.type || '').toLowerCase() === professionalCategory)
+                        .filter((a) => accountMatchesProfessionalCategory(a, professionalCategory))
                         .map((a) => (
                           <SelectItem key={a.id} value={a.id}>
                             {a.code ? `${a.code} – ` : ''}{a.name}

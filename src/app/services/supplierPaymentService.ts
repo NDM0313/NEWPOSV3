@@ -10,6 +10,7 @@ import { accountingService } from '@/app/services/accountingService';
 import type { JournalEntry, JournalEntryLine } from '@/app/services/accountingService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import { resolvePayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
 
 export type SupplierPaymentReferenceType = 'purchase' | 'on_account';
 
@@ -136,8 +137,10 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
     .eq('company_id', companyId)
     .or('code.eq.2000,name.ilike.%Accounts Payable%')
     .limit(1);
-  const apAccountId = (apAccounts?.[0] as { id: string } | undefined)?.id;
-  if (!apAccountId) throw new Error('Accounts Payable account (2000) not found');
+  const apControlId = (apAccounts?.[0] as { id: string } | undefined)?.id;
+  if (!apControlId) throw new Error('Accounts Payable account (2000) not found');
+  const apAccountId =
+    (await resolvePayablePostingAccountId(companyId, resolvedContactId || undefined)) || apControlId;
 
   // 4) Journal entry (Dr AP, Cr Cash/Bank) linked to payment
   const description = isOnAccount

@@ -22,7 +22,7 @@ One JE per sale (reference_type = 'sale', reference_id = saleId). Duplicate guar
 |-----------|-------|--------|
 | **Receivable** | AR (1100) = total | — |
 | **Product revenue** | — | Sales Revenue (4000) = grossTotal − shipmentCharges |
-| **Shipping (charged to customer)** | — | Shipping Income (4100) = shipmentCharges |
+| **Shipping (charged to customer)** | — | Shipping Income (4110) = shipmentCharges |
 | **Discount** | Discount Allowed (5200) = discountAmount | — |
 | **COGS** | Cost of Production (5000) = totalCogs | Inventory (1200) = totalCogs |
 
@@ -40,7 +40,7 @@ Only changed components get adjustment JEs (sale_adjustment). No blanket reversa
 | **Revenue** (subtotal change) | Dr AR / Cr Sales Revenue (or reverse). |
 | **Discount** | Dr Discount Allowed / Cr Sales Revenue (or reverse). |
 | **Extra expense** | Dr Extra Expense / Cr AP (or reverse). |
-| **Shipping** | Dr AR / Cr **Shipping Income (4100)** (or reverse). |
+| **Shipping** | Dr AR / Cr **Shipping Income (4110)** (or reverse). |
 
 Idempotency: skip if adjustment with same description already exists.
 
@@ -72,7 +72,7 @@ One reversal JE (reference_type = 'sale_reversal'). Reverses: Sales Revenue, Shi
 
 | File | Role |
 |------|------|
-| `saleAccountingService.ts` | createSaleJournalEntry, reverseSaleJournalEntry, postSaleEditAdjustments; Shipping Income (4100). |
+| `saleAccountingService.ts` | createSaleJournalEntry, reverseSaleJournalEntry, postSaleEditAdjustments; Shipping Income (4110). |
 | `saleService.ts` | Calls create/reverse with discountAmount, shipmentCharges; no blanket reversal. |
 | `shipmentAccountingService.ts` | Shipment JE (Dr AR Cr Shipping Income; Dr Shipping Expense Cr Courier Payable). |
 | `paymentAdjustmentService.ts` | Payment amount/account delta JEs only. |

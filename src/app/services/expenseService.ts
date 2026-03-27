@@ -23,12 +23,17 @@ export interface Expense {
 export const expenseService = {
   // Create expense
   async createExpense(expense: Partial<Expense>) {
-    const { data, error } = await supabase
-      .from('expenses')
-      .insert(expense)
-      .select()
-      .single();
+    const payload = { ...expense } as Record<string, unknown>;
+    const run = () => supabase.from('expenses').insert(payload).select().single();
 
+    let { data, error } = await run();
+    const msg = String((error as { message?: string } | null)?.message || '');
+    if (error && 'vendor_name' in payload && /vendor_name|schema cache/i.test(msg)) {
+      delete payload.vendor_name;
+      const second = await run();
+      data = second.data;
+      error = second.error;
+    }
     if (error) throw error;
     return data;
   },
@@ -106,13 +111,22 @@ export const expenseService = {
 
   // Update expense
   async updateExpense(id: string, updates: Partial<Expense>) {
-    const { data, error } = await supabase
-      .from('expenses')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
+    const payload = { ...updates } as Record<string, unknown>;
+    const run = () =>
+      supabase.from('expenses').update(payload).eq('id', id).select().single();
 
+    let { data, error } = await run();
+    const msg = String((error as { message?: string } | null)?.message || '');
+    if (
+      error &&
+      'vendor_name' in payload &&
+      /vendor_name|schema cache/i.test(msg)
+    ) {
+      delete payload.vendor_name;
+      const second = await run();
+      data = second.data;
+      error = second.error;
+    }
     if (error) throw error;
     return data;
   },
@@ -125,6 +139,46 @@ export const expenseService = {
       .eq('id', id);
 
     if (error) throw error;
+  },
+
+  /**
+   * Expense rows whose original expense journal has a correction_reversal JE (Accounting → Reverse).
+   * Those expenses are fully offset in the GL and should not appear in operational expense totals/lists by default.
+   */
+  async getReversedExpenseIds(companyId: string, expenseIds: string[]): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (!companyId || expenseIds.length === 0) return out;
+    const { data: jes, error: jeErr } = await supabase
+      .from('journal_entries')
+      .select('id, reference_id, created_at')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'expense')
+      .in('reference_id', expenseIds)
+      .or('is_void.is.null,is_void.eq.false')
+      .order('created_at', { ascending: false });
+    if (jeErr || !jes?.length) return out;
+    /** Only the latest active JE per expense matters — older reversed JEs must not hide the row after repost. */
+    const latestJeByExpense = new Map<string, string>();
+    for (const j of jes as { id: string; reference_id: string }[]) {
+      if (j.reference_id && !latestJeByExpense.has(j.reference_id)) {
+        latestJeByExpense.set(j.reference_id, j.id);
+      }
+    }
+    const latestJeIds = [...latestJeByExpense.values()];
+    if (!latestJeIds.length) return out;
+    const { data: revs, error: revErr } = await supabase
+      .from('journal_entries')
+      .select('reference_id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'correction_reversal')
+      .in('reference_id', latestJeIds)
+      .or('is_void.is.null,is_void.eq.false');
+    if (revErr || !revs?.length) return out;
+    const reversedJeIds = new Set((revs as { reference_id: string }[]).map((r) => r.reference_id));
+    latestJeByExpense.forEach((jeId, expenseId) => {
+      if (reversedJeIds.has(jeId)) out.add(expenseId);
+    });
+    return out;
   },
 
   // Get expenses by category

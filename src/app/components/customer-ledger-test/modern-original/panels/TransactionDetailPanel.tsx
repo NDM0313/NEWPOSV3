@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Calendar, FileText, CreditCard, MessageSquare, Link2, Clock, Edit, Trash2, Copy, Share2, Download, Receipt } from 'lucide-react';
 import type { Transaction } from '@/app/services/customerLedgerTypes';
 import { saleService } from '@/app/services/saleService';
+import { getManualReceiptAllocationSummary, type ManualReceiptAllocationSummary } from '@/app/services/paymentAllocationService';
 
 interface TransactionDetailPanelProps {
   transaction: Transaction;
@@ -12,12 +13,14 @@ export function TransactionDetailPanel({ transaction, onClose }: TransactionDeta
   const [saleDetails, setSaleDetails] = useState<any>(null);
   const [paymentDetails, setPaymentDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [receiptAllocSummary, setReceiptAllocSummary] = useState<ManualReceiptAllocationSummary | null>(null);
 
   useEffect(() => {
     if (!transaction?.id) return;
     setSaleDetails(null);
     setPaymentDetails(null);
     if (transaction.documentType === 'Sale' || transaction.documentType === 'Studio Sale') {
+      setReceiptAllocSummary(null);
       setLoadingDetails(true);
       saleService
         .getSaleById(transaction.id)
@@ -28,12 +31,26 @@ export function TransactionDetailPanel({ transaction, onClose }: TransactionDeta
         .finally(() => setLoadingDetails(false));
     } else if (transaction.documentType === 'Payment') {
       setLoadingDetails(true);
+      setReceiptAllocSummary(null);
       saleService
         .getPaymentById(transaction.id)
-        .then((payment) => {
+        .then(async (payment) => {
           setPaymentDetails(payment || null);
+          if (payment?.referenceType === 'manual_receipt' && transaction.id) {
+            try {
+              const s = await getManualReceiptAllocationSummary(transaction.id);
+              setReceiptAllocSummary(s);
+            } catch {
+              setReceiptAllocSummary(null);
+            }
+          } else {
+            setReceiptAllocSummary(null);
+          }
         })
-        .catch(() => setPaymentDetails(null))
+        .catch(() => {
+          setPaymentDetails(null);
+          setReceiptAllocSummary(null);
+        })
         .finally(() => setLoadingDetails(false));
     }
   }, [transaction?.id, transaction?.documentType]);
@@ -170,6 +187,35 @@ export function TransactionDetailPanel({ transaction, onClose }: TransactionDeta
                   <div className="pt-2">
                     <div className="text-xs mb-1 text-gray-500">Notes</div>
                     <div className="p-2 rounded text-xs bg-gray-800 text-white">{paymentDetails.notes}</div>
+                  </div>
+                )}
+                {receiptAllocSummary && paymentDetails.referenceType === 'manual_receipt' && (
+                  <div className="pt-3 border-t border-gray-800 space-y-2">
+                    <div className="text-xs font-medium text-green-400">Applied to invoices (FIFO)</div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-gray-500">Allocated</span>
+                        <div className="text-white tabular-nums">Rs {receiptAllocSummary.allocatedTotal.toLocaleString('en-PK')}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Unapplied</span>
+                        <div className="text-amber-400 tabular-nums">Rs {receiptAllocSummary.unapplied.toLocaleString('en-PK')}</div>
+                      </div>
+                    </div>
+                    {receiptAllocSummary.lines.length > 0 ? (
+                      <ul className="space-y-1 text-xs text-gray-300 max-h-36 overflow-y-auto">
+                        {receiptAllocSummary.lines.map((l) => (
+                          <li key={`${l.saleId}-${l.allocationOrder}`} className="flex justify-between gap-2">
+                            <span>
+                              #{l.allocationOrder} {l.invoiceNo || l.saleId.slice(0, 8)}
+                            </span>
+                            <span className="tabular-nums text-white">Rs {l.amount.toLocaleString('en-PK')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-gray-500">No invoice lines — full receipt is unapplied credit.</p>
+                    )}
                   </div>
                 )}
               </div>

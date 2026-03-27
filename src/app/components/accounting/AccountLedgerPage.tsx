@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, Download, Calendar, Search, FileText, Printer, FileSpreadsheet,
-  ArrowLeft, Building2
+  ArrowLeft, Building2, Edit
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -44,6 +44,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedReference, setSelectedReference] = useState<string | null>(null);
+  const [ledgerDetailAutoEdit, setLedgerDetailAutoEdit] = useState(false);
   const [openingBalance, setOpeningBalance] = useState<number>(0);
 
   // Load branches
@@ -162,7 +163,8 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
     window.print();
   };
 
-  const handleReferenceClick = (referenceNumber: string) => {
+  const openLedgerTransactionDetail = (referenceNumber: string, autoLaunchUnifiedEdit?: boolean) => {
+    setLedgerDetailAutoEdit(!!autoLaunchUnifiedEdit);
     setSelectedReference(referenceNumber);
   };
 
@@ -363,6 +365,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                   <th className="px-4 py-3 text-right">Credit</th>
                   <th className="px-4 py-3 text-right">Running Balance</th>
                   <th className="px-4 py-3 text-left">Branch</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -385,6 +388,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                     })}
                   </td>
                   <td className="px-4 py-3 text-gray-500">-</td>
+                  <td className="px-4 py-3 text-gray-500">-</td>
                 </tr>
 
                 {filteredEntries.map((entry, index) => {
@@ -396,17 +400,27 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                   return (
                     <tr
                       key={`${entry.journal_entry_id}-${index}`}
-                      className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors"
+                      className={cn(
+                        'border-b border-gray-800 hover:bg-gray-800/50 transition-colors',
+                        entry.ledger_kind === 'reversal' && 'bg-amber-500/5 border-amber-900/40'
+                      )}
                     >
                       <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
-                        <DateTimeDisplay
-                          date={entry.created_at ?? entry.date}
-                          className="flex flex-col leading-tight"
-                        />
+                        <div className="flex flex-col gap-0.5">
+                          <DateTimeDisplay date={entry.date} dateOnly className="text-gray-300" />
+                          {entry.created_at ? (
+                            <span className="text-[10px] text-gray-600">
+                              Posted {format(new Date(entry.created_at), 'dd MMM yyyy HH:mm')}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={() => handleReferenceClick(entry.reference_number)}
+                          type="button"
+                          onClick={() =>
+                            openLedgerTransactionDetail(entry.entry_no || entry.reference_number, false)
+                          }
                           className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium font-mono"
                         >
                           {entry.reference_number}
@@ -459,6 +473,18 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                       <td className="px-4 py-3 text-xs text-gray-400">
                         {entry.branch_name || (branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : '-')}
                       </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-sky-400 hover:text-sky-300"
+                          onClick={() => openLedgerTransactionDetail(entry.journal_entry_id, true)}
+                        >
+                          <Edit size={14} className="mr-1" />
+                          Edit
+                        </Button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -490,6 +516,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                     })}
                   </td>
                   <td className="px-4 py-3" />
+                  <td className="px-4 py-3" />
                 </tr>
               </tbody>
             </table>
@@ -501,9 +528,13 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
       {selectedReference && (
         <TransactionDetailModal
           isOpen={!!selectedReference}
-          onClose={() => setSelectedReference(null)}
+          onClose={() => {
+            setSelectedReference(null);
+            setLedgerDetailAutoEdit(false);
+          }}
           referenceNumber={selectedReference}
-          companyId={companyId || ''}
+          autoLaunchUnifiedEdit={ledgerDetailAutoEdit}
+          onAutoLaunchUnifiedEditConsumed={() => setLedgerDetailAutoEdit(false)}
         />
       )}
     </div>

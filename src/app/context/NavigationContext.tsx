@@ -44,6 +44,8 @@ type View =
   | 'user-management-test'
   | 'branch-management-test'
   | 'accounting-chart-test'
+  | 'accounting-edit-trace'
+  | 'expense-edit-trace'
   | 'customer-ledger-test'
   | 'test-ledger'
   | 'customer-ledger-interactive-test'

@@ -46,6 +46,7 @@ export type WarningClassification =
   | 'missing_backfill'
   | 'source_link'
   | 'reconciliation_timing'
+  | 'posting_or_opening_mismatch'
   | 'informational';
 
 /** Actions the lab UI can take when user traces a failure */
@@ -397,7 +398,12 @@ export interface ExtendedLabSnapshot {
     note: string;
   };
   arAp?: { label: string; sumDueDocuments?: number; glBalance?: number; diff?: number };
-  inventory?: { inventoryGl1200?: number; movementHeuristicCost?: number; note: string };
+  inventory?: {
+    inventoryGl1200?: number;
+    valuationTotal?: number;
+    movementHeuristicCost?: number;
+    note: string;
+  };
   capturedAt: string;
 }
 
@@ -502,12 +508,12 @@ export async function buildExtendedLabSnapshot(
     arAp = {
       label: 'AP vs purchases.due',
       sumDueDocuments: (ap.meta?.sumDue as number) ?? undefined,
-      glBalance: (ap.meta?.apBalance as number) ?? undefined,
+      glBalance: (ap.meta?.apNetCredit as number) ?? undefined,
       diff: (ap.meta?.diff as number) ?? undefined,
     };
   }
 
-  const inv = await runInventoryValuationVsStockCheck(companyId);
+  const inv = await runInventoryValuationVsStockCheck(companyId, branchId);
 
   return {
     document: (kind === 'sale' ? base.sale : base.purchase) as any,
@@ -522,8 +528,9 @@ export async function buildExtendedLabSnapshot(
     arAp,
     inventory: {
       inventoryGl1200: (inv.meta?.invGlBalance as number) ?? undefined,
+      valuationTotal: (inv.meta?.valuationTotal as number) ?? undefined,
       movementHeuristicCost: (inv.meta?.movementHeuristic as number) ?? undefined,
-      note: 'Heuristic — use Reports → Inventory Valuation for truth',
+      note: 'GL vs valuation (movements); raw movement sum is diagnostic only',
     },
     capturedAt: new Date().toISOString(),
   };
@@ -759,6 +766,33 @@ export async function findPaymentsMissingJournalLink(
   };
 }
 
+/** More than one active primary JE per payment_id causes stacked / bounce-back GL (e.g. bad sync + UI edit). */
+export async function runDuplicatePrimaryPaymentJournalCheck(companyId: string): Promise<LabCheckResult> {
+  const { previewDuplicatePrimaryPaymentJournals } = await import('@/app/services/postingDuplicateRepairService');
+  const preview = await previewDuplicatePrimaryPaymentJournals(companyId);
+  const failures: LabCheckFailure[] = preview.duplicatePrimaryGroups.map((g) => ({
+    module: 'journal_entries',
+    step: 'duplicate_primary_per_payment',
+    record: `payment_id=${g.paymentId}`,
+    expected: 'exactly one active primary JE (payment_id set, not payment_adjustment, not void)',
+    actual: `keep=${g.keepJournalEntryId}; void candidates=${g.duplicateJournalEntryIds.join(', ')} (ref_type=${g.referenceType ?? '—'})`,
+    classification: 'engine_bug',
+    navActions: [
+      { type: 'accounting', tab: 'journal_entries', label: 'Journal entries' },
+      { type: 'copy', text: g.paymentId, label: 'Copy payment id' },
+    ],
+  }));
+  return {
+    id: 'duplicate_payment_primary_je',
+    label: 'Duplicate primary journal per payment',
+    category: 'data_quality',
+    defaultClassification: failures.length ? 'engine_bug' : undefined,
+    status: failures.length === 0 ? 'pass' : 'warn',
+    failures,
+    meta: { groups: preview.duplicatePrimaryGroups.length, duplicateJournals: preview.duplicateCount },
+  };
+}
+
 export async function runTrialBalanceCheck(
   companyId: string,
   branchId?: string | null
@@ -867,14 +901,14 @@ export async function runReceivablesVsARCheck(companyId: string, branchId?: stri
   const { data: sales } = await saleQuery;
   const sumDue = (sales || []).reduce((a, s: any) => a + (Number(s.due_amount) || 0), 0);
 
-  const { data: arAcc } = await supabase
+  const { data: arRow } = await supabase
     .from('accounts')
     .select('id, code, name')
     .eq('company_id', companyId)
-    .or('code.eq.1100,code.eq.1200,name.ilike.%receivable%')
-    .limit(5);
+    .eq('code', '1100')
+    .maybeSingle();
 
-  const arId = (arAcc || []).find((a: any) => String(a.code) === '1100')?.id || (arAcc || [])[0]?.id;
+  const arId = arRow?.id as string | undefined;
   let arBalance = 0;
   if (arId) {
     const map = await accountingReportsService.getAccountBalancesFromJournal(
@@ -940,16 +974,15 @@ export async function runPayablesVsAPCheck(companyId: string, branchId?: string 
     .or('code.eq.2000,code.eq.2010')
     .limit(3);
   const apId = (apAcc || []).find((a: any) => String(a.code) === '2000')?.id || (apAcc || [])[0]?.id;
-  let apBalance = 0;
-  if (apId) {
-    const map = await accountingReportsService.getAccountBalancesFromJournal(
-      companyId,
-      new Date().toISOString().slice(0, 10),
-      branchId || undefined
-    );
-    apBalance = Math.abs(map[apId] ?? 0);
-  }
-  const diff = Math.round((sumDue - apBalance) * 100) / 100;
+  const end = new Date().toISOString().slice(0, 10);
+  const glSnap = await accountingReportsService.getArApGlSnapshot(
+    companyId,
+    end,
+    branchId && branchId !== 'all' ? branchId : undefined
+  );
+  /** Liability on 2000: credits − debits (same sign as Contacts payables). */
+  const apNetCredit = glSnap.apNetCredit ?? 0;
+  const diff = Math.round((sumDue - apNetCredit) * 100) / 100;
   const ok = Math.abs(diff) < 1;
   return {
     id: 'ap_reconcile',
@@ -965,7 +998,7 @@ export async function runPayablesVsAPCheck(companyId: string, branchId?: string 
             step: 'ap',
             record: apId || 'no AP account',
             expected: `≈ sum purchase due (${sumDue})`,
-            actual: `AP abs balance ${apBalance} diff=${diff}`,
+            actual: `AP net credit (credits−debits) on 2000 ${apNetCredit} diff=${diff}`,
             classification: 'reconciliation_timing',
             navActions: [
               { type: 'accounting', tab: 'payables', label: 'Payables' },
@@ -973,53 +1006,71 @@ export async function runPayablesVsAPCheck(companyId: string, branchId?: string 
             ],
           },
         ],
-    meta: { sumDue, apBalance, diff },
+    meta: { sumDue, apNetCredit, diff },
   };
 }
 
-export async function runInventoryValuationVsStockCheck(companyId: string): Promise<LabCheckResult> {
+export async function runInventoryValuationVsStockCheck(
+  companyId: string,
+  branchId?: string | null
+): Promise<LabCheckResult> {
+  const asOf = new Date().toISOString().slice(0, 10);
   const { data: invAcc } = await supabase
     .from('accounts')
     .select('id')
     .eq('company_id', companyId)
     .eq('code', '1200')
     .maybeSingle();
-  const map = await accountingReportsService.getAccountBalancesFromJournal(
-    companyId,
-    new Date().toISOString().slice(0, 10)
-  );
+  const b = branchId && branchId !== 'all' ? branchId : undefined;
+  const map = await accountingReportsService.getAccountBalancesFromJournal(companyId, asOf, b);
   const invGl = invAcc?.id ? map[invAcc.id] ?? 0 : 0;
 
-  const { data: mov } = await supabase
+  const valuation = await accountingReportsService.getInventoryValuation(companyId, asOf, b);
+  const valuationTotal = valuation.totalValue ?? 0;
+
+  let movValue = 0;
+  let movQuery = supabase
     .from('stock_movements')
     .select('quantity, unit_cost, total_cost')
-    .eq('company_id', companyId)
-    .limit(5000);
-  let movValue = 0;
+    .eq('company_id', companyId);
+  if (b) movQuery = movQuery.eq('branch_id', b);
+  const { data: mov } = await movQuery.limit(8000);
   (mov || []).forEach((m: any) => {
     const tc = Number(m.total_cost);
     if (!Number.isNaN(tc) && tc !== 0) movValue += tc;
     else movValue += (Number(m.quantity) || 0) * (Number(m.unit_cost) || 0);
   });
+  movValue = Math.round(movValue * 100) / 100;
+
+  /** Asset 1200: GL balance is debit − credit; valuation is qty×avg cost (operational stock SOT). */
+  const diffVal = Math.round((invGl - valuationTotal) * 100) / 100;
+  const ok = Math.abs(diffVal) < 0.02;
 
   return {
     id: 'inventory_vs_movements',
-    label: 'Inventory GL (1200) vs movement cost heuristic',
+    label: 'Inventory GL (1200) vs inventory valuation (movements)',
     category: 'reconciliation',
-    defaultClassification: 'informational',
-    status: 'warn',
-    failures: [
-      {
-        module: 'inventory',
-        step: 'compare',
-        record: 'heuristic only',
-        expected: 'Use Reports → Inventory Valuation',
-        actual: `GL(1200)~${invGl} heuristic_move_sum~${Math.round(movValue * 100) / 100}`,
-        classification: 'informational',
-        navActions: [{ type: 'accounting', tab: 'accounts', label: 'Accounts (1200)' }],
-      },
-    ],
-    meta: { invGlBalance: invGl, movementHeuristic: movValue },
+    defaultClassification: ok ? undefined : 'posting_or_opening_mismatch',
+    status: ok ? 'pass' : 'warn',
+    failures: ok
+      ? []
+      : [
+          {
+            module: 'inventory',
+            step: 'gl_vs_valuation',
+            record: invAcc?.id || 'no 1200',
+            expected: `≈ valuation total ${valuationTotal} (stock_movements-based report)`,
+            actual: `GL(1200) debit−credit ${invGl} diff=${diffVal}; raw_movement_cost_sum=${movValue} (diagnostic only)`,
+            classification: 'posting_or_opening_mismatch',
+            navActions: [{ type: 'accounting', tab: 'accounts', label: 'Accounts (1200)' }],
+          },
+        ],
+    meta: {
+      invGlBalance: invGl,
+      valuationTotal,
+      movementHeuristic: movValue,
+      diffGlMinusValuation: diffVal,
+    },
   };
 }
 
@@ -1135,12 +1186,13 @@ export async function runCompanyReconciliationChecks(
   return [
     tagCompany(unbalancedCheckResult(unbalanced)),
     tagCompany(paymentLink),
+    tagCompany(await runDuplicatePrimaryPaymentJournalCheck(companyId)),
     tagCompany(await runTrialBalanceCheck(companyId, branchId)),
     tagCompany(await runBalanceSheetCheck(companyId, branchId)),
     tagCompany(await runPnLConsistencyCheck(companyId, branchId)),
     tagCompany(await runReceivablesVsARCheck(companyId, branchId)),
     tagCompany(await runPayablesVsAPCheck(companyId, branchId)),
-    tagCompany(await runInventoryValuationVsStockCheck(companyId)),
+    tagCompany(await runInventoryValuationVsStockCheck(companyId, branchId)),
     tagCompany(await runAccountsVsJournalCheck(companyId)),
     tagCompany(await runPostingStatusGateLiveCheck(companyId)),
     tagCompany(await runOwnerEquityCapitalVisibilityCheck(companyId)),

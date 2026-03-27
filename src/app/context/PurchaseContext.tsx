@@ -19,6 +19,8 @@ import {
   normalizePurchaseStatusForPosting,
 } from '@/app/lib/postingStatusGate';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
+import { assertDomainEditSafetyTestMode, classifyPurchaseEdit } from '@/app/lib/accountingEditClassification';
+import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -592,6 +594,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
 
   // Update purchase
   const updatePurchase = async (id: string, updates: Partial<Purchase>): Promise<void> => {
+    const traceId = createAccountingEditTraceId(id);
     try {
       // Convert updates to Supabase format
       const supabaseUpdates: any = {};
@@ -631,6 +634,17 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       // 🔒 CRITICAL FIX: Calculate stock movement DELTA BEFORE updating purchase_items
       // This must happen BEFORE purchase_items are deleted/updated so we can fetch old items
       const purchase = getPurchaseById(id);
+      pushAccountingEditTrace({
+        traceId,
+        ts: new Date().toISOString(),
+        module: 'purchases',
+        entityType: 'purchase',
+        entityId: id,
+        companyId: companyId || null,
+        branchId: branchId || null,
+        phase: 'start',
+        data: { updates },
+      });
       let newStatusForGate: string | undefined;
       if (updates.status !== undefined) {
         const u = updates.status;
@@ -652,6 +666,58 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         Array.isArray((updates as any).expenses);
       const needsPurchaseAccountingPass =
         !!companyId && isPostedForPurchaseEffects && accountingFieldsTouched;
+      const purchaseClassification = purchase
+        ? classifyPurchaseEdit({
+            oldSnap: {
+              notes: purchase.notes || '',
+              supplierRef: purchase.reference || '',
+              date: purchase.date,
+              supplierId: purchase.supplierId || '',
+              itemQtyTotal: (purchase.items || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0),
+              itemCostTotal: (purchase.items || []).reduce((s, it) => s + (Number(it.price) || 0), 0),
+              discount: Number(purchase.discount || 0),
+              freight: Number((purchase as any).shipping || 0),
+              tax: Number((purchase as any).tax || 0),
+              payableAccountId: (purchase as any).payableAccountId || '',
+              branchId: purchase.branch || '',
+              stockImpactQty: (purchase.items || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0),
+            },
+            newSnap: {
+              notes: updates.notes ?? purchase.notes ?? '',
+              supplierRef: updates.reference ?? purchase.reference ?? '',
+              date: updates.date ?? purchase.date,
+              supplierId: (updates as any).supplierId ?? purchase.supplierId ?? '',
+              itemQtyTotal: Array.isArray((updates as any).items)
+                ? (updates as any).items.reduce((s: number, it: any) => s + (Number(it.quantity) || 0), 0)
+                : (purchase.items || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0),
+              itemCostTotal: Array.isArray((updates as any).items)
+                ? (updates as any).items.reduce((s: number, it: any) => s + (Number(it.price || it.unitPrice) || 0), 0)
+                : (purchase.items || []).reduce((s, it) => s + (Number(it.price) || 0), 0),
+              discount: updates.discount ?? purchase.discount ?? 0,
+              freight: (updates as any).shipping ?? (purchase as any).shipping ?? 0,
+              tax: (updates as any).tax ?? (purchase as any).tax ?? 0,
+              payableAccountId: (updates as any).payableAccountId ?? (purchase as any).payableAccountId ?? '',
+              branchId: updates.branch ?? purchase.branch ?? '',
+              stockImpactQty: Array.isArray((updates as any).items)
+                ? (updates as any).items.reduce((s: number, it: any) => s + (Number(it.quantity) || 0), 0)
+                : (purchase.items || []).reduce((s, it) => s + (Number(it.quantity) || 0), 0),
+            },
+          })
+        : null;
+      if (purchaseClassification) {
+        assertDomainEditSafetyTestMode(purchaseClassification, 'purchases updatePurchase');
+      }
+      pushAccountingEditTrace({
+        traceId,
+        ts: new Date().toISOString(),
+        module: 'purchases',
+        entityType: 'purchase',
+        entityId: id,
+        companyId: companyId || null,
+        branchId: branchId || null,
+        phase: 'classified',
+        data: purchaseClassification || { kind: 'NO_POSTING_CHANGE' },
+      });
       // PF-02: Capture old amounts when we may touch supplier ledger / GL for this update
       const oldTotalForRepost = (needsPurchaseAccountingPass && purchase) ? (Number(purchase.total) || 0) : 0;
       const oldPaidForRepost = (needsPurchaseAccountingPass && purchase) ? (Number(purchase.paid) || 0) : 0;
@@ -765,6 +831,26 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       // PF-COMPONENT: Capture old accounting snapshot BEFORE update (for component-level edit, no full reversal)
       let oldPurchaseSnapshot: { total: number; subtotal: number; discount: number; otherCharges: number } | null = null;
       if (needsPurchaseAccountingPass && companyId) {
+        if (purchaseClassification && purchaseClassification.kind === 'FULL_REVERSE_REPOST') {
+          pushAccountingEditTrace({
+            traceId,
+            ts: new Date().toISOString(),
+            module: 'purchases',
+            entityType: 'purchase',
+            entityId: id,
+            companyId: companyId || null,
+            branchId: branchId || null,
+            phase: 'error',
+            data: {
+              blockedOperation: 'purchase_edit_full_reversal',
+              classifier: purchaseClassification.kind,
+              stack: new Error('blocked full reversal for purchase edit').stack,
+            },
+          });
+          throw new Error(
+            `Blocked full reversal for purchase edit (classifier=${purchaseClassification.kind}). Use delta/header paths.`
+          );
+        }
         try {
           const { purchaseAccountingService: pac } = await import('@/app/services/purchaseAccountingService');
           const oldPurchaseForAccounting = await purchaseService.getPurchase(id);
@@ -1075,7 +1161,18 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           }
         } catch (repostErr: any) {
           console.error('[PURCHASE CONTEXT] PF-COMPONENT: Purchase edit accounting failed:', repostErr);
-          toast.warning('Purchase updated, but accounting repost failed. Check logs.');
+          pushAccountingEditTrace({
+            traceId,
+            ts: new Date().toISOString(),
+            module: 'purchases',
+            entityType: 'purchase',
+            entityId: id,
+            companyId: companyId || null,
+            branchId: branchId || null,
+            phase: 'error',
+            data: { message: repostErr?.message || String(repostErr) },
+          });
+          throw new Error(`Purchase accounting adjustment failed: ${repostErr?.message || 'unknown'}`);
         }
       }
 
@@ -1145,6 +1242,16 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       if (stockMovementDeltas.length > 0) {
         window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: id } }));
       }
+      pushAccountingEditTrace({
+        traceId,
+        ts: new Date().toISOString(),
+        module: 'purchases',
+        entityType: 'purchase',
+        entityId: id,
+        companyId: companyId || null,
+        branchId: branchId || null,
+        phase: 'done',
+      });
     } catch (error: any) {
       console.error('[PURCHASE CONTEXT] Error updating purchase:', error);
       console.error('[PURCHASE CONTEXT] Error details:', {
@@ -1154,6 +1261,17 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         hint: error.hint,
       });
       const errorMessage = error.message || error.details || error.hint || 'Unknown error';
+      pushAccountingEditTrace({
+        traceId,
+        ts: new Date().toISOString(),
+        module: 'purchases',
+        entityType: 'purchase',
+        entityId: id,
+        companyId: companyId || null,
+        branchId: branchId || null,
+        phase: 'error',
+        data: { message: errorMessage },
+      });
       toast.error(`Failed to update purchase: ${errorMessage}`);
       throw error;
     }

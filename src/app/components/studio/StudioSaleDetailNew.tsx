@@ -780,6 +780,30 @@ export const StudioSaleDetailNew = () => {
     return () => window.removeEventListener('saleUpdated', handler as EventListener);
   }, [selectedStudioSaleId, loadStudioOrder]);
 
+  /** When every production stage is completed on the server, run the same finalization as "Final Complete" (sale status → final, ledger, inventory). */
+  const tryAutoFinalizeStudioProduction = useCallback(
+    async (prodId: string | null, saleIdForEvent: string | undefined) => {
+      if (!prodId || !saleIdForEvent) return;
+      try {
+        const prod = await studioProductionService.getProductionById(prodId);
+        if (!prod || prod.status === 'completed') return;
+        const stages = await studioProductionService.getStagesByProductionId(prodId);
+        if (stages.length === 0) return;
+        const allDone = stages.every((s: any) => String(s.status || '').toLowerCase() === 'completed');
+        if (!allDone) return;
+        await studioProductionService.changeProductionStatus(prodId, 'completed');
+        toast.success('Sale finalized for accounting.');
+        await loadStudioOrder();
+        window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: saleIdForEvent } }));
+        window.dispatchEvent(new CustomEvent('inventory-updated'));
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (import.meta.env?.DEV) console.warn('[StudioSaleDetail] auto-finalize:', msg);
+      }
+    },
+    [loadStudioOrder]
+  );
+
   /** Filter workers by task category: Dyeing → dyer/dyeing; Stitching → tailor/stitching-master/cutter; Handwork → hand-worker/helper/embroidery */
   const getWorkersForStageType = useCallback((stageType: 'dyer' | 'stitching' | 'handwork' | undefined, workerList: Worker[]): Worker[] => {
     if (!stageType) return workerList;
@@ -1097,6 +1121,7 @@ export const StudioSaleDetailNew = () => {
       setPayChoiceAfterReceive({ stageId, workerId, workerName, amount: actual });
       // Auto-sync invoice if linked and still draft
       await autoSyncInvoiceAfterCostChange();
+      await tryAutoFinalizeStudioProduction(productionId, saleDetail?.id);
     } catch (e: any) {
       toast.error(e?.message || 'Receive failed');
     } finally {
@@ -1304,6 +1329,7 @@ export const StudioSaleDetailNew = () => {
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
       // Auto-sync invoice line if one is already linked and sale is still draft
       await autoSyncInvoiceAfterCostChange();
+      await tryAutoFinalizeStudioProduction(currentProductionId, saleDetail.id);
       if (!opts?.skipConfirmDialog) setShowSaveConfirmDialog(true);
     } catch (e: any) {
       const msg = e?.message ?? String(e);
@@ -1322,7 +1348,7 @@ export const StudioSaleDetailNew = () => {
     } finally {
       setSavingStage(false);
     }
-  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers, autoSyncInvoiceAfterCostChange, profitMarginMode, profitMarginValue]);
+  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers, autoSyncInvoiceAfterCostChange, tryAutoFinalizeStudioProduction, profitMarginMode, profitMarginValue]);
 
   const handleSaveAndLeave = useCallback(async () => {
     const target = pendingLeaveTarget;
@@ -2472,6 +2498,8 @@ export const StudioSaleDetailNew = () => {
                     await studioProductionService.changeProductionStatus(productionId, 'completed');
                     toast.success('Production completed. Sale finalized, worker ledger & inventory updated.');
                     await loadStudioOrder();
+                    window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: saleDetail?.id } }));
+                    window.dispatchEvent(new CustomEvent('inventory-updated'));
                   } catch (e: any) {
                     toast.error(e?.message || 'Final completion failed');
                   } finally {

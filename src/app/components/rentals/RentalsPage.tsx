@@ -89,6 +89,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedRental, setSelectedRental] = useState<RentalUI | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [rentalPaymentToEdit, setRentalPaymentToEdit] = useState<any>(null);
   const [paymentOpenedFromPickup, setPaymentOpenedFromPickup] = useState(false);
   const [viewPaymentsOpen, setViewPaymentsOpen] = useState(false);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
@@ -667,6 +668,12 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
             referenceType: 'rental',
           }}
           onAddPayment={() => {
+            setRentalPaymentToEdit(null);
+            setViewPaymentsOpen(false);
+            setPaymentDialogOpen(true);
+          }}
+          onEditPayment={(payment) => {
+            setRentalPaymentToEdit(payment);
             setViewPaymentsOpen(false);
             setPaymentDialogOpen(true);
           }}
@@ -684,6 +691,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
           isOpen={paymentDialogOpen}
           onClose={() => {
             setPaymentDialogOpen(false);
+            setRentalPaymentToEdit(null);
             if (paymentOpenedFromPickup) {
               setPaymentOpenedFromPickup(false);
               setPickupModalOpen(true);
@@ -698,9 +706,25 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
           paidAmount={selectedRental.paidAmount}
           referenceNo={selectedRental.rentalNo}
           referenceId={selectedRental.id}
+          rentalPaymentKind={rentalPaymentToEdit?.rentalPaymentKind === 'advance' ? 'advance' : 'remaining'}
+          editMode={!!rentalPaymentToEdit}
+          paymentToEdit={
+            rentalPaymentToEdit
+              ? {
+                  id: rentalPaymentToEdit.id,
+                  amount: rentalPaymentToEdit.amount,
+                  method: rentalPaymentToEdit.method,
+                  accountId: rentalPaymentToEdit.accountId,
+                  date: rentalPaymentToEdit.date,
+                  referenceNumber: rentalPaymentToEdit.referenceNo,
+                  notes: rentalPaymentToEdit.notes,
+                }
+              : undefined
+          }
           onSuccess={async () => {
             await refreshRentals();
             setPaymentDialogOpen(false);
+            setRentalPaymentToEdit(null);
             if (selectedRental && getRentalById) {
               const updated = getRentalById(selectedRental.id);
               if (updated) setSelectedRental(updated);
@@ -709,6 +733,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
               setPaymentOpenedFromPickup(false);
               setPickupModalOpen(true);
             }
+            if (!paymentOpenedFromPickup) setViewPaymentsOpen(true);
           }}
         />
       )}
@@ -727,6 +752,13 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
           onEditRental?.(r);
         }}
         onAddPayment={() => {
+          setRentalPaymentToEdit(null);
+          setViewDetailsOpen(false);
+          setPaymentDialogOpen(true);
+        }}
+        onEditPayment={(rental, payment) => {
+          setSelectedRental(rental);
+          setRentalPaymentToEdit(payment);
           setViewDetailsOpen(false);
           setPaymentDialogOpen(true);
         }}
