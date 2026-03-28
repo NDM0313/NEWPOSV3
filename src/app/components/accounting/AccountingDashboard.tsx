@@ -1068,7 +1068,7 @@ export const AccountingDashboard = () => {
                 <h3 className="text-lg font-bold text-white">Accounts</h3>
                 <p className="text-sm text-gray-400">
                   {accountsViewMode === 'operational'
-                    ? 'Operational View: Cash, Bank, Wallet, Expense, Income, Payable, Receivable'
+                    ? 'Operational View: Cash, Bank, Wallet, expense/income, AR/AP, worker payables & advances — party names on sub-accounts'
                     : 'Professional View: Full Chart of Accounts'}
                 </p>
               </div>

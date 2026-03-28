@@ -9,8 +9,25 @@ import {
 
 type JournalTouch = { debitAccount: string; creditAccount: string };
 
+/** Control accounts that carry party / worker sub-ledgers in Operational COA view */
+const PARTY_CONTROL_CODES = new Set(['1100', '2000', '2010', '1180']);
+
+function partyRoleLabel(type: string | null | undefined): string | null {
+  const t = String(type || '').toLowerCase();
+  if (t === 'customer') return 'Customer';
+  if (t === 'supplier') return 'Supplier';
+  if (t === 'both') return 'Customer · Supplier';
+  if (t === 'worker') return 'Worker';
+  return null;
+}
+
 export type AccountsHierarchyRowModel = {
-  account: Account & { is_default_cash?: boolean; is_default_bank?: boolean };
+  account: Account & {
+    is_default_cash?: boolean;
+    is_default_bank?: boolean;
+    linked_contact_name?: string | null;
+    linked_contact_party_type?: string | null;
+  };
   depth: number;
   hasChildRows: boolean;
   isCollapsed: boolean;
@@ -21,6 +38,12 @@ export type AccountsHierarchyRowModel = {
   onToggleCollapse: () => void;
   /** Professional mode: first row of a statement section (Assets, Liabilities, …). */
   sectionHeader?: string;
+  /** Operational COA: party / contact name as main title when linked */
+  coaPrimaryLabel: string;
+  /** Customer, Supplier, Worker, etc. */
+  coaPartyRoleLabel: string | null;
+  /** Sub-account code, GL line name, parent control — second line */
+  coaDetailLine: string | null;
 };
 
 export function useAccountsHierarchyModel(
@@ -106,12 +129,25 @@ export function useAccountsHierarchyModel(
         pid = p?.parent_id ?? undefined;
       }
     });
-    // Party AR/AP subledgers (children of 1100 / 2000): show under Chart even if leaf type is generic asset/liability.
+    // Party / worker sub-ledgers (children of 1100 / 2000 / 2010 / 1180): show under Operational COA even if leaf type is generic.
     all.forEach((a) => {
       if (!a.parent_id) return;
       const p = accountsById.get(a.parent_id);
       const pc = String(p?.code || '').trim();
-      if (pc !== '1100' && pc !== '2000') return;
+      if (!PARTY_CONTROL_CODES.has(pc)) return;
+      withAncestors.add(a.id);
+      let pid: string | null | undefined = a.parent_id;
+      let guard = 0;
+      while (pid && guard++ < 40) {
+        withAncestors.add(pid);
+        const par = accountsById.get(pid);
+        pid = par?.parent_id ?? undefined;
+      }
+    });
+    // Any account linked to a contact (AR/AP party row): include with ancestors
+    all.forEach((a) => {
+      const lc = (a as { linked_contact_id?: string | null }).linked_contact_id;
+      if (!lc) return;
       withAncestors.add(a.id);
       let pid: string | null | undefined = a.parent_id;
       let guard = 0;
@@ -219,6 +255,28 @@ export function useAccountsHierarchyModel(
       const sectionHeader =
         accountsViewMode === 'professional' && sec !== prevSection ? COA_SECTION_LABEL[sec] : undefined;
       if (accountsViewMode === 'professional') prevSection = sec;
+
+      const parent = account.parent_id ? accountsById.get(account.parent_id) : undefined;
+      const parentCode = String(parent?.code || '').trim();
+      const underPartyControl = parent ? PARTY_CONTROL_CODES.has(parentCode) : false;
+      const ext = account as Account & { linked_contact_name?: string | null; linked_contact_party_type?: string | null };
+      const linkedName = ext.linked_contact_name?.trim() || '';
+      const partyType = ext.linked_contact_party_type;
+
+      let coaPrimaryLabel = linkedName || account.name || 'Account';
+      let coaPartyRoleLabel: string | null = linkedName ? partyRoleLabel(partyType) : null;
+      let coaDetailLine: string | null = null;
+
+      if (linkedName) {
+        const parts: string[] = [];
+        if (account.code) parts.push(String(account.code));
+        if (account.name && account.name.trim() !== linkedName) parts.push(account.name.trim());
+        if (parent) parts.push(`under ${parent.name}${parent.code ? ` (${parent.code})` : ''}`);
+        coaDetailLine = parts.length > 0 ? parts.join(' · ') : null;
+      } else if (underPartyControl && parent && !account.is_group) {
+        coaDetailLine = `Sub-account · ${parent.name}${parent.code ? ` (${parent.code})` : ''}`;
+      }
+
       return {
         account,
         depth,
@@ -228,6 +286,9 @@ export function useAccountsHierarchyModel(
         entryCount,
         trendPct: null,
         sectionHeader,
+        coaPrimaryLabel,
+        coaPartyRoleLabel,
+        coaDetailLine,
         onToggleCollapse: () => {
           setCollapsedGroupIds((prev) => {
             const n = new Set(prev);

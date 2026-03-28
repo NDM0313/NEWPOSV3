@@ -96,7 +96,19 @@ export function AccountsHierarchyList({
 
       <div className="divide-y divide-gray-800/90">
         {rows.map((row) => {
-          const { account, depth, hasChildRows, isCollapsed, displayBalance, entryCount, onToggleCollapse, sectionHeader } = row;
+          const {
+            account,
+            depth,
+            hasChildRows,
+            isCollapsed,
+            displayBalance,
+            entryCount,
+            onToggleCollapse,
+            sectionHeader,
+            coaPrimaryLabel,
+            coaPartyRoleLabel,
+            coaDetailLine,
+          } = row;
           const controlKind = getControlAccountKind({ name: account.name, code: account.code });
           const visual = accountRowVisual(account);
           const { Icon } = visual;
@@ -104,6 +116,7 @@ export function AccountsHierarchyList({
           const trend =
             trendPctForRow?.(row) ?? row.trendPct ?? null;
           const subtitleParts = [
+            coaDetailLine,
             accountsViewMode === 'operational' ? account.type || account.accountType || 'Account' : null,
             entryCount > 0 ? `${entryCount} entries` : null,
           ].filter(Boolean);
@@ -155,7 +168,12 @@ export function AccountsHierarchyList({
 
                 <div className="min-w-0 flex-1 pt-0.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-white text-sm sm:text-[15px] leading-tight">{account.name}</span>
+                    <span className="font-semibold text-white text-sm sm:text-[15px] leading-tight">{coaPrimaryLabel}</span>
+                    {coaPartyRoleLabel ? (
+                      <Badge className="border-violet-500/35 bg-violet-500/15 text-[10px] uppercase tracking-wide text-violet-200">
+                        {coaPartyRoleLabel}
+                      </Badge>
+                    ) : null}
                     {accountsViewMode !== 'professional' && account.code ? (
                       <Badge variant="outline" className="border-gray-600 bg-gray-800/80 text-[10px] font-mono text-gray-300 px-1.5 py-0">
                         {account.code}
@@ -174,7 +192,10 @@ export function AccountsHierarchyList({
                     )}
                     {renderRowInlineExtra?.(row)}
                   </div>
-                  <p className="mt-1 text-[11px] text-gray-500 leading-snug sm:hidden">{subtitleParts.join(' · ')}</p>
+                  {coaDetailLine ? (
+                    <p className="mt-0.5 text-[11px] text-gray-400 leading-snug">{coaDetailLine}</p>
+                  ) : null}
+                  <p className="mt-1 text-[11px] text-gray-500 leading-snug sm:hidden">{subtitleParts.filter((p) => p !== coaDetailLine).join(' · ')}</p>
                 </div>
               </div>
 

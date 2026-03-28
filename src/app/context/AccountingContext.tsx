@@ -335,6 +335,10 @@ export interface Account {
   parent_id?: string | null;
   /** COA section header row (non-selectable as payment account). */
   is_group?: boolean;
+  /** Party subledger FK (migration 20260364); enriched with contact name/type after load. */
+  linked_contact_id?: string | null;
+  linked_contact_name?: string | null;
+  linked_contact_party_type?: string | null;
 }
 
 // ============================================
@@ -370,6 +374,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   const convertFromSupabaseAccount = useCallback((supabaseAccount: any): Account => {
     // CRITICAL FIX: account_type doesn't exist in actual schema, use type instead
     const accountType = supabaseAccount.type || 'Cash';
+    const lc = supabaseAccount.linked_contact_id;
     return {
       id: supabaseAccount.id,
       name: supabaseAccount.name || '',
@@ -383,6 +388,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       code: supabaseAccount.code || undefined, // CRITICAL FIX: Include code for account lookup
       parent_id: supabaseAccount.parent_id ?? null,
       is_group: supabaseAccount.is_group === true,
+      linked_contact_id: lc != null && String(lc).trim() !== '' ? String(lc).trim() : null,
     };
   }, []);
   
@@ -458,13 +464,37 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   const loadAccounts = useCallback(async () => {
     if (!companyId) return;
 
+    const linkContactsToAccounts = async (list: Account[]): Promise<Account[]> => {
+      const linkedIds = [...new Set(list.map((a) => a.linked_contact_id).filter(Boolean))] as string[];
+      if (linkedIds.length === 0) return list;
+      const { data: contactRows, error: cErr } = await supabase
+        .from('contacts')
+        .select('id, name, type')
+        .eq('company_id', companyId)
+        .in('id', linkedIds);
+      if (cErr || !contactRows?.length) return list;
+      const byId = new Map(contactRows.map((c: { id: string; name: string; type?: string }) => [c.id, c]));
+      return list.map((acc) => {
+        const cid = acc.linked_contact_id;
+        if (!cid) return acc;
+        const c = byId.get(cid);
+        if (!c) return acc;
+        return {
+          ...acc,
+          linked_contact_name: c.name || null,
+          linked_contact_party_type: c.type != null ? String(c.type) : null,
+        };
+      });
+    };
+
     try {
       const data = await accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined);
       const convertedAccounts = data.map(convertFromSupabaseAccount);
+      const withParty = await linkContactsToAccounts(convertedAccounts);
       try {
         const asOf = new Date().toISOString().slice(0, 10);
         const journalBalances = await accountingReportsService.getAccountBalancesFromJournal(companyId, asOf, branchId === 'all' ? undefined : branchId);
-        const merged = convertedAccounts.map((acc) => ({
+        const merged = withParty.map((acc) => ({
           ...acc,
           balance: journalBalances[acc.id!] !== undefined ? journalBalances[acc.id!]! : 0,
         }));
@@ -476,7 +506,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
           'Journal balance merge failed — COA balances shown as 0 (not stored accounts.balance)'
         );
         if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Journal balances unavailable:', jbErr);
-        setAccounts(convertedAccounts);
+        setAccounts(withParty);
       }
       if (import.meta.env?.DEV) console.log('✅ Accounts loaded:', convertedAccounts.length);
     } catch (error) {
