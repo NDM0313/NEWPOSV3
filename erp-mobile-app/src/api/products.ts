@@ -67,7 +67,7 @@ async function getProductStockFromMovements(
     .select('quantity')
     .eq('company_id', companyId)
     .eq('product_id', productId);
-  if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
   const { data } = await q;
   const sum = (data || []).reduce((s, r) => s + Number((r as { quantity: number }).quantity) || 0, 0);
   return sum;

@@ -81,7 +81,7 @@ export function DashboardModule({ onBack, user: _user, companyId, branchId, onNe
     const [salesRes, purchasesRes, invRes] = await Promise.all([
       reportsApi.getSalesSummary(companyId, branchId, days),
       reportsApi.getPurchasesSummary(companyId, branchId, days),
-      inventoryApi.getInventory(companyId),
+      inventoryApi.getInventory(companyId, branchId && branchId !== 'all' && branchId !== 'default' ? branchId : null),
     ]);
     setIsRefreshing(false);
     setSales(salesRes.data?.totalSales ?? 0);

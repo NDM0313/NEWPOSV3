@@ -207,7 +207,7 @@ export async function getRentals(companyId: string, branchId?: string | null): P
     .eq('company_id', companyId)
     .order('booking_date', { ascending: false })
     .limit(100);
-  if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   return {

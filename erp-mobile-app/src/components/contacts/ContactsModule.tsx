@@ -13,9 +13,11 @@ interface ContactsModuleProps {
   onBack: () => void;
   user: User;
   companyId: string | null;
+  /** Scoped balances via get_contact_balances_summary (null = company-wide). */
+  branchId?: string | null;
 }
 
-export function ContactsModule({ onBack, user, companyId }: ContactsModuleProps) {
+export function ContactsModule({ onBack, user, companyId, branchId = null }: ContactsModuleProps) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [search, setSearch] = useState('');
@@ -36,7 +38,7 @@ export function ContactsModule({ onBack, user, companyId }: ContactsModuleProps)
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
-    contactsApi.getContacts(companyId).then(({ data, error }) => {
+    contactsApi.getContacts(companyId, undefined, branchId).then(({ data, error }) => {
       if (cancelled) return;
       setLoading(false);
       if (error) {
@@ -47,7 +49,7 @@ export function ContactsModule({ onBack, user, companyId }: ContactsModuleProps)
       }
     });
     return () => { cancelled = true; };
-  }, [companyId]);
+  }, [companyId, branchId]);
 
   const filtered = contacts.filter((c) => {
     const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search);

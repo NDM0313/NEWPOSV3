@@ -10,8 +10,11 @@ export interface InventoryItem {
   retailPrice: number;
 }
 
-/** Stock from stock_movements (no current_stock column dependency). */
-export async function getInventory(companyId: string): Promise<{ data: InventoryItem[]; error: string | null }> {
+/** Stock from stock_movements (no current_stock column dependency). Optional branch = branch-scoped qty. */
+export async function getInventory(
+  companyId: string,
+  branchId?: string | null
+): Promise<{ data: InventoryItem[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
 
   const { data: products, error: productsError } = await supabase
@@ -25,11 +28,15 @@ export async function getInventory(companyId: string): Promise<{ data: Inventory
   if (!products?.length) return { data: [], error: null };
 
   const productIds = products.map((p: { id: string }) => p.id);
-  const { data: movements } = await supabase
+  let movQ = supabase
     .from('stock_movements')
     .select('product_id, quantity')
     .eq('company_id', companyId)
     .in('product_id', productIds);
+  if (branchId && branchId !== 'all' && branchId !== 'default') {
+    movQ = movQ.eq('branch_id', branchId);
+  }
+  const { data: movements } = await movQ;
 
   const stockByProductId: Record<string, number> = {};
   (movements || []).forEach((m: { product_id: string; quantity: number }) => {

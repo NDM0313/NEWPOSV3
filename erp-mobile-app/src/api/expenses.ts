@@ -33,7 +33,7 @@ export interface ExpenseCategoryTreeItem extends ExpenseCategoryRow {
 export async function getExpenses(companyId: string, branchId?: string | null) {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   let q = supabase.from('expenses').select('id, expense_no, expense_date, category, description, amount, payment_method, status').eq('company_id', companyId).order('expense_date', { ascending: false }).limit(50);
-  if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   return { data: data || [], error: null };

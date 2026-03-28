@@ -395,7 +395,7 @@ export default function App() {
       {currentScreen === 'contacts' && user && (
         !canAccessScreen('contacts', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
-          : <ContactsModule onBack={navigateHome} user={user} companyId={companyId} />
+          : <ContactsModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
       )}
       {currentScreen === 'settings' && user && selectedBranch && (
         !canAccessScreen('settings', selectedBranch?.id)

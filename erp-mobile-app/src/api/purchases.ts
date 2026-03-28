@@ -215,6 +215,33 @@ async function enrichPurchasesWithCreatorNames(rows: Record<string, unknown>[]):
   });
 }
 
+/** Match web: paid / due from actual payment rows (company-wide link by reference_id), exclude voided. */
+async function enrichPurchasesPaidFromPayments(companyId: string, rows: Record<string, unknown>[]): Promise<void> {
+  if (!rows.length) return;
+  const ids = rows.map((r) => r.id as string).filter(Boolean);
+  const { data: payData } = await supabase
+    .from('payments')
+    .select('reference_id, amount')
+    .eq('reference_type', 'purchase')
+    .eq('company_id', companyId)
+    .in('reference_id', ids)
+    .is('voided_at', null);
+  const byPurchase: Record<string, number> = {};
+  for (const p of payData || []) {
+    const refId = String((p as Record<string, unknown>).reference_id || '');
+    if (refId) byPurchase[refId] = (byPurchase[refId] || 0) + Number((p as Record<string, unknown>).amount ?? 0);
+  }
+  rows.forEach((r) => {
+    const id = String(r.id || '');
+    const total = Number(r.total) || 0;
+    const paid = byPurchase[id] ?? (Number(r.paid_amount) || 0);
+    const due = Math.max(0, total - paid);
+    r.paid_amount = paid;
+    r.due_amount = due;
+    r.payment_status = paid <= 0 ? 'unpaid' : paid >= total - 0.005 ? 'paid' : 'partial';
+  });
+}
+
 export async function getPurchases(
   companyId: string,
   branchId?: string | null
@@ -227,12 +254,15 @@ export async function getPurchases(
     .is('cancelled_at', null)
     .order('po_date', { ascending: false })
     .limit(50);
-  if (branchId) query = query.eq('branch_id', branchId);
+  if (branchId && branchId !== 'all' && branchId !== 'default') {
+    query = query.eq('branch_id', branchId);
+  }
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
 
   const rows = (data || []) as Record<string, unknown>[];
   await enrichPurchasesWithCreatorNames(rows);
+  await enrichPurchasesPaidFromPayments(companyId, rows);
 
   const ids = rows.map((r) => r.id as string);
   const itemCountMap: Record<string, number> = {};
@@ -317,6 +347,8 @@ export async function getPurchaseById(
   if (itemsError) return { data: null, error: itemsError.message };
 
   const p = purchase as Record<string, unknown>;
+  await enrichPurchasesPaidFromPayments(companyId, [p]);
+
   return {
     data: {
       id: p.id as string,
@@ -372,6 +404,7 @@ export async function getPurchasePayments(purchaseId: string): Promise<{
     .select('id, payment_date, reference_number, amount, payment_method, attachments')
     .eq('reference_type', 'purchase')
     .eq('reference_id', purchaseId)
+    .is('voided_at', null)
     .order('payment_date', { ascending: false });
   if (error) return { data: [], error: error.message };
   const list: PurchasePaymentRow[] = (data || []).map((p: Record<string, unknown>) => {

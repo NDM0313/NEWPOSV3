@@ -63,6 +63,43 @@ export interface AccountLedgerEntry {
   ledger_kind?: 'standard' | 'reversal';
 }
 
+/**
+ * Some postings create two AR credit lines for the same receipt (e.g. `reference_type=payment` plus
+ * a `sale` JE with `payment_id` set). That double-counts running balance and statements — keep one line per payment.
+ */
+function journalLineNormalizedPaymentId(line: { journal_entry?: any; credit?: number }): string | null {
+  const entry = line.journal_entry;
+  if (!entry) return null;
+  const credit = Number(line.credit || 0);
+  if (credit <= 0) return null;
+  if (entry.payment_id) return String(entry.payment_id);
+  if (entry.reference_type === 'payment' && entry.reference_id) return String(entry.reference_id);
+  return null;
+}
+
+function dedupeCustomerArPaymentCreditLines(sortedLines: any[]): any[] {
+  const byPayment = new Map<string, any[]>();
+  for (const line of sortedLines) {
+    const pid = journalLineNormalizedPaymentId(line);
+    if (!pid) continue;
+    const g = byPayment.get(pid) || [];
+    g.push(line);
+    byPayment.set(pid, g);
+  }
+  const skip = new Set<any>();
+  for (const [, lines] of byPayment) {
+    if (lines.length <= 1) continue;
+    const preferred =
+      lines.find((l: any) => l.journal_entry?.reference_type === 'payment') ||
+      lines.find((l: any) => Boolean(l.journal_entry?.payment_id)) ||
+      lines[0];
+    for (const l of lines) {
+      if (l !== preferred) skip.add(l);
+    }
+  }
+  return sortedLines.filter((l) => !skip.has(l));
+}
+
 export const accountingService = {
   // Get all journal entries with lines
   // CRITICAL: Filter out entries for deleted purchases/sales
@@ -1525,34 +1562,35 @@ export const accountingService = {
           })
         : customerLines;
 
-      // Opening balance = sum of (debit - credit) for ALL lines BEFORE startDate (from customer data, not from date-filtered set)
-      let openingBalance = 0;
-      if (startDate) {
-        branchFiltered.forEach((line: any) => {
-          const entry = line.journal_entry;
-          if (!entry || entry.entry_date >= startDate) return;
-          openingBalance += (line.debit || 0) - (line.credit || 0);
-        });
-      }
-
-      // Lines to display: only those within date range [startDate, endDate]
-      const rangeLines = branchFiltered.filter((line: any) => {
-        const entry = line.journal_entry;
-        if (!entry) return false;
-        const entryDate = entry.entry_date;
-        if (startDate && entryDate < startDate) return false;
-        if (endDate && entryDate > endDate) return false;
-        return true;
-      });
-
-      // Sort by entry_date then created_at for correct running balance
-      rangeLines.sort((a: any, b: any) => {
+      const compareJournalLines = (a: any, b: any) => {
         const dateA = (a.journal_entry?.entry_date || '').toString();
         const dateB = (b.journal_entry?.entry_date || '').toString();
         if (dateA !== dateB) return dateA.localeCompare(dateB);
         const createdA = (a.journal_entry?.created_at || a.created_at || '').toString();
         const createdB = (b.journal_entry?.created_at || b.created_at || '').toString();
         return createdA.localeCompare(createdB);
+      };
+
+      const dedupedBranch = dedupeCustomerArPaymentCreditLines([...branchFiltered].sort(compareJournalLines));
+
+      // Opening balance = sum of (debit - credit) for ALL lines BEFORE startDate (after payment-line dedupe)
+      let openingBalance = 0;
+      if (startDate) {
+        dedupedBranch.forEach((line: any) => {
+          const entry = line.journal_entry;
+          if (!entry || entry.entry_date >= startDate) return;
+          openingBalance += (line.debit || 0) - (line.credit || 0);
+        });
+      }
+
+      // Lines to display: only those within date range [startDate, endDate] (already sorted)
+      const rangeLines = dedupedBranch.filter((line: any) => {
+        const entry = line.journal_entry;
+        if (!entry) return false;
+        const entryDate = entry.entry_date;
+        if (startDate && entryDate < startDate) return false;
+        if (endDate && entryDate > endDate) return false;
+        return true;
       });
 
       let runningBalance = openingBalance;
@@ -1702,7 +1740,9 @@ export const accountingService = {
           notes: notes,
           created_by: entry.created_by,
           journal_entry_id: entry.id, // Use journal_entry_id as fallback if entry_no is missing
-          payment_id: entry.payment_id,
+          payment_id:
+            entry.payment_id ||
+            (entry.reference_type === 'payment' && entry.reference_id ? String(entry.reference_id) : undefined),
           sale_id: entry.reference_type === 'sale' ? entry.reference_id : undefined,
           rental_id: entry.reference_type === 'rental' ? entry.reference_id : undefined,
           branch_id: entry.branch_id,

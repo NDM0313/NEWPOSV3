@@ -36,10 +36,20 @@ export function LedgerModule({ onBack, user, companyId }: LedgerModuleProps) {
     setView('detail');
     setTxLoading(true);
     if (!companyId) return;
-    ledgerApi.getCustomerLastTransactions(companyId, c.id, 20).then(({ data, error: err }) => {
+    Promise.all([
+      ledgerApi.getCustomerReceivableBalance(companyId, c.id),
+      ledgerApi.getCustomerLastTransactions(companyId, c.id, 60),
+    ]).then(([{ data: bal, error: balErr }, { data: txs, error: txErr }]) => {
       setTxLoading(false);
-      if (err) setError(err);
-      else setTransactions(data || []);
+      const errMsg = balErr || txErr;
+      if (errMsg) setError(errMsg);
+      else setError(null);
+      setSelectedCustomer((prev) => {
+        if (!prev || prev.id !== c.id) return prev;
+        if (balErr) return { ...prev };
+        return { ...prev, balance: bal ?? prev.balance };
+      });
+      setTransactions(txs || []);
     });
   };
 

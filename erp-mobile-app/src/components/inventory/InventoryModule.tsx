@@ -11,7 +11,7 @@ interface InventoryModuleProps {
   branch: Branch | null;
 }
 
-export function InventoryModule({ onBack, user: _user, companyId, branch: _branch }: InventoryModuleProps) {
+export function InventoryModule({ onBack, user: _user, companyId, branch }: InventoryModuleProps) {
   const [list, setList] = useState<inventoryApi.InventoryItem[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [search, setSearch] = useState('');
@@ -23,13 +23,13 @@ export function InventoryModule({ onBack, user: _user, companyId, branch: _branc
     }
     let c = false;
     setLoading(true);
-    inventoryApi.getInventory(companyId).then(({ data, error }) => {
+    inventoryApi.getInventory(companyId, branch?.id ?? null).then(({ data, error }) => {
       if (c) return;
       setLoading(false);
       if (!error && data) setList(data);
     });
     return () => { c = true; };
-  }, [companyId]);
+  }, [companyId, branch?.id]);
 
   const lowStockCount = list.filter((i) => i.isLowStock).length;
   const filtered = list.filter(

@@ -125,6 +125,36 @@ function partyGlMismatchFlags(
   return { receivables, payables };
 }
 
+type ContactPartyGlRow = { glArReceivable: number; glApPayable: number; glWorkerPayable: number };
+
+/** List + cards: party-attributed GL (when RPC map loaded) so dues match customer/supplier statements; else open-document balances. */
+function contactDisplayedReceivables(contact: Contact, partyGlByContactId: Map<string, ContactPartyGlRow> | null): number {
+  if (!partyGlByContactId?.size) return contact.receivables;
+  const gl = partyGlByContactId.get(String(contact.uuid));
+  if (!gl) return contact.receivables;
+  if (contact.type === 'customer' || contact.type === 'both') {
+    return Math.max(0, Number(gl.glArReceivable) || 0);
+  }
+  return contact.receivables;
+}
+
+function contactDisplayedPayables(contact: Contact, partyGlByContactId: Map<string, ContactPartyGlRow> | null): number {
+  if (!partyGlByContactId?.size) return contact.payables;
+  const gl = partyGlByContactId.get(String(contact.uuid));
+  if (!gl) return contact.payables;
+  if (contact.type === 'worker') {
+    return Math.max(0, Number(gl.glWorkerPayable) || 0);
+  }
+  if (contact.type === 'supplier' || contact.type === 'both') {
+    return Math.max(0, Number(gl.glApPayable) || 0);
+  }
+  return contact.payables;
+}
+
+function contactDisplayedNet(contact: Contact, partyGlByContactId: Map<string, ContactPartyGlRow> | null): number {
+  return contactDisplayedReceivables(contact, partyGlByContactId) - contactDisplayedPayables(contact, partyGlByContactId);
+}
+
 export const ContactsPage = () => {
   const { openDrawer, setCurrentView, createdContactId, setCreatedContactId } = useNavigation();
   const { companyId, branchId } = useSupabase();
@@ -619,24 +649,46 @@ export const ContactsPage = () => {
       
       return true;
     });
-  }, [contacts, activeTab, searchTerm, typeFilter, workerRoleFilter, statusFilter, balanceFilter, branchFilter, phoneFilter]);
+  }, [
+    contacts,
+    activeTab,
+    searchTerm,
+    typeFilter,
+    workerRoleFilter,
+    statusFilter,
+    balanceFilter,
+    branchFilter,
+    phoneFilter,
+    partyGlByContactId,
+  ]);
 
-  // Calculate summary based on active tab (type 'both' counts in both Customer and Supplier)
-  const summary = useMemo(() => {
-    const filtered = contacts.filter(c => {
+  // Tab summary: `summary` = shown on cards/rows (party GL when map exists); `summaryOperational` = open-document RPC merge for recon APIs
+  const { summary, summaryOperational } = useMemo(() => {
+    const filtered = contacts.filter((c) => {
       if (activeTab === 'all') return true;
       const tabType = activeTab.slice(0, -1);
       if (tabType === 'customer') return c.type === 'customer' || c.type === 'both';
       if (tabType === 'supplier') return c.type === 'supplier' || c.type === 'both';
       return c.type === 'worker';
     });
-    return {
+    const activeCount = filtered.filter((c) => c.status === 'active').length;
+    const totalCount = filtered.length;
+    const operational = {
       totalReceivables: filtered.reduce((sum, c) => sum + c.receivables, 0),
       totalPayables: filtered.reduce((sum, c) => sum + c.payables, 0),
-      activeCount: filtered.filter(c => c.status === 'active').length,
-      totalCount: filtered.length,
+      activeCount,
+      totalCount,
     };
-  }, [activeTab, contacts]);
+    return {
+      summaryOperational: operational,
+      summary: {
+        totalReceivables: filtered.reduce((sum, c) => sum + contactDisplayedReceivables(c, partyGlByContactId), 0),
+        totalPayables: filtered.reduce((sum, c) => sum + contactDisplayedPayables(c, partyGlByContactId), 0),
+        activeCount,
+        totalCount,
+      },
+    };
+  }, [activeTab, contacts, partyGlByContactId]);
 
   /** Contacts subledger vs GL (Trial Balance) — explains differences vs Reports. */
   const subledgerVsGl = useMemo(() => {
@@ -671,8 +723,8 @@ export const ContactsPage = () => {
     }
     let cancelled = false;
     getCompanyReconciliationSnapshot(companyId, branchId, undefined, {
-      operationalReceivablesTotal: summary.totalReceivables,
-      operationalPayablesTotal: summary.totalPayables,
+      operationalReceivablesTotal: summaryOperational.totalReceivables,
+      operationalPayablesTotal: summaryOperational.totalPayables,
     })
       .then((snap) => {
         if (!cancelled) setReconSnapshot(snap);
@@ -683,7 +735,14 @@ export const ContactsPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId, balancesLoading, balancesStale, summary.totalReceivables, summary.totalPayables]);
+  }, [
+    companyId,
+    branchId,
+    balancesLoading,
+    balancesStale,
+    summaryOperational.totalReceivables,
+    summaryOperational.totalPayables,
+  ]);
 
   // Calculate tab counts (type 'both' counts in both Customer and Supplier)
   const tabCounts = useMemo(() => ({
@@ -817,16 +876,16 @@ export const ContactsPage = () => {
                 <span className="underline-offset-2 group-open:underline">Balance &amp; GL notes</span>
               </summary>
               <p className="mt-2 leading-relaxed pl-0 border-l-2 border-gray-700 pl-3">
-                <strong className="text-gray-400">Receivables / Payables</strong> columns = operational open-document balances from{' '}
+                <strong className="text-gray-400">Receivables / Payables</strong> columns use party-attributed GL (
+                <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code>
+                ) when that map is loaded, so row totals align with customer/supplier statements; otherwise they fall back to open-document balances from{' '}
                 <code className="text-gray-500 text-[10px]">get_contact_balances_summary</code>
-                {operationalEngine === 'rpc' && ' (loaded via RPC). '}
+                {operationalEngine === 'rpc' && ' (RPC). '}
                 {operationalEngine === 'fallback' && (
                   <span className="text-amber-400/90"> (summary RPC unavailable or empty — merged from sales/purchases). </span>
                 )}
                 {operationalEngine === null && !listLoading && contacts.length > 0 && <span> (resolving…). </span>}
-                Values are <strong className="text-gray-400">not</strong> swapped for GL. Amber icon on a row = operational total differs from party-attributed GL (
-                <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code>
-                ); use the party statement <strong className="text-gray-400">GL</strong> tab. Control-account reconciliation remains in the strip below.
+                Amber icon on a row = open-document subledger still differs from party GL (useful if invoices and journals diverge). Control-account reconciliation remains in the strip below.
               </p>
             </details>
           </div>
@@ -1543,11 +1602,17 @@ export const ContactsPage = () => {
                             <div
                               className={cn(
                                 'text-sm font-semibold tabular-nums leading-[1.4]',
-                                contact.receivables > 0 ? 'text-green-400' : 'text-gray-600'
+                                contactDisplayedReceivables(contact, partyGlByContactId) > 0
+                                  ? 'text-green-400'
+                                  : 'text-gray-600'
                               )}
-                              title="Operational (open documents), not GL"
+                              title={
+                                partyGlByContactId?.size
+                                  ? 'Party AR (1100) from journals when available; else open documents'
+                                  : 'Open documents (RPC); party GL map loading or unavailable'
+                              }
                             >
-                              {formatCurrency(contact.receivables)}
+                              {formatCurrency(contactDisplayedReceivables(contact, partyGlByContactId))}
                             </div>
                           </div>
                         )}
@@ -1577,11 +1642,17 @@ export const ContactsPage = () => {
                             <div
                               className={cn(
                                 'text-sm font-semibold tabular-nums leading-[1.4]',
-                                contact.payables > 0 ? 'text-red-400' : 'text-gray-600'
+                                contactDisplayedPayables(contact, partyGlByContactId) > 0
+                                  ? 'text-red-400'
+                                  : 'text-gray-600'
                               )}
-                              title="Operational (open documents), not GL"
+                              title={
+                                partyGlByContactId?.size
+                                  ? 'Party AP / worker payable from journals when available; else open documents'
+                                  : 'Open documents (RPC); party GL map loading or unavailable'
+                              }
                             >
-                              {formatCurrency(contact.payables)}
+                              {formatCurrency(contactDisplayedPayables(contact, partyGlByContactId))}
                             </div>
                           </div>
                         )}

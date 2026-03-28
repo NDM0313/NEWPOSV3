@@ -1,4 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { normalizeCompanyId } from './contactBalancesUtils';
+import { balanceRowFromMap, fetchContactBalancesSummary } from './contactBalancesRpc';
 
 export type ContactRole = 'customer' | 'supplier' | 'worker';
 export type BackendContactType = 'customer' | 'supplier' | 'both' | 'worker';
@@ -53,36 +55,65 @@ function rolesToType(roles: ContactRole[]): BackendContactType {
   return 'both';
 }
 
+function balanceFromRpcRow(
+  contactType: string,
+  receivables: number,
+  payables: number
+): number {
+  const t = (contactType || '').toLowerCase();
+  if (t === 'supplier') return Math.max(0, payables);
+  if (t === 'worker') return Math.max(0, payables);
+  if (t === 'both') return Math.max(0, receivables) + Math.max(0, payables);
+  return Math.max(0, receivables);
+}
+
+/**
+ * Operational balances from `get_contact_balances_summary` (same as web Contacts when RPC exists).
+ * Falls back to opening_balance only if RPC fails.
+ */
 export async function getContacts(
   companyId: string,
-  type?: ContactRole
+  type?: ContactRole,
+  branchId?: string | null
 ): Promise<{ data: Contact[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const company = normalizeCompanyId(companyId);
+  if (!company) return { data: [], error: 'Missing company.' };
   let query = supabase
     .from('contacts')
     .select('id, company_id, type, name, phone, email, city, address, opening_balance, credit_limit, worker_role, is_active, created_at, updated_at')
-    .eq('company_id', companyId)
+    .eq('company_id', company)
     .order('name');
   if (type === 'customer') query = query.in('type', ['customer', 'both']);
   else if (type === 'supplier') query = query.in('type', ['supplier', 'both']);
   else if (type === 'worker') query = query.eq('type', 'worker');
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
-  const list: Contact[] = (data || []).map((row: ContactRow & { worker_role?: string; created_at?: string; updated_at?: string }) => ({
-    id: row.id,
-    name: row.name,
-    roles: typeToRoles(row.type || 'customer'),
-    phone: row.phone || '',
-    email: row.email ?? undefined,
-    address: row.address ?? undefined,
-    city: row.city ?? undefined,
-    balance: Number(row.opening_balance ?? 0),
-    creditLimit: row.credit_limit ? Number(row.credit_limit) : undefined,
-    workerType: row.worker_role as Contact['workerType'],
-    status: row.is_active !== false ? 'active' : 'inactive',
-    createdAt: row.created_at ?? undefined,
-    updatedAt: row.updated_at ?? undefined,
-  }));
+
+  const { map: balanceById } = await fetchContactBalancesSummary(company, branchId);
+
+  const list: Contact[] = (data || []).map((row: ContactRow & { worker_role?: string; created_at?: string; updated_at?: string }) => {
+    const rpc = balanceRowFromMap(balanceById, row.id);
+    const opening = Number(row.opening_balance ?? 0);
+    const balance = rpc
+      ? balanceFromRpcRow(row.type || 'customer', rpc.receivables, rpc.payables)
+      : opening;
+    return {
+      id: row.id,
+      name: row.name,
+      roles: typeToRoles(row.type || 'customer'),
+      phone: row.phone || '',
+      email: row.email ?? undefined,
+      address: row.address ?? undefined,
+      city: row.city ?? undefined,
+      balance,
+      creditLimit: row.credit_limit ? Number(row.credit_limit) : undefined,
+      workerType: row.worker_role as Contact['workerType'],
+      status: row.is_active !== false ? 'active' : 'inactive',
+      createdAt: row.created_at ?? undefined,
+      updatedAt: row.updated_at ?? undefined,
+    };
+  });
   return { data: list, error: null };
 }
 

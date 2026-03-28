@@ -1,4 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getAllSales } from './sales';
+import { normalizeCompanyId } from './contactBalancesUtils';
+import { fetchContactBalancesSummary } from './contactBalancesRpc';
 
 export interface SalesSummary {
   totalSales: number;
@@ -15,13 +18,13 @@ export async function getSalesSummary(
   const fromDate = new Date();
   fromDate.setDate(fromDate.getDate() - days);
   const fromStr = fromDate.toISOString();
+  // All final invoices in range (include unpaid/partial) — same basis as web dashboard total sales
   let query = supabase
     .from('sales')
     .select('total, invoice_date')
     .eq('company_id', companyId)
     .eq('status', 'final')
-    .gte('invoice_date', fromStr)
-    .in('payment_status', ['paid', 'partial']);
+    .gte('invoice_date', fromStr);
   if (branchId && branchId !== 'all' && branchId !== 'default') query = query.eq('branch_id', branchId);
   const { data, error } = await query;
   if (error) return { data: null, error: error.message };
@@ -47,7 +50,8 @@ export async function getPurchasesSummary(
     .select('total')
     .eq('company_id', companyId)
     .gte('po_date', fromStr)
-    .is('cancelled_at', null);
+    .is('cancelled_at', null)
+    .in('status', ['final', 'received']);
   if (branchId && branchId !== 'all' && branchId !== 'default') query = query.eq('branch_id', branchId);
   const { data, error } = await query;
   if (error) return { data: null, error: error.message };
@@ -173,23 +177,23 @@ export async function getDayBookEntries(
   return { data: entries, error: null };
 }
 
-/** Total receivables (due from customers) – matches web Dashboard "Total Due (Receivables)" */
+function rpcBranchId(branchId: string | null | undefined): string | null {
+  if (!branchId || branchId === 'all' || branchId === 'default') return null;
+  return branchId;
+}
+
+/** Total receivables — same operational basis as web Contacts (`get_contact_balances_summary`). */
 export async function getReceivables(
   companyId: string,
   branchId: string | null | undefined
 ): Promise<{ data: number; error: string | null }> {
   if (!isSupabaseConfigured) return { data: 0, error: 'App not configured.' };
-  let query = supabase
-    .from('sales')
-    .select('due_amount')
-    .eq('company_id', companyId)
-    .eq('type', 'invoice')
-    .eq('status', 'final')
-    .in('payment_status', ['partial', 'unpaid']);
-  if (branchId && branchId !== 'all' && branchId !== 'default') query = query.eq('branch_id', branchId);
-  const { data, error } = await query;
-  if (error) return { data: 0, error: error.message };
-  const total = (data || []).reduce((sum, r) => sum + Number(r.due_amount ?? 0), 0);
+  const company = normalizeCompanyId(companyId);
+  if (!company) return { data: 0, error: 'Missing company.' };
+  const { map, error } = await fetchContactBalancesSummary(company, rpcBranchId(branchId));
+  if (error) return { data: 0, error };
+  let total = 0;
+  for (const v of map.values()) total += v.receivables;
   return { data: total, error: null };
 }
 
@@ -204,35 +208,39 @@ export interface ReceivableItem {
   payment_status: string;
 }
 
-/** List of sales (invoices) with outstanding receivables – for Receivables report detail. */
+/**
+ * Outstanding invoices — uses same payment/studio enrichment as mobile Sales list (not stale sales.due_amount).
+ */
 export async function getReceivablesList(
   companyId: string,
   branchId: string | null | undefined
 ): Promise<{ data: ReceivableItem[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
-  let query = supabase
-    .from('sales')
-    .select('id, invoice_no, customer_name, invoice_date, total, due_amount, payment_status')
-    .eq('company_id', companyId)
-    .eq('type', 'invoice')
-    .eq('status', 'final')
-    .in('payment_status', ['partial', 'unpaid'])
-    .gt('due_amount', 0)
-    .order('invoice_date', { ascending: false })
-    .limit(200);
-  if (branchId && branchId !== 'all' && branchId !== 'default') query = query.eq('branch_id', branchId);
-  const { data, error } = await query;
-  if (error) return { data: [], error: error.message };
-  return {
-    data: (data || []).map((r: Record<string, unknown>) => ({
-      id: String(r.id ?? ''),
-      invoice_no: String(r.invoice_no ?? '—'),
-      customer_name: String(r.customer_name ?? '—'),
-      invoice_date: r.invoice_date ? new Date(r.invoice_date as string).toISOString().slice(0, 10) : '—',
-      total: Number(r.total) ?? 0,
-      due_amount: Number(r.due_amount) ?? 0,
-      payment_status: String(r.payment_status ?? 'unpaid'),
-    })),
-    error: null,
-  };
+  const { data: rows, error } = await getAllSales(companyId, branchId ?? undefined);
+  if (error) return { data: [], error };
+  const out = (rows || [])
+    .filter((r: Record<string, unknown>) => {
+      const due = Number(r.balance_due ?? 0);
+      const st = String(r.status ?? '').toLowerCase();
+      return st === 'final' && due > 0.005;
+    })
+    .slice(0, 200)
+    .map((r: Record<string, unknown>) => {
+      const cust = r.customer as { name?: string } | null;
+      return {
+        id: String(r.id ?? ''),
+        invoice_no: String(r.invoice_no ?? '—'),
+        customer_name: String(cust?.name ?? r.customer_name ?? '—'),
+        invoice_date: r.invoice_date ? new Date(String(r.invoice_date)).toISOString().slice(0, 10) : '—',
+        total: Number(r.grand_total ?? r.total ?? 0) || 0,
+        due_amount: Number(r.balance_due ?? 0) || 0,
+        payment_status:
+          Number(r.balance_due ?? 0) <= 0.005
+            ? 'paid'
+            : Number(r.total_received ?? 0) > 0.005
+              ? 'partial'
+              : 'unpaid',
+      };
+    });
+  return { data: out, error: null };
 }

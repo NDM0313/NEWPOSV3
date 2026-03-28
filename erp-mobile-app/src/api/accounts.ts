@@ -156,7 +156,7 @@ export async function getJournalEntries(
     .order('entry_date', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit);
-  if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   const rows = (data || []).map((e: Record<string, unknown>) => {
@@ -282,7 +282,7 @@ export async function createJournalEntry(params: {
     reference_type: referenceType,
     created_by: userId ?? null,
   };
-  if (branchId && branchId !== 'all') entryRow.branch_id = branchId;
+  if (branchId && branchId !== 'all' && branchId !== 'default') entryRow.branch_id = branchId;
   if (attachments && attachments.length > 0) entryRow.attachments = attachments;
 
   let result = await supabase.from('journal_entries').insert(entryRow).select('id, entry_no').single();

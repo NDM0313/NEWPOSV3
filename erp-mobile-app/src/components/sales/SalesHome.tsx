@@ -225,6 +225,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
           created_by_name: (createdByUser?.full_name as string) || '',
           studio_charges: studioCharges,
           grand_total: grandTotal,
+          shipment_status: (s.shipment_status as string) || undefined,
         };
       });
       setRecentSales(list);
@@ -336,8 +337,12 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     const saleAmount = selectedSale.amount;
     const studioCost = selectedSale.studio_charges ?? 0;
     const grandTotal = selectedSale.grand_total ?? saleAmount + studioCost;
-    const paidAmount = selectedSale.total_received;
-    const dueAmount = selectedSale.balance_due;
+    // Same as web drawer: when payment rows are loaded, total paid = sum of lines (sale + manual receipt allocations).
+    const paidFromHistory =
+      paymentHistory.length > 0 ? paymentHistory.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) : null;
+    const paidAmount = paidFromHistory != null ? paidFromHistory : selectedSale.total_received;
+    const dueRaw = grandTotal - paidAmount;
+    const dueAmount = dueRaw <= 0.005 ? 0 : dueRaw;
     const paymentStatus = dueAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
     const cust = selectedSale.raw.customer as { name?: string; phone?: string } | null;
     const customerPhone = cust?.phone ?? (selectedSale.raw.contact_phone as string) ?? '—';

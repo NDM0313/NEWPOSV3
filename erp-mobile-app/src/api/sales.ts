@@ -305,7 +305,8 @@ export async function getAllSales(
       const { data: retryData, error: retryError } = await retry;
       if (retryError) return { data: [], error: retryError.message };
       const retryList = retryData || [];
-      const withPaymentsRetry = await enrichSalesWithPayments(companyId, branchId, retryList);
+      const withStudioRetry = await enrichSalesWithStudioChargesBatch(retryList);
+      const withPaymentsRetry = await enrichSalesWithPayments(companyId, withStudioRetry);
       const enrichedRetry = await enrichSalesWithShipping(withPaymentsRetry);
       return { data: enrichedRetry, error: null };
     }
@@ -313,44 +314,103 @@ export async function getAllSales(
   }
 
   const list = data || [];
-  const withPayments = await enrichSalesWithPayments(companyId, branchId, list);
+  const withStudio = await enrichSalesWithStudioChargesBatch(list);
+  const withPayments = await enrichSalesWithPayments(companyId, withStudio);
   const enriched = await enrichSalesWithShipping(withPayments);
   return { data: enriched, error: null };
 }
 
-/** Aggregate payments by sale (reference_type='sale'); respect company_id and branch_id. */
-async function enrichSalesWithPayments(
-  companyId: string,
-  branchId: string | null | undefined,
+/** Same as web saleService.getAllSales — studio worker cost from productions (RPC). */
+async function enrichSalesWithStudioChargesBatch(
   sales: Array<Record<string, unknown>>
 ): Promise<Array<Record<string, unknown>>> {
   if (!sales.length) return sales;
   const saleIds = sales.map((s) => s.id as string).filter(Boolean);
-  let payQuery = supabase
+  try {
+    const { data: studioRows } = await supabase.rpc('get_sale_studio_charges_batch', {
+      p_sale_ids: saleIds,
+    });
+    if (studioRows && Array.isArray(studioRows)) {
+      const studioBySale = new Map<string, number>();
+      (studioRows as { sale_id: string; studio_cost: number }[]).forEach((row: { sale_id?: string; studio_cost?: number }) => {
+        const id = row.sale_id;
+        if (id) studioBySale.set(String(id), Number(row.studio_cost) || 0);
+      });
+      return sales.map((s) => {
+        const cost = studioBySale.get(String(s.id));
+        if (cost != null && cost > 0) {
+          return { ...s, studio_charges: cost };
+        }
+        return s;
+      });
+    }
+  } catch {
+    // RPC missing on older DBs — keep sales.studio_charges from row if any
+  }
+  return sales;
+}
+
+/**
+ * Paid / balance same basis as web SalesPage + ViewSaleDetailsDrawer:
+ * - Sum payments.reference_type=sale for this company (do not filter payment.branch_id — receipts often post without matching branch).
+ * - Exclude voided payments.
+ * - Add payment_allocations (manual receipt) where parent payment is not voided.
+ */
+async function enrichSalesWithPayments(
+  companyId: string,
+  sales: Array<Record<string, unknown>>
+): Promise<Array<Record<string, unknown>>> {
+  if (!sales.length) return sales;
+  const saleIds = sales.map((s) => s.id as string).filter(Boolean);
+  const { data: payData } = await supabase
     .from('payments')
     .select('reference_id, amount')
     .eq('reference_type', 'sale')
     .eq('company_id', companyId)
-    .in('reference_id', saleIds);
-  if (branchId && branchId !== 'all' && branchId !== 'default') {
-    payQuery = payQuery.eq('branch_id', branchId);
-  }
-  const { data: payData } = await payQuery;
+    .in('reference_id', saleIds)
+    .is('voided_at', null);
+
   const bySale: Record<string, number> = {};
   for (const p of payData || []) {
-    const refId = (p as Record<string, unknown>).reference_id as string;
+    const refId = String((p as Record<string, unknown>).reference_id || '');
     if (refId) {
       bySale[refId] = (bySale[refId] || 0) + Number((p as Record<string, unknown>).amount ?? 0);
     }
   }
+
+  try {
+    const { data: allocs } = await supabase
+      .from('payment_allocations')
+      .select('sale_id, allocated_amount, payment_id')
+      .in('sale_id', saleIds);
+    const allocPayIds = [...new Set((allocs || []).map((a: { payment_id?: string }) => a.payment_id).filter(Boolean))] as string[];
+    if (allocPayIds.length > 0) {
+      const { data: parents } = await supabase.from('payments').select('id, voided_at').in('id', allocPayIds);
+      const voidedParent = new Set(
+        (parents || [])
+          .filter((x: { voided_at?: string | null }) => x.voided_at != null && String(x.voided_at).length > 0)
+          .map((x: { id: string }) => String(x.id))
+      );
+      for (const a of allocs || []) {
+        const row = a as { sale_id?: string; payment_id?: string; allocated_amount?: number };
+        const sid = String(row.sale_id || '');
+        if (!sid || voidedParent.has(String(row.payment_id || ''))) continue;
+        bySale[sid] = (bySale[sid] || 0) + (Number(row.allocated_amount) || 0);
+      }
+    }
+  } catch {
+    // payment_allocations may be missing
+  }
+
   return sales.map((s) => {
+    const id = String(s.id || '');
     const saleTotal = Number(s.total ?? 0);
     const studioCharges = Number(s.studio_charges ?? 0);
     const grandTotal = saleTotal + studioCharges;
-    const totalReceived = bySale[(s.id as string) || ''] || 0;
-    const overpaid = totalReceived > grandTotal;
+    const totalReceived = bySale[id] || 0;
+    const overpaid = totalReceived > grandTotal + 0.005;
     const balanceDue = overpaid ? 0 : Math.max(0, grandTotal - totalReceived);
-    const creditBalance = overpaid ? totalReceived - grandTotal : 0;
+    const creditBalance = overpaid ? Math.max(0, totalReceived - grandTotal) : 0;
     return {
       ...s,
       total_amount: saleTotal,
@@ -630,12 +690,15 @@ export async function getSalePayments(saleId: string): Promise<{
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const { data, error } = await supabase
     .from('payments')
-    .select('id, payment_date, reference_number, amount, payment_method, attachments')
+    .select('id, payment_date, reference_number, amount, payment_method, attachments, voided_at')
     .eq('reference_type', 'sale')
     .eq('reference_id', saleId)
+    .is('voided_at', null)
     .order('payment_date', { ascending: false });
   if (error) return { data: [], error: error.message };
-  const list = (data || []).map((p: Record<string, unknown>) => {
+  const direct = (data || [])
+    .filter((p: Record<string, unknown>) => !p.voided_at)
+    .map((p: Record<string, unknown>) => {
     let attachments: PaymentAttachment[] | undefined;
     const raw = p.attachments;
     if (Array.isArray(raw) && raw.length > 0) {
@@ -653,7 +716,54 @@ export async function getSalePayments(saleId: string): Promise<{
       attachments: attachments?.length ? attachments : undefined,
     };
   });
-  return { data: list, error: null };
+
+  const allocRows: Array<{ id: string; date: string; amount: number; method: string; referenceNo: string; attachments?: PaymentAttachment[] }> = [];
+  try {
+    const { data: allocs } = await supabase
+      .from('payment_allocations')
+      .select('id, allocated_amount, allocation_date, payment_id, allocation_order')
+      .eq('sale_id', saleId);
+    const payIds = [...new Set((allocs || []).map((a: { payment_id?: string }) => a.payment_id).filter(Boolean))] as string[];
+    if (payIds.length > 0) {
+      const { data: parents } = await supabase
+        .from('payments')
+        .select('id, payment_date, reference_number, amount, payment_method, attachments, voided_at')
+        .in('id', payIds);
+      const parentById = new Map((parents || []).map((pr: Record<string, unknown>) => [String(pr.id), pr]));
+      for (const a of allocs || []) {
+        const row = a as { id?: string; payment_id?: string; allocated_amount?: number; allocation_date?: string; allocation_order?: number };
+        const pr = parentById.get(String(row.payment_id));
+        if (!pr || pr.voided_at) continue;
+        let attachments: PaymentAttachment[] | undefined;
+        const raw = pr.attachments;
+        if (Array.isArray(raw) && raw.length > 0) {
+          attachments = raw.map((x: unknown) => {
+            const o = x as Record<string, unknown>;
+            return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
+          }).filter((x) => x.url);
+        }
+        const ord = Number(row.allocation_order) || 0;
+        allocRows.push({
+          id: `alloc:${row.id}`,
+          date: pr.payment_date ? new Date(String(pr.payment_date)).toLocaleDateString('en-PK') : '—',
+          amount: Number(row.allocated_amount ?? 0),
+          method: String(pr.payment_method ?? '—'),
+          referenceNo: `${String(pr.reference_number ?? '—')} (alloc #${ord || '—'})`,
+          attachments: attachments?.length ? attachments : undefined,
+        });
+      }
+    }
+  } catch {
+    // no payment_allocations
+  }
+
+  const combined = [...direct, ...allocRows].sort((x, y) => {
+    const dx = new Date(x.date).getTime();
+    const dy = new Date(y.date).getTime();
+    if (dy !== dx) return dy - dx;
+    return String(y.referenceNo).localeCompare(String(x.referenceNo));
+  });
+  return { data: combined, error: null };
 }
 
 /** Log share action for audit (whatsapp / pdf / link) */
