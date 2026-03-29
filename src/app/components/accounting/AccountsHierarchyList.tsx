@@ -62,6 +62,8 @@ export type AccountsHierarchyListProps = {
   renderRowMenu: (row: AccountsHierarchyRowModel) => React.ReactNode;
   /** Extra inline action (e.g. control breakdown chevron) */
   renderRowInlineExtra?: (row: AccountsHierarchyRowModel) => React.ReactNode;
+  /** Expanded panel directly under a row (e.g. linked parties dropdown) */
+  renderPartyDropdownBelowRow?: (row: AccountsHierarchyRowModel) => React.ReactNode;
 };
 
 export function AccountsHierarchyList({
@@ -72,6 +74,7 @@ export function AccountsHierarchyList({
   trendPctForRow,
   renderRowMenu,
   renderRowInlineExtra,
+  renderPartyDropdownBelowRow,
 }: AccountsHierarchyListProps) {
   if (rows.length === 0) {
     return <>{emptyState ?? null}</>;
@@ -253,6 +256,7 @@ export function AccountsHierarchyList({
                 <div className="shrink-0">{renderRowMenu(row)}</div>
               </div>
               </div>
+              {renderPartyDropdownBelowRow?.(row)}
             </div>
           );
         })}

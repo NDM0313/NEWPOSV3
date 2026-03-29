@@ -58,7 +58,8 @@ import { AddEntryV2 } from './AddEntryV2';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { INTEGRITY_LAB_SESSION_KEY } from '@/app/lib/integrityLabConstants';
 import { ControlAccountBreakdownDrawer } from './ControlAccountBreakdownDrawer';
-import type { ControlAccountBreakdownResult } from '@/app/services/controlAccountBreakdownService';
+import type { ControlAccountBreakdownResult, PartyGlRow } from '@/app/services/controlAccountBreakdownService';
+import { fetchControlAccountBreakdown } from '@/app/services/controlAccountBreakdownService';
 
 /** Add Entry: V2 = new default (typed, theme-matched). Set false to use legacy AccountingTestPage. */
 const USE_ADD_ENTRY_V2 = true;
@@ -69,6 +70,7 @@ import { getControlAccountKind } from '@/app/lib/accountControlKind';
 import { AccountsHierarchyList } from '@/app/components/accounting/AccountsHierarchyList';
 import { useAccountsHierarchyModel } from '@/app/components/accounting/useAccountsHierarchyModel';
 import { AccountingDashboardAccountRowMenu } from '@/app/components/accounting/AccountingDashboardAccountRowMenu';
+import { ChartOfAccountsPartyDropdown } from '@/app/components/accounting/ChartOfAccountsPartyDropdown';
 
 const StudioCostsTab = lazy(() => import('./StudioCostsTab').then((m) => ({ default: m.StudioCostsTab })));
 const DepositsTab = lazy(() => import('./DepositsTab').then((m) => ({ default: m.DepositsTab })));
@@ -98,6 +100,23 @@ import {
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
+
+function controlKindDisplayLabel(kind: ControlAccountBreakdownResult['controlKind']): string {
+  switch (kind) {
+    case 'ar':
+      return 'Accounts receivable';
+    case 'ap':
+      return 'Accounts payable';
+    case 'worker_payable':
+      return 'Worker payable';
+    case 'worker_advance':
+      return 'Worker advance';
+    case 'suspense':
+      return 'Suspense';
+    default:
+      return 'GL';
+  }
+}
 
 /** Journal list: line amount is stored positive; classify by module/source (sign-based Income/Expense was wrong for all rows). */
 function journalRowPresentation(entry: AccountingEntry): {
@@ -204,6 +223,15 @@ export const AccountingDashboard = () => {
     account: { id: string; name: string; code?: string };
     kind: ControlAccountBreakdownResult['controlKind'];
   } | null>(null);
+  /** Chart of Accounts: inline party list under selected control / linked sub-account row */
+  const [coaPartyPanelAccountId, setCoaPartyPanelAccountId] = useState<string | null>(null);
+  const [coaPartyFetch, setCoaPartyFetch] = useState<{
+    loading: boolean;
+    error: string | null;
+    rows: PartyGlRow[];
+    note?: string;
+    controlLabel?: string;
+  }>({ loading: false, error: null, rows: [] });
   const [transactionReference, setTransactionReference] = useState<string | null>(null);
   /** PF-14.3B: When opening a grouped journal row, pass all entries in the group for the detail trail. */
   const [selectedGroupEntries, setSelectedGroupEntries] = useState<AccountingEntry[] | null>(null);
@@ -289,6 +317,53 @@ export const AccountingDashboard = () => {
     collapsedGroupIds,
     setCollapsedGroupIds
   );
+
+  useEffect(() => {
+    if (!coaPartyPanelAccountId || !companyId) {
+      setCoaPartyFetch({ loading: false, error: null, rows: [] });
+      return;
+    }
+    const acc = accounting.accounts.find((a) => a.id === coaPartyPanelAccountId);
+    if (!acc?.id) return;
+    const ck = getControlAccountKind({ name: acc.name, code: (acc as { code?: string }).code });
+    if (!ck) {
+      setCoaPartyFetch({ loading: false, error: null, rows: [] });
+      return;
+    }
+    const label = controlKindDisplayLabel(ck);
+    let cancelled = false;
+    setCoaPartyFetch({ loading: true, error: null, rows: [], note: undefined, controlLabel: label });
+    fetchControlAccountBreakdown({
+      companyId,
+      branchId: branchId === 'all' ? null : branchId,
+      accountId: acc.id,
+      accountCode: String((acc as { code?: string }).code || ''),
+      accountName: acc.name || '',
+      controlKind: ck,
+    })
+      .then((r) => {
+        if (cancelled) return;
+        setCoaPartyFetch({
+          loading: false,
+          error: null,
+          rows: r.partyRows,
+          note: r.partySectionNote,
+          controlLabel: label,
+        });
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setCoaPartyFetch({
+          loading: false,
+          error: e instanceof Error ? e.message : 'Failed to load parties',
+          rows: [],
+          controlLabel: label,
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [coaPartyPanelAccountId, companyId, branchId, accounting.accounts]);
 
   // Tab configuration: Journal Entries | Day Book | Roznamcha | Accounts | Ledger | Receivables | Payables | Studio Costs | Account Statements
   const allTabs = [
@@ -1139,26 +1214,92 @@ export const AccountingDashboard = () => {
                 renderRowInlineExtra={(row) => {
                   const account = row.account;
                   const ck = getControlAccountKind({ name: account.name, code: (account as { code?: string }).code });
-                  if (!ck || !account.id) return null;
-                  return (
+                  const linkedName = (account as { linked_contact_name?: string | null }).linked_contact_name;
+                  const showPartyToggle = Boolean(account.id && (ck || linkedName));
+                  const breakdownBtn =
+                    ck && account.id ? (
+                      <button
+                        type="button"
+                        title="Control breakdown (GL / operational / party)"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setControlBreakdown({
+                            account: {
+                              id: account.id!,
+                              name: account.name || '',
+                              code: (account as { code?: string }).code,
+                            },
+                            kind: ck,
+                          });
+                        }}
+                        className="p-1 rounded-md text-blue-300 hover:bg-blue-500/15 border border-blue-500/25 shrink-0"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    ) : null;
+                  const partyBtn = showPartyToggle ? (
                     <button
                       type="button"
-                      title="Control breakdown (GL / operational / party)"
-                      onClick={() =>
-                        setControlBreakdown({
-                          account: {
-                            id: account.id!,
-                            name: account.name || '',
-                            code: (account as { code?: string }).code,
-                          },
-                          kind: ck,
-                        })
+                      title={
+                        coaPartyPanelAccountId === account.id
+                          ? 'Hide linked parties'
+                          : 'Show linked parties & suppliers'
                       }
-                      className="p-1 rounded-md text-blue-300 hover:bg-blue-500/15 border border-blue-500/25 shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCoaPartyPanelAccountId((id) => (id === account.id ? null : account.id!));
+                      }}
+                      className={cn(
+                        'p-1 rounded-md border shrink-0 transition-colors',
+                        coaPartyPanelAccountId === account.id
+                          ? 'text-violet-200 bg-violet-500/20 border-violet-500/40'
+                          : 'text-gray-400 hover:bg-gray-800 hover:text-violet-200 border-gray-700/80'
+                      )}
                     >
-                      <ChevronRight className="w-4 h-4" />
+                      <Users className="w-4 h-4" />
                     </button>
+                  ) : null;
+                  if (!partyBtn && !breakdownBtn) return null;
+                  return (
+                    <div className="flex items-center gap-1 shrink-0">
+                      {partyBtn}
+                      {breakdownBtn}
+                    </div>
                   );
+                }}
+                renderPartyDropdownBelowRow={(row) => {
+                  if (!row.account.id || coaPartyPanelAccountId !== row.account.id) return null;
+                  const acc = row.account as {
+                    linked_contact_name?: string | null;
+                    linked_contact_party_type?: string | null;
+                    code?: string;
+                    name?: string;
+                  };
+                  const ck = getControlAccountKind({ name: acc.name, code: acc.code });
+                  if (ck) {
+                    return (
+                      <ChartOfAccountsPartyDropdown
+                        formatCurrency={formatCurrency}
+                        onCollapse={() => setCoaPartyPanelAccountId(null)}
+                        loading={coaPartyFetch.loading}
+                        error={coaPartyFetch.error}
+                        partyRows={coaPartyFetch.rows}
+                        partySectionNote={coaPartyFetch.note}
+                        scopeLabel={coaPartyFetch.controlLabel}
+                      />
+                    );
+                  }
+                  if (acc.linked_contact_name) {
+                    return (
+                      <ChartOfAccountsPartyDropdown
+                        formatCurrency={formatCurrency}
+                        onCollapse={() => setCoaPartyPanelAccountId(null)}
+                        linkedContactName={acc.linked_contact_name}
+                        linkedContactPartyType={acc.linked_contact_party_type ?? undefined}
+                      />
+                    );
+                  }
+                  return null;
                 }}
                 renderRowMenu={(row) => (
                   <AccountingDashboardAccountRowMenu
