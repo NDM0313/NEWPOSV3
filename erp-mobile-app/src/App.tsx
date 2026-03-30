@@ -468,7 +468,7 @@ export default function App() {
       {currentScreen === 'ledger' && user && (
         !canAccessScreen('accounts', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
-          : <LedgerModule onBack={navigateHome} user={user} companyId={companyId} />
+          : <LedgerModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
       )}
       {currentScreen === 'dashboard' && user && (
         !canAccessScreen('dashboard', selectedBranch?.id)

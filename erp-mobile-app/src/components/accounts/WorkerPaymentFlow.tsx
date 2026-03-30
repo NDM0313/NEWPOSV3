@@ -8,6 +8,7 @@ interface WorkerPaymentFlowProps {
   onComplete: () => void;
   user: User;
   companyId?: string | null;
+  branchId?: string | null;
 }
 
 interface Worker {
@@ -24,6 +25,7 @@ interface PaymentData {
   worker: Worker | null;
   paymentAccountId: string;
   paymentAccountName: string;
+  paymentAccountType: string;
   amount: number;
   date: string;
   workPeriod: string;
@@ -32,7 +34,7 @@ interface PaymentData {
 
 const getAccountIcon = (type: string) => (type === 'cash' ? '💵' : type === 'bank' ? '🏦' : '📱');
 
-export function WorkerPaymentFlow({ onBack, onComplete, user, companyId }: WorkerPaymentFlowProps) {
+export function WorkerPaymentFlow({ onBack, onComplete, user, companyId, branchId }: WorkerPaymentFlowProps) {
   const [step, setStep] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -44,6 +46,7 @@ export function WorkerPaymentFlow({ onBack, onComplete, user, companyId }: Worke
     worker: null,
     paymentAccountId: '',
     paymentAccountName: '',
+    paymentAccountType: '',
     amount: 0,
     date: new Date().toISOString().split('T')[0],
     workPeriod: '',
@@ -98,9 +101,14 @@ export function WorkerPaymentFlow({ onBack, onComplete, user, companyId }: Worke
     setError(null);
     const { error: err } = await recordWorkerPayment({
       companyId,
+      branchId: branchId ?? null,
       workerId: paymentData.worker.id,
+      workerName: paymentData.worker.name,
       amount: paymentData.amount,
       paymentDate: paymentData.date,
+      paymentAccountId: paymentData.paymentAccountId,
+      paymentMethod: paymentData.paymentAccountType,
+      userId: user.id,
       workPeriod: paymentData.workPeriod || undefined,
       notes: paymentData.notes || undefined,
       paymentReference: undefined, // API uses getNextDocumentNumber (PMT-0001 format)
@@ -250,7 +258,7 @@ export function WorkerPaymentFlow({ onBack, onComplete, user, companyId }: Worke
                   filteredAccounts.map((account) => (
                     <button
                       key={account.id}
-                      onClick={() => setPaymentData({ ...paymentData, paymentAccountId: account.id, paymentAccountName: account.name })}
+                      onClick={() => setPaymentData({ ...paymentData, paymentAccountId: account.id, paymentAccountName: account.name, paymentAccountType: account.type })}
                       className={`w-full p-3 rounded-xl border-2 text-left transition-all ${
                         paymentData.paymentAccountId === account.id ? 'bg-[#10B981]/20 border-[#10B981]' : 'bg-[#1F2937] border-[#374151] hover:border-[#10B981]/50'
                       }`}

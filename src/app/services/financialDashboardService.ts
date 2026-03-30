@@ -18,6 +18,9 @@ export interface FinancialDashboardMetrics {
   bank_balance: number;
   receivables: number;
   payables: number;
+  /** Populated when RPC returns JSON from migration 20260370+: operational party roll-up basis. */
+  ar_ap_basis?: string;
+  ar_ap_scope?: string;
   /** Purchases (final/received) in the same window as today_sales / monthly_revenue (not operating expenses). */
   period_purchases?: number;
   /** Expenses module (paid) only — excludes purchase inventory spend. */
@@ -32,15 +35,19 @@ export interface FinancialDashboardMetrics {
  * Fetch executive financial metrics. Uses get_financial_dashboard_metrics RPC when available.
  */
 export async function getFinancialDashboardMetrics(
-  companyId: string
+  companyId: string,
+  branchId?: string | null
 ): Promise<FinancialDashboardMetrics> {
   if (!companyId) {
     return getEmptyMetrics();
   }
 
   try {
+    const pBranch =
+      branchId && branchId !== 'all' && branchId !== 'default' ? String(branchId).trim() : null;
     const { data, error } = await supabase.rpc('get_financial_dashboard_metrics', {
       p_company_id: companyId,
+      p_branch_id: pBranch && /^[0-9a-f]{8}-/i.test(pBranch) ? pBranch : null,
     });
 
     if (error) {
@@ -62,6 +69,8 @@ export async function getFinancialDashboardMetrics(
       bank_balance: Number(raw.bank_balance) ?? 0,
       receivables: Number(raw.receivables) ?? 0,
       payables: Number(raw.payables) ?? 0,
+      ar_ap_basis: raw.ar_ap_basis != null ? String(raw.ar_ap_basis) : undefined,
+      ar_ap_scope: raw.ar_ap_scope != null ? String(raw.ar_ap_scope) : undefined,
       period_purchases: Number(raw.period_purchases) || 0,
       period_operating_expenses: Number(raw.period_operating_expenses) || 0,
       sales_trend: Array.isArray(raw.sales_trend)
@@ -203,6 +212,8 @@ async function getMetricsFallback(companyId: string): Promise<FinancialDashboard
     bank_balance,
     receivables,
     payables,
+    ar_ap_basis: 'fallback_document_due_positive_only',
+    ar_ap_scope: 'company',
     period_purchases: monthlyPurchases,
     period_operating_expenses: monthlyExpenses,
     sales_trend,
@@ -268,7 +279,7 @@ export async function getDashboardMetrics(
     };
   } catch (e) {
     console.warn('[DASHBOARD] get_dashboard_metrics RPC failed, using fallback:', e);
-    return getDashboardMetricsFallback(companyId, startDate, endDate);
+    return getDashboardMetricsFallback(companyId, branchId, startDate, endDate);
   }
 }
 
@@ -284,6 +295,8 @@ function parseFinancialMetrics(raw: Record<string, unknown>): FinancialDashboard
     bank_balance: Number(raw.bank_balance) ?? 0,
     receivables: Number(raw.receivables) ?? 0,
     payables: Number(raw.payables) ?? 0,
+    ar_ap_basis: raw.ar_ap_basis != null ? String(raw.ar_ap_basis) : undefined,
+    ar_ap_scope: raw.ar_ap_scope != null ? String(raw.ar_ap_scope) : undefined,
     period_purchases: Number(raw.period_purchases) || 0,
     period_operating_expenses: Number(raw.period_operating_expenses) || 0,
     sales_trend: Array.isArray(raw.sales_trend) ? (raw.sales_trend as { date: string; value: number }[]) : [],
@@ -295,11 +308,12 @@ function parseFinancialMetrics(raw: Record<string, unknown>): FinancialDashboard
 
 async function getDashboardMetricsFallback(
   companyId: string,
+  branchId?: string | null,
   startDate?: string | null,
   endDate?: string | null
 ): Promise<DashboardMetricsPayload> {
   const [metrics, salesByCategory, lowStock] = await Promise.all([
-    getFinancialDashboardMetrics(companyId),
+    getFinancialDashboardMetrics(companyId, branchId),
     getSalesByCategoryFromService(companyId, startDate, endDate),
     getLowStockFromService(companyId),
   ]);

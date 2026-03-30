@@ -33,14 +33,12 @@ export function ReceivablesReport({ onBack, companyId, branchId }: ReceivablesRe
     }
     let cancelled = false;
     setLoading(true);
-    Promise.all([
-      reportsApi.getReceivables(companyId, branchId),
-      reportsApi.getReceivablesList(companyId, branchId),
-    ]).then(([totRes, listRes]) => {
+    reportsApi.getReceivablesList(companyId, branchId).then((listRes) => {
       if (cancelled) return;
       setLoading(false);
-      setTotal(totRes.error ? 0 : totRes.data ?? 0);
-      setList(listRes.error ? [] : listRes.data ?? []);
+      const rows = listRes.error ? [] : listRes.data ?? [];
+      setList(rows);
+      setTotal(rows.reduce((s, r) => s + Number(r.due_amount || 0), 0));
     });
     return () => { cancelled = true; };
   }, [companyId, branchId]);
@@ -86,6 +84,12 @@ export function ReceivablesReport({ onBack, companyId, branchId }: ReceivablesRe
             <p className="text-sm text-[#9CA3AF]">Total Due (Receivables)</p>
             <p className="text-2xl font-bold text-white">Rs. {total.toLocaleString()}</p>
             <p className="text-xs text-[#6B7280]">{list.length} invoice(s) with balance</p>
+            <p className="text-[11px] text-[#6B7280] mt-1">
+              Source: list uses enriched <code className="text-[#9CA3AF]">balance_due</code> per invoice (same basis as sales list), not raw ledger RPC rows alone.
+            </p>
+            <p className="text-[11px] text-[#6B7280] mt-0.5">
+              For party totals vs dashboard cards see <code className="text-[#9CA3AF]">get_contact_balances_summary</code> / GL AR — different semantics by design.
+            </p>
           </div>
         </div>
         {loading ? (

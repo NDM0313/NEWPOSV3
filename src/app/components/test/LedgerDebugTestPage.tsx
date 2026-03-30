@@ -86,6 +86,7 @@ export function LedgerDebugTestPage() {
         p_customer_id: cId,
         p_from_date: fromDate || null,
         p_to_date: toDate || null,
+        p_branch_id: null,
       });
       if (rpc.error) {
         out.push({ method: '1. RPC get_customer_ledger_sales', ok: false, count: 0, error: rpc.error.message });

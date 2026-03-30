@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { fetchCustomerLedgerSalesForRange } from '@/app/services/customerLedgerApi';
+import { fetchCustomerLedgerSalesForRange, ledgerSalesRpcBranchId } from '@/app/services/customerLedgerApi';
 
 export interface JournalEntry {
   id: string;
@@ -1291,7 +1291,13 @@ export const accountingService = {
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 2: Fetching sales via RPC', { customerId, companyId });
       
       // All final sales for party (same reader as customer statement); date scope for synthetic rows applied below.
-      const customerSales = await fetchCustomerLedgerSalesForRange(companyId, customerId);
+      const customerSales = await fetchCustomerLedgerSalesForRange(
+        companyId,
+        customerId,
+        undefined,
+        undefined,
+        ledgerSalesRpcBranchId(branchId)
+      );
       const saleIds = customerSales.map((s: any) => s.id);
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - Customer sales (canonical fetch):', saleIds.length);
       

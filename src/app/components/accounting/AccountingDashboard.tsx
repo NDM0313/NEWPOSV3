@@ -595,7 +595,7 @@ export const AccountingDashboard = () => {
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Income</p>
                 <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(summary.totalIncome)}</p>
-                <p className="text-xs text-gray-500 mt-1">This period</p>
+                <p className="text-xs text-gray-500 mt-1">GL derived (journal lines)</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
                 <TrendingUp size={24} className="text-green-500" />
@@ -609,7 +609,7 @@ export const AccountingDashboard = () => {
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Expense</p>
                 <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalExpense)}</p>
-                <p className="text-xs text-gray-500 mt-1">This period</p>
+                <p className="text-xs text-gray-500 mt-1">GL derived (journal lines)</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
                 <TrendingDown size={24} className="text-red-500" />
@@ -626,7 +626,7 @@ export const AccountingDashboard = () => {
                   "text-2xl font-bold mt-1",
                   summary.netProfit >= 0 ? "text-green-400" : "text-red-400"
                 )}>{formatCurrency(summary.netProfit)}</p>
-                <p className="text-xs text-gray-500 mt-1">Income - Expense</p>
+                <p className="text-xs text-gray-500 mt-1">GL derived (Income - Expense)</p>
               </div>
               <div className={cn(
                 "w-12 h-12 rounded-full flex items-center justify-center",
@@ -643,7 +643,7 @@ export const AccountingDashboard = () => {
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Receivables</p>
                 <p className="text-2xl font-bold text-blue-400 mt-1">{formatCurrency(summary.totalReceivable)}</p>
-                <p className="text-xs text-gray-500 mt-1">To receive</p>
+                <p className="text-xs text-gray-500 mt-1">GL derived (AR journal legs)</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
                 <Users size={24} className="text-blue-500" />
@@ -657,7 +657,7 @@ export const AccountingDashboard = () => {
               <div>
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Payables</p>
                 <p className="text-2xl font-bold text-orange-400 mt-1">{formatCurrency(summary.totalPayable)}</p>
-                <p className="text-xs text-gray-500 mt-1">To pay</p>
+                <p className="text-xs text-gray-500 mt-1">GL derived (AP/worker payable legs)</p>
               </div>
               <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
                 <Building2 size={24} className="text-orange-500" />
@@ -665,6 +665,12 @@ export const AccountingDashboard = () => {
             </div>
           </div>
         </div>
+        <p className="text-[11px] text-gray-600 mt-3 max-w-6xl leading-relaxed">
+          <span className="font-medium text-gray-500">Semantics map — </span>
+          These cards are <span className="text-gray-400">GL journal–derived</span> (revenue/expense accounts and AR/AP control legs). Operational follow-up uses the{' '}
+          <span className="text-gray-400">Receivables / Payables</span> tabs (document due: <code className="text-gray-500">sales.due</code> / <code className="text-gray-500">purchases.due</code>). Party operational roll-up (Contacts, executive dashboard AR/AP after migration 20260370) comes from{' '}
+          <code className="text-gray-500">get_contact_balances_summary</code>. Compare numbers only within the same source.
+        </p>
       </div>
 
       {/* Tabs – Ledger is dropdown only (no page change on click; select option → same page, same UI) */}
@@ -1321,6 +1327,9 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'receivables' && (
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+            <div className="px-4 py-2 border-b border-gray-800 text-[11px] text-gray-500">
+              Source: operational document due (`sales.due`) for invoice follow-up
+            </div>
             {sales.sales.filter(s => s.due > 0).length === 0 ? (
               <div className="text-center py-12">
                 <TrendingUp size={48} className="mx-auto text-gray-600 mb-3" />
@@ -1402,6 +1411,9 @@ export const AccountingDashboard = () => {
                   Pay Courier
                 </Button>
               )}
+            </div>
+            <div className="px-4 py-2 border-b border-gray-800 text-[11px] text-gray-500">
+              Source: operational document due (`purchases.due`) for vendor settlement workflow
             </div>
             {purchases.purchases.filter(p => p.due > 0).length === 0 ? (
               <div className="text-center py-12">

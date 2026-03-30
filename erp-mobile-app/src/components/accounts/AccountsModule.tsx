@@ -126,6 +126,7 @@ export function AccountsModule({ onBack, user, companyId, branch }: AccountsModu
         onComplete={() => setView('dashboard')}
         user={user}
         companyId={companyId}
+        branchId={branch?.id ?? null}
       />
     );
   }

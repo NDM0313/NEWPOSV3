@@ -448,9 +448,13 @@ export const Dashboard = () => {
               <StatCard title="Profit margin" value={`${displayMetricsWithCashBank.profit_margin_pct}%`} change="—" icon={TrendingUp} trend={displayMetricsWithCashBank.profit_margin_pct >= 0 ? 'up' : 'down'} iconColor="text-[#06B6D4]" />
               <StatCard title="Cash balance" value={formatCurrency(displayMetricsWithCashBank.cash_balance)} change="—" icon={Wallet} trend="up" iconColor="text-[#10B981]" />
               <StatCard title="Bank balance" value={formatCurrency(displayMetricsWithCashBank.bank_balance)} change="—" icon={Building2} trend="up" iconColor="text-[#3B82F6]" />
-              <StatCard title="Receivables" value={formatCurrency(displayMetricsWithCashBank.receivables)} change="—" icon={ArrowDownRight} trend="up" iconColor="text-[#3B82F6]" />
-              <StatCard title="Payables" value={formatCurrency(displayMetricsWithCashBank.payables)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
+              <StatCard title="Receivables (operational)" value={formatCurrency(displayMetricsWithCashBank.receivables)} change="—" icon={ArrowDownRight} trend="up" iconColor="text-[#3B82F6]" />
+              <StatCard title="Payables (operational)" value={formatCurrency(displayMetricsWithCashBank.payables)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
             </div>
+            <p className="text-[11px] text-[#6B7280] mb-4 leading-snug">
+              Receivables / Payables above: SUM(<code className="text-gray-500">get_contact_balances_summary</code>) for company or selected branch after DB migration <code className="text-gray-500">20260370_phase2a2_...</code>. That roll-up uses per-contact rules (e.g. final sales balance, net of on-account / manual receipts per RPC) — not the same as raw SUM(<code className="text-gray-500">sales.due_amount</code>), not the same as GL control on{' '}
+              <span className="text-gray-400">Accounting → Accounts</span>, and payables include supplier + worker/studio slice from the RPC.
+            </p>
             {(displayMetricsWithCashBank.sales_trend?.length > 0 || displayMetricsWithCashBank.expense_trend?.length > 0 || displayMetricsWithCashBank.profit_trend?.length > 0) && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="bg-[#1F2937]/50 rounded-lg p-4 border border-[#374151]">

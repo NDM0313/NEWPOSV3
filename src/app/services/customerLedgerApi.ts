@@ -12,6 +12,15 @@ export type CustomerLedgerPaymentScope = 'live' | 'audit';
 
 export interface CustomerLedgerQueryOptions {
   paymentScope?: CustomerLedgerPaymentScope;
+  /** Valid UUID branch or null/omitted for company-wide ledger sales (matches `get_customer_ledger_sales` p_branch_id). */
+  branchId?: string | null;
+}
+
+/** Maps UI branch to RPC `p_branch_id` (all/default → null). */
+export function ledgerSalesRpcBranchId(branchId?: string | null): string | null {
+  if (branchId == null || branchId === '' || branchId === 'all' || branchId === 'default') return null;
+  const t = String(branchId).trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t) ? t : null;
 }
 
 function isLiveScope(scope: CustomerLedgerPaymentScope | undefined): boolean {
@@ -333,13 +342,16 @@ export async function fetchCustomerLedgerSalesForRange(
   companyId: string,
   cId: string,
   fromDate?: string,
-  toDate?: string
+  toDate?: string,
+  branchId?: string | null
 ): Promise<any[]> {
+  const pBranch = ledgerSalesRpcBranchId(branchId);
   const rpcDated = await supabase.rpc('get_customer_ledger_sales', {
     p_company_id: companyId,
     p_customer_id: cId,
     p_from_date: fromDate ?? null,
     p_to_date: toDate ?? null,
+    p_branch_id: pBranch,
   });
 
   let sales: any[] = [];
@@ -353,6 +365,7 @@ export async function fetchCustomerLedgerSalesForRange(
         p_customer_id: cId,
         p_from_date: null,
         p_to_date: null,
+        p_branch_id: pBranch,
       });
       if (!wide.error && (wide.data?.length ?? 0) > 0) {
         const filtered = (wide.data as any[]).filter((row) => {
@@ -381,6 +394,7 @@ export async function fetchCustomerLedgerSalesForRange(
       )
       .eq('company_id', companyId)
       .eq('customer_id', cId);
+    if (pBranch) salesQuery = salesQuery.eq('branch_id', pBranch);
     if (fromDate) salesQuery = salesQuery.gte('invoice_date', fromDate);
     if (toDate) salesQuery = salesQuery.lte('invoice_date', toDate);
     const result = await salesQuery.order('invoice_date', { ascending: false });
@@ -398,6 +412,7 @@ export async function fetchCustomerLedgerSalesForRange(
         )
         .eq('company_id', companyId)
         .eq('customer_id', cId);
+      if (pBranch) retryQuery = retryQuery.eq('branch_id', pBranch);
       if (fromDate) retryQuery = retryQuery.gte('invoice_date', fromDate);
       if (toDate) retryQuery = retryQuery.lte('invoice_date', toDate);
       const retry = await retryQuery.order('invoice_date', { ascending: false });
@@ -577,6 +592,7 @@ export const customerLedgerAPI = {
     options?: CustomerLedgerQueryOptions
   ): Promise<CustomerLedgerSummary> {
     const scope: CustomerLedgerPaymentScope = options?.paymentScope ?? 'live';
+    const ledgerBranch = ledgerSalesRpcBranchId(options?.branchId ?? null);
     const cId = String(customerId ?? '').trim();
     if (!cId) {
       return {
@@ -593,12 +609,12 @@ export const customerLedgerAPI = {
         unpaid: 0,
       };
     }
-    const allFinalForPayments = await fetchCustomerLedgerSalesForRange(companyId, cId);
+    const allFinalForPayments = await fetchCustomerLedgerSalesForRange(companyId, cId, undefined, undefined, ledgerBranch);
     const allSaleIdsForPayments = (allFinalForPayments || [])
       .map((r: any) => r.id)
       .filter(Boolean) as string[];
 
-    let invoices = await fetchCustomerLedgerSalesForRange(companyId, cId, fromDate, toDate);
+    let invoices = await fetchCustomerLedgerSalesForRange(companyId, cId, fromDate, toDate, ledgerBranch);
     const totalInvoices = invoices.length;
 
     // Ensure invoice_no for studio detection (RPC may not return it)
@@ -690,7 +706,7 @@ export const customerLedgerAPI = {
         d.setUTCDate(d.getUTCDate() - 1);
         return d.toISOString().split('T')[0];
       })();
-      const previousSales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, null, dayBeforeFrom);
+      const previousSales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, null, dayBeforeFrom, ledgerBranch);
       const previousTotal = previousSales.reduce(
         (sum, s: any) => sum + (Number(s.total) || 0) + (Number(s.shipment_charges) || 0),
         0
@@ -887,10 +903,11 @@ export const customerLedgerAPI = {
     options?: CustomerLedgerQueryOptions
   ): Promise<Transaction[]> {
     const scope: CustomerLedgerPaymentScope = options?.paymentScope ?? 'live';
+    const ledgerBranch = ledgerSalesRpcBranchId(options?.branchId ?? null);
     const cId = String(customerId ?? '').trim();
     if (!cId) return [];
 
-    const sales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, fromDate, toDate);
+    const sales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, fromDate, toDate, ledgerBranch);
     if (process.env.NODE_ENV !== 'production') {
       console.log('[LEDGER] fetchCustomerLedgerSalesForRange', {
         companyId,
@@ -903,7 +920,7 @@ export const customerLedgerAPI = {
 
     const saleIds = (sales || []).map((s: any) => s.id);
 
-    const allFinalLedger = await fetchCustomerLedgerSalesForRange(companyId, cId);
+    const allFinalLedger = await fetchCustomerLedgerSalesForRange(companyId, cId, undefined, undefined, ledgerBranch);
     const allSaleIdsForPayments = (allFinalLedger || [])
       .map((r: any) => r.id)
       .filter(Boolean) as string[];
@@ -1249,7 +1266,7 @@ export const customerLedgerAPI = {
         d.setUTCDate(d.getUTCDate() - 1);
         return d.toISOString().split('T')[0];
       })();
-      const prevSales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, null, dayBeforeFrom);
+      const prevSales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, null, dayBeforeFrom, ledgerBranch);
       const prevTotal = prevSales.reduce(
         (sum, s: any) => sum + (Number(s.total) || 0) + (Number(s.shipment_charges) || 0),
         0
@@ -1522,8 +1539,9 @@ export const customerLedgerAPI = {
     options?: CustomerLedgerQueryOptions
   ): Promise<Payment[]> {
     const scope: CustomerLedgerPaymentScope = options?.paymentScope ?? 'live';
+    const ledgerBranch = ledgerSalesRpcBranchId(options?.branchId ?? null);
     const result: Payment[] = [];
-    const finalRows = await fetchCustomerLedgerSalesForRange(companyId, String(customerId ?? '').trim());
+    const finalRows = await fetchCustomerLedgerSalesForRange(companyId, String(customerId ?? '').trim(), undefined, undefined, ledgerBranch);
     const saleIds: string[] = (finalRows || []).map((s: any) => s.id).filter(Boolean);
 
     if (saleIds.length > 0) {

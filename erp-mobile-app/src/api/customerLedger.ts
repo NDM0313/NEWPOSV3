@@ -1,14 +1,11 @@
 /**
  * Mobile customer ledger (read-only).
  *
- * **Balances (list + detail card)** — `get_contact_balances_summary` with **`p_branch_id: null` always**
- * (company-wide). Reason: the RPC filters sales/payments by branch when a UUID is passed; invoices with
- * `branch_id` NULL or another branch are excluded, so a branch-scoped total can be ~Rs. 13k while
- * `get_customer_ledger_sales` (no branch filter) still lists full activity — same mismatch users saw vs web
- * Contacts when the web tab uses “All branches”. Web Contacts with a specific branch selected can differ;
- * ledger prioritizes one AR number that matches the full invoice/payment picture.
+ * **Balances (list + detail card)** — `get_contact_balances_summary` with the selected branch policy
+ * from app state (`branchId === all/default` -> null; valid UUID -> branch scoped) so web/mobile
+ * show aligned AR/AP semantics for the same branch context.
  *
- * **Activity lines** — `get_customer_ledger_sales` + `payments` (sale / on_account / manual_receipt), voided excluded.
+ * **Activity lines** — `get_customer_ledger_sales` (optional branch via `p_branch_id`) + `payments` (sale / on_account / manual_receipt), voided excluded.
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { normalizeCompanyId } from './contactBalancesUtils';
@@ -32,6 +29,14 @@ export interface LedgerTransaction {
 
 const PAYMENT_SALE_CHUNK = 200;
 
+const BRANCH_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function branchIdForSalesFilter(branchId?: string | null): string | null {
+  if (!branchId || branchId === 'all' || branchId === 'default') return null;
+  const t = String(branchId).trim();
+  return BRANCH_UUID_RE.test(t) ? t : null;
+}
+
 type LedgerSaleRow = {
   id: string;
   invoice_no: string | null;
@@ -48,38 +53,10 @@ function saleGrossAmount(s: LedgerSaleRow): number {
   return isStudio ? base : base + ship;
 }
 
-async function fetchLedgerSales(companyId: string, customerId: string): Promise<LedgerSaleRow[]> {
-  const rpc = await supabase.rpc('get_customer_ledger_sales', {
-    p_company_id: companyId,
-    p_customer_id: customerId,
-    p_from_date: null,
-    p_to_date: null,
-  });
-  if (!rpc.error && Array.isArray(rpc.data) && rpc.data.length > 0) {
-    return (rpc.data as Record<string, unknown>[]).map((row) => ({
-      id: String(row.id ?? ''),
-      invoice_no: (row.invoice_no as string) || null,
-      invoice_date: row.invoice_date != null ? String(row.invoice_date).slice(0, 10) : null,
-      total: Number(row.total) || 0,
-      shipment_charges: Number(row.shipment_charges) || 0,
-    }));
-  }
-
-  const { data, error } = await supabase
-    .from('sales')
-    .select('id, invoice_no, invoice_date, total, shipment_charges, created_at, status')
-    .eq('company_id', companyId)
-    .eq('customer_id', customerId)
-    .order('invoice_date', { ascending: true });
-  if (error) {
-    if (import.meta.env.DEV) {
-      console.warn('[customerLedger] fetchLedgerSales fallback:', error.message);
-    }
-    return [];
-  }
-  return (data || [])
-    .filter((s: { status?: string }) => String(s.status || '').toLowerCase().trim() === 'final')
-    .map((s: Record<string, unknown>) => {
+function mapSalesRowsToLedger(data: Record<string, unknown>[]): LedgerSaleRow[] {
+  return data
+    .filter((s) => String(s.status || '').toLowerCase().trim() === 'final')
+    .map((s) => {
       const inv =
         s.invoice_date != null && String(s.invoice_date).trim() !== ''
           ? String(s.invoice_date).slice(0, 10)
@@ -96,18 +73,64 @@ async function fetchLedgerSales(companyId: string, customerId: string): Promise<
     });
 }
 
+async function fetchLedgerSales(
+  companyId: string,
+  customerId: string,
+  branchId?: string | null
+): Promise<LedgerSaleRow[]> {
+  const pBranch = branchIdForSalesFilter(branchId);
+  const rpc = await supabase.rpc('get_customer_ledger_sales', {
+    p_company_id: companyId,
+    p_customer_id: customerId,
+    p_from_date: null,
+    p_to_date: null,
+    p_branch_id: pBranch,
+  });
+  if (!rpc.error && Array.isArray(rpc.data)) {
+    return (rpc.data as Record<string, unknown>[]).map((row) => ({
+      id: String(row.id ?? ''),
+      invoice_no: (row.invoice_no as string) || null,
+      invoice_date: row.invoice_date != null ? String(row.invoice_date).slice(0, 10) : null,
+      total: Number(row.total) || 0,
+      shipment_charges: Number(row.shipment_charges) || 0,
+    }));
+  }
+  if (import.meta.env.DEV && rpc.error) {
+    console.warn('[customerLedger] fetchLedgerSales RPC:', rpc.error.message);
+  }
+
+  let q = supabase
+    .from('sales')
+    .select('id, invoice_no, invoice_date, total, shipment_charges, created_at, status')
+    .eq('company_id', companyId)
+    .eq('customer_id', customerId);
+  if (pBranch) q = q.eq('branch_id', pBranch);
+  const { data, error } = await q.order('invoice_date', { ascending: true });
+  if (error) {
+    if (import.meta.env.DEV) {
+      console.warn('[customerLedger] fetchLedgerSales fallback:', error.message);
+    }
+    return [];
+  }
+  return mapSalesRowsToLedger((data || []) as Record<string, unknown>[]);
+}
+
 export async function getCustomerReceivableBalance(
   companyId: string,
-  customerId: string
+  customerId: string,
+  branchId?: string | null
 ): Promise<{ data: number; error: string | null }> {
-  const { map, error } = await fetchContactBalancesSummary(companyId, null);
+  const { map, error } = await fetchContactBalancesSummary(companyId, branchId);
   if (error) {
     return { data: 0, error };
   }
   return { data: receivableFromBalanceMap(map, customerId), error: null };
 }
 
-export async function getCustomersWithBalance(companyId: string): Promise<{ data: CustomerWithBalance[]; error: string | null }> {
+export async function getCustomersWithBalance(
+  companyId: string,
+  branchId?: string | null
+): Promise<{ data: CustomerWithBalance[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const company = normalizeCompanyId(companyId);
   if (!company) return { data: [], error: 'Missing company.' };
@@ -121,7 +144,7 @@ export async function getCustomersWithBalance(companyId: string): Promise<{ data
   if (contactsErr) return { data: [], error: contactsErr.message };
   if (!contacts?.length) return { data: [], error: null };
 
-  const { map, error: rpcErr } = await fetchContactBalancesSummary(company, null);
+  const { map, error: rpcErr } = await fetchContactBalancesSummary(company, branchId);
   if (rpcErr) {
     return {
       data: [],
@@ -145,13 +168,14 @@ export async function getCustomersWithBalance(companyId: string): Promise<{ data
 export async function getCustomerLastTransactions(
   companyId: string,
   customerId: string,
+  branchId: string | null | undefined,
   limit = 50
 ): Promise<{ data: LedgerTransaction[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const company = normalizeCompanyId(companyId);
   if (!company) return { data: [], error: 'Missing company.' };
 
-  const sales = await fetchLedgerSales(company, customerId);
+  const sales = await fetchLedgerSales(company, customerId, branchId);
   const saleIds = sales.map((s) => s.id).filter(Boolean);
 
   type PayRow = {
@@ -166,31 +190,37 @@ export async function getCustomerLastTransactions(
   const salePayments: PayRow[] = [];
   for (let i = 0; i < saleIds.length; i += PAYMENT_SALE_CHUNK) {
     const chunk = saleIds.slice(i, i + PAYMENT_SALE_CHUNK);
-    const { data: payData } = await supabase
+    let q = supabase
       .from('payments')
       .select('id, reference_number, payment_date, created_at, amount, reference_type')
       .eq('company_id', company)
       .eq('reference_type', 'sale')
       .in('reference_id', chunk)
       .is('voided_at', null);
+    if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
+    const { data: payData } = await q;
     salePayments.push(...((payData || []) as PayRow[]));
   }
 
-  const { data: onAccount } = await supabase
+  let onAccountQuery = supabase
     .from('payments')
     .select('id, reference_number, payment_date, created_at, amount, reference_type')
     .eq('company_id', company)
     .eq('contact_id', customerId)
     .eq('reference_type', 'on_account')
     .is('voided_at', null);
+  if (branchId && branchId !== 'all' && branchId !== 'default') onAccountQuery = onAccountQuery.eq('branch_id', branchId);
+  const { data: onAccount } = await onAccountQuery;
 
-  const { data: manualRec } = await supabase
+  let manualQuery = supabase
     .from('payments')
     .select('id, reference_number, payment_date, created_at, amount, reference_type')
     .eq('company_id', company)
     .eq('contact_id', customerId)
     .eq('reference_type', 'manual_receipt')
     .is('voided_at', null);
+  if (branchId && branchId !== 'all' && branchId !== 'default') manualQuery = manualQuery.eq('branch_id', branchId);
+  const { data: manualRec } = await manualQuery;
 
   const tx: LedgerTransaction[] = [];
 

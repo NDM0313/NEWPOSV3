@@ -7,11 +7,12 @@ interface LedgerModuleProps {
   onBack: () => void;
   user: User;
   companyId: string | null;
+  branchId?: string | null;
 }
 
 type View = 'customers' | 'detail';
 
-export function LedgerModule({ onBack, user, companyId }: LedgerModuleProps) {
+export function LedgerModule({ onBack, user, companyId, branchId }: LedgerModuleProps) {
   const [customers, setCustomers] = useState<ledgerApi.CustomerWithBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,12 +25,12 @@ export function LedgerModule({ onBack, user, companyId }: LedgerModuleProps) {
     if (!companyId) return;
     setLoading(true);
     setError(null);
-    ledgerApi.getCustomersWithBalance(companyId).then(({ data, error: err }) => {
+    ledgerApi.getCustomersWithBalance(companyId, branchId).then(({ data, error: err }) => {
       setLoading(false);
       if (err) setError(err);
       else setCustomers(data || []);
     });
-  }, [companyId]);
+  }, [companyId, branchId]);
 
   const openCustomer = (c: ledgerApi.CustomerWithBalance) => {
     setSelectedCustomer(c);
@@ -37,8 +38,8 @@ export function LedgerModule({ onBack, user, companyId }: LedgerModuleProps) {
     setTxLoading(true);
     if (!companyId) return;
     Promise.all([
-      ledgerApi.getCustomerReceivableBalance(companyId, c.id),
-      ledgerApi.getCustomerLastTransactions(companyId, c.id, 60),
+      ledgerApi.getCustomerReceivableBalance(companyId, c.id, branchId),
+      ledgerApi.getCustomerLastTransactions(companyId, c.id, branchId, 60),
     ]).then(([{ data: bal, error: balErr }, { data: txs, error: txErr }]) => {
       setTxLoading(false);
       const errMsg = balErr || txErr;

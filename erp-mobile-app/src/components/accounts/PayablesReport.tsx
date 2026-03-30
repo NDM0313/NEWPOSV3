@@ -123,6 +123,10 @@ export function PayablesReport({ onBack, companyId }: PayablesReportProps) {
           <p className="text-sm text-[#9CA3AF]">Total Outstanding</p>
           <p className="text-2xl font-bold text-[#F59E0B]">Rs. {totalPayable.toLocaleString()}</p>
           <p className="text-xs text-[#6B7280]">{suppliers.length} supplier(s) with balance</p>
+          <p className="text-[11px] text-[#6B7280] mt-1">Source: operational document due (`purchases.due` / due_amount on final+received)</p>
+          <p className="text-[11px] text-[#6B7280] mt-0.5">
+            Dashboard &quot;Payables&quot; after migration 20260370 = SUM(contact payables) including worker/studio slice; this list is supplier document due only.
+          </p>
         </div>
         {loading ? (
           <div className="flex justify-center py-12">

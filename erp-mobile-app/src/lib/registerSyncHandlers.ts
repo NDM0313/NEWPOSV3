@@ -125,12 +125,15 @@ export function registerAllSyncHandlers(): void {
       branchId?: string | null;
       purchaseId?: string;
       workerId?: string;
+      workerName?: string;
       amount: number;
       paymentDate: string;
       paymentAccountId?: string;
       paymentMethod: string;
       userId?: string;
       notes?: string;
+      paymentReference?: string;
+      stageId?: string | null;
     };
     if (p.type === 'supplier' && p.purchaseId && p.paymentAccountId && p.branchId) {
       const { data, error } = await accountsApi.recordSupplierPayment({
@@ -146,13 +149,20 @@ export function registerAllSyncHandlers(): void {
       if (error) return { error };
       return { serverId: data!.payment_id };
     }
-    if (p.type === 'worker' && p.workerId) {
+    if (p.type === 'worker' && p.workerId && p.paymentAccountId) {
       const { data, error } = await accountsApi.recordWorkerPayment({
         companyId: p.companyId,
+        branchId: p.branchId ?? null,
         workerId: p.workerId,
+        workerName: p.workerName,
         amount: p.amount,
         paymentDate: p.paymentDate,
+        paymentAccountId: p.paymentAccountId,
+        paymentMethod: p.paymentMethod || 'cash',
+        userId: p.userId ?? null,
         notes: p.notes,
+        paymentReference: p.paymentReference,
+        stageId: p.stageId ?? null,
       });
       if (error) return { error };
       return { serverId: data!.id };
