@@ -45,3 +45,12 @@ backups/
 *.tmp
 *.temp
 posv3.zip
+
+
+
+.env.local
+.env.db.local
+.env
+.env.*
+!.env.example
+!.env.db.example

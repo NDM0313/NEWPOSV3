@@ -63,22 +63,14 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         method = self.command
         
         # 1. Intercept /api/platform/organizations/default
-        # The real backend returns 404 for this, but the UI expects it.
         if path.startswith("/api/platform/organizations/default"):
             self.send_json_response(self.get_mock_org())
             return
 
         # 2. Intercept /api/platform/projects/default
-        # The real backend returns 405 for HEAD or 404/HTML for some paths.
-        # We ensure it always returns a valid project object for GET.
-        if path.startswith("/api/platform/projects/default"):
-            # If it's a specific sub-path like /api-keys or /config/api, let it fall through
-            # to our other handlers or the proxy.
-            if "/api-keys" in path or "/config/api" in path:
-                pass
-            else:
-                self.send_json_response(self.get_mock_project())
-                return
+        if path.startswith("/api/platform/projects/default") and "/api-keys" not in path and "/config/api" not in path:
+            self.send_json_response(self.get_mock_project())
+            return
 
         # 3. Intercept /api/platform/projects/default/config/api
         if path.startswith("/api/platform/projects/default/config/api"):
@@ -92,14 +84,12 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             return
 
         # 4. Bridge /api/v1/projects/default/api-keys/legacy -> /api/v1/projects/default/api-keys
-        # The UI asks for /legacy but the self-hosted backend only has /api-keys
         if path.startswith("/api/v1/projects/default/api-keys/legacy"):
             self.path = path.replace("/legacy", "")
             self.proxy_request()
             return
 
         # 5. Handle POST /api/v1/projects/default/api-keys (Creation)
-        # Self-hosted backend doesn't support creating new keys via API.
         if method == "POST" and path.startswith("/api/v1/projects/default/api-keys"):
             self.send_response(405)
             self.send_header("Content-Type", "application/json")
@@ -134,9 +124,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             "organization_id": 1,
             "status": "ACTIVE_HEALTHY",
             "cloud_provider": "localhost",
-            "region": "local",
-            "inserted_at": "2021-08-02T06:40:40.646Z",
-            "restUrl": "https://supabase.dincouture.pk/rest/v1/"
+            "region": "local"
         }
 
     def proxy_request(self):
