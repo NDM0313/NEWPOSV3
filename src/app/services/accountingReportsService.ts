@@ -351,7 +351,7 @@ export const accountingReportsService = {
         .select('id, code, name, type')
         .eq('company_id', companyId)
         .eq('is_active', true);
-      accounts = retry.data;
+      accounts = retry.data as any;
     }
     if (!accounts?.length) {
       return { rows: [], totalDebit: 0, totalCredit: 0, difference: 0 };

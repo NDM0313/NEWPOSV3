@@ -704,7 +704,7 @@ export const saleReturnService = {
     // Try to get from document_sequences
     const { data: sequence } = await supabase
       .from('document_sequences')
-      .select('current_number, prefix, padding')
+      .select('id, current_number, prefix, padding')
       .eq('company_id', companyId)
       .eq('document_type', 'sale_return')
       .eq('branch_id', branchId || null)

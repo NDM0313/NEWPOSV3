@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { fetchCustomerLedgerSalesForRange, ledgerSalesRpcBranchId } from '@/app/services/customerLedgerApi';
 
 export interface JournalEntry {
-  id: string;
+  id?: string;
   company_id: string;
   branch_id?: string;
   entry_no?: string;
@@ -11,7 +11,7 @@ export interface JournalEntry {
   reference_type?: string;
   reference_id?: string;
   payment_id?: string;
-  created_by?: string;
+  created_by?: string | null;
   created_at?: string;
   updated_at?: string;
   /** Optional attachments (same as payments: [{ url, name }]). Requires journal_entries.attachments column. */
@@ -21,8 +21,8 @@ export interface JournalEntry {
 }
 
 export interface JournalEntryLine {
-  id: string;
-  journal_entry_id: string;
+  id?: string;
+  journal_entry_id?: string;
   account_id: string;
   debit: number;
   credit: number;
@@ -39,7 +39,7 @@ export interface AccountLedgerEntry {
   /** ISO datetime for sort/display (from journal_entries.created_at) */
   created_at?: string;
   reference_number: string;
-  entry_no?: string; // Actual entry_no from database (for lookup)
+  entry_no?: string | null; // Actual entry_no from database (for lookup)
   description: string;
   debit: number;
   credit: number;

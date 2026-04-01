@@ -211,7 +211,7 @@ export async function getLowStockAlerts(
     currentStock: r.stock,
     minStock: r.minStock,
     reorderLevel: r.reorderLevel,
-    status: r.status,
+    status: r.status === 'Out' ? 'Out' : 'Low',
   }));
 }
 

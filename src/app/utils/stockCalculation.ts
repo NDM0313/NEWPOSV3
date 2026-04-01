@@ -17,6 +17,7 @@
 export interface StockMovement {
   id?: string;
   movement_type: string;
+  type?: string;
   quantity: number;
   variation_id?: string | null;
   branch_id?: string | null;

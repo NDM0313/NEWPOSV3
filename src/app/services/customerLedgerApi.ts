@@ -298,7 +298,7 @@ async function mergeSalesWithNullInvoiceDateInRange(
     'id, invoice_no, invoice_date, total, paid_amount, due_amount, payment_status, status, created_at, shipment_charges, discount_amount, tax_amount, expenses';
   const minimalSelect =
     'id, invoice_no, invoice_date, total, paid_amount, due_amount, payment_status, status, created_at';
-  let res = await supabase
+  let res: any = await supabase
     .from('sales')
     .select(fullSelect)
     .eq('company_id', companyId)
@@ -706,7 +706,7 @@ export const customerLedgerAPI = {
         d.setUTCDate(d.getUTCDate() - 1);
         return d.toISOString().split('T')[0];
       })();
-      const previousSales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, null, dayBeforeFrom, ledgerBranch);
+      const previousSales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, undefined, dayBeforeFrom, ledgerBranch);
       const previousTotal = previousSales.reduce(
         (sum, s: any) => sum + (Number(s.total) || 0) + (Number(s.shipment_charges) || 0),
         0
@@ -1266,7 +1266,7 @@ export const customerLedgerAPI = {
         d.setUTCDate(d.getUTCDate() - 1);
         return d.toISOString().split('T')[0];
       })();
-      const prevSales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, null, dayBeforeFrom, ledgerBranch);
+      const prevSales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, undefined, dayBeforeFrom, ledgerBranch);
       const prevTotal = prevSales.reduce(
         (sum, s: any) => sum + (Number(s.total) || 0) + (Number(s.shipment_charges) || 0),
         0

@@ -107,7 +107,7 @@ export function checkPermission(
     case 'accounting':
       // view: anyone with accounting access; create/edit (manual entry, reversal, add account, pay courier): Admin and Manager only
       if (action === 'view') return permissions.canAccessAccounting === true;
-      if (action === 'create' || action === 'edit') return permissions.canAccessAccounting === true && (permissions.role === 'Admin' || permissions.role === 'Manager');
+      if (action === 'create' || action === 'edit') return permissions.canAccessAccounting === true && permissions.role === 'Manager';
       return false;
 
     case 'payments':

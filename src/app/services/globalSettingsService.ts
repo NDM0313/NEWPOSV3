@@ -50,7 +50,7 @@ export async function getSetting<T = unknown>(companyId: string, key: string): P
   const companyCol = COMPANY_KEYS[key] || COMPANY_KEYS[key.replace(/([A-Z])/g, '_$1').toLowerCase()];
   if (companyCol) {
     const { data } = await supabase.from('companies').select(companyCol).eq('id', companyId).single();
-    const value = data?.[companyCol] ?? null;
+    const value = (data as Record<string, unknown> | null)?.[companyCol] ?? null;
     cache.set(ck, { value, expires: Date.now() + CACHE_TTL_MS });
     return value as T;
   }

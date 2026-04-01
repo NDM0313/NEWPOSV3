@@ -86,7 +86,11 @@ async function recomputeRentalPaidDueFromActivePayments(rentalId: string): Promi
     const { data: r } = await supabase.from('rentals').select('total_amount').eq('id', rentalId).maybeSingle();
     const total = Number((r as { total_amount?: number })?.total_amount ?? 0) || 0;
     const newDue = Math.max(0, total - sum);
-    await supabase.from('rentals').update({ paid_amount: sum, due_amount: newDue }).eq('id', rentalId).catch(() => {});
+    try {
+      await supabase.from('rentals').update({ paid_amount: sum, due_amount: newDue }).eq('id', rentalId);
+    } catch {
+      return;
+    }
     return;
   }
   const sum = (active || []).reduce((s, r: { amount?: number }) => s + (Number(r.amount) || 0), 0);

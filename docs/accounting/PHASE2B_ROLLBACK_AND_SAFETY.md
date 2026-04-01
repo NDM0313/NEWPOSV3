@@ -1,5 +1,6 @@
 # Phase 2B — Rollback and safety matrix
 
+**Updated:** 2026-04-01  
 Applies to cleanup batches in `PHASE2B_CLEANUP_BATCHES.md`. Each proposed action must have **why safe**, **rollback**, **dependency check**, **data retention**, and **audit impact**.
 
 ---
@@ -20,7 +21,7 @@ Applies to cleanup batches in `PHASE2B_CLEANUP_BATCHES.md`. Each proposed action
 
 | Aspect | Detail |
 |--------|--------|
-| **Why safe** | `erp-mobile-app/src/App.tsx` routes to `AccountsModule`, not `AccountingModule` (import lines ~30, ~451). |
+| **Why safe** | `erp-mobile-app/src/App.tsx` imports `AccountsModule` and does not import `AccountingModule`: [App.tsx:L21-L36](file:///c:/Users/ndm31/dev/Corusr/NEW%20POSV3/erp-mobile-app/src/App.tsx#L21-L36). |
 | **Rollback** | `git checkout -- path` or revert PR. |
 | **Dependency check** | `rg AccountingModule erp-mobile-app/src` — must be empty or only re-export shim if kept temporarily. |
 | **Data retention** | N/A (frontend only). |
@@ -32,13 +33,25 @@ Applies to cleanup batches in `PHASE2B_CLEANUP_BATCHES.md`. Each proposed action
 
 | Aspect | Detail |
 |--------|--------|
-| **Why safe (if deleting file)** | No imports of `getOrCreateLedger` / `addLedgerEntry` outside `ledgerService.ts` (grep 2026-03-30). |
+| **Why safe (if deleting file)** | No imports of `getOrCreateLedger` (repo scan 2026-04-01). |
 | **Rollback** | Restore file from git. |
 | **Dependency check** | Re-run grep; run TypeScript build + tests. |
 | **Data retention** | N/A for repo file; **DB** `ledger_*` tables unaffected. |
 | **Audit / history** | Git preserves prior implementation. |
 
 **Do not** delete `accountingCanonicalGuard.ts`.
+
+---
+
+## Batch 3 (also) — Archive/move dangerous prototype scripts (repo-only)
+
+| Aspect | Detail |
+|--------|--------|
+| **Why safe** | Moving files in-repo is safe if nothing imports/requires them in runtime. These scripts are executed manually, not by the app. |
+| **Rollback** | Git revert. |
+| **Dependency check** | `rg "complete-migration\\.js|verify-migration\\.js|remove-duplicate-accounting-tables\\.js" src erp-mobile-app/src` must show no runtime imports. |
+| **Data retention** | N/A (repo-only). |
+| **Audit / history** | Git retains prior content; plan avoids accidental prod execution by making them harder to discover as “normal ops”. |
 
 ---
 

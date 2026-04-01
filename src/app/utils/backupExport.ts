@@ -25,7 +25,7 @@ async function fetchTable<T>(table: string, companyId: string, companyColumn: st
 export async function exportCompanyBackupJSON(options: BackupOptions): Promise<Blob> {
   const { companyId, modules = ['sales', 'purchases', 'contacts', 'products', 'expenses'] } = options;
 
-  const backup: Record<string, unknown[]> = {};
+  const backup: Record<string, unknown> = {};
 
   if (modules.includes('sales')) {
     backup.sales = await fetchTable('sales', companyId);

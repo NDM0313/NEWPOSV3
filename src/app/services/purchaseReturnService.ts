@@ -504,7 +504,7 @@ export const purchaseReturnService = {
   async generateReturnNumber(companyId: string, branchId?: string): Promise<string> {
     const { data: sequence } = await supabase
       .from('document_sequences')
-      .select('current_number, prefix, padding')
+      .select('id, current_number, prefix, padding')
       .eq('company_id', companyId)
       .eq('document_type', 'purchase_return')
       .eq('branch_id', branchId || null)

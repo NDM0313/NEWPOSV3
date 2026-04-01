@@ -1,5 +1,6 @@
 # Phase 2B — Legacy accounting freeze plan
 
+**Updated:** 2026-04-01  
 **Status:** Planning only (no DB drops or destructive runs in this document).  
 **Phase 2A source of truth:** `docs/accounting/PHASE2A_SIGNOFF.md` — **READY FOR PHASE 2B LEGACY FREEZE = YES**, with DB/runtime evidence in `docs/accounting/PHASE2A_QA_EVIDENCE.md` and `migrations/20260370_phase2a2_ledger_sales_branch_dashboard_contact_ar_ap.sql` applied on the verified environment.
 
@@ -27,7 +28,7 @@ These are **PROTECTED_LIVE** for product behavior and Phase 2A evidence:
 
 **Engineering rules**
 
-- No new reads of legacy tables for **GL truth** or primary UI totals (align with `src/app/services/accountingCanonicalGuard.ts`).
+- No new reads of legacy tables for **GL truth** or primary UI totals (align with `src/app/services/accountingCanonicalGuard.ts` and its deny-list enforcement).
 - New accounting features must extend the spine above or approved RPCs, not `chart_accounts` / `account_transactions` / duplicate supplier `ledger_*` subledger.
 
 ---
@@ -36,8 +37,8 @@ These are **PROTECTED_LIVE** for product behavior and Phase 2A evidence:
 
 | Item | Freeze treatment |
 |------|------------------|
-| **`chart_accounts`, `account_transactions`, `accounting_audit_logs`, `automation_rules`** | **Read-only at product level:** no new app code; **DB rows** retained until an approved archival/migration phase. Treat as **LEGACY_READONLY** / historical. |
-| **`ledger_master`, `ledger_entries`** (supplier/user duplicate subledger) | **App:** `src/app/services/ledgerService.ts` is explicitly stubbed (no-op / empty reads); **no** `src/**/*.ts(x)` `.from('ledger_master')` or `.from('ledger_entries')` found in repo search (2026-03-30). **DB:** may still hold historical rows; **no drops** until inventory + stakeholder sign-off. Classify as **LEGACY_READONLY** (data) + **DROP_CANDIDATE_REVIEW** (eventual, after parity proof). |
+| **`chart_accounts`, `account_transactions`, `accounting_audit_logs`, `automation_rules`, `accounting_settings`** | **Read-only at product level:** no new app code; **DB rows** retained until an approved archival/migration phase. Treat as **LEGACY_READONLY** / historical. |
+| **`ledger_master`, `ledger_entries`** (supplier/user duplicate subledger) | **App:** `src/app/services/ledgerService.ts` is explicitly stubbed (no-op / empty reads). **Repo scan:** no `.from('ledger_master')` / `.from('ledger_entries')` in `src/` or `erp-mobile-app/src/` (2026-04-01). **DB:** may still hold historical rows; **no drops** until inventory + stakeholder sign-off. Classify as **LEGACY_READONLY** (data) + **DROP_CANDIDATE_REVIEW** (eventual, after parity proof). |
 | **`backup_cr_*`, `backup_pf145_*`** | **ARCHIVE_ONLY** — created by `scripts/company_reset_backup.sql` and `migrations/pf145_backup_tables_and_fingerprint.sql`; must never back live UI (`accountingCanonicalGuard` blocks `backup_*`). |
 
 ---
@@ -58,7 +59,7 @@ Document and treat as **deprecated**:
 
 - Using `chart_accounts` / `account_transactions` as COA or posting truth (superseded by `accounts` + `journal_*`).
 - Using supplier `ledger_master` / `ledger_entries` for new supplier balance UI (canonical path: purchases, payments, journals, `get_contact_balances_summary` where applicable).
-- Running root-level migration scripts (`complete-migration.js`, `remove-duplicate-accounting-tables.js`) without a reviewed runbook — see `PHASE2B_CLEANUP_BATCHES.md`.
+- Running root-level prototype/cleanup scripts (`complete-migration.js`, `verify-migration.js`, `remove-duplicate-accounting-tables.js`) without a reviewed runbook — see `PHASE2B_CLEANUP_BATCHES.md`.
 
 ---
 

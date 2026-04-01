@@ -27,14 +27,15 @@ export const contactGroupService = {
 
     const { data, error } = await query;
     if (error) {
+      const e: any = error;
       // If table doesn't exist (404) or relation missing, return empty array without logging
       if (
-        error.code === 'PGRST116' ||
-        error.status === 404 ||
-        (error as any).statusCode === 404 ||
-        error.message?.includes('does not exist') ||
-        error.message?.includes('relation') ||
-        error.message?.includes('contact_groups')
+        e.code === 'PGRST116' ||
+        e.status === 404 ||
+        e.statusCode === 404 ||
+        e.message?.includes('does not exist') ||
+        e.message?.includes('relation') ||
+        e.message?.includes('contact_groups')
       ) {
         return [];
       }

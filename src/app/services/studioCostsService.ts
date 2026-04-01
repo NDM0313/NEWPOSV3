@@ -27,7 +27,7 @@ export interface WorkerCostSummary {
 export interface WorkerLedgerEntry {
   id: string;
   amount: number;
-  status: 'paid' | 'unpaid';
+  status: 'paid' | 'unpaid' | 'partial';
   referenceType: string;
   referenceId: string;
   documentNo: string | null;

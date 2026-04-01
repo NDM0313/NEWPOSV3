@@ -5,7 +5,7 @@
  * No need to manually run SQL queries in Supabase dashboard
  */
 
-import { supabase } from '../services/supabase';
+import { supabase } from '../../lib/supabase';
 
 export interface MigrationResult {
   success: boolean;
@@ -94,7 +94,7 @@ export async function runMigrationFromFile(
  */
 export async function verifyMigration(
   verificationQuery: string
-): Promise<{ success: boolean; data?: any; error?: string }> {
+): Promise<{ success: boolean; data?: any; error?: string; message?: string }> {
   try {
     // This would use MCP server to execute verification query
     console.log('[MIGRATION] Running verification query...');

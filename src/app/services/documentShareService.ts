@@ -23,7 +23,7 @@ export interface ShareOptions {
  */
 export async function downloadAsPdf(
   element: HTMLElement,
-  options: ShareOptions & PdfExportOptions = {}
+  options: ShareOptions & PdfExportOptions
 ): Promise<void> {
   const filename = pdfExportService.suggestedPdfFilename(
     options.documentType,

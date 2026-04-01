@@ -2,10 +2,12 @@
 
 **STOP** — This document **does not authorize** any `DROP` or destructive script. It lists **candidates** for a future, separately approved DB cleanup window.
 
+**Updated:** 2026-04-01
+
 Preconditions for **any** candidate:
 
 1. `PHASE2B_LEGACY_INVENTORY.md` matches **target** database (`information_schema`).
-2. No application code in `src/` or `erp-mobile-app/src/` reads the table for live UX (re-grep before DROP).
+2. No application code in `src/` or `erp-mobile-app/src/` reads the table for live UX (re-grep before DROP; include `.from('…')` and any raw SQL strings).
 3. Ops / BI confirms no external dependency.
 4. Full backup + `PHASE2B_ROLLBACK_AND_SAFETY.md` path agreed.
 
@@ -19,6 +21,7 @@ Preconditions for **any** candidate:
 | `account_transactions` | Same | Same |
 | `accounting_audit_logs` | No `src/` usage found | May hold compliance history |
 | `automation_rules` | No `src/` usage found | Could be referenced by DB triggers — **verify** |
+| `accounting_settings` | Part of the same legacy cluster created by prototype migrations/scripts | Unknown consumers / admin tooling |
 
 **Approval tier:** DBA + product + engineering lead.
 

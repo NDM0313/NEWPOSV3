@@ -1,5 +1,6 @@
 # Phase 2B — Safe cleanup batches
 
+**Updated:** 2026-04-01  
 **Principle:** Execute in order. **Batch 1 only** is safe without DBA involvement. Batches **2–3** need code review + CI. Batches **4–5** need **explicit approval** and environment-specific evidence — **no execution in planning pass**.
 
 Cross-reference: `PHASE2B_LEGACY_FREEZE_PLAN.md`, `PHASE2B_DROP_CANDIDATES_REVIEW.md`, `PHASE2B_ROLLBACK_AND_SAFETY.md`.
@@ -17,7 +18,7 @@ Cross-reference: `PHASE2B_LEGACY_FREEZE_PLAN.md`, `PHASE2B_DROP_CANDIDATES_REVIE
 | Optional: `README` in `scripts/` warning for `company_reset_*` | Text only |
 
 **Rollback:** Revert git commit.  
-**Applied in this prompt:** Only new Phase 2B markdown files were added; no repo edits to existing docs beyond these new files.
+**Applied in this prompt:** Documentation updates only (Phase 2B docs). No runtime code changes and no DB changes.
 
 ---
 
@@ -28,7 +29,7 @@ Cross-reference: `PHASE2B_LEGACY_FREEZE_PLAN.md`, `PHASE2B_DROP_CANDIDATES_REVIE
 | Candidate | Evidence | Preconditions |
 |-----------|----------|----------------|
 | `erp-mobile-app/src/components/accounting/AccountingModule.tsx` | Not imported in `erp-mobile-app/src` per `PHASE2B_LEGACY_INVENTORY.md` | Product confirms no future demo use; run `grep` after delete |
-| `Figma Mobile ERP App Design/...` duplicates | Design artifact | Exclude from production builds (already separate tree) |
+| `Figma Mobile ERP App Design/src/components/accounting/AccountingModule.tsx` | Design artifact (separate tree) | Exclude from production builds (already separate tree) |
 
 **Rollback:** Restore file from git.  
 **Dependency check:** `rg AccountingModule erp-mobile-app/src` must show only intended references.
@@ -41,8 +42,8 @@ Cross-reference: `PHASE2B_LEGACY_FREEZE_PLAN.md`, `PHASE2B_DROP_CANDIDATES_REVIE
 
 | Area | Action | Caution |
 |------|--------|---------|
-| `src/app/services/ledgerService.ts` | Optional: add `@deprecated` JSDoc + link to canonical supplier path; or delete file **only if** grep proves zero imports | Current grep: **no** external imports — file is dead stub; still **explicit PR + review** |
-| Root `verify-migration.js` expectations | Update comments if legacy tables removed **later** — not now | |
+| `src/app/services/ledgerService.ts` | Delete file **only if** grep proves zero imports and TypeScript build passes | Deleting is safe only if nothing imports it; keep if any consumer exists |
+| Root scripts: `complete-migration.js`, `verify-migration.js`, `remove-duplicate-accounting-tables.js` | Move to an explicit “legacy/prototype” folder or archive list (repo-only) | These scripts can be destructive; do not run on prod without a signed runbook |
 
 **Do not remove** `accountingCanonicalGuard.ts` legacy blocklist — it is **active protection**.
 

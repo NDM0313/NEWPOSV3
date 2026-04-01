@@ -393,7 +393,7 @@ export const productService = {
 
       if (error) {
         // If columns are missing (schema mismatch), fall back to a minimal query
-        if (error.code === '42703' || error.status === 400) {
+        if (error.code === '42703') {
           console.warn('[Stock Movements] Column mismatch, retrying with minimal select:', error.message);
           const { data: fallback, error: fallbackError } = await supabase
             .from('stock_movements')
@@ -536,8 +536,6 @@ export const productService = {
           action: 'stock_movement_error',
           description: `Failed to create stock movement: ${error.message}`,
           notes: JSON.stringify({ error, insertData })
-        }).catch(() => {
-          // Ignore if activity_logs insert fails
         });
       } catch (logError) {
         // Ignore logging errors

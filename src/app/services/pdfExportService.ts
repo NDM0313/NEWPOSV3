@@ -48,8 +48,8 @@ export async function exportElementToPdfBlob(
     format: isThermal ? [80, 297] : 'a4',
   });
 
-  const pageW = pdf.getPageWidth(1);
-  const pageH = pdf.getPageHeight(1);
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
   const imgW = canvas.width;
   const imgH = canvas.height;
   const ratio = Math.min(pageW / imgW, pageH / imgH) * (isThermal ? 0.95 : 1);

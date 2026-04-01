@@ -202,7 +202,7 @@ export const contactService = {
       return data;
     }
 
-    const isBadRequest = error.code === 'PGRST204' || error.code === 'PGRST116' || error.status === 400;
+    const isBadRequest = error.code === 'PGRST204' || error.code === 'PGRST116' || (error as any).status === 400;
     if (!isBadRequest) throw error;
 
     const errorMessage = (error.message || '').toLowerCase();
@@ -275,7 +275,7 @@ export const contactService = {
     // Check if contact is system-generated
     const { data: contact, error: fetchError } = await supabase
       .from('contacts')
-      .select('is_system_generated, system_type')
+      .select('is_default, is_system_generated, system_type')
       .eq('id', id)
       .single();
 

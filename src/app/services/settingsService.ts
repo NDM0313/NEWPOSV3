@@ -168,7 +168,7 @@ export const settingsService = {
     if (invVal != null && 'negativeStockAllowed' in invVal) {
       const v = invVal.negativeStockAllowed;
       if (typeof v === 'boolean') return v;
-      if (v === 'true' || v === true) return true;
+      if (v === 'true') return true;
       if (String(v).toLowerCase() === 'true') return true;
     }
     const legacy = await this.getSetting(companyId, 'allow_negative_stock');
@@ -375,7 +375,7 @@ export const settingsService = {
     } else {
       query = query.eq('branch_id', sentinel);
     }
-    let result = await query.order('document_type');
+    let result: any = await query.order('document_type');
     if (result.error && (result.error.message?.includes('year_reset') || result.error.message?.includes('branch_based'))) {
       result = await supabase
         .from('erp_document_sequences')
