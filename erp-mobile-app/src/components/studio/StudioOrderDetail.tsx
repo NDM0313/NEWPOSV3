@@ -277,7 +277,7 @@ export function StudioOrderDetail({
                             onSendToWorker(stage);
                             return;
                           }
-                          if ((stage.status === 'sent_to_worker' || stage.status === 'in_progress' || stage.status === 'in-progress') && onReceiveWork) {
+                          if ((stage.status === 'sent_to_worker' || stage.status === 'in-progress') && onReceiveWork) {
                             onReceiveWork(stage);
                             return;
                           }
@@ -308,7 +308,7 @@ export function StudioOrderDetail({
                             ? 'Assign Worker'
                             : stage.status === 'assigned'
                               ? 'Send To Worker'
-                              : stage.status === 'sent_to_worker' || stage.status === 'in_progress' || stage.status === 'in-progress'
+                              : stage.status === 'sent_to_worker' || stage.status === 'in-progress'
                                 ? 'Receive Work'
                                 : stage.status === 'received'
                                   ? (stage.internalCost ?? 0) <= 0

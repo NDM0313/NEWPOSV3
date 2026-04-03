@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "typecheck:mobile": "cd erp-mobile-app && npx tsc -b",
     "dev": "node scripts/run-migrations.js --allow-fail && vite",
     "dev:no-migrate": "vite",
     "migrate": "node scripts/run-migrations.js",

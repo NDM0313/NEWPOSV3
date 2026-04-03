@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, ChevronDown, ChevronUp, Briefcase, Share2, Download, FileText } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText } from 'lucide-react';
 import * as salesApi from '../../api/sales';
 import * as studioApi from '../../api/studio';
 import * as reportsApi from '../../api/reports';
@@ -53,7 +53,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     breakdown: Array<{ task_type: string; cost: number; worker_id?: string; worker_name?: string; completed_at?: string | null }>;
     tasks_with_workers: Array<{ task_type: string; cost: number; worker_id?: string; worker_name?: string; created_by?: string; completed_by?: string; completed_at?: string | null }>;
   } | null>(null);
-  const [showStudioBreakdown, setShowStudioBreakdown] = useState(false);
+  const [, setShowStudioBreakdown] = useState(false);
   const [studioBreakdownFallback, setStudioBreakdownFallback] = useState<Array<{ task_type: string; cost: number; worker_name?: string; completed_at?: string | null }>>([]);
 
   const filteredSales = recentSales.filter(

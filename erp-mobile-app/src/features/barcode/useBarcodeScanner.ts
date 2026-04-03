@@ -10,7 +10,6 @@ import {
   requestCameraPermission,
   scanBarcode,
   type BarcodeScanResult,
-  type BarcodeServiceStatus,
 } from './barcodeService';
 
 export interface UseBarcodeScannerResult {

@@ -32,7 +32,7 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
     let cancelled = false;
     (async () => {
       setWorkersLoading(true);
-      const { data, error } = await studioApi.getWorkers(companyId);
+      const { data } = await studioApi.getWorkers(companyId);
       if (!cancelled) {
         setWorkers(data || []);
         setWorkersLoading(false);

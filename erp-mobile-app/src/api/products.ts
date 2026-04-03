@@ -91,13 +91,24 @@ export async function getProductByBarcodeOrSku(
     .maybeSingle();
 
   if (!errBarcode && byBarcode) {
-    const row = byBarcode as ProductRow & { has_variations?: boolean; min_stock?: number; description?: string; barcode?: string; brand_id?: string; product_categories?: { name: string }; units?: { name?: string; allow_decimal?: boolean } };
+    const row = byBarcode as unknown as ProductRow & {
+      has_variations?: boolean;
+      min_stock?: number;
+      description?: string;
+      barcode?: string;
+      brand_id?: string;
+      product_categories?: { name: string } | { name: string }[];
+      units?: { name?: string; allow_decimal?: boolean };
+    };
+    const categoryName = Array.isArray(row.product_categories)
+      ? row.product_categories[0]?.name
+      : row.product_categories?.name;
     const stock = await getProductStockFromMovements(companyId, row.id, options?.branchId);
     const product: Product = {
       id: row.id,
       sku: row.sku || '—',
       name: row.name,
-      category: row.product_categories?.name || 'Other',
+      category: categoryName || 'Other',
       categoryId: row.category_id ?? undefined,
       brandId: row.brand_id ?? undefined,
       unitId: row.unit_id ?? undefined,
@@ -125,13 +136,24 @@ export async function getProductByBarcodeOrSku(
 
   if (errSku || !bySku) return { data: null, error: errSku?.message ?? 'Product not found.' };
 
-  const row = bySku as ProductRow & { has_variations?: boolean; min_stock?: number; description?: string; barcode?: string; brand_id?: string; product_categories?: { name: string }; units?: { name?: string; allow_decimal?: boolean } };
+  const row = bySku as unknown as ProductRow & {
+    has_variations?: boolean;
+    min_stock?: number;
+    description?: string;
+    barcode?: string;
+    brand_id?: string;
+    product_categories?: { name: string } | { name: string }[];
+    units?: { name?: string; allow_decimal?: boolean };
+  };
+  const categoryNameSku = Array.isArray(row.product_categories)
+    ? row.product_categories[0]?.name
+    : row.product_categories?.name;
   const stock = await getProductStockFromMovements(companyId, row.id, options?.branchId);
   const product: Product = {
     id: row.id,
     sku: row.sku || '—',
     name: row.name,
-    category: row.product_categories?.name || 'Other',
+    category: categoryNameSku || 'Other',
     categoryId: row.category_id ?? undefined,
     brandId: row.brand_id ?? undefined,
     unitId: row.unit_id ?? undefined,

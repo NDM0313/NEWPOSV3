@@ -115,7 +115,7 @@ export function AttachmentPreviewModal({
       const d = getDistance(e.touches);
       if (pinchStartDistance.current > 0) {
         const delta = (d - pinchStartDistance.current) * PINCH_SCALE_SENSITIVITY;
-        setImageScale((s) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, pinchStartScale.current + delta)));
+        setImageScale((_s) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, pinchStartScale.current + delta)));
       }
     }
   };

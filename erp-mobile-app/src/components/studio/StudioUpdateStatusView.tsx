@@ -12,7 +12,7 @@ interface StudioUpdateStatusViewProps {
 }
 
 export function StudioUpdateStatusView({
-  selectedOrder,
+  selectedOrder: _selectedOrder,
   selectedStage,
   companyId,
   onBack,
@@ -26,7 +26,7 @@ export function StudioUpdateStatusView({
   const [finalCost, setFinalCost] = useState(selectedStage.internalCost?.toString() ?? '');
   const isPending = selectedStage.status === 'pending';
   const isAssigned = selectedStage.status === 'assigned';
-  const isSentToWorker = selectedStage.status === 'sent_to_worker' || selectedStage.status === 'in_progress' || selectedStage.status === 'in-progress';
+  const isSentToWorker = selectedStage.status === 'sent_to_worker' || selectedStage.status === 'in-progress';
   const isReceived = selectedStage.status === 'received';
   const isCompleted = selectedStage.status === 'completed';
 

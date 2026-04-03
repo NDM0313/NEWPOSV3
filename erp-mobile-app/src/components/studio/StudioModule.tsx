@@ -61,11 +61,14 @@ function mapProductionToOrder(
     const worker = s.worker as { id?: string; name?: string } | undefined;
     const cost = (s.status === 'received' || s.status === 'completed') ? Number(s.cost) || 0 : Number(s.expected_cost ?? s.cost) || 0;
     const expectedCostVal = Number(s.expected_cost ?? s.cost) || 0;
+    const uiStatus: StudioStage['status'] =
+      s.status === 'in_progress' ? 'in-progress' : (s.status as StudioStage['status']);
     const effectiveStatus: StudioStage['status'] =
-      s.status === 'completed'
+      uiStatus === 'completed'
         ? 'completed'
-        : s.assigned_worker_id && (s.status === 'assigned' || s.status === 'in_progress' || s.status === 'sent_to_worker' || s.status === 'received')
-          ? s.status
+        : s.assigned_worker_id &&
+            (uiStatus === 'assigned' || uiStatus === 'in-progress' || uiStatus === 'sent_to_worker' || uiStatus === 'received')
+          ? uiStatus
           : 'pending';
     const sentDate = s.sent_date ? new Date(s.sent_date).toISOString().slice(0, 10) : undefined;
     const receivedDate = s.received_date ? new Date(s.received_date).toISOString().slice(0, 10) : undefined;
@@ -109,7 +112,7 @@ function mapProductionToOrder(
   };
 }
 
-export function StudioModule({ onBack, companyId, branch, onNewStudioSale }: StudioModuleProps) {
+export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSale }: StudioModuleProps) {
   const [view, setView] = useState<View>('dashboard');
   const [selectedOrder, setSelectedOrder] = useState<StudioOrder | null>(null);
   const [selectedStage, setSelectedStage] = useState<StudioStage | null>(null);
@@ -305,7 +308,7 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale }: Stu
         onBack={() => setView('order-detail')}
         existingStageTypes={selectedOrder.stages.map((s) => s.type) as UiStageType[]}
         onSave={async (stageTypes) => {
-          const { data, error: err } = await studioApi.addStudioStagesBatch(selectedOrder.id, stageTypes);
+          const { error: err } = await studioApi.addStudioStagesBatch(selectedOrder.id, stageTypes);
           if (err) {
             alert(err);
             return;

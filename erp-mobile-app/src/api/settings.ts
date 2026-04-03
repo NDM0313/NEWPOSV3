@@ -217,7 +217,7 @@ export async function getModuleConfigs(
     .in('module_name', [...MODULE_CONFIG_NAMES]);
   if (error) return { data: DEFAULT_MODULE_TOGGLES, error: error.message };
   const map = new Map<string, boolean>();
-  (rows || []).forEach((r: ModuleConfigRow) => map.set(r.module_name, r.is_enabled === true));
+  (rows || []).forEach((r) => map.set(r.module_name, r.is_enabled === true));
   return {
     data: {
       rentalModuleEnabled: map.get('rentals') ?? true,

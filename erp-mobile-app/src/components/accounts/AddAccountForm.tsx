@@ -3,6 +3,8 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import * as accountsApi from '../../api/accounts';
 import { ACCOUNT_TYPES } from '../../api/accounts';
 
+type AccountTypeValue = (typeof ACCOUNT_TYPES)[number]['value'];
+
 interface AddAccountFormProps {
   onBack: () => void;
   onSuccess: () => void;
@@ -12,7 +14,7 @@ interface AddAccountFormProps {
 export function AddAccountForm({ onBack, onSuccess, companyId }: AddAccountFormProps) {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
-  const [type, setType] = useState(ACCOUNT_TYPES[0].value);
+  const [type, setType] = useState<AccountTypeValue>(ACCOUNT_TYPES[0].value);
   const [balance, setBalance] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -93,7 +95,7 @@ export function AddAccountForm({ onBack, onSuccess, companyId }: AddAccountFormP
           <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Type</label>
           <select
             value={type}
-            onChange={(e) => setType(e.target.value)}
+            onChange={(e) => setType(e.target.value as AccountTypeValue)}
             className="w-full px-4 py-3 bg-[#1F2937] border border-[#374151] rounded-xl text-white focus:outline-none focus:border-[#F59E0B]"
           >
             {ACCOUNT_TYPES.map((t) => (

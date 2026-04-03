@@ -16,7 +16,6 @@ import {
   Truck,
   Trash2,
   Ban,
-  X,
 } from 'lucide-react';
 import type { RentalDetail } from '../../api/rentals';
 import * as rentalsApi from '../../api/rentals';

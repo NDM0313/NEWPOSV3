@@ -47,7 +47,7 @@ export function StudioStageSelection({ onBack, onSave, existingStageTypes = [] }
 
       <div className="p-4 space-y-4">
         <p className="text-sm text-[#9CA3AF]">
-          Tap to add to pipeline. Order: {selected.length ? selected.map((id, i) => STAGE_OPTIONS.find((o) => o.id === id)?.name).join(' → ') : 'none'}
+          Tap to add to pipeline. Order: {selected.length ? selected.map((id) => STAGE_OPTIONS.find((o) => o.id === id)?.name).join(' → ') : 'none'}
         </p>
 
         <div className="space-y-2">

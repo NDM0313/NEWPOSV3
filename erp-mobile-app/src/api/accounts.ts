@@ -277,7 +277,7 @@ export interface AccountLedgerLine {
 
 /** Get account-wise ledger for date range (journal_entry_lines + journal_entries). */
 export async function getAccountLedger(
-  companyId: string,
+  _companyId: string,
   accountId: string,
   dateFrom?: string,
   dateTo?: string

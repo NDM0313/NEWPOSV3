@@ -15,15 +15,6 @@ function uiToDbStageType(ui: UiStageType): DbStageType {
   return 'handwork';
 }
 
-function dbToUiStageType(db: string): UiStageType {
-  if (db === 'dyer') return 'dyeing';
-  if (db === 'stitching') return 'stitching';
-  if (db === 'embroidery') return 'embroidery';
-  if (db === 'finishing') return 'finishing';
-  if (db === 'quality_check') return 'quality-check';
-  return 'handwork';
-}
-
 export interface StudioSaleRow {
   id: string;
   invoiceNo: string;
@@ -154,7 +145,7 @@ export async function ensureStudioProductionsForCompany(companyId: string): Prom
       if (!first?.product_id) continue;
       const productionNo = `PRD-${sale.invoice_no || sale.id}`;
       const productionDate = sale.invoice_date ? new Date(sale.invoice_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
-      const { data: inserted, error: insErr } = await supabase
+      const { error: insErr } = await supabase
         .from('studio_productions')
         .insert({
           company_id: sale.company_id,
@@ -201,7 +192,7 @@ export async function getStudioProductions(
     if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
     const { data, error } = await q;
     if (error) return { data: [], error: error.message };
-    return { data: (data || []) as StudioProductionRow[], error: null };
+    return { data: (data || []) as unknown as StudioProductionRow[], error: null };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return { data: [], error: msg };
@@ -258,17 +249,17 @@ export async function assignWorkerToStep(
           updErr = retry.error;
         }
         if (updErr) return { data: null, error: updErr.message };
-        return { data: stage as StudioStageRow, error: null };
+        return { data: stage as unknown as StudioStageRow, error: null };
       }
-      return { data: null, error: (rpcResult as { error?: string })?.error ?? rpcErr.message };
+      return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? rpcErr.message };
     }
     if (!(rpcResult as { ok?: boolean })?.ok) {
-      return { data: null, error: (rpcResult as { error?: string })?.error ?? 'Assign failed' };
+      return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? 'Assign failed' };
     }
-    const { data: stages } = await getStudioStages(
+    const stagesResult = await getStudioStages(
       (await supabase.from('studio_production_stages').select('production_id').eq('id', stageId).single()).data?.production_id ?? ''
     );
-    const updated = stages.data?.find((s) => s.id === stageId);
+    const updated = stagesResult.data.find((s) => s.id === stageId);
     return { data: updated ?? null, error: null };
   } catch (e: unknown) {
     return { data: null, error: e instanceof Error ? e.message : 'Unknown error' };
@@ -297,23 +288,23 @@ export async function receiveStepAndFinalizeCost(
         if (!(stageRow as { assigned_worker_id?: string })?.assigned_worker_id) {
           return { data: null, error: 'Assign a worker before receiving' };
         }
-        const { data, error } = await updateStudioStage(stageId, {
+        const { data: updatedStage, error } = await updateStudioStage(stageId, {
           status: 'completed',
           cost: params.final_cost,
           completed_at: new Date().toISOString(),
         });
-        return { data: data ?? null, error };
+        return { data: updatedStage ?? null, error };
       }
-      return { data: null, error: (rpcResult as { error?: string })?.error ?? rpcErr.message };
+      return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? rpcErr.message };
     }
     if (!(rpcResult as { ok?: boolean })?.ok) {
-      return { data: null, error: (rpcResult as { error?: string })?.error ?? 'Receive failed' };
+      return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? 'Receive failed' };
     }
-    const { data: stages } = await getStudioStages(
+    const stagesRecv = await getStudioStages(
       (await supabase.from('studio_production_stages').select('production_id').eq('id', stageId).single()).data?.production_id ?? ''
     );
-    const updated = stages.data?.find((s) => s.id === stageId);
-    return { data: updated ?? null, error: null };
+    const updatedRecv = stagesRecv.data.find((s) => s.id === stageId);
+    return { data: updatedRecv ?? null, error: null };
   } catch (e: unknown) {
     return { data: null, error: e instanceof Error ? e.message : 'Unknown error' };
   }
@@ -333,16 +324,16 @@ export async function reopenStep(stageId: string): Promise<{ data: StudioStageRo
         });
         return { data: data ?? null, error };
       }
-      return { data: null, error: (rpcResult as { error?: string })?.error ?? rpcErr.message };
+      return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? rpcErr.message };
     }
     if (!(rpcResult as { ok?: boolean })?.ok) {
-      return { data: null, error: (rpcResult as { error?: string })?.error ?? 'Reopen failed' };
+      return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? 'Reopen failed' };
     }
-    const { data: stages } = await getStudioStages(
+    const stagesReopen = await getStudioStages(
       (await supabase.from('studio_production_stages').select('production_id').eq('id', stageId).single()).data?.production_id ?? ''
     );
-    const updated = stages.data?.find((s) => s.id === stageId);
-    return { data: updated ?? null, error: null };
+    const updatedReopen = stagesReopen.data.find((s) => s.id === stageId);
+    return { data: updatedReopen ?? null, error: null };
   } catch (e: unknown) {
     return { data: null, error: e instanceof Error ? e.message : 'Unknown error' };
   }
@@ -353,8 +344,8 @@ export async function sendToWorker(stageId: string): Promise<{ error: string | n
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
   try {
     const { data: r, error: e } = await supabase.rpc('rpc_send_to_worker', { p_stage_id: stageId });
-    if (e) return { error: (r as { error?: string })?.error ?? e.message };
-    if (!(r as { ok?: boolean })?.ok) return { error: (r as { error?: string })?.error ?? 'Send failed' };
+    if (e) return { error: (r as unknown as { error?: string })?.error ?? e.message };
+    if (!(r as { ok?: boolean })?.ok) return { error: (r as unknown as { error?: string })?.error ?? 'Send failed' };
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Unknown error' };
@@ -366,8 +357,8 @@ export async function receiveWork(stageId: string): Promise<{ error: string | nu
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
   try {
     const { data: r, error: e } = await supabase.rpc('rpc_receive_work', { p_stage_id: stageId });
-    if (e) return { error: (r as { error?: string })?.error ?? e.message };
-    if (!(r as { ok?: boolean })?.ok) return { error: (r as { error?: string })?.error ?? 'Receive failed' };
+    if (e) return { error: (r as unknown as { error?: string })?.error ?? e.message };
+    if (!(r as { ok?: boolean })?.ok) return { error: (r as unknown as { error?: string })?.error ?? 'Receive failed' };
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Unknown error' };
@@ -386,8 +377,8 @@ export async function confirmStagePayment(
       p_final_cost: params.final_cost,
       p_pay_now: params.pay_now,
     });
-    if (e) return { error: (r as { error?: string })?.error ?? e.message };
-    if (!(r as { ok?: boolean })?.ok) return { error: (r as { error?: string })?.error ?? 'Confirm payment failed' };
+    if (e) return { error: (r as unknown as { error?: string })?.error ?? e.message };
+    if (!(r as { ok?: boolean })?.ok) return { error: (r as unknown as { error?: string })?.error ?? 'Confirm payment failed' };
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Unknown error' };
@@ -399,8 +390,8 @@ export async function completeStage(stageId: string): Promise<{ error: string | 
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
   try {
     const { data: r, error: e } = await supabase.rpc('rpc_complete_stage', { p_stage_id: stageId });
-    if (e) return { error: (r as { error?: string })?.error ?? e.message };
-    if (!(r as { ok?: boolean })?.ok) return { error: (r as { error?: string })?.error ?? 'Complete failed' };
+    if (e) return { error: (r as unknown as { error?: string })?.error ?? e.message };
+    if (!(r as { ok?: boolean })?.ok) return { error: (r as unknown as { error?: string })?.error ?? 'Complete failed' };
     return { error: null };
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Unknown error' };
@@ -420,7 +411,7 @@ export async function getStudioStages(productionId: string): Promise<{
       .eq('production_id', productionId)
       .order('stage_order', { ascending: true });
     if (error) return { data: [], error: error.message };
-    const rows = (data || []) as StudioStageRow[];
+    const rows = (data || []) as unknown as StudioStageRow[];
     const missingWorkerIds = rows
       .filter((s) => s.assigned_worker_id && !(s as { worker?: { name?: string } }).worker?.name)
       .map((s) => s.assigned_worker_id as string);
@@ -472,8 +463,8 @@ export async function getStudioStagesBySaleId(saleId: string): Promise<{
     const productionIds = (prods as { id: string }[]).map((p) => p.id);
     const out: Array<{ task_type: string; cost: number; worker_name?: string; completed_at?: string | null }> = [];
     for (const pid of productionIds) {
-      const { data: stages } = await getStudioStages(pid);
-      for (const s of stages?.data ?? []) {
+      const { data: stageRows } = await getStudioStages(pid);
+      for (const s of stageRows) {
         const worker = s.worker as { name?: string } | undefined;
         out.push({
           task_type: s.stage_type,
@@ -561,7 +552,7 @@ export async function createStudioStage(
       .select('id, production_id, stage_type, stage_order, assigned_worker_id, cost, status, expected_completion_date, completed_at, worker:workers(id, name)')
       .single();
     if (error) return { data: null, error: error.message };
-    return { data: data as StudioStageRow, error: null };
+    return { data: data as unknown as StudioStageRow, error: null };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return { data: null, error: msg };
@@ -589,7 +580,7 @@ export async function addStudioStagesBatch(
       .insert(rows)
       .select('id, production_id, stage_type, stage_order, assigned_worker_id, cost, status, expected_completion_date, completed_at, worker:workers(id, name)');
     if (error) return { data: [], error: error.message };
-    return { data: (data || []) as StudioStageRow[], error: null };
+    return { data: (data || []) as unknown as StudioStageRow[], error: null };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return { data: [], error: msg };
@@ -657,7 +648,7 @@ export async function updateStudioStage(
         .select('*')
         .eq('id', stageId)
         .single();
-      return { data: data as StudioStageRow, error: null };
+      return { data: data as unknown as StudioStageRow, error: null };
     }
     const { data, error } = await supabase
       .from('studio_production_stages')
@@ -666,7 +657,7 @@ export async function updateStudioStage(
       .select('*')
       .single();
     if (error) return { data: null, error: error.message };
-    return { data: data as StudioStageRow, error: null };
+    return { data: data as unknown as StudioStageRow, error: null };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     return { data: null, error: msg };

@@ -1,9 +1,49 @@
 # Phase 2B — Execution report (repo-only; Batch 2 executed, Batch 3 prep)
 
-**Date:** 2026-04-01  
+**Date:** 2026-04-01 (initial); **build gate:** 2026-03-29; **Batch 3 executed:** 2026-03-30  
 **Mode:** Evidence-first; repo-only actions.  
 **DB changes:** None (expected: none).  
 **Dangerous prototype/root scripts executed:** None (expected: none).
+
+---
+
+## Batch 3 executed (2026-03-30) — `ledgerService.ts` removed
+
+**Evidence:** [PHASE2B_BATCH3_EXECUTED.md](./PHASE2B_BATCH3_EXECUTED.md)
+
+**Summary:**
+
+- Pre-delete zero-import proof: **PASS** (`getOrCreateLedger` / `getLedgerEntries` only in stub; `addLedgerEntry` elsewhere = employee ledger only).
+- **Deleted:** `src/app/services/ledgerService.ts`
+- Post-delete validation: `npm run build`, `npm run typecheck:mobile`, `cd erp-mobile-app && npm run build` → **all PASS**
+- **`accountingCanonicalGuard.ts`:** not modified  
+- **Rollback:** git revert / restore file from history
+
+**Classification:** Batch 3 **COMPLETE**; stub **REMOVED**. **Next:** Batch 4 DB inventory (read-only), per `PHASE2B_CLEANUP_BATCHES.md`.
+
+---
+
+## Build / typecheck gate (2026-03-29) — Batch 3 readiness
+
+**Goal:** Clean enough compile baseline to support a safe Batch 3 decision for `src/app/services/ledgerService.ts` (file still **not** deleted in this pass).
+
+**Commands run:**
+
+- `npm run build` (repo root) → **PASS**
+- `npm run typecheck:mobile` (repo root; `erp-mobile-app` `tsc -b`) → **PASS** (script added in this update)
+- `cd erp-mobile-app && npm run build` → **PASS** after mobile TypeScript fixes
+
+**Deliverable:** [PHASE2B_BUILD_BLOCKERS.md](./PHASE2B_BUILD_BLOCKERS.md) (initial errors, grouping, fixes, post-check results).
+
+**Batch 2 correlation:** Initial mobile failures did **not** reference deleted `AccountingModule` paths → treated as **pre-existing** mobile TS debt.
+
+**`ledgerService.ts` classification (2026-03-29):** **READY_FOR_BATCH3_DELETE** (zero-import proof re-checked; delete only in a narrow follow-up PR).
+
+**Explicit confirmations (this update):**
+
+- No DB changes.
+- `accountingCanonicalGuard.ts` not modified.
+- Dangerous root scripts not executed.
 
 ---
 
@@ -13,7 +53,7 @@ Batch status:
 
 - Batch 2 proof: COMPLETE (PASS)
 - Batch 2 execution: COMPLETE (deleted dead mobile mock module)
-- Batch 3 prep: COMPLETE (proof gathered; no deletion)
+- Batch 3 prep: COMPLETE → **Batch 3 execution: COMPLETE** (`ledgerService.ts` removed 2026-03-30)
 - Root/prototype scripts: REVIEWED ONLY (no execution; archive recommendation only)
 - Protected live accounting spine: UNTOUCHED
 
@@ -28,7 +68,7 @@ DB status:
 - Protected live spine (DB objects): `accounts`, `journal_entries`, `journal_entry_lines`, `payments`, `payment_allocations`, `worker_ledger_entries`, and Phase 2A verified RPCs.
 - Web accounting guardrails: `src/app/services/accountingCanonicalGuard.ts`.
 - Legacy root/prototype scripts (not executed, not moved, not deleted): `complete-migration.js`, `verify-migration.js`, `remove-duplicate-accounting-tables.js`.
-- Legacy stub file (kept for now): `src/app/services/ledgerService.ts`.
+- ~~Legacy stub file~~ **Removed (Batch 3, 2026-03-30):** `src/app/services/ledgerService.ts` — see [PHASE2B_BATCH3_EXECUTED.md](./PHASE2B_BATCH3_EXECUTED.md).
 
 ---
 
@@ -97,11 +137,11 @@ Post-change file existence:
 
 ---
 
-## Batch 3 (legacy code reference prep only) — no deletion in this pass
+## Batch 3 (legacy stub removal) — **EXECUTED 2026-03-30**
 
 ### Evidence gathered (files checked)
 
-- Candidate: [ledgerService.ts](file:///c:/Users/ndm31/dev/Corusr/NEW%20POSV3/src/app/services/ledgerService.ts)
+- ~~Candidate~~ **Removed:** `src/app/services/ledgerService.ts` (see [PHASE2B_BATCH3_EXECUTED.md](./PHASE2B_BATCH3_EXECUTED.md))
 
 ### Grep/search proof (exact patterns)
 
@@ -122,18 +162,18 @@ Results:
 - `getLedgerEntries(` → only match is `src/app/services/ledgerService.ts`
 - `addLedgerEntry(` → multiple matches exist but are unrelated employee-ledger functions (`employeeService` / employee UI / mobile employees API).
 
-### Decision
+### Decision (2026-03-30)
 
-- Kept `src/app/services/ledgerService.ts` for now.
-- Reason: Batch 3 requires a clean build gate; `erp-mobile-app npm run build` currently fails due to unrelated TypeScript errors, and root app does not provide a dedicated typecheck script.
-- Classification: **SAFE_REMOVE_LATER**
-- `src/app/services/accountingCanonicalGuard.ts` was not touched in this pass.
+- **`ledgerService.ts` deleted** in Batch 3 final pass. Classification: **REMOVED** / Batch 3 **COMPLETE** ([PHASE2B_BATCH3_EXECUTED.md](./PHASE2B_BATCH3_EXECUTED.md)).
+- **Prior:** READY_FOR_BATCH3_DELETE after build gate (2026-03-29).
+- `src/app/services/accountingCanonicalGuard.ts` was not touched.
 
 ---
 
 ## Commands executed (non-destructive only)
 
-- `erp-mobile-app` → `npm run build` (compile check only; failed due to pre-existing TypeScript errors; no errors referenced the deleted AccountingModule paths).
+- **2026-03-29:** `npm run build` (root), `npm run typecheck:mobile`, `erp-mobile-app` → `npm run build` — all **PASS** after mobile TS fixes.
+- **Earlier capture:** `erp-mobile-app` → `npm run build` had failed on pre-existing TypeScript errors (no errors referenced the deleted AccountingModule paths).
 
 No database migrations were executed. No SQL was run.
 
@@ -188,6 +228,60 @@ Updated:
 
 - None beyond the 3 new docs in this run.
 
+### 2026-03-29 — build gate + docs (Batch 3 enablement)
+
+Created:
+
+- `docs/accounting/PHASE2B_BUILD_BLOCKERS.md`
+
+Updated:
+
+- `docs/accounting/PHASE2B_EXECUTION_REPORT.md` (this file)
+- `docs/accounting/PHASE2B_BATCH3_PREP.md`
+- `package.json` (added script `typecheck:mobile`)
+
+Updated (mobile TypeScript / UI typing only; no accounting spine / guard / DB):
+
+- `erp-mobile-app/src/api/accounts.ts`
+- `erp-mobile-app/src/api/employees.ts`
+- `erp-mobile-app/src/api/products.ts`
+- `erp-mobile-app/src/api/rentals.ts`
+- `erp-mobile-app/src/api/sales.ts`
+- `erp-mobile-app/src/api/settings.ts`
+- `erp-mobile-app/src/api/studio.ts`
+- `erp-mobile-app/src/components/ModuleGrid.tsx`
+- `erp-mobile-app/src/components/accounts/AddAccountForm.tsx`
+- `erp-mobile-app/src/components/ledger/LedgerModule.tsx`
+- `erp-mobile-app/src/components/packing/PackingListModule.tsx`
+- `erp-mobile-app/src/components/pos/POSModule.tsx`
+- `erp-mobile-app/src/components/rental/ViewRentalDetails.tsx`
+- `erp-mobile-app/src/components/sales/AttachmentPreviewModal.tsx`
+- `erp-mobile-app/src/components/sales/SalesHome.tsx`
+- `erp-mobile-app/src/components/sales/SalesModule.tsx`
+- `erp-mobile-app/src/components/settings/EmployeesSection.tsx`
+- `erp-mobile-app/src/components/shared/TransactionSuccessModal.tsx`
+- `erp-mobile-app/src/components/studio/StudioModule.tsx`
+- `erp-mobile-app/src/components/studio/StudioOrderDetail.tsx`
+- `erp-mobile-app/src/components/studio/StudioStageAssignment.tsx`
+- `erp-mobile-app/src/components/studio/StudioStageSelection.tsx`
+- `erp-mobile-app/src/components/studio/StudioUpdateStatusView.tsx`
+- `erp-mobile-app/src/features/barcode/useBarcodeScanner.ts`
+
+### 2026-03-30 — Batch 3 final delete
+
+Deleted:
+
+- `src/app/services/ledgerService.ts`
+
+Created:
+
+- `docs/accounting/PHASE2B_BATCH3_EXECUTED.md`
+
+Updated:
+
+- `docs/accounting/PHASE2B_EXECUTION_REPORT.md`
+- `docs/accounting/PHASE2B_BATCH3_PREP.md`
+
 ---
 
 ## First pass complete?
@@ -198,9 +292,8 @@ Updated:
 
 ## Recommended next step after this pass
 
-Primary recommendation: continue repo cleanup (Batch 3 enablement), not DB Batch 4 yet.
+Primary recommendation: **Batch 4** — DB legacy inventory (read-only; no DROP), not execution of Batch 5.
 
-1. Fix existing TypeScript errors in `erp-mobile-app` until `npm run build` is clean.
-2. Establish/confirm a root web-app typecheck gate (CI or an explicit script).
-3. Re-run the Batch 3 zero-import proof scans and then delete `src/app/services/ledgerService.ts` in a dedicated, reviewable PR.
-4. After Batch 3 is completed and stable, schedule Batch 4 DB inventory review (read-only).
+1. ~~Batch 3~~ **Complete (2026-03-30)** — [PHASE2B_BATCH3_EXECUTED.md](./PHASE2B_BATCH3_EXECUTED.md).
+2. Keep `npm run build` (root) + `npm run typecheck:mobile` (or full `erp-mobile-app` build) in CI or pre-merge checks.
+3. Schedule Batch 4 per `PHASE2B_CLEANUP_BATCHES.md` / `PHASE2B_DROP_CANDIDATES_REVIEW.md` (environment-specific, DBA window).

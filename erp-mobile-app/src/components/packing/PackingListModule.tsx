@@ -19,7 +19,7 @@ export function PackingListModule({ onBack, user, companyId, branchId }: Packing
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>('sales');
-  const [selectedPackingListId, setSelectedPackingListId] = useState<string | null>(null);
+  const [, setSelectedPackingListId] = useState<string | null>(null);
   const [packingItems, setPackingItems] = useState<packingListApi.PackingListItemRow[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [creatingSaleId, setCreatingSaleId] = useState<string | null>(null);
@@ -99,21 +99,6 @@ export function PackingListModule({ onBack, user, companyId, branchId }: Packing
   };
 
   const getPackingListIdForSale = (saleId: string): string | null => salePackingMap[saleId] ?? null;
-
-  const openItemsForSale = async (saleId: string) => {
-    const existing = getPackingListIdForSale(saleId);
-    if (existing) {
-      handleViewPackingItems(saleId);
-    } else {
-      const { data } = await packingListApi.listPackingListsBySale(saleId);
-      if (data?.length) {
-        setSalePackingMap((prev) => ({ ...prev, [saleId]: data[0].id }));
-        handleViewPackingItems(saleId);
-      } else {
-        handleCreatePackingList(saleId);
-      }
-    }
-  };
 
   if (view === 'items') {
     return (

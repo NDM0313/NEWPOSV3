@@ -241,7 +241,6 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
   };
 
   const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
-  const tax = 0;
   const total = subtotal;
 
   const openPaymentStep = () => {

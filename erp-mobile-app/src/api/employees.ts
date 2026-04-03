@@ -36,8 +36,7 @@ export async function getEmployees(companyId: string): Promise<{ data: Employee[
       user:users!inner(full_name, email, role, company_id)
     `)
     .eq('user.company_id', companyId)
-    .order('created_at', { ascending: false })
-    .throwOnError(false);
+    .order('created_at', { ascending: false });
 
   if (error) return { data: [], error: error.message };
   return { data: data || [], error: null };
@@ -48,8 +47,7 @@ export async function getEmployeeLedger(employeeId: string): Promise<{ data: Emp
     .from('employee_ledger')
     .select('*')
     .eq('employee_id', employeeId)
-    .order('created_at', { ascending: false })
-    .throwOnError(false);
+    .order('created_at', { ascending: false });
 
   if (error) return { data: [], error: error.message };
   return { data: data || [], error: null };
@@ -105,8 +103,7 @@ export async function getAvailableUsers(companyId: string): Promise<{ data: any[
   const { data: users, error: usersError } = await supabase
     .from('users')
     .select('id, full_name, email, role')
-    .eq('company_id', companyId)
-    .throwOnError(false);
+    .eq('company_id', companyId);
 
   if (usersError) return { data: [], error: usersError.message };
   if (!users) return { data: [], error: null };

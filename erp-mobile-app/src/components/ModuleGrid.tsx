@@ -18,7 +18,7 @@ interface Module {
   enabled: boolean;
 }
 
-export function ModuleGrid({ onClose, onModuleSelect, userRole }: ModuleGridProps) {
+export function ModuleGrid({ onClose, onModuleSelect, userRole: _userRole }: ModuleGridProps) {
   const { hasPermission, isPermissionLoaded, isModuleEnabled } = usePermissions();
 
   if (FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded) {

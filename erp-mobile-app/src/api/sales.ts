@@ -64,7 +64,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: 'App not configured.' };
   }
 
-  const { companyId, branchId, customerId, customerName, contactNumber, items, subtotal, discountAmount, taxAmount, expenses, total, paymentMethod, notes, isStudio, userId, paidAmount, dueAmount, paymentAccountId, orderDate, deadline } = input;
+  const { companyId, branchId, customerId, customerName, contactNumber, items, subtotal, discountAmount, taxAmount, expenses, total, paymentMethod, notes, isStudio, userId, paidAmount, dueAmount, paymentAccountId, orderDate: _orderDate, deadline } = input;
 
   if (!companyId || !branchId || !userId) {
     return { data: null, error: 'Missing company, branch, or user.' };

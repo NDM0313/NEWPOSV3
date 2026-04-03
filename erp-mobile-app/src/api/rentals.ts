@@ -282,13 +282,22 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
         total: Number(i.total) ?? 0,
         unit: i.unit as string | undefined,
       })),
-      payments: paymentList.map((p) => ({
-        id: String(p.id),
-        amount: Number(p.amount) ?? 0,
-        method: String(p.method ?? ''),
-        reference: (p.reference as string) ?? null,
-        paymentDate: (p.payment_date ?? (p.created_at as string)?.slice(0, 10)) ?? '',
-      })),
+      payments: paymentList.map((p) => {
+        const rawDate = p.payment_date ?? p.created_at;
+        const paymentDate =
+          typeof rawDate === 'string'
+            ? rawDate.slice(0, 10)
+            : rawDate instanceof Date
+              ? rawDate.toISOString().slice(0, 10)
+              : '';
+        return {
+          id: String(p.id),
+          amount: Number(p.amount) ?? 0,
+          method: String(p.method ?? ''),
+          reference: (p.reference as string) ?? null,
+          paymentDate,
+        };
+      }),
     },
     error: null,
   };
@@ -399,7 +408,7 @@ function normalizePaymentMethod(m: string): string {
 
 export async function addRentalPayment(
   rentalId: string,
-  companyId: string,
+  _companyId: string,
   amount: number,
   method: string,
   reference?: string,
@@ -494,7 +503,7 @@ export async function markRentalPickedUp(
   return { error: null };
 }
 
-export async function deleteRental(rentalId: string, companyId: string): Promise<{ error: string | null }> {
+export async function deleteRental(rentalId: string, _companyId: string): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
   const { data: rental, error: fetchErr } = await supabase.from('rentals').select('id, status').eq('id', rentalId).single();
   if (fetchErr || !rental) return { error: fetchErr?.message ?? 'Rental not found.' };
@@ -506,7 +515,7 @@ export async function deleteRental(rentalId: string, companyId: string): Promise
   return { error: delErr?.message ?? null };
 }
 
-export async function cancelRental(rentalId: string, companyId: string): Promise<{ error: string | null }> {
+export async function cancelRental(rentalId: string, _companyId: string): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
   const { data: rental, error: fetchErr } = await supabase.from('rentals').select('id, status').eq('id', rentalId).single();
   if (fetchErr || !rental) return { error: fetchErr?.message ?? 'Rental not found.' };

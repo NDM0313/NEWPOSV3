@@ -197,15 +197,14 @@ export function TransactionSuccessModal({
                     View Ledger
                   </button>
                 )}
-                {(onBack || onClose) && (
-                  <button
-                    onClick={() => handleAction(onBack ?? onClose)}
-                    className="w-full h-12 border border-[#374151] hover:bg-[#374151] rounded-xl font-medium text-white flex items-center justify-center gap-2"
-                  >
-                    <ArrowLeft className="w-5 h-5" />
-                    Back
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => handleAction(onBack ?? onClose)}
+                  className="w-full h-12 border border-[#374151] hover:bg-[#374151] rounded-xl font-medium text-white flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                  Back
+                </button>
               </>
             )}
 
@@ -229,15 +228,14 @@ export function TransactionSuccessModal({
                     Print
                   </button>
                 )}
-                {(onBackToList || onClose) && (
-                  <button
-                    onClick={() => handleAction(onBackToList ?? onClose)}
-                    className="w-full h-12 border border-[#374151] hover:bg-[#374151] rounded-xl font-medium text-white flex items-center justify-center gap-2"
-                  >
-                    <List className="w-5 h-5" />
-                    Back to List
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => handleAction(onBackToList ?? onClose)}
+                  className="w-full h-12 border border-[#374151] hover:bg-[#374151] rounded-xl font-medium text-white flex items-center justify-center gap-2"
+                >
+                  <List className="w-5 h-5" />
+                  Back to List
+                </button>
               </>
             )}
 
@@ -252,29 +250,27 @@ export function TransactionSuccessModal({
                     View Booking
                   </button>
                 )}
-                {(onBackToList || onHome || onClose) && (
-                  <button
-                    onClick={() => handleAction(onBackToList ?? onHome ?? onClose)}
-                    className="w-full h-12 border border-[#374151] hover:bg-[#374151] rounded-xl font-medium text-white flex items-center justify-center gap-2"
-                  >
-                    <ArrowLeft className="w-5 h-5" />
-                    Back
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => handleAction(onBackToList ?? onHome ?? onClose)}
+                  className="w-full h-12 border border-[#374151] hover:bg-[#374151] rounded-xl font-medium text-white flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                  Back
+                </button>
               </>
             )}
 
             {data.type === 'return' && (
               <>
-                {(onBack || onClose) && (
-                  <button
-                    onClick={() => handleAction(onBack ?? onClose)}
-                    className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] rounded-xl font-medium text-white flex items-center justify-center gap-2"
-                  >
-                    <ArrowLeft className="w-5 h-5" />
-                    Back
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => handleAction(onBack ?? onClose)}
+                  className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] rounded-xl font-medium text-white flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                  Back
+                </button>
               </>
             )}
 

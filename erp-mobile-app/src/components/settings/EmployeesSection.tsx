@@ -134,7 +134,7 @@ export function EmployeesSection({ onBack, companyId, isAdminOrOwner, userId }: 
     
     // We need to get the user role. The Employee object doesn't have it.
     // Let's assume we can get it from the users table.
-    const { data: userData, error } = await employeesApi.getAvailableUsers(companyId); 
+    await employeesApi.getAvailableUsers(companyId);
     // This only returns available users. We need to get the role of the CURRENT employee's user.
     // I should have added a getEmployeeDetails or similar.
     // For now, I'll update getEmployees in API to include role.

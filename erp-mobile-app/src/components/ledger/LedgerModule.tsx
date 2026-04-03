@@ -12,7 +12,7 @@ interface LedgerModuleProps {
 
 type View = 'customers' | 'detail';
 
-export function LedgerModule({ onBack, user, companyId, branchId }: LedgerModuleProps) {
+export function LedgerModule({ onBack, user: _user, companyId, branchId }: LedgerModuleProps) {
   const [customers, setCustomers] = useState<ledgerApi.CustomerWithBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

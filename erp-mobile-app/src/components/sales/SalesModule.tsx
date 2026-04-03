@@ -15,7 +15,7 @@ import { SaleConfirmation } from './SaleConfirmation';
 import { StudioDetailsStep, type StudioDetailsData } from './StudioDetailsStep';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 
-export type SalesStep = 'home' | 'customer' | 'products' | 'summary' | 'payment' | 'confirmation';
+export type SalesStep = 'home' | 'customer' | 'products' | 'studioDetails' | 'summary' | 'payment' | 'confirmation';
 
 export interface Customer {
   id: string;
@@ -69,7 +69,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [createdInvoiceNo, setCreatedInvoiceNo] = useState<string | null>(null);
-  const [createdSaleId, setCreatedSaleId] = useState<string | null>(null);
+  const [, setCreatedSaleId] = useState<string | null>(null);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
   const todayStr = () => new Date().toISOString().split('T')[0];
   const todayPlus7Str = () => {
