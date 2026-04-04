@@ -54,8 +54,17 @@ export interface DayBookReportProps {
   globalEndDate?: string | null;
 }
 
+/** Same rule as `accountingService.getAccountLedger`: when a branch is selected, include that branch plus company-wide JEs (`branch_id` null). */
+function journalEntriesBranchOrFilter(branchId: string | null | undefined): string | null {
+  if (!branchId || branchId === 'all') return null;
+  const bid = String(branchId).trim();
+  const uuidOk = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(bid);
+  if (!uuidOk) return null;
+  return `branch_id.is.null,branch_id.eq.${bid}`;
+}
+
 export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartDate, globalEndDate }: DayBookReportProps) => {
-  const { companyId } = useSupabase();
+  const { companyId, branchId: contextBranchId } = useSupabase();
   const { formatDateTime } = useFormatDate();
   const today = new Date();
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({
@@ -69,6 +78,13 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
   type DayBookSortKey = 'date' | 'voucher' | 'account' | 'description' | 'debit' | 'credit' | 'type';
   const [sortKey, setSortKey] = useState<DayBookSortKey>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const branchOrFilter = useMemo(
+    () => journalEntriesBranchOrFilter(contextBranchId),
+    [contextBranchId]
+  );
+  const branchScopeLabel =
+    !contextBranchId || contextBranchId === 'all' ? 'All branches' : 'Selected branch + company-wide JEs';
 
   const useGlobalRange = Boolean(globalStartDate && globalEndDate);
   const dateFrom = useGlobalRange
@@ -87,7 +103,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
     let cancelled = false;
     setLoading(true);
     (async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('journal_entries')
         .select(`
           id, entry_no, entry_date, description, reference_type, created_at,
@@ -95,7 +111,11 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         `)
         .eq('company_id', companyId)
         .gte('entry_date', dateFrom)
-        .lte('entry_date', dateTo)
+        .lte('entry_date', dateTo);
+      if (branchOrFilter) {
+        q = q.or(branchOrFilter);
+      }
+      const { data, error } = await q
         .order('entry_date', { ascending: true })
         .order('created_at', { ascending: true })
         .limit(500);
@@ -152,7 +172,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
       setEntries(list);
     })();
     return () => { cancelled = true; };
-  }, [companyId, dateFrom, dateTo]);
+  }, [companyId, dateFrom, dateTo, branchOrFilter]);
 
   const getSortValue = (e: DayBookEntry, key: DayBookSortKey): string | number => {
     switch (key) {
@@ -203,7 +223,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
   }, [currentPage, totalPages]);
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFrom, dateTo, sortKey, sortDir]);
+  }, [dateFrom, dateTo, sortKey, sortDir, branchOrFilter]);
 
   // Analyse: which vouchers are unbalanced (sum of debit - sum of credit per voucher)
   const byVoucher = new Map<string, { debit: number; credit: number }>();
@@ -235,7 +255,8 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
       e.credit,
       e.type,
     ]),
-    title: `Roznamcha (Day Book) ${dateFrom} to ${dateTo}`,
+    // Day Book = journal lines (canonical GL), not Roznamcha (payments cash book). Title must not imply Roznamcha.
+    title: `Journal Day Book ${dateFrom} to ${dateTo} – ${branchScopeLabel}`,
   };
 
   return (
@@ -263,6 +284,20 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
       {useGlobalRange && (
         <p className="text-sm text-gray-400">Using global date range from top bar</p>
       )}
+      <p
+        className="text-xs text-gray-500 border border-gray-800/80 rounded-lg px-3 py-2 bg-gray-950/40"
+        role="status"
+      >
+        <span className="text-gray-600">Branch scope:</span>{' '}
+        {!contextBranchId || contextBranchId === 'all' ? (
+          <>All branches — every journal line for this company in the date range.</>
+        ) : (
+          <>
+            Selected branch plus company-wide journal entries (null <code className="text-gray-400">branch_id</code>),
+            consistent with GL account ledger filtering.
+          </>
+        )}
+      </p>
 
       {loading ? (
         <div className="flex justify-center py-16">

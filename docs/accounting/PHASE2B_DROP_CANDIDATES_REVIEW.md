@@ -2,7 +2,7 @@
 
 **STOP** — This document **does not authorize** any `DROP` or destructive script. It lists **candidates** for a future, separately approved DB cleanup window.
 
-**Updated:** 2026-04-01
+**Updated:** 2026-04-05 (Batch 4 live ingest — COMPLETE)
 
 Preconditions for **any** candidate:
 
@@ -10,6 +10,22 @@ Preconditions for **any** candidate:
 2. No application code in `src/` or `erp-mobile-app/src/` reads the table for live UX (re-grep before DROP; include `.from('…')` and any raw SQL strings).
 3. Ops / BI confirms no external dependency.
 4. Full backup + `PHASE2B_ROLLBACK_AND_SAFETY.md` path agreed.
+
+---
+
+## Batch 4 — DB inventory (read-only)
+
+**Authoritative runbook:** [PHASE2B_DB_INVENTORY_REPORT.md](./PHASE2B_DB_INVENTORY_REPORT.md)
+
+**Status:** **COMPLETE** (2026-04-05) — live findings in inventory **§8** / **§9.4**. **Verified:** `journal_entry_lines.account_id` → **`accounts.id`**; **no** live FK from `journal_entry_lines.account_id` to `chart_accounts.id`.
+
+**Tier 1 posture (live-aware):** Remains **DROP_CANDIDATE_REVIEW** — **not** auto-approved. The spine is **not** blocked by a `journal_entry_lines` → `chart_accounts` FK, but Tier 1 still has **internal FKs** to `chart_accounts`, **triggers** (`update_account_balance`, `update_updated_at_column`), and **RLS**. Row counts for most Tier 1 tables are **0** in the verified target; dropping still requires DBA + product + engineering approval and full dependency handling (see Tier 1 table).
+
+**Spine FK migration (Batch 5 prereq):** **Not required** for repointing `journal_entry_lines` away from `chart_accounts` — live DB already references **`accounts`**. Any future Tier 1 `DROP` still needs its **own** plan (dependent FKs/triggers/RLS).
+
+**Batch 5:** **Not approved** in this pass.
+
+**Destructive action approved:** **NO**
 
 ---
 

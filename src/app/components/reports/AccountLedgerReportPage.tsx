@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Loader2, FileText, FileSpreadsheet, Filter, RotateCcw } from 'lucide-react';
+import { Loader2, FileText, FileSpreadsheet, Filter, RotateCcw, Eye, Pencil } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -9,13 +9,15 @@ import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils'
 import { supabase } from '@/lib/supabase';
 import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import { contactService } from '@/app/services/contactService';
+import { studioService } from '@/app/services/studioService';
+import { StatementScopeBanner } from '@/app/components/reports/StatementScopeBanner';
+import {
+  accountingStatementExportSlug,
+  accountingStatementModeLabel,
+  type AccountingStatementMode,
+} from '@/app/lib/accounting/statementEngineTypes';
 
-type StatementType =
-  | 'gl'
-  | 'customer'
-  | 'supplier'
-  | 'cash_bank'
-  | 'account_contact';
+type StatementType = AccountingStatementMode;
 
 type ContactType = 'customer' | 'supplier';
 type FiltersState = {
@@ -24,6 +26,7 @@ type FiltersState = {
   selectedAccountId: string;
   selectedContactType: ContactType | 'all';
   selectedContactId: string;
+  selectedWorkerId: string;
   sourceModuleFilter: string;
   transactionTypeFilter: string;
   searchTerm: string;
@@ -190,8 +193,10 @@ function alignRunningBalances(rows: PresentedLedgerRow[]): PresentedLedgerRow[] 
 export const AccountLedgerReportPage: React.FC<{
   startDate: string;
   endDate: string;
-  branchId?: string;
-}> = ({ startDate, endDate, branchId }) => {
+  branchId?: string | null;
+  /** Human-readable branch line for the scope banner (e.g. “All branches” or a name). */
+  branchScopeLabel?: string;
+}> = ({ startDate, endDate, branchId, branchScopeLabel }) => {
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const [accounts, setAccounts] = useState<{ id: string; name: string; code?: string; type?: string }[]>([]);
@@ -214,6 +219,7 @@ export const AccountLedgerReportPage: React.FC<{
     selectedAccountId: '',
     selectedContactType: 'all',
     selectedContactId: '',
+    selectedWorkerId: '',
     sourceModuleFilter: 'all',
     transactionTypeFilter: 'all',
     searchTerm: '',
@@ -266,6 +272,38 @@ export const AccountLedgerReportPage: React.FC<{
 
   useEffect(() => {
     if (!companyId) {
+      setWorkers([]);
+      return;
+    }
+    studioService
+      .getAllWorkers(companyId)
+      .then((list) => {
+        setWorkers(
+          (list || []).map((w) => ({
+            id: w.id,
+            name: w.name || w.id,
+            is_active: w.is_active,
+          }))
+        );
+      })
+      .catch(() => setWorkers([]));
+  }, [companyId]);
+
+  useEffect(() => {
+    if (statementType !== 'worker') {
+      setSelectedWorkerId('');
+    }
+  }, [statementType]);
+
+  useEffect(() => {
+    if (statementType !== 'worker' || !workers.length) return;
+    if (selectedWorkerId) return;
+    const first = workers.find((w) => w.is_active !== false)?.id || workers[0].id;
+    if (first) setSelectedWorkerId(first);
+  }, [statementType, workers, selectedWorkerId]);
+
+  useEffect(() => {
+    if (!companyId) {
       setEntries([]);
       return;
     }
@@ -293,7 +331,19 @@ export const AccountLedgerReportPage: React.FC<{
           loaded = await accountingService.getSupplierApGlJournalLedger(
             applied.selectedContactId,
             companyId,
-            branchId,
+            branchId || undefined,
+            startDate,
+            endDate
+          );
+        } else if (applied.statementType === 'worker') {
+          if (!applied.selectedWorkerId) {
+            setEntries([]);
+            return;
+          }
+          loaded = await accountingService.getWorkerPartyGlJournalLedger(
+            applied.selectedWorkerId,
+            companyId,
+            branchId || undefined,
             startDate,
             endDate
           );
@@ -307,7 +357,7 @@ export const AccountLedgerReportPage: React.FC<{
             companyId,
             startDate,
             endDate,
-            branchId
+            branchId || undefined
           );
         }
         setEntries(loaded || []);
@@ -315,6 +365,7 @@ export const AccountLedgerReportPage: React.FC<{
           statementType: applied.statementType,
           contactType: applied.selectedContactType,
           selectedContactId: applied.selectedContactId,
+          selectedWorkerId: applied.selectedWorkerId,
           selectedAccountId: applied.selectedAccountId,
           sourceModuleFilter: applied.sourceModuleFilter,
           transactionTypeFilter: applied.transactionTypeFilter,
@@ -371,6 +422,12 @@ export const AccountLedgerReportPage: React.FC<{
         if (e.payment_id) {
           const linked = partyByKey[e.payment_id]?.contactId || '';
           if (linked && linked !== applied.selectedContactId) return false;
+        }
+      }
+      if (applied.statementType === 'worker' && applied.selectedWorkerId) {
+        if (e.payment_id) {
+          const linked = partyByKey[e.payment_id]?.contactId || '';
+          if (linked && linked !== applied.selectedWorkerId) return false;
         }
       }
       if (applied.statementType === 'account_contact' && applied.selectedContactId) {
@@ -453,6 +510,14 @@ export const AccountLedgerReportPage: React.FC<{
       setApplied((prev) => ({ ...prev, includeAdjustments: false, includeReversals: false }));
       return;
     }
+    if (statementType === 'worker') {
+      setSelectedAccountId('');
+      setSelectedContactId('');
+      setIncludeAdjustments(false);
+      setIncludeReversals(false);
+      setApplied((prev) => ({ ...prev, includeAdjustments: false, includeReversals: false }));
+      return;
+    }
     if (statementType === 'cash_bank') {
       const firstCash = accounts.find((a) => classifyAccountCategory(a) === 'Cash / Bank / Wallet');
       if (firstCash?.id) setSelectedAccountId(firstCash.id);
@@ -467,12 +532,31 @@ export const AccountLedgerReportPage: React.FC<{
       selectedAccountId,
       selectedContactType,
       selectedContactId,
+      selectedWorkerId,
     }));
-  }, [statementType, selectedAccountId, selectedContactType, selectedContactId]);
+  }, [statementType, selectedAccountId, selectedContactType, selectedContactId, selectedWorkerId]);
 
   const selectedAccount = accountById.get(applied.selectedAccountId || selectedAccountId);
-  // Use applied contact (query-level filter), never draft UI selection for row display.
-  const selectedContactName = contacts.find((c) => c.id === applied.selectedContactId)?.name || '';
+  // Use applied party (contact or worker), never draft-only UI selection for row display labels.
+  const selectedPartyName =
+    applied.statementType === 'worker'
+      ? workers.find((w) => w.id === applied.selectedWorkerId)?.name || ''
+      : contacts.find((c) => c.id === applied.selectedContactId)?.name || '';
+
+  const branchScopeResolved =
+    branchScopeLabel ||
+    (!branchId || branchId === 'all'
+      ? 'All branches (global COA rows included; journal lines use service branch rules)'
+      : 'Branch filter applied (current session branch)');
+
+  const openStatementTransaction = (referenceNumber: string, autoLaunchUnifiedEdit: boolean) => {
+    if (typeof window === 'undefined' || !referenceNumber) return;
+    window.dispatchEvent(
+      new CustomEvent('openTransactionDetail', {
+        detail: { referenceNumber, autoLaunchUnifiedEdit },
+      })
+    );
+  };
 
   const presentedEntries = useMemo<PresentedLedgerRow[]>(() => {
     const base = sortedEntries.filter((e) => {
@@ -637,24 +721,40 @@ export const AccountLedgerReportPage: React.FC<{
     [entries]
   );
 
-  const toExport = (): ExportData => ({
-    title: `Statement Center - ${applied.statementType.toUpperCase()} (${startDate} to ${endDate})`,
-    headers: ['Date', 'Reference', 'Module', 'Contact', 'Description', 'Payment Account', 'Debit', 'Credit', 'Balance', 'Status/Source'],
-    rows: presentedEntries.map((e) => [
-      e.date,
-      e.reference_number,
-      e.source_module || '',
-      e.payment_id ? (partyByKey[e.payment_id]?.name || '') : '',
-      e.description,
-      e.account_name || '',
-      e.displayDebit,
-      e.displayCredit,
-      e.displayRunningBalance,
-      e.displayStatus,
-    ]),
-  });
-  const handleExportPDF = () => exportToPDF(toExport(), 'Account_Ledger');
-  const handleExportExcel = () => exportToExcel(toExport(), 'Account_Ledger');
+  const toExport = (): ExportData => {
+    const slug = accountingStatementExportSlug(applied.statementType);
+    return {
+      title: `${slug} | ${startDate} to ${endDate} | ${branchScopeResolved}`,
+      headers: [
+        'Date',
+        'Reference',
+        'Branch',
+        'Module',
+        'Contact',
+        'Description',
+        'Payment Account',
+        'Debit',
+        'Credit',
+        'Balance',
+        'Status/Source',
+      ],
+      rows: presentedEntries.map((e) => [
+        e.date,
+        e.reference_number,
+        e.branch_name || e.branch_id || '',
+        e.source_module || '',
+        e.payment_id ? (partyByKey[e.payment_id]?.name || '') : '',
+        e.description,
+        e.account_name || '',
+        e.displayDebit,
+        e.displayCredit,
+        e.displayRunningBalance,
+        e.displayStatus,
+      ]),
+    };
+  };
+  const handleExportPDF = () => exportToPDF(toExport(), accountingStatementExportSlug(applied.statementType));
+  const handleExportExcel = () => exportToExcel(toExport(), accountingStatementExportSlug(applied.statementType));
 
   const resetFilters = () => {
     setSelectedCategory('all');
@@ -666,6 +766,7 @@ export const AccountLedgerReportPage: React.FC<{
     setIncludeManualEntries(true);
     setIncludeAdjustments(true);
     setSelectedContactId('');
+    setSelectedWorkerId('');
     setApplied((prev) => ({
       ...prev,
       selectedCategory: 'all',
@@ -677,6 +778,7 @@ export const AccountLedgerReportPage: React.FC<{
       includeManualEntries: true,
       includeAdjustments: true,
       selectedContactId: '',
+      selectedWorkerId: '',
     }));
   };
 
@@ -690,7 +792,7 @@ export const AccountLedgerReportPage: React.FC<{
       statementType,
       contactType: selectedContactType,
       selectedContactId,
-      selectedContactName: contacts.find((c) => c.id === selectedContactId)?.name || '',
+      selectedWorkerId,
       selectedAccountId,
       selectedCategory,
       sourceModuleFilter,
@@ -707,6 +809,7 @@ export const AccountLedgerReportPage: React.FC<{
       selectedAccountId: prevAppliedRef.current.selectedAccountId,
       selectedContactType: prevAppliedRef.current.selectedContactType,
       selectedContactId: prevAppliedRef.current.selectedContactId,
+      selectedWorkerId: prevAppliedRef.current.selectedWorkerId,
       sourceModuleFilter,
       transactionTypeFilter,
       searchTerm,
@@ -729,7 +832,7 @@ export const AccountLedgerReportPage: React.FC<{
       appliedStatementType: applied.statementType,
       appliedContactType: applied.selectedContactType,
       appliedContactId: applied.selectedContactId,
-      appliedContactName: contacts.find((c) => c.id === applied.selectedContactId)?.name || '',
+      appliedWorkerId: applied.selectedWorkerId,
       sortedRows: sortedEntries.length,
       presentedRows: presentedEntries.length,
       distinctPartyContactIds,
@@ -762,6 +865,7 @@ export const AccountLedgerReportPage: React.FC<{
               <option value="supplier">Supplier Statement</option>
               <option value="cash_bank">Cash / Bank Statement</option>
               <option value="account_contact">Account + Contact Statement</option>
+              <option value="worker">Worker Statement (WP / WA GL)</option>
             </select>
           </div>
           <div>
@@ -832,6 +936,25 @@ export const AccountLedgerReportPage: React.FC<{
               </div>
             </>
           )}
+          {statementType === 'worker' && (
+            <div className="lg:col-span-2">
+              <label className="text-xs text-gray-400">Worker</label>
+              <select
+                value={selectedWorkerId}
+                onChange={(e) => setSelectedWorkerId(e.target.value)}
+                className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white"
+              >
+                <option value="">Select worker</option>
+                {workers
+                  .filter((w) => w.id)
+                  .map((w) => (
+                  <option key={w.id} value={w.id!}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-3 items-end">
@@ -872,11 +995,24 @@ export const AccountLedgerReportPage: React.FC<{
         </div>
       </div>
 
+      <StatementScopeBanner
+        statementLabel={accountingStatementModeLabel(applied.statementType)}
+        periodLabel={`${startDate} → ${endDate}`}
+        branchScopeLabel={branchScopeResolved}
+        basisLabel={
+          viewMode === 'effective'
+            ? 'Effective — rollup rules hide some reversals/adjustments; balance follows posted GL.'
+            : 'Audit — shows reversals/adjustments when the include checkboxes allow.'
+        }
+      />
+
       <p className="text-sm text-gray-400">
-        Period: {startDate} to {endDate}
-        {selectedAccount && ` • ${selectedAccount.code || ''} ${selectedAccount.name}`}
-        {selectedContactName && ` • Party: ${selectedContactName}`}
-        {` • View Mode: ${viewMode === 'effective' ? 'Effective' : 'Audit'}`}
+        {selectedAccount && `${selectedAccount.code || ''} ${selectedAccount.name}`.trim()}
+        {selectedPartyName
+          ? applied.statementType === 'worker'
+            ? ` · Worker: ${selectedPartyName}`
+            : ` · Party: ${selectedPartyName}`
+          : ''}
       </p>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -898,6 +1034,7 @@ export const AccountLedgerReportPage: React.FC<{
               <tr>
                 <th className="p-3 text-left font-medium text-gray-300">Date</th>
                 <th className="p-3 text-left font-medium text-gray-300">Reference</th>
+                <th className="p-3 text-left font-medium text-gray-300">Branch</th>
                 <th className="p-3 text-left font-medium text-gray-300">Module</th>
                 <th className="p-3 text-left font-medium text-gray-300">Contact / Party</th>
                 <th className="p-3 text-left font-medium text-gray-300">Description</th>
@@ -912,7 +1049,7 @@ export const AccountLedgerReportPage: React.FC<{
             <tbody className="divide-y divide-gray-800">
               {presentedEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="p-6 text-center text-gray-500">
+                  <td colSpan={12} className="p-6 text-center text-gray-500">
                     No transactions in this period.
                   </td>
                 </tr>
@@ -920,7 +1057,22 @@ export const AccountLedgerReportPage: React.FC<{
                 presentedEntries.map((e, i) => (
                   <tr key={`${e.journal_entry_id}-${i}`} className="hover:bg-gray-800/30">
                     <td className="p-3 text-gray-300">{e.created_at ? <DateTimeDisplay date={e.created_at} /> : e.date}</td>
-                    <td className="p-3 font-mono text-gray-300">{e.reference_number}</td>
+                    <td className="p-3 font-mono text-gray-300">
+                      {e.journal_entry_id ? (
+                        <button
+                          type="button"
+                          className="text-left text-sky-400 hover:text-sky-300 hover:underline"
+                          onClick={() =>
+                            openStatementTransaction(String(e.entry_no || '').trim() || e.journal_entry_id, false)
+                          }
+                        >
+                          {e.reference_number}
+                        </button>
+                      ) : (
+                        e.reference_number
+                      )}
+                    </td>
+                    <td className="p-3 text-gray-400 text-xs">{e.branch_name || e.branch_id || '—'}</td>
                     <td className="p-3 text-gray-300">{e.source_module || '—'}</td>
                     <td className="p-3 text-white">{e.payment_id ? (partyByKey[e.payment_id]?.name || '—') : '—'}</td>
                     <td className="p-3 text-white">{e.description}</td>
@@ -931,26 +1083,30 @@ export const AccountLedgerReportPage: React.FC<{
                     <td className="p-3 text-gray-400 text-xs">{e.displayStatus}</td>
                     <td className="p-3 text-right">
                       {e.journal_entry_id ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-sky-400 hover:text-sky-300"
-                          onClick={() => {
-                            if (typeof window !== 'undefined') {
-                              window.dispatchEvent(
-                                new CustomEvent('openTransactionDetail', {
-                                  detail: {
-                                    referenceNumber: e.journal_entry_id,
-                                    autoLaunchUnifiedEdit: true,
-                                  },
-                                })
-                              );
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1 text-gray-300 hover:text-white"
+                            onClick={() =>
+                              openStatementTransaction(String(e.entry_no || '').trim() || e.journal_entry_id, false)
                             }
-                          }}
-                        >
-                          Edit
-                        </Button>
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            View
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1 text-sky-400 hover:text-sky-300"
+                            onClick={() => openStatementTransaction(e.journal_entry_id, true)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Edit
+                          </Button>
+                        </div>
                       ) : (
                         <span className="text-xs text-gray-500">—</span>
                       )}

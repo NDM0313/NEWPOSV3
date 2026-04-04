@@ -236,10 +236,13 @@ export function AccountsHierarchyList({
                     {formatCurrency(displayBalance)}
                   </div>
                   {hasChildRows && (
-                    <span className="mt-0.5 block text-[9px] font-normal text-gray-500">
+                    <span
+                      className="mt-0.5 block text-[9px] font-normal text-gray-500"
+                      title="Parent/group rows show roll-up: this account’s own GL balance plus all visible sub-accounts. Child rows still carry their own posted activity (no double-count in GL)."
+                    >
                       {account.balance !== displayBalance
-                        ? `rollup · leaf ${formatCurrency(account.balance)}`
-                        : 'incl. sub-accounts'}
+                        ? `Roll-up total · row GL ${formatCurrency(account.balance)}`
+                        : 'Roll-up includes child accounts'}
                     </span>
                   )}
                   <div className="mt-1 flex items-center justify-end gap-1 text-[11px] tabular-nums">

@@ -188,12 +188,22 @@ export const AccountingDashboard = () => {
   }, [setCurrentModule]);
 
   const [activeTab, setActiveTab] = useState<'journal_entries' | 'daybook' | 'roznamcha' | 'accounts' | 'ledger' | 'receivables' | 'payables' | 'courier' | 'deposits' | 'studio' | 'account_statements' | 'integrity_lab'>('journal_entries');
+  /** Align Account Statements period with global header filter when set (same idea as Day Book / Roznamcha). */
   const reportStartDate = useMemo(() => {
+    const g = globalStartDate && String(globalStartDate).trim();
+    if (g) return g.slice(0, 10);
     const d = new Date();
     d.setDate(1);
     return d.toISOString().slice(0, 10);
-  }, []);
-  const reportEndDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  }, [globalStartDate]);
+  const reportEndDate = useMemo(() => {
+    const g = globalEndDate && String(globalEndDate).trim();
+    if (g) return g.slice(0, 10);
+    return new Date().toISOString().slice(0, 10);
+  }, [globalEndDate]);
+
+  const accountStatementBranchLabel =
+    !branchId || branchId === 'all' ? 'All branches' : 'Current session branch';
   
   // UI-only view mode: Operational (day-to-day accounts) vs Professional (full Chart of Accounts)
   const [accountsViewMode, setAccountsViewMode] = useState<'operational' | 'professional'>('operational');
@@ -810,6 +820,8 @@ export const AccountingDashboard = () => {
                             </th>
                           );
                         })}
+                        <th className="px-4 py-3 text-left">Lines</th>
+                        <th className="px-4 py-3 text-left">Status</th>
                         <th className="px-4 py-3 text-left">Account</th>
                         {canPostAccounting && <th className="px-4 py-3 text-left">Actions</th>}
                       </tr>
@@ -889,6 +901,18 @@ export const AccountingDashboard = () => {
                                   {formatCurrency(Math.abs(amount))}
                                 </td>
                                 <td className="px-4 py-3 text-xs text-gray-400">{entry.source || 'Manual'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-300 tabular-nums">{group.entries.length}</td>
+                                <td className="px-4 py-3">
+                                  <Badge
+                                    className={
+                                      isReversal
+                                        ? 'bg-amber-500/15 text-amber-200 border-amber-500/30 text-xs'
+                                        : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
+                                    }
+                                  >
+                                    {isReversal ? 'Reversal' : 'Posted'}
+                                  </Badge>
+                                </td>
                                 <td className="px-4 py-3 text-xs text-gray-400 max-w-[180px]" title={`Debit: ${entry.debitAccount} → Credit: ${entry.creditAccount}`}>
                                   <span className="text-gray-500">Debit:</span> {entry.debitAccount}
                                   <span className="text-gray-600 mx-1">→</span>
@@ -899,6 +923,20 @@ export const AccountingDashboard = () => {
                                     <div className="flex flex-wrap items-center gap-1">
                                       {!isReversal && (
                                         <>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 text-gray-300 hover:text-white hover:bg-gray-800/80"
+                                            onClick={() => {
+                                              setSelectedGroupEntries(group.entries);
+                                              setTransactionDetailAutoEdit(false);
+                                              setTransactionReference(entry.referenceNo || entry.id);
+                                            }}
+                                            title="Open journal detail (read-only)"
+                                          >
+                                            <Eye className="w-4 h-4 mr-1" />
+                                            View
+                                          </Button>
                                           <Button
                                             variant="ghost"
                                             size="sm"
@@ -1004,6 +1042,18 @@ export const AccountingDashboard = () => {
                                   {formatCurrency(Math.abs(amount))}
                                 </td>
                                 <td className="px-4 py-3 text-xs text-gray-400">{entry.source || 'Manual'}</td>
+                                <td className="px-4 py-3 text-sm text-gray-300 tabular-nums">1</td>
+                                <td className="px-4 py-3">
+                                  <Badge
+                                    className={
+                                      isReversal
+                                        ? 'bg-amber-500/15 text-amber-200 border-amber-500/30 text-xs'
+                                        : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
+                                    }
+                                  >
+                                    {isReversal ? 'Reversal' : 'Posted'}
+                                  </Badge>
+                                </td>
                                 <td className="px-4 py-3 text-xs text-gray-400 max-w-[180px]" title={`Debit: ${entry.debitAccount} → Credit: ${entry.creditAccount}`}>
                                   <span className="text-gray-500">Debit:</span> {entry.debitAccount}
                                   <span className="text-gray-600 mx-1">→</span>
@@ -1014,6 +1064,20 @@ export const AccountingDashboard = () => {
                                     <div className="flex flex-wrap items-center gap-1">
                                       {!isReversal && (
                                         <>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 text-gray-300 hover:text-white hover:bg-gray-800/80"
+                                            onClick={() => {
+                                              setSelectedGroupEntries(null);
+                                              setTransactionDetailAutoEdit(false);
+                                              setTransactionReference(entry.referenceNo || entry.id);
+                                            }}
+                                            title="Open journal detail (read-only)"
+                                          >
+                                            <Eye className="w-4 h-4 mr-1" />
+                                            View
+                                          </Button>
                                           <Button
                                             variant="ghost"
                                             size="sm"
@@ -1505,7 +1569,12 @@ export const AccountingDashboard = () => {
             <p className="text-sm text-gray-400 mb-4">Account-wise ledger / statement by date range</p>
             <div className="text-xs text-gray-500 mb-2">Period: {reportStartDate} to {reportEndDate}</div>
             <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
-              <AccountLedgerReportPage startDate={reportStartDate} endDate={reportEndDate} branchId={branchId} />
+              <AccountLedgerReportPage
+                startDate={reportStartDate}
+                endDate={reportEndDate}
+                branchId={branchId}
+                branchScopeLabel={accountStatementBranchLabel}
+              />
             </Suspense>
           </div>
         )}

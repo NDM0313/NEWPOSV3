@@ -40,9 +40,30 @@ export const accountService = {
         query = query.eq('company_id', companyId);
       }
 
+      // Branch-aware COA: include company-wide rows (branch_id null) plus the selected branch.
+      // Matches AccountingContext usage when user picks a branch (was previously ignored here).
+      const bid = branchId && String(branchId).trim() !== '' && String(branchId) !== 'all' ? String(branchId).trim() : '';
+      const uuidOk = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(bid);
+      if (uuidOk) {
+        query = query.or(`branch_id.is.null,branch_id.eq.${bid}`);
+      }
+
       const { data, error } = await query;
 
       if (error) {
+        // Older DBs without branch_id: retry without branch OR filter
+        if (
+          uuidOk &&
+          (error.message?.includes('branch_id') ||
+            String((error as { details?: string }).details || '').includes('branch_id'))
+        ) {
+          console.warn('[ACCOUNT SERVICE] branch_id not available on accounts, retrying without branch scope');
+          let q2 = supabase.from('accounts').select('*').order('name');
+          if (companyId) q2 = q2.eq('company_id', companyId);
+          const { data: d2, error: e2 } = await q2;
+          if (e2) throw e2;
+          return d2 || [];
+        }
         // If error related to company_id column, retry without it
         if (error.message?.includes('company_id') || error.code === 'PGRST204') {
           console.warn('[ACCOUNT SERVICE] company_id column not found, fetching all accounts');

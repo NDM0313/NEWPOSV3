@@ -1,3 +1,7 @@
+/**
+ * UI for adding/editing COA rows. Despite the name, persistence is the canonical **`accounts`** table
+ * via `chartAccountService` → `accountService` — not the legacy `chart_accounts` table.
+ */
 import React, { useState, useEffect } from 'react';
 import { X, Hash, FileText, Tags, Link2, Calculator, Shield, AlertCircle, Save } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';

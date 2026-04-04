@@ -7,6 +7,35 @@
 
 ---
 
+## Batch 4 — DB legacy inventory (read-only) — **COMPLETE** (2026-04-05)
+
+**Goal:** Environment-specific catalog + dependency proof for legacy accounting tables; **no** DB mutation.
+
+**Deliverable:** [PHASE2B_DB_INVENTORY_REPORT.md](./PHASE2B_DB_INVENTORY_REPORT.md) — **§8** (verified live), **§9.4** (ingest record).
+
+**Before → after:** Batch 4 was **PARTIAL** (no live rows in docs / agent could not connect) → **COMPLETE** after operator live results ingested **2026-04-05**.
+
+**Verified live (single target; staging/prod not separately labeled by operator):**
+
+- **Existence:** All Tier 1–2 candidates **exist** (`chart_accounts` … `ledger_entries`).
+- **Row counts:** Tier 1 tables **0** rows each; `ledger_master` **16**; `ledger_entries` **51**.
+- **Critical FK:** `journal_entry_lines.account_id` → **`accounts.id`**; **not** `chart_accounts.id`.
+- **Other FKs:** As listed in inventory §8.3 (`account_transactions` → `chart_accounts`, etc.).
+- **Views:** None referencing scanned legacy names.
+- **Triggers:** `trigger_update_balance` on `account_transactions`; `update_*_updated_at` on `chart_accounts` / `automation_rules`.
+- **RLS:** Present on listed legacy tables (summary only — full policy text optional via §2.8).
+- **§2.9 function scan:** **Not pasted** (placeholder in ingest); trigger-invoked names noted in inventory §8.8 only.
+
+**Tier 1:** Still **DROP_CANDIDATE_REVIEW** — **not** auto-approved. **Batch 5:** **not** approved in this pass.
+
+**Destructive action approved:** **NO**
+
+**Next:** If a **second** environment (e.g. production vs staging) must be certified, re-run §2 there and add a labeled block under inventory §9.2.
+
+**Following Phase 2B (this handoff):** The **next** phase is **product/design handoff** — Chart of Accounts redesign in Figma and UI planning — **not** destructive DB cleanup. See [FINAL_ACCOUNTING_STABILIZATION_HANDOFF.md](./FINAL_ACCOUNTING_STABILIZATION_HANDOFF.md) and [COA_FIGMA_REDESIGN_BRIEF.md](./COA_FIGMA_REDESIGN_BRIEF.md). **Batch 5 remains NOT APPROVED.**
+
+---
+
 ## Batch 3 executed (2026-03-30) — `ledgerService.ts` removed
 
 **Evidence:** [PHASE2B_BATCH3_EXECUTED.md](./PHASE2B_BATCH3_EXECUTED.md)
@@ -19,7 +48,7 @@
 - **`accountingCanonicalGuard.ts`:** not modified  
 - **Rollback:** git revert / restore file from history
 
-**Classification:** Batch 3 **COMPLETE**; stub **REMOVED**. **Next:** Batch 4 DB inventory (read-only), per `PHASE2B_CLEANUP_BATCHES.md`.
+**Classification:** Batch 3 **COMPLETE**; stub **REMOVED**. **Next (historical):** Batch 4 — now **COMPLETE** (see Batch 4 section above).
 
 ---
 
@@ -292,8 +321,7 @@ Updated:
 
 ## Recommended next step after this pass
 
-Primary recommendation: **Batch 4** — DB legacy inventory (read-only; no DROP), not execution of Batch 5.
-
 1. ~~Batch 3~~ **Complete (2026-03-30)** — [PHASE2B_BATCH3_EXECUTED.md](./PHASE2B_BATCH3_EXECUTED.md).
-2. Keep `npm run build` (root) + `npm run typecheck:mobile` (or full `erp-mobile-app` build) in CI or pre-merge checks.
-3. Schedule Batch 4 per `PHASE2B_CLEANUP_BATCHES.md` / `PHASE2B_DROP_CANDIDATES_REVIEW.md` (environment-specific, DBA window).
+2. ~~Batch 4~~ **Complete (2026-04-05)** — [PHASE2B_DB_INVENTORY_REPORT.md](./PHASE2B_DB_INVENTORY_REPORT.md) §8. Optional: second environment (staging vs prod) — re-run §2 and label §9.2.
+3. Keep `npm run build` (root) + `npm run typecheck:mobile` (or full `erp-mobile-app` build) in CI or pre-merge checks.
+4. Batch 5 **not** approved in this pass; follow `PHASE2B_CLEANUP_BATCHES.md` / `PHASE2B_DROP_CANDIDATES_REVIEW.md` before any destructive DB work.
