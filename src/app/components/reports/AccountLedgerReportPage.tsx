@@ -177,17 +177,24 @@ function normalizePaymentTargetText(description: string): string {
     .trim();
 }
 
-function alignRunningBalances(rows: PresentedLedgerRow[]): PresentedLedgerRow[] {
+/**
+ * Recompute the balance column from row 0 so rollups and filters still chain correctly.
+ * Supplier AP (getSupplierApGlJournalLedger): liability running_balance += credit − debit.
+ * Customer AR / cash GL: asset-style += debit − credit.
+ */
+function alignRunningBalances(rows: PresentedLedgerRow[], apLiabilityStyle: boolean): PresentedLedgerRow[] {
   if (!rows.length) return rows;
-  return rows.map((row, idx) => {
-    if (idx === 0) return row;
-    const prev = rows[idx - 1];
-    const inferred = Number(prev.displayRunningBalance || 0) + Number(row.displayDebit || 0) - Number(row.displayCredit || 0);
-    return {
-      ...row,
-      displayRunningBalance: inferred,
-    };
-  });
+  const out: PresentedLedgerRow[] = [];
+  let prevBal = Number(rows[0].displayRunningBalance ?? rows[0].running_balance ?? 0);
+  out.push({ ...rows[0], displayRunningBalance: prevBal });
+  for (let idx = 1; idx < rows.length; idx++) {
+    const row = rows[idx];
+    const d = Number(row.displayDebit || 0);
+    const c = Number(row.displayCredit || 0);
+    prevBal = apLiabilityStyle ? prevBal + c - d : prevBal + d - c;
+    out.push({ ...row, displayRunningBalance: prevBal });
+  }
+  return out;
 }
 
 export const AccountLedgerReportPage: React.FC<{
@@ -206,6 +213,8 @@ export const AccountLedgerReportPage: React.FC<{
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [selectedContactType, setSelectedContactType] = useState<ContactType | 'all'>('all');
   const [selectedContactId, setSelectedContactId] = useState<string>('');
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>('');
+  const [workers, setWorkers] = useState<{ id: string; name: string; is_active?: boolean }[]>([]);
   const [sourceModuleFilter, setSourceModuleFilter] = useState<string>('all');
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -405,8 +414,11 @@ export const AccountLedgerReportPage: React.FC<{
 
   /** Default statement order: calendar date, then time-of-day (created_at), then stable id. */
   const sortedEntries = useMemo(() => {
+    const isOpeningBalanceRow = (e: AccountLedgerEntry) => normalizeLower(e.description).includes('opening balance');
     const base = [...entries].filter((e) => {
-      const d = normalizeLower(e.description);
+      // Always keep synthetic opening rows so summary cards match the running-balance column (filters could drop them before).
+      if (isOpeningBalanceRow(e)) return true;
+
       if (applied.sourceModuleFilter !== 'all' && normalizeLower(e.source_module) !== applied.sourceModuleFilter) return false;
       if (applied.transactionTypeFilter !== 'all' && normalizeLower(e.document_type) !== applied.transactionTypeFilter) return false;
       if (applied.polarity === 'debit' && Number(e.debit || 0) <= 0) return false;
@@ -417,19 +429,9 @@ export const AccountLedgerReportPage: React.FC<{
         const hay = `${e.reference_number || ''} ${e.description || ''} ${e.source_module || ''} ${party}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
-      // Hard guard: in party-specific statements, enforce real contact linkage where available.
-      if ((applied.statementType === 'customer' || applied.statementType === 'supplier') && applied.selectedContactId) {
-        if (e.payment_id) {
-          const linked = partyByKey[e.payment_id]?.contactId || '';
-          if (linked && linked !== applied.selectedContactId) return false;
-        }
-      }
-      if (applied.statementType === 'worker' && applied.selectedWorkerId) {
-        if (e.payment_id) {
-          const linked = partyByKey[e.payment_id]?.contactId || '';
-          if (linked && linked !== applied.selectedWorkerId) return false;
-        }
-      }
+      // Customer / supplier / worker statements are already scoped by getCustomerLedger / getSupplierApGlJournalLedger /
+      // getWorkerPartyGlJournalLedger — do not second-filter by payments.contact_id (purchase-linked payments can omit or
+      // mismatch contact_id while still belonging to the party via purchase graph).
       if (applied.statementType === 'account_contact' && applied.selectedContactId) {
         if (e.payment_id) {
           const linked = partyByKey[e.payment_id]?.contactId || '';
@@ -599,7 +601,7 @@ export const AccountLedgerReportPage: React.FC<{
               : (e.document_type || e.ledger_kind || (isReversalRow(e) ? 'Reversal' : '—')),
           };
         });
-      return alignRunningBalances(auditRows);
+      return alignRunningBalances(auditRows, applied.statementType === 'supplier');
     }
 
     // Effective GL-like mode: hide adjustment/reversal detail, keep line-level movements.
@@ -624,7 +626,7 @@ export const AccountLedgerReportPage: React.FC<{
             displayStatus: e.document_type || '—',
           };
         });
-      return alignRunningBalances(effectiveGlRows);
+      return alignRunningBalances(effectiveGlRows, false);
     }
 
     // Effective party mode: supplier/customer statements collapse business documents.
@@ -694,23 +696,43 @@ export const AccountLedgerReportPage: React.FC<{
         displayStatus: row.document_type || row.ledger_kind || '—',
       });
     });
-    return alignRunningBalances(out);
-  }, [sortedEntries, applied.includeManualEntries, applied.includeAdjustments, applied.includeReversals, viewMode, isPartyStatement]);
+    return alignRunningBalances(out, applied.statementType === 'supplier');
+  }, [
+    sortedEntries,
+    applied.includeManualEntries,
+    applied.includeAdjustments,
+    applied.includeReversals,
+    applied.statementType,
+    viewMode,
+    isPartyStatement,
+  ]);
 
   const summary = useMemo(() => {
+    const apLiabilityStyle = applied.statementType === 'supplier';
     const openingRow = presentedEntries.find((e) => normalizeLower(e.description).includes('opening balance'));
     const openingBalance = openingRow
-      ? Number(openingRow.displayRunningBalance || 0)
-      : (presentedEntries[0]
-          ? Number(presentedEntries[0].displayRunningBalance || 0) - (Number(presentedEntries[0].displayDebit || 0) - Number(presentedEntries[0].displayCredit || 0))
-          : 0);
+      ? Number(openingRow.displayRunningBalance ?? openingRow.running_balance ?? 0)
+      : presentedEntries[0]
+        ? Number(presentedEntries[0].displayRunningBalance ?? presentedEntries[0].running_balance ?? 0) -
+          (apLiabilityStyle
+            ? Number(presentedEntries[0].displayCredit || 0) - Number(presentedEntries[0].displayDebit || 0)
+            : Number(presentedEntries[0].displayDebit || 0) - Number(presentedEntries[0].displayCredit || 0))
+        : 0;
     const rowsNoOpening = presentedEntries.filter((e) => !normalizeLower(e.description).includes('opening balance'));
     const totalDebit = rowsNoOpening.reduce((s, e) => s + Number(e.displayDebit || 0), 0);
     const totalCredit = rowsNoOpening.reduce((s, e) => s + Number(e.displayCredit || 0), 0);
-    const closingBalance = presentedEntries.length ? Number(presentedEntries[presentedEntries.length - 1].displayRunningBalance || 0) : openingBalance;
-    const netMovement = totalDebit - totalCredit;
+    // Supplier AP (GL): closing = opening + (credits − debits) on displayed period rows — single formula for cards
+    // (must match alignRunningBalances(..., true) chain). Customer / asset-style: opening + (debits − credits).
+    const closingBalance =
+      presentedEntries.length === 0
+        ? openingBalance
+        : apLiabilityStyle
+          ? openingBalance + totalCredit - totalDebit
+          : openingBalance + totalDebit - totalCredit;
+    // Supplier AP: net owed movement = credits − debits on displayed columns (matches running column after alignRunningBalances).
+    const netMovement = apLiabilityStyle ? totalCredit - totalDebit : totalDebit - totalCredit;
     return { openingBalance, totalDebit, totalCredit, closingBalance, netMovement, txCount: rowsNoOpening.length };
-  }, [presentedEntries]);
+  }, [presentedEntries, applied.statementType]);
 
   const sourceModules = useMemo(
     () => ['all', ...Array.from(new Set(entries.map((e) => normalizeLower(e.source_module)).filter(Boolean)))],
@@ -1000,9 +1022,11 @@ export const AccountLedgerReportPage: React.FC<{
         periodLabel={`${startDate} → ${endDate}`}
         branchScopeLabel={branchScopeResolved}
         basisLabel={
-          viewMode === 'effective'
-            ? 'Effective — rollup rules hide some reversals/adjustments; balance follows posted GL.'
-            : 'Audit — shows reversals/adjustments when the include checkboxes allow.'
+          applied.statementType === 'supplier'
+            ? 'Supplier statement: GL on Accounts Payable (code 2000 and linked AP accounts) for this supplier — purchases, payments, openings, reversals per accountingService; summary uses the same rows as the table.'
+            : viewMode === 'effective'
+              ? 'Effective — rollup rules hide some reversals/adjustments; balance follows posted GL.'
+              : 'Audit — shows reversals/adjustments when the include checkboxes allow.'
         }
       />
 

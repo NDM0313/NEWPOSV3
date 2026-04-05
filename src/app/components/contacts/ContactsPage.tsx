@@ -127,32 +127,28 @@ function partyGlMismatchFlags(
 
 type ContactPartyGlRow = { glArReceivable: number; glApPayable: number; glWorkerPayable: number };
 
-/** List + cards: party-attributed GL (when RPC map loaded) so dues match customer/supplier statements; else open-document balances. */
-function contactDisplayedReceivables(contact: Contact, partyGlByContactId: Map<string, ContactPartyGlRow> | null): number {
-  if (!partyGlByContactId?.size) return contact.receivables;
+/** Signed party GL for secondary line / recon (not clamped — nets with credits on 1100/2000). */
+function contactPartyGlReceivableSigned(
+  contact: Contact,
+  partyGlByContactId: Map<string, ContactPartyGlRow> | null
+): number | null {
+  if (!partyGlByContactId?.size) return null;
+  if (contact.type !== 'customer' && contact.type !== 'both') return null;
   const gl = partyGlByContactId.get(String(contact.uuid));
-  if (!gl) return contact.receivables;
-  if (contact.type === 'customer' || contact.type === 'both') {
-    return Math.max(0, Number(gl.glArReceivable) || 0);
-  }
-  return contact.receivables;
+  if (!gl) return null;
+  return Number(gl.glArReceivable) || 0;
 }
 
-function contactDisplayedPayables(contact: Contact, partyGlByContactId: Map<string, ContactPartyGlRow> | null): number {
-  if (!partyGlByContactId?.size) return contact.payables;
+function contactPartyGlPayableSigned(
+  contact: Contact,
+  partyGlByContactId: Map<string, ContactPartyGlRow> | null
+): number | null {
+  if (!partyGlByContactId?.size) return null;
   const gl = partyGlByContactId.get(String(contact.uuid));
-  if (!gl) return contact.payables;
-  if (contact.type === 'worker') {
-    return Math.max(0, Number(gl.glWorkerPayable) || 0);
-  }
-  if (contact.type === 'supplier' || contact.type === 'both') {
-    return Math.max(0, Number(gl.glApPayable) || 0);
-  }
-  return contact.payables;
-}
-
-function contactDisplayedNet(contact: Contact, partyGlByContactId: Map<string, ContactPartyGlRow> | null): number {
-  return contactDisplayedReceivables(contact, partyGlByContactId) - contactDisplayedPayables(contact, partyGlByContactId);
+  if (!gl) return null;
+  if (contact.type === 'worker') return Number(gl.glWorkerPayable) || 0;
+  if (contact.type === 'supplier' || contact.type === 'both') return Number(gl.glApPayable) || 0;
+  return null;
 }
 
 export const ContactsPage = () => {
@@ -472,7 +468,7 @@ export const ContactsPage = () => {
 
   const balanceColumnsPending = balancesLoading || balancesStale;
 
-  /** Load party-attributed GL slice for row-level op vs GL badges (never overwrites operational amounts). */
+  /** Load party-attributed GL map for row GL subline + mismatch badges (operational amounts stay primary). */
   useEffect(() => {
     if (!companyId || listLoading || balancesLoading || balancesStale) {
       if (listLoading || balancesLoading || balancesStale) setPartyGlByContactId(null);
@@ -659,11 +655,10 @@ export const ContactsPage = () => {
     balanceFilter,
     branchFilter,
     phoneFilter,
-    partyGlByContactId,
   ]);
 
-  // Tab summary: `summary` = shown on cards/rows (party GL when map exists); `summaryOperational` = open-document RPC merge for recon APIs
-  const { summary, summaryOperational } = useMemo(() => {
+  // Tab summary: cards/rows primary = operational RPC; optional signed party GL totals when map loaded (matches TB attribution, includes credits).
+  const { summaryOperational, summaryPartyGlSigned, summaryMeta } = useMemo(() => {
     const filtered = contacts.filter((c) => {
       if (activeTab === 'all') return true;
       const tabType = activeTab.slice(0, -1);
@@ -679,14 +674,24 @@ export const ContactsPage = () => {
       activeCount,
       totalCount,
     };
+    let partyRecvSigned = 0;
+    let partyPaySigned = 0;
+    if (partyGlByContactId?.size) {
+      for (const c of filtered) {
+        const gl = partyGlByContactId.get(String(c.uuid));
+        if (!gl) continue;
+        if (c.type === 'customer' || c.type === 'both') partyRecvSigned += Number(gl.glArReceivable) || 0;
+        if (c.type === 'supplier' || c.type === 'both') partyPaySigned += Number(gl.glApPayable) || 0;
+        if (c.type === 'worker') partyPaySigned += Number(gl.glWorkerPayable) || 0;
+      }
+    }
     return {
       summaryOperational: operational,
-      summary: {
-        totalReceivables: filtered.reduce((sum, c) => sum + contactDisplayedReceivables(c, partyGlByContactId), 0),
-        totalPayables: filtered.reduce((sum, c) => sum + contactDisplayedPayables(c, partyGlByContactId), 0),
-        activeCount,
-        totalCount,
-      },
+      summaryPartyGlSigned:
+        partyGlByContactId?.size && filtered.length > 0
+          ? { receivables: partyRecvSigned, payables: partyPaySigned }
+          : null,
+      summaryMeta: { activeCount, totalCount },
     };
   }, [activeTab, contacts, partyGlByContactId]);
 
@@ -697,9 +702,9 @@ export const ContactsPage = () => {
       glArAp.ar != null
         ? {
             label: `${glArAp.ar.account_code || '—'} ${glArAp.ar.account_name}`.trim(),
-            contactsTotal: summary.totalReceivables,
+            contactsTotal: summaryOperational.totalReceivables,
             glNetDrMinusCr: glArAp.ar.balance,
-            variance: summary.totalReceivables - glArAp.ar.balance,
+            variance: summaryOperational.totalReceivables - glArAp.ar.balance,
             assetNegative: glArAp.ar.balance < -0.01,
           }
         : null;
@@ -707,13 +712,13 @@ export const ContactsPage = () => {
       glArAp.ap != null && glArAp.apNetCredit != null
         ? {
             label: `${glArAp.ap.account_code || '—'} ${glArAp.ap.account_name}`.trim(),
-            contactsTotal: summary.totalPayables,
+            contactsTotal: summaryOperational.totalPayables,
             glNetCredit: glArAp.apNetCredit,
-            variance: summary.totalPayables - glArAp.apNetCredit,
+            variance: summaryOperational.totalPayables - glArAp.apNetCredit,
           }
         : null;
     return { ar, ap };
-  }, [glArAp, summary.totalReceivables, summary.totalPayables]);
+  }, [glArAp, summaryOperational.totalReceivables, summaryOperational.totalPayables]);
 
   // Journal vs operational (tab-scoped operational totals from summary)
   useEffect(() => {
@@ -876,16 +881,15 @@ export const ContactsPage = () => {
                 <span className="underline-offset-2 group-open:underline">Balance &amp; GL notes</span>
               </summary>
               <p className="mt-2 leading-relaxed pl-0 border-l-2 border-gray-700 pl-3">
-                <strong className="text-gray-400">Receivables / Payables</strong> columns use party-attributed GL (
-                <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code>
-                ) when that map is loaded, so row totals align with customer/supplier statements; otherwise they fall back to open-document balances from{' '}
+                <strong className="text-gray-400">Primary amounts</strong> are operational from{' '}
                 <code className="text-gray-500 text-[10px]">get_contact_balances_summary</code>
                 {operationalEngine === 'rpc' && ' (RPC). '}
                 {operationalEngine === 'fallback' && (
-                  <span className="text-amber-400/90"> (summary RPC unavailable or empty — merged from sales/purchases). </span>
+                  <span className="text-amber-400/90"> (RPC unavailable — merged from sales/purchases). </span>
                 )}
                 {operationalEngine === null && !listLoading && contacts.length > 0 && <span> (resolving…). </span>}
-                Amber icon on a row = open-document subledger still differs from party GL (useful if invoices and journals diverge). Control-account reconciliation remains in the strip below.
+                When the party GL map is loaded, a <strong className="text-gray-400">second line</strong> shows signed{' '}
+                <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code> (1100 / 2000 / worker) so you can trace to the GL control and party statements without mixing bases into one number. Amber icon = operational still differs from party GL slice (e.g. credits on AR).
               </p>
             </details>
           </div>
@@ -932,9 +936,16 @@ export const ContactsPage = () => {
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold sm:text-xs">Recv.</p>
                 <p className={cn('text-base font-bold text-green-400 mt-0.5 tabular-nums sm:text-lg', balanceColumnsPending && 'animate-pulse')}>
-                  {balanceColumnsPending ? '—' : formatCurrency(summary.totalReceivables)}
+                  {balanceColumnsPending ? '—' : formatCurrency(summaryOperational.totalReceivables)}
                 </p>
-                <p className="text-[9px] text-gray-600 mt-0.5 hidden sm:block">Operational</p>
+                <p className="text-[9px] text-gray-600 mt-0.5 hidden sm:block">
+                  Operational · <code className="text-gray-500">get_contact_balances_summary</code>
+                </p>
+                {!balanceColumnsPending && summaryPartyGlSigned && (
+                  <p className="text-[9px] text-violet-300/90 mt-0.5 leading-snug hidden sm:block">
+                    Party GL (1100, signed, this tab): {formatCurrency(summaryPartyGlSigned.receivables)}
+                  </p>
+                )}
                 {balancesStale && (
                   <p className="text-[9px] text-amber-400/95 mt-0.5">Incomplete</p>
                 )}
@@ -957,9 +968,16 @@ export const ContactsPage = () => {
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold sm:text-xs">Pay.</p>
                 <p className={cn('text-base font-bold text-red-400 mt-0.5 tabular-nums sm:text-lg', balanceColumnsPending && 'animate-pulse')}>
-                  {balanceColumnsPending ? '—' : formatCurrency(summary.totalPayables)}
+                  {balanceColumnsPending ? '—' : formatCurrency(summaryOperational.totalPayables)}
                 </p>
-                <p className="text-[9px] text-gray-600 mt-0.5 hidden sm:block">Operational</p>
+                <p className="text-[9px] text-gray-600 mt-0.5 hidden sm:block">
+                  Operational · <code className="text-gray-500">get_contact_balances_summary</code>
+                </p>
+                {!balanceColumnsPending && summaryPartyGlSigned && (
+                  <p className="text-[9px] text-violet-300/90 mt-0.5 leading-snug hidden sm:block">
+                    Party GL (2000 / worker, signed, this tab): {formatCurrency(summaryPartyGlSigned.payables)}
+                  </p>
+                )}
                 {balancesLoading && !balancesStale && (
                   <p className="text-[9px] text-blue-400/90 mt-0.5 flex items-center gap-1">
                     <Loader2 size={9} className="animate-spin shrink-0" />
@@ -978,8 +996,8 @@ export const ContactsPage = () => {
             <div className="flex items-start justify-between gap-1">
               <div className="min-w-0">
                 <p className="text-[10px] text-gray-500 uppercase tracking-wide font-semibold sm:text-xs leading-tight">Active</p>
-                <p className="text-base font-bold text-white mt-0.5 sm:text-lg">{summary.activeCount}</p>
-                <p className="text-[9px] text-gray-500 mt-0.5">/ {summary.totalCount}</p>
+                <p className="text-base font-bold text-white mt-0.5 sm:text-lg">{summaryMeta.activeCount}</p>
+                <p className="text-[9px] text-gray-500 mt-0.5">/ {summaryMeta.totalCount}</p>
               </div>
               <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 sm:w-9 sm:h-9">
                 <UserCheck size={16} className="text-blue-500" />
@@ -1372,9 +1390,9 @@ export const ContactsPage = () => {
               <div>
                 <p className="font-semibold text-amber-100">Contacts vs general ledger (same branch)</p>
                 <p className="text-gray-400 mt-1 leading-relaxed">
-                  <strong>Contacts</strong> = invoice / opening subledger (<code className="text-amber-400/80">get_contact_balances_summary</code>).
-                  <strong className="ml-1">Trial Balance</strong> = net on AR/AP accounts from <strong>all</strong> journal lines (life-to-date). A gap usually means
-                  manual journals, mis-posted receipts, or legacy data — not a math bug in either screen.
+                  <strong>Contacts (this tab)</strong> = operational roll-up (<code className="text-amber-400/80">get_contact_balances_summary</code>) — same basis as the green/red card totals.
+                  <strong className="ml-1">Trial Balance</strong> = net on AR/AP control accounts from journal (life-to-date). A gap usually means
+                  manual journals, on-account receipts, or legacy data. For party-attributed GL sums (signed), use the violet line on the cards or Control breakdown on Accounts.
                 </p>
               </div>
             </div>
@@ -1578,7 +1596,7 @@ export const ContactsPage = () => {
                         </div>
                       </div>
 
-                      {/* Receivables — operational only; stale/loading → no misleading 0 */}
+                      {/* Receivables — operational primary; signed party GL subline when map loaded */}
                       <div className="text-right">
                         {balanceColumnsPending ? (
                           <div
@@ -1590,35 +1608,46 @@ export const ContactsPage = () => {
                             }
                           />
                         ) : (
-                          <div className="flex items-center justify-end gap-1">
-                            {partyGlByContactId &&
-                              partyGlMismatchFlags(contact, partyGlByContactId.get(String(contact.uuid))).receivables && (
-                                <AlertCircle
-                                  size={14}
-                                  className="text-amber-400 shrink-0"
-                                  title="Operational receivable ≠ party AR (1100) from journals — check party statement GL tab"
-                                />
-                              )}
-                            <div
-                              className={cn(
-                                'text-sm font-semibold tabular-nums leading-[1.4]',
-                                contactDisplayedReceivables(contact, partyGlByContactId) > 0
-                                  ? 'text-green-400'
-                                  : 'text-gray-600'
-                              )}
-                              title={
-                                partyGlByContactId?.size
-                                  ? 'Party AR (1100) from journals when available; else open documents'
-                                  : 'Open documents (RPC); party GL map loading or unavailable'
-                              }
-                            >
-                              {formatCurrency(contactDisplayedReceivables(contact, partyGlByContactId))}
+                          <div className="flex flex-col items-end gap-0.5">
+                            <div className="flex items-center justify-end gap-1">
+                              {partyGlByContactId &&
+                                partyGlMismatchFlags(contact, partyGlByContactId.get(String(contact.uuid))).receivables && (
+                                  <AlertCircle
+                                    size={14}
+                                    className="text-amber-400 shrink-0"
+                                    title="Operational receivable ≠ max(0, party AR on 1100) — check party statement / GL tab"
+                                  />
+                                )}
+                              <div
+                                className={cn(
+                                  'text-sm font-semibold tabular-nums leading-[1.4]',
+                                  contact.receivables > 0 ? 'text-green-400' : 'text-gray-600'
+                                )}
+                                title="Operational receivable (get_contact_balances_summary or merged documents)"
+                              >
+                                {formatCurrency(contact.receivables)}
+                              </div>
                             </div>
+                            {(() => {
+                              const gl = contactPartyGlReceivableSigned(contact, partyGlByContactId);
+                              if (gl == null) return null;
+                              return (
+                                <div
+                                  className={cn(
+                                    'text-[10px] tabular-nums text-violet-300/90',
+                                    gl < -0.005 && 'text-amber-200/90'
+                                  )}
+                                  title="Signed party AR on GL account 1100 (get_contact_party_gl_balances)"
+                                >
+                                  GL {formatCurrency(gl)}
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
 
-                      {/* Payables — operational only */}
+                      {/* Payables — operational primary; signed party GL subline when map loaded */}
                       <div className="text-right">
                         {balanceColumnsPending ? (
                           <div
@@ -1630,30 +1659,41 @@ export const ContactsPage = () => {
                             }
                           />
                         ) : (
-                          <div className="flex items-center justify-end gap-1">
-                            {partyGlByContactId &&
-                              partyGlMismatchFlags(contact, partyGlByContactId.get(String(contact.uuid))).payables && (
-                                <AlertCircle
-                                  size={14}
-                                  className="text-amber-400 shrink-0"
-                                  title="Operational payable ≠ party AP/worker GL from journals — check party statement GL tab"
-                                />
-                              )}
-                            <div
-                              className={cn(
-                                'text-sm font-semibold tabular-nums leading-[1.4]',
-                                contactDisplayedPayables(contact, partyGlByContactId) > 0
-                                  ? 'text-red-400'
-                                  : 'text-gray-600'
-                              )}
-                              title={
-                                partyGlByContactId?.size
-                                  ? 'Party AP / worker payable from journals when available; else open documents'
-                                  : 'Open documents (RPC); party GL map loading or unavailable'
-                              }
-                            >
-                              {formatCurrency(contactDisplayedPayables(contact, partyGlByContactId))}
+                          <div className="flex flex-col items-end gap-0.5">
+                            <div className="flex items-center justify-end gap-1">
+                              {partyGlByContactId &&
+                                partyGlMismatchFlags(contact, partyGlByContactId.get(String(contact.uuid))).payables && (
+                                  <AlertCircle
+                                    size={14}
+                                    className="text-amber-400 shrink-0"
+                                    title="Operational payable ≠ party AP / worker GL from journals — check party statement GL tab"
+                                  />
+                                )}
+                              <div
+                                className={cn(
+                                  'text-sm font-semibold tabular-nums leading-[1.4]',
+                                  contact.payables > 0 ? 'text-red-400' : 'text-gray-600'
+                                )}
+                                title="Operational payable (get_contact_balances_summary or merged documents)"
+                              >
+                                {formatCurrency(contact.payables)}
+                              </div>
                             </div>
+                            {(() => {
+                              const gl = contactPartyGlPayableSigned(contact, partyGlByContactId);
+                              if (gl == null) return null;
+                              return (
+                                <div
+                                  className={cn(
+                                    'text-[10px] tabular-nums text-violet-300/90',
+                                    gl < -0.005 && 'text-amber-200/90'
+                                  )}
+                                  title="Signed party AP / worker payable (get_contact_party_gl_balances)"
+                                >
+                                  GL {formatCurrency(gl)}
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>

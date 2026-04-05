@@ -420,7 +420,9 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     : transaction?.lines
       ? [transaction.lines]
       : [];
-  const journalLines = effectiveLines.length > 0 ? effectiveLines : rawJournalLines;
+  // Always show this journal entry's posted lines in the double-entry table. Effective payment lines merge
+  // multiple JEs and can mis-attribute debits (e.g. supplier Dr AP / Cr Bank shown as Bank/Bank).
+  const journalLines = rawJournalLines.length > 0 ? rawJournalLines : effectiveLines;
   const payment = Array.isArray(transaction?.payment) 
     ? transaction.payment[0] 
     : transaction?.payment;
@@ -744,9 +746,15 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             {/* SECTION C: JOURNAL ENTRIES (MOST IMPORTANT) */}
             <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
               <h3 className="text-sm font-semibold text-gray-300 mb-3">Journal Entries (Double Entry)</h3>
-              {effectiveLines.length > 0 && (
-                <p className="text-xs text-blue-400/90 mb-2">Showing effective accounts (includes payment account change, e.g. Cash → Bank)</p>
-              )}
+              {rawJournalLines.length > 0 ? (
+                <p className="text-xs text-gray-400 mb-2">
+                  Posted lines for this journal entry (journal_entry_lines). Same basis as GL.
+                </p>
+              ) : effectiveLines.length > 0 ? (
+                <p className="text-xs text-blue-400/90 mb-2">
+                  No lines on this entry record — showing effective payment postings (merged JEs).
+                </p>
+              ) : null}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-900">

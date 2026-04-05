@@ -107,7 +107,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         .from('journal_entries')
         .select(`
           id, entry_no, entry_date, description, reference_type, created_at,
-          lines:journal_entry_lines(id, debit, credit, description, account:accounts(name))
+          lines:journal_entry_lines(id, debit, credit, description, account:accounts(name, code))
         `)
         .eq('company_id', companyId)
         .gte('entry_date', dateFrom)
@@ -129,7 +129,14 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
 
       const list: DayBookEntry[] = [];
       for (const je of data || []) {
-        const lines = (je.lines as Array<{ id?: string; debit?: number; credit?: number; description?: string; account?: { name?: string } | null }>) ?? [];
+        const lines =
+          (je.lines as Array<{
+            id?: string;
+            debit?: number;
+            credit?: number;
+            description?: string;
+            account?: { name?: string; code?: string } | { name?: string; code?: string }[] | null;
+          }>) ?? [];
         const createdAt = je.created_at ? new Date(je.created_at as string) : new Date();
         const entryDate = je.entry_date
           ? new Date(String(je.entry_date).slice(0, 10) + 'T12:00:00')
@@ -149,8 +156,14 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
           const credit = Number(line.credit ?? 0);
           if (debit === 0 && credit === 0) continue;
           const acc = line.account;
-          const accountName = Array.isArray(acc) ? (acc[0] as { name?: string })?.name : (acc as { name?: string } | null)?.name;
-          const accountNameStr = accountName ?? 'Unknown Account';
+          const accObj = Array.isArray(acc) ? (acc[0] as { name?: string; code?: string }) : (acc as { name?: string; code?: string } | null);
+          const accountName = accObj?.name;
+          const code = accObj?.code != null && String(accObj.code).trim() !== '' ? String(accObj.code).trim() : '';
+          const accountNameStr = accountName
+            ? code
+              ? `${accountName} (${code})`
+              : accountName
+            : 'Unknown Account';
           const lineId = line.id != null ? String(line.id) : `i${lineIdx}`;
           lineIdx += 1;
           list.push({

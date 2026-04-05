@@ -27,6 +27,12 @@ export interface PartyGlRow {
   kind: 'ar' | 'ap' | 'worker_net';
 }
 
+export interface UnmappedGlBucketRow {
+  referenceType: string;
+  /** Same convention as residual: AR/1180 = Dr−Cr on unmapped lines; AP/WP = Cr−Dr on unmapped lines */
+  amount: number;
+}
+
 export interface ControlAccountBreakdownResult {
   controlKind: 'ar' | 'ap' | 'worker_payable' | 'worker_advance' | 'suspense';
   accountId: string;
@@ -41,6 +47,12 @@ export interface ControlAccountBreakdownResult {
   partySectionNote?: string;
   unmappedGlResidual: number | null;
   unmappedNote?: string;
+  /** Sum of party-attributed slice from full get_contact_party_gl_balances result (all contacts; signed). */
+  partyAttributedGlSum: number | null;
+  /** Unmapped lines on this control code only, grouped by journal reference_type (RPC). */
+  unmappedGlByReference: UnmappedGlBucketRow[];
+  /** TB Dr−Cr summed for this account id and all descendant accounts (journal balances). */
+  glSubtreeDrMinusCr: number | null;
 }
 
 function safeBranchUuid(branchId: string | null | undefined): string | null {
@@ -124,6 +136,47 @@ function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Descendants including root — for subtree TB vs single control id */
+function collectDescendantAccountIds(
+  rootId: string,
+  rows: { id: string; parent_id?: string | null }[]
+): Set<string> {
+  const byParent = new Map<string, string[]>();
+  for (const r of rows) {
+    const pid = r.parent_id != null && String(r.parent_id).trim() !== '' ? String(r.parent_id) : '';
+    if (!byParent.has(pid)) byParent.set(pid, []);
+    byParent.get(pid)!.push(String(r.id));
+  }
+  const out = new Set<string>();
+  const stack = [String(rootId)];
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (out.has(id)) continue;
+    out.add(id);
+    for (const k of byParent.get(id) || []) stack.push(k);
+  }
+  return out;
+}
+
+async function fetchUnmappedPartyGlBuckets(
+  companyId: string,
+  branchId: string | null,
+  controlCode: string
+): Promise<UnmappedGlBucketRow[]> {
+  const { data, error } = await supabase.rpc('get_control_unmapped_party_gl_buckets', {
+    p_company_id: companyId,
+    p_branch_id: branchId,
+    p_control_code: controlCode.trim(),
+  });
+  if (error || !Array.isArray(data)) return [];
+  return (data as { reference_type: string; net_amount: number | string }[])
+    .map((r) => ({
+      referenceType: String(r.reference_type || '(blank)'),
+      amount: Number(r.net_amount) || 0,
+    }))
+    .filter((x) => Math.abs(x.amount) > 0.0000001);
+}
+
 /**
  * Fetch breakdown for a control account. GL balance from trial balance / journal.
  */
@@ -149,13 +202,32 @@ export async function fetchControlAccountBreakdown(params: {
   let glBalanceStatus: BreakdownLineStatus = 'ok';
   let glBalanceNote: string | undefined;
 
+  let partyAttributedGlSum: number | null = null;
+  let unmappedGlByReference: UnmappedGlBucketRow[] = [];
+  let glSubtreeDrMinusCr: number | null = null;
+
+  let balMap: Record<string, number> = {};
   try {
-    const balMap = await accountingReportsService.getAccountBalancesFromJournal(companyId, asOf, b ?? undefined);
+    balMap = await accountingReportsService.getAccountBalancesFromJournal(companyId, asOf, b ?? undefined);
     if (balMap[accountId] !== undefined && balMap[accountId] !== null) {
       glAccountBalance = Number(balMap[accountId]) || 0;
     } else {
       glBalanceStatus = 'unavailable';
       glBalanceNote = 'No journal activity on this account in TB roll-up (or account id mismatch).';
+    }
+    try {
+      const { data: treeRows } = await supabase
+        .from('accounts')
+        .select('id, parent_id')
+        .eq('company_id', companyId);
+      if (treeRows?.length) {
+        const ids = collectDescendantAccountIds(accountId, treeRows as { id: string; parent_id?: string | null }[]);
+        let sub = 0;
+        for (const id of ids) sub += Number(balMap[id] ?? 0) || 0;
+        glSubtreeDrMinusCr = roundMoney(sub);
+      }
+    } catch {
+      glSubtreeDrMinusCr = null;
     }
   } catch {
     glBalanceStatus = 'unavailable';
@@ -172,6 +244,8 @@ export async function fetchControlAccountBreakdown(params: {
     });
     if (!glRpc.error && Array.isArray(glRpc.data)) {
       const rows = glRpc.data as { contact_id: string; gl_ar_receivable?: number | string }[];
+      sumPartyAr = rows.reduce((s, r) => s + (Number(r.gl_ar_receivable ?? 0) || 0), 0);
+      partyAttributedGlSum = roundMoney(sumPartyAr);
       const ids = rows.filter((r) => Number(r.gl_ar_receivable ?? 0) !== 0).map((r) => r.contact_id);
       const names = await loadContactNames(companyId, ids);
       partyRows = rows
@@ -183,15 +257,20 @@ export async function fetchControlAccountBreakdown(params: {
         }))
         .filter((r) => Math.abs(r.glAmount) > 0.0001)
         .sort((a, b) => Math.abs(b.glAmount) - Math.abs(a.glAmount));
-      sumPartyAr = partyRows.reduce((s, r) => s + r.glAmount, 0);
     } else {
       partySectionNote = 'Party GL slice unavailable (RPC error).';
     }
 
+    unmappedGlByReference = await fetchUnmappedPartyGlBuckets(companyId, b, accountCode || '1100');
+
     if (glAccountBalance != null) {
       unmappedGlResidual = Math.round((glAccountBalance - sumPartyAr) * 100) / 100;
+      const bucketSum = roundMoney(unmappedGlByReference.reduce((s, x) => s + x.amount, 0));
       unmappedNote =
-        'GL control balance minus sum of party-attributed AR from journal mapping (unmapped lines, timing, or resolver gaps).';
+        'TB on this control account id (Dr−Cr) minus Σ party-attributed AR on **account code 1100** (all contacts, signed). Negative residual usually means net **credits** on 1100 with no resolved party (e.g. manual journal, expense wash, mis-linked payment).';
+      if (unmappedGlByReference.length > 0) {
+        unmappedNote += ` Unmapped buckets (reference_type) sum to ${roundMoney(bucketSum)} (Dr−Cr) — expect ≈ residual when migration get_control_unmapped_party_gl_buckets is applied.`;
+      }
     }
 
     // Operational slices (document tables) — non-overlapping where possible
@@ -290,8 +369,21 @@ export async function fetchControlAccountBreakdown(params: {
       amount: partySectionNote ? null : roundMoney(sumPartyAr),
       source: 'gl',
       status: partySectionNote ? 'unavailable' : 'ok',
-      note: 'Non-zero party rows listed below; 1100 control total is journal (TB) above.',
+      note: 'Σ gl_ar_receivable over **all** contacts (signed). Listed parties omit exact zeros; sum uses full RPC.',
     });
+    if (
+      glSubtreeDrMinusCr != null &&
+      glAccountBalance != null &&
+      Math.abs(glSubtreeDrMinusCr - glAccountBalance) >= 0.02
+    ) {
+      subcategories.push({
+        label: 'Subtree TB (control id + descendants, Dr−Cr)',
+        amount: glSubtreeDrMinusCr,
+        source: 'gl',
+        status: 'ok',
+        note: 'Party RPC attributes lines on **code 1100 account id only** — not other account ids under this COA group.',
+      });
+    }
     subcategories.push({
       label: 'Residual / unmatched on 1100 (control balance − party sum)',
       amount: unmappedGlResidual,
@@ -309,6 +401,8 @@ export async function fetchControlAccountBreakdown(params: {
     });
     if (!glRpc.error && Array.isArray(glRpc.data)) {
       const rows = glRpc.data as { contact_id: string; gl_ap_payable?: number | string }[];
+      sumPartyAp = rows.reduce((s, r) => s + (Number(r.gl_ap_payable ?? 0) || 0), 0);
+      partyAttributedGlSum = roundMoney(sumPartyAp);
       const ids = rows.filter((r) => Number(r.gl_ap_payable ?? 0) !== 0).map((r) => r.contact_id);
       const names = await loadContactNames(companyId, ids);
       partyRows = rows
@@ -320,16 +414,22 @@ export async function fetchControlAccountBreakdown(params: {
         }))
         .filter((r) => Math.abs(r.glAmount) > 0.0001)
         .sort((a, b) => Math.abs(b.glAmount) - Math.abs(a.glAmount));
-      sumPartyAp = partyRows.reduce((s, r) => s + r.glAmount, 0);
     } else {
       partySectionNote = 'Party GL slice unavailable (RPC error).';
     }
+
+    unmappedGlByReference = await fetchUnmappedPartyGlBuckets(companyId, b, accountCode || '2000');
 
     // AP GL control is liability: compare net credit = -balance if balance is Dr-Cr
     const apNetCredit = glAccountBalance != null ? -glAccountBalance : null;
     if (apNetCredit != null) {
       unmappedGlResidual = Math.round((apNetCredit - sumPartyAp) * 100) / 100;
-      unmappedNote = 'AP net (credit − debit) from GL control minus sum of party-mapped AP from journal resolver.';
+      const bucketSum = roundMoney(unmappedGlByReference.reduce((s, x) => s + x.amount, 0));
+      unmappedNote =
+        'AP net (Cr−Dr) on **account code 2000** minus Σ party AP from resolver (all contacts). Unmapped buckets use Cr−Dr per line.';
+      if (unmappedGlByReference.length > 0) {
+        unmappedNote += ` Unmapped buckets sum: ${roundMoney(bucketSum)} (Cr−Dr) — expect ≈ residual with migration get_control_unmapped_party_gl_buckets.`;
+      }
     }
 
     try {
@@ -401,8 +501,21 @@ export async function fetchControlAccountBreakdown(params: {
       amount: partySectionNote ? null : roundMoney(sumPartyAp),
       source: 'gl',
       status: partySectionNote ? 'unavailable' : 'ok',
-      note: 'Non-zero party rows below; 2000 control total is journal (TB) above (Dr−Cr); AP liability uses credit−debit.',
+      note: 'Σ gl_ap_payable over **all** contacts (signed). Resolver uses **code 2000** account id only.',
     });
+    if (
+      glSubtreeDrMinusCr != null &&
+      glAccountBalance != null &&
+      Math.abs(glSubtreeDrMinusCr - glAccountBalance) >= 0.02
+    ) {
+      subcategories.push({
+        label: 'Subtree TB (control id + descendants, Dr−Cr)',
+        amount: glSubtreeDrMinusCr,
+        source: 'gl',
+        status: 'ok',
+        note: 'If payables post to child AP accounts, subtree may exceed single-id TB; party list stays on code 2000.',
+      });
+    }
     subcategories.push({
       label: 'Residual / unmatched on 2000 (AP net credit − party sum)',
       amount: unmappedGlResidual,
@@ -451,11 +564,18 @@ export async function fetchControlAccountBreakdown(params: {
       }
     }
 
+    if (controlKind === 'worker_payable') {
+      partyAttributedGlSum = roundMoney(partyRows.reduce((s, p) => s + p.glAmount, 0));
+      unmappedGlByReference = await fetchUnmappedPartyGlBuckets(companyId, b, accountCode || '2010');
+    } else {
+      unmappedGlByReference = await fetchUnmappedPartyGlBuckets(companyId, b, accountCode || '1180');
+    }
+
     unmappedGlResidual = null;
     unmappedNote =
       controlKind === 'worker_payable'
-        ? 'Do not compare 2010 Dr−Cr to sum of party net (WP−WA); use Integrity Lab / journal line review for WP-only residual.'
-        : 'Per-party 1180 (advance) split not computed here — use GL statement and worker payment JEs.';
+        ? 'Party sum = Σ worker_net (WP−WA) for **worker** contacts. Unmapped buckets below are **2010 only** (Cr−Dr) where party_id is null — not the same as WP−WA residual.'
+        : 'Per-party 1180 (advance) split not computed here — use GL statement and worker payment JEs. Unmapped buckets = **1180** lines without party (Dr−Cr).';
 
     if (controlKind === 'worker_payable') {
       try {
@@ -718,5 +838,8 @@ export async function fetchControlAccountBreakdown(params: {
     partySectionNote,
     unmappedGlResidual,
     unmappedNote,
+    partyAttributedGlSum,
+    unmappedGlByReference,
+    glSubtreeDrMinusCr,
   };
 }

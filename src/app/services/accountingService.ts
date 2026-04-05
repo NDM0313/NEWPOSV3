@@ -77,6 +77,34 @@ function journalLineNormalizedPaymentId(line: { journal_entry?: any; credit?: nu
   return null;
 }
 
+/**
+ * Customer receipts: Dr Cash/Bank, Cr AR. Supplier payments: Dr AP, Cr Bank.
+ * Remap the aggregated debit line to payment_account_id only when that debit is a liquidity (cash/bank/wallet) line
+ * left stale after a payment-method edit. If we remap AP or expense debits, the modal shows the same bank on both sides.
+ */
+function isLiquidityDebitForPaymentRemap(account: { code?: string; name?: string; type?: string } | null | undefined): boolean {
+  if (!account) return false;
+  const code = String(account.code ?? '').trim();
+  const name = (account.name ?? '').toLowerCase();
+  const type = (account.type ?? '').toLowerCase();
+  if (type.includes('liability') || type.includes('payable')) return false;
+  if (type.includes('expense') || type.includes('cost')) return false;
+  if (name.includes('payable') && !name.includes('receivable')) return false;
+  if (name.includes('receivable') && (name.includes('account') || name.includes('customer'))) return false;
+  if (type.includes('cash') || type.includes('bank') || type.includes('wallet')) return true;
+  if (
+    name.includes('cash') ||
+    name.includes('bank') ||
+    name.includes('wallet') ||
+    name.includes('easypaisa') ||
+    name.includes('jazzcash')
+  )
+    return true;
+  const codeNum = parseInt(code, 10);
+  if (!Number.isNaN(codeNum) && codeNum >= 1000 && codeNum <= 1099) return true;
+  return false;
+}
+
 function dedupeCustomerArPaymentCreditLines(sortedLines: any[]): any[] {
   const byPayment = new Map<string, any[]>();
   for (const line of sortedLines) {
@@ -98,6 +126,104 @@ function dedupeCustomerArPaymentCreditLines(sortedLines: any[]): any[] {
     }
   }
   return sortedLines.filter((l) => !skip.has(l));
+}
+
+/**
+ * Whether an AR journal line belongs to this customer (before correction_reversal handling).
+ * Used by getCustomerLedger; reversal rows are included separately when they reverse such a line.
+ */
+function arJournalLineMatchesCustomer(
+  line: any,
+  customerId: string,
+  salesMap: Map<string, any>,
+  paymentIds: string[],
+  paymentDetailsMap: Map<string, any>
+): boolean {
+  const entry = line.journal_entry;
+  if (!entry) return false;
+
+  const desc = entry.description?.toLowerCase() || '';
+  if (desc.includes('commission')) return false;
+
+  if ((entry.reference_type === 'sale' || entry.reference_type === 'sale_adjustment') && entry.reference_id) {
+    const sale = salesMap.get(entry.reference_id);
+    if (sale && sale.customer_id === customerId) return true;
+  }
+
+  if (entry.reference_type === 'payment' && entry.reference_id) {
+    if (paymentIds.includes(entry.reference_id)) return true;
+    const payment = paymentDetailsMap.get(entry.reference_id);
+    if (payment && payment.reference_id) {
+      const sale = salesMap.get(payment.reference_id);
+      if (sale && sale.customer_id === customerId) return true;
+    }
+  }
+
+  if (entry.reference_type === 'sale' && entry.payment_id) {
+    if (paymentIds.includes(entry.payment_id)) return true;
+    if (entry.reference_id) {
+      const sale = salesMap.get(entry.reference_id);
+      if (sale && sale.customer_id === customerId) return true;
+    }
+  }
+
+  if (entry.reference_type === 'manual_receipt' && entry.payment_id && paymentIds.includes(entry.payment_id)) {
+    return true;
+  }
+  if (entry.reference_type === 'manual_receipt' && entry.reference_id && String(entry.reference_id) === String(customerId)) {
+    return true;
+  }
+  if (
+    entry.reference_type === 'opening_balance_contact_ar' &&
+    entry.reference_id &&
+    String(entry.reference_id) === String(customerId)
+  ) {
+    return true;
+  }
+  if (entry.reference_type === 'rental') {
+    return false;
+  }
+  return false;
+}
+
+function supplierApJournalLineMatchesSupplier(
+  line: any,
+  supplierId: string,
+  supplierPurchaseIds: Set<string>,
+  supplierPaymentIds: Set<string>
+): boolean {
+  const entry = line.journal_entry;
+  if (!entry) return false;
+  const rt = String(entry.reference_type || '').toLowerCase();
+  const rid = entry.reference_id;
+  if (
+    ['purchase', 'purchase_return', 'purchase_adjustment', 'purchase_reversal'].includes(rt) &&
+    rid &&
+    supplierPurchaseIds.has(rid)
+  ) {
+    return true;
+  }
+  if (entry.payment_id && supplierPaymentIds.has(entry.payment_id)) return true;
+  if (rt === 'payment' && rid && supplierPaymentIds.has(rid)) return true;
+  if (rt === 'on_account' && rid && String(rid) === String(supplierId)) return true;
+  if (rt === 'manual_payment' && rid && String(rid) === String(supplierId)) return true;
+  if (rt === 'opening_balance_contact_ap' && rid && String(rid) === String(supplierId)) return true;
+  return false;
+}
+
+function workerGlLineMatchesWorker(line: any, workerId: string, workerPaymentIds: Set<string>): boolean {
+  const entry = line.journal_entry;
+  if (!entry) return false;
+  const rt = String(entry.reference_type || '').toLowerCase();
+  const rid = entry.reference_id;
+  if ((rt === 'worker_payment' || rt === 'worker_advance_settlement') && rid && String(rid) === String(workerId)) {
+    return true;
+  }
+  if (rt === 'opening_balance_contact_worker' && rid && String(rid) === String(workerId)) {
+    return true;
+  }
+  if (entry.payment_id && workerPaymentIds.has(entry.payment_id)) return true;
+  return false;
 }
 
 export const accountingService = {
@@ -259,7 +385,7 @@ export const accountingService = {
       }
 
       // Filter entries: only include if purchase/sale/payment still exists (no per-entry logging on load)
-      const validEntries = dataFiltered.filter((entry: any) => {
+      let validEntries = dataFiltered.filter((entry: any) => {
         if (entry.reference_type === 'purchase' && entry.reference_id && !existingPurchases.has(entry.reference_id)) return false;
         if (entry.reference_type === 'purchase_adjustment' && entry.reference_id && !existingPurchases.has(entry.reference_id)) return false;
         if (entry.reference_type === 'sale' && entry.reference_id && !existingSales.has(entry.reference_id)) return false;
@@ -272,6 +398,56 @@ export const accountingService = {
       if (import.meta.env?.DEV && validEntries.length !== dataFiltered.length) {
         console.log(`[ACCOUNTING SERVICE] Filtered ${dataFiltered.length} entries to ${validEntries.length} valid entries`);
       }
+
+      // Party name on payment row → journal list / workbench can show "AP — Supplier" without extra round-trips in UI.
+      const payIds = [...new Set(validEntries.map((e: any) => e.payment_id).filter(Boolean))] as string[];
+      const paymentContactNameByPaymentId = new Map<string, string>();
+      if (payIds.length > 0) {
+        const { data: payPartyRows } = await supabase
+          .from('payments')
+          .select('id, contact_id, contact:contacts(name)')
+          .in('id', payIds);
+        (payPartyRows || []).forEach((p: any) => {
+          const c = Array.isArray(p.contact) ? p.contact[0] : p.contact;
+          const nm = c?.name && String(c.name).trim();
+          if (nm) paymentContactNameByPaymentId.set(String(p.id), nm);
+        });
+      }
+      validEntries = validEntries.map((e: any) => ({
+        ...e,
+        _payment_contact_name: e.payment_id ? paymentContactNameByPaymentId.get(String(e.payment_id)) : undefined,
+      }));
+
+      const purchaseIdsForParty = [
+        ...new Set(
+          validEntries
+            .filter((e: any) => String(e.reference_type || '').toLowerCase() === 'purchase' && e.reference_id)
+            .map((e: any) => String(e.reference_id))
+        ),
+      ] as string[];
+      const purchaseSupplierNameByPurchaseId = new Map<string, string>();
+      if (purchaseIdsForParty.length > 0) {
+        const { data: purs } = await supabase
+          .from('purchases')
+          .select('id, supplier_id')
+          .in('id', purchaseIdsForParty);
+        const supIds = [...new Set((purs || []).map((p: any) => p.supplier_id).filter(Boolean))] as string[];
+        if (supIds.length > 0) {
+          const { data: supContacts } = await supabase.from('contacts').select('id, name').in('id', supIds);
+          const nmBySup = new Map((supContacts || []).map((c: any) => [String(c.id), String(c.name || '').trim()]));
+          (purs || []).forEach((p: any) => {
+            const nm = p.supplier_id ? nmBySup.get(String(p.supplier_id)) : '';
+            if (nm) purchaseSupplierNameByPurchaseId.set(String(p.id), nm);
+          });
+        }
+      }
+      validEntries = validEntries.map((e: any) => ({
+        ...e,
+        _purchase_supplier_name:
+          String(e.reference_type || '').toLowerCase() === 'purchase' && e.reference_id
+            ? purchaseSupplierNameByPurchaseId.get(String(e.reference_id))
+            : undefined,
+      }));
 
       // PF-14.3B: Root-document grouping – attach root_reference_type and root_reference_id so Journal list can show one logical row per sale
       const paymentIdToRoot = new Map<string, { root_reference_type: string; root_reference_id: string }>();
@@ -637,9 +813,9 @@ export const accountingService = {
   /**
    * Effective journal lines for a payment: original payment JE + any payment_adjustment JEs,
    * aggregated by account so the modal shows the correct accounts (e.g. Bank after edit from Cash).
-   * If currentPaymentAccountId is provided and the stored JEs still show a different debit account
-   * (e.g. payment was edited to Bank but no adjustment JE was posted yet), returns synthetic
-   * lines showing the current payment account so the UI is correct.
+   * If currentPaymentAccountId is provided and the stored JEs still show a different **liquidity** debit account
+   * (customer receipt: Dr Bank was wrong ID until adjustment posts), returns synthetic lines with the current
+   * payment account. Supplier payments (Dr AP, Cr Bank) must not use this path — see isLiquidityDebitForPaymentRemap.
    */
   async getEffectiveJournalLinesForPayment(
     paymentId: string,
@@ -698,7 +874,11 @@ export const accountingService = {
 
     if (currentPaymentAccountId && result.length >= 2) {
       const debitAccountRow = result.find((r) => r.debit > 0);
-      if (debitAccountRow && debitAccountRow.account_id !== currentPaymentAccountId) {
+      if (
+        debitAccountRow &&
+        debitAccountRow.account_id !== currentPaymentAccountId &&
+        isLiquidityDebitForPaymentRemap(debitAccountRow.account)
+      ) {
         const { data: accRow } = await supabase
           .from('accounts')
           .select('id, name, code, type')
@@ -1451,102 +1631,30 @@ export const accountingService = {
 
       let saleMatchCount = 0;
       let paymentMatchCount = 0;
-      let noMatchCount = 0;
 
       const customerLines = linesToUse.filter((line: any) => {
         const entry = line.journal_entry;
         if (!entry) return false;
 
-        // CRITICAL: Exclude commission entries - Commission is COMPANY expense, NOT customer-related
-        const desc = entry.description?.toLowerCase() || '';
-        if (desc.includes('commission')) {
-          console.log(`[ACCOUNTING SERVICE] EXCLUDING commission entry: ${entry.entry_no} - ${entry.description}`);
-          return false; // Commission should NOT be in customer ledger
+        // PF-07: correction_reversal JEs reference the original JE id — include AR lines when the original belonged to this customer
+        if (entry.reference_type === 'correction_reversal' && entry.reference_id) {
+          const origId = String(entry.reference_id);
+          return linesToUse.some((ol: any) => {
+            const oe = ol.journal_entry;
+            if (!oe || String(oe.id) !== origId) return false;
+            return arJournalLineMatchesCustomer(ol, customerId, salesMap, paymentIds, paymentDetailsMap);
+          });
         }
 
-        // Check if linked to this customer via sale (DEBIT entries - sales increase receivable)
-        // PF-14: include sale_adjustment entries (same reference_id = saleId)
-        if ((entry.reference_type === 'sale' || entry.reference_type === 'sale_adjustment') && entry.reference_id) {
-          const sale = salesMap.get(entry.reference_id);
-          if (sale) {
-            if (sale.customer_id === customerId) {
-              saleMatchCount++;
-              return true;
-            }
-          }
-        }
-
-        // CRITICAL: Check if linked via payment (CREDIT entries - payments received decrease receivable)
-        // Payment journal entries can be:
-        // 1. reference_type='payment' with reference_id=payment.id
-        // 2. reference_type='sale' with payment_id set (payment linked to sale)
-        
-        // Pattern 1: reference_type='payment'
-        if (entry.reference_type === 'payment' && entry.reference_id) {
-          // Check if this payment is in our customer payments list
-          if (paymentIds.includes(entry.reference_id)) {
-            return true;
-          }
-          
-          // Also check via payment's linked sale
-          const payment = paymentDetailsMap.get(entry.reference_id);
-          if (payment && payment.reference_id) {
-            const sale = salesMap.get(payment.reference_id);
-            if (sale && sale.customer_id === customerId) {
-              return true;
-            }
-          }
-        }
-        
-        // Pattern 2: reference_type='sale' with payment_id set
-        if (entry.reference_type === 'sale' && entry.payment_id) {
-          // Check if this payment is in our customer payments list
-          if (paymentIds.includes(entry.payment_id)) {
-            return true;
-          }
-          
-          // Also check if the sale belongs to this customer
-          if (entry.reference_id) {
-            const sale = salesMap.get(entry.reference_id);
-            if (sale && sale.customer_id === customerId) {
-              return true;
-            }
-          }
-        }
-
-        // Pattern 2b: reference_type='manual_receipt' (Add Entry V2 customer receipt) with payment_id set
-        if (entry.reference_type === 'manual_receipt' && entry.payment_id && paymentIds.includes(entry.payment_id)) {
-          paymentMatchCount++;
-          return true;
-        }
-
-        // Pattern 2c: manual_receipt JE stores reference_id = customer contact id
-        if (entry.reference_type === 'manual_receipt' && entry.reference_id && String(entry.reference_id) === String(customerId)) {
-          paymentMatchCount++;
-          return true;
-        }
-
-        if (
-          entry.reference_type === 'opening_balance_contact_ar' &&
-          entry.reference_id &&
-          String(entry.reference_id) === String(customerId)
-        ) {
-          return true;
-        }
-
-        // Pattern 3: reference_type='rental' – EXCLUDE from journal path; rentals are shown via synthetic
-        // (Rental JEs use Cash+Revenue or AR+Revenue; synthetic gives full charge + payments correctly)
-        if (entry.reference_type === 'rental') {
-          return false;
-        }
-
-        return false;
+        const ok = arJournalLineMatchesCustomer(line, customerId, salesMap, paymentIds, paymentDetailsMap);
+        if (ok && entry.reference_type === 'sale') saleMatchCount++;
+        if (ok && (entry.reference_type === 'payment' || entry.payment_id)) paymentMatchCount++;
+        return ok;
       });
 
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 3: Filter results:', {
         saleMatches: saleMatchCount,
         paymentMatches: paymentMatchCount,
-        noMatches: noMatchCount,
         totalCustomerLines: customerLines.length,
         sampleNoMatches: linesToUse.filter((l: any) => {
           const e = l.journal_entry;
@@ -1642,6 +1750,9 @@ export const accountingService = {
         if (entry.reference_type === 'sale') {
           sourceModule = 'Sales';
           documentType = 'Sale Invoice';
+        } else if (entry.reference_type === 'correction_reversal') {
+          sourceModule = 'Accounting';
+          documentType = 'Reversal';
         } else if (entry.reference_type === 'rental') {
           sourceModule = 'Rental';
           documentType = 'Rental';
@@ -1753,6 +1864,7 @@ export const accountingService = {
           rental_id: entry.reference_type === 'rental' ? entry.reference_id : undefined,
           branch_id: entry.branch_id,
           branch_name: branchName,
+          ledger_kind: entry.reference_type === 'correction_reversal' ? ('reversal' as const) : undefined,
         };
       });
 
@@ -2065,21 +2177,15 @@ export const accountingService = {
         const entry = line.journal_entry;
         if (!entry) return false;
         const rt = String(entry.reference_type || '').toLowerCase();
-        const rid = entry.reference_id;
-
-        if (
-          ['purchase', 'purchase_return', 'purchase_adjustment', 'purchase_reversal'].includes(rt) &&
-          rid &&
-          supplierPurchaseIds.has(rid)
-        ) {
-          return true;
+        if (rt === 'correction_reversal' && entry.reference_id) {
+          const origId = String(entry.reference_id);
+          return linesToUse.some((ol: any) => {
+            const oe = ol.journal_entry;
+            if (!oe || String(oe.id) !== origId) return false;
+            return supplierApJournalLineMatchesSupplier(ol, supplierId, supplierPurchaseIds, supplierPaymentIds);
+          });
         }
-        if (entry.payment_id && supplierPaymentIds.has(entry.payment_id)) return true;
-        if (rt === 'payment' && rid && supplierPaymentIds.has(rid)) return true;
-        if (rt === 'on_account' && rid && String(rid) === String(supplierId)) return true;
-        if (rt === 'manual_payment' && rid && String(rid) === String(supplierId)) return true;
-        if (rt === 'opening_balance_contact_ap' && rid && String(rid) === String(supplierId)) return true;
-        return false;
+        return supplierApJournalLineMatchesSupplier(line, supplierId, supplierPurchaseIds, supplierPaymentIds);
       });
 
       const branchFiltered = branchId
@@ -2226,15 +2332,15 @@ export const accountingService = {
         const entry = line.journal_entry;
         if (!entry) return false;
         const rt = String(entry.reference_type || '').toLowerCase();
-        const rid = entry.reference_id;
-        if ((rt === 'worker_payment' || rt === 'worker_advance_settlement') && rid && String(rid) === String(workerId)) {
-          return true;
+        if (rt === 'correction_reversal' && entry.reference_id) {
+          const origId = String(entry.reference_id);
+          return linesToUse.some((ol: any) => {
+            const oe = ol.journal_entry;
+            if (!oe || String(oe.id) !== origId) return false;
+            return workerGlLineMatchesWorker(ol, workerId, workerPaymentIds);
+          });
         }
-        if (rt === 'opening_balance_contact_worker' && rid && String(rid) === String(workerId)) {
-          return true;
-        }
-        if (entry.payment_id && workerPaymentIds.has(entry.payment_id)) return true;
-        return false;
+        return workerGlLineMatchesWorker(line, workerId, workerPaymentIds);
       });
 
       const branchFiltered = branchId

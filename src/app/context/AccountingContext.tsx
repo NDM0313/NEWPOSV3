@@ -3,6 +3,11 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilterOptional } from '@/app/context/GlobalFilterContext';
 import { accountService, Account as SupabaseAccount } from '@/app/services/accountService';
 import { accountingService, JournalEntryWithLines, JournalEntryLine } from '@/app/services/accountingService';
+import {
+  journalLineEmbeddedAccount,
+  summarizeJournalLinesAccountPairs,
+  withPartyContextForLine,
+} from '@/app/lib/journalEntryAccountLabels';
 import { accountingReportsService } from '@/app/services/accountingReportsService';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
@@ -97,6 +102,9 @@ export interface AccountingEntry {
   referenceNo: string;
   debitAccount: AccountType;
   creditAccount: AccountType;
+  /** Leaf / concrete labels for workbench journal list (may include party suffix on AP/AR). */
+  debitAccountDisplay?: string;
+  creditAccountDisplay?: string;
   amount: number;
   description: string;
   createdBy: string;
@@ -123,6 +131,9 @@ export interface AccountingEntry {
     rootReferenceType?: string;
     /** Journal + payment date (yyyy-MM-dd) when not using “today” (e.g. expense repost). */
     postingDate?: string;
+    /** Compact Dr/Cr account text from all lines (multi-line JEs). */
+    journalLinesSummary?: { debitLabel: string; creditLabel: string };
+    journalLineCount?: number;
   };
 }
 
@@ -394,15 +405,20 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   
   // Convert journal entry from Supabase to AccountingEntry format
   const convertFromJournalEntry = useCallback((journalEntry: JournalEntryWithLines): AccountingEntry => {
-    // Find debit and credit lines
-    const debitLine = journalEntry.lines?.find(line => line.debit > 0);
-    const creditLine = journalEntry.lines?.find(line => line.credit > 0);
+    const lines = journalEntry.lines || [];
+    const activeLines = lines.filter((line: any) => Number(line?.debit || 0) > 0 || Number(line?.credit || 0) > 0);
+    const debitLine = activeLines.find((line: any) => Number(line.debit || 0) > 0);
+    const creditLine = activeLines.find((line: any) => Number(line.credit || 0) > 0);
+    const payParty = (journalEntry as { _payment_contact_name?: string })._payment_contact_name;
+    const purParty = (journalEntry as { _purchase_supplier_name?: string })._purchase_supplier_name;
+    const partyForContext = payParty || purParty;
 
     // Determine source from reference_type (PF-14.3B: sale_adjustment/payment_adjustment show as Sale/Payment for grouping)
     const sourceMap: Record<string, TransactionSource> = {
       'sale': 'Sale',
       'sale_adjustment': 'Sale',
       'purchase': 'Purchase',
+      'manual_payment': 'Purchase',
       'expense': 'Expense',
       'rental': 'Rental',
       'studio': 'Studio',
@@ -419,9 +435,34 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     const paymentRef = (journalEntry as any).payment ? (Array.isArray((journalEntry as any).payment) ? (journalEntry as any).payment[0]?.reference_number : (journalEntry as any).payment?.reference_number) : undefined;
     const paymentMethod = (journalEntry as any).payment ? (Array.isArray((journalEntry as any).payment) ? (journalEntry as any).payment[0]?.payment_method : (journalEntry as any).payment?.payment_method) : undefined;
 
-    // Account names from embedded account (journal-based; no legacy ledger)
-    const debitAccountName = debitLine?.account_name ?? (debitLine as any)?.account?.name ?? 'Expense';
-    const creditAccountName = creditLine?.account_name ?? (creditLine as any)?.account?.name ?? 'Cash';
+    const drCount = activeLines.filter((l: any) => Number(l.debit || 0) > 0).length;
+    const crCount = activeLines.filter((l: any) => Number(l.credit || 0) > 0).length;
+    const useMultiSummary = activeLines.length > 2 || drCount > 1 || crCount > 1;
+    const linesSummary = summarizeJournalLinesAccountPairs(activeLines, partyForContext);
+
+    let debitAccountDisplay = debitLine
+      ? withPartyContextForLine(debitLine as any, partyForContext)
+      : linesSummary.debitLabel;
+    let creditAccountDisplay = creditLine
+      ? withPartyContextForLine(creditLine as any, partyForContext)
+      : linesSummary.creditLabel;
+    if (useMultiSummary) {
+      debitAccountDisplay = linesSummary.debitLabel;
+      creditAccountDisplay = linesSummary.creditLabel;
+    }
+
+    const debitStable =
+      journalLineEmbeddedAccount(debitLine as any)?.name ||
+      (debitLine as any)?.account_name ||
+      (Array.isArray((debitLine as any)?.account) ? (debitLine as any).account[0]?.name : (debitLine as any)?.account?.name) ||
+      'Expense';
+    const creditStable =
+      journalLineEmbeddedAccount(creditLine as any)?.name ||
+      (creditLine as any)?.account_name ||
+      (Array.isArray((creditLine as any)?.account)
+        ? (creditLine as any).account[0]?.name
+        : (creditLine as any)?.account?.name) ||
+      'Cash';
 
     // Extract metadata from description or reference (PF-14.3B: root for grouped Journal list)
     const raw = journalEntry as { root_reference_id?: string; root_reference_type?: string };
@@ -434,6 +475,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       createdAt: (journalEntry as { created_at?: string }).created_at ?? undefined,
       rootReferenceId: raw.root_reference_id ?? journalEntry.reference_id ?? undefined,
       rootReferenceType: raw.root_reference_type ?? journalEntry.reference_type ?? undefined,
+      journalLinesSummary: linesSummary,
+      journalLineCount: activeLines.length,
     };
     
     if (journalEntry.reference_id) {
@@ -450,8 +493,10 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       date: new Date(journalEntry.entry_date),
       source,
       referenceNo: referenceNo,
-      debitAccount: (debitAccountName || 'Expense') as AccountType,
-      creditAccount: (creditAccountName || 'Cash') as AccountType,
+      debitAccount: (debitStable || 'Expense') as AccountType,
+      creditAccount: (creditStable || 'Cash') as AccountType,
+      debitAccountDisplay,
+      creditAccountDisplay,
       amount: debitLine?.debit || creditLine?.credit || 0,
       description: journalEntry.description,
       createdBy: journalEntry.created_by || 'System',

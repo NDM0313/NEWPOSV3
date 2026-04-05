@@ -158,6 +158,33 @@ function journalRowPresentation(entry: AccountingEntry): {
     badgeClass: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   };
 }
+
+/** Journal list Account column: leaf names + party from convertFromJournalEntry; grouped = compact union. */
+function journalEntryAccountPair(entry: AccountingEntry): { debit: string; credit: string } {
+  return {
+    debit: entry.debitAccountDisplay ?? entry.debitAccount,
+    credit: entry.creditAccountDisplay ?? entry.creditAccount,
+  };
+}
+
+function journalGroupAccountPair(group: { primary: AccountingEntry; entries: AccountingEntry[] }): {
+  debit: string;
+  credit: string;
+} {
+  if (group.entries.length <= 1) return journalEntryAccountPair(group.primary);
+  const dr = new Set<string>();
+  const cr = new Set<string>();
+  for (const e of group.entries) {
+    dr.add(e.debitAccountDisplay ?? e.debitAccount);
+    cr.add(e.creditAccountDisplay ?? e.creditAccount);
+  }
+  const compact = (labels: Set<string>) => {
+    const a = [...labels].filter(Boolean);
+    if (a.length <= 2) return a.join(' · ');
+    return `${a.slice(0, 2).join(' · ')} +${a.length - 2} more`;
+  };
+  return { debit: compact(dr), credit: compact(cr) };
+}
 import { Switch } from '@/app/components/ui/switch';
 
 // Account type sets used for summary card calculations (module-level constants)
@@ -202,6 +229,14 @@ export const AccountingDashboard = () => {
     return new Date().toISOString().slice(0, 10);
   }, [globalEndDate]);
 
+  /** Account Statements tab: editable period (initialized from global filter; re-syncs when global dates change). */
+  const [accountStatementStart, setAccountStatementStart] = useState(() => reportStartDate);
+  const [accountStatementEnd, setAccountStatementEnd] = useState(() => reportEndDate);
+  useEffect(() => {
+    setAccountStatementStart(reportStartDate);
+    setAccountStatementEnd(reportEndDate);
+  }, [reportStartDate, reportEndDate]);
+
   const accountStatementBranchLabel =
     !branchId || branchId === 'all' ? 'All branches' : 'Current session branch';
   
@@ -241,6 +276,13 @@ export const AccountingDashboard = () => {
     rows: PartyGlRow[];
     note?: string;
     controlLabel?: string;
+    panelAccountId?: string | null;
+    controlGlBalance?: number | null;
+    partyAttributedSumFull?: number | null;
+    residualAmount?: number | null;
+    subtreeTbDrMinusCr?: number | null;
+    controlCodeLabel?: string;
+    unmappedTop?: { referenceType: string; amount: number }[];
   }>({ loading: false, error: null, rows: [] });
   const [transactionReference, setTransactionReference] = useState<string | null>(null);
   /** PF-14.3B: When opening a grouped journal row, pass all entries in the group for the detail trail. */
@@ -342,7 +384,20 @@ export const AccountingDashboard = () => {
     }
     const label = controlKindDisplayLabel(ck);
     let cancelled = false;
-    setCoaPartyFetch({ loading: true, error: null, rows: [], note: undefined, controlLabel: label });
+    setCoaPartyFetch({
+      loading: true,
+      error: null,
+      rows: [],
+      note: undefined,
+      controlLabel: label,
+      panelAccountId: acc.id,
+      controlGlBalance: undefined,
+      partyAttributedSumFull: undefined,
+      residualAmount: undefined,
+      subtreeTbDrMinusCr: undefined,
+      controlCodeLabel: undefined,
+      unmappedTop: undefined,
+    });
     fetchControlAccountBreakdown({
       companyId,
       branchId: branchId === 'all' ? null : branchId,
@@ -353,12 +408,25 @@ export const AccountingDashboard = () => {
     })
       .then((r) => {
         if (cancelled) return;
+        const partyFallback = r.partyRows.reduce((s, x) => s + x.glAmount, 0);
+        const partyFull = r.partyAttributedGlSum ?? partyFallback;
+        const code = String((acc as { code?: string }).code || '').trim() || '—';
+        const unmappedTop = [...(r.unmappedGlByReference || [])]
+          .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+          .slice(0, 6);
         setCoaPartyFetch({
           loading: false,
           error: null,
           rows: r.partyRows,
           note: r.partySectionNote,
           controlLabel: label,
+          panelAccountId: acc.id,
+          controlGlBalance: r.glAccountBalance,
+          partyAttributedSumFull: partyFull,
+          residualAmount: r.unmappedGlResidual,
+          subtreeTbDrMinusCr: r.glSubtreeDrMinusCr,
+          controlCodeLabel: code,
+          unmappedTop: unmappedTop.length ? unmappedTop : undefined,
         });
       })
       .catch((e) => {
@@ -368,6 +436,13 @@ export const AccountingDashboard = () => {
           error: e instanceof Error ? e.message : 'Failed to load parties',
           rows: [],
           controlLabel: label,
+          panelAccountId: acc.id,
+          controlGlBalance: undefined,
+          partyAttributedSumFull: undefined,
+          residualAmount: undefined,
+          subtreeTbDrMinusCr: undefined,
+          controlCodeLabel: undefined,
+          unmappedTop: undefined,
         });
       });
     return () => {
@@ -490,6 +565,8 @@ export const AccountingDashboard = () => {
       const primary =
         entries.find((e) => (e.metadata?.referenceType ?? '') === 'sale') ??
         entries.find((e) => (e.metadata?.referenceType ?? '') === 'purchase') ??
+        entries.find((e) => (e.metadata?.referenceType ?? '') === 'on_account') ??
+        entries.find((e) => (e.metadata?.referenceType ?? '') === 'manual_payment') ??
         entries.find((e) => (e.metadata?.referenceType ?? '') === 'payment') ??
         entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
       groups.push({ rootKey, primary, entries });
@@ -837,6 +914,7 @@ export const AccountingDashboard = () => {
                             const pres = journalRowPresentation(entry);
                             const isReversal = entry.source === 'Reversal';
                             const adjustmentCount = group.entries.length > 1 ? group.entries.length - 1 : 0;
+                            const acPair = journalGroupAccountPair(group);
                             return (
                               <tr
                                 key={group.rootKey}
@@ -913,10 +991,14 @@ export const AccountingDashboard = () => {
                                     {isReversal ? 'Reversal' : 'Posted'}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-3 text-xs text-gray-400 max-w-[180px]" title={`Debit: ${entry.debitAccount} → Credit: ${entry.creditAccount}`}>
-                                  <span className="text-gray-500">Debit:</span> {entry.debitAccount}
+                                <td
+                                  className="px-4 py-3 text-xs text-gray-400 max-w-[min(280px,40vw)]"
+                                  title={`Debit: ${acPair.debit} → Credit: ${acPair.credit}`}
+                                >
+                                  <span className="text-gray-500">Debit:</span>{' '}
+                                  <span className="text-gray-200">{acPair.debit}</span>
                                   <span className="text-gray-600 mx-1">→</span>
-                                  <span className="text-blue-400 font-medium">Credit: {entry.creditAccount}</span>
+                                  <span className="text-blue-400 font-medium">Credit: {acPair.credit}</span>
                                 </td>
                                 {canPostAccounting && (
                                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -984,6 +1066,7 @@ export const AccountingDashboard = () => {
                             const paymentMethod = (entry.metadata as any)?.paymentMethod || 'N/A';
                             const pres = journalRowPresentation(entry);
                             const isReversal = entry.source === 'Reversal';
+                            const acFlat = journalEntryAccountPair(entry);
                             return (
                               <tr
                                 key={entry.id}
@@ -1054,10 +1137,14 @@ export const AccountingDashboard = () => {
                                     {isReversal ? 'Reversal' : 'Posted'}
                                   </Badge>
                                 </td>
-                                <td className="px-4 py-3 text-xs text-gray-400 max-w-[180px]" title={`Debit: ${entry.debitAccount} → Credit: ${entry.creditAccount}`}>
-                                  <span className="text-gray-500">Debit:</span> {entry.debitAccount}
+                                <td
+                                  className="px-4 py-3 text-xs text-gray-400 max-w-[min(280px,40vw)]"
+                                  title={`Debit: ${acFlat.debit} → Credit: ${acFlat.credit}`}
+                                >
+                                  <span className="text-gray-500">Debit:</span>{' '}
+                                  <span className="text-gray-200">{acFlat.debit}</span>
                                   <span className="text-gray-600 mx-1">→</span>
-                                  <span className="text-blue-400 font-medium">Credit: {entry.creditAccount}</span>
+                                  <span className="text-blue-400 font-medium">Credit: {acFlat.credit}</span>
                                 </td>
                                 {canPostAccounting && (
                                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1347,6 +1434,21 @@ export const AccountingDashboard = () => {
                   };
                   const ck = getControlAccountKind({ name: acc.name, code: acc.code });
                   if (ck) {
+                    const parity =
+                      !coaPartyFetch.loading &&
+                      coaPartyFetch.panelAccountId === row.account.id &&
+                      coaPartyFetch.controlGlBalance != null &&
+                      coaPartyFetch.partyAttributedSumFull != null
+                        ? {
+                            coaRowDisplayBalance: row.displayBalance,
+                            controlTrialBalance: coaPartyFetch.controlGlBalance,
+                            partyAttributedSumFull: coaPartyFetch.partyAttributedSumFull,
+                            residualAmount: coaPartyFetch.residualAmount ?? null,
+                            subtreeTrialBalanceDrMinusCr: coaPartyFetch.subtreeTbDrMinusCr ?? null,
+                            controlCodeLabel: coaPartyFetch.controlCodeLabel || '—',
+                            unmappedTop: coaPartyFetch.unmappedTop,
+                          }
+                        : null;
                     return (
                       <ChartOfAccountsPartyDropdown
                         formatCurrency={formatCurrency}
@@ -1356,6 +1458,7 @@ export const AccountingDashboard = () => {
                         partyRows={coaPartyFetch.rows}
                         partySectionNote={coaPartyFetch.note}
                         scopeLabel={coaPartyFetch.controlLabel}
+                        glParity={parity}
                       />
                     );
                   }
@@ -1566,12 +1669,42 @@ export const AccountingDashboard = () => {
         {activeTab === 'account_statements' && (
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-white">Account Statements</h3>
-            <p className="text-sm text-gray-400 mb-4">Account-wise ledger / statement by date range</p>
-            <div className="text-xs text-gray-500 mb-2">Period: {reportStartDate} to {reportEndDate}</div>
+            <p className="text-sm text-gray-400">Account-wise ledger / statement by date range</p>
+            <div className="flex flex-wrap items-end gap-4 pt-1">
+              <div className="space-y-1">
+                <Label htmlFor="account-statement-from" className="text-xs text-gray-400">
+                  From
+                </Label>
+                <Input
+                  id="account-statement-from"
+                  type="date"
+                  value={accountStatementStart}
+                  max={accountStatementEnd}
+                  onChange={(e) => setAccountStatementStart(e.target.value)}
+                  className="w-[11.5rem] bg-gray-800/90 border-gray-700 text-white"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="account-statement-to" className="text-xs text-gray-400">
+                  To
+                </Label>
+                <Input
+                  id="account-statement-to"
+                  type="date"
+                  value={accountStatementEnd}
+                  min={accountStatementStart}
+                  onChange={(e) => setAccountStatementEnd(e.target.value)}
+                  className="w-[11.5rem] bg-gray-800/90 border-gray-700 text-white"
+                />
+              </div>
+              <p className="text-xs text-gray-500 pb-2">
+                Global filter updates the defaults above; you can narrow the range here without changing the header.
+              </p>
+            </div>
             <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
               <AccountLedgerReportPage
-                startDate={reportStartDate}
-                endDate={reportEndDate}
+                startDate={accountStatementStart}
+                endDate={accountStatementEnd}
                 branchId={branchId}
                 branchScopeLabel={accountStatementBranchLabel}
               />

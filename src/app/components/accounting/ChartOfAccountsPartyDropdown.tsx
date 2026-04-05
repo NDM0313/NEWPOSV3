@@ -19,6 +19,18 @@ export type ChartOfAccountsPartyDropdownProps = {
   /** Sub-account linked to one contact — no async list */
   linkedContactName?: string | null;
   linkedContactPartyType?: string | null;
+  /** When set, explains COA row roll-up vs TB on this account id vs party sum (signed). */
+  glParity?: {
+    coaRowDisplayBalance: number;
+    controlTrialBalance: number;
+    /** Full Σ party GL from RPC (all contacts); residual uses this, not only listed rows. */
+    partyAttributedSumFull: number;
+    /** From breakdown service: AR/AP = TB vs party in correct units; null when not defined (e.g. worker net). */
+    residualAmount: number | null;
+    subtreeTrialBalanceDrMinusCr: number | null;
+    controlCodeLabel: string;
+    unmappedTop?: { referenceType: string; amount: number }[];
+  } | null;
 };
 
 function kindBadge(kind: PartyGlRow['kind']) {
@@ -37,6 +49,7 @@ export function ChartOfAccountsPartyDropdown({
   scopeLabel,
   linkedContactName,
   linkedContactPartyType,
+  glParity,
 }: ChartOfAccountsPartyDropdownProps) {
   const isLinkedOnly = Boolean(linkedContactName) && !scopeLabel;
 
@@ -59,6 +72,13 @@ export function ChartOfAccountsPartyDropdown({
             <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
               {isLinkedOnly ? 'Linked party' : `Related parties · ${scopeLabel || 'GL'}`}
             </p>
+            {!isLinkedOnly && scopeLabel ? (
+              <p className="text-[10px] text-gray-600 mt-0.5 leading-snug">
+                Journal lines on <strong className="text-gray-400">one GL account id</strong> per control code (RPC), not
+                the whole subtree. Contacts primary balances ={' '}
+                <code className="text-gray-500">get_contact_balances_summary</code>.
+              </p>
+            ) : null}
             {isLinkedOnly ? (
               <p className="text-sm text-white font-medium truncate mt-0.5">{linkedContactName}</p>
             ) : null}
@@ -129,6 +149,84 @@ export function ChartOfAccountsPartyDropdown({
             );
           })}
         </ul>
+      ) : null}
+
+      {!isLinkedOnly && glParity && glParity.controlTrialBalance != null ? (
+        <div className="mt-3 text-[10px] text-gray-500 space-y-1 border-t border-gray-800 pt-2.5">
+          <p className="font-semibold text-gray-400 uppercase tracking-wide">Balance trace (GL)</p>
+          <p>
+            COA row balance (may include sub-account roll-up):{' '}
+            <span className="tabular-nums text-gray-300">{formatCurrency(glParity.coaRowDisplayBalance)}</span>
+          </p>
+          <p>
+            Trial balance — this control account id (Dr − Cr):{' '}
+            <span className="tabular-nums text-gray-300">{formatCurrency(glParity.controlTrialBalance)}</span>
+          </p>
+          {glParity.subtreeTrialBalanceDrMinusCr != null &&
+          Math.abs(glParity.subtreeTrialBalanceDrMinusCr - glParity.controlTrialBalance) >= 0.02 ? (
+            <p>
+              Subtree TB (this id + descendants, Dr − Cr):{' '}
+              <span className="tabular-nums text-gray-300">
+                {formatCurrency(glParity.subtreeTrialBalanceDrMinusCr)}
+              </span>
+            </p>
+          ) : null}
+          <p>
+            {['2010', '1180'].includes(String(glParity.controlCodeLabel || '').trim()) ? (
+              <>
+                Σ party worker net (RPC <span className="font-mono">gl_worker_payable</span>, WP−WA, worker contacts):{' '}
+                <span className="tabular-nums text-gray-300">{formatCurrency(glParity.partyAttributedSumFull)}</span>
+              </>
+            ) : (
+              <>
+                Σ party GL (all contacts, signed, code {glParity.controlCodeLabel}):{' '}
+                <span className="tabular-nums text-gray-300">{formatCurrency(glParity.partyAttributedSumFull)}</span>
+              </>
+            )}
+          </p>
+          <p className="text-gray-600">
+            Listed rows above omit near-zero parties; AR/AP residual uses the full Σ, not only visible lines.
+          </p>
+          <p className="text-amber-200/85">
+            {glParity.residualAmount != null ? (
+              <>
+                Residual (control breakdown):{' '}
+                <span className="tabular-nums">{formatCurrency(glParity.residualAmount)}</span>
+                {' — '}
+              </>
+            ) : ['2010', '1180'].includes(String(glParity.controlCodeLabel || '').trim()) ? (
+              <>
+                Residual vs TB on this row is not computed: party total is net payable (2010 vs 1180 combined in RPC),
+                while TB above is this account id only; use breakdown drawer for 2010/1180 splits and unmapped buckets
+                per code.{' '}
+              </>
+            ) : (
+              <>Residual: not computed for this control kind (see breakdown drawer). </>
+            )}
+            Unmapped lines on this account id — reference_type buckets in breakdown drawer. Apply migrations{' '}
+            <code className="text-amber-300/80">20260405</code> + <code className="text-amber-300/80">20260406</code> for
+            party resolver + buckets.
+          </p>
+          {Math.abs(glParity.coaRowDisplayBalance - glParity.controlTrialBalance) >= 0.02 ? (
+            <p className="text-sky-200/90">
+              Row balance ≠ TB on this id: activity may sit on child AR/AP accounts; party slice stays on control code{' '}
+              {glParity.controlCodeLabel}.
+            </p>
+          ) : null}
+          {glParity.unmappedTop && glParity.unmappedTop.length > 0 ? (
+            <div className="pt-1">
+              <p className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide">Top unmapped (by |amount|)</p>
+              <ul className="mt-0.5 space-y-0.5">
+                {glParity.unmappedTop.map((u) => (
+                  <li key={u.referenceType} className="flex justify-between gap-2 tabular-nums text-gray-400">
+                    <span className="truncate font-mono">{u.referenceType}</span>
+                    <span>{formatCurrency(u.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

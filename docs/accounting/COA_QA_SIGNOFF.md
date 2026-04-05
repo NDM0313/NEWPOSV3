@@ -8,7 +8,7 @@
 
 **Non-goals:** Figma/design; Batch 5; destructive DB work.
 
-**Authoritative procedure refs:** [COA_BRANCH_PARITY_CHECKLIST.md](./COA_BRANCH_PARITY_CHECKLIST.md), [ACCOUNTING_WORKBENCH_CLICK_MATRIX.md](./ACCOUNTING_WORKBENCH_CLICK_MATRIX.md).
+**Authoritative procedure refs:** [COA_UAT_RUNBOOK.md](./COA_UAT_RUNBOOK.md) (human pass), [COA_BRANCH_PARITY_CHECKLIST.md](./COA_BRANCH_PARITY_CHECKLIST.md), [ACCOUNTING_WORKBENCH_CLICK_MATRIX.md](./ACCOUNTING_WORKBENCH_CLICK_MATRIX.md).
 
 ---
 
@@ -71,7 +71,7 @@
 
 ## 3. Branch parity — factual finding (code)
 
-**Gap:** Accounting **Day Book** (`src/app/components/reports/DayBookReport.tsx`) does not apply session `branchId` to the Supabase query on `journal_entries`. Roznamcha and the statement center paths use branch in their respective service/query layers. This is a **documented inconsistency** until product decides “Day Book = company-wide journal” vs “branch-scoped.”
+**G-BR-02 (closed):** **Day Book** applies session branch using the **same rule as `getAccountLedger`**: all JEs when branch is all/unset; else `journal_entries.branch_id` **null OR** selected branch UUID. UI **Branch scope** strip and export title document this. **Interactive** confirmation is part of human UAT ([COA_UAT_RUNBOOK.md](./COA_UAT_RUNBOOK.md)).
 
 ---
 
@@ -90,8 +90,14 @@
 
 1. **Interactive manual QA** on a real tenant (two branches, global accounts, payments) — **not executed**.  
 2. **Day Book branch filtering** — **addressed in code** (G-BR-02); live confirmation still part of item 1.  
-3. **Direct source-document** navigation from statement rows — still absent (modal-centric).  
-4. **Numeric reconciliation** (TB vs GL, etc.) — **not run**.
+3. **Customer statement vs journal reversal parity** — **addressed in code** (G-REV-01, `correction_reversal` included in `getCustomerLedger` / supplier / worker party GL when the reversed original belonged to the party). **UAT should re-run** the “Receipt from … + Reverse” scenario after deploy.  
+4. **Direct source-document** navigation from statement rows — still absent (modal-centric).  
+5. **Numeric reconciliation** (TB vs GL, etc.) — **not run** as a formal signoff pass; **G-PAR-02** adds **in-app** trace (residual, subtree, unmapped `reference_type` buckets) once migration `20260405_gl_party_correction_reversal_and_unmapped_buckets.sql` is applied — human UAT should spot-check AR/AP/worker controls vs party list.  
+6. **G-PAR-01 (post-fix)** — **CODE VERIFIED** only: Contacts operational vs party GL split in `ContactsPage.tsx`; COA party dropdown parity block wired from `AccountingDashboard` + `fetchControlAccountBreakdown`. **Live** check: one contact with **negative** signed AR on 1100 — card total (operational) must **not** silently add dropped credits; party GL line may show negative; COA party panel should show **residual** ≈ unmapped lines.  
+7. **G-PAR-02 (post-fix)** — **CODE VERIFIED** for wiring: breakdown service + drawer + party dropdown **`glParity`**; **NOT RUN** against DB without migration. **Live** checks: (a) **`correction_reversal`** party balance bucket matches statement expectation for a known reversal; (b) unmapped bucket table non-empty only when resolver returns null party on control-code lines; (c) when COA row balance ≠ TB on control id, UI states **roll-up vs direct id** explicitly.  
+8. **G-PAR-02b (payment resolver, `20260406_gl_party_resolve_payment_via_sale_purchase.sql`)** — **CODE VERIFIED** (SQL in repo); **NOT RUN** on production from this doc. After DBA apply: re-check **`get_control_unmapped_party_gl_buckets`** for **1100** — **`payment`** bucket should **drop** if historical issue was **`payments.contact_id` null** with sale/purchase link; re-run customer statement vs **`get_contact_party_gl_balances`** for one known receipt. **Agent session did not** confirm migration applied or fill Ali/Mushtaq numeric table (see [COA_FIX_EXECUTION_REPORT.md](./COA_FIX_EXECUTION_REPORT.md) §11).  
+9. **G-PAR-02c (AP + worker control parity)** — **AR** tie-out **PASS** on **user-reported** snapshot (control = party sum, residual 0) per [COA_FIX_EXECUTION_REPORT.md](./COA_FIX_EXECUTION_REPORT.md) §12. **AP (2000)** / **worker (2010/1180)** live Rs **not** captured in agent session; **NOT RUN** full Contacts cross-check (ABC, Khuram, worker). **Human UAT:** repeat COA Balance trace for **2000**; for **2010/1180** accept **WP−WA net** label and use breakdown drawer + bucket RPC §5 in [sql/G_PAR02_live_tie_out_queries.sql](./sql/G_PAR02_live_tie_out_queries.sql); re-test **one reversal** on supplier + worker party statements vs journals.  
+10. **G-SUP-01 (supplier journal labels + statement consistency)** — **CODE OK** per §13 fix report; **NOT RUN** live Khuram regression in browser from this doc. **Human UAT:** supplier payment JE shows **leaf bank + AP — supplier**; supplier statement **closing** matches last **Balance** column with filters applied.
 
 ---
 
@@ -99,8 +105,8 @@
 
 | Gate | Verdict |
 |------|---------|
-| **READY FOR DESIGN POLISH** (certified) | **NO** — interactive QA not completed; branch parity **not** fully satisfied in code (Day Book). |
-| Overall module readiness | **PARTIALLY READY** — same as pre-QA implementation signoff; QA artifact adds **concrete code gap** and **explicit NOT RUN** list. |
+| **READY FOR DESIGN POLISH** (certified) | **NO** until human UAT addendum (**§8**) records pass + signed decision ([COA_UAT_RUNBOOK.md](./COA_UAT_RUNBOOK.md)). |
+| Overall module readiness | **PARTIALLY READY** — code includes G-BR-02, G-REV-01, and statement UX; **interactive** signoff still pending. |
 
 **Batch 5:** **NOT APPROVED.**
 
@@ -110,7 +116,47 @@
 
 | Role | Name | Date | Notes |
 |------|------|------|-------|
-| Manual QA (browser) | *unfilled* | | Run checklist §2.1–2.2 in staging/production test company |
-| Product / Finance | *unfilled* | | Policy: Day Book matches GL ledger branch rule (null `branch_id` + selected branch); confirm in UAT |
+| Manual QA (browser) | *unfilled* | | Execute [COA_UAT_RUNBOOK.md](./COA_UAT_RUNBOOK.md); paste results into **§8** below |
+| Product / Finance | *unfilled* | | Sign final readiness in **§8** |
 
-When browser QA completes, append a **“Manual QA addendum”** section with dated pass/fail per row.
+---
+
+## 8. Manual QA addendum (template — fill after UAT)
+
+*Do not pre-fill with assumed results. Copy from runbook §5 when complete.*
+
+**UAT session**
+
+| Field | Value |
+|-------|-------|
+| Completion date | |
+| Environment | |
+| Company / branches | |
+| Tester | |
+
+**Summary pass/fail**
+
+| Area | Pass / Fail / N/A | Notes |
+|------|-------------------|-------|
+| COA Professional + branch A/B | | |
+| Account Statements — GL | | |
+| Account Statements — customer | | |
+| Account Statements — supplier | | |
+| Account Statements — worker | | |
+| Day Book + branch scope | | |
+| Roznamcha | | |
+| Trial Balance | | |
+| Profit & Loss | | |
+| Balance Sheet | | |
+| Journal Entries — View / Edit / Reverse | | |
+| Account Statements — View / Edit | | |
+| Payment posting branch (if run) | | |
+
+**Bugs filed** (IDs):  
+
+**Final decision** (check one):
+
+- [ ] **PARTIALLY READY** — blockers or critical paths failed / not run  
+- [ ] **READY FOR DESIGN POLISH** — no blockers; residual gaps accepted  
+
+**Sign-off:** Name: _______________  Date: _______________  Role: _______________

@@ -4,7 +4,7 @@
 **Type:** Static code-path audit + documentation (no live E2E execution in this pass).  
 **Non-goals:** Figma/design polish; Batch 5 / destructive DB cleanup; legacy table removal.
 
-**Authoritative truth:** `accounts`, `journal_entries`, `journal_entry_lines`, `payments`, `payment_allocations`, `worker_ledger_entries`, RPCs `get_customer_ledger_sales`, `get_financial_dashboard_metrics`, `get_contact_balances_summary`, `get_dashboard_metrics`.
+**Authoritative truth:** `accounts`, `journal_entries`, `journal_entry_lines`, `payments`, `payment_allocations`, `worker_ledger_entries`, RPCs `get_customer_ledger_sales`, `get_financial_dashboard_metrics`, `get_contact_balances_summary`, `get_contact_party_gl_balances`, `get_control_unmapped_party_gl_buckets` (after G-PAR-02 migration), `get_dashboard_metrics`.
 
 **Legacy (must not drive runtime truth):** `chart_accounts`, `account_transactions`, `accounting_audit_logs`, `automation_rules`, `accounting_settings`, `ledger_master`, `ledger_entries`, `backup_cr_*`, `backup_pf145_*` — blocked for “truth” in dev via `accountingCanonicalGuard.ts`; **no** `.from('chart_accounts')` found in runtime `src/` outside that guard.
 
@@ -56,13 +56,13 @@
 | Tab / area | Primary data source | Canonical? | Notes |
 |------------|---------------------|------------|--------|
 | **Overview** (dashboard cards) | `useAccounting` / entries from context; RPC-backed metrics may be used elsewhere in app | **Canonical** (journals + accounts in context) | Full parity with `get_financial_dashboard_metrics` is on **Dashboard** paths too — cross-check in QA |
-| **Journal Entries** | `AccountingContext` / `accountingService` → `journal_entries` | **Yes** | Grouped vs audit mode documented in UI |
+| **Journal Entries** | `AccountingContext` / `accountingService` → `journal_entries` | **Yes** | Grouped vs audit mode documented in UI; **Account** column uses **`debitAccountDisplay` / `creditAccountDisplay`** (leaf **name (code)** + party on AP/AR when payment/purchase enrichment exists — G-SUP-01). |
 | **Day Book** | `DayBookReport` → `journal_entries` + lines + `accounts` | **Yes** | Export title corrected (see fix report) |
 | **Roznamcha** | `RoznamchaReport` → `payments` + `accounts` | **Yes** | Table copy is **English**; tab title may stay “Roznamcha” |
 | **Accounts (COA)** | `AccountingContext.accounts` → `accounts` | **Yes** | Operational vs Professional modes; roll-up in `useAccountsHierarchyModel` |
 | **Ledger** | `LedgerHub` + `customerLedgerApi` / contacts / workers + `GenericLedgerView` | **Yes** | Worker uses **`worker_ledger_entries`**, not `ledger_entries` |
 | **Receivables / Payables** | Customer ledger + supplier flows (canonical services) | **Yes** | Label worker vs supplier in UI where combined |
-| **Account Statements** | `AccountLedgerReportPage` + related | **Yes** | Verify branch filters per environment |
+| **Account Statements** | `AccountLedgerReportPage` + related | **Yes** | Verify branch filters per environment; **customer/supplier/worker** party modes use `getCustomerLedger` / supplier / worker GL — **`correction_reversal`** rows included when they reverse a party-linked original (G-REV-01). |
 | **Studio / Deposits / Courier** | Feature-specific services | **Yes** (canonical tables) | `worker_ledger_entries` where studio costs |
 | **Integrity Lab** | Diagnostics services | **Yes** | Dev-oriented |
 
@@ -76,6 +76,22 @@
 | `worker_ledger_entries` | **Canonical** for worker/studio payable chain — **not** legacy |
 | `AddChartAccountDrawer` / `chartAccountService` | **Writes `accounts`** — naming misleading only |
 | Roznamcha vs Day Book | **Different sources** (payments vs journals) — must stay labeled |
+
+---
+
+## 3.1 Surface → basis map (G-PAR-01, 2026-04-05)
+
+| Surface | Basis | Engine / notes |
+|---------|--------|----------------|
+| COA **Balance · GL** column | **GL** | `AccountingContext` merges `accountingReportsService.getAccountBalancesFromJournal` (TB Dr−Cr per `accounts.id`); parent rows use **`useAccountsHierarchyModel` roll-up** (self + descendant ids). |
+| COA **Related parties** (inline) | **GL (party-attributed)** | `get_contact_party_gl_balances` — journal lines whose `account_id` is the resolved **`accounts.id`** for **trimmed code** **1100** / **2000** / **2010** / **1180** (one id per code per company), **not** automatic inclusion of other descendant account ids under the COA hierarchy. **`correction_reversal`:** after migration `20260405_gl_party_correction_reversal_and_unmapped_buckets.sql`, party key follows the **original** JE when `reference_id` is a UUID (parity with **G-REV-01**). **Payment-linked party:** after `20260406_gl_party_resolve_payment_via_sale_purchase.sql`, `_gl_resolve_party_id_for_journal_entry` uses **`_gl_party_id_from_payment_row`** so **`payment` / `payment_adjustment` / `journal_entries.payment_id` / `manual_payment`** resolve **`contact_id`**, else **customer/supplier/worker** from **`payments.reference_type` + `reference_id`** (aligns RPC with **`getCustomerLedger`** / supplier AP matching where app used payment→sale graph). Footer **Balance trace** + **G-PAR-02**: row (may be **roll-up**) vs TB on **control id** vs **full Σ** party column vs **residual**; optional **subtree TB** when descendants differ from control id. |
+| **Control breakdown** drawer | **GL + operational + residual** | `controlAccountBreakdownService.fetchControlAccountBreakdown` — adds **`glSubtreeDrMinusCr`**, **`partyAttributedGlSum`**, **`unmappedGlByReference`** (RPC `get_control_unmapped_party_gl_buckets`), **`unmappedGlResidual`** with correct AP **Cr−Dr** basis. |
+| Contacts **primary** recv/pay | **Operational / contact roll-up** | `get_contact_balances_summary` (RPC) or merged sales/purchases fallback |
+| Contacts **GL** subline + violet card line | **GL (party slice, signed)** | `get_contact_party_gl_balances` — **AR/AP** columns are code **1100** / **2000** nets. **Workers:** **`gl_worker_payable`** = **`GREATEST(0, WP−WA)`** per contact (2010 vs 1180 combined in SQL), not “2010 only”; COA party trace for **2010**/**1180** explains this (G-PAR-02c). |
+| Contacts **subledger vs GL** strip | **Operational vs TB** | `summaryOperational` vs `getArApGlSnapshot` |
+| Accounting **overview** cards (AR/AP) | **Mixed (in-period journal names)** | `AccountingDashboard` `summary` from **display account names** on entries — not TB id-based; compare to Dashboard RPC separately |
+| Main **Dashboard** executive AR/AP | **Operational SUM** | `get_financial_dashboard_metrics` / `get_contact_balances_summary` (documented on `Dashboard.tsx`) |
+| Party **statements** (customer/supplier/worker) | **GL + operational** per tab | `accountingService.getCustomerLedger` etc.; **G-REV-01** `correction_reversal` inclusion unchanged |
 
 ---
 
@@ -138,8 +154,8 @@
 
 **Batch 5:** **NOT APPROVED.**
 
-**Next:** See [COA_GAP_ANALYSIS.md](./COA_GAP_ANALYSIS.md), [COA_FIX_EXECUTION_REPORT.md](./COA_FIX_EXECUTION_REPORT.md), and [COA_QA_SIGNOFF.md](./COA_QA_SIGNOFF.md) (static QA + **NOT RUN** interactive items).
+**Next:** Human UAT — [COA_UAT_RUNBOOK.md](./COA_UAT_RUNBOOK.md); record results in [COA_QA_SIGNOFF.md](./COA_QA_SIGNOFF.md) §8. Also [COA_GAP_ANALYSIS.md](./COA_GAP_ANALYSIS.md), [COA_FIX_EXECUTION_REPORT.md](./COA_FIX_EXECUTION_REPORT.md).
 
 **Day Book branch (G-BR-02):** **Closed in code** — `DayBookReport` filters `journal_entries` consistently with `getAccountLedger` (null `branch_id` OR selected branch); UI + export metadata state scope.
 
-**Design polish gate:** **NOT certified** until human completes browser QA per `COA_QA_SIGNOFF.md`.
+**Design polish gate:** **NOT certified** until human completes browser QA per [COA_UAT_RUNBOOK.md](./COA_UAT_RUNBOOK.md) and signs **§8** in [COA_QA_SIGNOFF.md](./COA_QA_SIGNOFF.md).

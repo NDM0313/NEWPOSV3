@@ -16,6 +16,7 @@ import {
   type ControlAccountBreakdownResult,
   type BreakdownMetricRow,
   type PartyGlRow,
+  type UnmappedGlBucketRow,
 } from '@/app/services/controlAccountBreakdownService';
 import { setContactsPartyDrilldown } from '@/app/lib/contactsPartyDrilldown';
 import { LoadingSpinner } from '@/app/components/shared/LoadingSpinner';
@@ -245,6 +246,39 @@ export function ControlAccountBreakdownDrawer({
                     {formatCurrency(data.unmappedGlResidual)}
                   </p>
                 )}
+                {data.glSubtreeDrMinusCr != null &&
+                  data.glAccountBalance != null &&
+                  Math.abs(data.glSubtreeDrMinusCr - data.glAccountBalance) >= 0.02 && (
+                    <p className="text-[11px] text-sky-200/90 mt-2">
+                      Subtree TB (this id + descendants, Dr−Cr):{' '}
+                      <span className="tabular-nums font-medium">{formatCurrency(data.glSubtreeDrMinusCr)}</span>
+                      {' — '}
+                      differs from single-account TB when sub-ledgers post to child account ids.
+                    </p>
+                  )}
+                {data.unmappedGlByReference && data.unmappedGlByReference.length > 0 ? (
+                  <div className="mt-3 border-t border-amber-800/40 pt-2">
+                    <p className="text-[10px] font-semibold text-amber-100/90 uppercase tracking-wide mb-1.5">
+                      Unmapped lines by journal reference_type
+                    </p>
+                    <p className="text-[10px] text-gray-500 mb-2">
+                      RPC <code className="text-gray-400">get_control_unmapped_party_gl_buckets</code> — control code
+                      only; AR/1180 = Dr−Cr, AP/WP = Cr−Dr per line. Sum should reconcile to residual (AR/AP) when
+                      migration is applied.
+                    </p>
+                    <ul className="max-h-40 overflow-y-auto space-y-1 text-[11px]">
+                      {data.unmappedGlByReference.map((row: UnmappedGlBucketRow) => (
+                        <li
+                          key={row.referenceType}
+                          className="flex justify-between gap-2 tabular-nums text-gray-200"
+                        >
+                          <span className="truncate text-gray-400 font-mono">{row.referenceType}</span>
+                          <span>{formatCurrency(row.amount)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </section>
             )}
 
