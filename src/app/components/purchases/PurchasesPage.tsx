@@ -1276,6 +1276,9 @@ export const PurchasesPage = () => {
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Amount Due</p>
                 <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
                 <p className="text-xs text-gray-500 mt-1">Pending payments</p>
+                <p className="text-[10px] text-gray-500 mt-2 leading-snug">
+                  Listed POs: supplier document due. Not Contacts mixed payables or GL AP 2000 alone — use supplier-only operational vs AP 2000 on Contacts reconciliation.
+                </p>
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
                 <DollarSign size={24} className="text-red-500" />

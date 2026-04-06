@@ -23,6 +23,18 @@ export interface CompanyReconciliationSnapshot {
   varianceReceivablesVsAr: number | null;
   /** operational payables minus GL AP net (Cr−Dr). */
   variancePayablesVsAp: number | null;
+  /** When split totals passed: customer+both recv vs AR 1100 (meaningful tie-out). */
+  customerReceivablesOperational?: number | null;
+  varianceCustomerReceivablesVsAr?: number | null;
+  /** When split totals passed: supplier+both pay vs AP 2000 (meaningful tie-out). */
+  supplierPayablesOperational?: number | null;
+  varianceSupplierPayablesVsAp?: number | null;
+  /** Worker contact payables (operational); not comparable to AP 2000 — use WP 2010 party GL. */
+  workerPayablesOperational?: number | null;
+  /** GL Worker Payable 2010 net (Cr − Dr), journal life-to-date. */
+  glWorkerPayableNetCredit?: number | null;
+  /** worker_op − GL WP (Cr−Dr); distinct from supplier vs AP. */
+  varianceWorkerPayablesVsWp?: number | null;
   unmappedArJournalCount: number;
   unmappedApJournalCount: number;
   confidence: ReconciliationConfidence;
@@ -65,6 +77,10 @@ export interface CompanyReconciliationOptions {
   /** When set (e.g. Contacts tab scope), variance uses these instead of summing all contacts from RPC. */
   operationalReceivablesTotal?: number;
   operationalPayablesTotal?: number;
+  /** Split by contact type — use for GL control tie-out (AR 1100 / AP 2000). */
+  operationalCustomerReceivablesTotal?: number;
+  operationalSupplierPayablesTotal?: number;
+  operationalWorkerPayablesTotal?: number;
 }
 
 /**
@@ -105,6 +121,18 @@ export async function getCompanyReconciliationSnapshot(
   const varPay =
     glApNetCredit != null ? operational.payables - glApNetCredit : null;
 
+  const custRecvOp = options?.operationalCustomerReceivablesTotal;
+  const supPayOp = options?.operationalSupplierPayablesTotal;
+  const workPayOp = options?.operationalWorkerPayablesTotal;
+  const varCustVsAr =
+    custRecvOp != null && glArNet != null ? custRecvOp - glArNet : null;
+  const varSupVsAp =
+    supPayOp != null && glApNetCredit != null ? supPayOp - glApNetCredit : null;
+
+  const glWpNet = glSnap.wpNetCredit;
+  const varWorkVsWp =
+    workPayOp != null && glWpNet != null ? workPayOp - glWpNet : null;
+
   let unmappedAr = 0;
   let unmappedAp = 0;
   if (!unmappedRpc.error && unmappedRpc.data != null) {
@@ -122,11 +150,18 @@ export async function getCompanyReconciliationSnapshot(
     glApNetCredit,
     varianceReceivablesVsAr: varRecv,
     variancePayablesVsAp: varPay,
+    customerReceivablesOperational: custRecvOp ?? null,
+    supplierPayablesOperational: supPayOp ?? null,
+    workerPayablesOperational: workPayOp ?? null,
+    glWorkerPayableNetCredit: glWpNet,
+    varianceWorkerPayablesVsWp: varWorkVsWp,
+    varianceCustomerReceivablesVsAr: varCustVsAr,
+    varianceSupplierPayablesVsAp: varSupVsAp,
     unmappedArJournalCount: unmappedAr,
     unmappedApJournalCount: unmappedAp,
     confidence: 'pending_journal_mapping',
     message:
-      'Per-contact GL-aligned balances require party linkage on journal lines (planned). Shown: company operational totals vs control accounts + unmapped journal heuristic.',
+      'Per-contact GL-aligned balances require party linkage on journal lines (planned). Shown: company operational totals vs control accounts + unmapped journal heuristic. Mixed payables include workers — compare supplier-only operational to AP 2000; worker payables belong to WP 2010 / party GL.',
   };
 }
 

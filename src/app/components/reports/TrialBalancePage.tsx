@@ -13,8 +13,12 @@ import {
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
 import { AccountLedgerView } from '@/app/components/accounting/AccountLedgerView';
 
-const toExport = (r: TrialBalanceResult, formatCurrency: (n: number) => string): ExportData => ({
-  title: `Trial Balance`,
+const toExport = (
+  r: TrialBalanceResult,
+  formatCurrency: (n: number) => string,
+  periodLabel: string
+): ExportData => ({
+  title: `Trial Balance (GL) — ${periodLabel}`,
   headers: ['Code', 'Account', 'Type', 'Debit', 'Credit', 'Balance'],
   rows: [
     ...r.rows.map((row) => [
@@ -81,13 +85,15 @@ export const TrialBalancePage: React.FC<{
     });
   }, [data]);
 
+  const periodExportLabel = `${startDate} to ${endDate}${branchId && branchId !== 'all' ? ` · branch` : ' · all branches'}`;
+
   const handleExportPDF = () => {
     if (!data) return;
-    exportToPDF(toExport(data, formatCurrency), 'Trial_Balance');
+    exportToPDF(toExport(data, formatCurrency, periodExportLabel), `Trial_Balance_GL_${startDate}_${endDate}`);
   };
   const handleExportExcel = () => {
     if (!data) return;
-    exportToExcel(toExport(data, formatCurrency), 'Trial_Balance');
+    exportToExcel(toExport(data, formatCurrency, periodExportLabel), `Trial_Balance_GL_${startDate}_${endDate}`);
   };
 
   if (loading) {
@@ -108,6 +114,10 @@ export const TrialBalancePage: React.FC<{
 
   return (
     <div className="space-y-4">
+      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-100/95">
+        <strong className="font-semibold">Basis: GL (journal)</strong> — Canonical trial balance from posted lines. Not operational
+        document totals. Compare to Contacts/Sales only via explicit reconciliation (different basis).
+      </div>
       {creditHeavyAssetRows.length > 0 && (
         <div className="rounded-xl border border-amber-500/35 bg-amber-500/[0.08] p-4 text-sm text-amber-100/95 flex gap-3">
           <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />

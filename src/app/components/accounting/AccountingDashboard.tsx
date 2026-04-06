@@ -1459,6 +1459,27 @@ export const AccountingDashboard = () => {
                         partySectionNote={coaPartyFetch.note}
                         scopeLabel={coaPartyFetch.controlLabel}
                         glParity={parity}
+                        drillDown={{
+                          onOpenContacts: () => {
+                            setCoaPartyPanelAccountId(null);
+                            setCurrentView('contacts');
+                          },
+                          onOpenTrialBalance: () => {
+                            setCoaPartyPanelAccountId(null);
+                            setCurrentView('reports');
+                          },
+                          onOpenUnmapped: () => {
+                            setCoaPartyPanelAccountId(null);
+                            setControlBreakdown({
+                              account: {
+                                id: row.account.id!,
+                                name: row.account.name || '',
+                                code: (row.account as { code?: string }).code,
+                              },
+                              kind: ck,
+                            });
+                          },
+                        }}
                       />
                     );
                   }

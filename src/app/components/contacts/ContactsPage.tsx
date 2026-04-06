@@ -4,7 +4,7 @@ import {
   Search, Filter, Download, Upload, Users, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, X, Phone, Mail, MapPin,
   Check, User, AlertCircle, Briefcase, CheckCircle, Clock, UserCheck, Loader2,
-  Scale, BarChart3, Shield,
+  Scale, BarChart3, Shield, HelpCircle,
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -164,6 +164,9 @@ export const ContactsPage = () => {
     ar: TrialBalanceRow | null;
     ap: TrialBalanceRow | null;
     apNetCredit: number | null;
+    wp: TrialBalanceRow | null;
+    wpNetCredit: number | null;
+    cashBankNetDrMinusCr: number | null;
   } | null>(null);
   const [reconSnapshot, setReconSnapshot] = useState<CompanyReconciliationSnapshot | null>(null);
   /** Operational row amounts: from get_contact_balances_summary vs merged sales/purchases fallback. */
@@ -657,6 +660,21 @@ export const ContactsPage = () => {
     phoneFilter,
   ]);
 
+  /** Split operational RPC totals by contact type — GL AR/AP controls are supplier/customer party; workers use WP. */
+  const operationalSplitByType = useMemo(() => {
+    let customerRecv = 0;
+    let supplierPay = 0;
+    let workerPay = 0;
+    for (const c of contacts) {
+      const r = Number(c.receivables) || 0;
+      const p = Number(c.payables) || 0;
+      if (c.type === 'customer' || c.type === 'both') customerRecv += r;
+      if (c.type === 'supplier' || c.type === 'both') supplierPay += p;
+      if (c.type === 'worker') workerPay += p;
+    }
+    return { customerRecv, supplierPay, workerPay };
+  }, [contacts]);
+
   // Tab summary: cards/rows primary = operational RPC; optional signed party GL totals when map loaded (matches TB attribution, includes credits).
   const { summaryOperational, summaryPartyGlSigned, summaryMeta } = useMemo(() => {
     const filtered = contacts.filter((c) => {
@@ -695,16 +713,16 @@ export const ContactsPage = () => {
     };
   }, [activeTab, contacts, partyGlByContactId]);
 
-  /** Contacts subledger vs GL (Trial Balance) — explains differences vs Reports. */
+  /** Contacts subledger vs GL (Trial Balance) — customer recv vs AR 1100; supplier pay vs AP 2000 (excludes worker pay). */
   const subledgerVsGl = useMemo(() => {
     if (!glArAp) return null;
     const ar =
       glArAp.ar != null
         ? {
             label: `${glArAp.ar.account_code || '—'} ${glArAp.ar.account_name}`.trim(),
-            contactsTotal: summaryOperational.totalReceivables,
+            contactsTotal: operationalSplitByType.customerRecv,
             glNetDrMinusCr: glArAp.ar.balance,
-            variance: summaryOperational.totalReceivables - glArAp.ar.balance,
+            variance: operationalSplitByType.customerRecv - glArAp.ar.balance,
             assetNegative: glArAp.ar.balance < -0.01,
           }
         : null;
@@ -712,13 +730,14 @@ export const ContactsPage = () => {
       glArAp.ap != null && glArAp.apNetCredit != null
         ? {
             label: `${glArAp.ap.account_code || '—'} ${glArAp.ap.account_name}`.trim(),
-            contactsTotal: summaryOperational.totalPayables,
+            contactsTotal: operationalSplitByType.supplierPay,
+            workerPayablesOperational: operationalSplitByType.workerPay,
             glNetCredit: glArAp.apNetCredit,
-            variance: summaryOperational.totalPayables - glArAp.apNetCredit,
+            variance: operationalSplitByType.supplierPay - glArAp.apNetCredit,
           }
         : null;
     return { ar, ap };
-  }, [glArAp, summaryOperational.totalReceivables, summaryOperational.totalPayables]);
+  }, [glArAp, operationalSplitByType.customerRecv, operationalSplitByType.supplierPay, operationalSplitByType.workerPay]);
 
   // Journal vs operational (tab-scoped operational totals from summary)
   useEffect(() => {
@@ -730,6 +749,9 @@ export const ContactsPage = () => {
     getCompanyReconciliationSnapshot(companyId, branchId, undefined, {
       operationalReceivablesTotal: summaryOperational.totalReceivables,
       operationalPayablesTotal: summaryOperational.totalPayables,
+      operationalCustomerReceivablesTotal: operationalSplitByType.customerRecv,
+      operationalSupplierPayablesTotal: operationalSplitByType.supplierPay,
+      operationalWorkerPayablesTotal: operationalSplitByType.workerPay,
     })
       .then((snap) => {
         if (!cancelled) setReconSnapshot(snap);
@@ -747,6 +769,9 @@ export const ContactsPage = () => {
     balancesStale,
     summaryOperational.totalReceivables,
     summaryOperational.totalPayables,
+    operationalSplitByType.customerRecv,
+    operationalSplitByType.supplierPay,
+    operationalSplitByType.workerPay,
   ]);
 
   // Calculate tab counts (type 'both' counts in both Customer and Supplier)
@@ -940,6 +965,9 @@ export const ContactsPage = () => {
                 </p>
                 <p className="text-[9px] text-gray-600 mt-0.5 hidden sm:block">
                   Operational · <code className="text-gray-500">get_contact_balances_summary</code>
+                </p>
+                <p className="text-[9px] text-slate-500 mt-0.5 hidden lg:block leading-snug">
+                  Scoped to this tab’s contacts (and branch). Sales <span className="text-slate-400">Total Due</span> is all final invoices company-wide — not the same roll-up.
                 </p>
                 {!balanceColumnsPending && summaryPartyGlSigned && (
                   <p className="text-[9px] text-violet-300/90 mt-0.5 leading-snug hidden sm:block">
@@ -1301,75 +1329,204 @@ export const ContactsPage = () => {
                 </Button>
               </div>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              <div className="rounded-lg bg-gray-950/60 border border-gray-800 p-3 text-xs space-y-2">
-                <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wide">Accounts Receivable</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* 1 · Customer operational vs GL AR (1100) */}
+              <div className="rounded-lg bg-gray-950/60 border border-emerald-500/25 p-3 text-xs space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[10px] uppercase font-bold text-emerald-400/95 tracking-wide leading-tight">
+                    1 · Customer operational vs GL AR
+                  </p>
+                  <span
+                    className="text-gray-500 shrink-0"
+                    title="Operational: SUM receivables for contacts type customer + both (this tab, branch) from get_contact_balances_summary. GL: AR control 1100 net Dr−Cr (journal, life-to-date). Variance = operational − GL net."
+                  >
+                    <HelpCircle size={14} />
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
                   <div>
                     <p className="text-gray-500">Operational</p>
-                    <p className="text-green-400 font-semibold tabular-nums">{formatCurrency(reconSnapshot.operationalReceivablesTotal)}</p>
+                    <p className="text-green-400 font-semibold tabular-nums">
+                      {reconSnapshot.customerReceivablesOperational != null
+                        ? formatCurrency(reconSnapshot.customerReceivablesOperational)
+                        : '—'}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-gray-500">GL (Dr−Cr)</p>
+                    <p className="text-gray-500">GL AR (Dr−Cr)</p>
                     <p className="text-white font-semibold tabular-nums">
                       {reconSnapshot.glArNetDrMinusCr != null ? formatCurrency(reconSnapshot.glArNetDrMinusCr) : '—'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Variance</p>
+                    <p className="text-gray-500">Variance / Recon</p>
                     <p
                       className={cn(
                         'font-semibold tabular-nums',
-                        reconSnapshot.varianceReceivablesVsAr != null && Math.abs(reconSnapshot.varianceReceivablesVsAr) >= 1
+                        reconSnapshot.varianceCustomerReceivablesVsAr != null &&
+                          Math.abs(reconSnapshot.varianceCustomerReceivablesVsAr) >= 1
                           ? 'text-amber-400'
                           : 'text-gray-400'
                       )}
                     >
-                      {reconSnapshot.varianceReceivablesVsAr != null ? formatCurrency(reconSnapshot.varianceReceivablesVsAr) : '—'}
+                      {reconSnapshot.varianceCustomerReceivablesVsAr != null
+                        ? formatCurrency(reconSnapshot.varianceCustomerReceivablesVsAr)
+                        : '—'}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-600 border-t border-gray-800/80 pt-2">
+                  Unmapped AR journal entries (heuristic):{' '}
+                  <Badge className="bg-amber-500/20 text-amber-200 border-amber-500/40 tabular-nums">
+                    {reconSnapshot.unmappedArJournalCount}
+                  </Badge>
+                </p>
+              </div>
+
+              {/* 2 · Supplier operational vs GL AP (2000) — not mixed with workers */}
+              <div className="rounded-lg bg-gray-950/60 border border-rose-500/25 p-3 text-xs space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[10px] uppercase font-bold text-rose-300/95 tracking-wide leading-tight">
+                    2 · Supplier operational vs GL AP
+                  </p>
+                  <span
+                    className="text-gray-500 shrink-0"
+                    title="Operational: SUM payables for supplier + both only. GL: AP control 2000 net Cr−Dr. Do not include worker payables here — they map to WP 2010."
+                  >
+                    <HelpCircle size={14} />
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <p className="text-gray-500">Operational</p>
+                    <p className="text-red-400 font-semibold tabular-nums">
+                      {reconSnapshot.supplierPayablesOperational != null
+                        ? formatCurrency(reconSnapshot.supplierPayablesOperational)
+                        : '—'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Unmapped JEs</p>
-                    <Badge className="bg-amber-500/20 text-amber-200 border-amber-500/40 tabular-nums">
-                      {reconSnapshot.unmappedArJournalCount}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-lg bg-gray-950/60 border border-gray-800 p-3 text-xs space-y-2">
-                <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wide">Accounts Payable</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <div>
-                    <p className="text-gray-500">Operational</p>
-                    <p className="text-red-400 font-semibold tabular-nums">{formatCurrency(reconSnapshot.operationalPayablesTotal)}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">GL (Cr−Dr)</p>
+                    <p className="text-gray-500">GL AP (Cr−Dr)</p>
                     <p className="text-white font-semibold tabular-nums">
                       {reconSnapshot.glApNetCredit != null ? formatCurrency(reconSnapshot.glApNetCredit) : '—'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Variance</p>
+                    <p className="text-gray-500">Variance / Recon</p>
                     <p
                       className={cn(
                         'font-semibold tabular-nums',
-                        reconSnapshot.variancePayablesVsAp != null && Math.abs(reconSnapshot.variancePayablesVsAp) >= 1
+                        reconSnapshot.varianceSupplierPayablesVsAp != null &&
+                          Math.abs(reconSnapshot.varianceSupplierPayablesVsAp) >= 1
                           ? 'text-amber-400'
                           : 'text-gray-400'
                       )}
                     >
-                      {reconSnapshot.variancePayablesVsAp != null ? formatCurrency(reconSnapshot.variancePayablesVsAp) : '—'}
+                      {reconSnapshot.varianceSupplierPayablesVsAp != null
+                        ? formatCurrency(reconSnapshot.varianceSupplierPayablesVsAp)
+                        : '—'}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-600 border-t border-gray-800/80 pt-2">
+                  Unmapped AP journal entries (heuristic):{' '}
+                  <Badge className="bg-amber-500/20 text-amber-200 border-amber-500/40 tabular-nums">
+                    {reconSnapshot.unmappedApJournalCount}
+                  </Badge>
+                </p>
+              </div>
+
+              {/* 3 · Worker operational vs GL Worker Payable (2010) */}
+              <div className="rounded-lg bg-gray-950/60 border border-violet-500/25 p-3 text-xs space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[10px] uppercase font-bold text-violet-300/95 tracking-wide leading-tight">
+                    3 · Worker operational vs GL WP
+                  </p>
+                  <span
+                    className="text-gray-500 shrink-0"
+                    title="Operational: worker contact payables from get_contact_balances_summary (unpaid worker ledger / fallback). GL: Worker Payable 2010 net Cr−Dr. Not comparable to AP 2000."
+                  >
+                    <HelpCircle size={14} />
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <p className="text-gray-500">Operational</p>
+                    <p className="text-orange-300 font-semibold tabular-nums">
+                      {reconSnapshot.workerPayablesOperational != null
+                        ? formatCurrency(reconSnapshot.workerPayablesOperational)
+                        : '—'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Unmapped JEs</p>
-                    <Badge className="bg-amber-500/20 text-amber-200 border-amber-500/40 tabular-nums">
-                      {reconSnapshot.unmappedApJournalCount}
-                    </Badge>
+                    <p className="text-gray-500">GL WP (Cr−Dr)</p>
+                    <p className="text-white font-semibold tabular-nums">
+                      {reconSnapshot.glWorkerPayableNetCredit != null
+                        ? formatCurrency(reconSnapshot.glWorkerPayableNetCredit)
+                        : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Variance / Recon</p>
+                    <p
+                      className={cn(
+                        'font-semibold tabular-nums',
+                        reconSnapshot.varianceWorkerPayablesVsWp != null &&
+                          Math.abs(reconSnapshot.varianceWorkerPayablesVsWp) >= 1
+                          ? 'text-amber-400'
+                          : 'text-gray-400'
+                      )}
+                    >
+                      {reconSnapshot.varianceWorkerPayablesVsWp != null
+                        ? formatCurrency(reconSnapshot.varianceWorkerPayablesVsWp)
+                        : '—'}
+                    </p>
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* 4 · Total variance summary — explicit non-mixing */}
+            <div className="rounded-lg border border-slate-600/50 bg-slate-950/40 p-3 text-xs space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wide">4 · Total variance summary</p>
+                <span
+                  className="text-gray-500 shrink-0"
+                  title="Three independent reconciliations: customer vs AR, supplier vs AP, worker vs WP. Summing supplier + worker operational and comparing only to AP 2000 is invalid."
+                >
+                  <HelpCircle size={14} />
+                </span>
+              </div>
+              <ul className="text-[11px] text-gray-400 space-y-1 list-disc list-inside leading-relaxed">
+                <li>
+                  <span className="text-gray-500">AR strip:</span>{' '}
+                  {reconSnapshot.varianceCustomerReceivablesVsAr != null
+                    ? formatCurrency(reconSnapshot.varianceCustomerReceivablesVsAr)
+                    : '—'}{' '}
+                  <span className="text-gray-600">(customer+both vs 1100)</span>
+                </li>
+                <li>
+                  <span className="text-gray-500">AP strip:</span>{' '}
+                  {reconSnapshot.varianceSupplierPayablesVsAp != null
+                    ? formatCurrency(reconSnapshot.varianceSupplierPayablesVsAp)
+                    : '—'}{' '}
+                  <span className="text-gray-600">(supplier+both vs 2000)</span>
+                </li>
+                <li>
+                  <span className="text-gray-500">Worker strip:</span>{' '}
+                  {reconSnapshot.varianceWorkerPayablesVsWp != null
+                    ? formatCurrency(reconSnapshot.varianceWorkerPayablesVsWp)
+                    : '—'}{' '}
+                  <span className="text-gray-600">(worker op vs 2010)</span>
+                </li>
+              </ul>
+              <p className="text-[10px] text-amber-200/80 border-t border-slate-700/60 pt-2">
+                Mixed tab operational payables (supplier + worker + both){' '}
+                <span className="tabular-nums text-gray-300">
+                  {formatCurrency(reconSnapshot.operationalPayablesTotal)}
+                </span>{' '}
+                must not be compared to AP 2000 alone — use tiles 2 and 3.
+              </p>
             </div>
           </div>
           </details>
@@ -1399,7 +1556,7 @@ export const ContactsPage = () => {
             {subledgerVsGl.ar && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg bg-gray-950/50 border border-gray-800/80 p-3">
                 <div>
-                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Receivables (this tab)</p>
+                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Customer + both (operational)</p>
                   <p className="text-sm font-bold text-green-400 tabular-nums">{formatCurrency(subledgerVsGl.ar.contactsTotal)}</p>
                 </div>
                 <div>
@@ -1423,9 +1580,10 @@ export const ContactsPage = () => {
               </div>
             )}
             {subledgerVsGl.ap && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg bg-gray-950/50 border border-gray-800/80 p-3">
+              <div className="space-y-2 rounded-lg bg-gray-950/50 border border-gray-800/80 p-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Payables (this tab)</p>
+                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Supplier + both (operational)</p>
                   <p className="text-sm font-bold text-red-400 tabular-nums">{formatCurrency(subledgerVsGl.ap.contactsTotal)}</p>
                 </div>
                 <div>
@@ -1433,7 +1591,7 @@ export const ContactsPage = () => {
                   <p className="text-sm font-bold text-white tabular-nums">Cr−Dr = {formatCurrency(subledgerVsGl.ap.glNetCredit)}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Variance (contacts − GL)</p>
+                  <p className="text-[10px] uppercase text-gray-500 font-semibold">Variance (supplier op − GL)</p>
                   <p
                     className={cn(
                       'text-sm font-bold tabular-nums',
@@ -1443,6 +1601,12 @@ export const ContactsPage = () => {
                     {formatCurrency(subledgerVsGl.ap.variance)}
                   </p>
                 </div>
+              </div>
+              {subledgerVsGl.ap.workerPayablesOperational != null && subledgerVsGl.ap.workerPayablesOperational > 0.01 && (
+                <p className="text-[11px] text-slate-500 border-t border-gray-800/60 pt-2">
+                  Worker operational payables {formatCurrency(subledgerVsGl.ap.workerPayablesOperational)} — compare to WP 2010 / party GL, not AP 2000.
+                </p>
+              )}
               </div>
             )}
           </div>

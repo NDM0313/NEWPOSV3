@@ -241,7 +241,7 @@ export const contactService = {
     const baseColumns = [
       'company_id', 'type', 'name', 'code', 'email', 'phone', 'mobile', 'cnic', 'ntn',
       'address', 'city', 'state', 'country', 'postal_code', 'tax_number',
-      'opening_balance', 'credit_limit', 'payment_terms', 'notes', 'is_active', 'created_by', 'branch_id', 'is_default'
+      'opening_balance', 'supplier_opening_balance', 'credit_limit', 'payment_terms', 'notes', 'is_active', 'created_by', 'branch_id', 'is_default'
     ];
     const minimal: Record<string, unknown> = {};
     baseColumns.forEach((k) => {

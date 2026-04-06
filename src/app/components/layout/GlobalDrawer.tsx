@@ -929,7 +929,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                   Supplier Business Details (Optional)
                 </span>
               </AccordionTrigger>
-              <AccordionContent className="px-4 pb-4">
+              {/* forceMount: keep inputs in DOM so FormData always includes supplier-opening-balance on submit (Radix unmounts closed content). */}
+              <AccordionContent forceMount className="px-4 pb-4">
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="supplier-business-name" className="text-gray-200">Business Name</Label>
@@ -1029,7 +1030,8 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
             <AccordionTrigger className="px-4 hover:bg-gray-800/50">
               <span className="text-sm font-medium">Financial Details</span>
             </AccordionTrigger>
-            <AccordionContent className="px-4 pb-4">
+            {/* forceMount: opening-balance / credit-limit must submit even when accordion is collapsed */}
+            <AccordionContent forceMount className="px-4 pb-4">
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">

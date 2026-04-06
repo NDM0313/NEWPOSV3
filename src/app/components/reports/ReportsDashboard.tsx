@@ -356,7 +356,7 @@ export const ReportsDashboard = () => {
             ['Total Sales', `₨${metrics.totalSales.toLocaleString()}`],
             ['Total Purchases', `₨${metrics.totalPurchases.toLocaleString()}`],
             ['Total Expenses', `₨${metrics.totalExpenses.toLocaleString()}`],
-            ['Net Profit', `₨${metrics.netProfit.toLocaleString()}`],
+            ['Net Profit (operational, not GL)', `₨${metrics.netProfit.toLocaleString()}`],
             ['Expense Ratio', `${metrics.expenseRatio.toFixed(1)}%`],
             ['Sales Count', metrics.salesCount.toString()],
           ]
@@ -420,6 +420,10 @@ export const ReportsDashboard = () => {
       case 'overview':
         return (
           <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.07] px-3 py-2 text-xs text-amber-100/95">
+              <strong className="font-semibold">Overview = operational analytics</strong> (sales/purchase/expense documents in range).{' '}
+              <span className="text-amber-200/80">Canonical GL net income:</span> Financial → Profit &amp; Loss.
+            </div>
             {/* Hero Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <MetricCard 
@@ -427,16 +431,16 @@ export const ReportsDashboard = () => {
                 value={`₨${metrics.totalSales.toLocaleString()}`}
                 trend="up" 
                 trendValue=""
-                subtext={`${metrics.salesCount} sales`}
+                subtext={`${metrics.salesCount} sales · operational`}
                 icon={DollarSign}
                 colorClass="bg-gradient-to-br from-gray-900 to-green-900/20 border-green-900/30"
               />
               <MetricCard 
-                title="Net Profit" 
+                title="Net Profit (operational)" 
                 value={`₨${metrics.netProfit.toLocaleString()}`}
                 trend={metrics.netProfit >= 0 ? "up" : "down"}
                 trendValue=""
-                subtext="after expenses"
+                subtext="not GL P&amp;L"
                 icon={Activity}
                 colorClass="bg-gradient-to-br from-gray-900 to-blue-900/20 border-blue-900/30"
               />

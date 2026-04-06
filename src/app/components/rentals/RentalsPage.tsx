@@ -266,7 +266,11 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         </div>
       )}
 
-      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
+      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800 space-y-3">
+        <p className="text-[11px] text-gray-500 leading-relaxed max-w-4xl">
+          <strong className="text-gray-400">Basis:</strong> Rental document totals and due —{' '}
+          <span className="text-pink-300/90">operational</span> (rental orders). Not GL AR 1100 or canonical P&amp;L unless posted to those accounts.
+        </p>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Rental (Month)</p>

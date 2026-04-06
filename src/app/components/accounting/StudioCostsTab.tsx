@@ -248,6 +248,11 @@ export const StudioCostsTab: React.FC = () => {
         </div>
       )}
 
+      <div className="rounded-lg border border-violet-500/25 bg-violet-950/20 px-3 py-2 text-[11px] text-violet-100/90 leading-relaxed">
+        <strong className="text-violet-200">Basis:</strong> Studio production stage costs and worker ledger / journal flags —{' '}
+        <span className="text-gray-400">operational / job costing</span>. Outstanding is unpaid worker obligations from this view, not GL 2010 alone (compare via Contacts worker tile or TB).
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
@@ -256,7 +261,7 @@ export const StudioCostsTab: React.FC = () => {
             <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Cost</span>
           </div>
           <p className="text-xl font-bold text-white">{formatCurrency(effectiveSummary.totalCost)}</p>
-          <p className="text-xs text-gray-500 mt-1">All stage costs</p>
+          <p className="text-xs text-gray-500 mt-1">Stage costs (operational)</p>
         </div>
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">

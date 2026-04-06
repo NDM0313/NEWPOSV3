@@ -226,6 +226,160 @@ function workerGlLineMatchesWorker(line: any, workerId: string, workerPaymentIds
   return false;
 }
 
+/** Fallback if DB RPC `get_supplier_ap_gl_ledger_for_contact` is unavailable — client-side party filter (can miss payment graph). */
+async function fetchSupplierApGlJournalLedgerLegacy(
+  supplierId: string,
+  companyId: string,
+  branchId?: string,
+  startDate?: string,
+  endDate?: string
+): Promise<AccountLedgerEntry[]> {
+  const { data: rawAp } = await supabase
+    .from('accounts')
+    .select('id, code, name')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .or('code.eq.2000,name.ilike.%Accounts Payable%');
+  const apAccounts = (rawAp || []).filter((a: any) => String(a.code).trim() !== '1100');
+  if (apAccounts.length === 0) return [];
+  const apAccountIds = apAccounts.map((a: any) => a.id);
+
+  const { data: lines, error } = await supabase
+    .from('journal_entry_lines')
+    .select(
+      `
+          *,
+          account:accounts(id, name, code),
+          journal_entry:journal_entries(
+            id, entry_no, entry_date, description, reference_type, reference_id, payment_id,
+            branch_id, created_by, created_at, is_void,
+            branch:branches(id, name, code)
+          )
+        `
+    )
+    .in('account_id', apAccountIds)
+    .order('created_at', { ascending: true });
+
+  if (error) console.error('[ACCOUNTING SERVICE] getSupplierApGlJournalLedger lines error:', error);
+  const linesToUse = (lines || []).filter((l: any) => (l.journal_entry && (l.journal_entry as any).is_void) !== true);
+
+  const { data: purchases } = await supabase
+    .from('purchases')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('supplier_id', supplierId);
+  const supplierPurchaseIds = new Set((purchases || []).map((p: { id: string }) => p.id));
+
+  const { data: payRows } = await supabase
+    .from('payments')
+    .select('id, contact_id, reference_type, reference_id')
+    .eq('company_id', companyId);
+  const supplierPaymentIds = new Set<string>();
+  (payRows || []).forEach((p: any) => {
+    if (p.contact_id === supplierId) supplierPaymentIds.add(p.id);
+    if (String(p.reference_type).toLowerCase() === 'purchase' && p.reference_id && supplierPurchaseIds.has(p.reference_id)) {
+      supplierPaymentIds.add(p.id);
+    }
+  });
+
+  const supplierLines = linesToUse.filter((line: any) => {
+    const entry = line.journal_entry;
+    if (!entry) return false;
+    const rt = String(entry.reference_type || '').toLowerCase();
+    if (rt === 'correction_reversal' && entry.reference_id) {
+      const origId = String(entry.reference_id);
+      return linesToUse.some((ol: any) => {
+        const oe = ol.journal_entry;
+        if (!oe || String(oe.id) !== origId) return false;
+        return supplierApJournalLineMatchesSupplier(ol, supplierId, supplierPurchaseIds, supplierPaymentIds);
+      });
+    }
+    return supplierApJournalLineMatchesSupplier(line, supplierId, supplierPurchaseIds, supplierPaymentIds);
+  });
+
+  const branchFiltered = branchId
+    ? supplierLines.filter((line: any) => {
+        const bid = line.journal_entry?.branch_id;
+        return bid == null || bid === '' || bid === branchId;
+      })
+    : supplierLines;
+
+  let openingBalance = 0;
+  if (startDate) {
+    branchFiltered.forEach((line: any) => {
+      const entry = line.journal_entry;
+      if (!entry || entry.entry_date >= startDate) return;
+      openingBalance += (line.credit || 0) - (line.debit || 0);
+    });
+  }
+
+  const rangeLines = branchFiltered.filter((line: any) => {
+    const entry = line.journal_entry;
+    if (!entry) return false;
+    const entryDate = entry.entry_date;
+    if (startDate && entryDate < startDate) return false;
+    if (endDate && entryDate > endDate) return false;
+    return true;
+  });
+
+  rangeLines.sort((a: any, b: any) => {
+    const dateA = String(a.journal_entry?.entry_date || '');
+    const dateB = String(b.journal_entry?.entry_date || '');
+    if (dateA !== dateB) return dateA.localeCompare(dateB);
+    const createdA = String(a.journal_entry?.created_at || a.created_at || '');
+    const createdB = String(b.journal_entry?.created_at || b.created_at || '');
+    return createdA.localeCompare(createdB);
+  });
+
+  let runningBalance = openingBalance;
+  const ledgerEntriesFromRange: AccountLedgerEntry[] = rangeLines.map((line: any) => {
+    const entry = line.journal_entry;
+    const debit = line.debit || 0;
+    const credit = line.credit || 0;
+    runningBalance += credit - debit;
+    const code = line.account?.code != null ? String(line.account.code) : '';
+    return {
+      date: entry.entry_date,
+      created_at: entry.created_at,
+      reference_number: entry.entry_no || entry.id?.slice(0, 8) || '—',
+      entry_no: entry.entry_no,
+      description: entry.description || line.description || '—',
+      debit,
+      credit,
+      running_balance: runningBalance,
+      source_module: 'Accounting',
+      journal_entry_id: entry.id,
+      payment_id: entry.payment_id,
+      branch_id: entry.branch_id,
+      branch_name: entry.branch?.name,
+      account_name: line.account?.name || '',
+      gl_account_code: code,
+      document_type: 'AP Journal',
+    };
+  });
+
+  const ledgerEntries: AccountLedgerEntry[] = startDate
+    ? [
+        {
+          date: startDate,
+          reference_number: '—',
+          entry_no: undefined,
+          description: 'Opening Balance (AP GL)',
+          debit: 0,
+          credit: 0,
+          running_balance: openingBalance,
+          source_module: 'Accounting',
+          journal_entry_id: '',
+          document_type: 'Opening Balance',
+          account_name: '',
+        },
+        ...ledgerEntriesFromRange,
+      ]
+    : ledgerEntriesFromRange;
+
+  return ledgerEntries;
+}
+
 export const accountingService = {
   // Get all journal entries with lines
   // CRITICAL: Filter out entries for deleted purchases/sales
@@ -2139,10 +2293,8 @@ export const accountingService = {
   },
 
   /**
-   * Supplier AP only: journal lines on Accounts Payable (2000) for this supplier — no purchase/payment document merge.
-   * Convention (supplier / AP liability): movement and running balance use **credit − debit** (not debit − credit).
-   * Opening before startDate = sum(credit − debit) on AP lines before range; each row: running_balance += credit − debit.
-   * AccountLedgerReportPage summary cards must use the same row set as alignRunningBalances(..., true) — no parallel math.
+   * Supplier AP: **control 2000 only**, same party resolution as `get_contact_party_gl_balances` (RPC `get_supplier_ap_gl_ledger_for_contact`).
+   * Convention: credit − debit on AP liability. Falls back to legacy client filter if RPC is missing.
    */
   async getSupplierApGlJournalLedger(
     supplierId: string,
@@ -2151,154 +2303,84 @@ export const accountingService = {
     startDate?: string,
     endDate?: string
   ): Promise<AccountLedgerEntry[]> {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const safeBranchId =
+      branchId && branchId !== 'all' && typeof branchId === 'string' && uuidRegex.test(branchId.trim())
+        ? branchId.trim()
+        : null;
+    const startStr = startDate ? startDate.slice(0, 10) : null;
+    const endStr = endDate ? endDate.slice(0, 10) : null;
+
     try {
-      const { data: rawAp } = await supabase
-        .from('accounts')
-        .select('id, code, name')
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .or('code.eq.2000,name.ilike.%Accounts Payable%');
-      const apAccounts = (rawAp || []).filter((a: any) => String(a.code).trim() !== '1100');
-      if (apAccounts.length === 0) return [];
-      const apAccountIds = apAccounts.map((a: any) => a.id);
-
-      const { data: lines, error } = await supabase
-        .from('journal_entry_lines')
-        .select(
-          `
-          *,
-          account:accounts(id, name, code),
-          journal_entry:journal_entries(
-            id, entry_no, entry_date, description, reference_type, reference_id, payment_id,
-            branch_id, created_by, created_at, is_void,
-            branch:branches(id, name, code)
-          )
-        `
-        )
-        .in('account_id', apAccountIds)
-        .order('created_at', { ascending: true });
-
-      if (error) console.error('[ACCOUNTING SERVICE] getSupplierApGlJournalLedger lines error:', error);
-      const linesToUse = (lines || []).filter((l: any) => (l.journal_entry && (l.journal_entry as any).is_void) !== true);
-
-      const { data: purchases } = await supabase
-        .from('purchases')
-        .select('id')
-        .eq('company_id', companyId)
-        .eq('supplier_id', supplierId);
-      const supplierPurchaseIds = new Set((purchases || []).map((p: { id: string }) => p.id));
-
-      const { data: payRows } = await supabase
-        .from('payments')
-        .select('id, contact_id, reference_type, reference_id')
-        .eq('company_id', companyId);
-      const supplierPaymentIds = new Set<string>();
-      (payRows || []).forEach((p: any) => {
-        if (p.contact_id === supplierId) supplierPaymentIds.add(p.id);
-        if (String(p.reference_type).toLowerCase() === 'purchase' && p.reference_id && supplierPurchaseIds.has(p.reference_id)) {
-          supplierPaymentIds.add(p.id);
-        }
+      const { data: rpcRaw, error: rpcError } = await supabase.rpc('get_supplier_ap_gl_ledger_for_contact', {
+        p_company_id: companyId,
+        p_supplier_id: supplierId,
+        p_branch_id: safeBranchId,
+        p_start_date: startStr,
+        p_end_date: endStr,
       });
 
-      const supplierLines = linesToUse.filter((line: any) => {
-        const entry = line.journal_entry;
-        if (!entry) return false;
-        const rt = String(entry.reference_type || '').toLowerCase();
-        if (rt === 'correction_reversal' && entry.reference_id) {
-          const origId = String(entry.reference_id);
-          return linesToUse.some((ol: any) => {
-            const oe = ol.journal_entry;
-            if (!oe || String(oe.id) !== origId) return false;
-            return supplierApJournalLineMatchesSupplier(ol, supplierId, supplierPurchaseIds, supplierPaymentIds);
-          });
-        }
-        return supplierApJournalLineMatchesSupplier(line, supplierId, supplierPurchaseIds, supplierPaymentIds);
-      });
-
-      const branchFiltered = branchId
-        ? supplierLines.filter((line: any) => {
-            const bid = line.journal_entry?.branch_id;
-            return bid == null || bid === '' || bid === branchId;
-          })
-        : supplierLines;
-
-      let openingBalance = 0;
-      if (startDate) {
-        branchFiltered.forEach((line: any) => {
-          const entry = line.journal_entry;
-          if (!entry || entry.entry_date >= startDate) return;
-          openingBalance += (line.credit || 0) - (line.debit || 0);
-        });
+      if (rpcError) {
+        console.warn('[ACCOUNTING SERVICE] get_supplier_ap_gl_ledger_for_contact:', rpcError.message);
+        return fetchSupplierApGlJournalLedgerLegacy(supplierId, companyId, branchId, startDate, endDate);
       }
 
-      const rangeLines = branchFiltered.filter((line: any) => {
-        const entry = line.journal_entry;
-        if (!entry) return false;
-        const entryDate = entry.entry_date;
-        if (startDate && entryDate < startDate) return false;
-        if (endDate && entryDate > endDate) return false;
-        return true;
-      });
+      const payload = rpcRaw as { period_opening_balance?: number; rows?: Record<string, unknown>[] } | null;
+      if (!payload || typeof payload !== 'object') {
+        return fetchSupplierApGlJournalLedgerLegacy(supplierId, companyId, branchId, startDate, endDate);
+      }
 
-      rangeLines.sort((a: any, b: any) => {
-        const dateA = String(a.journal_entry?.entry_date || '');
-        const dateB = String(b.journal_entry?.entry_date || '');
-        if (dateA !== dateB) return dateA.localeCompare(dateB);
-        const createdA = String(a.journal_entry?.created_at || a.created_at || '');
-        const createdB = String(b.journal_entry?.created_at || b.created_at || '');
-        return createdA.localeCompare(createdB);
-      });
+      const opening = Number(payload.period_opening_balance ?? 0);
+      const rawRows = Array.isArray(payload.rows) ? payload.rows : [];
 
-      let runningBalance = openingBalance;
-      const ledgerEntriesFromRange: AccountLedgerEntry[] = rangeLines.map((line: any) => {
-        const entry = line.journal_entry;
-        const debit = line.debit || 0;
-        const credit = line.credit || 0;
-        runningBalance += credit - debit;
-        const code = line.account?.code != null ? String(line.account.code) : '';
+      const ledgerEntriesFromRange: AccountLedgerEntry[] = rawRows.map((r) => {
+        const debit = Number(r.debit ?? 0);
+        const credit = Number(r.credit ?? 0);
         return {
-          date: entry.entry_date,
-          created_at: entry.created_at,
-          reference_number: entry.entry_no || entry.id?.slice(0, 8) || '—',
-          entry_no: entry.entry_no,
-          description: entry.description || line.description || '—',
+          date: String(r.entry_date ?? '').slice(0, 10),
+          created_at: r.created_at != null ? String(r.created_at) : undefined,
+          reference_number: (r.entry_no != null && String(r.entry_no).trim() !== ''
+            ? String(r.entry_no)
+            : String(r.journal_entry_id || '').slice(0, 8)) || '—',
+          entry_no: r.entry_no != null ? String(r.entry_no) : undefined,
+          description: String(r.description ?? '—'),
           debit,
           credit,
-          running_balance: runningBalance,
+          running_balance: Number(r.running_balance ?? 0),
           source_module: 'Accounting',
-          journal_entry_id: entry.id,
-          payment_id: entry.payment_id,
-          branch_id: entry.branch_id,
-          branch_name: entry.branch?.name,
-          account_name: line.account?.name || '',
-          gl_account_code: code,
+          journal_entry_id: String(r.journal_entry_id ?? ''),
+          payment_id: r.payment_id != null ? String(r.payment_id) : undefined,
+          branch_id: r.branch_id != null ? String(r.branch_id) : undefined,
+          branch_name: r.branch_name != null ? String(r.branch_name) : undefined,
+          account_name: String(r.account_name ?? ''),
+          gl_account_code: String(r.account_code ?? ''),
           document_type: 'AP Journal',
         };
       });
 
-      const ledgerEntries: AccountLedgerEntry[] = startDate
-        ? [
-            {
-              date: startDate,
-              reference_number: '—',
-              entry_no: undefined,
-              description: 'Opening Balance (AP GL)',
-              debit: 0,
-              credit: 0,
-              running_balance: openingBalance,
-              source_module: 'Accounting',
-              journal_entry_id: '',
-              document_type: 'Opening Balance',
-              account_name: '',
-            },
-            ...ledgerEntriesFromRange,
-          ]
-        : ledgerEntriesFromRange;
+      if (startStr) {
+        return [
+          {
+            date: startStr,
+            reference_number: '—',
+            entry_no: undefined,
+            description: 'Opening Balance (AP GL)',
+            debit: 0,
+            credit: 0,
+            running_balance: opening,
+            source_module: 'Accounting',
+            journal_entry_id: '',
+            document_type: 'Opening Balance',
+            account_name: '',
+          },
+          ...ledgerEntriesFromRange,
+        ];
+      }
 
-      return ledgerEntries;
+      return ledgerEntriesFromRange;
     } catch (e) {
       console.error('[ACCOUNTING SERVICE] getSupplierApGlJournalLedger:', e);
-      return [];
+      return fetchSupplierApGlJournalLedgerLegacy(supplierId, companyId, branchId, startDate, endDate);
     }
   },
 

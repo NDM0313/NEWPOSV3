@@ -17,7 +17,8 @@ import {
   PieChart as PieChartIcon,
   Activity,
   ChevronDown,
-  Users
+  Users,
+  Loader2,
 } from 'lucide-react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
@@ -48,6 +49,10 @@ import { BalanceSheetPage } from './BalanceSheetPage';
 import { SalesProfitPage } from './SalesProfitPage';
 import { InventoryValuationPage } from './InventoryValuationPage';
 import { CommissionReportPage } from './CommissionReportPage';
+import {
+  accountingReportsService,
+  type ProfitLossResult,
+} from '@/app/services/accountingReportsService';
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -89,10 +94,24 @@ export const ReportsDashboardEnhanced = () => {
   }, [setCurrentModule]);
 
   const [reportType, setReportType] = useState<'overview' | 'sales' | 'purchases' | 'expenses' | 'financial' | 'commission'>('overview');
+  /** Overview tab: operational document flow vs canonical GL snapshot (same period as global filter). */
+  const [overviewBasis, setOverviewBasis] = useState<'operational' | 'financial_gl'>('operational');
+  const [glOverviewLoading, setGlOverviewLoading] = useState(false);
+  const [glFinancialOverview, setGlFinancialOverview] = useState<{
+    pl: ProfitLossResult | null;
+    arDrMinusCr: number | null;
+    apCrMinusDr: number | null;
+    wpCrMinusDr: number | null;
+    cashBankDrMinusCr: number | null;
+  } | null>(null);
   const [financialReportType, setFinancialReportType] = useState<'trial-balance' | 'profit-loss' | 'balance-sheet' | 'sales-profit' | 'inventory-valuation'>('trial-balance');
   /** Expenses whose original expense JE has a correction_reversal — hidden from reports by default. */
   const [reversedExpenseIds, setReversedExpenseIds] = useState<Set<string>>(() => new Set());
   const [showReversedExpenses, setShowReversedExpenses] = useState(false);
+
+  React.useEffect(() => {
+    if (reportType !== 'overview') setOverviewBasis('operational');
+  }, [reportType]);
 
   React.useEffect(() => {
     if (!companyId || expenses.expenses.length === 0) {
@@ -165,6 +184,39 @@ export const ReportsDashboardEnhanced = () => {
     };
   }, [finalSales, finalPurchases, reportableExpenses]);
 
+  React.useEffect(() => {
+    if (!companyId || reportType !== 'overview' || overviewBasis !== 'financial_gl') {
+      if (reportType !== 'overview' || overviewBasis !== 'financial_gl') setGlFinancialOverview(null);
+      return;
+    }
+    let cancelled = false;
+    setGlOverviewLoading(true);
+    const b = branchId === 'all' || !branchId ? undefined : branchId;
+    Promise.all([
+      accountingReportsService.getProfitLoss(companyId, reportStartDate, reportEndDate, b),
+      accountingReportsService.getArApGlSnapshot(companyId, reportEndDate, b),
+    ])
+      .then(([pl, snap]) => {
+        if (cancelled) return;
+        setGlFinancialOverview({
+          pl,
+          arDrMinusCr: snap.ar != null ? snap.ar.balance : null,
+          apCrMinusDr: snap.apNetCredit,
+          wpCrMinusDr: snap.wpNetCredit,
+          cashBankDrMinusCr: snap.cashBankNetDrMinusCr,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setGlFinancialOverview(null);
+      })
+      .finally(() => {
+        if (!cancelled) setGlOverviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, reportType, overviewBasis, reportStartDate, reportEndDate, branchId]);
+
   const salesByStatus = useMemo(() => {
     const paid = finalSales.filter((s) => s.paymentStatus === 'paid').length;
     const partial = finalSales.filter((s) => s.paymentStatus === 'partial').length;
@@ -226,18 +278,42 @@ export const ReportsDashboardEnhanced = () => {
 
   // Export data for current report type
   const getExportData = useCallback((): { headers: string[]; rows: (string | number)[][]; title: string } => {
+    const scopeNote = `Scope: ${dateRangeLabel}; branch: ${branchId === 'all' || !branchId ? 'all' : branchId}`;
     const title = `Reports - ${reportType} - ${dateRangeLabel}`;
     switch (reportType) {
       case 'overview':
+        if (overviewBasis === 'financial_gl' && glFinancialOverview?.pl) {
+          const pl = glFinancialOverview.pl;
+          return {
+            title: `Reports — Overview — Financial GL (journal) — ${dateRangeLabel}`,
+            headers: ['Metric', 'Value'],
+            rows: [
+              ['Basis', 'GL — canonical P&L + control balances (see banner)'],
+              [scopeNote, ''],
+              ['Total revenue (GL)', formatCurrency(pl.revenue.total)],
+              ['Total cost of sales (GL)', formatCurrency(pl.costOfSales.total)],
+              ['Total expenses (GL)', formatCurrency(pl.expenses.total)],
+              ['Net profit (GL)', formatCurrency(pl.netProfit)],
+              ['AR control 1100 (Dr−Cr, position)', glFinancialOverview.arDrMinusCr != null ? formatCurrency(glFinancialOverview.arDrMinusCr) : '—'],
+              ['AP control 2000 (Cr−Dr)', glFinancialOverview.apCrMinusDr != null ? formatCurrency(glFinancialOverview.apCrMinusDr) : '—'],
+              ['Worker Payable 2010 (Cr−Dr)', glFinancialOverview.wpCrMinusDr != null ? formatCurrency(glFinancialOverview.wpCrMinusDr) : '—'],
+              ['Cash & bank (GL position)', glFinancialOverview.cashBankDrMinusCr != null ? formatCurrency(glFinancialOverview.cashBankDrMinusCr) : '—'],
+            ],
+          };
+        }
         return {
-          title,
+          title: `Reports — Overview — Operational flow — ${dateRangeLabel}`,
           headers: ['Metric', 'Value'],
           rows: [
+            ['Basis', 'Operational — documents in period (not GL TB/P&L)'],
+            [scopeNote, ''],
             ['Total Sales', formatCurrency(metrics.totalSales)],
             ['Total Purchases', formatCurrency(metrics.totalPurchases)],
-            ['Total Expenses', formatCurrency(metrics.totalExpenses)],
-            ['Net Profit', formatCurrency(metrics.profit)],
-            ['Profit Margin', `${metrics.profitMargin.toFixed(1)}%`],
+            ['Total Expenses (paid)', formatCurrency(metrics.totalExpenses)],
+            ['Net result (operational flow)', formatCurrency(metrics.profit)],
+            ['Margin on operational sales', `${metrics.profitMargin.toFixed(1)}%`],
+            ['Document receivables (due)', formatCurrency(metrics.totalReceivables)],
+            ['Document payables (due)', formatCurrency(metrics.totalPayables)],
             ['Invoices', metrics.salesCount],
             ['Purchase Orders', metrics.purchasesCount],
             ['Expenses Paid', metrics.expensesCount],
@@ -294,7 +370,7 @@ export const ReportsDashboardEnhanced = () => {
             ['Total Revenue', metrics.totalSales],
             ['Total Purchases', metrics.totalPurchases],
             ['Total Expenses', metrics.totalExpenses],
-            ['Net Profit/Loss', metrics.profit],
+            ['Net Profit/Loss (operational)', metrics.profit],
             ['Accounts Receivable', metrics.totalReceivables],
             ['Accounts Payable', metrics.totalPayables],
           ],
@@ -302,7 +378,7 @@ export const ReportsDashboardEnhanced = () => {
       default:
         return { title, headers: [], rows: [] };
     }
-  }, [reportType, dateRangeLabel, metrics, filteredSales, filteredPurchases, reportableExpenses]);
+  }, [reportType, dateRangeLabel, metrics, filteredSales, filteredPurchases, reportableExpenses, overviewBasis, glFinancialOverview, branchId]);
 
   const handleExportPDF = () => {
     const data = getExportData();
@@ -407,14 +483,47 @@ export const ReportsDashboardEnhanced = () => {
       <div className="p-6 space-y-6">
         <div className="text-xs text-gray-500 mb-2">Period: {dateRangeLabel}</div>
 
-        {/* Overview Tab */}
+        {/* Overview Tab — split: Operational flow vs Financial GL */}
         {reportType === 'overview' && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <MetricCard title="Total Sales" value={formatCurrency(metrics.totalSales)} change={`${metrics.salesCount} invoices`} trend="up" icon={TrendingUp} iconColor="text-green-400" iconBg="bg-green-400/10" />
-              <MetricCard title="Total Purchases" value={formatCurrency(metrics.totalPurchases)} change={`${metrics.purchasesCount} POs`} trend="up" icon={ShoppingCart} iconColor="text-blue-400" iconBg="bg-blue-400/10" />
-              <MetricCard title="Total Expenses" value={formatCurrency(metrics.totalExpenses)} change={`${metrics.expensesCount} paid`} trend="up" icon={DollarSign} iconColor="text-orange-400" iconBg="bg-orange-400/10" />
-              <MetricCard title="Net Profit" value={formatCurrency(metrics.profit)} change={`${metrics.profitMargin.toFixed(1)}% margin`} trend={metrics.profit > 0 ? 'up' : 'down'} icon={Activity} iconColor={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} iconBg={metrics.profit > 0 ? 'bg-green-400/10' : 'bg-red-400/10'} />
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              {[
+                { key: 'operational' as const, label: 'Operational Overview' },
+                { key: 'financial_gl' as const, label: 'Financial GL Overview' },
+              ].map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setOverviewBasis(t.key)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    overviewBasis === t.key ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {overviewBasis === 'operational' ? (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.07] px-3 py-2 text-xs text-amber-100/95 mb-4">
+                <strong className="font-semibold">Basis: Operational</strong> — final sales, final/received purchases, paid expenses, document due balances in this period.{' '}
+                <span className="text-amber-200/90">Not canonical GL net income.</span> Switch to <strong>Financial GL Overview</strong> for journal P&amp;L and control accounts.
+              </div>
+            ) : (
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-100/95 mb-4">
+                <strong className="font-semibold">Basis: GL (journal)</strong> — Profit &amp; Loss for the selected period matches Financial → P&amp;L; AR/AP/WP/cash-bank are <strong>control positions</strong> (life-to-date to period end, branch-scoped).{' '}
+                <span className="text-emerald-200/85">Do not compare these numbers to Operational Overview without labeling.</span>
+              </div>
+            )}
+
+            {overviewBasis === 'operational' && (
+            <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <MetricCard title="Total Sales (operational)" value={formatCurrency(metrics.totalSales)} change={`${metrics.salesCount} invoices`} trend="up" icon={TrendingUp} iconColor="text-green-400" iconBg="bg-green-400/10" />
+              <MetricCard title="Total Purchases (operational)" value={formatCurrency(metrics.totalPurchases)} change={`${metrics.purchasesCount} POs`} trend="up" icon={ShoppingCart} iconColor="text-blue-400" iconBg="bg-blue-400/10" />
+              <MetricCard title="Total Expenses (paid)" value={formatCurrency(metrics.totalExpenses)} change={`${metrics.expensesCount} paid`} trend="up" icon={DollarSign} iconColor="text-orange-400" iconBg="bg-orange-400/10" />
+              <MetricCard title="Receivables (document due)" value={formatCurrency(metrics.totalReceivables)} change="final sales due" trend="up" icon={DollarSign} iconColor="text-cyan-400" iconBg="bg-cyan-400/10" />
+              <MetricCard title="Payables (document due)" value={formatCurrency(metrics.totalPayables)} change="PO due" trend="up" icon={Package} iconColor="text-amber-400" iconBg="bg-amber-400/10" />
+              <MetricCard title="Net result (operational flow)" value={formatCurrency(metrics.profit)} change={`${metrics.profitMargin.toFixed(1)}% on sales · not GL`} trend={metrics.profit > 0 ? 'up' : 'down'} icon={Activity} iconColor={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} iconBg={metrics.profit > 0 ? 'bg-green-400/10' : 'bg-red-400/10'} />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="bg-gray-900 border-gray-800 p-6">
@@ -429,7 +538,7 @@ export const ReportsDashboardEnhanced = () => {
                       <Legend />
                       <Line type="monotone" dataKey="sales" stroke="#3B82F6" name="Sales" strokeWidth={2} />
                       <Line type="monotone" dataKey="purchases" stroke="#10B981" name="Purchases" strokeWidth={2} />
-                      <Line type="monotone" dataKey="profit" stroke="#F59E0B" name="Profit" strokeWidth={2} />
+                      <Line type="monotone" dataKey="profit" stroke="#F59E0B" name="Net result (operational flow)" strokeWidth={2} />
                     </LineChart>
                   </ResponsiveContainer>
                 </ChartContainer>
@@ -462,14 +571,15 @@ export const ReportsDashboardEnhanced = () => {
                 </ChartContainer>
               </Card>
               <Card className="bg-gray-900 border-gray-800 p-6">
-                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><FileText size={20} className="text-purple-400" /> Financial Summary</h3>
+                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><FileText size={20} className="text-purple-400" /> Operational summary</h3>
+                <p className="text-[10px] text-gray-500 mb-3">Document-level totals in period — not GL TB/P&amp;L.</p>
                 <div className="space-y-4">
-                  <SummaryRow label="Total Revenue" value={metrics.totalSales} color="text-green-400" />
-                  <SummaryRow label="Total Expenses" value={metrics.totalPurchases + metrics.totalExpenses} color="text-red-400" />
-                  <div className="border-t border-gray-800 pt-3"><SummaryRow label="Net Profit/Loss" value={metrics.profit} color={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} bold /></div>
+                  <SummaryRow label="Sales (operational)" value={metrics.totalSales} color="text-green-400" />
+                  <SummaryRow label="Purchases + paid expenses" value={metrics.totalPurchases + metrics.totalExpenses} color="text-red-400" />
+                  <div className="border-t border-gray-800 pt-3"><SummaryRow label="Net result (operational flow)" value={metrics.profit} color={metrics.profit > 0 ? 'text-green-400' : 'text-red-400'} bold /></div>
                   <div className="border-t border-gray-800 pt-3">
-                    <SummaryRow label="Accounts Receivable" value={metrics.totalReceivables} color="text-blue-400" />
-                    <SummaryRow label="Accounts Payable" value={metrics.totalPayables} color="text-orange-400" />
+                    <SummaryRow label="Receivables (document due)" value={metrics.totalReceivables} color="text-blue-400" />
+                    <SummaryRow label="Payables (document due)" value={metrics.totalPayables} color="text-orange-400" />
                   </div>
                 </div>
               </Card>
@@ -479,6 +589,112 @@ export const ReportsDashboardEnhanced = () => {
               <StatCard icon={Package} label="Total Purchase Orders" value={metrics.purchasesCount} color="bg-green-500/10 text-green-400" />
               <StatCard icon={DollarSign} label="Total Expenses Paid" value={metrics.expensesCount} color="bg-orange-500/10 text-orange-400" />
             </div>
+          </>
+            )}
+
+            {overviewBasis === 'financial_gl' && (
+              <div className="space-y-4">
+                {glOverviewLoading && (
+                  <div className="flex items-center justify-center gap-2 text-gray-400 py-16">
+                    <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
+                    <span>Loading Financial GL overview…</span>
+                  </div>
+                )}
+                {!glOverviewLoading && glFinancialOverview?.pl && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <MetricCard
+                        title="Revenue (GL · P&L period)"
+                        value={formatCurrency(glFinancialOverview.pl.revenue.total)}
+                        change="journal"
+                        trend="up"
+                        icon={TrendingUp}
+                        iconColor="text-green-400"
+                        iconBg="bg-green-400/10"
+                      />
+                      <MetricCard
+                        title="Expenses (GL · P&L period)"
+                        value={formatCurrency(glFinancialOverview.pl.expenses.total)}
+                        change="journal"
+                        trend="up"
+                        icon={DollarSign}
+                        iconColor="text-orange-400"
+                        iconBg="bg-orange-400/10"
+                      />
+                      <MetricCard
+                        title="Net profit (GL)"
+                        value={formatCurrency(glFinancialOverview.pl.netProfit)}
+                        change="canonical · Financial → P&L"
+                        trend={glFinancialOverview.pl.netProfit >= 0 ? 'up' : 'down'}
+                        icon={Activity}
+                        iconColor={glFinancialOverview.pl.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}
+                        iconBg={glFinancialOverview.pl.netProfit >= 0 ? 'bg-green-400/10' : 'bg-red-400/10'}
+                      />
+                      <MetricCard
+                        title="Cash & bank (GL position)"
+                        value={
+                          glFinancialOverview.cashBankDrMinusCr != null
+                            ? formatCurrency(glFinancialOverview.cashBankDrMinusCr)
+                            : '—'
+                        }
+                        change="Dr−Cr · life-to-date"
+                        trend="up"
+                        icon={DollarSign}
+                        iconColor="text-cyan-400"
+                        iconBg="bg-cyan-400/10"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <MetricCard
+                        title="AR control 1100 (GL)"
+                        value={
+                          glFinancialOverview.arDrMinusCr != null
+                            ? formatCurrency(glFinancialOverview.arDrMinusCr)
+                            : '—'
+                        }
+                        change="Dr−Cr · position"
+                        trend="up"
+                        icon={Users}
+                        iconColor="text-blue-400"
+                        iconBg="bg-blue-400/10"
+                      />
+                      <MetricCard
+                        title="AP control 2000 (GL)"
+                        value={
+                          glFinancialOverview.apCrMinusDr != null
+                            ? formatCurrency(glFinancialOverview.apCrMinusDr)
+                            : '—'
+                        }
+                        change="Cr−Dr · supplier AP only"
+                        trend="up"
+                        icon={ShoppingCart}
+                        iconColor="text-rose-400"
+                        iconBg="bg-rose-400/10"
+                      />
+                      <MetricCard
+                        title="Worker Payable 2010 (GL)"
+                        value={
+                          glFinancialOverview.wpCrMinusDr != null
+                            ? formatCurrency(glFinancialOverview.wpCrMinusDr)
+                            : '—'
+                        }
+                        change="Cr−Dr · not mixed with AP"
+                        trend="up"
+                        icon={Users}
+                        iconColor="text-violet-400"
+                        iconBg="bg-violet-400/10"
+                      />
+                    </div>
+                    <p className="text-[11px] text-gray-500 px-1">
+                      Control balances are journal positions to period end ({reportEndDate}); P&amp;L lines are activity in [{reportStartDate} … {reportEndDate}]. Use Financial tab for full TB/BS/P&amp;L drill-down.
+                    </p>
+                  </>
+                )}
+                {!glOverviewLoading && !glFinancialOverview?.pl && companyId && (
+                  <p className="text-center text-gray-500 py-12">Could not load GL overview. Open Financial → Profit &amp; Loss.</p>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -677,6 +893,9 @@ export const ReportsDashboardEnhanced = () => {
         {/* Financial Tab – Trial Balance, P&L, Balance Sheet, Sales Profit, Inventory Valuation */}
         {reportType === 'financial' && (
           <>
+            <div className="rounded-lg border border-sky-500/25 bg-sky-950/30 px-3 py-2 text-[11px] text-sky-100/90 mb-2">
+              These reports are <strong className="text-sky-200">canonical GL</strong> (journal). Overview → Operational uses documents — compare only after reading basis labels on both.
+            </div>
             <div className="flex flex-wrap items-center gap-2 mb-4">
               {[
                 { key: 'trial-balance', label: 'Trial Balance' },

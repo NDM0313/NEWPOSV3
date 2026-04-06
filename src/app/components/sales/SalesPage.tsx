@@ -1518,6 +1518,9 @@ export const SalesPage = () => {
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Due</p>
                 <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
                 <p className="text-xs text-gray-500 mt-1">Pending payments</p>
+                <p className="text-[10px] text-gray-500 mt-2 leading-snug">
+                  Listed final sales: effective due (total + studio charges − paid). Not Contacts operational receivables or GL AR 1100 — use Contacts reconciliation or Financial reports to tie out.
+                </p>
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
                 <AlertCircle size={24} className="text-red-500" />

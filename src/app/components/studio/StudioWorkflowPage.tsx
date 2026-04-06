@@ -333,6 +333,9 @@ export const StudioWorkflowPage: React.FC = () => {
               <p className="text-2xl font-bold text-orange-400 mt-1">
                 Rs {stats.totalPendingAmount.toLocaleString()}
               </p>
+              <p className="text-[10px] text-gray-500 mt-1 max-w-[220px] leading-snug">
+                Sum of unpaid <span className="text-gray-600">worker_ledger_entries</span> (studio operational). Not GL 2010 / not Contacts payables — use Worker ledger or party GL for journal tie-out.
+              </p>
             </div>
             <div className="h-12 w-12 rounded-lg bg-orange-500/10 flex items-center justify-center">
               <TrendingUp className="text-orange-400" size={24} />

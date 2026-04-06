@@ -166,7 +166,7 @@ const toExport = (r: BalanceSheetResult, formatCurrency: (n: number) => string):
     ['Difference (should be 0)', '', '', '', formatCurrency(r.difference)],
   ];
   return {
-    title: `Balance Sheet as at ${r.asOfDate}`,
+    title: `Balance Sheet (GL) as at ${r.asOfDate}`,
     headers: ['Section', 'Group', 'Account', 'Code', 'Amount'],
     rows,
   };
@@ -260,11 +260,11 @@ export const BalanceSheetPage: React.FC<{
 
   const handleExportPDF = () => {
     if (!data) return;
-    exportToPDF(toExport(data, formatCurrency), 'Balance_Sheet');
+    exportToPDF(toExport(data, formatCurrency), `Balance_Sheet_GL_${data.asOfDate}`);
   };
   const handleExportExcel = () => {
     if (!data) return;
-    exportToExcel(toExport(data, formatCurrency), 'Balance_Sheet');
+    exportToExcel(toExport(data, formatCurrency), `Balance_Sheet_GL_${data.asOfDate}`);
   };
 
   const openPartyDrilldown = async (kind: 'ar' | 'ap') => {
@@ -318,6 +318,10 @@ export const BalanceSheetPage: React.FC<{
 
   return (
     <div className="space-y-4">
+      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-100/95">
+        <strong className="font-semibold">Basis: GL (journal)</strong> — Point-in-time balance sheet from posted accounts.
+        Party “Parties” drill-down is <strong className="text-emerald-200">Party GL</strong> attribution, not operational due.
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">

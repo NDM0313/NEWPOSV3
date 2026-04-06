@@ -521,10 +521,10 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      {/* Issue 05: Same source as executive summary (displayMetrics) so cards match reports */}
+      {/* Same source as executive summary (displayMetrics): operational AR/AP from get_contact_balances_summary roll-up; profit/revenue from period context — not canonical P&L */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <StatCard 
-          title="Total Due (Receivables)" 
+          title="Receivables (operational)" 
           value={formatCurrency(displayMetricsWithCashBank.receivables)} 
           change="—" 
           icon={ArrowDownRight} 
@@ -532,7 +532,7 @@ export const Dashboard = () => {
           iconColor="text-[#3B82F6]"
         />
         <StatCard 
-          title="Supplier Due (Payables)" 
+          title="Payables (operational)" 
           value={formatCurrency(displayMetricsWithCashBank.payables)} 
           change="—" 
           icon={ArrowUpRight} 
@@ -540,7 +540,7 @@ export const Dashboard = () => {
           iconColor="text-[#F59E0B]"
         />
         <StatCard 
-          title="Net Profit" 
+          title="Net profit (operational · period)" 
           value={formatCurrency(displayMetricsWithCashBank.monthly_profit)} 
           change={displayMetricsWithCashBank.monthly_profit >= 0 ? "—" : "—"} 
           icon={DollarSign} 
@@ -548,7 +548,7 @@ export const Dashboard = () => {
           iconColor="text-[#10B981]"
         />
         <StatCard 
-          title="Total Sales" 
+          title="Revenue (operational · period)" 
           value={formatCurrency(displayMetricsWithCashBank.monthly_revenue)} 
           change="—" 
           icon={ShoppingBag} 

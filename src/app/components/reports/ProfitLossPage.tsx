@@ -7,7 +7,11 @@ import { accountingReportsService, ProfitLossResult } from '@/app/services/accou
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 
-const toExport = (r: ProfitLossResult, formatCurrency: (n: number) => string): ExportData => {
+const toExport = (
+  r: ProfitLossResult,
+  formatCurrency: (n: number) => string,
+  periodLabel: string
+): ExportData => {
   const rows: (string | number)[][] = [
     ['Revenue', '', ''],
     ...r.revenue.items.map((i) => [i.name, i.code || '', formatCurrency(i.amount)]),
@@ -76,13 +80,15 @@ export const ProfitLossPage: React.FC<{
       .finally(() => setLoading(false));
   }, [companyId, startDate, endDate, branchId, compareOptions?.compareStart, compareOptions?.compareEnd]);
 
+  const exportPeriodLabel = `${data?.startDate ?? startDate} to ${data?.endDate ?? endDate}`;
+
   const handleExportPDF = () => {
     if (!data) return;
-    exportToPDF(toExport(data, formatCurrency), 'Profit_Loss');
+    exportToPDF(toExport(data, formatCurrency, exportPeriodLabel), `P_L_GL_${data.startDate}_${data.endDate}`);
   };
   const handleExportExcel = () => {
     if (!data) return;
-    exportToExcel(toExport(data, formatCurrency), 'Profit_Loss');
+    exportToExcel(toExport(data, formatCurrency, exportPeriodLabel), `P_L_GL_${data.startDate}_${data.endDate}`);
   };
 
   if (loading) {
@@ -104,6 +110,10 @@ export const ProfitLossPage: React.FC<{
 
   return (
     <div className="space-y-4">
+      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-100/95">
+        <strong className="font-semibold">Basis: GL (journal)</strong> — Canonical net profit from account types and posted lines.
+        Reports Overview “operational flow” uses documents — do not compare without reading both labels.
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-gray-400">
           Period: {data.startDate} to {data.endDate}

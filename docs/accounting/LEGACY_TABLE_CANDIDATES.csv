@@ -1,0 +1,11 @@
+table_name,row_count,last_activity_if_available,code_usage,db_dependency,fresh_company_write_detected,status,notes
+chart_accounts,TBD_RUN_SQL,TBD_RUN_SQL,none_in_src_from_guard_comment_only,TBD_RUN_DEPENDENCY_SQL,TBD_SMOKE_TEST,TBD,"GATE2: no .from('chart_accounts') in src/ erp-mobile-app/ supabase/functions — see LEGACY_CLEANUP_GO_NO_GO.md"
+account_transactions,TBD_RUN_SQL,TBD_RUN_SQL,none_in_src_guard_only,TBD_RUN_DEPENDENCY_SQL,TBD_SMOKE_TEST,TBD,"GATE2: blocklist only accountingCanonicalGuard.ts"
+ledger_master,TBD_RUN_SQL,TBD_RUN_SQL,unused_in_scoped_code,TBD_RUN_DEPENDENCY_SQL,TBD_SMOKE_TEST,TBD,"GATE2: no ledger_master .from — distinct from worker_ledger_entries"
+ledger_entries,TBD_RUN_SQL,TBD_RUN_SQL,unused_in_scoped_code,TBD_RUN_DEPENDENCY_SQL,TBD_SMOKE_TEST,TBD,"GATE2: no ledger_entries .from — distinct from worker_ledger_entries"
+worker_payments,TBD_IF_EXISTS,TBD_IF_EXISTS,unused_in_scoped_code,TBD_RUN_DEPENDENCY_SQL,TBD_SMOKE_TEST,TBD,"Omit row if table not in live DB"
+backup_cr_*,N/A,N/A,not_ui_truth_accountingCanonicalGuard,TBD_PER_TABLE,TBD_SMOKE_TEST,ARCHIVE_RETAIN,"Pattern match — enumerate concrete tables in DB then fill row_count"
+backup_pf145_*,N/A,N/A,not_ui_truth_accountingCanonicalGuard,TBD_PER_TABLE,TBD_SMOKE_TEST,ARCHIVE_RETAIN,"Same as backup_cr_*"
+sale_items,TBD_RUN_SQL,TBD_RUN_SQL,used_fallback_reads,TBD_RUN_DEPENDENCY_SQL,TBD_SMOKE_TEST,BLOCKED_CODE_USAGE,"Canonical path prefers sales_items; saleReturnService saleService accountingReportsService studioProductionService etc."
+sales_items,TBD_RUN_SQL,TBD_RUN_SQL,used_canonical,TBD_RUN_DEPENDENCY_SQL,TBD_SMOKE_TEST,KEEP_LIVE,"Not legacy removal candidate"
+worker_ledger_entries,TBD_RUN_SQL,TBD_RUN_SQL,used_web_mobile,TBD_RUN_DEPENDENCY_SQL,expected_writes,KEEP_LIVE,"Operational subledger — not quarantine candidate"

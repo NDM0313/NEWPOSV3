@@ -1,0 +1,46 @@
+-- =============================================================================
+-- LEGACY QUARANTINE PLAN — REVIEW ONLY — DO NOT EXECUTE ON PRODUCTION BLINDLY
+-- =============================================================================
+-- Purpose: Non-destructive isolation options for tables classified QUARANTINE_READY
+--          in docs/accounting/LEGACY_CLEANUP_GO_NO_GO.md (all gates PASS per table).
+-- Rules:   No DELETE / TRUNCATE here. Additive or rename / schema move only.
+--          Run GATE 3 dependency queries first; take a full backup or pg_dump
+--          of affected tables before any change.
+-- =============================================================================
+--
+-- PREREQUISITE REMINDERS (human checklist — not SQL):
+--   [ ] Verified backup / export of table data exists and is restorable
+--   [ ] GATE 2: zero runtime app usage for this table
+--   [ ] GATE 3: no FK, view, trigger, RPC, or policy blocks (or dependencies dropped/rewired in a separate migration)
+--   [ ] GATE 4: fresh-company smoke showed zero inserts/updates on this table
+--   [ ] Stakeholder sign-off on downtime / rename impact
+--
+-- =============================================================================
+-- OPTION A — Rename in public (prefix zz_legacy_) — example pattern
+-- =============================================================================
+-- Uncomment ONE block at a time after substituting real table names.
+--
+-- ALTER TABLE public.chart_accounts RENAME TO zz_legacy_chart_accounts;
+-- ALTER TABLE public.account_transactions RENAME TO zz_legacy_account_transactions;
+-- ALTER TABLE public.ledger_master RENAME TO zz_legacy_ledger_master;
+-- ALTER TABLE public.ledger_entries RENAME TO zz_legacy_ledger_entries;
+--
+-- After rename: update any remaining DB objects (views, functions) — expect NONE if GATE 3 passed.
+-- Application must not reference old names (GATE 2 already PASS).
+
+-- =============================================================================
+-- OPTION B — Move to archive schema (keeps original table names inside schema)
+-- =============================================================================
+-- CREATE SCHEMA IF NOT EXISTS legacy_archive;
+-- ALTER TABLE public.chart_accounts SET SCHEMA legacy_archive;
+-- REVOKE ALL ON ALL TABLES IN SCHEMA legacy_archive FROM PUBLIC;
+-- GRANT SELECT ON ALL TABLES IN SCHEMA legacy_archive TO service_role;  -- tighten per policy
+
+-- =============================================================================
+-- OPTION C — Comment / documentation only (no structural change)
+-- =============================================================================
+-- COMMENT ON TABLE public.chart_accounts IS 'QUARANTINE: legacy COA — do not use for GL; see LEGACY_CLEANUP_GO_NO_GO.md';
+
+-- =============================================================================
+-- END — No further statements. Do not add DELETE or TRUNCATE.
+-- =============================================================================

@@ -31,6 +31,12 @@ export type ChartOfAccountsPartyDropdownProps = {
     controlCodeLabel: string;
     unmappedTop?: { referenceType: string; amount: number }[];
   } | null;
+  /** Optional drill-downs for control rows — basis: operational vs GL vs unmapped. */
+  drillDown?: {
+    onOpenContacts: () => void;
+    onOpenTrialBalance: () => void;
+    onOpenUnmapped: () => void;
+  };
 };
 
 function kindBadge(kind: PartyGlRow['kind']) {
@@ -50,6 +56,7 @@ export function ChartOfAccountsPartyDropdown({
   linkedContactName,
   linkedContactPartyType,
   glParity,
+  drillDown,
 }: ChartOfAccountsPartyDropdownProps) {
   const isLinkedOnly = Boolean(linkedContactName) && !scopeLabel;
 
@@ -226,6 +233,38 @@ export function ChartOfAccountsPartyDropdown({
               </ul>
             </div>
           ) : null}
+        </div>
+      ) : null}
+
+      {!isLinkedOnly && glParity && drillDown ? (
+        <div className="flex flex-wrap gap-2 pt-3 mt-2 border-t border-gray-800">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-[10px] h-8 border-gray-600 text-gray-200"
+            onClick={drillDown.onOpenContacts}
+          >
+            View operational parties
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-[10px] h-8 border-gray-600 text-gray-200"
+            onClick={drillDown.onOpenTrialBalance}
+          >
+            View Trial Balance (GL)
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-[10px] h-8 border-amber-500/40 text-amber-200"
+            onClick={drillDown.onOpenUnmapped}
+          >
+            View unmapped buckets
+          </Button>
         </div>
       ) : null}
     </div>

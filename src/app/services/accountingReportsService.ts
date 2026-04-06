@@ -306,6 +306,12 @@ export const accountingReportsService = {
     ap: TrialBalanceRow | null;
     /** Net liability on AP account (credits − debits), comparable to Contacts payables subtotal */
     apNetCredit: number | null;
+    /** Worker payable control (2010) — separate from AP 2000 */
+    wp: TrialBalanceRow | null;
+    /** Net liability Cr − Dr on worker payable */
+    wpNetCredit: number | null;
+    /** Sum of Dr − Cr on cash / bank / mobile_wallet GL accounts (position, not flow) */
+    cashBankNetDrMinusCr: number | null;
   }> {
     const end = (asOfDate ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
     const tb = await this.getTrialBalance(companyId, '1900-01-01', end, branchId);
@@ -318,11 +324,30 @@ export const accountingReportsService = {
     const ap =
       tb.rows.find((r) => (r.account_code || '').trim() === '2000') ||
       tb.rows.find(
-        (r) => /payable/i.test(r.account_name || '') && accountTypeCategory(r.account_type) === 'liability'
+        (r) =>
+          /accounts payable/i.test((r.account_name || '').toLowerCase()) &&
+          accountTypeCategory(r.account_type) === 'liability'
+      ) ||
+      null;
+    const wp =
+      tb.rows.find((r) => (r.account_code || '').trim() === '2010') ||
+      tb.rows.find(
+        (r) =>
+          /worker.*payable/i.test((r.account_name || '').toLowerCase()) &&
+          accountTypeCategory(r.account_type) === 'liability'
       ) ||
       null;
     const apNetCredit = ap ? ap.credit - ap.debit : null;
-    return { ar, ap, apNetCredit };
+    const wpNetCredit = wp ? wp.credit - wp.debit : null;
+    let cashBankNetDrMinusCr: number | null = null;
+    const cashBankRows = tb.rows.filter((r) => {
+      const t = (r.account_type || '').toLowerCase();
+      return ['cash', 'bank', 'mobile_wallet'].some((k) => t.includes(k));
+    });
+    if (cashBankRows.length > 0) {
+      cashBankNetDrMinusCr = cashBankRows.reduce((s, r) => s + (r.balance || 0), 0);
+    }
+    return { ar, ap, apNetCredit, wp, wpNetCredit, cashBankNetDrMinusCr };
   },
 
   /**
