@@ -108,6 +108,13 @@ function isManualRow(e: AccountLedgerEntry): boolean {
   return d.includes('manual') || normalizeLower(e.source_module) === 'accounting';
 }
 
+/** Same row set as summary cards — opening rows are immune to filters so balances stay aligned. */
+function isStatementOpeningRow(e: AccountLedgerEntry): boolean {
+  const d = normalizeLower(e.description);
+  const t = normalizeLower(e.document_type || '');
+  return d.includes('opening balance') || t.includes('opening balance');
+}
+
 function isPaymentLikeRow(e: AccountLedgerEntry): boolean {
   const d = normalizeLower(e.description);
   const t = normalizeLower(e.document_type);
@@ -414,10 +421,9 @@ export const AccountLedgerReportPage: React.FC<{
 
   /** Default statement order: calendar date, then time-of-day (created_at), then stable id. */
   const sortedEntries = useMemo(() => {
-    const isOpeningBalanceRow = (e: AccountLedgerEntry) => normalizeLower(e.description).includes('opening balance');
     const base = [...entries].filter((e) => {
       // Always keep synthetic opening rows so summary cards match the running-balance column (filters could drop them before).
-      if (isOpeningBalanceRow(e)) return true;
+      if (isStatementOpeningRow(e)) return true;
 
       if (applied.sourceModuleFilter !== 'all' && normalizeLower(e.source_module) !== applied.sourceModuleFilter) return false;
       if (applied.transactionTypeFilter !== 'all' && normalizeLower(e.document_type) !== applied.transactionTypeFilter) return false;
@@ -709,28 +715,30 @@ export const AccountLedgerReportPage: React.FC<{
 
   const summary = useMemo(() => {
     const apLiabilityStyle = applied.statementType === 'supplier';
-    const openingRow = presentedEntries.find((e) => normalizeLower(e.description).includes('opening balance'));
-    const openingBalance = openingRow
-      ? Number(openingRow.displayRunningBalance ?? openingRow.running_balance ?? 0)
-      : presentedEntries[0]
-        ? Number(presentedEntries[0].displayRunningBalance ?? presentedEntries[0].running_balance ?? 0) -
+    if (!presentedEntries.length) {
+      return { openingBalance: 0, totalDebit: 0, totalCredit: 0, closingBalance: 0, netMovement: 0, txCount: 0 };
+    }
+
+    const openingIdx = presentedEntries.findIndex(isStatementOpeningRow);
+    const rowsNoOpening = presentedEntries.filter((e) => !isStatementOpeningRow(e));
+
+    // Supplier/AP liability: running balance uses credit − debit on each row (see getSupplierApGlJournalLedger).
+    // Summary cards use the SAME presented row set as the table after alignRunningBalances — no second formula for closing.
+    const openingBalance =
+      openingIdx >= 0
+        ? Number(presentedEntries[openingIdx].displayRunningBalance ?? presentedEntries[openingIdx].running_balance ?? 0)
+        : Number(presentedEntries[0].displayRunningBalance ?? presentedEntries[0].running_balance ?? 0) -
           (apLiabilityStyle
             ? Number(presentedEntries[0].displayCredit || 0) - Number(presentedEntries[0].displayDebit || 0)
-            : Number(presentedEntries[0].displayDebit || 0) - Number(presentedEntries[0].displayCredit || 0))
-        : 0;
-    const rowsNoOpening = presentedEntries.filter((e) => !normalizeLower(e.description).includes('opening balance'));
+            : Number(presentedEntries[0].displayDebit || 0) - Number(presentedEntries[0].displayCredit || 0));
+
     const totalDebit = rowsNoOpening.reduce((s, e) => s + Number(e.displayDebit || 0), 0);
     const totalCredit = rowsNoOpening.reduce((s, e) => s + Number(e.displayCredit || 0), 0);
-    // Supplier AP (GL): closing = opening + (credits − debits) on displayed period rows — single formula for cards
-    // (must match alignRunningBalances(..., true) chain). Customer / asset-style: opening + (debits − credits).
-    const closingBalance =
-      presentedEntries.length === 0
-        ? openingBalance
-        : apLiabilityStyle
-          ? openingBalance + totalCredit - totalDebit
-          : openingBalance + totalDebit - totalCredit;
-    // Supplier AP: net owed movement = credits − debits on displayed columns (matches running column after alignRunningBalances).
-    const netMovement = apLiabilityStyle ? totalCredit - totalDebit : totalDebit - totalCredit;
+
+    const last = presentedEntries[presentedEntries.length - 1];
+    const closingBalance = Number(last.displayRunningBalance ?? last.running_balance ?? 0);
+    const netMovement = closingBalance - openingBalance;
+
     return { openingBalance, totalDebit, totalCredit, closingBalance, netMovement, txCount: rowsNoOpening.length };
   }, [presentedEntries, applied.statementType]);
 

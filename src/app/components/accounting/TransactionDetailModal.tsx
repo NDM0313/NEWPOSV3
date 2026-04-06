@@ -369,6 +369,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         console.log('[TRANSACTION DETAIL] Reference lookup result:', data ? 'FOUND' : 'NOT FOUND');
       }
 
+      // Modal double-entry truth must come from posted journal_entry_lines for the selected JE, not merged payment transforms.
+      if (data?.id) {
+        const posted = await accountingService.getPostedJournalLinesForEntry(companyId, data.id);
+        if (posted.length) {
+          data = { ...data, lines: posted };
+        }
+      }
+
       setTransaction(data);
       
       if (!data) {
@@ -420,12 +428,13 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     : transaction?.lines
       ? [transaction.lines]
       : [];
-  // Always show this journal entry's posted lines in the double-entry table. Effective payment lines merge
-  // multiple JEs and can mis-attribute debits (e.g. supplier Dr AP / Cr Bank shown as Bank/Bank).
-  const journalLines = rawJournalLines.length > 0 ? rawJournalLines : effectiveLines;
+  // Modal double-entry truth must come from posted journal_entry_lines for the selected JE, not merged payment transforms.
+  // Do not use getEffectiveJournalLinesForPayment as the primary grid — only as optional auxiliary context below.
+  const journalLines = rawJournalLines;
   const payment = Array.isArray(transaction?.payment) 
     ? transaction.payment[0] 
     : transaction?.payment;
+  const paymentContactName = String((payment as { contact?: { name?: string } })?.contact?.name || '').trim();
   const sale = Array.isArray(transaction?.sale) 
     ? transaction.sale[0] 
     : transaction?.sale;
@@ -746,15 +755,16 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             {/* SECTION C: JOURNAL ENTRIES (MOST IMPORTANT) */}
             <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
               <h3 className="text-sm font-semibold text-gray-300 mb-3">Journal Entries (Double Entry)</h3>
-              {rawJournalLines.length > 0 ? (
+              {journalLines.length > 0 ? (
                 <p className="text-xs text-gray-400 mb-2">
                   Posted lines for this journal entry (journal_entry_lines). Same basis as GL.
                 </p>
-              ) : effectiveLines.length > 0 ? (
-                <p className="text-xs text-blue-400/90 mb-2">
-                  No lines on this entry record — showing effective payment postings (merged JEs).
+              ) : (
+                <p className="text-xs text-amber-400/90 mb-2">
+                  No posted lines returned for this journal entry — check RLS or line data. (Merged payment &quot;effective&quot;
+                  lines are shown below only as secondary context, not as posted double-entry.)
                 </p>
-              ) : null}
+              )}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-900">
@@ -765,16 +775,32 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                     </tr>
                   </thead>
                   <tbody>
+                    {journalLines.length === 0 && (
+                      <tr>
+                        <td colSpan={3} className="px-4 py-4 text-center text-gray-500 text-sm">
+                          No posted lines in this grid.
+                        </td>
+                      </tr>
+                    )}
                     {journalLines.map((line: any, idx: number) => {
                       const account = line.account || {};
+                      const typeLower = String(account.type || '').toLowerCase();
+                      const nameLower = String(account.name || '').toLowerCase();
+                      const codeStr = String(account.code || '').trim();
+                      const isApPartyLine =
+                        (!!paymentContactName &&
+                          ((typeLower.includes('liability') && nameLower.includes('payable')) || codeStr === '2000')) ||
+                        nameLower.includes('accounts payable');
+                      const partySuffix = isApPartyLine && paymentContactName ? ` — ${paymentContactName}` : '';
                       return (
                         <tr key={line.id || line.account_id || idx} className="border-b border-gray-700">
                           <td className="px-4 py-3 text-sm text-white">
                             <div>
-                              <p className="font-medium">{account.name || 'Unknown Account'}</p>
-                              {account.code && (
-                                <p className="text-xs text-gray-400">{account.code}</p>
-                              )}
+                              <p className="font-medium">
+                                {account.name || 'Unknown Account'}
+                                {account.code ? ` (${account.code})` : ''}
+                                {partySuffix}
+                              </p>
                             </div>
                           </td>
                           <td className={cn(
@@ -818,6 +844,46 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   </tfoot>
                 </table>
               </div>
+              {effectiveLines.length > 0 && (transaction.payment_id || payment?.id) && (
+                <div className="mt-4 rounded-lg border border-gray-700/80 bg-gray-900/40 p-3">
+                  <p className="text-xs font-medium text-gray-400 mb-2">
+                    Auxiliary: effective payment accounts (merged JEs — not primary posted truth)
+                  </p>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Use only to explain cash/bank account changes across payment_adjustment entries. The double-entry table
+                    above is authoritative.
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-gray-500 text-xs uppercase">
+                          <th className="text-left py-1">Account</th>
+                          <th className="text-right py-1">Debit</th>
+                          <th className="text-right py-1">Credit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {effectiveLines.map((line: any, idx: number) => {
+                          const account = line.account || {};
+                          return (
+                            <tr key={line.account_id || idx} className="border-b border-gray-800/80">
+                              <td className="py-1.5 text-gray-200">
+                                {(account.name || '—') + (account.code ? ` (${account.code})` : '')}
+                              </td>
+                              <td className="py-1.5 text-right tabular-nums text-gray-300">
+                                {line.debit > 0 ? Number(line.debit).toLocaleString() : '—'}
+                              </td>
+                              <td className="py-1.5 text-right tabular-nums text-gray-300">
+                                {line.credit > 0 ? Number(line.credit).toLocaleString() : '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
               <p className="text-xs text-gray-400 mt-3">Double-entry: total debit must equal total credit.</p>
             </div>
 

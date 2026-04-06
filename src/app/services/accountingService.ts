@@ -772,7 +772,7 @@ export const accountingService = {
           *,
           account:accounts(id, name, code, type)
         ),
-        payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id),
+        payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
         branch:branches(id, name, code)
       `)
       .eq('id', journalEntryId)
@@ -808,6 +808,31 @@ export const accountingService = {
 
     console.log('[ACCOUNTING SERVICE] getEntryById SUCCESS:', { entry_no: data.entry_no, id: data.id });
     return data;
+  },
+
+  /**
+   * Load posted `journal_entry_lines` for one JE (authoritative for double-entry display).
+   * Modal double-entry truth must come from posted journal_entry_lines for the selected JE, not merged payment transforms.
+   */
+  async getPostedJournalLinesForEntry(companyId: string, journalEntryId: string) {
+    if (!companyId || !journalEntryId) return [];
+    const { data: je, error: jeErr } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('id', journalEntryId)
+      .maybeSingle();
+    if (jeErr || !je) return [];
+    const { data: lines, error } = await supabase
+      .from('journal_entry_lines')
+      .select(`*, account:accounts(id, name, code, type)`)
+      .eq('journal_entry_id', journalEntryId)
+      .order('id', { ascending: true });
+    if (error) {
+      console.error('[ACCOUNTING SERVICE] getPostedJournalLinesForEntry:', error);
+      return [];
+    }
+    return lines || [];
   },
 
   /**
@@ -916,7 +941,7 @@ export const accountingService = {
           *,
           account:accounts(id, name, code, type)
         ),
-        payment:payments(id, reference_number, amount, payment_method, payment_date, payment_account_id),
+        payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
         branch:branches(id, name, code)
       `)
       .eq('company_id', companyId)
@@ -941,7 +966,7 @@ export const accountingService = {
               *,
               account:accounts(id, name, code, type)
             ),
-            payment:payments(id, reference_number, amount, payment_method, payment_date, payment_account_id),
+            payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
             branch:branches(id, name, code)
           `)
           .eq('company_id', companyId)
@@ -975,7 +1000,7 @@ export const accountingService = {
               *,
               account:accounts(id, name, code, type)
             ),
-          payment:payments(id, reference_number, amount, payment_method, payment_date, payment_account_id),
+          payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
           sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
             branch:branches(id, name, code)
           `)
@@ -1016,7 +1041,7 @@ export const accountingService = {
             *,
             account:accounts(id, name, code, type)
           ),
-          payment:payments(id, reference_number, amount, payment_method, payment_date, payment_account_id),
+          payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
           branch:branches(id, name, code)
         `)
         .eq('company_id', companyId)
@@ -1043,7 +1068,7 @@ export const accountingService = {
             *,
             account:accounts(id, name, code, type)
           ),
-          payment:payments(id, reference_number, amount, payment_method, payment_date, payment_account_id),
+          payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
           branch:branches(id, name, code)
         `)
         .eq('company_id', companyId)
@@ -2115,7 +2140,9 @@ export const accountingService = {
 
   /**
    * Supplier AP only: journal lines on Accounts Payable (2000) for this supplier — no purchase/payment document merge.
-   * Running balance = cumulative (credit − debit) on AP (liability: credit increases what we owe).
+   * Convention (supplier / AP liability): movement and running balance use **credit − debit** (not debit − credit).
+   * Opening before startDate = sum(credit − debit) on AP lines before range; each row: running_balance += credit − debit.
+   * AccountLedgerReportPage summary cards must use the same row set as alignRunningBalances(..., true) — no parallel math.
    */
   async getSupplierApGlJournalLedger(
     supplierId: string,
