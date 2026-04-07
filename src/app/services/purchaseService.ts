@@ -18,6 +18,22 @@ function purchaseRowNeedsPostedPoAllocation(row: Record<string, unknown>): boole
   return /^(PDR-|POR-)/i.test(po);
 }
 
+/** PostgREST / proxy 5xx — must not be reported as "Purchase not found" (misleading when API is down). */
+function isTransientSupabaseHttpError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { message?: string; status?: number; statusCode?: number };
+  const status = Number(e.status ?? e.statusCode ?? 0);
+  if (status >= 500 && status < 600) return true;
+  const msg = String(e.message || '').toLowerCase();
+  return (
+    msg.includes('bad gateway') ||
+    msg.includes('gateway timeout') ||
+    msg.includes('service unavailable') ||
+    msg.includes('cloudflare') ||
+    /\b50[234]\b/.test(msg)
+  );
+}
+
 /** Allocate PUR po_no when purchase becomes posted if missing or still PDR/POR in po_no. */
 async function ensurePostedPurchasePoNoAllocated(purchaseId: string, row: Record<string, unknown>) {
   if (!purchaseRowNeedsPostedPoAllocation(row)) return row;
@@ -1038,13 +1054,40 @@ export const purchaseService = {
   // Record payment – allowed only when purchase status is final or received (DB enum — no `completed`).
   // Uses canonical supplierPaymentService: one payments row + one journal entry (no duplicate JE).
   async recordPayment(purchaseId: string, amount: number, paymentMethod: string, accountId: string, companyId: string, branchId?: string | null, _referenceNumber?: string | null, options?: { notes?: string; attachments?: any }) {
-    const { data: purchase, error: fetchError } = await supabase
-      .from('purchases')
-      .select('id, status, branch_id')
-      .eq('id', purchaseId)
-      .single();
+    const maxAttempts = 3;
+    let purchase: { id: string; status?: string; branch_id?: string | null } | null = null;
+    let lastFetchError: unknown = null;
 
-    if (fetchError || !purchase) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const { data, error } = await supabase
+        .from('purchases')
+        .select('id, status, branch_id')
+        .eq('id', purchaseId)
+        .maybeSingle();
+
+      lastFetchError = error;
+      if (!error && data) {
+        purchase = data as typeof purchase;
+        break;
+      }
+      if (error && isTransientSupabaseHttpError(error) && attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 350 * attempt));
+        continue;
+      }
+      purchase = (data as typeof purchase) ?? null;
+      break;
+    }
+
+    if (lastFetchError && !purchase) {
+      if (isTransientSupabaseHttpError(lastFetchError)) {
+        throw new Error(
+          'Could not reach the database (server error). Payment was not saved — wait a moment and try again.'
+        );
+      }
+      const msg = (lastFetchError as { message?: string })?.message;
+      throw new Error(msg?.trim() ? msg : 'Could not load purchase');
+    }
+    if (!purchase) {
       throw new Error('Purchase not found');
     }
     const status = (purchase as any).status;
