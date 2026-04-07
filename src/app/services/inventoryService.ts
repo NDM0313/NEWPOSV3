@@ -14,9 +14,33 @@
 
 import { supabase } from '@/lib/supabase';
 import { openingBalanceJournalService } from '@/app/services/openingBalanceJournalService';
+import {
+  parseVariationAttributesRaw,
+  publicVariationAttributes,
+  variationPurchaseFromApiRow,
+  variationRetailFromApiRow,
+} from '@/app/utils/variationFieldMap';
 
 // Dedupe negative-stock warnings per product so console isn't flooded when multiple forms call getInventoryOverview
 const negativeStockWarnedIds = new Set<string>();
+
+function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === '42703') return true;
+  const m = (error.message || '').toLowerCase();
+  return (m.includes('column') && m.includes('does not exist')) || m.includes('pgrst');
+}
+
+/** Richest-first select for overview variation rows (attributes + pricing for child-row UI). */
+const PRODUCT_VARIATIONS_OVERVIEW_SELECT_LAYERS = [
+  'id, product_id, sku, barcode, attributes, cost_price, purchase_price, retail_price, selling_price, wholesale_price, price',
+  'id, product_id, sku, barcode, attributes, cost_price, retail_price, wholesale_price, price',
+  'id, product_id, sku, barcode, attributes, cost_price, retail_price, wholesale_price',
+  'id, product_id, sku, barcode, attributes, cost_price, retail_price',
+  'id, product_id, sku, barcode, attributes',
+  'id, product_id, sku, attributes',
+  'id, product_id, sku',
+] as const;
 
 /** In-flight guard: reuse same promise for overlapping getInventoryOverview(companyId, branchId) to avoid duplicate timers. */
 const inventoryOverviewInFlight = new Map<string, Promise<InventoryOverviewRow[]>>();
@@ -43,10 +67,18 @@ export interface InventoryOverviewRow {
   variations?: Array<{
     id: string;
     sku?: string;
-    attributes: any;
+    attributes: Record<string, string>;
     stock: number;
     boxes?: number;
     pieces?: number;
+    /** Purchase / cost for this variation (DB or parent fallback). */
+    purchasePrice: number;
+    /** Selling / retail unit price for this variation (DB or parent fallback). */
+    sellingPrice: number;
+    /** stock × purchasePrice (cost basis). */
+    stockValueAtCost: number;
+    /** stock × sellingPrice (retail extension). */
+    retailStockValue: number;
   }>;
   /** Combo/bundle: product is a virtual bundle; stock from components */
   isComboProduct?: boolean;
@@ -155,15 +187,31 @@ export const inventoryService = {
     }
 
     // Run movements, variations, and units queries in parallel (they only need productIds from Step 1)
+    const fetchVariationsForOverview = async () => {
+      for (const sel of PRODUCT_VARIATIONS_OVERVIEW_SELECT_LAYERS) {
+        const { data, error } = await supabase
+          .from('product_variations')
+          .select(sel)
+          .in('product_id', productIds)
+          .eq('is_active', true);
+        if (!error) return { data: data || [], error: null as Error | null };
+        if (!isMissingColumnError(error)) {
+          console.warn('[INVENTORY SERVICE] product_variations fetch failed:', error.message);
+          return { data: [], error };
+        }
+      }
+      return { data: [], error: null };
+    };
+
     console.time('inventoryOverview:parallel');
     const [
       { data: movements, error: movementsError },
-      { data: variations, error: variationsError },
+      variationsPack,
       { data: units },
       combosResult,
     ] = await Promise.all([
       stockQuery,
-      supabase.from('product_variations').select('id, product_id, sku').in('product_id', productIds).eq('is_active', true),
+      fetchVariationsForOverview(),
       unitIds.length > 0
         ? supabase.from('units').select('id, short_code').in('id', unitIds)
         : Promise.resolve({ data: [] }),
@@ -173,6 +221,8 @@ export const inventoryService = {
     ]);
     console.timeEnd('inventoryOverview:parallel');
 
+    const variations = variationsPack.data;
+    const variationsError = variationsPack.error;
     if (variationsError) {
       console.warn('[INVENTORY SERVICE] product_variations fetch failed (schema may differ):', variationsError.message);
     }
@@ -312,14 +362,29 @@ export const inventoryService = {
         reorderLevel: minStock,
         // Add variation data for UI (STEP 2: Show variations with individual stock)
         hasVariations: hasVariations,
-        variations: hasVariations ? (variationMap[p.id] || []).map(v => ({
-          id: v.id,
-          sku: v.sku,
-          attributes: v.attributes,
-          stock: variationStockMap[v.id] ?? 0,
-          boxes: Math.round((variationBoxMap[v.id] ?? 0) * 100) / 100,
-          pieces: Math.round((variationPieceMap[v.id] ?? 0) * 100) / 100,
-        })) : [],
+        variations: hasVariations
+          ? (variationMap[p.id] || []).map((v: any) => {
+              const vr = v as Record<string, unknown>;
+              const attrs = publicVariationAttributes(parseVariationAttributesRaw(v.attributes));
+              const qty = variationStockMap[v.id] ?? 0;
+              const ownPurchase = variationPurchaseFromApiRow(vr);
+              const ownRetail = variationRetailFromApiRow(vr);
+              const purchasePrice = ownPurchase != null ? ownPurchase : avgCost;
+              const variationSellingPrice = ownRetail != null ? ownRetail : sellingPrice;
+              return {
+                id: v.id,
+                sku: v.sku,
+                attributes: attrs,
+                stock: qty,
+                boxes: Math.round((variationBoxMap[v.id] ?? 0) * 100) / 100,
+                pieces: Math.round((variationPieceMap[v.id] ?? 0) * 100) / 100,
+                purchasePrice,
+                sellingPrice: variationSellingPrice,
+                stockValueAtCost: qty * purchasePrice,
+                retailStockValue: qty * variationSellingPrice,
+              };
+            })
+          : [],
         isComboProduct: !!p.is_combo_product,
         comboItemCount: comboItemCountMap[p.id] ?? 0,
       } as InventoryOverviewRow & { hasVariations?: boolean; variations?: any[] };
@@ -364,7 +429,7 @@ export const inventoryService = {
       id: v.id,
       sku: v.sku || '',
       name: v.name, // optional column in some schemas
-      attributes: v.attributes || {},
+      attributes: publicVariationAttributes(parseVariationAttributesRaw(v.attributes)) as Record<string, unknown>,
       stock: stockByVariation[v.id] ?? 0,
     }));
   },
@@ -510,6 +575,36 @@ export const inventoryService = {
     return false;
   },
 
+  /** Same as parent-level rule, scoped to one variation_id (for product form opening stock edits). */
+  async allowsVariationOpeningReconcileFromProductForm(
+    companyId: string,
+    productId: string,
+    variationId: string,
+    branchId: string | null
+  ): Promise<boolean> {
+    let q = supabase
+      .from('stock_movements')
+      .select('id, reference_type, movement_type')
+      .eq('company_id', companyId)
+      .eq('product_id', productId)
+      .eq('variation_id', variationId);
+    const b = branchId && branchId !== 'all' ? branchId : null;
+    if (b) q = q.eq('branch_id', b);
+    else q = q.is('branch_id', null);
+    const { data, error } = await q;
+    if (error) {
+      console.warn('[INVENTORY] allowsVariationOpeningReconcileFromProductForm:', error);
+      return false;
+    }
+    const rows = data || [];
+    if (rows.length === 0) return true;
+    if (rows.length === 1) {
+      const r = rows[0] as { reference_type?: string | null; movement_type?: string | null };
+      return String(r.reference_type || '').toLowerCase() === 'opening_balance';
+    }
+    return false;
+  },
+
   /**
    * Returns the number of parent-level stock_movements (variation_id IS NULL) for a product.
    * Used to block enabling variations when product has parent-level stock (RULE 5).
@@ -599,6 +694,67 @@ export const inventoryService = {
       await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(id);
     } catch (jeErr) {
       console.warn('[INVENTORY] Opening stock updated but GL sync failed:', jeErr);
+    }
+    return { error: null };
+  },
+
+  /**
+   * Variation-level opening: same rules as parent — only touches a single opening_balance row per variation+branch.
+   */
+  async reconcileVariationOpeningStock(
+    companyId: string,
+    branchId: string | null,
+    productId: string,
+    variationId: string,
+    quantity: number,
+    unitCost: number
+  ): Promise<{ error: any }> {
+    const b = branchId && branchId !== 'all' ? branchId : null;
+    let q = supabase
+      .from('stock_movements')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('product_id', productId)
+      .eq('variation_id', variationId)
+      .eq('movement_type', 'adjustment')
+      .eq('reference_type', 'opening_balance');
+    if (b) q = q.eq('branch_id', b);
+    else q = q.is('branch_id', null);
+
+    const { data: openings, error: qerr } = await q;
+    if (qerr) return { error: qerr };
+
+    const qty = Number(quantity) || 0;
+    const uc = Number(unitCost) || 0;
+    const totalCost = qty * uc;
+
+    if (!openings?.length) {
+      if (qty > 0) {
+        return this.insertOpeningBalanceMovement(companyId, b, productId, qty, uc, variationId);
+      }
+      return { error: null };
+    }
+    if (openings.length > 1) {
+      console.warn(
+        '[INVENTORY] Multiple variation opening_balance movements; edit skipped for GL reconciliation',
+        variationId
+      );
+      return { error: null };
+    }
+    const id = openings[0].id as string;
+    const { error: uerr } = await supabase
+      .from('stock_movements')
+      .update({
+        quantity: qty,
+        unit_cost: uc,
+        total_cost: totalCost,
+      })
+      .eq('id', id);
+    if (uerr) return { error: uerr };
+    try {
+      await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(id);
+    } catch (jeErr) {
+      console.warn('[INVENTORY] Variation opening stock updated but GL sync failed:', jeErr);
     }
     return { error: null };
   },

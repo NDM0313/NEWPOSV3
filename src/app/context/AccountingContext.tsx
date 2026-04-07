@@ -419,6 +419,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       'sale': 'Sale',
       'sale_adjustment': 'Sale',
       'purchase': 'Purchase',
+      'purchase_adjustment': 'Purchase',
+      'purchase_reversal': 'Reversal',
       'manual_payment': 'Purchase',
       'expense': 'Expense',
       'rental': 'Rental',

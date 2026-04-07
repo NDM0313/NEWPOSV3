@@ -194,6 +194,7 @@ export const ManualEntryDialog: React.FC<ManualEntryDialogProps> = ({ isOpen, on
         toast.success('Manual entry recorded successfully');
         resetForm();
         onClose();
+        void accounting.refreshEntries?.();
       }
     } catch (error) {
       toast.error('Failed to record entry');

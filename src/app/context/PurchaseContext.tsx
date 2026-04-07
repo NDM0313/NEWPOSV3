@@ -1159,6 +1159,15 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           if (supplierId && (totalChanged || paidChanged || discountChanged) && typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
           }
+
+          try {
+            const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
+            notifyAccountingEntriesChanged();
+          } catch {
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+            }
+          }
         } catch (repostErr: any) {
           console.error('[PURCHASE CONTEXT] PF-COMPONENT: Purchase edit accounting failed:', repostErr);
           pushAccountingEditTrace({

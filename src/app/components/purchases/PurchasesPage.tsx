@@ -193,6 +193,8 @@ export const PurchasesPage = () => {
   const [purchaseReturnFormOpen, setPurchaseReturnFormOpen] = useState(false);
   const [selectedPurchaseForReturn, setSelectedPurchaseForReturn] = useState<Purchase | null>(null);
   const [purchasesWithReturns, setPurchasesWithReturns] = useState<Set<string>>(new Set());
+  /** Sum of purchase return document totals (replaces former mock card value). */
+  const [purchaseReturnsTotalAmount, setPurchaseReturnsTotalAmount] = useState(0);
   /** Standalone purchase return (no invoice) form */
   const [standalonePurchaseReturnFormOpen, setStandalonePurchaseReturnFormOpen] = useState(false);
 
@@ -551,6 +553,7 @@ export const PurchasesPage = () => {
       purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId)
         .then((list) => {
           setPurchaseReturnsList(list);
+          setPurchaseReturnsTotalAmount((list || []).reduce((s, r: any) => s + (Number(r.total) || 0), 0));
           setLoadingPurchaseReturns(false);
         })
         .catch(() => setLoadingPurchaseReturns(false));
@@ -565,13 +568,37 @@ export const PurchasesPage = () => {
         const returns = await purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId);
         const returnPurchaseIds = new Set(returns.map((r: any) => r.original_purchase_id).filter(Boolean));
         setPurchasesWithReturns(returnPurchaseIds);
+        const sumReturns = (returns || []).reduce((s, r: any) => s + (Number(r.total) || 0), 0);
+        setPurchaseReturnsTotalAmount(sumReturns);
       } catch (error) {
         console.error('[PURCHASES PAGE] Error loading purchase returns:', error);
+        setPurchaseReturnsTotalAmount(0);
       }
     };
     loadPurchasesWithReturns();
   }, [companyId, branchId]);
-  
+
+  useEffect(() => {
+    const onReturnsChanged = () => {
+      if (!companyId) return;
+      void (async () => {
+        try {
+          const returns = await purchaseReturnService.getPurchaseReturns(
+            companyId,
+            branchId === 'all' ? undefined : branchId
+          );
+          const returnPurchaseIds = new Set(returns.map((r: any) => r.original_purchase_id).filter(Boolean));
+          setPurchasesWithReturns(returnPurchaseIds);
+          setPurchaseReturnsTotalAmount((returns || []).reduce((s, r: any) => s + (Number(r.total) || 0), 0));
+        } catch {
+          /* ignore */
+        }
+      })();
+    };
+    window.addEventListener('purchaseReturnsChanged', onReturnsChanged);
+    return () => window.removeEventListener('purchaseReturnsChanged', onReturnsChanged);
+  }, [companyId, branchId]);
+
   // 🔒 CLONE FROM SALE PAGE: Re-resolve locations when branchMap is updated
   useEffect(() => {
     if (branchMap.size > 0 && purchases.length > 0) {
@@ -765,9 +792,9 @@ export const PurchasesPage = () => {
       (sum, p) => sum + (isPurchaseNonPostedCommercial(p.status) ? 0 : p.paymentDue),
       0
     ),
-    returns: 2500, // Mock value
+    returns: purchaseReturnsTotalAmount,
     orderCount: sortedPurchases.length,
-  }), [sortedPurchases]);
+  }), [sortedPurchases, purchaseReturnsTotalAmount]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -947,6 +974,7 @@ export const PurchasesPage = () => {
                     purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId)
                       .then((list) => {
                         setPurchaseReturnsList(list);
+                        setPurchaseReturnsTotalAmount((list || []).reduce((s, r: any) => s + (Number(r.total) || 0), 0));
                         setLoadingPurchaseReturns(false);
                       })
                       .catch(() => setLoadingPurchaseReturns(false));

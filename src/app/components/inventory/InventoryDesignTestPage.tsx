@@ -454,15 +454,37 @@ export const InventoryDesignTestPage = () => {
                   }
                   if (hasVariations && isExpanded && (product as any).variations?.length) {
                     ((product as any).variations as any[]).forEach((v: any) => {
-                      const variationLabel = typeof v.attributes === 'object' && v.attributes !== null && Object.keys(v.attributes).length > 0
-                        ? Object.values(v.attributes).map((val: any) => String(val)).join(' / ')
-                        : (v.sku || '—');
+                      const attrText =
+                        typeof v.attributes === 'object' && v.attributes !== null
+                          ? Object.entries(v.attributes as Record<string, string>)
+                              .filter(([, val]) => String(val).trim() !== '')
+                              .map(([k, val]) => `${k}: ${val}`)
+                              .join(' · ')
+                          : '';
+                      const vQty = Number(v.stock ?? 0);
+                      const varPurch =
+                        typeof v.purchasePrice === 'number' && Number.isFinite(v.purchasePrice)
+                          ? v.purchasePrice
+                          : product.avgCost;
+                      const varSell =
+                        typeof v.sellingPrice === 'number' && Number.isFinite(v.sellingPrice)
+                          ? v.sellingPrice
+                          : product.sellingPrice;
+                      const valueAtCost =
+                        typeof v.stockValueAtCost === 'number' && Number.isFinite(v.stockValueAtCost)
+                          ? v.stockValueAtCost
+                          : vQty * varPurch;
+                      const valueAtRetail =
+                        typeof v.retailStockValue === 'number' && Number.isFinite(v.retailStockValue)
+                          ? v.retailStockValue
+                          : vQty * varSell;
                       rows.push(
                         <tr key={`${product.id}-${v.id}`} className="bg-gray-900/60 hover:bg-gray-800/20">
                           {visibleCols.includes('actions') && <td className="px-4 py-2 text-center text-gray-600">—</td>}
                           {visibleCols.includes('product') && (
                             <td className="px-4 py-2 pl-12 min-w-[220px] w-[220px]">
-                              <span className="text-gray-400 text-sm">{variationLabel}</span>
+                              <div className="text-gray-300 text-sm font-medium leading-snug">{attrText || 'Variation'}</div>
+                              <div className="text-gray-500 text-xs font-mono mt-0.5">SKU {v.sku || '—'}</div>
                             </td>
                           )}
                           {visibleCols.includes('sku') && <td className="px-4 py-2 text-gray-500 text-sm font-mono min-w-[140px] w-[140px] whitespace-nowrap">{v.sku || v.id || '—'}</td>}
@@ -477,13 +499,23 @@ export const InventoryDesignTestPage = () => {
                           {enablePacking && visibleCols.includes('boxes') && <td className="px-4 py-2 text-center text-gray-600 tabular-nums">{formatBoxesPieces((v as any).boxes)}</td>}
                           {enablePacking && visibleCols.includes('pieces') && <td className="px-4 py-2 text-center text-gray-600 tabular-nums">{formatBoxesPieces((v as any).pieces)}</td>}
                           {enablePacking && visibleCols.includes('unit') && <td className="px-4 py-2 text-center text-gray-600">{product.unit ?? '—'}</td>}
-                          {visibleCols.includes('avgCost') && <td className="px-4 py-2 text-right text-gray-600">—</td>}
-                          {visibleCols.includes('sellingPrice') && <td className="px-4 py-2 text-right text-gray-600">—</td>}
+                          {visibleCols.includes('avgCost') && (
+                            <td className="px-4 py-2 text-right text-sm tabular-nums text-gray-300">
+                              {varPurch.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                            </td>
+                          )}
+                          {visibleCols.includes('sellingPrice') && (
+                            <td className="px-4 py-2 text-right text-sm tabular-nums text-gray-300">
+                              {varSell.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                            </td>
+                          )}
                           {visibleCols.includes('stockValue') && (() => {
-                            const val = (v.stock ?? 0) * product.sellingPrice;
                             return (
-                              <td className={cn('px-4 py-2 text-right text-sm tabular-nums', val < 0 ? 'text-red-400' : 'text-green-400/80')}>
-                                {Number(val).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                              <td className={cn('px-4 py-2 text-right text-sm tabular-nums align-top', valueAtCost < 0 ? 'text-red-400' : 'text-green-400/80')}>
+                                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-medium">At cost</div>
+                                <div>{Number(valueAtCost).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</div>
+                                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-medium mt-1">At retail</div>
+                                <div className="text-gray-400">{Number(valueAtRetail).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</div>
                               </td>
                             );
                           })()}

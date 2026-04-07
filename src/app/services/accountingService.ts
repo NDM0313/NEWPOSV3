@@ -186,6 +186,31 @@ function arJournalLineMatchesCustomer(
   return false;
 }
 
+/** All account ids from AP control (code 2000) through active descendants — matches GL RPC ap_subtree. */
+function collectDescendantAccountIds(
+  rows: { id: string; parent_id?: string | null }[],
+  rootId: string
+): string[] {
+  const children = new Map<string, string[]>();
+  for (const r of rows) {
+    const p = r.parent_id != null && String(r.parent_id).trim() !== '' ? String(r.parent_id) : '';
+    if (!children.has(p)) children.set(p, []);
+    children.get(p)!.push(String(r.id));
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const stack = [String(rootId)];
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    const ch = children.get(id) || [];
+    for (const c of ch) stack.push(c);
+  }
+  return out;
+}
+
 function supplierApJournalLineMatchesSupplier(
   line: any,
   supplierId: string,
@@ -234,22 +259,37 @@ async function fetchSupplierApGlJournalLedgerLegacy(
   startDate?: string,
   endDate?: string
 ): Promise<AccountLedgerEntry[]> {
-  const { data: rawAp } = await supabase
+  const { data: companyAccounts } = await supabase
     .from('accounts')
-    .select('id, code, name')
+    .select('id, code, name, parent_id, linked_contact_id')
     .eq('company_id', companyId)
-    .eq('is_active', true)
-    .or('code.eq.2000,name.ilike.%Accounts Payable%');
-  const apAccounts = (rawAp || []).filter((a: any) => String(a.code).trim() !== '1100');
-  if (apAccounts.length === 0) return [];
-  const apAccountIds = apAccounts.map((a: any) => a.id);
+    .eq('is_active', true);
+
+  const rows = (companyAccounts || []) as { id: string; code?: string; name?: string; parent_id?: string | null }[];
+  const apRoot = rows.find((a) => String(a.code ?? '').trim() === '2000');
+  let apAccountIds: string[];
+  if (apRoot?.id) {
+    apAccountIds = collectDescendantAccountIds(rows, String(apRoot.id));
+  } else {
+    const apAccounts = rows.filter(
+      (a) =>
+        String(a.code ?? '').trim() !== '1100' &&
+        (String(a.code ?? '').trim() === '2000' ||
+          String(a.name ?? '')
+            .toLowerCase()
+            .includes('accounts payable'))
+    );
+    if (apAccounts.length === 0) return [];
+    apAccountIds = apAccounts.map((a) => a.id);
+  }
+  const apAccountIdSet = new Set(apAccountIds);
 
   const { data: lines, error } = await supabase
     .from('journal_entry_lines')
     .select(
       `
           *,
-          account:accounts(id, name, code),
+          account:accounts(id, name, code, linked_contact_id),
           journal_entry:journal_entries(
             id, entry_no, entry_date, description, reference_type, reference_id, payment_id,
             branch_id, created_by, created_at, is_void,
@@ -283,6 +323,11 @@ async function fetchSupplierApGlJournalLedgerLegacy(
   });
 
   const supplierLines = linesToUse.filter((line: any) => {
+    if (!apAccountIdSet.has(String(line.account_id))) return false;
+    const acc = line.account;
+    if (acc?.linked_contact_id != null && String(acc.linked_contact_id) === String(supplierId)) {
+      return true;
+    }
     const entry = line.journal_entry;
     if (!entry) return false;
     const rt = String(entry.reference_type || '').toLowerCase();
@@ -575,7 +620,10 @@ export const accountingService = {
       const purchaseIdsForParty = [
         ...new Set(
           validEntries
-            .filter((e: any) => String(e.reference_type || '').toLowerCase() === 'purchase' && e.reference_id)
+            .filter((e: any) => {
+              const rt = String(e.reference_type || '').toLowerCase();
+              return (rt === 'purchase' || rt === 'purchase_adjustment') && e.reference_id;
+            })
             .map((e: any) => String(e.reference_id))
         ),
       ] as string[];
@@ -595,10 +643,12 @@ export const accountingService = {
           });
         }
       }
+      const purchasePartyRt = (t: string) =>
+        t === 'purchase' || t === 'purchase_adjustment' || t === 'purchase_return' || t === 'purchase_reversal';
       validEntries = validEntries.map((e: any) => ({
         ...e,
         _purchase_supplier_name:
-          String(e.reference_type || '').toLowerCase() === 'purchase' && e.reference_id
+          purchasePartyRt(String(e.reference_type || '').toLowerCase()) && e.reference_id
             ? purchaseSupplierNameByPurchaseId.get(String(e.reference_id))
             : undefined,
       }));
@@ -2842,6 +2892,15 @@ export const accountingService = {
       .insert(linesData);
 
     if (linesError) throw linesError;
+
+    try {
+      const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
+      notifyAccountingEntriesChanged();
+    } catch {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+      }
+    }
 
     // Return entry with lines
     return {

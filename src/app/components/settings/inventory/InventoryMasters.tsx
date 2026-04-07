@@ -3,7 +3,8 @@
  * List, Add, Edit, Activate/Deactivate per master.
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Package, Ruler, FolderTree, FolderOpen, Tag, Plus, Edit, Power, PowerOff, Loader2, X } from 'lucide-react';
+import { Package, Ruler, FolderTree, FolderOpen, Tag, Plus, Edit, Power, PowerOff, Loader2, X, Layers } from 'lucide-react';
+import { VariationAttributesMaster } from './VariationAttributesMaster';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -22,7 +23,7 @@ import {
 import { Badge } from '@/app/components/ui/badge';
 import { cn } from '@/app/components/ui/utils';
 
-export type InventoryMasterTab = 'general' | 'units' | 'categories' | 'sub-categories' | 'brands';
+export type InventoryMasterTab = 'general' | 'units' | 'categories' | 'sub-categories' | 'brands' | 'variations';
 
 interface InventoryMastersProps {
   /** Current sub-tab (from parent when embedded in Settings) */
@@ -38,6 +39,7 @@ const SUB_TABS: { id: InventoryMasterTab; label: string; icon: React.ElementType
   { id: 'categories', label: 'Categories', icon: FolderTree },
   { id: 'sub-categories', label: 'Sub-Categories', icon: FolderOpen },
   { id: 'brands', label: 'Brands', icon: Tag },
+  { id: 'variations', label: 'Variations', icon: Layers },
 ];
 
 export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent }: InventoryMastersProps) {
@@ -307,6 +309,8 @@ export function InventoryMasters({ activeSubTab, onSubTabChange, generalContent 
       </div>
 
       {activeSubTab === 'general' && generalContent}
+
+      {activeSubTab === 'variations' && <VariationAttributesMaster />}
 
       {activeSubTab === 'units' && (
         <div>

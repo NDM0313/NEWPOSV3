@@ -490,6 +490,12 @@ export const openingBalanceJournalService = {
     if (amt < MONEY_EPS) {
       const ex = await findActiveOpeningEntry(companyId, OPENING_BALANCE_REFERENCE.INVENTORY_OPENING, movementId);
       if (ex) await voidJournalEntry(ex.id);
+      try {
+        const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
+        notifyAccountingEntriesChanged();
+      } catch {
+        /* ignore */
+      }
       return;
     }
 
@@ -500,7 +506,15 @@ export const openingBalanceJournalService = {
       primaryAccountId: invId,
       expectedPrimaryNet: amt,
     });
-    if (ok) return;
+    if (ok) {
+      try {
+        const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
+        notifyAccountingEntriesChanged();
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
 
     let productLabel = '';
     try {
@@ -508,6 +522,32 @@ export const openingBalanceJournalService = {
       if (p) productLabel = `${(p as { sku?: string }).sku || ''} ${(p as { name?: string }).name || ''}`.trim();
     } catch {
       /* ignore */
+    }
+    const vid = (m as { variation_id?: string | null }).variation_id;
+    if (vid) {
+      try {
+        const { data: pv } = await supabase
+          .from('product_variations')
+          .select('sku, attributes')
+          .eq('id', vid)
+          .maybeSingle();
+        if (pv) {
+          const vsku = String((pv as { sku?: string }).sku || '').trim();
+          const attrs = (pv as { attributes?: unknown }).attributes;
+          let summary = '';
+          if (attrs && typeof attrs === 'object' && !Array.isArray(attrs)) {
+            summary = Object.entries(attrs as Record<string, unknown>)
+              .filter(([k]) => !String(k).startsWith('__erp'))
+              .map(([k, val]) => `${k}:${String(val ?? '').trim()}`)
+              .filter((s) => !s.endsWith(':'))
+              .join(' · ');
+          }
+          const varBit = [vsku, summary].filter(Boolean).join(' — ');
+          if (varBit) productLabel = productLabel ? `${productLabel} — ${varBit}` : varBit;
+        }
+      } catch {
+        /* ignore */
+      }
     }
 
     await postBalancedOpening({

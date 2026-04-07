@@ -186,11 +186,22 @@ export const InventoryDashboardNew = () => {
       }
     };
 
+    const handleProductsUpdated = () => {
+      loadOverview();
+      if (activeTab === 'analytics') loadMovements();
+    };
+    const handleAccountingChanged = () => {
+      loadOverview();
+      if (activeTab === 'analytics') loadMovements();
+    };
+
     window.addEventListener('purchaseSaved', handlePurchaseSaved);
     window.addEventListener('purchaseDeleted', handlePurchaseDeleted);
     window.addEventListener('saleSaved', handleSaleSaved);
     window.addEventListener('saleDeleted', handleSaleDeleted);
     window.addEventListener('paymentAdded', handlePaymentAdded);
+    window.addEventListener('products-updated', handleProductsUpdated);
+    window.addEventListener('accountingEntriesChanged', handleAccountingChanged);
 
     return () => {
       window.removeEventListener('purchaseSaved', handlePurchaseSaved);
@@ -198,6 +209,8 @@ export const InventoryDashboardNew = () => {
       window.removeEventListener('saleSaved', handleSaleSaved);
       window.removeEventListener('saleDeleted', handleSaleDeleted);
       window.removeEventListener('paymentAdded', handlePaymentAdded);
+      window.removeEventListener('products-updated', handleProductsUpdated);
+      window.removeEventListener('accountingEntriesChanged', handleAccountingChanged);
     };
     // 🔒 FIX: Remove loadOverview and loadMovements from dependencies to prevent re-registration
     // These functions are stable (useCallback), but including them causes unnecessary re-renders
@@ -729,12 +742,40 @@ export const InventoryDashboardNew = () => {
                               {product.sellingPrice.toLocaleString()}
                             </td>
                           );
-                        case 'stockValue':
+                        case 'stockValue': {
+                          const vars = (product as { variations?: Array<{ stock?: number; stockValueAtCost?: number; retailStockValue?: number; purchasePrice?: number; sellingPrice?: number }> }).variations;
+                          if (product.hasVariations && vars?.length) {
+                            const atCost = vars.reduce(
+                              (s, v) =>
+                                s +
+                                (typeof v.stockValueAtCost === 'number' && Number.isFinite(v.stockValueAtCost)
+                                  ? v.stockValueAtCost
+                                  : (v.stock ?? 0) * (v.purchasePrice ?? product.avgCost)),
+                              0
+                            );
+                            const atRetail = vars.reduce(
+                              (s, v) =>
+                                s +
+                                (typeof v.retailStockValue === 'number' && Number.isFinite(v.retailStockValue)
+                                  ? v.retailStockValue
+                                  : (v.stock ?? 0) * (v.sellingPrice ?? product.sellingPrice)),
+                              0
+                            );
+                            return (
+                              <td key={key} className={cn('px-4 py-2 text-right text-sm tabular-nums align-top', atCost < 0 ? 'text-red-400' : 'text-gray-300')}>
+                                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-medium">At cost (Σ var.)</div>
+                                <div className="font-medium">{formatDecimal(atCost)}</div>
+                                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-medium mt-1">At retail (Σ var.)</div>
+                                <div className="text-gray-400">{formatDecimal(atRetail)}</div>
+                              </td>
+                            );
+                          }
                           return (
                             <td key={key} className={cn('px-4 py-2 text-right text-sm tabular-nums', product.stockValue < 0 ? 'text-red-400' : 'text-gray-300')}>
                               {formatDecimal(product.stockValue)}
                             </td>
                           );
+                        }
                         case 'movement':
                           return (
                             <td key={key} className="px-4 py-2 text-center">
@@ -777,12 +818,46 @@ export const InventoryDashboardNew = () => {
                       </tr>
                     );
                     // RULE 3: Display stock per variation (sub-rows under parent)
-                    const variations = (product as any).variations as Array<{ id: string; sku?: string; attributes: any; stock: number }> | undefined;
+                    const variations = (product as any).variations as
+                      | Array<{
+                          id: string;
+                          sku?: string;
+                          attributes?: Record<string, string>;
+                          stock: number;
+                          boxes?: number;
+                          pieces?: number;
+                          purchasePrice?: number;
+                          sellingPrice?: number;
+                          stockValueAtCost?: number;
+                          retailStockValue?: number;
+                        }>
+                      | undefined;
                     if (product.hasVariations && variations?.length) {
                       variations.forEach((v) => {
-                        const attrText = typeof v.attributes === 'object' && v.attributes !== null
-                          ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(', ')
-                          : String(v.attributes || '');
+                        const attrText =
+                          typeof v.attributes === 'object' && v.attributes !== null
+                            ? Object.entries(v.attributes)
+                                .filter(([, val]) => String(val).trim() !== '')
+                                .map(([k, val]) => `${k}: ${val}`)
+                                .join(' · ')
+                            : '';
+                        const vQty = v.stock ?? 0;
+                        const varPurch =
+                          typeof v.purchasePrice === 'number' && Number.isFinite(v.purchasePrice)
+                            ? v.purchasePrice
+                            : product.avgCost;
+                        const varSell =
+                          typeof v.sellingPrice === 'number' && Number.isFinite(v.sellingPrice)
+                            ? v.sellingPrice
+                            : product.sellingPrice;
+                        const valueAtCost =
+                          typeof v.stockValueAtCost === 'number' && Number.isFinite(v.stockValueAtCost)
+                            ? v.stockValueAtCost
+                            : vQty * varPurch;
+                        const valueAtRetail =
+                          typeof v.retailStockValue === 'number' && Number.isFinite(v.retailStockValue)
+                            ? v.retailStockValue
+                            : vQty * varSell;
                         const renderVariationCell = (key: string) => {
                           const dash = <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs">—</td>;
                           const dashRight = <td key={key} className="px-4 py-1.5 text-right text-gray-500 text-xs">—</td>;
@@ -790,9 +865,13 @@ export const InventoryDashboardNew = () => {
                           if (key === 'product') {
                             return (
                               <td key={key} className="px-4 py-1.5 pl-10">
-                                <div className="text-gray-400 text-[11px]">
-                                  <span className="font-mono">└ SKU: {v.sku || 'N/A'}</span>
-                                  {attrText && <p className="text-gray-500 mt-0.5 text-[10px]">{attrText}</p>}
+                                <div className="text-gray-400 text-[11px] space-y-0.5">
+                                  <p className="text-gray-300 text-xs font-medium leading-snug">
+                                    {attrText || 'Variation'}
+                                  </p>
+                                  <span className="font-mono text-[10px] text-gray-500 block">
+                                    SKU {v.sku || '—'}
+                                  </span>
                                 </div>
                               </td>
                             );
@@ -807,16 +886,45 @@ export const InventoryDashboardNew = () => {
                           }
                           if (key === 'boxes') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{formatBoxesPieces((v as any).boxes)}</td>;
                           if (key === 'pieces') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{formatBoxesPieces((v as any).pieces)}</td>;
-                          if (key === 'unit') return <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono tabular-nums">{formatDecimal(v.stock ?? 0)}</td>;
-                          if (key === 'stockValue') {
-                            const val = (v.stock ?? 0) * product.sellingPrice;
+                          if (key === 'unit') {
                             return (
-                              <td key={key} className={cn('px-4 py-1.5 text-right text-xs tabular-nums', val < 0 ? 'text-red-400' : 'text-green-400/80')}>
-                                {val.toLocaleString()}
+                              <td key={key} className="px-4 py-1.5 text-center text-gray-500 text-xs font-mono">
+                                {product.unit}
                               </td>
                             );
                           }
-                          if (['sku', 'category', 'avgCost', 'sellingPrice', 'movement', 'status'].includes(key)) return key === 'sku' ? dashLeft : dash;
+                          if (key === 'sku') {
+                            return (
+                              <td key={key} className="px-4 py-1.5 text-gray-400 font-mono text-xs whitespace-nowrap">
+                                {v.sku || '—'}
+                              </td>
+                            );
+                          }
+                          if (key === 'avgCost') {
+                            return (
+                              <td key={key} className={cn('px-4 py-1.5 text-right text-xs tabular-nums', varPurch < 0 ? 'text-red-400' : 'text-green-400/90')}>
+                                {varPurch.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                              </td>
+                            );
+                          }
+                          if (key === 'sellingPrice') {
+                            return (
+                              <td key={key} className={cn('px-4 py-1.5 text-right text-xs tabular-nums', varSell < 0 ? 'text-red-400' : 'text-green-400/90')}>
+                                {varSell.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                              </td>
+                            );
+                          }
+                          if (key === 'stockValue') {
+                            return (
+                              <td key={key} className={cn('px-4 py-1.5 text-right text-xs tabular-nums align-top', valueAtCost < 0 ? 'text-red-400' : 'text-gray-200')}>
+                                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-medium">At cost</div>
+                                <div className="tabular-nums font-medium">{formatDecimal(valueAtCost)}</div>
+                                <div className="text-[10px] uppercase tracking-wide text-gray-500 font-medium mt-1">At retail</div>
+                                <div className="tabular-nums text-gray-400">{formatDecimal(valueAtRetail)}</div>
+                              </td>
+                            );
+                          }
+                          if (['category', 'movement', 'status'].includes(key)) return dash;
                           if (key === 'actions') return <td key={key} className="px-4 py-1.5 text-center print:hidden text-xs">—</td>;
                           return dash;
                         };

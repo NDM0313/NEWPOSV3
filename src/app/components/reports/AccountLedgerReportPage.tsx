@@ -289,7 +289,7 @@ export const AccountLedgerReportPage: React.FC<{
         }
       })
       .finally(() => setLoadingAccounts(false));
-  }, [companyId, branchId]);
+  }, [companyId, branchId, journalRefreshTick]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -392,11 +392,27 @@ export const AccountLedgerReportPage: React.FC<{
             return;
           }
           const accRow = accounts.find((x) => x.id === applied.selectedAccountId);
-          const lc = accRow?.linked_contact_id ? String(accRow.linked_contact_id).trim() : '';
+          let lc = accRow?.linked_contact_id ? String(accRow.linked_contact_id).trim() : '';
           const accountsByIdMap = new Map(accounts.map((a) => [a.id, a]));
           const ancestorId = accRow ? nearestPartyControlAncestorId(accRow, accountsByIdMap as any) : null;
           const ctrl = ancestorId ? accountsByIdMap.get(ancestorId) : undefined;
           const ctrlCode = String(ctrl?.code || '').trim();
+
+          if (!lc && accRow?.name && companyId) {
+            if (ctrlCode === '2000') {
+              const resolved = await contactService.resolveSupplierContactIdFromSubledgerAccountName(
+                companyId,
+                accRow.name
+              );
+              if (resolved) lc = resolved;
+            } else if (ctrlCode === '1100') {
+              const resolved = await contactService.resolveCustomerContactIdFromSubledgerAccountName(
+                companyId,
+                accRow.name
+              );
+              if (resolved) lc = resolved;
+            }
+          }
 
           if (lc && ctrl && (ctrlCode === '1100' || ctrlCode === '2000' || ctrlCode === '2010' || ctrlCode === '1180')) {
             if (ctrlCode === '2000') {

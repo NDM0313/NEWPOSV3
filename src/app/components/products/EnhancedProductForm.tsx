@@ -6,7 +6,12 @@ import * as z from "zod";
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
-import { productService } from '@/app/services/productService';
+import {
+  productService,
+  mapProductVariationApiToFormRow,
+  formatVariationName,
+} from '@/app/services/productService';
+import { variationMasterService } from '@/app/services/variationMasterService';
 import { inventoryService } from '@/app/services/inventoryService';
 import { brandService } from '@/app/services/brandService';
 import { productCategoryService } from '@/app/services/productCategoryService';
@@ -15,6 +20,7 @@ import { contactService } from '@/app/services/contactService';
 import { comboService } from '@/app/services/comboService';
 import { supabase } from '@/lib/supabase';
 import { uploadProductImages } from '@/app/utils/productImageUpload';
+import { parseVariationAttributesRaw, publicVariationAttributes } from '@/app/utils/variationFieldMap';
 import { ProductImage } from './ProductImage';
 import { getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
 import { toast } from 'sonner';
@@ -169,13 +175,19 @@ export const EnhancedProductForm = ({
   /** When in edit mode, full product fetched from API (with variations, category_id, etc.). Form hydrates from this. */
   const [fullProductForEdit, setFullProductForEdit] = useState<any>(null);
   const [loadingFullProduct, setLoadingFullProduct] = useState(false);
-  const [generatedVariations, setGeneratedVariations] = useState<Array<{
-    combination: Record<string, string>;
-    sku: string;
-    price: number;
-    stock: number;
-    barcode: string;
-  }>>([]);
+  const [generatedVariations, setGeneratedVariations] = useState<
+    Array<{
+      id?: string;
+      combination: Record<string, string>;
+      sku: string;
+      price: number;
+      purchasePrice: number;
+      stock: number;
+      barcode: string;
+    }>
+  >([]);
+  /** Settings → Inventory → Variations master (searchable picks + inline merge). */
+  const [variationMaster, setVariationMaster] = useState<Record<string, string[]>>({});
   const [productsWithVariations, setProductsWithVariations] = useState<Array<{ id: string; name: string; sku: string; variations?: Array<{ attributes?: Record<string, string> }> }>>([]);
   const [variationsForCopy, setVariationsForCopy] = useState<Array<{ productId: string; variationId: string; product: any; supplierName: string; label: string }>>([]);
   const [loadingProductsWithVariations, setLoadingProductsWithVariations] = useState(false);
@@ -249,6 +261,17 @@ export const EnhancedProductForm = ({
   const stockManagement = watch("stockManagement");
   const purchasePrice = watch("purchasePrice");
   const margin = watch("margin");
+  const selectedUnitId = watch('unit');
+  const selectedUnitAllowsDecimal =
+    units.find((u) => u.id === selectedUnitId)?.allow_decimal ?? false;
+
+  const parseVariationQtyInput = (raw: string): number => {
+    if (selectedUnitAllowsDecimal) {
+      const n = parseFloat(raw);
+      return Number.isFinite(n) ? Math.max(0, n) : 0;
+    }
+    return Math.max(0, parseInt(raw, 10) || 0);
+  };
 
   // Load only parent-level categories (no sub-categories in this dropdown)
   useEffect(() => {
@@ -324,6 +347,13 @@ export const EnhancedProductForm = ({
     };
     loadUnits();
   }, [companyId, initialProduct, setValue, getValues, settings.inventorySettings?.defaultUnitId]);
+
+  // Load full variation master whenever company is known (not gated on enableVariations — avoids empty
+  // datalists until toggle; ensures COLOR/SIZE/etc. match Settings → Inventory → Variations).
+  useEffect(() => {
+    if (!companyId) return;
+    variationMasterService.get(companyId).then(setVariationMaster).catch(() => setVariationMaster({}));
+  }, [companyId]);
 
   // Load suppliers from contacts (type = supplier)
   useEffect(() => {
@@ -475,6 +505,7 @@ export const EnhancedProductForm = ({
 
   // Pre-populate form when editing – use full product from API when available so all fields + variations hydrate
   useEffect(() => {
+    let cancelled = false;
     const source = fullProductForEdit ?? initialProduct;
     if (source) {
       setValue('name', source.name || '');
@@ -511,32 +542,53 @@ export const EnhancedProductForm = ({
         setValue('subCategory', '');
       }
       if (source.variations && Array.isArray(source.variations) && source.variations.length > 0) {
-        const attrs = source.variations[0]?.attributes;
-        const attrObj = typeof attrs === 'object' && attrs !== null ? attrs : {};
-        const attrNames = Object.keys(attrObj);
+        const firstParsed = publicVariationAttributes(
+          parseVariationAttributesRaw(source.variations[0]?.attributes)
+        );
+        const attrNames = Object.keys(firstParsed).sort((a, b) => a.localeCompare(b));
         if (attrNames.length > 0) {
           const valuesByAttr: Record<string, Set<string>> = {};
-          attrNames.forEach((k) => { valuesByAttr[k] = new Set(); });
+          attrNames.forEach((k) => {
+            valuesByAttr[k] = new Set();
+          });
           source.variations.forEach((v: any) => {
-            const a = typeof v.attributes === 'object' && v.attributes !== null ? v.attributes : {};
+            const a = publicVariationAttributes(parseVariationAttributesRaw(v.attributes));
             attrNames.forEach((k) => {
               if (a[k] != null && a[k] !== '') valuesByAttr[k].add(String(a[k]));
             });
           });
-          setVariantAttributes(attrNames.map((name) => ({
-            name,
-            values: Array.from(valuesByAttr[name] || []),
-          })));
+          setVariantAttributes(
+            attrNames.map((name) => ({
+              name,
+              values: Array.from(valuesByAttr[name] || []).sort((a, b) => a.localeCompare(b)),
+            }))
+          );
         } else {
           setVariantAttributes([]);
         }
-        setGeneratedVariations(source.variations.map((v: any) => ({
-          combination: typeof v.attributes === 'object' && v.attributes !== null ? { ...v.attributes } : {},
-          sku: v.sku || '',
-          price: Number(v.price) || 0,
-          stock: Number(v.stock) ?? 0,
-          barcode: v.barcode || '',
-        })));
+        const mapped = (source.variations as any[]).map((v) =>
+          mapProductVariationApiToFormRow(v as Record<string, unknown>)
+        );
+        const pid = (source as any).uuid || (source as any).id;
+        (async () => {
+          if (companyId && pid && mapped.some((m) => m.id)) {
+            const branchScope = branchId && branchId !== 'all' ? branchId : null;
+            const withMovement = await Promise.all(
+              mapped.map(async (row) => {
+                if (!row.id) return row;
+                try {
+                  const qty = await inventoryService.getStock(companyId, pid as string, row.id, branchScope);
+                  return { ...row, stock: qty };
+                } catch {
+                  return row;
+                }
+              })
+            );
+            if (!cancelled) setGeneratedVariations(withMovement);
+          } else if (!cancelled) {
+            setGeneratedVariations(mapped);
+          }
+        })();
       } else {
         setGeneratedVariations([]);
         setVariantAttributes([]);
@@ -555,7 +607,10 @@ export const EnhancedProductForm = ({
       setGeneratedVariations([]);
       setVariantAttributes([]);
     }
-  }, [fullProductForEdit, initialProduct, setValue]);
+    return () => {
+      cancelled = true;
+    };
+  }, [fullProductForEdit, initialProduct, setValue, companyId, branchId]);
 
   /** Movement-based stock for edit (products.current_stock is not selected in getProduct). */
   useEffect(() => {
@@ -741,20 +796,44 @@ export const EnhancedProductForm = ({
   };
 
   // Variations Functions
+  const persistVariationMasterMerge = async (next: Record<string, string[]>) => {
+    if (!companyId) return;
+    try {
+      await variationMasterService.save(companyId, next);
+      setVariationMaster(next);
+    } catch {
+      /* non-blocking */
+    }
+  };
+
   const addVariantAttribute = () => {
-    if (newAttributeName.trim() && !variantAttributes.some(attr => attr.name === newAttributeName.trim())) {
-      setVariantAttributes([...variantAttributes, { name: newAttributeName.trim(), values: [] }]);
+    const name = newAttributeName.trim();
+    if (name && !variantAttributes.some((attr) => attr.name === name)) {
+      setVariantAttributes([...variantAttributes, { name, values: [] }]);
       setNewAttributeName('');
+      if (companyId) {
+        const next = { ...variationMaster };
+        if (!next[name]) next[name] = [];
+        void persistVariationMasterMerge(next);
+      }
     }
   };
 
   const addAttributeValue = () => {
     if (selectedAttributeIndex !== null && newAttributeValue.trim()) {
       const updatedAttributes = [...variantAttributes];
-      if (!updatedAttributes[selectedAttributeIndex].values.includes(newAttributeValue.trim())) {
-        updatedAttributes[selectedAttributeIndex].values.push(newAttributeValue.trim());
+      const val = newAttributeValue.trim();
+      const attrName = updatedAttributes[selectedAttributeIndex].name;
+      if (!updatedAttributes[selectedAttributeIndex].values.includes(val)) {
+        updatedAttributes[selectedAttributeIndex].values.push(val);
         setVariantAttributes(updatedAttributes);
         setNewAttributeValue('');
+        if (companyId && attrName) {
+          const next = { ...variationMaster };
+          const list = new Set([...(next[attrName] || []), val]);
+          next[attrName] = Array.from(list).sort((a, b) => a.localeCompare(b));
+          void persistVariationMasterMerge(next);
+        }
       }
     }
   };
@@ -772,14 +851,14 @@ export const EnhancedProductForm = ({
   };
 
   /** Copy attribute structure from an existing product's variations */
-  const copyAttributesFromProduct = (product: { variations?: Array<{ attributes?: Record<string, string> }> }) => {
+  const copyAttributesFromProduct = (product: { variations?: Array<{ attributes?: unknown }> }) => {
     const vars = product.variations || [];
     if (vars.length === 0) return;
     const attrMap: Record<string, Set<string>> = {};
     for (const v of vars) {
-      const attrs = v.attributes || {};
+      const attrs = publicVariationAttributes(parseVariationAttributesRaw(v.attributes));
       for (const [key, val] of Object.entries(attrs)) {
-        if (!key || val == null) continue;
+        if (!key || val == null || val === '') continue;
         if (!attrMap[key]) attrMap[key] = new Set();
         attrMap[key].add(String(val));
       }
@@ -803,30 +882,42 @@ export const EnhancedProductForm = ({
     return arrays.reduce((a, b) => a.flatMap(d => b.map(e => [...(Array.isArray(d) ? d : [d]), e])), [[]] as string[][]);
   };
 
+  const variationComboKey = (combinationObj: Record<string, string>) =>
+    variantAttributes.map((a) => `${a.name}=${combinationObj[a.name] ?? ''}`).join('|');
+
   const generateVariations = () => {
-    const attributeValues = variantAttributes.map(attr => attr.values);
+    const attributeValues = variantAttributes.map((attr) => attr.values);
     const combinations = cartesianProduct(attributeValues);
     if (combinations.length > MAX_VARIATIONS) {
       toast.error(`Variation limit (${MAX_VARIATIONS}) exceeded. You have ${combinations.length} combinations. Reduce attribute values or use fewer attributes.`);
       return;
     }
     const baseSku = (getValues('sku') || '').trim() || generateSKU();
-    
+
     const basicSellingPrice = getValues('sellingPrice') ?? 0;
+    const basicPurchasePrice = getValues('purchasePrice') ?? 0;
+    const existingByCombo = new Map(generatedVariations.map((ev) => [variationComboKey(ev.combination), ev]));
+
     const newVariations = combinations.map((combination, index) => {
       const combinationObj: Record<string, string> = {};
       variantAttributes.forEach((attr, i) => {
         combinationObj[attr.name] = combination[i];
       });
+      const prev = existingByCombo.get(variationComboKey(combinationObj));
+      if (prev) {
+        return { ...prev, combination: combinationObj };
+      }
       return {
+        id: undefined as string | undefined,
         combination: combinationObj,
         sku: `${baseSku}-V${index + 1}`,
         price: Number(basicSellingPrice) || 0,
+        purchasePrice: Number(basicPurchasePrice) || 0,
         stock: 0,
         barcode: '',
       };
     });
-    
+
     setGeneratedVariations(newVariations);
   };
 
@@ -1072,6 +1163,93 @@ export const EnhancedProductForm = ({
         const result = await productService.updateProduct(productId, productData);
 
         const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
+
+        if (enableVariations && generatedVariations.length > 0 && finalCompanyId) {
+          const parentCost = Number(data.purchasePrice) || 0;
+          const parentSell = Number(data.sellingPrice) || 0;
+          for (const row of generatedVariations) {
+            const purchN = Number(row.purchasePrice);
+            const sellN = Number(row.price);
+            const cost = Number.isFinite(purchN) ? purchN : parentCost;
+            const selling = Number.isFinite(sellN) ? sellN : parentSell;
+            if (import.meta.env.DEV) {
+              if (row.id && !Number.isFinite(purchN)) {
+                console.warn(
+                  '[PRODUCT FORM] Variation update: purchasePrice not a finite number; using parent cost',
+                  row.id,
+                  row
+                );
+              }
+              if (row.id && !Number.isFinite(sellN)) {
+                console.warn(
+                  '[PRODUCT FORM] Variation update: selling price not finite; using parent selling price',
+                  row.id,
+                  row
+                );
+              }
+            }
+            const name = formatVariationName(row.combination);
+            try {
+              if (row.id) {
+                await productService.updateVariation(row.id, {
+                  sku: row.sku,
+                  barcode: row.barcode || null,
+                  attributes: row.combination,
+                  name,
+                  cost_price: cost,
+                  retail_price: selling,
+                  wholesale_price: null,
+                  price: selling,
+                });
+                const allowV = await inventoryService.allowsVariationOpeningReconcileFromProductForm(
+                  finalCompanyId,
+                  productId,
+                  row.id,
+                  branchIdOrNull
+                );
+                if (allowV) {
+                  const { error: vMovErr } = await inventoryService.reconcileVariationOpeningStock(
+                    finalCompanyId,
+                    branchIdOrNull,
+                    productId,
+                    row.id,
+                    parseVariationQtyInput(String(row.stock ?? '')),
+                    cost
+                  );
+                  if (vMovErr) console.error('[PRODUCT FORM] Variation opening reconcile failed:', vMovErr);
+                }
+              } else {
+                const q = parseVariationQtyInput(String(row.stock ?? ''));
+                const created = await productService.createVariation({
+                  product_id: productId,
+                  name,
+                  sku: row.sku,
+                  barcode: row.barcode || null,
+                  attributes: row.combination,
+                  cost_price: cost,
+                  retail_price: selling,
+                  current_stock: q,
+                });
+                const vid = (created as { id?: string })?.id;
+                if (q > 0 && vid && finalCompanyId) {
+                  const { error: movErr } = await inventoryService.insertOpeningBalanceMovement(
+                    finalCompanyId,
+                    branchIdOrNull,
+                    productId,
+                    q,
+                    cost,
+                    vid
+                  );
+                  if (movErr) console.error('[PRODUCT FORM] Variation opening movement failed:', movErr);
+                }
+              }
+            } catch (ve: unknown) {
+              console.error('[PRODUCT FORM] Variation save failed:', ve);
+              toast.warning('Product saved but one or more variations failed to save. Check the Variations tab.');
+            }
+          }
+        }
+
         const canReconcileOpening = await inventoryService.allowsParentOpeningReconcileFromProductForm(
           finalCompanyId,
           productId,
@@ -1153,45 +1331,46 @@ export const EnhancedProductForm = ({
             return;
           }
           try {
-            const variationsToSave = generatedVariations.map(variation => ({
-              product_id: result.id,
-              sku: variation.sku,
-              barcode: variation.barcode || null,
-              attributes: variation.combination,
-              price: variation.price || null,
-              stock: variation.stock || 0,
-              is_active: true,
-            }));
-
-            const { data: insertedVariations, error: variationsError } = await supabase
-              .from('product_variations')
-              .insert(variationsToSave)
-              .select('id, stock');
-
-            if (variationsError) {
-              console.error('[PRODUCT FORM] Error saving variations:', variationsError);
-              toast.warning('Product saved but variations could not be saved. Please add them manually.');
-            } else {
-              // RULE 1: Opening stock per variation – insert opening_balance movement for each variation with stock > 0
-              const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
-              const cost = Number(data.purchasePrice) || 0;
-              for (let i = 0; i < (insertedVariations?.length || 0); i++) {
-                const v = insertedVariations[i];
-                const qty = Number(v?.stock) || (generatedVariations[i]?.stock ?? 0) || 0;
-                if (qty > 0 && v?.id && finalCompanyId) {
-                  const { error: movErr } = await inventoryService.insertOpeningBalanceMovement(
-                    finalCompanyId,
-                    branchIdOrNull,
-                    result.id,
-                    qty,
-                    cost,
-                    v.id
-                  );
-                  if (movErr) console.error('[PRODUCT FORM] Opening balance for variation failed:', movErr);
-                }
+            const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
+            const parentCost = Number(data.purchasePrice) || 0;
+            const parentSell = Number(data.sellingPrice) || 0;
+            for (const variation of generatedVariations) {
+              const purchN = Number(variation.purchasePrice);
+              const sellN = Number(variation.price);
+              const cost = Number.isFinite(purchN) ? purchN : parentCost;
+              const retail = Number.isFinite(sellN) ? sellN : parentSell;
+              if (import.meta.env.DEV && !Number.isFinite(purchN)) {
+                console.warn(
+                  '[PRODUCT FORM] Variation create: purchasePrice not finite; using parent cost',
+                  variation.sku,
+                  variation
+                );
               }
-              toast.success(`Product created with ${generatedVariations.length} variations!`);
+              const q = parseVariationQtyInput(String(variation.stock ?? ''));
+              const created = await productService.createVariation({
+                product_id: result.id,
+                name: formatVariationName(variation.combination),
+                sku: variation.sku,
+                barcode: variation.barcode || null,
+                attributes: variation.combination,
+                cost_price: cost,
+                retail_price: retail,
+                current_stock: q,
+              });
+              const vid = (created as { id?: string })?.id;
+              if (q > 0 && vid && finalCompanyId) {
+                const { error: movErr } = await inventoryService.insertOpeningBalanceMovement(
+                  finalCompanyId,
+                  branchIdOrNull,
+                  result.id,
+                  q,
+                  cost,
+                  vid
+                );
+                if (movErr) console.error('[PRODUCT FORM] Opening balance for variation failed:', movErr);
+              }
             }
+            toast.success(`Product created with ${generatedVariations.length} variations!`);
           } catch (variationsError) {
             console.error('[PRODUCT FORM] Error saving variations:', variationsError);
             toast.warning('Product saved but variations could not be saved. Please add them manually.');
@@ -1893,6 +2072,7 @@ export const EnhancedProductForm = ({
                     <Input
                       id="initial-stock"
                       type="number"
+                      step={selectedUnitAllowsDecimal ? 'any' : 1}
                       disabled={enableVariations || isComboProduct}
                       {...register("initialStock", { setValueAs: setValueAsNumber })}
                       placeholder="0"
@@ -2201,7 +2381,17 @@ export const EnhancedProductForm = ({
               <h3 className="text-lg font-semibold border-l-4 border-blue-500 pl-3">
                 Step 1: Define Variation Attributes
               </h3>
-              
+              <p className="text-xs text-gray-500">
+                Pick from Settings → Inventory → Variations master or type new names; values can be chosen from saved lists per attribute.
+              </p>
+              <datalist id="variation-master-attr-names">
+                {Object.keys(variationMaster)
+                  .sort((a, b) => a.localeCompare(b))
+                  .map((k) => (
+                    <option key={k} value={k} />
+                  ))}
+              </datalist>
+
               <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
                 <Label className="text-gray-200 mb-2 block">Add New Attribute (e.g., Size, Color, Material)</Label>
                 <div className="flex items-center gap-2">
@@ -2211,6 +2401,7 @@ export const EnhancedProductForm = ({
                     onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addVariantAttribute())}
                     placeholder="Enter attribute name (e.g., Color)"
                     className="bg-gray-900 border-gray-700 text-white"
+                    list="variation-master-attr-names"
                   />
                   <button
                     type="button"
@@ -2243,6 +2434,11 @@ export const EnhancedProductForm = ({
 
                       {/* Add Values */}
                       <div className="mb-3">
+                        <datalist id={`variation-master-values-${attr.name.replace(/\s+/g, '-')}`}>
+                          {(variationMaster[attr.name] || []).map((v) => (
+                            <option key={v} value={v} />
+                          ))}
+                        </datalist>
                         <div className="flex items-center gap-2">
                           <Input
                             value={selectedAttributeIndex === attrIndex ? newAttributeValue : ''}
@@ -2257,6 +2453,7 @@ export const EnhancedProductForm = ({
                             }}
                             placeholder={`Add ${attr.name} value (e.g., Red, Blue)`}
                             className="bg-gray-900 border-gray-700 text-white text-sm"
+                            list={`variation-master-values-${attr.name.replace(/\s+/g, '-')}`}
                           />
                           <button
                             type="button"
@@ -2358,7 +2555,8 @@ export const EnhancedProductForm = ({
                               </th>
                             ))}
                             <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">SKU</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Price</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Purchase Price</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Selling Price</th>
                             <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Opening Stock</th>
                             <th className="px-4 py-3 text-left text-sm font-semibold text-gray-300">Barcode</th>
                           </tr>
@@ -2390,31 +2588,54 @@ export const EnhancedProductForm = ({
                                 <Input
                                   type="number"
                                   step={0.01}
-                                  value={variation.price != null && variation.price !== '' ? variation.price : (watch('sellingPrice') ?? 0)}
+                                  min={0}
+                                  value={Number.isFinite(Number(variation.purchasePrice)) ? variation.purchasePrice : 0}
                                   onChange={(e) => {
                                     const updated = [...generatedVariations];
                                     const v = parseFloat(e.target.value);
-                                    updated[index].price = Number.isNaN(v) ? (watch('sellingPrice') ?? 0) : v;
+                                    updated[index].purchasePrice = Number.isNaN(v) ? 0 : v;
+                                    setGeneratedVariations(updated);
+                                  }}
+                                  className="bg-gray-900 border-gray-700 text-white text-sm w-24"
+                                  placeholder={String(watch('purchasePrice') ?? 0)}
+                                  title="Purchase cost for this variation"
+                                />
+                              </td>
+                              <td className="px-4 py-3">
+                                <Input
+                                  type="number"
+                                  step={0.01}
+                                  min={0}
+                                  value={Number.isFinite(Number(variation.price)) ? variation.price : 0}
+                                  onChange={(e) => {
+                                    const updated = [...generatedVariations];
+                                    const v = parseFloat(e.target.value);
+                                    updated[index].price = Number.isNaN(v) ? 0 : v;
                                     setGeneratedVariations(updated);
                                   }}
                                   className="bg-gray-900 border-gray-700 text-white text-sm w-24"
                                   placeholder={String(watch('sellingPrice') ?? 0)}
-                                  title="From Basic tab if not set"
+                                  title="Selling price for this variation"
                                 />
                               </td>
                               <td className="px-4 py-3">
                                 <Input
                                   type="number"
                                   min={0}
-                                  value={variation.stock ?? ''}
+                                  step={selectedUnitAllowsDecimal ? 'any' : 1}
+                                  value={variation.stock}
                                   onChange={(e) => {
                                     const updated = [...generatedVariations];
-                                    updated[index].stock = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                    updated[index].stock = parseVariationQtyInput(e.target.value);
                                     setGeneratedVariations(updated);
                                   }}
-                                  className="bg-gray-900 border-gray-700 text-white text-sm w-20"
+                                  className="bg-gray-900 border-gray-700 text-white text-sm w-24"
                                   placeholder="0"
-                                  title="Opening stock for this variation (saved as stock movement on save)"
+                                  title={
+                                    selectedUnitAllowsDecimal
+                                      ? 'Opening qty from stock movements (editable when only opening exists)'
+                                      : 'Whole units only for this product unit'
+                                  }
                                 />
                               </td>
                               <td className="px-4 py-3">

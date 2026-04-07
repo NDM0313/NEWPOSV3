@@ -146,6 +146,10 @@ export const purchaseReturnService = {
 
     if (itemsError) throw itemsError;
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('purchaseReturnsChanged'));
+    }
+
     return purchaseReturn as PurchaseReturn;
   },
 
@@ -271,6 +275,10 @@ export const purchaseReturnService = {
       .eq('id', returnId);
 
     if (updateError) throw updateError;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('purchaseReturnsChanged'));
+    }
   },
 
   /**
@@ -362,6 +370,10 @@ export const purchaseReturnService = {
       .eq('status', 'final');
 
     if (updateError) throw updateError;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('purchaseReturnsChanged'));
+    }
   },
 
   async getPurchaseReturnById(returnId: string, companyId: string): Promise<PurchaseReturn & { items: PurchaseReturnItem[] }> {
@@ -541,5 +553,9 @@ export const purchaseReturnService = {
       .eq('status', 'draft');
 
     if (error) throw error;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('purchaseReturnsChanged'));
+    }
   },
 };

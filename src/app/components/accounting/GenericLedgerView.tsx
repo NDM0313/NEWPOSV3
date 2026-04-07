@@ -152,7 +152,11 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
   useEffect(() => {
     const bump = () => setBalanceRefreshTick((t) => t + 1);
     window.addEventListener('contactBalancesRefresh', bump);
-    return () => window.removeEventListener('contactBalancesRefresh', bump);
+    window.addEventListener('accountingEntriesChanged', bump);
+    return () => {
+      window.removeEventListener('contactBalancesRefresh', bump);
+      window.removeEventListener('accountingEntriesChanged', bump);
+    };
   }, []);
 
   useEffect(() => {
@@ -260,12 +264,16 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
     const handlePaymentAdded = () => {
       if (ledgerType === 'supplier' || ledgerType === 'worker') loadOperationalRef.current();
     };
+    const handleAccountingEntriesChanged = () => {
+      if (ledgerType === 'supplier' || ledgerType === 'worker') loadOperationalRef.current();
+    };
 
     window.addEventListener('purchaseDeleted', handlePurchaseDelete);
     window.addEventListener('ledgerUpdated', handleLedgerUpdated as EventListener);
     window.addEventListener('studio-production-saved', handleStudioProductionSaved);
     window.addEventListener('purchaseSaved', handlePurchaseSaved);
     window.addEventListener('paymentAdded', handlePaymentAdded);
+    window.addEventListener('accountingEntriesChanged', handleAccountingEntriesChanged);
 
     return () => {
       window.removeEventListener('purchaseDeleted', handlePurchaseDelete);
@@ -273,6 +281,7 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
       window.removeEventListener('studio-production-saved', handleStudioProductionSaved);
       window.removeEventListener('purchaseSaved', handlePurchaseSaved);
       window.removeEventListener('paymentAdded', handlePaymentAdded);
+      window.removeEventListener('accountingEntriesChanged', handleAccountingEntriesChanged);
     };
   }, [ledgerType, entityId]);
 

@@ -283,6 +283,7 @@ const SUB_TABS: Record<MainTab, { id: string; label: string }[]> = {
     { id: 'categories', label: 'Categories' },
     { id: 'sub-categories', label: 'Sub-Categories' },
     { id: 'brands', label: 'Brands' },
+    { id: 'variations', label: 'Variations' },
   ],
   accounting: [
     { id: 'fiscalTax', label: 'Fiscal & Tax' },
@@ -327,7 +328,14 @@ function getContentKey(mainTab: MainTab, subTabId: string): SettingsContentKey {
       pdfExport: 'printing',
     },
     purchases: { purchaseRules: 'purchase' },
-    inventory: { general: 'inventory', units: 'inventory', categories: 'inventory', 'sub-categories': 'inventory', brands: 'inventory' },
+    inventory: {
+      general: 'inventory',
+      units: 'inventory',
+      categories: 'inventory',
+      'sub-categories': 'inventory',
+      brands: 'inventory',
+      variations: 'inventory',
+    },
     accounting: { fiscalTax: 'accounting', defaultAccounts: 'accounts', policies: 'accounting' },
     system: {
       documentsPrinting: 'printer',
@@ -1402,7 +1410,7 @@ export const SettingsPageNew = () => {
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-white">Inventory Settings</h3>
-                    <p className="text-sm text-gray-400">Configure stock management and masters (Units, Categories, Sub-Categories, Brands)</p>
+                    <p className="text-sm text-gray-400">Configure stock management and masters (Units, Categories, Brands, Variation attributes)</p>
                   </div>
                 </div>
 

@@ -187,6 +187,23 @@ function journalGroupAccountPair(group: { primary: AccountingEntry; entries: Acc
   };
   return { debit: compact(dr), credit: compact(cr) };
 }
+
+/** By-document row amount: sum primary document + same-root adjustments (purchase + purchase_adjustment, sale + sale_adjustment). */
+function groupedDocumentDisplayAmount(group: { primary: AccountingEntry; entries: AccountingEntry[] }): number {
+  const mod = group.primary.module;
+  const refTypes =
+    mod === 'Purchases'
+      ? new Set(['purchase', 'purchase_adjustment'])
+      : mod === 'Sales'
+        ? new Set(['sale', 'sale_adjustment'])
+        : null;
+  if (refTypes) {
+    return group.entries
+      .filter((e) => refTypes.has(String(e.metadata?.referenceType || '').toLowerCase()))
+      .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  }
+  return Number(group.primary.amount) || 0;
+}
 import { Switch } from '@/app/components/ui/switch';
 
 // Account type sets used for summary card calculations (module-level constants)
@@ -367,6 +384,18 @@ export const AccountingDashboard = () => {
     Awaited<ReturnType<typeof contactService.getContactPartyGlBalancesMap>>
   >(null);
   const [linkedPartiesControlId, setLinkedPartiesControlId] = useState<string | null>(null);
+  /** Bumps on accountingEntriesChanged so party GL map refreshes even when entry count is unchanged (e.g. void/repost). */
+  const [partyGlEpoch, setPartyGlEpoch] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setPartyGlEpoch((n) => n + 1);
+    window.addEventListener('accountingEntriesChanged', bump);
+    window.addEventListener('paymentAdded', bump);
+    return () => {
+      window.removeEventListener('accountingEntriesChanged', bump);
+      window.removeEventListener('paymentAdded', bump);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -382,7 +411,7 @@ export const AccountingDashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId, transactions.length]);
+  }, [companyId, branchId, partyGlEpoch]);
 
   const linkedPartiesControl = useMemo(
     () =>
@@ -481,7 +510,7 @@ export const AccountingDashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [coaPartyPanelAccountId, companyId, branchId, accounting.accounts]);
+  }, [coaPartyPanelAccountId, companyId, branchId, accounting.accounts, partyGlEpoch]);
 
   // Tab configuration: Journal Entries | Day Book | Roznamcha | Accounts | Ledger | Receivables | Payables | Studio Costs | Account Statements
   const allTabs = [
@@ -612,8 +641,14 @@ export const AccountingDashboard = () => {
   const sortedGroupedRows = useMemo(() => {
     const dir = journalSortDir === 'asc' ? 1 : -1;
     return [...groupedJournalRows].sort((a, b) => {
-      const va = getEntrySortValue(a.primary, journalSortKey);
-      const vb = getEntrySortValue(b.primary, journalSortKey);
+      const va =
+        journalSortKey === 'amount'
+          ? Math.abs(groupedDocumentDisplayAmount(a))
+          : getEntrySortValue(a.primary, journalSortKey);
+      const vb =
+        journalSortKey === 'amount'
+          ? Math.abs(groupedDocumentDisplayAmount(b))
+          : getEntrySortValue(b.primary, journalSortKey);
       const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb));
       return cmp * dir;
     });
@@ -942,7 +977,7 @@ export const AccountingDashboard = () => {
                             const entry = group.primary;
                             const referenceNumber = entry.referenceNo || (entry.metadata as any)?.paymentId?.substring(0, 8) || entry.id?.substring(0, 8) || 'N/A';
                             const module = entry.module || 'Accounting';
-                            const amount = entry.amount || 0;
+                            const amount = groupedDocumentDisplayAmount(group);
                             const paymentMethod = (entry.metadata as any)?.paymentMethod || 'N/A';
                             const pres = journalRowPresentation(entry);
                             const isReversal = entry.source === 'Reversal';

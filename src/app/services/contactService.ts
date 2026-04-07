@@ -423,6 +423,59 @@ export const contactService = {
     }
   },
 
+  /**
+   * AP sub-ledger leaf accounts sometimes lack linked_contact_id; match account display name to a single supplier/both contact.
+   */
+  async resolveSupplierContactIdFromSubledgerAccountName(companyId: string, accountName: string): Promise<string | null> {
+    const raw = String(accountName || '').trim();
+    if (!raw) return null;
+    const candidates = [
+      ...new Set(
+        [
+          raw,
+          raw.replace(/\s*-\s*AP\s*$/i, '').trim(),
+          raw.replace(/\s*\(AP\)\s*$/i, '').trim(),
+          raw.replace(/\s*\/\s*Supplier\s*$/i, '').trim(),
+        ].filter(Boolean)
+      ),
+    ];
+    for (const name of candidates) {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('company_id', companyId)
+        .in('type', ['supplier', 'both'])
+        .ilike('name', name)
+        .limit(2);
+      if (error || !data?.length) continue;
+      if (data.length === 1) return (data[0] as { id: string }).id;
+    }
+    return null;
+  },
+
+  /** AR sub-ledger leaf without linked_contact_id: match name to a single customer/both contact. */
+  async resolveCustomerContactIdFromSubledgerAccountName(companyId: string, accountName: string): Promise<string | null> {
+    const raw = String(accountName || '').trim();
+    if (!raw) return null;
+    const candidates = [
+      ...new Set(
+        [raw, raw.replace(/\s*-\s*AR\s*$/i, '').trim(), raw.replace(/\s*\(AR\)\s*$/i, '').trim()].filter(Boolean)
+      ),
+    ];
+    for (const name of candidates) {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('company_id', companyId)
+        .in('type', ['customer', 'both'])
+        .ilike('name', name)
+        .limit(2);
+      if (error || !data?.length) continue;
+      if (data.length === 1) return (data[0] as { id: string }).id;
+    }
+    return null;
+  },
+
   // Search contacts
   async searchContacts(companyId: string, query: string) {
     const { data, error } = await supabase

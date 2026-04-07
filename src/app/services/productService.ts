@@ -3,6 +3,13 @@ import { documentNumberService } from '@/app/services/documentNumberService';
 import { calculateStockFromMovements } from '@/app/utils/stockCalculation';
 import type { StockMovement } from '@/app/utils/stockCalculation';
 import { inventoryService } from '@/app/services/inventoryService';
+import {
+  parseVariationAttributesRaw,
+  publicVariationAttributes,
+  variationAttributesForMinimalSchemaSave,
+  variationPurchaseFromApiRow,
+  variationRetailFromApiRow,
+} from '@/app/utils/variationFieldMap';
 
 /** normal = catalog product; production = manufactured from studio (STD-PROD, inventory + cost). */
 export type ProductType = 'normal' | 'production';
@@ -52,7 +59,62 @@ function ensureProductIds(payload: Record<string, unknown>): Record<string, unkn
 // Explicit select lists: never request current_stock (column may not exist). Stock from stock_movements/inventory overview.
 const PRODUCT_SELECT_SAFE =
   'id, company_id, category_id, brand_id, unit_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, max_stock, has_variations, is_rentable, is_sellable, track_stock, is_active, image_urls, product_type, source_type, created_at, updated_at';
-const VARIATION_SELECT_SAFE = 'id, product_id, sku, attributes';
+
+/** Try richest embed first; fall back when DB has fewer columns (see docs/products/VARIATION_EDIT_AND_MASTER.md). */
+const VARIATION_SELECT_LAYERS = [
+  'id, product_id, sku, barcode, attributes, cost_price, purchase_price, retail_price, selling_price, wholesale_price, current_stock, price, stock, name, is_active',
+  'id, product_id, sku, barcode, attributes, cost_price, retail_price, wholesale_price, current_stock, price, stock, name, is_active',
+  'id, product_id, sku, barcode, attributes, cost_price, retail_price, wholesale_price, current_stock, name, is_active',
+  'id, product_id, sku, barcode, attributes, cost_price, retail_price, current_stock, name, is_active',
+  'id, product_id, sku, barcode, attributes, price, stock, is_active',
+  'id, product_id, sku, barcode, attributes',
+  'id, product_id, sku, attributes',
+] as const;
+
+function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === '42703') return true;
+  const m = (error.message || '').toLowerCase();
+  return (m.includes('column') && m.includes('does not exist')) || m.includes('pgrst');
+}
+
+/** Human-readable variation name for DB `name` column when present. */
+export function formatVariationName(attributes: Record<string, string>): string {
+  return Object.entries(publicVariationAttributes(attributes))
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(', ');
+}
+
+/** Normalize API variation (any supported column set) to form row; stock is optional until movements are merged. */
+export function mapProductVariationApiToFormRow(v: Record<string, unknown>): {
+  id?: string;
+  combination: Record<string, string>;
+  sku: string;
+  price: number;
+  purchasePrice: number;
+  stock: number;
+  barcode: string;
+} {
+  const attrsFull = parseVariationAttributesRaw(v.attributes);
+  const combination = publicVariationAttributes(attrsFull);
+  const retail = variationRetailFromApiRow(v);
+  const purchase = variationPurchaseFromApiRow(v);
+  const stockCol =
+    v.current_stock != null && v.current_stock !== ''
+      ? Number(v.current_stock)
+      : v.stock != null && v.stock !== ''
+        ? Number(v.stock)
+        : 0;
+  return {
+    id: typeof v.id === 'string' ? v.id : undefined,
+    combination,
+    sku: String(v.sku ?? ''),
+    price: retail != null && Number.isFinite(retail) ? retail : 0,
+    purchasePrice: purchase != null && Number.isFinite(purchase) ? purchase : 0,
+    stock: Number.isFinite(stockCol) ? stockCol : 0,
+    barcode: String(v.barcode ?? ''),
+  };
+}
 
 /** In-flight guard: reuse same promise for overlapping getStockMovements(productId) to avoid "Timer 'stockMovements:id' already exists". */
 const stockMovementsInFlight = new Map<string, Promise<any[]>>();
@@ -60,79 +122,86 @@ const stockMovementsInFlight = new Map<string, Promise<any[]>>();
 export const productService = {
   // Get all products (no current_stock: use inventory overview for stock)
   async getAllProducts(companyId: string) {
-    let query = supabase
+    const withVariations = (vSel: string) =>
+      supabase
+        .from('products')
+        .select(
+          `${PRODUCT_SELECT_SAFE}, category:product_categories(id, name), variations:product_variations(${vSel})`
+        )
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('name');
+
+    let lastErr: { code?: string; message?: string } | null = null;
+    for (const vSel of VARIATION_SELECT_LAYERS) {
+      const { data, error } = await withVariations(vSel);
+      if (!error) return data;
+      if (isMissingColumnError(error)) {
+        lastErr = error;
+        continue;
+      }
+      lastErr = error;
+      break;
+    }
+
+    if (lastErr?.code === '42703' && lastErr?.message?.includes('is_active')) {
+      for (const vSel of VARIATION_SELECT_LAYERS) {
+        const { data, error } = await supabase
+          .from('products')
+          .select(
+            `${PRODUCT_SELECT_SAFE}, category:product_categories(id, name), variations:product_variations(${vSel})`
+          )
+          .eq('company_id', companyId)
+          .order('name');
+        if (!error) return data;
+        if (!isMissingColumnError(error)) throw error;
+      }
+    }
+    if (lastErr?.code === '42703' && lastErr?.message?.includes('company_id')) {
+      for (const vSel of VARIATION_SELECT_LAYERS) {
+        const { data, error } = await supabase
+          .from('products')
+          .select(
+            `${PRODUCT_SELECT_SAFE}, category:product_categories(id, name), variations:product_variations(${vSel})`
+          )
+          .eq('is_active', true)
+          .order('name');
+        if (!error) return data;
+        if (!isMissingColumnError(error)) throw error;
+      }
+    }
+
+    const { data: simpleData, error: simpleError } = await supabase
       .from('products')
-      .select(`
-        ${PRODUCT_SELECT_SAFE},
-        category:product_categories(id, name),
-        variations:product_variations(${VARIATION_SELECT_SAFE})
-      `)
+      .select(PRODUCT_SELECT_SAFE)
       .eq('company_id', companyId)
       .eq('is_active', true)
       .order('name');
-
-    const { data, error } = await query;
-
-    if (error && (error.code === '42703' || error.code === '42P01')) {
-      const retryQuery = supabase
-        .from('products')
-        .select(`
-          ${PRODUCT_SELECT_SAFE},
-          category:product_categories(id, name),
-          variations:product_variations(${VARIATION_SELECT_SAFE})
-        `)
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .order('name', { ascending: true });
-      const { data: retryData, error: retryError } = await retryQuery;
-      if (retryError) {
-        const { data: simpleData, error: simpleError } = await supabase
-          .from('products')
-          .select(PRODUCT_SELECT_SAFE)
-          .eq('company_id', companyId)
-          .eq('is_active', true)
-          .order('name');
-        if (simpleError) throw simpleError;
-        return simpleData;
-      }
-      return retryData;
-    }
-    if (error && error.code === '42703' && error.message?.includes('is_active')) {
-      const { data: retryData, error: retryError } = await supabase
-        .from('products')
-        .select(`${PRODUCT_SELECT_SAFE}, category:product_categories(id, name), variations:product_variations(${VARIATION_SELECT_SAFE})`)
-        .eq('company_id', companyId)
-        .order('name');
-      if (retryError) throw retryError;
-      return retryData;
-    }
-    if (error && error.code === '42703' && error.message?.includes('company_id')) {
-      const { data: retryData, error: retryError } = await supabase
-        .from('products')
-        .select(`${PRODUCT_SELECT_SAFE}, category:product_categories(id, name), variations:product_variations(${VARIATION_SELECT_SAFE})`)
-        .eq('is_active', true)
-        .order('name');
-      if (retryError) throw retryError;
-      return retryData;
-    }
-    if (error) throw error;
-    return data;
+    if (!simpleError) return simpleData;
+    throw lastErr || simpleError;
   },
 
   // Get single product (no current_stock; stock from stock_movements)
   async getProduct(id: string) {
+    for (const vSel of VARIATION_SELECT_LAYERS) {
+      const { data, error } = await supabase
+        .from('products')
+        .select(
+          `${PRODUCT_SELECT_SAFE}, category:product_categories(id, name), variations:product_variations(${vSel})`
+        )
+        .eq('id', id)
+        .single();
+      if (!error) return data;
+      if (isMissingColumnError(error)) continue;
+      throw error;
+    }
     const { data, error } = await supabase
       .from('products')
-      .select(`
-        ${PRODUCT_SELECT_SAFE},
-        category:product_categories(id, name),
-        variations:product_variations(${VARIATION_SELECT_SAFE})
-      `)
+      .select(`${PRODUCT_SELECT_SAFE}, category:product_categories(id, name)`)
       .eq('id', id)
       .single();
-
     if (error) throw error;
-    return data;
+    return { ...data, variations: [] as unknown[] };
   },
 
   // Create product (uses ERP numbering engine for SKU; auto-retry once on duplicate SKU).
@@ -212,13 +281,19 @@ export const productService = {
       const msg = (error as any).message || '';
       const columnNotFound = /could not find.*column|column.*does not exist|PGRST/i.test(msg);
       if (columnNotFound) {
+        const purchaseForEmbed =
+          params.cost_price != null && Number.isFinite(Number(params.cost_price))
+            ? Number(params.cost_price)
+            : null;
+        const attrsMinimal = variationAttributesForMinimalSchemaSave(params.attributes ?? {}, purchaseForEmbed);
         const payloadAlt: Record<string, unknown> = {
           product_id: params.product_id,
           name: params.name,
           sku: params.sku,
           barcode: params.barcode ?? null,
-          attributes: params.attributes ?? {},
-          price: params.retail_price ?? params.cost_price ?? null,
+          attributes: attrsMinimal,
+          // Minimal schema: `price` is selling only; purchase lives in cost columns (if added) or __erp_purchase_price in attributes.
+          price: params.retail_price ?? (params as { price?: number }).price ?? null,
           stock: params.current_stock ?? 0,
           is_active: true,
         };
@@ -233,6 +308,58 @@ export const productService = {
       throw error;
     }
     return data;
+  },
+
+  /** Update existing variation row (full ERP schema first, then price-only minimal schema). Stock stays movement-based — do not zero DB stock columns here. */
+  async updateVariation(
+    variationId: string,
+    params: {
+      sku: string;
+      barcode?: string | null;
+      attributes: Record<string, string>;
+      name: string;
+      cost_price?: number | null;
+      retail_price?: number | null;
+      wholesale_price?: number | null;
+      price?: number | null;
+    }
+  ) {
+    const ts = new Date().toISOString();
+    const fullPayload: Record<string, unknown> = {
+      sku: params.sku,
+      barcode: params.barcode ?? null,
+      attributes: params.attributes ?? {},
+      name: params.name,
+      cost_price: params.cost_price ?? null,
+      retail_price: params.retail_price ?? null,
+      wholesale_price: params.wholesale_price ?? null,
+      updated_at: ts,
+    };
+    const { error } = await supabase.from('product_variations').update(fullPayload).eq('id', variationId);
+    if (!error) return;
+
+    const msg = (error as { message?: string }).message || '';
+    const columnNotFound = /could not find.*column|column.*does not exist|PGRST/i.test(msg);
+    if (!columnNotFound) throw error;
+
+    const purchaseForEmbed =
+      params.cost_price != null && params.cost_price !== '' && Number.isFinite(Number(params.cost_price))
+        ? Number(params.cost_price)
+        : null;
+    const attrsMinimal = variationAttributesForMinimalSchemaSave(params.attributes ?? {}, purchaseForEmbed);
+    const alt: Record<string, unknown> = {
+      sku: params.sku,
+      barcode: params.barcode ?? null,
+      attributes: attrsMinimal,
+      price: params.retail_price ?? params.price ?? null,
+      updated_at: ts,
+    };
+    let res = await supabase.from('product_variations').update(alt).eq('id', variationId);
+    if (res.error && /could not find.*column|column.*does not exist|name/i.test((res.error as { message?: string }).message || '')) {
+      const { name: _n, ...noName } = alt;
+      res = await supabase.from('product_variations').update(noName).eq('id', variationId);
+    }
+    if (res.error) throw res.error;
   },
 
   // Update product (form sends unit_id, category_id, brand_id in updates).

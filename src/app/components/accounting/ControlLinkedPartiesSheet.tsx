@@ -86,6 +86,29 @@ export function ControlLinkedPartiesSheet({
         balance: balanceForControl(code, slice),
       });
     }
+
+    // Legacy COA: purchase AP posts resolve to supplier in get_contact_party_gl_balances, but no sub-account row
+    // may have linked_contact_id — still show the party line so the sheet matches supplier ledger / purchases due.
+    if (partyGlByContactId?.size) {
+      partyGlByContactId.forEach((slice, contactId) => {
+        if (!contactId || seen.has(contactId)) return;
+        const bal = balanceForControl(code, slice);
+        if (Math.abs(bal) < 1e-6) return;
+        seen.add(contactId);
+        const linkedAcc = allAccounts.find((x) => String(x.linked_contact_id || '').trim() === contactId);
+        const name =
+          String(linkedAcc?.linked_contact_name || linkedAcc?.name || '').trim() ||
+          `Contact ${contactId.slice(0, 8)}…`;
+        const partyType =
+          code === '1100'
+            ? 'Customer'
+            : code === '2000'
+              ? 'Supplier'
+              : partyRoleLabel(linkedAcc?.linked_contact_party_type);
+        out.push({ contactId, name, partyType, balance: bal });
+      });
+    }
+
     out.sort((x, y) => x.name.localeCompare(y.name));
     return out;
   }, [control, allAccounts, partyGlByContactId]);
