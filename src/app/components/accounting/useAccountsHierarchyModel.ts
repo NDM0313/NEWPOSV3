@@ -6,11 +6,24 @@ import {
   compareCoaSection,
   type CoaStatementSection,
 } from '@/app/lib/accountHierarchy';
+import type { ContactPartyGlBalancesSlice } from '@/app/services/contactService';
+import {
+  GL_PARTY_CHILD_CONTROL_CODES,
+  PARTY_CONTROL_CODES,
+  isPartySubledgerLeaf,
+  nearestPartyControlAncestorId,
+  nearestPartyControlCode,
+  officialPartyControlTitle,
+} from '@/app/lib/partyControlAccounts';
 
 type JournalTouch = { debitAccount: string; creditAccount: string };
 
-/** Control accounts that carry party / worker sub-ledgers in Operational COA view */
-const PARTY_CONTROL_CODES = new Set(['1100', '2000', '2010', '1180']);
+function partyGlDisplayForControl(controlCode: string, slice: ContactPartyGlBalancesSlice): number | null {
+  if (controlCode === '1100') return slice.glArReceivable;
+  if (controlCode === '2000') return slice.glApPayable;
+  if (controlCode === '2010') return slice.glWorkerPayable;
+  return null;
+}
 
 function partyRoleLabel(type: string | null | undefined): string | null {
   const t = String(type || '').toLowerCase();
@@ -30,6 +43,8 @@ export type AccountsHierarchyRowModel = {
   };
   depth: number;
   hasChildRows: boolean;
+  /** True if full chart has children under this account (roll-up uses subtree; independent of sub-account visibility). */
+  hasDescendantsInFullChart: boolean;
   isCollapsed: boolean;
   displayBalance: number;
   entryCount: number;
@@ -44,6 +59,14 @@ export type AccountsHierarchyRowModel = {
   coaPartyRoleLabel: string | null;
   /** Sub-account code, GL line name, parent control — second line */
   coaDetailLine: string | null;
+  /**
+   * Linked party row under real controls 1100 / 2000 / 2010: do not surface synthetic book codes (AR-… / AP-…) in the main list.
+   */
+  coaSuppressProminentAccountCode?: boolean;
+  /** Tooltip on the title row: internal book code and ledger line name for advanced users */
+  coaRowDetailTooltip?: string | null;
+  /** Real control (1100/2000/2010/1180): distinct linked parties under this account (full chart, not filtered list). */
+  coaLinkedPartyCount?: number;
 };
 
 export function useAccountsHierarchyModel(
@@ -59,7 +82,11 @@ export function useAccountsHierarchyModel(
   accountsViewMode: 'operational' | 'professional',
   showSubAccounts: boolean,
   collapsedGroupIds: Set<string>,
-  setCollapsedGroupIds: Dispatch<SetStateAction<Set<string>>>
+  setCollapsedGroupIds: Dispatch<SetStateAction<Set<string>>>,
+  /** Same source as Contacts GL: `get_contact_party_gl_balances`. When null, party child rows use `account.balance`. */
+  partyGlByContactId?: Map<string, ContactPartyGlBalancesSlice> | null,
+  /** Operational COA: hide linked-party sub-rows; use control row + linked-parties drawer instead. */
+  hideOperationalPartySubledgerRows?: boolean
 ): { hierarchyRows: AccountsHierarchyRowModel[]; parentIdsWithChildren: Set<string> } {
   const matchesOperationalAccountView = useCallback((acc: { type?: string; accountType?: string; code?: string; is_group?: boolean }) => {
     if (acc.is_group) return false;
@@ -91,13 +118,20 @@ export function useAccountsHierarchyModel(
 
   const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
 
-  const parentIdsWithChildren = useMemo(() => {
-    const s = new Set<string>();
-    accounts.forEach((a) => {
-      if (a.parent_id) s.add(a.parent_id);
-    });
-    return s;
-  }, [accounts]);
+  const linkedPartyCountByControlId = useMemo(() => {
+    const byContact = new Map<string, Set<string>>();
+    for (const a of accounts) {
+      if (!isPartySubledgerLeaf(a, accountsById)) continue;
+      const ctrlId = nearestPartyControlAncestorId(a, accountsById);
+      const cid = String((a as { linked_contact_id?: string | null }).linked_contact_id || '').trim();
+      if (!ctrlId || !cid) continue;
+      if (!byContact.has(ctrlId)) byContact.set(ctrlId, new Set());
+      byContact.get(ctrlId)!.add(cid);
+    }
+    const m = new Map<string, number>();
+    byContact.forEach((set, id) => m.set(id, set.size));
+    return m;
+  }, [accounts, accountsById]);
 
   const balanceRollupById = useMemo(() => {
     const all = accounts;
@@ -199,8 +233,35 @@ export function useAccountsHierarchyModel(
       }
     };
     walk(null);
-    return out;
-  }, [accounts, accountsViewMode, showSubAccounts, accountsById, matchesOperationalAccountView]);
+    const hideLeaves =
+      accountsViewMode === 'operational' && Boolean(hideOperationalPartySubledgerRows);
+    if (!hideLeaves) return out;
+    return out.filter((a) => !isPartySubledgerLeaf(a, accountsById));
+  }, [
+    accounts,
+    accountsViewMode,
+    showSubAccounts,
+    accountsById,
+    matchesOperationalAccountView,
+    hideOperationalPartySubledgerRows,
+  ]);
+
+  const parentIdsWithChildren = useMemo(() => {
+    const s = new Set<string>();
+    accountsTableRows.forEach((a) => {
+      if (a.parent_id) s.add(a.parent_id);
+    });
+    return s;
+  }, [accountsTableRows]);
+
+  /** Any account id that is a parent of at least one row in the full list (for roll-up balances when children are hidden). */
+  const parentIdsWithAnyDescendant = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of accounts) {
+      if (a.parent_id) s.add(a.parent_id);
+    }
+    return s;
+  }, [accounts]);
 
   const tableRowIdSet = useMemo(() => new Set(accountsTableRows.map((a) => a.id)), [accountsTableRows]);
 
@@ -246,9 +307,23 @@ export function useAccountsHierarchyModel(
     let prevSection: CoaStatementSection | null = null;
     return visibleAccountsTableRows.map((account) => {
       const hasChildRows = parentIdsWithChildren.has(account.id);
+      const hasDescendantsInFullChart = parentIdsWithAnyDescendant.has(account.id);
       const isCollapsed = collapsedGroupIds.has(account.id);
       const depth = accountRowDepth(account);
-      const displayBalance = hasChildRows ? balanceRollupById.get(account.id) ?? account.balance : account.balance;
+      let displayBalance = hasDescendantsInFullChart
+        ? balanceRollupById.get(account.id) ?? account.balance
+        : account.balance;
+      const linkedId = String((account as { linked_contact_id?: string | null }).linked_contact_id || '').trim();
+      if (!hasChildRows && linkedId && partyGlByContactId) {
+        const controlCode = nearestPartyControlCode(account.parent_id, accountsById);
+        if (controlCode && GL_PARTY_CHILD_CONTROL_CODES.has(controlCode)) {
+          const slice = partyGlByContactId.get(linkedId);
+          if (slice) {
+            const gl = partyGlDisplayForControl(controlCode, slice);
+            if (gl != null) displayBalance = gl;
+          }
+        }
+      }
       const name = account.name || '';
       const entryCount = entryCountByAccountName.get(name) ?? 0;
       const sec = coaStatementSection({ type: account.type || account.accountType, code: account.code });
@@ -262,25 +337,51 @@ export function useAccountsHierarchyModel(
       const ext = account as Account & { linked_contact_name?: string | null; linked_contact_party_type?: string | null };
       const linkedName = ext.linked_contact_name?.trim() || '';
       const partyType = ext.linked_contact_party_type;
+      const partyGlChildControl =
+        linkedName && !hasChildRows ? nearestPartyControlCode(account.parent_id, accountsById) : null;
+      const isPartyGlLinkedChild = Boolean(
+        partyGlChildControl && GL_PARTY_CHILD_CONTROL_CODES.has(partyGlChildControl)
+      );
 
       let coaPrimaryLabel = linkedName || account.name || 'Account';
       let coaPartyRoleLabel: string | null = linkedName ? partyRoleLabel(partyType) : null;
       let coaDetailLine: string | null = null;
+      let coaRowDetailTooltip: string | null = null;
 
       if (linkedName) {
-        const parts: string[] = [];
-        if (account.code) parts.push(String(account.code));
-        if (account.name && account.name.trim() !== linkedName) parts.push(account.name.trim());
-        if (parent) parts.push(`under ${parent.name}${parent.code ? ` (${parent.code})` : ''}`);
-        coaDetailLine = parts.length > 0 ? parts.join(' · ') : null;
+        if (isPartyGlLinkedChild && partyGlChildControl) {
+          coaDetailLine = `Linked to ${officialPartyControlTitle(partyGlChildControl)} (${partyGlChildControl})`;
+          const tip: string[] = [];
+          if (account.code) tip.push(`Book code: ${account.code}`);
+          const nm = account.name?.trim();
+          if (nm && nm !== linkedName) tip.push(`Ledger line: ${nm}`);
+          coaRowDetailTooltip = tip.length > 0 ? tip.join(' · ') : null;
+        } else {
+          const parts: string[] = [];
+          if (account.code) parts.push(String(account.code));
+          if (account.name && account.name.trim() !== linkedName) parts.push(account.name.trim());
+          if (parent) parts.push(`under ${parent.name}${parent.code ? ` (${parent.code})` : ''}`);
+          coaDetailLine = parts.length > 0 ? parts.join(' · ') : null;
+        }
       } else if (underPartyControl && parent && !account.is_group) {
         coaDetailLine = `Sub-account · ${parent.name}${parent.code ? ` (${parent.code})` : ''}`;
+      }
+
+      const accCode = String(account.code || '').trim();
+      let coaLinkedPartyCount: number | undefined;
+      if (accCode === '1100' || accCode === '2000' || accCode === '2010' || accCode === '1180') {
+        const n = linkedPartyCountByControlId.get(account.id) ?? 0;
+        coaLinkedPartyCount = n;
+        if (hideOperationalPartySubledgerRows && !linkedName && n > 0) {
+          coaDetailLine = `${n} linked part${n === 1 ? 'y' : 'ies'} on this control · use the list button for names and balances`;
+        }
       }
 
       return {
         account,
         depth,
         hasChildRows,
+        hasDescendantsInFullChart,
         isCollapsed,
         displayBalance,
         entryCount,
@@ -289,6 +390,9 @@ export function useAccountsHierarchyModel(
         coaPrimaryLabel,
         coaPartyRoleLabel,
         coaDetailLine,
+        coaSuppressProminentAccountCode: isPartyGlLinkedChild,
+        coaRowDetailTooltip,
+        coaLinkedPartyCount,
         onToggleCollapse: () => {
           setCollapsedGroupIds((prev) => {
             const n = new Set(prev);
@@ -302,12 +406,17 @@ export function useAccountsHierarchyModel(
   }, [
     visibleAccountsTableRows,
     parentIdsWithChildren,
+    parentIdsWithAnyDescendant,
     collapsedGroupIds,
     accountRowDepth,
     balanceRollupById,
     entryCountByAccountName,
     setCollapsedGroupIds,
     accountsViewMode,
+    partyGlByContactId,
+    accountsById,
+    linkedPartyCountByControlId,
+    hideOperationalPartySubledgerRows,
   ]);
 
   return { hierarchyRows, parentIdsWithChildren };

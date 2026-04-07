@@ -15,6 +15,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { warnIfUsingStoredBalanceAsTruth } from '@/app/services/accountingCanonicalGuard';
+import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 
 /** Leading numeric segment of account code (e.g. "1021-NDM" → "1021"). */
 function accountCodeDigits(acc: { code?: string } | null): string {
@@ -650,7 +651,23 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       window.removeEventListener('saleDeleted', handleSaleDelete);
     };
   }, [loadEntries]);
-  
+
+  /** Journal / payment flows dispatch `accountingEntriesChanged` — keep context entries + accounts in sync without full reload. */
+  useEffect(() => {
+    if (!companyId) return;
+    const bump = () => {
+      void loadAccounts();
+      void loadEntries();
+      dispatchContactBalancesRefresh(companyId);
+    };
+    window.addEventListener('accountingEntriesChanged', bump);
+    window.addEventListener('paymentAdded', bump);
+    return () => {
+      window.removeEventListener('accountingEntriesChanged', bump);
+      window.removeEventListener('paymentAdded', bump);
+    };
+  }, [companyId, loadAccounts, loadEntries]);
+
   // ============================================
   // 🎯 REAL DATA LOADING (NO DEMO DATA)
   // ============================================

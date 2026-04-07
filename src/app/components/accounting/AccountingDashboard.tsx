@@ -65,9 +65,11 @@ import { fetchControlAccountBreakdown } from '@/app/services/controlAccountBreak
 const USE_ADD_ENTRY_V2 = true;
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { accountService } from '@/app/services/accountService';
+import { contactService } from '@/app/services/contactService';
 import { toast } from 'sonner';
 import { getControlAccountKind } from '@/app/lib/accountControlKind';
 import { AccountsHierarchyList } from '@/app/components/accounting/AccountsHierarchyList';
+import { ControlLinkedPartiesSheet } from '@/app/components/accounting/ControlLinkedPartiesSheet';
 import { useAccountsHierarchyModel } from '@/app/components/accounting/useAccountsHierarchyModel';
 import { AccountingDashboardAccountRowMenu } from '@/app/components/accounting/AccountingDashboardAccountRowMenu';
 import { ChartOfAccountsPartyDropdown } from '@/app/components/accounting/ChartOfAccountsPartyDropdown';
@@ -361,13 +363,44 @@ export const AccountingDashboard = () => {
     };
   }, [transactions]);
 
+  const [partyGlByContactId, setPartyGlByContactId] = useState<
+    Awaited<ReturnType<typeof contactService.getContactPartyGlBalancesMap>>
+  >(null);
+  const [linkedPartiesControlId, setLinkedPartiesControlId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!companyId) {
+      setPartyGlByContactId(null);
+      return;
+    }
+    contactService
+      .getContactPartyGlBalancesMap(companyId, branchId === 'all' ? null : branchId)
+      .then((m) => {
+        if (!cancelled) setPartyGlByContactId(m);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, branchId, transactions.length]);
+
+  const linkedPartiesControl = useMemo(
+    () =>
+      linkedPartiesControlId
+        ? accounting.accounts.find((a) => a.id === linkedPartiesControlId) ?? null
+        : null,
+    [linkedPartiesControlId, accounting.accounts]
+  );
+
   const { hierarchyRows } = useAccountsHierarchyModel(
     accounting.accounts,
     transactions,
     accountsViewMode,
     showSubAccounts,
     collapsedGroupIds,
-    setCollapsedGroupIds
+    setCollapsedGroupIds,
+    partyGlByContactId,
+    accountsViewMode === 'operational'
   );
 
   useEffect(() => {
@@ -1368,11 +1401,16 @@ export const AccountingDashboard = () => {
                 rows={hierarchyRows}
                 accountsViewMode={accountsViewMode}
                 formatCurrency={formatCurrency}
+                onOpenLinkedParties={(row) => {
+                  if (row.account.id) setLinkedPartiesControlId(row.account.id);
+                }}
                 renderRowInlineExtra={(row) => {
                   const account = row.account;
                   const ck = getControlAccountKind({ name: account.name, code: (account as { code?: string }).code });
                   const linkedName = (account as { linked_contact_name?: string | null }).linked_contact_name;
                   const showPartyToggle = Boolean(account.id && (ck || linkedName));
+                  const hasSheetParties =
+                    typeof row.coaLinkedPartyCount === 'number' && row.coaLinkedPartyCount > 0;
                   const breakdownBtn =
                     ck && account.id ? (
                       <button
@@ -1394,28 +1432,29 @@ export const AccountingDashboard = () => {
                         <ChevronRight className="w-4 h-4" />
                       </button>
                     ) : null;
-                  const partyBtn = showPartyToggle ? (
-                    <button
-                      type="button"
-                      title={
-                        coaPartyPanelAccountId === account.id
-                          ? 'Hide linked parties'
-                          : 'Show linked parties & suppliers'
-                      }
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCoaPartyPanelAccountId((id) => (id === account.id ? null : account.id!));
-                      }}
-                      className={cn(
-                        'p-1 rounded-md border shrink-0 transition-colors',
-                        coaPartyPanelAccountId === account.id
-                          ? 'text-violet-200 bg-violet-500/20 border-violet-500/40'
-                          : 'text-gray-400 hover:bg-gray-800 hover:text-violet-200 border-gray-700/80'
-                      )}
-                    >
-                      <Users className="w-4 h-4" />
-                    </button>
-                  ) : null;
+                  const partyBtn =
+                    showPartyToggle && !hasSheetParties ? (
+                      <button
+                        type="button"
+                        title={
+                          coaPartyPanelAccountId === account.id
+                            ? 'Hide linked parties'
+                            : 'Show linked parties & suppliers'
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCoaPartyPanelAccountId((id) => (id === account.id ? null : account.id!));
+                        }}
+                        className={cn(
+                          'p-1 rounded-md border shrink-0 transition-colors',
+                          coaPartyPanelAccountId === account.id
+                            ? 'text-violet-200 bg-violet-500/20 border-violet-500/40'
+                            : 'text-gray-400 hover:bg-gray-800 hover:text-violet-200 border-gray-700/80'
+                        )}
+                      >
+                        <Users className="w-4 h-4" />
+                      </button>
+                    ) : null;
                   if (!partyBtn && !breakdownBtn) return null;
                   return (
                     <div className="flex items-center gap-1 shrink-0">
@@ -1510,13 +1549,26 @@ export const AccountingDashboard = () => {
                 )}
               />
             )}
+            <ControlLinkedPartiesSheet
+              open={linkedPartiesControlId != null}
+              onOpenChange={(o) => {
+                if (!o) setLinkedPartiesControlId(null);
+              }}
+              control={linkedPartiesControl}
+              allAccounts={accounting.accounts as any}
+              partyGlByContactId={partyGlByContactId}
+              formatCurrency={formatCurrency}
+            />
           </div>
         )}
 
         {activeTab === 'receivables' && (
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-2 border-b border-gray-800 text-[11px] text-gray-500">
-              Source: operational document due (`sales.due`) for invoice follow-up
+            <div className="px-4 py-2 border-b border-gray-800 text-[11px] text-gray-500 space-y-0.5">
+              <p>
+                <span className="text-gray-400">Operational receivables</span> — unpaid sales invoices / customer due for collection follow-up (not GL 1100).
+              </p>
+              <p>Opening balances &amp; GL truth: Accounts, Account Statements, Contacts GL, TB / BS.</p>
             </div>
             {sales.sales.filter(s => s.due > 0).length === 0 ? (
               <div className="text-center py-12">
@@ -1600,8 +1652,11 @@ export const AccountingDashboard = () => {
                 </Button>
               )}
             </div>
-            <div className="px-4 py-2 border-b border-gray-800 text-[11px] text-gray-500">
-              Source: operational document due (`purchases.due`) for vendor settlement workflow
+            <div className="px-4 py-2 border-b border-gray-800 text-[11px] text-gray-500 space-y-0.5">
+              <p>
+                <span className="text-gray-400">Operational payables</span> — unpaid purchase bills / supplier due for payment scheduling (not GL 2000).
+              </p>
+              <p>Opening balances &amp; GL truth: Accounts, Account Statements, Contacts GL, TB / BS.</p>
             </div>
             {purchases.purchases.filter(p => p.due > 0).length === 0 ? (
               <div className="text-center py-12">

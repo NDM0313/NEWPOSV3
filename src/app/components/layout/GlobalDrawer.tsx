@@ -585,6 +585,11 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         }
       }
       
+      const parseMoney = (v: FormDataEntryValue | null) =>
+        parseFloat(String(v ?? '').trim() || '0') || 0;
+      const openingBalRaw = formData.get('opening-balance');
+      const supplierOpeningRaw = formData.get('supplier-opening-balance');
+
       const contactData: Record<string, unknown> = {
         company_id: companyId,
         type: primaryType,
@@ -594,13 +599,25 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         address: (formData.get('address') as string)?.trim() || undefined,
         city: (formData.get('city') as string)?.trim() || undefined,
         country: country === 'pk' ? 'Pakistan' : country === 'in' ? 'India' : country === 'bd' ? 'Bangladesh' : 'Pakistan',
-        opening_balance: parseFloat(formData.get('opening-balance') as string) || 0,
         credit_limit: parseFloat(formData.get('credit-limit') as string) || 0,
         payment_terms: parseInt(formData.get('pay-term') as string) || 0,
         tax_number: (formData.get('tax-id') as string)?.trim() || undefined,
         notes: (formData.get('notes') as string)?.trim() || undefined,
         created_by: user.id,
       };
+
+      if (primaryType === 'worker') {
+        contactData.opening_balance = parseMoney(openingBalRaw);
+      } else if (primaryType === 'customer') {
+        contactData.opening_balance = parseMoney(openingBalRaw);
+        contactData.supplier_opening_balance = 0;
+      } else if (primaryType === 'supplier') {
+        contactData.opening_balance = 0;
+        contactData.supplier_opening_balance = parseMoney(supplierOpeningRaw);
+      } else if (primaryType === 'both') {
+        contactData.opening_balance = parseMoney(openingBalRaw);
+        contactData.supplier_opening_balance = parseMoney(supplierOpeningRaw);
+      }
       // Only set branch_id when it's a valid UUID (not "all" or other non-UUID)
       if (branchId && branchId !== 'all' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(branchId)) {
         contactData.branch_id = branchId;
@@ -612,12 +629,10 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         const contactPerson = (formData.get('contact-person') as string)?.trim();
         const ntn = (formData.get('supplier-ntn') as string)?.trim();
         const payableAccount = (formData.get('supplier-payable-account') as string)?.trim();
-        const supplierOpeningBalance = formData.get('supplier-opening-balance') as string;
         if (supplierBusinessName) contactData.business_name = supplierBusinessName;
         if (contactPerson) contactData.contact_person = contactPerson;
         if (ntn) contactData.ntn = ntn;
         if (payableAccount) contactData.payable_account_id = payableAccount;
-        if (supplierOpeningBalance != null && supplierOpeningBalance !== '') contactData.supplier_opening_balance = parseFloat(supplierOpeningBalance) || 0;
       }
       if (contactRoles.worker && workerType) contactData.worker_role = workerType;
 
@@ -929,7 +944,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                   Supplier Business Details (Optional)
                 </span>
               </AccordionTrigger>
-              {/* forceMount: keep inputs in DOM so FormData always includes supplier-opening-balance on submit (Radix unmounts closed content). */}
+              {/* forceMount: keep supplier detail inputs in DOM when accordion is collapsed */}
               <AccordionContent forceMount className="px-4 pb-4">
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -969,18 +984,6 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
                     <p className="text-xs text-gray-500">Default account for supplier payments</p>
                   </div>
                   
-                  <div className="space-y-2">
-                    <Label htmlFor="supplier-opening-balance" className="text-gray-200">Opening Balance (Payable)</Label>
-                    <Input 
-                      id="supplier-opening-balance"
-                      name="supplier-opening-balance"
-                      type="number"
-                      defaultValue={defaultSupplierOpeningBalance}
-                      placeholder="0.00" 
-                      className="bg-gray-900 border-gray-800 text-white" 
-                    />
-                    <p className="text-xs text-gray-500">Initial amount owed to supplier</p>
-                  </div>
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -1033,43 +1036,136 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
             {/* forceMount: opening-balance / credit-limit must submit even when accordion is collapsed */}
             <AccordionContent forceMount className="px-4 pb-4">
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                {contactRoles.worker && (
                   <div className="space-y-2">
-                    <Label htmlFor="opening-balance" className="text-gray-200">Opening Balance</Label>
-                    <Input 
+                    <Label htmlFor="opening-balance" className="text-gray-200">
+                      Worker opening balance
+                    </Label>
+                    <Input
                       id="opening-balance"
                       name="opening-balance"
                       type="number"
                       defaultValue={defaultOpeningBalance}
-                      placeholder="0.00" 
-                      className="bg-gray-900 border-gray-800 text-white" 
+                      placeholder="0.00"
+                      className="bg-gray-900 border-gray-800 text-white"
                     />
+                    <p className="text-xs text-gray-500">
+                      Posts to worker payable / advance (2010 / 1180) via opening journal sync.
+                    </p>
                   </div>
+                )}
+
+                {contactRoles.customer && !contactRoles.supplier && !contactRoles.worker && (
                   <div className="space-y-2">
-                    <Label htmlFor="credit-limit" className="text-gray-200">Credit Limit</Label>
-                    <Input 
+                    <Label htmlFor="opening-balance" className="text-gray-200">
+                      Customer opening (receivable)
+                    </Label>
+                    <p className="text-xs text-gray-400">You will receive from this contact</p>
+                    <Input
+                      id="opening-balance"
+                      name="opening-balance"
+                      type="number"
+                      defaultValue={defaultOpeningBalance}
+                      placeholder="0.00"
+                      className="bg-gray-900 border-gray-800 text-white"
+                    />
+                    <p className="text-[11px] text-gray-500">
+                      Accounting entry: Dr Accounts Receivable (1100) · Cr Owner Capital (3000)
+                    </p>
+                  </div>
+                )}
+
+                {contactRoles.supplier && !contactRoles.customer && !contactRoles.worker && (
+                  <div className="space-y-2">
+                    <Label htmlFor="supplier-opening-balance" className="text-gray-200">
+                      Supplier opening (payable)
+                    </Label>
+                    <p className="text-xs text-gray-400">You will pay to this contact</p>
+                    <Input
+                      id="supplier-opening-balance"
+                      name="supplier-opening-balance"
+                      type="number"
+                      defaultValue={defaultSupplierOpeningBalance}
+                      placeholder="0.00"
+                      className="bg-gray-900 border-gray-800 text-white"
+                    />
+                    <p className="text-[11px] text-gray-500">
+                      Accounting entry: Dr Owner Capital (3000) · Cr Accounts Payable (2000)
+                    </p>
+                  </div>
+                )}
+
+                {contactRoles.customer && contactRoles.supplier && !contactRoles.worker && (
+                  <div className="space-y-4 rounded-lg border border-blue-500/25 bg-blue-500/5 p-3">
+                    <p className="text-xs text-blue-200/90">
+                      This contact is both customer and supplier — enter receivable and payable openings separately.
+                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="opening-balance-both" className="text-gray-200">
+                        Customer opening (receivable / AR)
+                      </Label>
+                      <p className="text-xs text-gray-400">You will receive from this contact</p>
+                      <Input
+                        id="opening-balance-both"
+                        name="opening-balance"
+                        type="number"
+                        defaultValue={defaultOpeningBalance}
+                        placeholder="0.00"
+                        className="bg-gray-900 border-gray-800 text-white"
+                      />
+                      <p className="text-[11px] text-gray-500">
+                        Dr Accounts Receivable (1100) · Cr Owner Capital (3000)
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="supplier-opening-balance-both" className="text-gray-200">
+                        Supplier opening (payable / AP)
+                      </Label>
+                      <p className="text-xs text-gray-400">You will pay to this contact</p>
+                      <Input
+                        id="supplier-opening-balance-both"
+                        name="supplier-opening-balance"
+                        type="number"
+                        defaultValue={defaultSupplierOpeningBalance}
+                        placeholder="0.00"
+                        className="bg-gray-900 border-gray-800 text-white"
+                      />
+                      <p className="text-[11px] text-gray-500">
+                        Dr Owner Capital (3000) · Cr Accounts Payable (2000)
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="credit-limit" className="text-gray-200">
+                      Credit Limit
+                    </Label>
+                    <Input
                       id="credit-limit"
                       name="credit-limit"
                       type="number"
                       defaultValue={defaultCreditLimit}
-                      placeholder="0.00" 
-                      className="bg-gray-900 border-gray-800 text-white" 
+                      placeholder="0.00"
+                      className="bg-gray-900 border-gray-800 text-white"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="pay-term" className="text-gray-200">
+                      Payment Terms (Days)
+                    </Label>
+                    <Input
+                      id="pay-term"
+                      name="pay-term"
+                      type="number"
+                      defaultValue={defaultPayTerm}
+                      placeholder="30"
+                      className="bg-gray-900 border-gray-800 text-white"
                     />
                   </div>
                 </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="pay-term" className="text-gray-200">Payment Terms (Days)</Label>
-                  <Input 
-                    id="pay-term"
-                    name="pay-term"
-                    type="number"
-                    defaultValue={defaultPayTerm}
-                    placeholder="30" 
-                    className="bg-gray-900 border-gray-800 text-white" 
-                  />
-                  <p className="text-xs text-gray-500">Number of days to settle payments</p>
-                </div>
+                <p className="text-xs text-gray-500">Payment terms: number of days to settle invoices where applicable.</p>
               </div>
             </AccordionContent>
           </AccordionItem>

@@ -3,7 +3,7 @@
  * No single mixed running-balance list across subledger + journal.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { ModernDateFilter } from '@/app/components/customer-ledger-test/modern-original/ModernDateFilter';
 import { getTodayYYYYMMDD, cn } from '@/app/components/ui/utils';
@@ -52,6 +52,31 @@ const STATEMENT_TITLE: Record<LedgerEntityType, string> = {
   worker: 'Worker statement',
 };
 
+/** Default GL view: if opening-balance JEs were re-posted after edits, show only the latest opening journal row; full history via toggle. */
+function dedupeOlderOpeningJournalRows(
+  entries: AccountLedgerEntry[],
+  showAll: boolean
+): AccountLedgerEntry[] {
+  if (showAll || entries.length < 2) return entries;
+  const isOpeningJe = (e: AccountLedgerEntry) => {
+    if (!e.journal_entry_id) return false;
+    const d = String(e.description || '').toLowerCase();
+    const doc = String(e.document_type || '').toLowerCase();
+    return d.includes('opening balance') || doc.includes('opening balance') || doc.includes('opening_balance');
+  };
+  const openingJes = entries.filter(isOpeningJe);
+  if (openingJes.length <= 1) return entries;
+  const sortKey = (e: AccountLedgerEntry) => {
+    const c = e.created_at ? Date.parse(e.created_at) : NaN;
+    if (!Number.isNaN(c)) return c;
+    return Date.parse(e.date || '') || 0;
+  };
+  const sorted = [...openingJes].sort((a, b) => sortKey(b) - sortKey(a));
+  const keepId = sorted[0]?.journal_entry_id;
+  if (!keepId) return entries;
+  return entries.filter((e) => !isOpeningJe(e) || e.journal_entry_id === keepId);
+}
+
 export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericLedgerViewProps) {
   const { companyId, branchId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
@@ -80,6 +105,12 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [workerPaymentDialogOpen, setWorkerPaymentDialogOpen] = useState(false);
   const [balanceRefreshTick, setBalanceRefreshTick] = useState(0);
+  const [showOpeningJournalHistory, setShowOpeningJournalHistory] = useState(false);
+
+  const glEntriesDisplay = useMemo(
+    () => dedupeOlderOpeningJournalRows(glEntries, showOpeningJournalHistory),
+    [glEntries, showOpeningJournalHistory]
+  );
 
   const loadOperationalRef = useRef<() => void>(() => {});
   const loadOperational = useCallback(async () => {
@@ -404,22 +435,35 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
               No GL party statement for this user type. Operational tab shows the staff subledger only.
             </div>
           ) : (
-            <CustomerGlJournalTable
-              entries={glEntries}
-              loading={glLoading}
-              error={glError}
-              formatCurrency={formatCurrency}
-              dateFrom={dateRange.from}
-              dateTo={dateRange.to}
-              balanceColumnLabel={ledgerType === 'supplier' ? 'Balance (AP GL)' : 'Net (WP−WA GL)'}
-              showAccountCodeColumn={ledgerType === 'worker'}
-              loadingHint="Loading GL (journal) statement…"
-              emptyHint={
-                ledgerType === 'supplier'
-                  ? `No AP journal lines for this supplier in ${dateRange.from} — ${dateRange.to}.`
-                  : `No 2010/1180 journal lines for this worker in ${dateRange.from} — ${dateRange.to}.`
-              }
-            />
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-600"
+                  checked={showOpeningJournalHistory}
+                  onChange={(e) => setShowOpeningJournalHistory(e.target.checked)}
+                />
+                <span>
+                  Show all opening-balance journal history (edits/reposts). Off = latest opening JE only for a clearer default view.
+                </span>
+              </label>
+              <CustomerGlJournalTable
+                entries={glEntriesDisplay}
+                loading={glLoading}
+                error={glError}
+                formatCurrency={formatCurrency}
+                dateFrom={dateRange.from}
+                dateTo={dateRange.to}
+                balanceColumnLabel={ledgerType === 'supplier' ? 'Balance (AP GL)' : 'Net (WP−WA GL)'}
+                showAccountCodeColumn={ledgerType === 'worker'}
+                loadingHint="Loading GL (journal) statement…"
+                emptyHint={
+                  ledgerType === 'supplier'
+                    ? `No AP journal lines for this supplier in ${dateRange.from} — ${dateRange.to}.`
+                    : `No 2010/1180 journal lines for this worker in ${dateRange.from} — ${dateRange.to}.`
+                }
+              />
+            </div>
           )}
         </div>
       )}

@@ -16,6 +16,7 @@ import {
   accountingStatementModeLabel,
   type AccountingStatementMode,
 } from '@/app/lib/accounting/statementEngineTypes';
+import { nearestPartyControlAncestorId } from '@/app/lib/partyControlAccounts';
 
 type StatementType = AccountingStatementMode;
 
@@ -213,7 +214,9 @@ export const AccountLedgerReportPage: React.FC<{
 }> = ({ startDate, endDate, branchId, branchScopeLabel }) => {
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
-  const [accounts, setAccounts] = useState<{ id: string; name: string; code?: string; type?: string }[]>([]);
+  const [accounts, setAccounts] = useState<
+    { id: string; name: string; code?: string; type?: string; linked_contact_id?: string | null; parent_id?: string | null }[]
+  >([]);
   const [contacts, setContacts] = useState<{ id: string; name: string; contact_type?: string }[]>([]);
   const [statementType, setStatementType] = useState<StatementType>('gl');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -248,6 +251,17 @@ export const AccountLedgerReportPage: React.FC<{
   const [partyByKey, setPartyByKey] = useState<Record<string, { name: string; contactId: string }>>({});
   const [loading, setLoading] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [journalRefreshTick, setJournalRefreshTick] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setJournalRefreshTick((n) => n + 1);
+    window.addEventListener('accountingEntriesChanged', bump);
+    window.addEventListener('paymentAdded', bump);
+    return () => {
+      window.removeEventListener('accountingEntriesChanged', bump);
+      window.removeEventListener('paymentAdded', bump);
+    };
+  }, []);
 
   const isPartyStatement = applied.statementType === 'supplier' || applied.statementType === 'customer';
   const viewMode: 'effective' | 'audit' = (!applied.includeAdjustments && !applied.includeReversals) ? 'effective' : 'audit';
@@ -259,7 +273,16 @@ export const AccountLedgerReportPage: React.FC<{
       .getAllAccounts(companyId, branchId)
       .then((list: any[]) => {
         const active = (list || []).filter((a) => a.is_active !== false);
-        setAccounts(active.map((a) => ({ id: a.id, name: a.name, code: a.code, type: a.type })));
+        setAccounts(
+          active.map((a: any) => ({
+            id: a.id,
+            name: a.name,
+            code: a.code,
+            type: a.type,
+            linked_contact_id: a.linked_contact_id ?? null,
+            parent_id: a.parent_id ?? null,
+          }))
+        );
         if (active.length > 0 && !selectedAccountId) {
           setSelectedAccountId(active[0].id);
           setApplied((prev) => ({ ...prev, selectedAccountId: active[0].id }));
@@ -368,13 +391,48 @@ export const AccountLedgerReportPage: React.FC<{
             setEntries([]);
             return;
           }
-          loaded = await accountingService.getAccountLedger(
-            applied.selectedAccountId,
-            companyId,
-            startDate,
-            endDate,
-            branchId || undefined
-          );
+          const accRow = accounts.find((x) => x.id === applied.selectedAccountId);
+          const lc = accRow?.linked_contact_id ? String(accRow.linked_contact_id).trim() : '';
+          const accountsByIdMap = new Map(accounts.map((a) => [a.id, a]));
+          const ancestorId = accRow ? nearestPartyControlAncestorId(accRow, accountsByIdMap as any) : null;
+          const ctrl = ancestorId ? accountsByIdMap.get(ancestorId) : undefined;
+          const ctrlCode = String(ctrl?.code || '').trim();
+
+          if (lc && ctrl && (ctrlCode === '1100' || ctrlCode === '2000' || ctrlCode === '2010' || ctrlCode === '1180')) {
+            if (ctrlCode === '2000') {
+              loaded = await accountingService.getSupplierApGlJournalLedger(
+                lc,
+                companyId,
+                branchId || undefined,
+                startDate,
+                endDate
+              );
+            } else if (ctrlCode === '1100') {
+              loaded = await accountingService.getCustomerArGlJournalLedger(
+                lc,
+                companyId,
+                branchId || undefined,
+                startDate,
+                endDate
+              );
+            } else {
+              loaded = await accountingService.getWorkerPartyGlJournalLedger(
+                lc,
+                companyId,
+                branchId || undefined,
+                startDate,
+                endDate
+              );
+            }
+          } else {
+            loaded = await accountingService.getAccountLedger(
+              applied.selectedAccountId,
+              companyId,
+              startDate,
+              endDate,
+              branchId || undefined
+            );
+          }
         }
         setEntries(loaded || []);
         console.log('[STATEMENT_FILTER_TRACE] fetch', {
@@ -395,7 +453,7 @@ export const AccountLedgerReportPage: React.FC<{
         setLoading(false);
       }
     })();
-  }, [companyId, applied, startDate, endDate, branchId]);
+  }, [companyId, applied, startDate, endDate, branchId, accounts, journalRefreshTick]);
 
   useEffect(() => {
     const paymentIds = [...new Set(entries.map((e) => e.payment_id).filter(Boolean))] as string[];

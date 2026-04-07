@@ -1,6 +1,13 @@
 import { supabase } from '@/lib/supabase';
 import { documentNumberService } from '@/app/services/documentNumberService';
 
+/** Per-contact slice from `get_contact_party_gl_balances` (1100 AR, 2000 AP, worker net on 2010/1180). */
+export type ContactPartyGlBalancesSlice = {
+  glArReceivable: number;
+  glApPayable: number;
+  glWorkerPayable: number;
+};
+
 async function syncOpeningGlForContact(contactId: string | undefined | null) {
   if (!contactId) return;
   try {
@@ -104,9 +111,7 @@ export const contactService = {
   async getContactPartyGlBalancesMap(
     companyId: string,
     branchId?: string | null
-  ): Promise<
-    Map<string, { glArReceivable: number; glApPayable: number; glWorkerPayable: number }> | null
-  > {
+  ): Promise<Map<string, ContactPartyGlBalancesSlice> | null> {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const safeBranchId =
       branchId && branchId !== 'all' && typeof branchId === 'string' && uuidRegex.test(branchId.trim())
@@ -122,7 +127,7 @@ export const contactService = {
       }
       return null;
     }
-    const map = new Map<string, { glArReceivable: number; glApPayable: number; glWorkerPayable: number }>();
+    const map = new Map<string, ContactPartyGlBalancesSlice>();
     (data ?? []).forEach(
       (row: {
         contact_id: string;

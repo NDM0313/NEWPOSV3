@@ -157,11 +157,16 @@ export const accountService = {
 
   // Create account
   async createAccount(account: Partial<Account>) {
+    const trimmedCode = String(account.code ?? '').trim();
+    const code =
+      trimmedCode ||
+      `GEN-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
     // Clean data - only include fields that exist in actual schema
     // Actual schema may or may not include description (add via 17_accounts_description.sql)
     const cleanData: any = {
       company_id: account.company_id,
-      code: account.code,
+      code,
       name: account.name,
       type: account.type,
       balance: account.balance || 0,

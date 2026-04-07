@@ -479,6 +479,38 @@ export const inventoryService = {
   },
 
   /**
+   * Product edit may adjust parent-level opening only when there is no movement history beyond a single opening row.
+   * Otherwise reconcile would treat on-hand total as "opening" and corrupt history (e.g. after sales).
+   */
+  async allowsParentOpeningReconcileFromProductForm(
+    companyId: string,
+    productId: string,
+    branchId: string | null
+  ): Promise<boolean> {
+    let q = supabase
+      .from('stock_movements')
+      .select('id, reference_type, movement_type')
+      .eq('company_id', companyId)
+      .eq('product_id', productId)
+      .is('variation_id', null);
+    const b = branchId && branchId !== 'all' ? branchId : null;
+    if (b) q = q.eq('branch_id', b);
+    else q = q.is('branch_id', null);
+    const { data, error } = await q;
+    if (error) {
+      console.warn('[INVENTORY] allowsParentOpeningReconcileFromProductForm:', error);
+      return false;
+    }
+    const rows = data || [];
+    if (rows.length === 0) return true;
+    if (rows.length === 1) {
+      const r = rows[0] as { reference_type?: string | null; movement_type?: string | null };
+      return String(r.reference_type || '').toLowerCase() === 'opening_balance';
+    }
+    return false;
+  },
+
+  /**
    * Returns the number of parent-level stock_movements (variation_id IS NULL) for a product.
    * Used to block enabling variations when product has parent-level stock (RULE 5).
    */

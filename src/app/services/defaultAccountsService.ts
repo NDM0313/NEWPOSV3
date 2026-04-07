@@ -50,7 +50,7 @@ const LEAF_ROWS: SeedDef[] = [
   { code: '4110', name: 'Shipping Income', type: 'revenue', parentCode: '4050' },
   { code: '4200', name: 'Rental Income', type: 'revenue', parentCode: '4050' },
   { code: '5000', name: 'Cost of Production', type: 'expense', parentCode: '6090' },
-  { code: '6100', name: 'Operating Expense', type: 'expense', parentCode: '6090' },
+  { code: '6100', name: 'General operating expenses', type: 'expense', parentCode: '6090' },
   { code: '6110', name: 'Salary Expense', type: 'expense', parentCode: '6090' },
   { code: '6120', name: 'Marketing Expense', type: 'expense', parentCode: '6090' },
 ];
@@ -123,6 +123,21 @@ async function insertAccountRow(
   });
 }
 
+/** Rename legacy 6100 label so it is distinct from group 6090 "Operating Expenses". */
+async function repairLegacyOperatingExpense6100Name(companyId: string): Promise<void> {
+  const list = await accountService.getAllAccounts(companyId);
+  const a = findByCode(list, '6100');
+  if (!a?.id) return;
+  const n = String(a.name || '').trim();
+  if (n === 'Operating Expense') {
+    try {
+      await accountService.updateAccount(a.id, { name: 'General operating expenses' });
+    } catch (e) {
+      console.warn('[DEFAULT ACCOUNTS] rename 6100:', e);
+    }
+  }
+}
+
 async function repairParents(companyId: string): Promise<void> {
   let list = await accountService.getAllAccounts(companyId);
   for (const { code, parentCode } of REPAIR_PARENT_BY_CODE) {
@@ -167,6 +182,7 @@ export const defaultAccountsService = {
       }
 
       await repairParents(companyId);
+      await repairLegacyOperatingExpense6100Name(companyId);
       list = await accountService.getAllAccounts(companyId);
 
       for (const code of CORE_PAYMENT_CODES) {

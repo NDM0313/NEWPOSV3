@@ -12,6 +12,10 @@ import type { AccountCategory } from '@/app/services/chartAccountService';
 import { defaultAccountsService } from '@/app/services/defaultAccountsService';
 import { resolveCanonicalParentId } from '@/app/lib/accountHierarchy';
 import { accountMatchesProfessionalCategory } from '@/app/lib/accountProfessionalCategory';
+import {
+  filterManualCoaParentCandidates,
+  getNextChildAccountCode,
+} from '@/app/lib/addAccountCoaPicker';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { toast } from 'sonner';
 
@@ -91,6 +95,15 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
       }).catch(() => setLoadingAccounts(false));
     }
   }, [isOpen, companyId]);
+
+  /** Suggest next child code when parent is chosen and code field is empty. */
+  useEffect(() => {
+    if (activeTab !== 'professional' || !parentId || !existingAccounts.length) return;
+    if (accountCode.trim()) return;
+    const parent = existingAccounts.find((a) => a.id === parentId);
+    if (!parent) return;
+    setAccountCode(getNextChildAccountCode(parent, existingAccounts));
+  }, [parentId, professionalCategory, existingAccounts, activeTab, accountCode]);
 
   const getReservedCodeForRole = (role: OperationalRole): string | null =>
     RESERVED_CODES[role] ?? null;
@@ -179,10 +192,17 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
       setExistingAccounts(refreshed || []);
 
       const acctList = refreshed || [];
-      const code =
+      let code: string | undefined =
         activeTab === 'operational'
           ? getOperationalCode(acctList)
-          : accountCode.trim() || undefined;
+          : accountCode.trim();
+
+      if (activeTab === 'professional') {
+        if (!code && parentId) {
+          const parent = acctList.find((a) => a.id === parentId);
+          if (parent) code = getNextChildAccountCode(parent, acctList);
+        }
+      }
 
       if (activeTab === 'operational' && !code) {
         toast.error('Could not assign account code', { description: 'Refresh and try again.' });
@@ -370,11 +390,11 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
                     <SelectTrigger className="bg-gray-800 border-gray-700 text-white h-11">
                       <SelectValue placeholder="None (top-level)" />
                     </SelectTrigger>
-                    <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                    <SelectContent className="bg-gray-800 border-gray-700 text-white max-h-[min(60vh,20rem)]">
                       <SelectItem value="__none__">None (top-level)</SelectItem>
-                      {existingAccounts
-                        .filter((a) => accountMatchesProfessionalCategory(a, professionalCategory))
-                        .map((a) => (
+                      {filterManualCoaParentCandidates(existingAccounts, (a) =>
+                        accountMatchesProfessionalCategory(a, professionalCategory)
+                      ).map((a) => (
                           <SelectItem key={a.id} value={a.id}>
                             {a.code ? `${a.code} – ` : ''}{a.name}
                           </SelectItem>
@@ -400,9 +420,12 @@ export const AddAccountDrawer = ({ isOpen, onClose, onSuccess }: AddAccountDrawe
                   <Input
                     value={accountCode}
                     onChange={(e) => setAccountCode(e.target.value)}
-                    placeholder="e.g. 1100, 2000"
+                    placeholder="Leave blank to auto-fill from parent"
                     className="bg-gray-800 border-gray-700 text-white h-11 font-mono"
                   />
+                  <p className="text-xs text-gray-500">
+                    Optional — with a parent selected, the next free code is suggested. Top-level without a code uses an auto code. Must stay unique.
+                  </p>
                 </div>
 
                 <div className="space-y-3">

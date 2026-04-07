@@ -282,11 +282,15 @@ export const openingBalanceJournalService = {
       const supOb = (row as any).supplier_opening_balance;
       const ob = (row as any).opening_balance;
       if (type === 'supplier') {
-        // Supplier-only: legacy rows may store payable opening in opening_balance
-        apSource =
-          supOb != null && supOb !== ''
-            ? roundMoney(Number(supOb) || 0)
-            : roundMoney(Number(ob) || 0);
+        // Supplier-only: legacy rows may store payable opening in opening_balance.
+        // IMPORTANT: explicit 0 in supplier_opening_balance must NOT block fallback — many rows store 0.00 in DB
+        // while the real opening lives in opening_balance (UI / import paths).
+        const supNum = supOb != null && supOb !== '' ? roundMoney(Number(supOb) || 0) : null;
+        if (supNum != null && Math.abs(supNum) >= MONEY_EPS) {
+          apSource = supNum;
+        } else {
+          apSource = roundMoney(Number(ob) || 0);
+        }
       } else {
         apSource = roundMoney(Number(supOb) || 0);
       }
@@ -519,5 +523,59 @@ export const openingBalanceJournalService = {
       entryDate,
       entryNo: `INV-OB-${String(movementId).replace(/-/g, '').slice(0, 12)}`,
     });
+  },
+
+  /**
+   * Company-scoped repair: normalize supplier-only rows that stored payables in `opening_balance`
+   * while `supplier_opening_balance` is zero, then re-sync opening journals for all supplier/both contacts.
+   * Idempotent: second run is mostly no-ops (reconcileOrVoidOpeningJe keeps matching JEs).
+   * Does not change type=`both` balances (AR stays on opening_balance; AP stays on supplier_opening_balance).
+   */
+  async repairCompanySupplierOpeningBalances(companyId: string): Promise<{
+    companyId: string;
+    supplierOnlyNormalized: number;
+    contactsResynced: number;
+  }> {
+    await defaultAccountsService.ensureDefaultAccounts(companyId);
+
+    let supplierOnlyNormalized = 0;
+
+    const { data: supplierRows, error: supErr } = await supabase
+      .from('contacts')
+      .select('id, opening_balance, supplier_opening_balance')
+      .eq('company_id', companyId)
+      .eq('type', 'supplier');
+    if (supErr) throw supErr;
+
+    for (const row of supplierRows || []) {
+      const ob = roundMoney(Number((row as { opening_balance?: number }).opening_balance) || 0);
+      const sup = roundMoney(Number((row as { supplier_opening_balance?: number }).supplier_opening_balance) || 0);
+      if (Math.abs(sup) >= MONEY_EPS || ob <= MONEY_EPS) continue;
+
+      const { error: upErr } = await supabase
+        .from('contacts')
+        .update({
+          supplier_opening_balance: ob,
+          opening_balance: 0,
+        })
+        .eq('id', (row as { id: string }).id);
+      if (!upErr) supplierOnlyNormalized += 1;
+    }
+
+    const { data: syncRows, error: listErr } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('company_id', companyId)
+      .in('type', ['supplier', 'both']);
+    if (listErr) throw listErr;
+
+    let contactsResynced = 0;
+    for (const r of syncRows || []) {
+      const id = (r as { id: string }).id;
+      await this.syncFromContactRow(id);
+      contactsResynced += 1;
+    }
+
+    return { companyId, supplierOnlyNormalized, contactsResynced };
   },
 };

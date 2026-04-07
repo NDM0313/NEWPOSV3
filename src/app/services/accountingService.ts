@@ -2385,6 +2385,99 @@ export const accountingService = {
   },
 
   /**
+   * Customer AR: **control 1100 only**, same party resolution as `get_contact_party_gl_balances` (RPC `get_customer_ar_gl_ledger_for_contact`).
+   * Convention: running balance asset-style (debit − credit on 1100).
+   */
+  async getCustomerArGlJournalLedger(
+    customerId: string,
+    companyId: string,
+    branchId?: string,
+    startDate?: string,
+    endDate?: string
+  ): Promise<AccountLedgerEntry[]> {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const safeBranchId =
+      branchId && branchId !== 'all' && typeof branchId === 'string' && uuidRegex.test(branchId.trim())
+        ? branchId.trim()
+        : null;
+    const startStr = startDate ? startDate.slice(0, 10) : null;
+    const endStr = endDate ? endDate.slice(0, 10) : null;
+
+    try {
+      const { data: rpcRaw, error: rpcError } = await supabase.rpc('get_customer_ar_gl_ledger_for_contact', {
+        p_company_id: companyId,
+        p_customer_id: customerId,
+        p_branch_id: safeBranchId,
+        p_start_date: startStr,
+        p_end_date: endStr,
+      });
+
+      if (rpcError) {
+        console.warn('[ACCOUNTING SERVICE] get_customer_ar_gl_ledger_for_contact:', rpcError.message);
+        return [];
+      }
+
+      const payload = rpcRaw as { period_opening_balance?: number; rows?: Record<string, unknown>[] } | null;
+      if (!payload || typeof payload !== 'object') {
+        return [];
+      }
+
+      const opening = Number(payload.period_opening_balance ?? 0);
+      const rawRows = Array.isArray(payload.rows) ? payload.rows : [];
+
+      const ledgerEntriesFromRange: AccountLedgerEntry[] = rawRows.map((r) => {
+        const debit = Number(r.debit ?? 0);
+        const credit = Number(r.credit ?? 0);
+        return {
+          date: String(r.entry_date ?? '').slice(0, 10),
+          created_at: r.created_at != null ? String(r.created_at) : undefined,
+          reference_number:
+            r.entry_no != null && String(r.entry_no).trim() !== ''
+              ? String(r.entry_no)
+              : (String(r.journal_entry_id || '').slice(0, 8) || '—'),
+          entry_no: r.entry_no != null ? String(r.entry_no) : undefined,
+          description: String(r.description ?? '—'),
+          debit,
+          credit,
+          running_balance: Number(r.running_balance ?? 0),
+          source_module: 'Accounting',
+          journal_entry_id: String(r.journal_entry_id ?? ''),
+          payment_id: r.payment_id != null ? String(r.payment_id) : undefined,
+          branch_id: r.branch_id != null ? String(r.branch_id) : undefined,
+          branch_name: r.branch_name != null ? String(r.branch_name) : undefined,
+          account_name: String(r.account_name ?? ''),
+          gl_account_code: String(r.account_code ?? ''),
+          document_type: 'AR Journal',
+        };
+      });
+
+      if (startStr) {
+        return [
+          {
+            date: startStr,
+            reference_number: '—',
+            entry_no: undefined,
+            description: 'Opening Balance (AR GL)',
+            debit: 0,
+            credit: 0,
+            running_balance: opening,
+            source_module: 'Accounting',
+            journal_entry_id: '',
+            document_type: 'Opening Balance',
+            account_name: '',
+          },
+          ...ledgerEntriesFromRange,
+        ];
+      }
+
+      return ledgerEntriesFromRange;
+    } catch (e) {
+      console.error('[ACCOUNTING SERVICE] getCustomerArGlJournalLedger:', e);
+      return [];
+    }
+  },
+
+  /**
    * Worker party: journal lines on Worker Payable (2010) and Worker Advance (1180) only — no worker_ledger_entries merge.
    * running_balance = net GL exposure (WP liability credit−debit minus WA asset debit−credit), same basis as get_contact_party_gl_balances worker slice.
    */

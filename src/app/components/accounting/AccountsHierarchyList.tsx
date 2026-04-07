@@ -11,6 +11,7 @@ import {
   Shield,
   TrendingDown,
   TrendingUp,
+  Users,
   Wallet,
 } from 'lucide-react';
 import { Badge } from '@/app/components/ui/badge';
@@ -64,6 +65,8 @@ export type AccountsHierarchyListProps = {
   renderRowInlineExtra?: (row: AccountsHierarchyRowModel) => React.ReactNode;
   /** Expanded panel directly under a row (e.g. linked parties dropdown) */
   renderPartyDropdownBelowRow?: (row: AccountsHierarchyRowModel) => React.ReactNode;
+  /** Control rows (1100/2000/2010/1180): open side panel with linked parties */
+  onOpenLinkedParties?: (row: AccountsHierarchyRowModel) => void;
 };
 
 export function AccountsHierarchyList({
@@ -75,6 +78,7 @@ export function AccountsHierarchyList({
   renderRowMenu,
   renderRowInlineExtra,
   renderPartyDropdownBelowRow,
+  onOpenLinkedParties,
 }: AccountsHierarchyListProps) {
   if (rows.length === 0) {
     return <>{emptyState ?? null}</>;
@@ -103,6 +107,7 @@ export function AccountsHierarchyList({
             account,
             depth,
             hasChildRows,
+            hasDescendantsInFullChart,
             isCollapsed,
             displayBalance,
             entryCount,
@@ -111,6 +116,9 @@ export function AccountsHierarchyList({
             coaPrimaryLabel,
             coaPartyRoleLabel,
             coaDetailLine,
+            coaSuppressProminentAccountCode,
+            coaRowDetailTooltip,
+            coaLinkedPartyCount,
           } = row;
           const controlKind = getControlAccountKind({ name: account.name, code: account.code });
           const visual = accountRowVisual(account);
@@ -118,9 +126,12 @@ export function AccountsHierarchyList({
           const iconLg = depth === 0;
           const trend =
             trendPctForRow?.(row) ?? row.trendPct ?? null;
+          const operationalTypeSubtitle = coaSuppressProminentAccountCode
+            ? 'Party · GL sub-ledger'
+            : account.type || account.accountType || 'Account';
           const subtitleParts = [
             coaDetailLine,
-            accountsViewMode === 'operational' ? account.type || account.accountType || 'Account' : null,
+            accountsViewMode === 'operational' ? operationalTypeSubtitle : null,
             entryCount > 0 ? `${entryCount} entries` : null,
           ].filter(Boolean);
           const balPositive = displayBalance >= 0;
@@ -170,14 +181,17 @@ export function AccountsHierarchyList({
                 </div>
 
                 <div className="min-w-0 flex-1 pt-0.5">
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div
+                    className="flex flex-wrap items-center gap-2"
+                    title={coaRowDetailTooltip || undefined}
+                  >
                     <span className="font-semibold text-white text-sm sm:text-[15px] leading-tight">{coaPrimaryLabel}</span>
                     {coaPartyRoleLabel ? (
                       <Badge className="border-violet-500/35 bg-violet-500/15 text-[10px] uppercase tracking-wide text-violet-200">
                         {coaPartyRoleLabel}
                       </Badge>
                     ) : null}
-                    {accountsViewMode !== 'professional' && account.code ? (
+                    {accountsViewMode !== 'professional' && account.code && !coaSuppressProminentAccountCode ? (
                       <Badge variant="outline" className="border-gray-600 bg-gray-800/80 text-[10px] font-mono text-gray-300 px-1.5 py-0">
                         {account.code}
                       </Badge>
@@ -193,6 +207,22 @@ export function AccountsHierarchyList({
                     {(account as { is_default_bank?: boolean }).is_default_bank && (
                       <Badge className="border-blue-500/30 bg-blue-500/15 text-[10px] text-blue-300">Default Bank</Badge>
                     )}
+                    {onOpenLinkedParties &&
+                    typeof coaLinkedPartyCount === 'number' &&
+                    coaLinkedPartyCount > 0 ? (
+                      <button
+                        type="button"
+                        title="View linked parties and GL balances"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenLinkedParties(row);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md border border-violet-500/35 bg-violet-500/10 px-2 py-0.5 text-violet-200 hover:bg-violet-500/20 shrink-0"
+                      >
+                        <Users className="h-3.5 w-3.5" />
+                        <span className="text-[10px] font-medium tabular-nums">{coaLinkedPartyCount}</span>
+                      </button>
+                    ) : null}
                     {renderRowInlineExtra?.(row)}
                   </div>
                   {coaDetailLine ? (
@@ -203,14 +233,17 @@ export function AccountsHierarchyList({
               </div>
 
               {accountsViewMode === 'professional' ? (
-                <div className="text-[11px] font-mono text-gray-400 sm:border-l border-gray-800/80 sm:pl-3 tabular-nums">
-                  {account.code || '—'}
+                <div
+                  className="text-[11px] font-mono text-gray-400 sm:border-l border-gray-800/80 sm:pl-3 tabular-nums"
+                  title={coaSuppressProminentAccountCode ? coaRowDetailTooltip || undefined : undefined}
+                >
+                  {coaSuppressProminentAccountCode ? '—' : account.code || '—'}
                 </div>
               ) : null}
 
               <div className="flex flex-col justify-center text-xs text-gray-400 sm:border-l border-gray-800/80 sm:pl-3">
                 <Badge className="w-fit border-gray-700 bg-gray-800/90 text-gray-300 text-[10px] max-w-full truncate">
-                  {account.type || account.accountType || '—'}
+                  {coaSuppressProminentAccountCode ? operationalTypeSubtitle : account.type || account.accountType || '—'}
                 </Badge>
                 {accountsViewMode === 'professional' ? (
                   <span className="mt-1 text-[10px] text-gray-500 hidden sm:inline">{account.branch ? 'Branch' : 'Global'}</span>
@@ -235,10 +268,10 @@ export function AccountsHierarchyList({
                   >
                     {formatCurrency(displayBalance)}
                   </div>
-                  {hasChildRows && (
+                  {(hasChildRows || hasDescendantsInFullChart) && (
                     <span
                       className="mt-0.5 block text-[9px] font-normal text-gray-500"
-                      title="Parent/group rows show roll-up: this account’s own GL balance plus all visible sub-accounts. Child rows still carry their own posted activity (no double-count in GL)."
+                      title="Roll-up uses this account’s posted balance plus all descendant accounts in the chart (same total whether sub-rows are shown or hidden). Leaf rows show their own GL only."
                     >
                       {account.balance !== displayBalance
                         ? `Roll-up total · row GL ${formatCurrency(account.balance)}`

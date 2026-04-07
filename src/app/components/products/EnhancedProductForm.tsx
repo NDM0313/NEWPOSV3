@@ -485,7 +485,6 @@ export const EnhancedProductForm = ({
       setValue('sellingPrice', source.retail_price ?? (source as any).sellingPrice ?? 0);
       setValue('wholesalePrice', source.wholesale_price ?? source.retail_price ?? 0);
       setValue('rentalPrice', source.rental_price_daily ?? 0);
-      setValue('initialStock', (source as any).stock ?? 0);
       setValue('alertQty', source.min_stock ?? (source as any).lowStockThreshold ?? 0);
       setValue('maxStock', source.max_stock ?? 1000);
       setValue('description', source.description || '');
@@ -557,6 +556,32 @@ export const EnhancedProductForm = ({
       setVariantAttributes([]);
     }
   }, [fullProductForEdit, initialProduct, setValue]);
+
+  /** Movement-based stock for edit (products.current_stock is not selected in getProduct). */
+  useEffect(() => {
+    const source = fullProductForEdit ?? initialProduct;
+    const pid = source?.uuid || source?.id;
+    if (!companyId || !pid || typeof pid !== 'string') return;
+    let cancelled = false;
+    const hasVar = !!(source?.has_variations ?? (source?.variations && source.variations.length > 0));
+    const branchScope = branchId && branchId !== 'all' ? branchId : null;
+    if (hasVar || (source as any)?.is_combo_product) {
+      setValue('initialStock', 0, { shouldValidate: false, shouldDirty: false });
+      return;
+    }
+    (async () => {
+      try {
+        const qty = await inventoryService.getStock(companyId, pid, null, branchScope);
+        if (!cancelled) setValue('initialStock', Math.round(qty * 100) / 100, { shouldValidate: false, shouldDirty: false });
+      } catch {
+        const fallback = Number((source as any)?.stock ?? (source as any)?.current_stock ?? 0) || 0;
+        if (!cancelled) setValue('initialStock', fallback, { shouldValidate: false, shouldDirty: false });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fullProductForEdit, initialProduct, companyId, branchId, setValue]);
 
   // Load available products for combo search (exclude combo products and current product)
   useEffect(() => {
@@ -1037,22 +1062,24 @@ export const EnhancedProductForm = ({
           }
         }
 
-        // Opening stock: sync with stock_movements. RULE 1: No parent opening when variations enabled.
+        // Opening stock: movement-based only; never send current_stock (productService strips it).
         const hasVariations = enableVariations;
         const initialStock = Number(data.initialStock) || 0;
         const movementCount = await inventoryService.getMovementCountForProduct(productId);
-        if (movementCount > 0) {
-          delete (productData as any).current_stock;
-        } else {
-          (productData as any).current_stock = 0;
-        }
+        delete (productData as any).current_stock;
         if (hasVariations) (productData as any).current_stock = 0; // RULE 1: parent never holds stock
 
         const result = await productService.updateProduct(productId, productData);
 
-        // Parent-level opening: insert (no movements) or update single opening row + canonical GL
-        if (!hasVariations && finalCompanyId) {
-          const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
+        const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
+        const canReconcileOpening = await inventoryService.allowsParentOpeningReconcileFromProductForm(
+          finalCompanyId,
+          productId,
+          branchIdOrNull
+        );
+
+        // Parent-level opening: only when safe (no sales/purchases after opening — avoids overwriting opening with on-hand total).
+        if (!hasVariations && finalCompanyId && canReconcileOpening) {
           const { error: movErr } = await inventoryService.reconcileParentLevelOpeningStock(
             finalCompanyId,
             branchIdOrNull,
