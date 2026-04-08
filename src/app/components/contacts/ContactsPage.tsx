@@ -21,8 +21,6 @@ import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { contactService } from '@/app/services/contactService';
-import { saleService } from '@/app/services/saleService';
-import { purchaseService } from '@/app/services/purchaseService';
 import { accountingReportsService } from '@/app/services/accountingReportsService';
 import type { TrialBalanceRow } from '@/app/services/accountingReportsService';
 import {
@@ -170,8 +168,8 @@ export const ContactsPage = () => {
     cashBankNetDrMinusCr: number | null;
   } | null>(null);
   const [reconSnapshot, setReconSnapshot] = useState<CompanyReconciliationSnapshot | null>(null);
-  /** Operational row amounts: from get_contact_balances_summary vs merged sales/purchases fallback. */
-  const [operationalEngine, setOperationalEngine] = useState<'rpc' | 'fallback' | null>(null);
+  /** Operational row amounts: from get_contact_balances_summary only (no merged-document fallback). */
+  const [operationalEngine, setOperationalEngine] = useState<'rpc' | null>(null);
   /** Party-attributed GL slice per contact (optional compare-only; does not drive row numbers). */
   const [partyGlByContactId, setPartyGlByContactId] = useState<Map<
     string,
@@ -369,60 +367,47 @@ export const ContactsPage = () => {
       setListLoading(false);
       setBalancesLoading(true);
 
-      // Phase 2: RPC success (non-null Map) always overwrites row amounts — no phase1/fallback mix after that.
+      // Phase 2: canonical operational amounts only from get_contact_balances_summary (no client merge fallback).
       const loadBalances = async () => {
         try {
-          const balanceMap = await contactService.getContactBalancesSummary(companyId, branchId === 'all' ? null : branchId).catch(() => null);
+          const { map: balanceMap, error: rpcBalanceError } = await contactService.getContactBalancesSummary(
+            companyId,
+            branchId === 'all' ? null : branchId
+          );
           if (myGen !== loadContactsGenerationRef.current) return;
 
-          if (balanceMap != null) {
-            setOperationalEngine('rpc');
-            if (balanceMap.size === 0 && phase1Contacts.length > 0 && import.meta.env?.DEV) {
-              console.warn(
-                '[CONTACTS PAGE] get_contact_balances_summary returned zero rows but contacts exist — applying 0/0 per row (check RLS or RPC).'
-              );
+          if (rpcBalanceError) {
+            if (import.meta.env?.DEV) {
+              console.warn('[CONTACTS PAGE] get_contact_balances_summary:', rpcBalanceError);
             }
-            const withBalances: Contact[] = phase1Contacts.map((contact) => {
-              const uuid = contact.uuid;
-              const bal = uuid ? balanceMap.get(String(uuid)) : undefined;
-              const r = Number(bal?.receivables ?? 0) || 0;
-              const p = Number(bal?.payables ?? 0) || 0;
-              if (debugTraceId && uuid === debugTraceId) {
-                console.log('[CONTACTS BALANCE TRACE]', {
-                  contactId: uuid,
-                  source: 'rpc',
-                  before: { r: contact.receivables, p: contact.payables },
-                  after: { r, p },
-                });
-              }
-              return { ...contact, receivables: r, payables: p, netBalance: r - p };
-            });
-            if (myGen !== loadContactsGenerationRef.current) return;
-            setBalancesStale(false);
-            setContacts(withBalances);
+            toast.error(`Contact balances unavailable: ${rpcBalanceError}`);
+            setOperationalEngine(null);
+            setBalancesStale(true);
             return;
           }
 
-          setOperationalEngine('fallback');
-          const [salesData, purchasesData] = await Promise.all([
-            saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
-            purchaseService.getAllPurchases(companyId, branchId === 'all' ? undefined : branchId || undefined).catch(() => []),
-          ]);
-          if (myGen !== loadContactsGenerationRef.current) return;
-          const withBalances: Contact[] = contactsData.map((c: any, index: number) =>
-            convertFromSupabaseContact(c, index, salesData, purchasesData, workerBalMap)
-          );
-          for (const row of withBalances) {
-            if (debugTraceId && row.uuid === debugTraceId) {
-              const prev = phase1Contacts.find((x) => x.uuid === row.uuid);
+          setOperationalEngine('rpc');
+          if (balanceMap.size === 0 && phase1Contacts.length > 0 && import.meta.env?.DEV) {
+            console.warn(
+              '[CONTACTS PAGE] get_contact_balances_summary returned zero rows but contacts exist — applying 0/0 per row (check RLS or RPC).'
+            );
+          }
+          const withBalances: Contact[] = phase1Contacts.map((contact) => {
+            const uuid = contact.uuid;
+            const bal = uuid ? balanceMap.get(String(uuid)) : undefined;
+            const r = Number(bal?.receivables ?? 0) || 0;
+            const p = Number(bal?.payables ?? 0) || 0;
+            if (debugTraceId && uuid === debugTraceId) {
               console.log('[CONTACTS BALANCE TRACE]', {
-                contactId: row.uuid,
-                source: 'fallback',
-                before: prev ? { r: prev.receivables, p: prev.payables } : null,
-                after: { r: row.receivables, p: row.payables },
+                contactId: uuid,
+                source: 'rpc',
+                before: { r: contact.receivables, p: contact.payables },
+                after: { r, p },
               });
             }
-          }
+            return { ...contact, receivables: r, payables: p, netBalance: r - p };
+          });
+          if (myGen !== loadContactsGenerationRef.current) return;
           setBalancesStale(false);
           setContacts(withBalances);
         } finally {
@@ -584,6 +569,15 @@ export const ContactsPage = () => {
     return () => window.removeEventListener('paymentAdded', onPaymentAdded);
   }, [companyId, loadContacts]);
 
+  /** Journal / manual entry changes: reload operational RPC rows + GL strip inputs without full reload. */
+  useEffect(() => {
+    const onAccountingChanged = () => {
+      if (companyId) loadContacts();
+    };
+    window.addEventListener('accountingEntriesChanged', onAccountingChanged);
+    return () => window.removeEventListener('accountingEntriesChanged', onAccountingChanged);
+  }, [companyId, loadContacts]);
+
   // Position filter dropdown when open (for portal)
   useEffect(() => {
     if (filterOpen && filterTriggerRef.current) {
@@ -678,27 +672,21 @@ export const ContactsPage = () => {
     return { customerRecv, supplierPay, workerPay };
   }, [contacts]);
 
-  // Tab summary: cards/rows primary = operational RPC; optional signed party GL totals when map loaded (matches TB attribution, includes credits).
+  // Header RECV/PAY cards = sum of visible table rows (same RPC-backed numbers as rows), not a separate reducer.
   const { summaryOperational, summaryPartyGlSigned, summaryMeta } = useMemo(() => {
-    const filtered = contacts.filter((c) => {
-      if (activeTab === 'all') return true;
-      const tabType = activeTab.slice(0, -1);
-      if (tabType === 'customer') return c.type === 'customer' || c.type === 'both';
-      if (tabType === 'supplier') return c.type === 'supplier' || c.type === 'both';
-      return c.type === 'worker';
-    });
-    const activeCount = filtered.filter((c) => c.status === 'active').length;
-    const totalCount = filtered.length;
+    const visible = filteredContacts;
+    const activeCount = visible.filter((c) => c.status === 'active').length;
+    const totalCount = visible.length;
     const operational = {
-      totalReceivables: filtered.reduce((sum, c) => sum + c.receivables, 0),
-      totalPayables: filtered.reduce((sum, c) => sum + c.payables, 0),
+      totalReceivables: visible.reduce((sum, c) => sum + c.receivables, 0),
+      totalPayables: visible.reduce((sum, c) => sum + c.payables, 0),
       activeCount,
       totalCount,
     };
     let partyRecvSigned = 0;
     let partyPaySigned = 0;
     if (partyGlByContactId?.size) {
-      for (const c of filtered) {
+      for (const c of visible) {
         const gl = partyGlByContactId.get(String(c.uuid));
         if (!gl) continue;
         if (c.type === 'customer' || c.type === 'both') partyRecvSigned += Number(gl.glArReceivable) || 0;
@@ -709,12 +697,12 @@ export const ContactsPage = () => {
     return {
       summaryOperational: operational,
       summaryPartyGlSigned:
-        partyGlByContactId?.size && filtered.length > 0
+        partyGlByContactId?.size && visible.length > 0
           ? { receivables: partyRecvSigned, payables: partyPaySigned }
           : null,
       summaryMeta: { activeCount, totalCount },
     };
-  }, [activeTab, contacts, partyGlByContactId]);
+  }, [filteredContacts, partyGlByContactId]);
 
   /** Contacts subledger vs GL (Trial Balance) — customer recv vs AR 1100; supplier pay vs AP 2000 (excludes worker pay). */
   const subledgerVsGl = useMemo(() => {
@@ -912,10 +900,10 @@ export const ContactsPage = () => {
                 <strong className="text-gray-400">Primary amounts</strong> are operational from{' '}
                 <code className="text-gray-500 text-[10px]">get_contact_balances_summary</code>
                 {operationalEngine === 'rpc' && ' (RPC). '}
-                {operationalEngine === 'fallback' && (
-                  <span className="text-amber-400/90"> (RPC unavailable — merged from sales/purchases). </span>
-                )}
                 {operationalEngine === null && !listLoading && contacts.length > 0 && <span> (resolving…). </span>}
+                {balancesStale && contacts.length > 0 && (
+                  <span className="text-amber-400/90"> (RPC failed — refresh or check grants / migration 20260430). </span>
+                )}
                 When the party GL map is loaded, a <strong className="text-gray-400">second line</strong> shows signed{' '}
                 <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code> (1100 / 2000 / worker) so you can trace to the GL control and party statements without mixing bases into one number. Amber icon = operational still differs from party GL slice (e.g. credits on AR).
               </p>
@@ -1341,7 +1329,7 @@ export const ContactsPage = () => {
                   </p>
                   <span
                     className="text-gray-500 shrink-0"
-                    title="Operational: SUM receivables for contacts type customer + both (this tab, branch) from get_contact_balances_summary. GL: AR control 1100 net Dr−Cr (journal, life-to-date). Variance = operational − GL net."
+                    title="Operational: SUM receivables for contacts type customer + both (this tab, branch) from get_contact_balances_summary only. GL: party AR on 1100 subtree (control + linked party sub-accounts), Dr−Cr net from get_contact_party_gl_balances roll-up. Variance = operational − GL net — expect amber when bases differ (e.g. open docs vs journal timing)."
                   >
                     <HelpCircle size={14} />
                   </span>
@@ -1782,7 +1770,7 @@ export const ContactsPage = () => {
                                   <AlertCircle
                                     size={14}
                                     className="text-amber-400 shrink-0"
-                                    title="Operational receivable ≠ max(0, party AR on 1100) — check party statement / GL tab"
+                                    title="Operational receivable ≠ party AR (1100 subtree) — check Customer ledger GL tab / journals"
                                   />
                                 )}
                               <div
@@ -1790,7 +1778,7 @@ export const ContactsPage = () => {
                                   'text-sm font-semibold tabular-nums leading-[1.4]',
                                   contact.receivables > 0 ? 'text-green-400' : 'text-gray-600'
                                 )}
-                                title="Operational receivable (get_contact_balances_summary or merged documents)"
+                                title="Operational receivable — get_contact_balances_summary only (no merged-document fallback)"
                               >
                                 {formatCurrency(contact.receivables)}
                               </div>
@@ -1804,7 +1792,7 @@ export const ContactsPage = () => {
                                     'text-[10px] tabular-nums text-violet-300/90',
                                     gl < -0.005 && 'text-amber-200/90'
                                   )}
-                                  title="Signed party AR on GL account 1100 (get_contact_party_gl_balances)"
+                                  title="Party AR (1100 subtree, get_contact_party_gl_balances) — not mixed into operational"
                                 >
                                   GL {formatCurrency(gl)}
                                 </div>
@@ -1841,7 +1829,7 @@ export const ContactsPage = () => {
                                   'text-sm font-semibold tabular-nums leading-[1.4]',
                                   contact.payables > 0 ? 'text-red-400' : 'text-gray-600'
                                 )}
-                                title="Operational payable (get_contact_balances_summary or merged documents)"
+                                title="Operational payable — get_contact_balances_summary only (no merged-document fallback)"
                               >
                                 {formatCurrency(contact.payables)}
                               </div>

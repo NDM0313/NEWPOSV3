@@ -11,6 +11,7 @@ import { ModernSummaryCards } from '@/app/components/customer-ledger-test/modern
 import { ModernLedgerTabs } from '@/app/components/customer-ledger-test/modern-original/ModernLedgerTabs';
 import { ModernTransactionModal } from '@/app/components/customer-ledger-test/modern-original/ModernTransactionModal';
 import { buildTransactionsWithOpeningBalance } from '@/app/services/customerLedgerTypes';
+import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
 import {
   getSupplierOperationalLedgerData,
   getUserLedgerData,
@@ -151,10 +152,10 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
 
   useEffect(() => {
     const bump = () => setBalanceRefreshTick((t) => t + 1);
-    window.addEventListener('contactBalancesRefresh', bump);
+    window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
     window.addEventListener('accountingEntriesChanged', bump);
     return () => {
-      window.removeEventListener('contactBalancesRefresh', bump);
+      window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
       window.removeEventListener('accountingEntriesChanged', bump);
     };
   }, []);
@@ -287,7 +288,9 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
 
   const labels = TAB_LABELS[ledgerType];
   const displayTransactions = operationalData
-    ? buildTransactionsWithOpeningBalance(operationalData.openingBalance, operationalData.transactions, dateRange.from)
+    ? buildTransactionsWithOpeningBalance(operationalData.openingBalance, operationalData.transactions, dateRange.from, {
+        openingPerspective: ledgerType === 'supplier' ? 'payable' : 'receivable',
+      })
     : [];
   const ledgerDataForViews = operationalData
     ? { ...operationalData, transactions: displayTransactions }
@@ -407,7 +410,7 @@ export function GenericLedgerView({ ledgerType, entityId, entityName }: GenericL
           ) : ledgerDataForViews ? (
             <>
               <div className="shrink-0 pb-6 border-b border-gray-800">
-                <ModernSummaryCards ledgerData={ledgerDataForViews} />
+                <ModernSummaryCards ledgerData={ledgerDataForViews} variant={ledgerType} />
               </div>
               <div>
                 <ModernLedgerTabs

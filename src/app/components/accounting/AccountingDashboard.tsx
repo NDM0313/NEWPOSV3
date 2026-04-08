@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, Suspense, lazy } from 'react';
 import { 
   Receipt, 
   Wallet,
@@ -34,6 +34,7 @@ import {
   RotateCcw,
   Scale,
   ShieldAlert,
+  ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -73,6 +74,10 @@ import { ControlLinkedPartiesSheet } from '@/app/components/accounting/ControlLi
 import { useAccountsHierarchyModel } from '@/app/components/accounting/useAccountsHierarchyModel';
 import { AccountingDashboardAccountRowMenu } from '@/app/components/accounting/AccountingDashboardAccountRowMenu';
 import { ChartOfAccountsPartyDropdown } from '@/app/components/accounting/ChartOfAccountsPartyDropdown';
+import {
+  allowsGenericAccountingUnifiedEdit,
+  getJournalEntrySourceDocumentOpenTarget,
+} from '@/app/lib/journalEntryEditPolicy';
 
 const StudioCostsTab = lazy(() => import('./StudioCostsTab').then((m) => ({ default: m.StudioCostsTab })));
 const DepositsTab = lazy(() => import('./DepositsTab').then((m) => ({ default: m.DepositsTab })));
@@ -133,6 +138,36 @@ function journalRowPresentation(entry: AccountingEntry): {
       badgeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
     };
   }
+  const rtRaw = String((entry.metadata as { referenceType?: string } | undefined)?.referenceType || '').toLowerCase();
+  const payId = (entry.metadata as { paymentId?: string } | undefined)?.paymentId;
+  if (rtRaw === 'worker_payment') {
+    return {
+      typeLabel: 'Worker payment',
+      amountClass: 'text-violet-400',
+      badgeClass: 'bg-violet-500/20 text-violet-300 border-violet-500/35',
+    };
+  }
+  if (payId && rtRaw === 'purchase') {
+    return {
+      typeLabel: 'Supplier payment',
+      amountClass: 'text-sky-400',
+      badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/35',
+    };
+  }
+  if (payId && rtRaw === 'sale') {
+    return {
+      typeLabel: 'Customer receipt',
+      amountClass: 'text-emerald-400',
+      badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
+    };
+  }
+  if (entry.module === 'Payments' || rtRaw === 'manual_payment') {
+    return {
+      typeLabel: 'Supplier payment',
+      amountClass: 'text-sky-400',
+      badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/35',
+    };
+  }
   if (entry.module === 'Expenses' || entry.source === 'Expense') {
     return {
       typeLabel: 'Expense',
@@ -147,11 +182,18 @@ function journalRowPresentation(entry: AccountingEntry): {
       badgeClass: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
     };
   }
-  if (entry.source === 'Sale' || entry.source === 'Payment' || entry.module === 'Sales') {
+  if (entry.source === 'Sale' || entry.module === 'Sales') {
     return {
       typeLabel: 'Income',
       amountClass: 'text-green-400',
       badgeClass: 'bg-green-500/20 text-green-400 border-green-500/30',
+    };
+  }
+  if (entry.source === 'Payment') {
+    return {
+      typeLabel: 'Payment',
+      amountClass: 'text-cyan-400',
+      badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/35',
     };
   }
   return {
@@ -195,6 +237,9 @@ function journalGroupAccountPair(group: { primary: AccountingEntry; entries: Acc
  */
 function groupedDocumentDisplayAmount(group: { primary: AccountingEntry; entries: AccountingEntry[] }): number {
   const mod = group.primary.module;
+  if (mod === 'Payments') {
+    return group.entries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  }
   const refTypes =
     mod === 'Purchases'
       ? new Set(['purchase', 'purchase_adjustment'])
@@ -238,6 +283,47 @@ export const AccountingDashboard = () => {
   const { companyId, branchId } = useSupabase();
   const { setCurrentModule, startDate: globalStartDate, endDate: globalEndDate } = useGlobalFilter();
   const { formatCurrency } = useFormatCurrency();
+
+  const handleOpenJournalSourceDocument = useCallback(
+    async (entry: AccountingEntry) => {
+      const target = getJournalEntrySourceDocumentOpenTarget(entry);
+      if (!target) {
+        toast.message('Open this record from its source module (Sales, Purchases, Rentals, or Inventory).');
+        return;
+      }
+      try {
+        if (target.kind === 'sale') {
+          const { saleService } = await import('@/app/services/saleService');
+          const full = await saleService.getSaleById(target.id);
+          if (!full) {
+            toast.error('Sale not found.');
+            return;
+          }
+          openDrawer('edit-sale', undefined, { sale: full });
+          return;
+        }
+        if (target.kind === 'purchase') {
+          const { purchaseService } = await import('@/app/services/purchaseService');
+          const full = await purchaseService.getPurchase(target.id);
+          if (!full) {
+            toast.error('Purchase not found.');
+            return;
+          }
+          openDrawer('edit-purchase', undefined, { purchase: full });
+          return;
+        }
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('pendingRentalDetailsId', target.id);
+        }
+        setCurrentView('rentals');
+        toast.info('Opening Rentals — use the booking drawer to edit.');
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'Could not open source document.';
+        toast.error(msg);
+      }
+    },
+    [openDrawer, setCurrentView]
+  );
 
   useEffect(() => {
     setCurrentModule('accounting');
@@ -993,6 +1079,8 @@ export const AccountingDashboard = () => {
                             const isReversal = entry.source === 'Reversal';
                             const adjustmentCount = group.entries.length > 1 ? group.entries.length - 1 : 0;
                             const acPair = journalGroupAccountPair(group);
+                            const allowUnifiedEdit = allowsGenericAccountingUnifiedEdit(entry);
+                            const sourceOpen = getJournalEntrySourceDocumentOpenTarget(entry);
                             return (
                               <tr
                                 key={group.rootKey}
@@ -1097,20 +1185,33 @@ export const AccountingDashboard = () => {
                                             <Eye className="w-4 h-4 mr-1" />
                                             View
                                           </Button>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-8 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
-                                            onClick={() => {
-                                              setSelectedGroupEntries(group.entries);
-                                              setTransactionDetailAutoEdit(true);
-                                              setTransactionReference(entry.id);
-                                            }}
-                                            title="Open unified editor (same as transaction detail)"
-                                          >
-                                            <Edit className="w-4 h-4 mr-1" />
-                                            Edit
-                                          </Button>
+                                          {allowUnifiedEdit ? (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-8 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
+                                              onClick={() => {
+                                                setSelectedGroupEntries(group.entries);
+                                                setTransactionDetailAutoEdit(true);
+                                                setTransactionReference(entry.id);
+                                              }}
+                                              title="Open unified editor (same as transaction detail)"
+                                            >
+                                              <Edit className="w-4 h-4 mr-1" />
+                                              Edit
+                                            </Button>
+                                          ) : sourceOpen ? (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-8 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
+                                              onClick={() => void handleOpenJournalSourceDocument(entry)}
+                                              title="Open sale, purchase, or rental in its module"
+                                            >
+                                              <ExternalLink className="w-4 h-4 mr-1" />
+                                              Open source
+                                            </Button>
+                                          ) : null}
                                           <Button
                                             variant="ghost"
                                             size="sm"
@@ -1145,6 +1246,8 @@ export const AccountingDashboard = () => {
                             const pres = journalRowPresentation(entry);
                             const isReversal = entry.source === 'Reversal';
                             const acFlat = journalEntryAccountPair(entry);
+                            const allowUnifiedEditFlat = allowsGenericAccountingUnifiedEdit(entry);
+                            const sourceOpenFlat = getJournalEntrySourceDocumentOpenTarget(entry);
                             return (
                               <tr
                                 key={entry.id}
@@ -1243,20 +1346,33 @@ export const AccountingDashboard = () => {
                                             <Eye className="w-4 h-4 mr-1" />
                                             View
                                           </Button>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-8 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
-                                            onClick={() => {
-                                              setSelectedGroupEntries(null);
-                                              setTransactionDetailAutoEdit(true);
-                                              setTransactionReference(entry.id);
-                                            }}
-                                            title="Open unified editor (same as transaction detail)"
-                                          >
-                                            <Edit className="w-4 h-4 mr-1" />
-                                            Edit
-                                          </Button>
+                                          {allowUnifiedEditFlat ? (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-8 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
+                                              onClick={() => {
+                                                setSelectedGroupEntries(null);
+                                                setTransactionDetailAutoEdit(true);
+                                                setTransactionReference(entry.id);
+                                              }}
+                                              title="Open unified editor (same as transaction detail)"
+                                            >
+                                              <Edit className="w-4 h-4 mr-1" />
+                                              Edit
+                                            </Button>
+                                          ) : sourceOpenFlat ? (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              className="h-8 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
+                                              onClick={() => void handleOpenJournalSourceDocument(entry)}
+                                              title="Open sale, purchase, or rental in its module"
+                                            >
+                                              <ExternalLink className="w-4 h-4 mr-1" />
+                                              Open source
+                                            </Button>
+                                          ) : null}
                                           <Button
                                             variant="ghost"
                                             size="sm"

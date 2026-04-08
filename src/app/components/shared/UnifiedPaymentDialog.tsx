@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { getAttachmentOpenUrl, getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
 import { showStorageRlsToast, MAX_FILE_SIZE_BYTES, showFileTooLargeToast } from '@/app/utils/uploadTransactionAttachments';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import { dispatchAccountingEditCommitted } from '@/app/lib/unifiedTransactionEdit';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
 import { rebuildManualReceiptFifoAllocations, rebuildManualSupplierFifoAllocations } from '@/app/services/paymentAllocationService';
 import { syncJournalEntryDateByPaymentId } from '@/app/services/journalTransactionDateSyncService';
@@ -511,6 +512,19 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           success = true;
         } else {
           // Manual / on-account payment edits may not have source referenceId.
+          let preManualAmount: number | null = null;
+          let preManualBranch: string | null = null;
+          if (editMode && paymentToEdit) {
+            const { data: preRow } = await supabase
+              .from('payments')
+              .select('amount, branch_id')
+              .eq('id', paymentIdForUpdate)
+              .single();
+            if (preRow) {
+              preManualAmount = Number((preRow as { amount?: number }).amount ?? 0);
+              preManualBranch = (preRow as { branch_id?: string | null }).branch_id ?? null;
+            }
+          }
           const paymentMethodMap: Record<string, string> = {
             cash: 'cash',
             bank: 'bank',
@@ -546,6 +560,84 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               paymentId: paymentIdForUpdate,
               entryDate: paymentDate,
             });
+          }
+          // Supplier Add Entry / on-account manual_payment: amount edit updated `payments` only — GL must get a delta JE (same as purchase-linked path).
+          if (
+            editMode &&
+            context === 'supplier' &&
+            rt === 'manual_payment' &&
+            preManualAmount != null &&
+            companyId &&
+            selectedAccount &&
+            Math.abs(preManualAmount - amount) > 0.009
+          ) {
+            try {
+              const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
+              const { resolvePayablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+              const apId = entityId ? await resolvePayablePostingAccountId(companyId, entityId) : null;
+              const { data: { user } } = await supabase.auth.getUser();
+              await postPaymentAmountAdjustment({
+                context: 'purchase',
+                companyId,
+                branchId:
+                  preManualBranch && String(preManualBranch).trim() && preManualBranch !== 'all'
+                    ? preManualBranch
+                    : null,
+                paymentId: paymentIdForUpdate,
+                referenceId: paymentIdForUpdate,
+                oldAmount: preManualAmount,
+                newAmount: amount,
+                paymentAccountId: selectedAccount,
+                invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Supplier payment'),
+                entryDate: paymentDate,
+                createdBy: (user as any)?.id ?? null,
+                payableAccountId: apId || undefined,
+              });
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+              }
+            } catch (adjErr) {
+              console.warn('[UnifiedPaymentDialog] Supplier manual_payment amount adjustment JE failed:', adjErr);
+            }
+          }
+          // Customer Add Entry / on-account manual_receipt: same class as supplier manual — update `payments` + FIFO only; original JE lines unchanged without a delta JE.
+          if (
+            editMode &&
+            context === 'customer' &&
+            rt === 'manual_receipt' &&
+            preManualAmount != null &&
+            companyId &&
+            selectedAccount &&
+            Math.abs(preManualAmount - amount) > 0.009
+          ) {
+            try {
+              const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
+              const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+              const arId = entityId ? await resolveReceivablePostingAccountId(companyId, entityId) : null;
+              const { data: { user } } = await supabase.auth.getUser();
+              await postPaymentAmountAdjustment({
+                context: 'sale',
+                companyId,
+                branchId:
+                  preManualBranch && String(preManualBranch).trim() && preManualBranch !== 'all'
+                    ? preManualBranch
+                    : null,
+                paymentId: paymentIdForUpdate,
+                referenceId: paymentIdForUpdate,
+                oldAmount: preManualAmount,
+                newAmount: amount,
+                paymentAccountId: selectedAccount,
+                invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Customer receipt'),
+                entryDate: paymentDate,
+                createdBy: (user as any)?.id ?? null,
+                receivableAccountId: arId || undefined,
+              });
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+              }
+            } catch (adjErr) {
+              console.warn('[UnifiedPaymentDialog] Customer manual_receipt amount adjustment JE failed:', adjErr);
+            }
           }
           success = true;
         }
@@ -907,6 +999,13 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           description: `${formatCurrency(amount)} via ${paymentMethod}${accountInfo} on ${paymentDateTime}`
         });
         if (companyId) dispatchContactBalancesRefresh(companyId);
+        dispatchAccountingEditCommitted(
+          context === 'customer' && entityId
+            ? { customerId: String(entityId) }
+            : context === 'supplier' && entityId
+              ? { supplierId: String(entityId) }
+              : undefined
+        );
         if (context === 'worker') onSuccess?.(workerPaymentRef, amount);
         else onSuccess?.();
         onClose();

@@ -62,8 +62,8 @@ async function sumOperationalFromRpc(companyId: string, branchId: string | null 
   receivables: number;
   payables: number;
 }> {
-  const map = await contactService.getContactBalancesSummary(companyId, branchId ?? null).catch(() => null);
-  if (!map || map.size === 0) return { receivables: 0, payables: 0 };
+  const { map, error } = await contactService.getContactBalancesSummary(companyId, branchId ?? null);
+  if (error || map.size === 0) return { receivables: 0, payables: 0 };
   let receivables = 0;
   let payables = 0;
   map.forEach((v) => {
@@ -273,8 +273,8 @@ export async function getSingleCustomerPartyReconciliation(
   const end = new Date().toISOString().slice(0, 10);
   const b = safeBranchForRpc(branchId);
 
-  const [opMap, glRpc, unmappedRpc] = await Promise.all([
-    contactService.getContactBalancesSummary(companyId, branchId ?? null).catch(() => null),
+  const [opRes, glRpc, unmappedRpc] = await Promise.all([
+    contactService.getContactBalancesSummary(companyId, branchId ?? null),
     supabase.rpc('get_contact_party_gl_balances', {
       p_company_id: companyId,
       p_branch_id: b,
@@ -286,7 +286,7 @@ export async function getSingleCustomerPartyReconciliation(
     }),
   ]);
 
-  const operationalReceivable = opMap?.get(customerId)?.receivables ?? 0;
+  const operationalReceivable = !opRes.error ? (opRes.map.get(customerId)?.receivables ?? 0) : 0;
 
   let glArReceivable = 0;
   if (!glRpc.error && Array.isArray(glRpc.data)) {
@@ -329,8 +329,8 @@ export async function getSingleSupplierPartyReconciliation(
   const end = new Date().toISOString().slice(0, 10);
   const b = safeBranchForRpc(branchId);
 
-  const [opMap, glRpc, unmappedRpc] = await Promise.all([
-    contactService.getContactBalancesSummary(companyId, branchId ?? null).catch(() => null),
+  const [opRes, glRpc, unmappedRpc] = await Promise.all([
+    contactService.getContactBalancesSummary(companyId, branchId ?? null),
     supabase.rpc('get_contact_party_gl_balances', {
       p_company_id: companyId,
       p_branch_id: b,
@@ -342,7 +342,7 @@ export async function getSingleSupplierPartyReconciliation(
     }),
   ]);
 
-  const operationalPayable = opMap?.get(supplierId)?.payables ?? 0;
+  const operationalPayable = !opRes.error ? (opRes.map.get(supplierId)?.payables ?? 0) : 0;
 
   let glApPayable = 0;
   if (!glRpc.error && Array.isArray(glRpc.data)) {
@@ -386,8 +386,8 @@ export async function getSingleWorkerPartyReconciliation(
   const end = new Date().toISOString().slice(0, 10);
   const b = safeBranchForRpc(branchId);
 
-  const [opMap, glRpc, unmappedRpc] = await Promise.all([
-    contactService.getContactBalancesSummary(companyId, branchId ?? null).catch(() => null),
+  const [opRes, glRpc, unmappedRpc] = await Promise.all([
+    contactService.getContactBalancesSummary(companyId, branchId ?? null),
     supabase.rpc('get_contact_party_gl_balances', {
       p_company_id: companyId,
       p_branch_id: b,
@@ -399,7 +399,7 @@ export async function getSingleWorkerPartyReconciliation(
     }),
   ]);
 
-  const operationalPending = opMap?.get(workerId)?.payables ?? 0;
+  const operationalPending = !opRes.error ? (opRes.map.get(workerId)?.payables ?? 0) : 0;
 
   let glWorkerPayableNet = 0;
   if (!glRpc.error && Array.isArray(glRpc.data)) {

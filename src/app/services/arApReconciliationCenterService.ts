@@ -173,13 +173,13 @@ export async function fetchIntegrityLabSummary(
   const end = (asOfDate ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
   const b = safeBranchForFilter(branchId);
 
-  const [rpc, opFull, glSnap] = await Promise.all([
+  const [rpc, opRes, glSnap] = await Promise.all([
     supabase.rpc('ar_ap_integrity_lab_snapshot', {
       p_company_id: companyId,
       p_branch_id: b,
       p_as_of_date: end,
     }),
-    contactService.getContactBalancesSummary(companyId, branchId ?? null).catch(() => null),
+    contactService.getContactBalancesSummary(companyId, branchId ?? null),
     accountingReportsService.getArApGlSnapshot(companyId, end, b ?? undefined),
   ]);
 
@@ -201,8 +201,8 @@ export async function fetchIntegrityLabSummary(
 
   let operational_receivables_full = 0;
   let operational_payables_full = 0;
-  if (opFull && opFull.size > 0) {
-    opFull.forEach((v) => {
+  if (!opRes.error) {
+    opRes.map.forEach((v) => {
       operational_receivables_full += Number(v.receivables) || 0;
       operational_payables_full += Number(v.payables) || 0;
     });

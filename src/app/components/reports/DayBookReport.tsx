@@ -9,11 +9,16 @@ import { Button } from '../ui/button';
 import { Loader2, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown, Pencil } from 'lucide-react';
 import { cn } from '../ui/utils';
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
+import { allowsDayBookUnifiedEdit } from '@/app/lib/journalEntryEditPolicy';
 
 export interface DayBookEntry {
   id: string;
   /** journal_entries.id — use for unified edit / UUID lookup */
   journalEntryId: string;
+  /** Raw journal_entries.reference_type (edit policy). */
+  referenceTypeRaw: string;
+  /** When set, row is settlement — editable from unified payment flow. */
+  paymentId: string | null;
   /** Business / entry_date (primary for lists) */
   entryDate: Date;
   /** For audit: journal created_at */
@@ -106,7 +111,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
       let q = supabase
         .from('journal_entries')
         .select(`
-          id, entry_no, entry_date, description, reference_type, created_at,
+          id, entry_no, entry_date, description, reference_type, created_at, payment_id,
           lines:journal_entry_lines(id, debit, credit, description, account:accounts(name, code))
         `)
         .eq('company_id', companyId)
@@ -146,6 +151,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         const voucher = String(je.entry_no ?? `JE-${String(je.id ?? '').slice(0, 8)}`);
         // PF-14.3B: Make clear in Day Book that these are edit adjustments for the same document, not new sales
         const refType = String(je.reference_type ?? '');
+        const payId = je.payment_id != null && String(je.payment_id).trim() ? String(je.payment_id) : null;
         const descSuffix = refType === 'sale_adjustment' ? ' (sale edit)' : refType === 'payment_adjustment' ? ' (payment edit)' : '';
         const desc = String(je.description ?? '') + descSuffix;
         const type = refTypeToDisplayType(refType);
@@ -169,6 +175,8 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
           list.push({
             id: `${je.id}-${lineId}`,
             journalEntryId: String(je.id),
+            referenceTypeRaw: refType,
+            paymentId: payId,
             entryDate,
             createdAt,
             dateTime: dateTimeStr,
@@ -413,16 +421,20 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                     </td>
                     {onEditJournalEntry && (
                       <td className="px-4 py-3 text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-sky-400 hover:text-sky-300"
-                          onClick={() => onEditJournalEntry(e.journalEntryId)}
-                        >
-                          <Pencil size={14} className="mr-1 inline" />
-                          Edit
-                        </Button>
+                        {allowsDayBookUnifiedEdit(e.referenceTypeRaw, e.paymentId) ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-sky-400 hover:text-sky-300"
+                            onClick={() => onEditJournalEntry(e.journalEntryId)}
+                          >
+                            <Pencil size={14} className="mr-1 inline" />
+                            Edit
+                          </Button>
+                        ) : (
+                          <span className="text-gray-600 text-xs tabular-nums">—</span>
+                        )}
                       </td>
                     )}
                   </tr>

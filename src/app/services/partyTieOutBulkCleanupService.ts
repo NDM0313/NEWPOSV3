@@ -86,7 +86,7 @@ export async function rankPartiesByOperationalVsGl(
   const b = safeBranch(branchId ?? null);
   const { topPerKind, minAbsVariance } = opts;
 
-  const opMap = await contactService.getContactBalancesSummary(companyId, b).catch(() => null);
+  const { map: opMap, error: opErr } = await contactService.getContactBalancesSummary(companyId, b);
   const glRpc = await supabase.rpc('get_contact_party_gl_balances', {
     p_company_id: companyId,
     p_branch_id: b,
@@ -115,7 +115,7 @@ export async function rankPartiesByOperationalVsGl(
     const id = String((c as any).id);
     const t = String((c as any).type || '').toLowerCase();
     const name = (c as any).name ?? null;
-    const op = opMap?.get(id);
+    const op = !opErr ? opMap.get(id) : undefined;
     const gl = glById.get(id) || { ar: 0, ap: 0, wk: 0 };
 
     if (t === 'customer' || t === 'both') {

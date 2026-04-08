@@ -523,11 +523,18 @@ export async function runPartyBalanceTieOut(input: PartyBalanceTieOutInput): Pro
   const controlTarget =
     partyType === 'customer' ? arId : partyType === 'supplier' ? apId : partyType === 'worker' ? wpId : null;
 
-  const opMap = await contactService.getContactBalancesSummary(companyId, b).catch(() => null);
-  const opRow = opMap?.get(partyId);
+  const { map: opMap, error: opRpcErr } = await contactService.getContactBalancesSummary(companyId, b);
+  const opRow = !opRpcErr ? opMap.get(partyId) : undefined;
   const opRecv = partyType === 'customer' ? opRow?.receivables ?? null : null;
   const opPay =
     partyType === 'supplier' || partyType === 'worker' ? opRow?.payables ?? null : null;
+  if (opRpcErr) {
+    diagnostics.push({
+      code: 'RPC_CONTACT_BALANCES_FAILED',
+      severity: 'error',
+      message: opRpcErr,
+    });
+  }
 
   const glRpc = await supabase.rpc('get_contact_party_gl_balances', {
     p_company_id: companyId,

@@ -71,12 +71,15 @@ export const contactService = {
 
   /**
    * Get receivables/payables per contact in one RPC (avoids loading all sales + purchases).
-   * Returns map of contact_id -> { receivables, payables }. If RPC is missing, returns null (caller should fallback).
+   * On failure, `error` is set and `map` is empty — callers must not substitute client-side “merged” math as if it were canonical.
    */
   async getContactBalancesSummary(
     companyId: string,
     branchId?: string | null
-  ): Promise<Map<string, { receivables: number; payables: number }> | null> {
+  ): Promise<{
+    map: Map<string, { receivables: number; payables: number }>;
+    error: string | null;
+  }> {
     // RPC expects UUID or null; avoid 400 from empty string or 'all'
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const safeBranchId =
@@ -88,8 +91,9 @@ export const contactService = {
       p_branch_id: safeBranchId,
     });
     if (error) {
-      if (import.meta.env?.DEV) console.warn('[CONTACT SERVICE] get_contact_balances_summary RPC error:', error.message);
-      return null;
+      const msg = error.message || 'get_contact_balances_summary failed';
+      if (import.meta.env?.DEV) console.warn('[CONTACT SERVICE] get_contact_balances_summary RPC error:', msg);
+      return { map: new Map(), error: msg };
     }
     const map = new Map<string, { receivables: number; payables: number }>();
     (data ?? []).forEach((row: { contact_id: string; receivables?: number; payables?: number }) => {
@@ -100,7 +104,7 @@ export const contactService = {
         });
       }
     });
-    return map;
+    return { map, error: null };
   },
 
   /**

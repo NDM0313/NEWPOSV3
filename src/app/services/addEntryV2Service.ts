@@ -15,6 +15,7 @@ import {
   getWorkerAdvanceAccountId,
   shouldDebitWorkerPayableForPayment,
 } from '@/app/services/workerAdvanceService';
+import { resolvePayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {
   cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', 'mobile wallet': 'mobile_wallet', 'Mobile Wallet': 'mobile_wallet',
@@ -244,7 +245,8 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
   if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
   const paymentId = (paymentRow as { id: string }).id;
 
-  const apId = await getApAccountId(companyId);
+  const apId =
+    (await resolvePayablePostingAccountId(companyId, supplierContactId)) || (await getApAccountId(companyId));
   const desc = notes || `Manual payment to ${supplierName}`;
   const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
   const journalEntry: JournalEntry = {
@@ -279,6 +281,7 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierContactId } }));
     window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
   }
+  dispatchContactBalancesRefresh(companyId);
   return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
 }
 

@@ -35,6 +35,10 @@ export async function postPaymentAmountAdjustment(params: {
   invoiceNoOrRef: string;
   entryDate: string;
   createdBy?: string | null;
+  /** Party AP sub-account (supplier); when set, used instead of generic 2000 so GL matches `get_contact_party_gl_balances`. */
+  payableAccountId?: string | null;
+  /** Party AR sub-account (customer); when set, used instead of generic 1100 for sale-context deltas. */
+  receivableAccountId?: string | null;
 }): Promise<void> {
   const {
     context,
@@ -48,6 +52,8 @@ export async function postPaymentAmountAdjustment(params: {
     invoiceNoOrRef,
     entryDate,
     createdBy,
+    payableAccountId: payableAccountIdParam,
+    receivableAccountId: receivableAccountIdParam,
   } = params;
 
   const delta = Math.round((newAmount - oldAmount) * 100) / 100;
@@ -62,12 +68,6 @@ export async function postPaymentAmountAdjustment(params: {
 
   const absDelta = Math.abs(delta);
   const isReversal = delta < 0; // amount decreased → we reverse the decrease (Dr AR, Cr Cash)
-
-  const arAccount = await accountHelperService.getAccountByCode('1100', companyId);
-  if (!arAccount?.id) {
-    console.warn('[paymentAdjustmentService] AR account (1100) not found, skipping adjustment JE');
-    return;
-  }
 
   const entryNo = `JE-PAY-ADJ-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
   const desc =
@@ -91,33 +91,42 @@ export async function postPaymentAmountAdjustment(params: {
 
   let lines: JournalEntryLine[];
   if (context === 'sale') {
+    const arId =
+      (receivableAccountIdParam && String(receivableAccountIdParam).trim()) ||
+      (await accountHelperService.getAccountByCode('1100', companyId))?.id;
+    if (!arId) {
+      console.warn('[paymentAdjustmentService] AR account not found (party or 1100), skipping adjustment JE');
+      return;
+    }
     // Sale: original payment = Dr Cash, Cr AR. So reversal = Dr AR, Cr Cash.
     if (isReversal) {
       lines = [
-        { id: '', journal_entry_id: '', account_id: arAccount.id, debit: absDelta, credit: 0, description: `AR – ${invoiceNoOrRef}` },
+        { id: '', journal_entry_id: '', account_id: arId, debit: absDelta, credit: 0, description: `AR – ${invoiceNoOrRef}` },
         { id: '', journal_entry_id: '', account_id: paymentAccountId, debit: 0, credit: absDelta, description: `Cash/Bank reversal – ${invoiceNoOrRef}` },
       ];
     } else {
       lines = [
         { id: '', journal_entry_id: '', account_id: paymentAccountId, debit: absDelta, credit: 0, description: `Cash/Bank – ${invoiceNoOrRef}` },
-        { id: '', journal_entry_id: '', account_id: arAccount.id, debit: 0, credit: absDelta, description: `AR – ${invoiceNoOrRef}` },
+        { id: '', journal_entry_id: '', account_id: arId, debit: 0, credit: absDelta, description: `AR – ${invoiceNoOrRef}` },
       ];
     }
   } else {
     // Purchase: original = Dr AP, Cr Cash. Reversal = Dr Cash, Cr AP. Need AP account.
-    const apAccount = await accountHelperService.getAccountByCode('2000', companyId);
-    if (!apAccount?.id) {
-      console.warn('[paymentAdjustmentService] AP account (2000) not found, skipping adjustment JE');
+    const apId =
+      (payableAccountIdParam && String(payableAccountIdParam).trim()) ||
+      (await accountHelperService.getAccountByCode('2000', companyId))?.id;
+    if (!apId) {
+      console.warn('[paymentAdjustmentService] AP account not found (party or 2000), skipping adjustment JE');
       return;
     }
     if (isReversal) {
       lines = [
         { id: '', journal_entry_id: '', account_id: paymentAccountId, debit: absDelta, credit: 0, description: `Cash/Bank reversal – ${invoiceNoOrRef}` },
-        { id: '', journal_entry_id: '', account_id: apAccount.id, debit: 0, credit: absDelta, description: `AP – ${invoiceNoOrRef}` },
+        { id: '', journal_entry_id: '', account_id: apId, debit: 0, credit: absDelta, description: `AP – ${invoiceNoOrRef}` },
       ];
     } else {
       lines = [
-        { id: '', journal_entry_id: '', account_id: apAccount.id, debit: absDelta, credit: 0, description: `AP – ${invoiceNoOrRef}` },
+        { id: '', journal_entry_id: '', account_id: apId, debit: absDelta, credit: 0, description: `AP – ${invoiceNoOrRef}` },
         { id: '', journal_entry_id: '', account_id: paymentAccountId, debit: 0, credit: absDelta, description: `Cash/Bank – ${invoiceNoOrRef}` },
       ];
     }

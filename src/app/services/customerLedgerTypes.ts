@@ -39,8 +39,26 @@ export interface Transaction {
 export function buildTransactionsWithOpeningBalance(
   openingBalance: number,
   transactions: Transaction[],
-  fromDate: string
+  fromDate: string,
+  opts?: { openingPerspective?: 'receivable' | 'payable' }
 ): Transaction[] {
+  const perspective = opts?.openingPerspective ?? 'receivable';
+  const debit =
+    perspective === 'payable'
+      ? openingBalance < 0
+        ? Math.abs(openingBalance)
+        : 0
+      : openingBalance > 0
+        ? openingBalance
+        : 0;
+  const credit =
+    perspective === 'payable'
+      ? openingBalance > 0
+        ? openingBalance
+        : 0
+      : openingBalance < 0
+        ? Math.abs(openingBalance)
+        : 0;
   const openingEntry: Transaction = {
     id: 'opening-balance',
     date: fromDate,
@@ -49,8 +67,8 @@ export function buildTransactionsWithOpeningBalance(
     description: 'Opening Balance',
     paymentAccount: '—',
     notes: '',
-    debit: openingBalance > 0 ? openingBalance : 0,
-    credit: openingBalance < 0 ? Math.abs(openingBalance) : 0,
+    debit,
+    credit,
     runningBalance: openingBalance,
     linkedInvoices: [],
     linkedPayments: [],

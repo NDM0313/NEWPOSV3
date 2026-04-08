@@ -428,7 +428,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       'purchase': 'Purchase',
       'purchase_adjustment': 'Purchase',
       'purchase_reversal': 'Reversal',
-      'manual_payment': 'Purchase',
+      'manual_payment': 'Payment',
       'expense': 'Expense',
       'rental': 'Rental',
       'studio': 'Studio',
@@ -505,6 +505,21 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     // Get reference number - prefer entry_no, then payment reference, then id
     const referenceNo = journalEntry.entry_no || paymentRef || journalEntry.id?.substring(0, 8) || 'N/A';
 
+    const module =
+      source === 'Sale'
+        ? 'Sales'
+        : source === 'Purchase'
+          ? 'Purchases'
+          : source === 'Payment'
+            ? 'Payments'
+            : source === 'Expense'
+              ? 'Expenses'
+              : source === 'Rental'
+                ? 'Rental'
+                : source === 'Studio'
+                  ? 'Studio'
+                  : 'Accounting';
+
     return {
       id: journalEntry.id || '',
       date: new Date(journalEntry.entry_date),
@@ -517,7 +532,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       amount: resolvedAmount,
       description: journalEntry.description,
       createdBy: journalEntry.created_by || 'System',
-      module: source === 'Sale' ? 'Sales' : source === 'Purchase' ? 'Purchases' : source === 'Expense' ? 'Expenses' : source === 'Rental' ? 'Rental' : source === 'Studio' ? 'Studio' : 'Accounting',
+      module,
       metadata,
     };
   }, []);

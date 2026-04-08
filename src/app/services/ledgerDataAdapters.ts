@@ -41,7 +41,8 @@ export async function getSupplierLedgerData(
 
 /**
  * Supplier operational statement: purchases + supplier-linked payments from source tables.
- * Running balance = opening (supplier opening on contact) + payments − purchase bill credits (same sign convention as legacy supplier subledger).
+ * Payable running balance = opening + purchase totals (credit column) − payments (debit column).
+ * Equivalently: carry += credit − debit per event (purchases increase what we owe; payments decrease it).
  */
 export async function getSupplierOperationalLedgerData(
   companyId: string,
@@ -142,7 +143,7 @@ export async function getSupplierOperationalLedgerData(
 
   let running = openingBase;
   for (const e of events) {
-    if (e.ts < fromTs) running = running + e.debit - e.credit;
+    if (e.ts < fromTs) running = running + e.credit - e.debit;
   }
   const openingAtFrom = running;
 
@@ -156,7 +157,7 @@ export async function getSupplierOperationalLedgerData(
     if (e.ts < fromTs || e.ts > toTs) continue;
     totalDebit += e.debit;
     totalCredit += e.credit;
-    running = running + e.debit - e.credit;
+    running = running + e.credit - e.debit;
     transactions.push({
       id: e.id,
       date: e.date,

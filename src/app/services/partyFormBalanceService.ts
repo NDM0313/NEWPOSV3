@@ -37,7 +37,7 @@ export async function loadPartyFormBalances(
   assertCanonicalSource('partyFormBalanceService', 'get_contact_party_gl_balances', { companyId, branchId: b });
   assertCanonicalSource('partyFormBalanceService', 'get_contact_balances_summary', { companyId, branchId: b });
 
-  const [glRpc, opMap] = await Promise.all([
+  const [glRpc, opRes] = await Promise.all([
     supabase.rpc('get_contact_party_gl_balances', {
       p_company_id: companyId,
       p_branch_id: b,
@@ -50,7 +50,7 @@ export async function loadPartyFormBalances(
     console.warn('[partyFormBalanceService] get_contact_party_gl_balances:', glRpc.error.message);
   }
 
-  const operationalRpcOk = opMap != null;
+  const operationalRpcOk = !opRes.error;
   const byContactId = new Map<string, PartyFormBalanceRow>();
 
   if (glRpcOk) {
@@ -75,8 +75,8 @@ export async function loadPartyFormBalances(
     }
   }
 
-  if (opMap) {
-    for (const [id, v] of opMap.entries()) {
+  if (!opRes.error) {
+    for (const [id, v] of opRes.map.entries()) {
       const cur = byContactId.get(id) ?? {
         glArReceivable: 0,
         glApPayable: 0,

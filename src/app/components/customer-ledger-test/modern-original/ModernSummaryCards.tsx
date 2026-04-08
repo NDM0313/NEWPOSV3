@@ -2,13 +2,26 @@ import { FileText, CreditCard, TrendingUp, TrendingDown } from 'lucide-react';
 import type { LedgerData } from '@/app/services/customerLedgerTypes';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
+export type ModernSummaryCardsVariant = 'customer' | 'supplier' | 'user' | 'worker';
+
 interface ModernSummaryCardsProps {
   ledgerData: LedgerData;
+  /** Supplier: labels match payable semantics (positive ≈ we owe). Other types keep AR-style copy. */
+  variant?: ModernSummaryCardsVariant;
 }
 
-export function ModernSummaryCards({ ledgerData }: ModernSummaryCardsProps) {
+export function ModernSummaryCards({ ledgerData, variant = 'customer' }: ModernSummaryCardsProps) {
   const { formatCurrency } = useFormatCurrency();
   const { openingBalance, totalDebit, totalCredit, closingBalance, invoicesSummary } = ledgerData;
+
+  const isSupplier = variant === 'supplier';
+  const debitSub = isSupplier ? 'Payments to supplier' : 'Debit';
+  const creditSub = isSupplier ? 'Purchase bills (increase payable)' : 'Credit';
+  const closingSub = isSupplier ? 'Closing payable (operational)' : 'Current';
+  const summaryTitle = isSupplier ? 'Purchases summary' : 'Invoices Summary';
+  const summaryBlurb = isSupplier
+    ? 'Posted purchases and payments in range (operational subledger — not GL AP)'
+    : 'Overview of all customer invoices';
 
   return (
     <div className="space-y-6">
@@ -20,7 +33,7 @@ export function ModernSummaryCards({ ledgerData }: ModernSummaryCardsProps) {
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Opening Balance</p>
               <p className="text-2xl font-bold text-white mt-1">{formatCurrency(openingBalance)}</p>
-              <p className="text-xs text-gray-500 mt-1">Opening</p>
+              <p className="text-xs text-gray-500 mt-1">{isSupplier ? 'Opening payable' : 'Opening'}</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-gray-500/10 flex items-center justify-center">
               <CreditCard className="w-6 h-6 text-gray-400" />
@@ -34,7 +47,7 @@ export function ModernSummaryCards({ ledgerData }: ModernSummaryCardsProps) {
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Debit</p>
               <p className="text-2xl font-bold text-yellow-400 mt-1">{formatCurrency(totalDebit)}</p>
-              <p className="text-xs text-gray-500 mt-1">Debit</p>
+              <p className="text-xs text-gray-500 mt-1">{debitSub}</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center">
               <TrendingUp className="w-6 h-6 text-yellow-500" />
@@ -48,7 +61,7 @@ export function ModernSummaryCards({ ledgerData }: ModernSummaryCardsProps) {
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Total Credit</p>
               <p className="text-2xl font-bold text-green-400 mt-1">{formatCurrency(totalCredit)}</p>
-              <p className="text-xs text-gray-500 mt-1">Credit</p>
+              <p className="text-xs text-gray-500 mt-1">{creditSub}</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
               <TrendingDown className="w-6 h-6 text-green-500" />
@@ -62,7 +75,7 @@ export function ModernSummaryCards({ ledgerData }: ModernSummaryCardsProps) {
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Closing Balance</p>
               <p className="text-2xl font-bold text-white mt-1">{formatCurrency(closingBalance)}</p>
-              <p className="text-xs text-gray-500 mt-1">Current</p>
+              <p className="text-xs text-gray-500 mt-1">{closingSub}</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
               <CreditCard className="w-6 h-6 text-blue-500" />
@@ -78,8 +91,8 @@ export function ModernSummaryCards({ ledgerData }: ModernSummaryCardsProps) {
             <FileText className="w-5 h-5 text-blue-500" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-white">Invoices Summary</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Overview of all customer invoices</p>
+            <h3 className="text-base font-semibold text-white">{summaryTitle}</h3>
+            <p className="text-xs text-gray-500 mt-0.5">{summaryBlurb}</p>
           </div>
         </div>
         <div className="grid grid-cols-4 gap-4 mb-6">
@@ -92,7 +105,9 @@ export function ModernSummaryCards({ ledgerData }: ModernSummaryCardsProps) {
             <div className="text-xl font-bold text-blue-400">{formatCurrency(invoicesSummary.totalInvoiceAmount)}</div>
           </div>
           <div className="text-center p-4 rounded-lg bg-gray-800/50 border border-gray-800">
-            <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Payment Received</div>
+            <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">
+              {isSupplier ? 'Payments made' : 'Payment Received'}
+            </div>
             <div className="text-xl font-bold text-green-400">{formatCurrency(invoicesSummary.totalPaymentReceived)}</div>
           </div>
           <div className="text-center p-4 rounded-lg bg-gray-800/50 border border-gray-800">

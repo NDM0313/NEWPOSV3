@@ -1,13 +1,6 @@
--- Superseded for pay-side subtraction + void filters: apply 20260430_get_contact_balances_operational_recv_pay_parity.sql after this file.
--- Contacts operational receivable/payable (get_contact_balances_summary):
--- 1) Branch scope matches GL / party GL: when p_branch_id is set, include document rows with branch_id IS NULL
---    (company-wide / legacy) OR matching branch — strict equality alone hid final sales from Contacts when the sale
---    row had NULL branch_id and the UI filtered a specific branch (opening still showed → looked like "both-only" bug).
--- 2) Keep 20260353 semantics: final sales only; subtract manual_receipt + on_account received payments (not sale-linked);
---    purchases final/received; customer + both share the receivable leg; supplier + both share the payable leg.
---
--- NOTE: Root `migrations/get_contact_balances_summary*.sql` sort AFTER digit-prefixed files and used to REPLACE this
--- function with older strict-branch + non-final filters — those files are neutralized (no-op) so this definition wins.
+-- Operational contact balances: do not subtract manual_payment / manual_receipt amounts that are already
+-- reflected in purchases.paid_amount / sales.paid_amount via payment_allocations (FIFO Add Entry).
+-- Fixes double-count (e.g. KHURAM SILK: purchase due includes allocated manual pay, RPC subtracted it again).
 
 CREATE OR REPLACE FUNCTION public.get_contact_balances_summary(
   p_company_id UUID,
@@ -48,12 +41,17 @@ BEGIN
            WHERE p.company_id = p_company_id
              AND p.contact_id = c.id
              AND LOWER(TRIM(COALESCE(p.payment_type::text, ''))) = 'received'
+             AND (p.voided_at IS NULL)
              AND (
                p_branch_id IS NULL
                OR p.branch_id IS NULL
                OR p.branch_id = p_branch_id
              )
-             AND LOWER(TRIM(COALESCE(p.reference_type::text, ''))) IN ('manual_receipt', 'on_account')),
+             AND LOWER(TRIM(COALESCE(p.reference_type::text, ''))) IN ('manual_receipt', 'on_account')
+             AND NOT EXISTS (
+               SELECT 1 FROM public.payment_allocations pa
+               WHERE pa.payment_id = p.id AND pa.sale_id IS NOT NULL
+             )),
           0
         )
     ) AS receivables,
@@ -80,20 +78,42 @@ BEGIN
            )::numeric)
          END
        WHEN c.type IN ('supplier', 'both') THEN
-         GREATEST(0, COALESCE(c.supplier_opening_balance, c.opening_balance, 0)::numeric)
-         + COALESCE(
-             (SELECT SUM(GREATEST(0, COALESCE(p.due_amount, (COALESCE(p.total, 0) - COALESCE(p.paid_amount, 0)))::numeric))
-              FROM purchases p
-              WHERE p.company_id = p_company_id
-                AND p.supplier_id = c.id
-                AND (
-                  p_branch_id IS NULL
-                  OR p.branch_id IS NULL
-                  OR p.branch_id = p_branch_id
-                )
-                AND LOWER(TRIM(COALESCE(p.status::text, ''))) IN ('final', 'received')),
-             0
-           )
+         GREATEST(
+           0::numeric,
+           GREATEST(0, COALESCE(c.supplier_opening_balance, c.opening_balance, 0)::numeric)
+           + COALESCE(
+               (SELECT SUM(GREATEST(0, COALESCE(pur.due_amount, (COALESCE(pur.total, 0) - COALESCE(pur.paid_amount, 0)))::numeric))
+                FROM purchases pur
+                WHERE pur.company_id = p_company_id
+                  AND pur.supplier_id = c.id
+                  AND (
+                    p_branch_id IS NULL
+                    OR pur.branch_id IS NULL
+                    OR pur.branch_id = p_branch_id
+                  )
+                  AND LOWER(TRIM(COALESCE(pur.status::text, ''))) IN ('final', 'received')),
+               0
+             )
+           - COALESCE(
+               (SELECT SUM(GREATEST(0, pay.amount::numeric))
+                FROM payments pay
+                WHERE pay.company_id = p_company_id
+                  AND pay.contact_id = c.id
+                  AND LOWER(TRIM(COALESCE(pay.payment_type::text, ''))) = 'paid'
+                  AND (pay.voided_at IS NULL)
+                  AND (
+                    p_branch_id IS NULL
+                    OR pay.branch_id IS NULL
+                    OR pay.branch_id = p_branch_id
+                  )
+                  AND LOWER(TRIM(COALESCE(pay.reference_type::text, ''))) IN ('manual_payment', 'on_account')
+                  AND NOT EXISTS (
+                    SELECT 1 FROM public.payment_allocations pa
+                    WHERE pa.payment_id = pay.id AND pa.purchase_id IS NOT NULL
+                  )),
+               0
+             )
+         )
        ELSE 0::numeric
      END) AS payables
   FROM contacts c
@@ -102,7 +122,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.get_contact_balances_summary(UUID, UUID) IS
-  'Per-contact operational recv/pay. Recv: opening (customer+both) + final sales due − manual_receipt/on_account receipts; branch filter includes NULL branch_id documents. Pay: supplier+both purchases final/received + opening; same branch rule.';
+  'Operational recv/pay per contact. Recv: opening + final sales due − non-void manual_receipt/on_account not allocated to a sale (allocated amounts net via sales.paid). Pay: supplier opening + final/received purchase due − non-void manual_payment/on_account not allocated to a purchase (allocated amounts net via purchases.paid).';
 
 GRANT EXECUTE ON FUNCTION public.get_contact_balances_summary(UUID, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_contact_balances_summary(UUID, UUID) TO service_role;

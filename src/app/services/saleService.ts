@@ -1565,9 +1565,15 @@ export const saleService = {
         paymentAccountId
       ) {
         try {
-          const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
           const saleRow = await this.getSaleById(saleId).catch(() => null);
           const invoiceNo = (saleRow as any)?.invoice_no ?? (saleRow as any)?.invoiceNo ?? saleId?.slice(0, 8) ?? 'N/A';
+          let receivableAccountId: string | undefined;
+          if (companyId && saleRow && (saleRow as any).customer_id) {
+            const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+            receivableAccountId =
+              (await resolveReceivablePostingAccountId(companyId, String((saleRow as any).customer_id))) || undefined;
+          }
+          const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
           const { data: { user } } = await supabase.auth.getUser();
           await postPaymentAmountAdjustment({
             context: 'sale',
@@ -1581,6 +1587,7 @@ export const saleService = {
             invoiceNoOrRef: invoiceNo,
             entryDate: (updates.paymentDate || paymentDate || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
             createdBy: (user as any)?.id ?? null,
+            receivableAccountId,
           });
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));

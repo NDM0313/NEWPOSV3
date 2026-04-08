@@ -234,7 +234,7 @@ export async function fetchControlAccountBreakdown(params: {
     glBalanceNote = 'Could not load journal balance.';
   }
 
-  const opMap = await contactService.getContactBalancesSummary(companyId, branchId ?? null).catch(() => null);
+  const { map: opMap, error: opMapError } = await contactService.getContactBalancesSummary(companyId, branchId ?? null);
 
   if (controlKind === 'ar') {
     let sumPartyAr = 0;
@@ -333,7 +333,7 @@ export async function fetchControlAccountBreakdown(params: {
       });
 
       const rpcRecvTotal =
-        opMap != null
+        !opMapError
           ? [...opMap.values()].reduce((s, v) => s + (Number(v.receivables) || 0), 0)
           : null;
       subcategories.push({
@@ -479,7 +479,7 @@ export async function fetchControlAccountBreakdown(params: {
       });
 
       const rpcPayTotal =
-        opMap != null ? [...opMap.values()].reduce((s, v) => s + (Number(v.payables) || 0), 0) : null;
+        !opMapError ? [...opMap.values()].reduce((s, v) => s + (Number(v.payables) || 0), 0) : null;
       subcategories.push({
         label: 'Total operational payables (get_contact_balances_summary sum)',
         amount: rpcPayTotal,
@@ -594,7 +594,7 @@ export async function fetchControlAccountBreakdown(params: {
         });
 
         let workerRpcPayTotal: number | null = null;
-        if (opMap != null) {
+        if (!opMapError) {
           const { data: wkRows } = await supabase
             .from('contacts')
             .select('id')

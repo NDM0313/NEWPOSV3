@@ -299,6 +299,10 @@ export const purchaseService = {
       }
     }
 
+    if ((purchaseData as any)?.company_id) {
+      dispatchContactBalancesRefresh(String((purchaseData as any).company_id));
+    }
+
     return purchaseData;
   },
 
@@ -863,6 +867,8 @@ export const purchaseService = {
 
     if (error) throw error;
 
+    if ((data as any)?.company_id) dispatchContactBalancesRefresh(String((data as any).company_id));
+
     if (Object.prototype.hasOwnProperty.call(sanitized, 'po_date') && sanitized.po_date != null && data) {
       const cid = (data as any).company_id;
       if (cid) {
@@ -1259,6 +1265,12 @@ export const purchaseService = {
         try {
           const purchaseRow = await this.getPurchase(purchaseId).catch(() => null);
           const poNo = (purchaseRow as any)?.po_no ?? `PUR-${purchaseId.substring(0, 8)}`;
+          let payableAccountId: string | undefined;
+          if (companyId && purchaseRow && (purchaseRow as any).supplier_id) {
+            const { resolvePayablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+            payableAccountId =
+              (await resolvePayablePostingAccountId(companyId, String((purchaseRow as any).supplier_id))) || undefined;
+          }
           const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
           const { data: { user } } = await supabase.auth.getUser();
           await postPaymentAmountAdjustment({
@@ -1273,6 +1285,7 @@ export const purchaseService = {
             invoiceNoOrRef: poNo,
             entryDate: (updates.paymentDate || paymentDate || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
             createdBy: (user as any)?.id ?? null,
+            payableAccountId,
           });
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
