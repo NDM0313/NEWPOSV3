@@ -188,7 +188,11 @@ function journalGroupAccountPair(group: { primary: AccountingEntry; entries: Acc
   return { debit: compact(dr), credit: compact(cr) };
 }
 
-/** By-document row amount: sum primary document + same-root adjustments (purchase + purchase_adjustment, sale + sale_adjustment). */
+/**
+ * By-document row amount: sum document principal + value adjustments only.
+ * Supplier payment JEs use reference_type=purchase (see supplierPaymentService) but carry payment_id — they must NOT add to purchase total.
+ * Same guard for sale+payment_id if ever mis-tagged.
+ */
 function groupedDocumentDisplayAmount(group: { primary: AccountingEntry; entries: AccountingEntry[] }): number {
   const mod = group.primary.module;
   const refTypes =
@@ -199,7 +203,13 @@ function groupedDocumentDisplayAmount(group: { primary: AccountingEntry; entries
         : null;
   if (refTypes) {
     return group.entries
-      .filter((e) => refTypes.has(String(e.metadata?.referenceType || '').toLowerCase()))
+      .filter((e) => {
+        const rt = String(e.metadata?.referenceType || '').toLowerCase();
+        if (!refTypes.has(rt)) return false;
+        const pid = e.metadata?.paymentId;
+        if (pid && (rt === 'purchase' || rt === 'sale')) return false;
+        return true;
+      })
       .reduce((s, e) => s + (Number(e.amount) || 0), 0);
   }
   return Number(group.primary.amount) || 0;

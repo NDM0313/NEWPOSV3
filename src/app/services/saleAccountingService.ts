@@ -11,6 +11,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
@@ -532,6 +533,10 @@ export const saleAccountingService = {
       const result = await accountingService.createEntry(entry, lines);
       const journalEntryId = (result as any)?.id ?? null;
       console.log(`[saleAccountingService] Journal entry created for sale ${invoiceNo}: ${journalEntryId}`);
+      if (journalEntryId && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+      }
+      dispatchContactBalancesRefresh(companyId);
       return journalEntryId;
     } catch (err: any) {
       console.error('[saleAccountingService] Failed to create journal entry:', err.message);

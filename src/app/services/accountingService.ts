@@ -67,6 +67,33 @@ export interface AccountLedgerEntry {
  * Some postings create two AR credit lines for the same receipt (e.g. `reference_type=payment` plus
  * a `sale` JE with `payment_id` set). That double-counts running balance and statements — keep one line per payment.
  */
+/** Map journal_entries.reference_type to Account Statements “Source module” filter (lowercased compare in UI). */
+function glStatementSourceModuleFromReferenceType(referenceType: string | undefined | null): string {
+  const t = String(referenceType || '').toLowerCase().trim();
+  if (['sale', 'sale_return', 'sale_adjustment', 'sale_extra_expense', 'sale_reversal'].includes(t)) return 'Sales';
+  if (['purchase', 'purchase_return', 'purchase_adjustment', 'purchase_reversal'].includes(t)) return 'Purchase';
+  if (t === 'rental') return 'Rental';
+  if (['worker_payment', 'worker_advance_settlement', 'studio_production_stage', 'studio_production_stage_reversal'].includes(t))
+    return 'Studio';
+  return 'Accounting';
+}
+
+function glStatementDocumentTypeFromReferenceType(
+  referenceType: string | undefined | null,
+  fallbackLabel: string
+): string {
+  const t = String(referenceType || '').toLowerCase().trim();
+  if (t === 'sale') return 'Sale';
+  if (t === 'sale_return') return 'Sale return';
+  if (t === 'sale_adjustment' || t === 'sale_extra_expense') return 'Sale adjustment';
+  if (t === 'payment' || t === 'payment_adjustment') return 'Payment';
+  if (t === 'manual_receipt') return 'Manual receipt';
+  if (t === 'manual_payment') return 'Manual payment';
+  if (t.startsWith('opening_balance')) return 'Opening balance';
+  if (t === 'correction_reversal') return 'Reversal';
+  return fallbackLabel;
+}
+
 function journalLineNormalizedPaymentId(line: { journal_entry?: any; credit?: number }): string | null {
   const entry = line.journal_entry;
   if (!entry) return null;
@@ -2386,6 +2413,7 @@ export const accountingService = {
       const ledgerEntriesFromRange: AccountLedgerEntry[] = rawRows.map((r) => {
         const debit = Number(r.debit ?? 0);
         const credit = Number(r.credit ?? 0);
+        const refType = r.reference_type != null ? String(r.reference_type) : '';
         return {
           date: String(r.entry_date ?? '').slice(0, 10),
           created_at: r.created_at != null ? String(r.created_at) : undefined,
@@ -2397,14 +2425,14 @@ export const accountingService = {
           debit,
           credit,
           running_balance: Number(r.running_balance ?? 0),
-          source_module: 'Accounting',
+          source_module: glStatementSourceModuleFromReferenceType(refType),
           journal_entry_id: String(r.journal_entry_id ?? ''),
           payment_id: r.payment_id != null ? String(r.payment_id) : undefined,
           branch_id: r.branch_id != null ? String(r.branch_id) : undefined,
           branch_name: r.branch_name != null ? String(r.branch_name) : undefined,
           account_name: String(r.account_name ?? ''),
           gl_account_code: String(r.account_code ?? ''),
-          document_type: 'AP Journal',
+          document_type: glStatementDocumentTypeFromReferenceType(refType, 'AP Journal'),
         };
       });
 
@@ -2478,6 +2506,7 @@ export const accountingService = {
       const ledgerEntriesFromRange: AccountLedgerEntry[] = rawRows.map((r) => {
         const debit = Number(r.debit ?? 0);
         const credit = Number(r.credit ?? 0);
+        const refType = r.reference_type != null ? String(r.reference_type) : '';
         return {
           date: String(r.entry_date ?? '').slice(0, 10),
           created_at: r.created_at != null ? String(r.created_at) : undefined,
@@ -2490,14 +2519,14 @@ export const accountingService = {
           debit,
           credit,
           running_balance: Number(r.running_balance ?? 0),
-          source_module: 'Accounting',
+          source_module: glStatementSourceModuleFromReferenceType(refType),
           journal_entry_id: String(r.journal_entry_id ?? ''),
           payment_id: r.payment_id != null ? String(r.payment_id) : undefined,
           branch_id: r.branch_id != null ? String(r.branch_id) : undefined,
           branch_name: r.branch_name != null ? String(r.branch_name) : undefined,
           account_name: String(r.account_name ?? ''),
           gl_account_code: String(r.account_code ?? ''),
-          document_type: 'AR Journal',
+          document_type: glStatementDocumentTypeFromReferenceType(refType, 'AR Journal'),
         };
       });
 

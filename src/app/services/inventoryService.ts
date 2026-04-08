@@ -179,7 +179,7 @@ export const inventoryService = {
     // Build stock movements query
     let stockQuery = supabase
       .from('stock_movements')
-      .select('product_id, variation_id, quantity, box_change, piece_change')
+      .select('product_id, variation_id, quantity, box_change, piece_change, unit_cost, movement_type')
       .eq('company_id', companyId)
       .in('product_id', productIds);
     if (branchId && branchId !== 'all') {
@@ -220,6 +220,21 @@ export const inventoryService = {
         : Promise.resolve({ data: [] }),
     ]);
     console.timeEnd('inventoryOverview:parallel');
+
+    let movRows = movements;
+    if (movementsError && isMissingColumnError(movementsError)) {
+      let qFallback = supabase
+        .from('stock_movements')
+        .select('product_id, variation_id, quantity, box_change, piece_change')
+        .eq('company_id', companyId)
+        .in('product_id', productIds);
+      if (branchId && branchId !== 'all') qFallback = qFallback.eq('branch_id', branchId);
+      const { data: m2, error: e2 } = await qFallback;
+      if (!e2) movRows = m2;
+      else console.warn('[INVENTORY SERVICE] stock_movements fallback fetch:', e2.message);
+    } else if (movementsError) {
+      console.warn('[INVENTORY SERVICE] stock_movements:', movementsError.message);
+    }
 
     const variations = variationsPack.data;
     const variationsError = variationsPack.error;
@@ -263,20 +278,33 @@ export const inventoryService = {
     const variationBoxMap: Record<string, number> = {};
     const productPieceMap: Record<string, number> = {};
     const variationPieceMap: Record<string, number> = {};
-    
-    if (movements && !movementsError) {
-      movements.forEach((m: any) => {
+    /** Quantity-weighted unit_cost from movements (when product_variations row has no cost yet). */
+    const variationCostWeighted: Record<string, { sum: number; q: number }> = {};
+
+    const canProcessMovements =
+      Array.isArray(movRows) && (!movementsError || isMissingColumnError(movementsError));
+
+    if (canProcessMovements) {
+      movRows!.forEach((m: any) => {
         const productId = m.product_id;
         const variationId = m.variation_id;
         const qty = Number(m.quantity) || 0;
         const boxCh = Number(m.box_change) || 0;
         const pieceCh = Number(m.piece_change) || 0;
-        
+        const uc = Number(m.unit_cost);
+        const absQ = Math.abs(qty);
+
         if (!productId) {
           console.warn('[INVENTORY SERVICE] ⚠️ Movement with null product_id:', m);
           return;
         }
-        
+
+        if (variationId && Number.isFinite(uc) && uc > 0 && absQ > 0) {
+          if (!variationCostWeighted[variationId]) variationCostWeighted[variationId] = { sum: 0, q: 0 };
+          variationCostWeighted[variationId].sum += uc * absQ;
+          variationCostWeighted[variationId].q += absQ;
+        }
+
         if (variationId) {
           variationStockMap[variationId] = (variationStockMap[variationId] || 0) + qty;
           variationBoxMap[variationId] = (variationBoxMap[variationId] || 0) + boxCh;
@@ -287,9 +315,9 @@ export const inventoryService = {
           productPieceMap[productId] = (productPieceMap[productId] || 0) + pieceCh;
         }
       });
-    } else if (movementsError) {
+    } else if (movementsError && !isMissingColumnError(movementsError)) {
       console.error('[INVENTORY SERVICE] ❌ Error fetching stock movements:', movementsError);
-    } else {
+    } else if (!movRows?.length) {
       console.warn('[INVENTORY SERVICE] ⚠️ No movements found or movements is null');
     }
 
@@ -369,7 +397,15 @@ export const inventoryService = {
               const qty = variationStockMap[v.id] ?? 0;
               const ownPurchase = variationPurchaseFromApiRow(vr);
               const ownRetail = variationRetailFromApiRow(vr);
-              const purchasePrice = ownPurchase != null ? ownPurchase : avgCost;
+              const wc = variationCostWeighted[v.id];
+              const fromMovements =
+                wc && wc.q > 0 ? Math.round((wc.sum / wc.q) * 10000) / 10000 : null;
+              const purchasePrice =
+                ownPurchase != null && ownPurchase > 0
+                  ? ownPurchase
+                  : fromMovements != null && fromMovements > 0
+                    ? fromMovements
+                    : avgCost;
               const variationSellingPrice = ownRetail != null ? ownRetail : sellingPrice;
               return {
                 id: v.id,

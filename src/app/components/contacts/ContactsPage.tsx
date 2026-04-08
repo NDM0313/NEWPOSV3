@@ -30,6 +30,7 @@ import {
   type CompanyReconciliationSnapshot,
 } from '@/app/services/contactBalanceReconciliationService';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
+import { AddEntryV2 } from '@/app/components/accounting/AddEntryV2';
 import CustomerLedgerPageOriginal from '@/app/components/customer-ledger-test/CustomerLedgerPageOriginal';
 import { GenericLedgerView } from '@/app/components/accounting/GenericLedgerView';
 import { ViewContactProfile } from './ViewContactProfile';
@@ -186,6 +187,8 @@ export const ContactsPage = () => {
   // Action states
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  /** Customer receipt vs supplier payment when opening Add Entry V2 from this page (incl. `both` contacts). */
+  const [paymentFlowMode, setPaymentFlowMode] = useState<'customer_receipt' | 'supplier_payment' | null>(null);
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editContactOpen, setEditContactOpen] = useState(false);
@@ -1919,6 +1922,7 @@ export const ContactsPage = () => {
                                 <DropdownMenuItem 
                                   onClick={() => {
                                     setSelectedContact(contact);
+                                    setPaymentFlowMode('customer_receipt');
                                     setPaymentDialogOpen(true);
                                   }}
                                   className="hover:bg-gray-800 cursor-pointer"
@@ -1991,6 +1995,7 @@ export const ContactsPage = () => {
                                 <DropdownMenuItem 
                                   onClick={() => {
                                     setSelectedContact(contact);
+                                    setPaymentFlowMode('supplier_payment');
                                     setPaymentDialogOpen(true);
                                   }}
                                   className="hover:bg-gray-800 cursor-pointer"
@@ -2071,6 +2076,7 @@ export const ContactsPage = () => {
                                 <DropdownMenuItem 
                                   onClick={() => {
                                     setSelectedContact(contact);
+                                    setPaymentFlowMode(null);
                                     setPaymentDialogOpen(true);
                                   }}
                                   className="hover:bg-gray-800 cursor-pointer"
@@ -2137,27 +2143,55 @@ export const ContactsPage = () => {
         onPageSizeChange={handlePageSizeChange}
       />
 
-      {/* Unified Payment Dialog */}
-      {selectedContact && (
+      {/* Customer / supplier payment: Add Entry V2 (includes contacts with type `both` in the right list). Worker: legacy unified dialog. */}
+      {selectedContact && paymentDialogOpen && paymentFlowMode && selectedContact.type !== 'worker' && (
+        <AddEntryV2
+          key={selectedContact.uuid ?? String(selectedContact.id)}
+          onClose={() => {
+            setPaymentDialogOpen(false);
+            setSelectedContact(null);
+            setPaymentFlowMode(null);
+          }}
+          initialEntryType={paymentFlowMode}
+          initialCustomerContactId={
+            paymentFlowMode === 'customer_receipt'
+              ? selectedContact.uuid || selectedContact.id?.toString() || undefined
+              : undefined
+          }
+          initialSupplierContactId={
+            paymentFlowMode === 'supplier_payment'
+              ? selectedContact.uuid || selectedContact.id?.toString() || undefined
+              : undefined
+          }
+          initialAmount={
+            paymentFlowMode === 'customer_receipt'
+              ? Number(selectedContact.receivables) || 0
+              : Number(selectedContact.payables) || 0
+          }
+          onRecorded={() => {
+            refreshContacts();
+          }}
+        />
+      )}
+
+      {selectedContact && paymentDialogOpen && selectedContact.type === 'worker' && (
         <UnifiedPaymentDialog
           isOpen={paymentDialogOpen}
           onClose={() => {
             setPaymentDialogOpen(false);
             setSelectedContact(null);
+            setPaymentFlowMode(null);
           }}
-          context={selectedContact.type === 'supplier' ? 'supplier' : 'customer'}
+          context="worker"
           entityName={selectedContact.name}
           entityId={selectedContact.uuid ?? selectedContact.id?.toString() ?? ''}
-          outstandingAmount={
-            selectedContact.type === 'supplier'
-              ? selectedContact.payables
-              : selectedContact.receivables
-          }
+          outstandingAmount={selectedContact.payables}
           referenceNo={selectedContact.code}
           onSuccess={async () => {
             toast.success('Payment recorded successfully');
             setPaymentDialogOpen(false);
             setSelectedContact(null);
+            setPaymentFlowMode(null);
             refreshContacts();
           }}
         />

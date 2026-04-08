@@ -78,6 +78,7 @@ import {
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import { getEffectivePurchaseStatus, getPurchaseStatusBadgeConfig, canAddPaymentToPurchase } from '@/app/utils/statusHelpers';
 import { isPurchaseNonPostedCommercial } from '@/app/lib/postingStatusGate';
+import { parseVariationAttributesRaw, publicVariationAttributes } from '@/app/utils/variationFieldMap';
 import { AttachmentViewer } from '@/app/components/shared/AttachmentViewer';
 import { PackingEntryModal } from '@/app/components/transactions/PackingEntryModal';
 import { PurchaseReturnItemSelectionDialog } from '@/app/components/purchases/PurchaseReturnItemSelectionDialog';
@@ -603,6 +604,13 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
       .finally(() => setLoadingPurchaseReturns(false));
   }, [companyId, purchaseId, contextBranchId, purchase?.id, (purchase as any)?.status]);
 
+  /** Must run every render — cannot sit after early returns (Rules of Hooks). */
+  useEffect(() => {
+    if (!isOpen || !purchase) return;
+    const hidePaymentCommercial = isPurchaseNonPostedCommercial(purchase.status);
+    if (hidePaymentCommercial && activeTab === 'payments') setActiveTab('details');
+  }, [isOpen, purchase, activeTab]);
+
   if (!isOpen || !purchaseId) return null;
 
   if (loading) {
@@ -630,10 +638,6 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   const purchaseDue = (purchase as any).due ?? (purchase as any).paymentDue ?? 0;
   const canAddPayment =
     !hidePaymentCommercial && canAddPaymentToPurchase(purchase, purchaseDue);
-
-  useEffect(() => {
-    if (hidePaymentCommercial && activeTab === 'payments') setActiveTab('details');
-  }, [hidePaymentCommercial, activeTab]);
 
   const getStatusColor = (status: string) => {
     const s = (status || '').toLowerCase();
@@ -1034,10 +1038,12 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
                         
                         // Extract variation data
                         const variation = (item as any).variation || (item as any).product_variations || null;
-                        const variationAttrs = variation?.attributes || {};
+                        const variationAttrsPublic = publicVariationAttributes(
+                          parseVariationAttributesRaw(variation?.attributes)
+                        );
                         const variationSku = variation?.sku || null;
-                        const variationText = variationAttrs 
-                          ? Object.entries(variationAttrs)
+                        const variationText = Object.keys(variationAttrsPublic).length
+                          ? Object.entries(variationAttrsPublic)
                               .filter(([_, v]) => v != null && v !== '')
                               .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)}: ${v}`)
                               .join(', ')

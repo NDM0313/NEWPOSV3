@@ -15,7 +15,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { warnIfUsingStoredBalanceAsTruth } from '@/app/services/accountingCanonicalGuard';
-import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import { CONTACT_BALANCES_REFRESH_EVENT, dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 
 /** Leading numeric segment of account code (e.g. "1021-NDM" → "1021"). */
 function accountCodeDigits(acc: { code?: string } | null): string {
@@ -111,6 +111,13 @@ export interface AccountingEntry {
   createdBy: string;
   module: string;
   metadata?: {
+    /** Raw journal_entries.reference_type (per row). */
+    referenceType?: string;
+    referenceId?: string;
+    /** When set, JE is settlement / payment — exclude from by-document purchase/sale principal totals. */
+    paymentId?: string;
+    journalEntryId?: string;
+    paymentMethod?: string;
     customerId?: string;
     customerName?: string;
     workerId?: string;
@@ -443,6 +450,13 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     const useMultiSummary = activeLines.length > 2 || drCount > 1 || crCount > 1;
     const linesSummary = summarizeJournalLinesAccountPairs(activeLines, partyForContext);
 
+    const sumDebits = activeLines.reduce((s, l: any) => s + Number(l.debit || 0), 0);
+    const sumCredits = activeLines.reduce((s, l: any) => s + Number(l.credit || 0), 0);
+    let resolvedAmount = Number(debitLine?.debit || 0) || Number(creditLine?.credit || 0) || 0;
+    if (resolvedAmount === 0 && activeLines.length > 0) {
+      resolvedAmount = Math.max(sumDebits, sumCredits);
+    }
+
     let debitAccountDisplay = debitLine
       ? withPartyContextForLine(debitLine as any, partyForContext)
       : linesSummary.debitLabel;
@@ -500,7 +514,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       creditAccount: (creditStable || 'Cash') as AccountType,
       debitAccountDisplay,
       creditAccountDisplay,
-      amount: debitLine?.debit || creditLine?.credit || 0,
+      amount: resolvedAmount,
       description: journalEntry.description,
       createdBy: journalEntry.created_by || 'System',
       module: source === 'Sale' ? 'Sales' : source === 'Purchase' ? 'Purchases' : source === 'Expense' ? 'Expenses' : source === 'Rental' ? 'Rental' : source === 'Studio' ? 'Studio' : 'Accounting',
@@ -662,11 +676,21 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       void loadEntries();
       dispatchContactBalancesRefresh(companyId);
     };
+    /** Payments / receipts dispatch contact refresh without always firing accountingEntriesChanged — reload GL so COA balances match party RPCs. */
+    const onContactBalancesRefresh = (ev: Event) => {
+      const cid = (ev as CustomEvent<{ companyId?: string }>).detail?.companyId;
+      if (cid && cid === companyId) {
+        void loadAccounts();
+        void loadEntries();
+      }
+    };
     window.addEventListener('accountingEntriesChanged', bump);
     window.addEventListener('paymentAdded', bump);
+    window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, onContactBalancesRefresh);
     return () => {
       window.removeEventListener('accountingEntriesChanged', bump);
       window.removeEventListener('paymentAdded', bump);
+      window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, onContactBalancesRefresh);
     };
   }, [companyId, loadAccounts, loadEntries]);
 

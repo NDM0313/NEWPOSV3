@@ -3,7 +3,7 @@
  * Entry types: Pure Journal, Customer Receipt, Supplier Payment, Worker Payment, Expense Payment, Internal Transfer, Courier Payment.
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   FileText,
@@ -83,11 +83,25 @@ const today = () => new Date().toISOString().slice(0, 10);
 export interface AddEntryV2Props {
   onClose: () => void;
   initialEntryType?: AddEntryV2Type;
+  /** Pre-select party after contacts load (contact row `id` / UUID). */
+  initialCustomerContactId?: string;
+  initialSupplierContactId?: string;
+  /** Pre-fill amount (e.g. outstanding due). */
+  initialAmount?: number;
+  /** Called only after a successful save, before `onClose`. */
+  onRecorded?: () => void | Promise<void>;
 }
 
 type AddEntryStep = 'select-type' | 'entry-form';
 
-export function AddEntryV2({ onClose, initialEntryType }: AddEntryV2Props) {
+export function AddEntryV2({
+  onClose,
+  initialEntryType,
+  initialCustomerContactId,
+  initialSupplierContactId,
+  initialAmount,
+  onRecorded,
+}: AddEntryV2Props) {
   const { companyId, branchId, user } = useSupabase();
   const settings = useSettings();
   const { formatCurrency } = useFormatCurrency();
@@ -115,6 +129,7 @@ export function AddEntryV2({ onClose, initialEntryType }: AddEntryV2Props) {
   const [salaryUsers, setSalaryUsers] = useState<{ id: string; full_name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const initialPropsAppliedRef = useRef(false);
 
   // Form state – shared where applicable
   const [entryDate, setEntryDate] = useState(today());
@@ -163,13 +178,12 @@ export function AddEntryV2({ onClose, initialEntryType }: AddEntryV2Props) {
     const silent = Boolean(opts?.silent);
     if (!silent) setLoading(true);
     try {
-      const [{ byContactId, glRpcOk, operationalRpcOk }, acc, payAcc, sup, cust, courierList, expCats, workerList] =
+      const [{ byContactId, glRpcOk, operationalRpcOk }, acc, payAcc, allContacts, courierList, expCats, workerList] =
         await Promise.all([
           loadPartyFormBalances(companyId, branchId === 'all' ? null : branchId || null),
           accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined),
           accountService.getPaymentAccountsOnly(companyId),
-          contactService.getAllContacts(companyId, 'supplier'),
-          contactService.getAllContacts(companyId, 'customer'),
+          contactService.getAllContacts(companyId),
           courierService.getByCompanyId(companyId, false),
           expenseCategoryService.getOperatingCategoriesForPicker(companyId),
           studioService.getWorkersWithStats(companyId).catch(() => null as null),
@@ -185,8 +199,9 @@ export function AddEntryV2({ onClose, initialEntryType }: AddEntryV2Props) {
 
       const row = (id: string) => byContactId.get(id);
 
+      const contacts = allContacts || [];
       setSuppliers(
-        (sup || [])
+        contacts
           .filter((c: any) => c.type === 'supplier' || c.type === 'both')
           .map((c: any) => {
             const r = row(c.id);
@@ -197,13 +212,15 @@ export function AddEntryV2({ onClose, initialEntryType }: AddEntryV2Props) {
           })
       );
       setCustomers(
-        (cust || []).map((c: any) => {
-          const r = row(c.id);
-          const dueOp =
-            operationalRpcOk && r ? r.opReceivable : Number(c.current_balance) || 0;
-          const dueGl = glRpcOk && r ? r.glArReceivable : 0;
-          return { id: c.id, name: c.name || c.id, dueGl, dueOp };
-        })
+        contacts
+          .filter((c: any) => c.type === 'customer' || c.type === 'both')
+          .map((c: any) => {
+            const r = row(c.id);
+            const dueOp =
+              operationalRpcOk && r ? r.opReceivable : Number(c.current_balance) || 0;
+            const dueGl = glRpcOk && r ? r.glArReceivable : 0;
+            return { id: c.id, name: c.name || c.id, dueGl, dueOp };
+          })
       );
       setCouriers(
         (courierList || []).map((c: any) => {
@@ -250,6 +267,32 @@ export function AddEntryV2({ onClose, initialEntryType }: AddEntryV2Props) {
   useEffect(() => {
     loadFormData();
   }, [loadFormData]);
+
+  useEffect(() => {
+    initialPropsAppliedRef.current = false;
+  }, [initialCustomerContactId, initialSupplierContactId, initialAmount]);
+
+  useEffect(() => {
+    if (loading || initialPropsAppliedRef.current) return;
+    if (initialCustomerContactId) {
+      const c = customers.find((x) => x.id === initialCustomerContactId);
+      if (c) {
+        setCustomerId(initialCustomerContactId);
+        setCustomerName(c.name);
+      }
+    }
+    if (initialSupplierContactId) {
+      const s = suppliers.find((x) => x.id === initialSupplierContactId);
+      if (s) {
+        setSupplierContactId(initialSupplierContactId);
+        setSupplierName(s.name);
+      }
+    }
+    if (initialAmount != null && Number.isFinite(Number(initialAmount))) {
+      setAmount(Math.max(0, Number(initialAmount)));
+    }
+    initialPropsAppliedRef.current = true;
+  }, [loading, customers, suppliers, initialCustomerContactId, initialSupplierContactId, initialAmount]);
 
   const isExpenseSalary = expenseCategorySlug === 'salaries' || expenseCategorySlug === 'salary';
   useEffect(() => {
@@ -572,6 +615,7 @@ export function AddEntryV2({ onClose, initialEntryType }: AddEntryV2Props) {
       await accounting.refreshEntries?.();
       await loadFormData({ silent: true });
       dispatchContactBalancesRefresh(companyId);
+      await Promise.resolve(onRecorded?.());
       onClose();
     } catch (e: any) {
       toast.error(e?.message || 'Failed to save');
