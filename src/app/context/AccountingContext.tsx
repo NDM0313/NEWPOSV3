@@ -429,6 +429,10 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       'purchase_adjustment': 'Purchase',
       'purchase_reversal': 'Reversal',
       'manual_payment': 'Payment',
+      /** Customer manual receipt / contact receipt — must map to Payment so Journal “by document” sums with payment_adjustment. */
+      'manual_receipt': 'Payment',
+      /** Supplier on-account settlement rows post as on_account; treat as payment for module + grouping. */
+      'on_account': 'Payment',
       'expense': 'Expense',
       'rental': 'Rental',
       'studio': 'Studio',
@@ -701,10 +705,12 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     };
     window.addEventListener('accountingEntriesChanged', bump);
     window.addEventListener('paymentAdded', bump);
+    window.addEventListener('ledgerUpdated', bump);
     window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, onContactBalancesRefresh);
     return () => {
       window.removeEventListener('accountingEntriesChanged', bump);
       window.removeEventListener('paymentAdded', bump);
+      window.removeEventListener('ledgerUpdated', bump);
       window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, onContactBalancesRefresh);
     };
   }, [companyId, loadAccounts, loadEntries]);

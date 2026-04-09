@@ -222,7 +222,9 @@ async function fetchPaymentRows(
   branchId: string | null,
   dateFrom: string,
   dateTo: string,
-  accountFilter: AccountFilter
+  accountFilter: AccountFilter,
+  /** Default false: exclude voided/reversed payment rows (Option 1 — Roznamcha economic view). */
+  includeVoidedReversed = false
 ): Promise<RoznamchaRow[]> {
   let q = supabase
     .from('payments')
@@ -240,7 +242,8 @@ async function fetchPaymentRows(
       branch_id,
       payment_account_id,
       created_by,
-      received_by
+      received_by,
+      voided_at
     `)
     .eq('company_id', companyId)
     .gte('payment_date', dateFrom)
@@ -249,6 +252,7 @@ async function fetchPaymentRows(
     .order('created_at', { ascending: true });
 
   if (branchId) q = q.eq('branch_id', branchId);
+  if (!includeVoidedReversed) q = q.is('voided_at', null);
 
   const { data, error } = await q;
   if (error) return [];
@@ -337,7 +341,10 @@ async function fetchPaymentRows(
       expenseNoById,
       jeByPaymentId
     );
-    const details = getTypeLabel((p as any).reference_type) || (p as any).notes || '—';
+    const voided = Boolean((p as any).voided_at);
+    const baseDetails = getTypeLabel((p as any).reference_type) || (p as any).notes || '—';
+    const details =
+      includeVoidedReversed && voided ? `${baseDetails} (voided)` : baseDetails;
     // referenceDisplay set below from sale invoice_no / purchase po_no when applicable
     const referenceDisplay = '';
 
@@ -427,15 +434,17 @@ export async function getOpeningBalance(
   companyId: string,
   branchId: string | null,
   beforeDate: string,
-  accountFilter: AccountFilter
+  accountFilter: AccountFilter,
+  includeVoidedReversed = false
 ): Promise<number> {
   let q = supabase
     .from('payments')
-    .select('amount, payment_type, payment_method, payment_account_id')
+    .select('amount, payment_type, payment_method, payment_account_id, voided_at')
     .eq('company_id', companyId)
     .lt('payment_date', beforeDate);
 
   if (branchId) q = q.eq('branch_id', branchId);
+  if (!includeVoidedReversed) q = q.is('voided_at', null);
   const { data, error } = await q;
   if (error) return 0;
 
@@ -529,10 +538,24 @@ export async function getRoznamcha(
   branchId: string | null,
   dateFrom: string,
   dateTo: string,
-  accountFilterParam: AccountFilter = 'all'
+  accountFilterParam: AccountFilter = 'all',
+  includeVoidedReversed = false
 ): Promise<RoznamchaResult> {
-  const openingBalance = await getOpeningBalance(companyId, branchId, dateFrom, accountFilterParam);
-  const rows = await fetchPaymentRows(companyId, branchId, dateFrom, dateTo, accountFilterParam);
+  const openingBalance = await getOpeningBalance(
+    companyId,
+    branchId,
+    dateFrom,
+    accountFilterParam,
+    includeVoidedReversed
+  );
+  const rows = await fetchPaymentRows(
+    companyId,
+    branchId,
+    dateFrom,
+    dateTo,
+    accountFilterParam,
+    includeVoidedReversed
+  );
   const { rowsWithBalance, summary, cashSplit } = buildSummaryAndRunning(rows, openingBalance);
   return {
     rows: rowsWithBalance,

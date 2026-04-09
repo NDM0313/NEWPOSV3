@@ -21,6 +21,7 @@ import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { contactService } from '@/app/services/contactService';
+import { branchService, type Branch } from '@/app/services/branchService';
 import { accountingReportsService } from '@/app/services/accountingReportsService';
 import type { TrialBalanceRow } from '@/app/services/accountingReportsService';
 import {
@@ -70,6 +71,9 @@ interface Contact {
   payables: number;
   netBalance: number;
   status: 'active' | 'inactive' | 'onhold';
+  /** contacts.branch_id — used for filter; must match branch filter option values (UUID). */
+  branchId: string | null;
+  /** Resolved display name from branches table (not raw UUID). */
   branch: string;
   address?: string;
   lastTransaction?: string;
@@ -100,6 +104,11 @@ function readDebugContactBalanceTraceId(): string | null {
   } catch {
     return null;
   }
+}
+
+/** Dev: set localStorage DEBUG_CONTACTS_RECEIPT_EDIT=1 to trace receipt-edit / balance merge (Salar-focused). */
+function debugContactsReceiptEditEnabled(): boolean {
+  return Boolean(import.meta.env?.DEV && typeof localStorage !== 'undefined' && localStorage.getItem('DEBUG_CONTACTS_RECEIPT_EDIT') === '1');
 }
 
 function partyGlMismatchFlags(
@@ -201,6 +210,24 @@ export const ContactsPage = () => {
   const loadContactsGenerationRef = useRef(0);
   const loadContactsRef = useRef<() => Promise<void>>(async () => {});
   const [filterPosition, setFilterPosition] = useState({ top: 0, left: 0 });
+  const [companyBranches, setCompanyBranches] = useState<Branch[]>([]);
+
+  useEffect(() => {
+    if (!companyId) {
+      setCompanyBranches([]);
+      return;
+    }
+    branchService.getBranchesCached(companyId).then(setCompanyBranches).catch(() => setCompanyBranches([]));
+  }, [companyId]);
+
+  const getBranchLabel = useCallback(
+    (bid: string | null | undefined) => {
+      if (!bid) return 'Unassigned';
+      const b = companyBranches.find((x) => x.id === bid);
+      return (b?.name && String(b.name).trim()) || `Branch ${String(bid).slice(0, 8)}…`;
+    },
+    [companyBranches]
+  );
 
   // Convert Supabase contact to app format (receivables = due from customer, payables = due to supplier/worker)
   const convertFromSupabaseContact = useCallback(
@@ -284,13 +311,28 @@ export const ContactsPage = () => {
       payables,
       netBalance: receivables - payables,
       status,
-      branch: supabaseContact.branch_id || 'Main Branch (HQ)',
+      branchId: supabaseContact.branch_id ? String(supabaseContact.branch_id) : null,
+      branch: getBranchLabel(supabaseContact.branch_id),
       address: supabaseContact.address,
       lastTransaction: supabaseContact.updated_at ? new Date(supabaseContact.updated_at).toISOString().split('T')[0] : undefined,
       is_system_generated: supabaseContact.is_system_generated || false,
       system_type: supabaseContact.system_type || undefined,
     };
-  }, []);
+  }, [getBranchLabel]);
+
+  /**
+   * When branch names load after contacts, refresh labels only — never during list/balance fetch
+   * (avoids interleaving with phase1/phase2 and looking like a stale operational overwrite).
+   */
+  useEffect(() => {
+    if (!companyBranches.length || listLoading || balancesLoading) return;
+    setContacts((prev) =>
+      prev.map((c) => ({
+        ...c,
+        branch: getBranchLabel(c.branchId),
+      }))
+    );
+  }, [companyBranches, getBranchLabel, listLoading, balancesLoading]);
 
   // Load contacts in two phases: (1) contacts list fast, (2) receivables/payables from RPC or merged sales/purchases
   const loadContacts = useCallback(async () => {
@@ -349,6 +391,11 @@ export const ContactsPage = () => {
         ])
       );
 
+      if (myGen !== loadContactsGenerationRef.current) {
+        clearBalanceTimeout();
+        return;
+      }
+
       // Phase 1: show contacts immediately with opening-only numbers; balance columns stay skeleton until phase 2
       const phase1Contacts: Contact[] = contactsData.map((c: any, index: number) =>
         convertFromSupabaseContact(c, index, [], [], workerBalMap)
@@ -366,6 +413,16 @@ export const ContactsPage = () => {
       setContacts(phase1Contacts);
       setListLoading(false);
       setBalancesLoading(true);
+
+      if (debugContactsReceiptEditEnabled()) {
+        const sal = phase1Contacts.find((c) => c.name?.toLowerCase() === 'salar');
+        console.debug('[CONTACTS receipt-edit trace] phase1', {
+          companyId,
+          branchId,
+          myGen,
+          salar: sal ? { uuid: sal.uuid, r: sal.receivables, p: sal.payables } : null,
+        });
+      }
 
       // Phase 2: canonical operational amounts only from get_contact_balances_summary (no client merge fallback).
       const loadBalances = async () => {
@@ -408,6 +465,17 @@ export const ContactsPage = () => {
             return { ...contact, receivables: r, payables: p, netBalance: r - p };
           });
           if (myGen !== loadContactsGenerationRef.current) return;
+          if (debugContactsReceiptEditEnabled()) {
+            const sal = withBalances.find((c) => c.name?.toLowerCase() === 'salar');
+            const salRpc = sal ? balanceMap.get(String(sal.uuid)) : undefined;
+            console.debug('[CONTACTS receipt-edit trace] phase2 rpc merge', {
+              companyId,
+              branchId,
+              myGen,
+              salarRpc: salRpc,
+              salarRow: sal ? { r: sal.receivables, p: sal.payables } : null,
+            });
+          }
           setBalancesStale(false);
           setContacts(withBalances);
         } finally {
@@ -544,7 +612,12 @@ export const ContactsPage = () => {
 
   // Refetch when page gains focus so receivables/payables stay updated (e.g. after payment or ledger)
   useEffect(() => {
-    const onFocus = () => { if (companyId) loadContacts(); };
+    const onFocus = () => {
+      if (debugContactsReceiptEditEnabled()) {
+        console.debug('[CONTACTS receipt-edit trace] event', 'window focus', { companyId });
+      }
+      if (companyId) loadContacts();
+    };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [companyId, loadContacts]);
@@ -552,6 +625,12 @@ export const ContactsPage = () => {
   // After Add Entry / manual receipt saves — refresh operational balances + reconciliation snapshot inputs
   useEffect(() => {
     const onBalancesRefresh = (e: Event) => {
+      if (debugContactsReceiptEditEnabled()) {
+        console.debug('[CONTACTS receipt-edit trace] event', CONTACT_BALANCES_REFRESH_EVENT, {
+          companyId,
+          detail: (e as CustomEvent<{ companyId?: string }>).detail,
+        });
+      }
       const d = (e as CustomEvent<{ companyId?: string }>).detail;
       if (d?.companyId && d.companyId !== companyId) return;
       loadContacts();
@@ -563,6 +642,9 @@ export const ContactsPage = () => {
   /** Catch-all for sale/purchase flows that dispatch paymentAdded without contactBalancesRefresh (Phase 8 sync). */
   useEffect(() => {
     const onPaymentAdded = () => {
+      if (debugContactsReceiptEditEnabled()) {
+        console.debug('[CONTACTS receipt-edit trace] event', 'paymentAdded', { companyId });
+      }
       if (companyId) loadContacts();
     };
     window.addEventListener('paymentAdded', onPaymentAdded);
@@ -572,10 +654,28 @@ export const ContactsPage = () => {
   /** Journal / manual entry changes: reload operational RPC rows + GL strip inputs without full reload. */
   useEffect(() => {
     const onAccountingChanged = () => {
+      if (debugContactsReceiptEditEnabled()) {
+        console.debug('[CONTACTS receipt-edit trace] event', 'accountingEntriesChanged', { companyId });
+      }
       if (companyId) loadContacts();
     };
     window.addEventListener('accountingEntriesChanged', onAccountingChanged);
     return () => window.removeEventListener('accountingEntriesChanged', onAccountingChanged);
+  }, [companyId, loadContacts]);
+
+  /** Sale/purchase/Add Entry paths dispatch ledgerUpdated; keep Contacts rows/cards in sync without relying only on paymentAdded. */
+  useEffect(() => {
+    const onLedgerUpdated = (ev: Event) => {
+      if (debugContactsReceiptEditEnabled()) {
+        console.debug('[CONTACTS receipt-edit trace] event', 'ledgerUpdated', {
+          companyId,
+          detail: (ev as CustomEvent<{ ledgerType?: string; entityId?: string }>).detail,
+        });
+      }
+      if (companyId) loadContacts();
+    };
+    window.addEventListener('ledgerUpdated', onLedgerUpdated);
+    return () => window.removeEventListener('ledgerUpdated', onLedgerUpdated);
   }, [companyId, loadContacts]);
 
   // Position filter dropdown when open (for portal)
@@ -636,8 +736,8 @@ export const ContactsPage = () => {
       if (balanceFilter === 'due' && contact.netBalance === 0) return false;
       if (balanceFilter === 'paid' && contact.netBalance !== 0) return false;
       
-      // Branch filter
-      if (branchFilter !== 'all' && contact.branch !== branchFilter) return false;
+      // Branch filter (UUID from branches table — must match contact.branchId, not display label)
+      if (branchFilter !== 'all' && String(contact.branchId || '') !== branchFilter) return false;
 
       // Phone filter
       if (phoneFilter === 'has' && (contact.phone === '-' || !contact.phone)) return false;
@@ -738,8 +838,7 @@ export const ContactsPage = () => {
     }
     let cancelled = false;
     getCompanyReconciliationSnapshot(companyId, branchId, undefined, {
-      operationalReceivablesTotal: summaryOperational.totalReceivables,
-      operationalPayablesTotal: summaryOperational.totalPayables,
+      // Do not pass tab/filter-scoped card totals here — they mixed with full-list split totals and skewed variance vs GL.
       operationalCustomerReceivablesTotal: operationalSplitByType.customerRecv,
       operationalSupplierPayablesTotal: operationalSplitByType.supplierPay,
       operationalWorkerPayablesTotal: operationalSplitByType.workerPay,
@@ -758,8 +857,6 @@ export const ContactsPage = () => {
     branchId,
     balancesLoading,
     balancesStale,
-    summaryOperational.totalReceivables,
-    summaryOperational.totalPayables,
     operationalSplitByType.customerRecv,
     operationalSplitByType.supplierPay,
     operationalSplitByType.workerPay,
@@ -1191,10 +1288,11 @@ export const ContactsPage = () => {
                           <div className="space-y-2">
                             {[
                               { value: 'all', label: 'All Branches' },
-                              { value: 'Main Branch (HQ)', label: 'Main Branch (HQ)' },
-                              { value: 'Mall Outlet', label: 'Mall Outlet' },
-                              { value: 'Warehouse', label: 'Warehouse' },
-                            ].map(opt => (
+                              ...companyBranches.map((b) => ({
+                                value: b.id,
+                                label: (b.name && String(b.name).trim()) || b.id,
+                              })),
+                            ].map((opt) => (
                               <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                                 <input
                                   type="radio"

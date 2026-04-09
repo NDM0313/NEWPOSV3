@@ -1633,6 +1633,25 @@ export const saleService = {
       }
 
       console.log('[SALE SERVICE] Payment updated successfully');
+
+      // Keep sales.paid_amount / due_amount + payment_allocations aligned with payments.amount so
+      // get_contact_balances_summary matches ledger after receipt edits (UnifiedPaymentDialog sale-linked path).
+      const refType = String((data as any)?.reference_type || '').toLowerCase();
+      // FIFO rebuild only applies to manual_receipt (paymentAllocationService skips other reference_type).
+      if (refType === 'manual_receipt') {
+        if (import.meta.env.DEV) {
+          console.debug('[SALE SERVICE] updatePayment: rebuildManualReceiptAllocations', { paymentId, refType });
+        }
+        try {
+          await this.rebuildManualReceiptAllocations(paymentId);
+        } catch (fifoErr: any) {
+          console.warn(
+            '[SALE SERVICE] rebuildManualReceiptAllocations after updatePayment failed:',
+            fifoErr?.message || fifoErr
+          );
+        }
+      }
+
       if (updates.paymentDate && (data as any)?.company_id) {
         syncJournalEntryDateByPaymentId({
           companyId: (data as any).company_id,
@@ -1640,7 +1659,15 @@ export const saleService = {
           entryDate: updates.paymentDate,
         }).catch((e) => console.warn('[saleService] payment journal entry_date sync:', e));
       }
-      if ((data as any)?.company_id) dispatchContactBalancesRefresh(String((data as any).company_id));
+      if ((data as any)?.company_id) {
+        dispatchContactBalancesRefresh(String((data as any).company_id));
+        const cid = (data as any)?.contact_id;
+        if (cid && typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: String(cid) } })
+          );
+        }
+      }
       return data;
     } catch (error: any) {
       console.error('[SALE SERVICE] Error updating payment:', error);

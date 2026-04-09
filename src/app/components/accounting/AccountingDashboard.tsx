@@ -67,6 +67,7 @@ const USE_ADD_ENTRY_V2 = true;
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { accountService } from '@/app/services/accountService';
 import { contactService } from '@/app/services/contactService';
+import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
 import { toast } from 'sonner';
 import { getControlAccountKind } from '@/app/lib/accountControlKind';
 import { AccountsHierarchyList } from '@/app/components/accounting/AccountsHierarchyList';
@@ -107,6 +108,7 @@ import {
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
+import { Switch } from '@/app/components/ui/switch';
 
 function controlKindDisplayLabel(kind: ControlAccountBreakdownResult['controlKind']): string {
   switch (kind) {
@@ -155,6 +157,13 @@ function journalRowPresentation(entry: AccountingEntry): {
     };
   }
   if (payId && rtRaw === 'sale') {
+    return {
+      typeLabel: 'Customer receipt',
+      amountClass: 'text-emerald-400',
+      badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
+    };
+  }
+  if (rtRaw === 'manual_receipt' || rtRaw === 'payment_adjustment') {
     return {
       typeLabel: 'Customer receipt',
       amountClass: 'text-emerald-400',
@@ -231,11 +240,52 @@ function journalGroupAccountPair(group: { primary: AccountingEntry; entries: Acc
 }
 
 /**
+ * Stable key so manual_receipt + payment_adjustment for the same payment_id group as one document row.
+ */
+function journalDocumentGroupKey(entry: AccountingEntry, reversedJournalTargetIds: Set<string>): string {
+  const meta = entry.metadata;
+  const rt = String(meta?.referenceType || '').toLowerCase();
+  const rid = meta?.referenceId ? String(meta.referenceId).trim() : '';
+  if (rt === 'correction_reversal' && rid) {
+    return `jePair:${rid}`;
+  }
+  const jeId = String(meta?.journalEntryId || entry.id || '').trim();
+  if (jeId && reversedJournalTargetIds.has(jeId)) {
+    return `jePair:${jeId}`;
+  }
+  const pid = meta?.paymentId ? String(meta.paymentId).trim() : '';
+  if (pid) {
+    return `payment:${pid}`;
+  }
+  if (rt === 'payment_adjustment' && rid) {
+    return `payment:${rid}`;
+  }
+  const rootT = meta?.rootReferenceType ?? meta?.referenceType;
+  const rootI = meta?.rootReferenceId ?? meta?.referenceId;
+  if (rootT && rootI) {
+    return `${rootT}:${rootI}`;
+  }
+  return `single:${entry.id}`;
+}
+
+/**
  * By-document row amount: sum document principal + value adjustments only.
  * Supplier payment JEs use reference_type=purchase (see supplierPaymentService) but carry payment_id — they must NOT add to purchase total.
  * Same guard for sale+payment_id if ever mis-tagged.
+ * jePair:* groups net original + correction_reversal for a single economic row amount.
  */
-function groupedDocumentDisplayAmount(group: { primary: AccountingEntry; entries: AccountingEntry[] }): number {
+function groupedDocumentDisplayAmount(group: {
+  rootKey: string;
+  primary: AccountingEntry;
+  entries: AccountingEntry[];
+}): number {
+  if (group.rootKey.startsWith('jePair:')) {
+    return group.entries.reduce((s, e) => {
+      const ert = String(e.metadata?.referenceType || '').toLowerCase();
+      const a = Number(e.amount) || 0;
+      return ert === 'correction_reversal' ? s - a : s + a;
+    }, 0);
+  }
   const mod = group.primary.module;
   if (mod === 'Payments') {
     return group.entries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
@@ -259,7 +309,6 @@ function groupedDocumentDisplayAmount(group: { primary: AccountingEntry; entries
   }
   return Number(group.primary.amount) || 0;
 }
-import { Switch } from '@/app/components/ui/switch';
 
 // Account type sets used for summary card calculations (module-level constants)
 const INCOME_ACCOUNTS = new Set([
@@ -487,9 +536,13 @@ export const AccountingDashboard = () => {
     const bump = () => setPartyGlEpoch((n) => n + 1);
     window.addEventListener('accountingEntriesChanged', bump);
     window.addEventListener('paymentAdded', bump);
+    window.addEventListener('ledgerUpdated', bump);
+    window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
     return () => {
       window.removeEventListener('accountingEntriesChanged', bump);
       window.removeEventListener('paymentAdded', bump);
+      window.removeEventListener('ledgerUpdated', bump);
+      window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
     };
   }, []);
 
@@ -710,23 +763,31 @@ export const AccountingDashboard = () => {
     }
   };
   const groupedJournalRows = useMemo(() => {
+    const reversedJournalTargetIds = new Set<string>();
+    for (const t of filteredTransactions) {
+      const crt = String(t.metadata?.referenceType || '').toLowerCase();
+      const crid = t.metadata?.referenceId ? String(t.metadata.referenceId).trim() : '';
+      if (crt === 'correction_reversal' && crid) reversedJournalTargetIds.add(crid);
+    }
+
     const keyToEntries = new Map<string, AccountingEntry[]>();
     for (const t of filteredTransactions) {
-      const rt = t.metadata?.rootReferenceType ?? t.metadata?.referenceType;
-      const ri = t.metadata?.rootReferenceId ?? t.metadata?.referenceId;
-      const key = rt && ri ? `${rt}:${ri}` : `single:${t.id}`;
+      const key = journalDocumentGroupKey(t, reversedJournalTargetIds);
       if (!keyToEntries.has(key)) keyToEntries.set(key, []);
       keyToEntries.get(key)!.push(t);
     }
     const groups: JournalGroup[] = [];
     keyToEntries.forEach((entries, rootKey) => {
+      const chron = [...entries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       const primary =
         entries.find((e) => (e.metadata?.referenceType ?? '') === 'sale') ??
         entries.find((e) => (e.metadata?.referenceType ?? '') === 'purchase') ??
+        entries.find((e) => (e.metadata?.referenceType ?? '') === 'manual_receipt') ??
         entries.find((e) => (e.metadata?.referenceType ?? '') === 'on_account') ??
         entries.find((e) => (e.metadata?.referenceType ?? '') === 'manual_payment') ??
         entries.find((e) => (e.metadata?.referenceType ?? '') === 'payment') ??
-        entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+        chron.find((e) => String(e.metadata?.referenceType || '').toLowerCase() !== 'correction_reversal') ??
+        chron[0];
       groups.push({ rootKey, primary, entries });
     });
     groups.sort((a, b) => new Date(b.primary.date).getTime() - new Date(a.primary.date).getTime());

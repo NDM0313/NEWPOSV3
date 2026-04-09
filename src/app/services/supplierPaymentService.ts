@@ -165,5 +165,9 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
   const journalEntryId = (savedEntry as { id: string }).id;
 
   dispatchContactBalancesRefresh(companyId);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('paymentAdded'));
+    window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: resolvedContactId } }));
+  }
   return { paymentId, journalEntryId, referenceNumber };
 }

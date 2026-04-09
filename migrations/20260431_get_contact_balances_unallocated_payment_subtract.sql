@@ -1,15 +1,16 @@
--- Ensure void filter column exists (introduced in 20260356; safe if already present).
-ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ;
-
--- Superseded body: 20260431_get_contact_balances_unallocated_payment_subtract.sql replaces the function below
--- (allocation-aware subtract). This file still ensures voided_at + first pay-side subtract for DBs that only run through 20260430.
-
--- Contacts operational recv/pay parity (get_contact_balances_summary):
--- 1) Payables: subtract supplier-side cash outflows not already netted in purchase rows:
---    payment_type = 'paid' AND reference_type IN ('manual_payment', 'on_account').
---    Purchase-linked payments (reference_type = 'purchase') remain reflected via purchases.paid_amount/due_amount + recalc_purchase_payment_totals — do not subtract again.
--- 2) Receivables: exclude voided customer prepayments (voided_at IS NULL) on the manual_receipt/on_account subtract leg.
--- 3) Reassert branch parity: when p_branch_id is set, include payments/documents with branch_id IS NULL (company-wide) OR matching branch.
+-- Refines get_contact_balances_summary (after 20260430):
+-- Deploy: if `CREATE FUNCTION` fails with "must be owner", run as function owner, e.g.
+--   docker exec -i supabase-db psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 < this_file.sql
+--
+-- Subtract only the portion of manual_receipt / manual_payment NOT already allocated to sales/purchases.
+-- Otherwise purchase/sale due (from recalc_* totals) already includes allocated amounts → double subtraction.
+--
+-- Operational recv: opening + final sales due − SUM per payment GREATEST(0, amount − allocated) for
+--   payment_type received AND reference_type IN (manual_receipt, on_account), voided_at IS NULL.
+-- Operational pay: supplier_opening + final/received purchase due − same for
+--   payment_type paid AND reference_type IN (manual_payment, on_account).
+-- Purchase-linked (reference_type=purchase) and sale-linked (reference_type=sale) are NOT subtracted here;
+-- they are already in document paid/due columns.
 
 CREATE OR REPLACE FUNCTION public.get_contact_balances_summary(
   p_company_id UUID,
@@ -45,12 +46,21 @@ BEGIN
           0
         )
       - COALESCE(
-          (SELECT SUM(GREATEST(0, p.amount::numeric))
+          (SELECT SUM(
+             GREATEST(
+               0::numeric,
+               p.amount::numeric - COALESCE((
+                 SELECT SUM(pa.allocated_amount)::numeric
+                 FROM payment_allocations pa
+                 WHERE pa.payment_id = p.id
+               ), 0::numeric)
+             )
+           )
            FROM payments p
            WHERE p.company_id = p_company_id
              AND p.contact_id = c.id
              AND LOWER(TRIM(COALESCE(p.payment_type::text, ''))) = 'received'
-             AND (p.voided_at IS NULL)
+             AND p.voided_at IS NULL
              AND (
                p_branch_id IS NULL
                OR p.branch_id IS NULL
@@ -100,12 +110,21 @@ BEGIN
                0
              )
            - COALESCE(
-               (SELECT SUM(GREATEST(0, pay.amount::numeric))
+               (SELECT SUM(
+                  GREATEST(
+                    0::numeric,
+                    pay.amount::numeric - COALESCE((
+                      SELECT SUM(pa.allocated_amount)::numeric
+                      FROM payment_allocations pa
+                      WHERE pa.payment_id = pay.id
+                    ), 0::numeric)
+                  )
+                )
                 FROM payments pay
                 WHERE pay.company_id = p_company_id
                   AND pay.contact_id = c.id
                   AND LOWER(TRIM(COALESCE(pay.payment_type::text, ''))) = 'paid'
-                  AND (pay.voided_at IS NULL)
+                  AND pay.voided_at IS NULL
                   AND (
                     p_branch_id IS NULL
                     OR pay.branch_id IS NULL
@@ -123,7 +142,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.get_contact_balances_summary(UUID, UUID) IS
-  'Operational recv/pay per contact. Recv: customer/both opening + final sales due − non-void manual_receipt/on_account receipts (sale-linked receipts net via sales.due). Pay: supplier/both supplier_opening + final/received purchase due − non-void manual_payment/on_account supplier payments (purchase-linked net via purchases.due). Branch: NULL branch_id documents/payments included when a branch filter is set.';
+  'Operational recv/pay: recv = customer/both opening + final sales due − unallocated manual_receipt/on_account (void excluded). Pay = supplier/both opening + purchase due − unallocated manual_payment/on_account. Doc-linked sale/purchase payments net via sales/purchases only. Branch filter includes NULL branch_id rows.';
 
 GRANT EXECUTE ON FUNCTION public.get_contact_balances_summary(UUID, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_contact_balances_summary(UUID, UUID) TO service_role;

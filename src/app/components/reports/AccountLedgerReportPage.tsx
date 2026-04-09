@@ -17,6 +17,7 @@ import {
   type AccountingStatementMode,
 } from '@/app/lib/accounting/statementEngineTypes';
 import { nearestPartyControlAncestorId } from '@/app/lib/partyControlAccounts';
+import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
 
 type StatementType = AccountingStatementMode;
 
@@ -257,9 +258,13 @@ export const AccountLedgerReportPage: React.FC<{
     const bump = () => setJournalRefreshTick((n) => n + 1);
     window.addEventListener('accountingEntriesChanged', bump);
     window.addEventListener('paymentAdded', bump);
+    window.addEventListener('ledgerUpdated', bump);
+    window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
     return () => {
       window.removeEventListener('accountingEntriesChanged', bump);
       window.removeEventListener('paymentAdded', bump);
+      window.removeEventListener('ledgerUpdated', bump);
+      window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
     };
   }, []);
 

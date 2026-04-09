@@ -17,6 +17,8 @@ import {
   SelectValue,
 } from '../ui/select';
 import { BranchSelector } from '@/app/components/layout/BranchSelector';
+import { Switch } from '../ui/switch';
+import { Label } from '../ui/label';
 import {
   getRoznamcha,
   type AccountFilter,
@@ -70,6 +72,8 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const today = new Date();
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({ from: today, to: today });
   const [accountFilter, setAccountFilter] = useState<AccountFilter>('all');
+  /** Default off: voided payments (e.g. reversed receipts) are excluded from cash book totals. */
+  const [includeVoidedReversed, setIncludeVoidedReversed] = useState(false);
   const [data, setData] = useState<RoznamchaResult | null>(null);
   const [loading, setLoading] = useState(!!companyId);
   const PAGE_SIZE = 50;
@@ -112,7 +116,8 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         effectiveBranchId,
         dateFrom,
         dateTo,
-        accountFilter
+        accountFilter,
+        includeVoidedReversed
       );
       setData(result);
     } catch {
@@ -120,7 +125,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     } finally {
       setLoading(false);
     }
-  }, [companyId, effectiveBranchId, dateFrom, dateTo, accountFilter]);
+  }, [companyId, effectiveBranchId, dateFrom, dateTo, accountFilter, includeVoidedReversed]);
 
   useEffect(() => {
     load();
@@ -130,7 +135,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   }, [currentPage, totalPages]);
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFrom, dateTo, accountFilter]);
+  }, [dateFrom, dateTo, accountFilter, includeVoidedReversed]);
 
   const selectedBranchLabel = contextBranchId === 'all' || !contextBranchId ? 'All Branches' : 'Selected branch';
 
@@ -204,10 +209,26 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
               </SelectContent>
             </Select>
           </div>
+          <div className="flex flex-col gap-1 max-w-[220px]">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="roznamcha-include-voided"
+                checked={includeVoidedReversed}
+                onCheckedChange={setIncludeVoidedReversed}
+              />
+              <Label htmlFor="roznamcha-include-voided" className="text-sm text-gray-400 cursor-pointer leading-snug">
+                Include voided payments (audit)
+              </Label>
+            </div>
+            <span className="text-xs text-gray-600 pl-11">
+              Off by default: reversed/voided receipts do not affect Roznamcha totals.
+            </span>
+          </div>
         </div>
         <p className="text-xs text-gray-500 mt-2">
           Date: {dateFrom} → {dateTo} · Branch: {selectedBranchLabel} · Account:{' '}
           {accountFilter === 'all' ? 'All' : accountFilter === 'wallet' ? 'Wallet' : accountFilter}
+          {includeVoidedReversed ? ' · Voided rows shown' : ''}
         </p>
       </div>
 
