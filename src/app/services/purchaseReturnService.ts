@@ -430,7 +430,9 @@ export const purchaseReturnService = {
         for (const row of prJes || []) {
           const jeId = (row as { id: string }).id;
           try {
-            await accountingService.createReversalEntry(companyId, branchForJe, jeId, userId || null, reason);
+            await accountingService.createReversalEntry(companyId, branchForJe, jeId, userId || null, reason, {
+              bypassJournalSourceControlPolicy: true,
+            });
           } catch (revErr: any) {
             console.warn('[voidPurchaseReturn] reversal JE skipped/failed for', jeId, revErr?.message || revErr);
           }

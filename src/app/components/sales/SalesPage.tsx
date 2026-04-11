@@ -320,6 +320,30 @@ export const SalesPage = () => {
     run();
     return () => { cancelled = true; };
   }, [openSaleIdForView, setOpenSaleIdForView, refreshSales]);
+
+  /** Open a specific sale return from Accounting → “Open source” on a sale_return journal row. */
+  useEffect(() => {
+    if (typeof window === 'undefined' || !companyId) return;
+    const pendingId = sessionStorage.getItem('pendingAccountingOpen_saleReturnId');
+    if (!pendingId) return;
+    sessionStorage.removeItem('pendingAccountingOpen_saleReturnId');
+    let cancelled = false;
+    void (async () => {
+      try {
+        const full = await saleReturnService.getSaleReturnById(pendingId, companyId);
+        if (cancelled || !full) return;
+        setActiveTab('returns');
+        setSelectedReturn(full);
+        setViewReturnDetailsOpen(true);
+        toast.info(`Opened return ${full.return_no || full.id?.slice(0, 8)} — manage void/cancel from here.`);
+      } catch {
+        toast.error('Could not open sale return from journal link.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | PaymentStatus>('all');
   const [saleStatusFilter, setSaleStatusFilter] = useState<'all' | 'draft' | 'quotation' | 'order' | 'final' | 'cancelled'>('all');
   const [shippingStatusFilter, setShippingStatusFilter] = useState<'all' | ShippingStatus>('all');
@@ -1948,7 +1972,8 @@ export const SalesPage = () => {
                                       View Original Sale
                                     </DropdownMenuItem>
                                   )}
-                                  {String(ret?.status).toLowerCase() !== 'final' && (
+                                  {String(ret?.status).toLowerCase() !== 'final' &&
+                                    String(ret?.status).toLowerCase() !== 'void' && (
                                     <>
                                       <DropdownMenuSeparator />
                                       <DropdownMenuItem 
@@ -1990,8 +2015,8 @@ export const SalesPage = () => {
                                   {String(ret?.status).toLowerCase() === 'void' && (
                                     <>
                                       <DropdownMenuSeparator />
-                                      <DropdownMenuItem disabled className="opacity-50 cursor-not-allowed text-gray-500">
-                                        Return cancelled — no further action
+                                      <DropdownMenuItem disabled className="opacity-60 cursor-not-allowed text-gray-400">
+                                        Voided — locked (audit only). Create a new return to process stock again.
                                       </DropdownMenuItem>
                                     </>
                                   )}
@@ -2053,7 +2078,11 @@ export const SalesPage = () => {
                                     ? 'bg-green-500/20 text-green-400 border-green-500/30'
                                     : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
                               }>
-                                {String(ret?.status).toLowerCase() === 'void' ? 'Voided' : ret.status === 'final' ? 'FINAL / LOCKED' : 'Draft'}
+                                {String(ret?.status).toLowerCase() === 'void'
+                                  ? 'VOID / LOCKED'
+                                  : ret.status === 'final'
+                                    ? 'FINAL / LOCKED'
+                                    : 'Draft'}
                               </Badge>
                             </div>
                             <div className="text-right">
@@ -2756,8 +2785,20 @@ export const SalesPage = () => {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-white">Return #{ret.return_no || ret.id?.slice(0, 8)}</span>
-                        <Badge className={ret.status === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}>
-                          {ret.status}
+                        <Badge
+                          className={
+                            String(ret?.status).toLowerCase() === 'void'
+                              ? 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                              : ret.status === 'final'
+                                ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                          }
+                        >
+                          {String(ret?.status).toLowerCase() === 'void'
+                            ? 'VOID / LOCKED'
+                            : ret.status === 'final'
+                              ? 'FINAL / LOCKED'
+                              : ret.status || 'Draft'}
                         </Badge>
                       </div>
                       <p className="text-xs text-gray-400 mt-1">
@@ -3008,8 +3049,10 @@ export const SalesPage = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Void / Cancel Return?</AlertDialogTitle>
             <AlertDialogDescription className="text-gray-300">
-              This will <span className="font-semibold text-amber-400">void</span> return <span className="font-semibold text-white">{returnToVoid?.return_no || `RET-${returnToVoid?.id?.slice(0, 8).toUpperCase()}`}</span>.
-              Stock will be reversed (returned items will be taken back from inventory). The return will be marked as void and excluded from customer balance. Record is kept for audit. Continue?
+              This will <span className="font-semibold text-amber-400">void / cancel</span> return{' '}
+              <span className="font-semibold text-white">{returnToVoid?.return_no || `RET-${returnToVoid?.id?.slice(0, 8).toUpperCase()}`}</span>
+              — same idea as purchase returns: stock is reversed (goods go back out as if the return did not land), settlement is reversed in the ledger where posted, and the document is marked{' '}
+              <span className="font-semibold text-gray-200">void</span> and <span className="font-semibold text-gray-200">locked</span> (no edit / no delete; audit trail kept). Continue?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -174,6 +174,10 @@ export interface AccountingEntry {
     paymentChainIsTail?: boolean;
     paymentChainTailJournalId?: string | null;
     paymentChainMemberCount?: number;
+    /** journal_entries.is_void — terminal: no journal reversal from UI. */
+    journalEntryVoid?: boolean;
+    /** Active PF-07 `correction_reversal` child exists for this journal header — lock Journal edit/reverse. */
+    hasActiveCorrectionReversal?: boolean;
   };
 }
 
@@ -583,7 +587,10 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     metadata.paymentChainIsTail = chainFlags.paymentChainIsTail;
     metadata.paymentChainTailJournalId = chainFlags.paymentChainTailJournalId ?? undefined;
     metadata.paymentChainMemberCount = chainFlags.paymentChainMemberCount;
-    
+    metadata.journalEntryVoid = (journalEntry as { is_void?: boolean }).is_void === true;
+    metadata.hasActiveCorrectionReversal =
+      (journalEntry as { _has_active_correction_reversal?: boolean })._has_active_correction_reversal === true;
+
     if (journalEntry.reference_id) {
       if (source === 'Sale') metadata.invoiceId = journalEntry.reference_id;
       if (source === 'Purchase') metadata.purchaseId = journalEntry.reference_id;
@@ -721,8 +728,36 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         startDate,
         endDate
       );
-      const chainIndex = buildPaymentChainIndex(data as any[]);
-      const convertedEntries = data.map((je) => convertFromJournalEntry(je as JournalEntryWithLines, chainIndex));
+      const jeIds = (data as { id?: string }[])
+        .map((j) => String(j.id || '').trim())
+        .filter(Boolean);
+      const reversedOriginalIds = new Set<string>();
+      const CHUNK = 150;
+      for (let i = 0; i < jeIds.length; i += CHUNK) {
+        const chunk = jeIds.slice(i, i + CHUNK);
+        const { data: revParents, error: revErr } = await supabase
+          .from('journal_entries')
+          .select('reference_id')
+          .eq('company_id', companyId)
+          .eq('reference_type', 'correction_reversal')
+          .in('reference_id', chunk)
+          .or('is_void.is.null,is_void.eq.false');
+        if (revErr && import.meta.env?.DEV) {
+          console.warn('[ACCOUNTING CONTEXT] correction_reversal batch lookup:', revErr.message);
+        }
+        for (const r of revParents || []) {
+          const rid = (r as { reference_id?: string }).reference_id;
+          if (rid) reversedOriginalIds.add(String(rid));
+        }
+      }
+      const dataWithReversalFlag = (data as any[]).map((je) => ({
+        ...je,
+        _has_active_correction_reversal: Boolean(je.id && reversedOriginalIds.has(String(je.id))),
+      }));
+      const chainIndex = buildPaymentChainIndex(dataWithReversalFlag as any[]);
+      const convertedEntries = dataWithReversalFlag.map((je) =>
+        convertFromJournalEntry(je as JournalEntryWithLines, chainIndex)
+      );
       setEntries(convertedEntries);
       if (import.meta.env?.DEV) console.log('✅ Journal entries loaded:', convertedEntries.length);
       

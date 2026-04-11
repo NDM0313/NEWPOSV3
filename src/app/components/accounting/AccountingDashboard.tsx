@@ -35,6 +35,7 @@ import {
   Scale,
   ShieldAlert,
   ExternalLink,
+  Undo2,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -78,6 +79,7 @@ import { ChartOfAccountsPartyDropdown } from '@/app/components/accounting/ChartO
 import {
   allowsGenericAccountingUnifiedEdit,
   getJournalEntrySourceDocumentOpenTarget,
+  journalReversalBlockedReason,
 } from '@/app/lib/journalEntryEditPolicy';
 
 const StudioCostsTab = lazy(() => import('./StudioCostsTab').then((m) => ({ default: m.StudioCostsTab })));
@@ -140,8 +142,10 @@ function journalRowPresentation(entry: AccountingEntry): {
       badgeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
     };
   }
-  const rtRaw = String((entry.metadata as { referenceType?: string } | undefined)?.referenceType || '').toLowerCase();
-  const payId = (entry.metadata as { paymentId?: string } | undefined)?.paymentId;
+  const meta = entry.metadata as { referenceType?: string; paymentId?: string; rootReferenceType?: string } | undefined;
+  const rtRaw = String(meta?.referenceType || '').toLowerCase();
+  const payId = meta?.paymentId;
+  const rootRt = String(meta?.rootReferenceType || '').toLowerCase();
   if (rtRaw === 'worker_payment') {
     return {
       typeLabel: 'Worker payment',
@@ -163,7 +167,28 @@ function journalRowPresentation(entry: AccountingEntry): {
       badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
     };
   }
-  if (rtRaw === 'manual_receipt' || rtRaw === 'payment_adjustment') {
+  if (rtRaw === 'payment_adjustment' && payId) {
+    if (rootRt === 'purchase' || rootRt === 'manual_payment' || rootRt === 'on_account') {
+      return {
+        typeLabel: 'Supplier payment',
+        amountClass: 'text-sky-400',
+        badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/35',
+      };
+    }
+    if (rootRt === 'sale' || rootRt === 'manual_receipt') {
+      return {
+        typeLabel: 'Customer receipt',
+        amountClass: 'text-emerald-400',
+        badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
+      };
+    }
+    return {
+      typeLabel: 'Payment edit',
+      amountClass: 'text-cyan-400',
+      badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/35',
+    };
+  }
+  if (rtRaw === 'manual_receipt') {
     return {
       typeLabel: 'Customer receipt',
       amountClass: 'text-emerald-400',
@@ -361,11 +386,29 @@ export const AccountingDashboard = () => {
           openDrawer('edit-purchase', undefined, { purchase: full });
           return;
         }
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('pendingRentalDetailsId', target.id);
+        if (target.kind === 'sale_return') {
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('pendingAccountingOpen_saleReturnId', target.id);
+          }
+          setCurrentView('sales');
+          toast.info('Opening Sales — return details will open on the Returns tab.');
+          return;
         }
-        setCurrentView('rentals');
-        toast.info('Opening Rentals — use the booking drawer to edit.');
+        if (target.kind === 'purchase_return') {
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('pendingAccountingOpen_purchaseReturnId', target.id);
+          }
+          setCurrentView('purchases');
+          toast.info('Opening Purchases — return details will open when ready.');
+          return;
+        }
+        if (target.kind === 'rental') {
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('pendingRentalDetailsId', target.id);
+          }
+          setCurrentView('rentals');
+          toast.info('Opening Rentals — use the booking drawer to edit.');
+        }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : 'Could not open source document.';
         toast.error(msg);
@@ -1142,6 +1185,21 @@ export const AccountingDashboard = () => {
                             const acPair = journalGroupAccountPair(group);
                             const allowUnifiedEdit = allowsGenericAccountingUnifiedEdit(entry);
                             const sourceOpen = getJournalEntrySourceDocumentOpenTarget(entry);
+                            const chainTailEntry = group.entries.find((e) => e.metadata?.paymentChainIsTail);
+                            const lockPaymentChainReverse =
+                              Boolean(chainTailEntry) && group.primary.id !== chainTailEntry.id;
+                            const journalReverseBlockReason = journalReversalBlockedReason(
+                              {
+                                reference_type: entry.metadata?.referenceType,
+                                reference_id: entry.metadata?.referenceId,
+                                payment_id: entry.metadata?.paymentId,
+                                is_void: entry.metadata?.journalEntryVoid,
+                                payment_chain_is_historical: entry.metadata?.paymentChainIsHistorical,
+                                hasActiveCorrectionReversal: entry.metadata?.hasActiveCorrectionReversal,
+                              },
+                              undefined
+                            );
+                            const allowJournalReversalUi = !journalReverseBlockReason;
                             return (
                               <tr
                                 key={group.rootKey}
@@ -1208,15 +1266,27 @@ export const AccountingDashboard = () => {
                                 <td className="px-4 py-3 text-xs text-gray-400">{entry.source || 'Manual'}</td>
                                 <td className="px-4 py-3 text-sm text-gray-300 tabular-nums">{group.entries.length}</td>
                                 <td className="px-4 py-3">
-                                  <Badge
-                                    className={
-                                      isReversal
-                                        ? 'bg-amber-500/15 text-amber-200 border-amber-500/30 text-xs'
-                                        : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
-                                    }
-                                  >
-                                    {isReversal ? 'Reversal' : 'Posted'}
-                                  </Badge>
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <Badge
+                                      className={
+                                        isReversal
+                                          ? 'bg-amber-500/15 text-amber-200 border-amber-500/30 text-xs'
+                                          : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
+                                      }
+                                    >
+                                      {isReversal ? 'Reversal' : 'Posted'}
+                                    </Badge>
+                                    {entry.metadata?.paymentChainIsHistorical ? (
+                                      <Badge className="bg-gray-700/80 text-gray-300 border-gray-600 text-[10px]">
+                                        Historical
+                                      </Badge>
+                                    ) : null}
+                                    {entry.metadata?.paymentChainIsTail && (entry.metadata?.paymentChainMemberCount ?? 0) > 1 ? (
+                                      <Badge className="bg-emerald-900/50 text-emerald-200 border-emerald-700/40 text-[10px]">
+                                        Latest
+                                      </Badge>
+                                    ) : null}
+                                  </div>
                                 </td>
                                 <td
                                   className="px-4 py-3 text-xs text-gray-400 max-w-[min(280px,40vw)]"
@@ -1239,7 +1309,11 @@ export const AccountingDashboard = () => {
                                             onClick={() => {
                                               setSelectedGroupEntries(group.entries);
                                               setTransactionDetailAutoEdit(false);
-                                              setTransactionReference(entry.referenceNo || entry.id);
+                                              setTransactionReference(
+                                                lockPaymentChainReverse
+                                                  ? chainTailEntry?.referenceNo || entry.referenceNo || entry.id
+                                                  : entry.referenceNo || entry.id
+                                              );
                                             }}
                                             title="Open journal detail (read-only)"
                                           >
@@ -1267,30 +1341,83 @@ export const AccountingDashboard = () => {
                                               size="sm"
                                               className="h-8 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
                                               onClick={() => void handleOpenJournalSourceDocument(entry)}
-                                              title="Open sale, purchase, or rental in its module"
+                                              title="Open sale, purchase, return, or rental in its module"
                                             >
                                               <ExternalLink className="w-4 h-4 mr-1" />
                                               Open source
                                             </Button>
                                           ) : null}
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-                                            onClick={() => {
-                                              if (
-                                                window.confirm(
-                                                  'Create a reversal entry for this journal entry? This will post a new entry that offsets the original.'
-                                                )
-                                              ) {
-                                                accounting.createReversalEntry(entry.id);
-                                              }
-                                            }}
-                                            title="Create reversal (manual correction)"
-                                          >
-                                            <RotateCcw className="w-4 h-4 mr-1" />
-                                            Reverse
-                                          </Button>
+                                          {(() => {
+                                            const chainPaymentId = entry.metadata?.paymentId || null;
+                                            const chainMembers = entry.metadata?.paymentChainMemberCount ?? 0;
+                                            const isMultiMemberChain = chainMembers > 1 && chainPaymentId;
+                                            const chainReverseDisabled = lockPaymentChainReverse || !allowJournalReversalUi;
+                                            return (
+                                              <>
+                                                {isMultiMemberChain ? (
+                                                  <>
+                                                    <Button
+                                                      variant="ghost"
+                                                      size="sm"
+                                                      className="h-8 text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 disabled:opacity-40"
+                                                      disabled={chainReverseDisabled}
+                                                      title={
+                                                        journalReverseBlockReason ||
+                                                        'Undo last edit — voids the latest adjustment JE and restores previous payment state'
+                                                      }
+                                                      onClick={() => {
+                                                        if (window.confirm('Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.')) {
+                                                          void accounting.undoLastPaymentMutation(chainPaymentId);
+                                                        }
+                                                      }}
+                                                    >
+                                                      <Undo2 className="w-4 h-4 mr-1" />
+                                                      Undo edit
+                                                    </Button>
+                                                    <Button
+                                                      variant="ghost"
+                                                      size="sm"
+                                                      className="h-8 text-red-400 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                                                      disabled={chainReverseDisabled}
+                                                      title={
+                                                        journalReverseBlockReason ||
+                                                        'Cancel full payment — voids entire chain (all edits + original)'
+                                                      }
+                                                      onClick={() => {
+                                                        if (window.confirm('Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.')) {
+                                                          void accounting.createReversalEntry(entry.id);
+                                                        }
+                                                      }}
+                                                    >
+                                                      <RotateCcw className="w-4 h-4 mr-1" />
+                                                      Cancel payment
+                                                    </Button>
+                                                  </>
+                                                ) : (
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 disabled:opacity-40"
+                                                    disabled={chainReverseDisabled}
+                                                    title={
+                                                      journalReverseBlockReason ||
+                                                      (lockPaymentChainReverse
+                                                        ? 'This row is not the latest payment journal line — reverse the Latest row instead.'
+                                                        : 'Create reversal (manual correction)')
+                                                    }
+                                                    onClick={() => {
+                                                      if (window.confirm('Create a reversal entry for this journal entry? This will post a new entry that offsets the original.')) {
+                                                        void accounting.createReversalEntry(entry.id);
+                                                      }
+                                                    }}
+                                                  >
+                                                    <RotateCcw className="w-4 h-4 mr-1" />
+                                                    Reverse
+                                                  </Button>
+                                                )}
+                                              </>
+                                            );
+                                          })()}
                                         </>
                                       )}
                                     </div>
@@ -1309,13 +1436,31 @@ export const AccountingDashboard = () => {
                             const acFlat = journalEntryAccountPair(entry);
                             const allowUnifiedEditFlat = allowsGenericAccountingUnifiedEdit(entry);
                             const sourceOpenFlat = getJournalEntrySourceDocumentOpenTarget(entry);
+                            const flatTailJournalId = entry.metadata?.paymentChainTailJournalId ?? null;
+                            const lockFlatPaymentChainReverse = Boolean(entry.metadata?.paymentChainIsHistorical);
+                            const flatDetailRef =
+                              lockFlatPaymentChainReverse && flatTailJournalId
+                                ? flatTailJournalId
+                                : entry.referenceNo || entry.id;
+                            const journalReverseBlockReasonFlat = journalReversalBlockedReason(
+                              {
+                                reference_type: entry.metadata?.referenceType,
+                                reference_id: entry.metadata?.referenceId,
+                                payment_id: entry.metadata?.paymentId,
+                                is_void: entry.metadata?.journalEntryVoid,
+                                payment_chain_is_historical: entry.metadata?.paymentChainIsHistorical,
+                                hasActiveCorrectionReversal: entry.metadata?.hasActiveCorrectionReversal,
+                              },
+                              undefined
+                            );
+                            const allowJournalReversalUiFlat = !journalReverseBlockReasonFlat;
                             return (
                               <tr
                                 key={entry.id}
                                 className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
                                 onClick={() => {
                                   setTransactionDetailAutoEdit(false);
-                                  setTransactionReference(referenceNumber);
+                                  setTransactionReference(flatDetailRef);
                                   setSelectedGroupEntries(null);
                                 }}
                               >
@@ -1341,7 +1486,7 @@ export const AccountingDashboard = () => {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setTransactionDetailAutoEdit(false);
-                                      setTransactionReference(referenceNumber);
+                                      setTransactionReference(flatDetailRef);
                                       setSelectedGroupEntries(null);
                                     }}
                                     className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium"
@@ -1369,15 +1514,28 @@ export const AccountingDashboard = () => {
                                 <td className="px-4 py-3 text-xs text-gray-400">{entry.source || 'Manual'}</td>
                                 <td className="px-4 py-3 text-sm text-gray-300 tabular-nums">1</td>
                                 <td className="px-4 py-3">
-                                  <Badge
-                                    className={
-                                      isReversal
-                                        ? 'bg-amber-500/15 text-amber-200 border-amber-500/30 text-xs'
-                                        : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
-                                    }
-                                  >
-                                    {isReversal ? 'Reversal' : 'Posted'}
-                                  </Badge>
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <Badge
+                                      className={
+                                        isReversal
+                                          ? 'bg-amber-500/15 text-amber-200 border-amber-500/30 text-xs'
+                                          : 'bg-emerald-500/10 text-emerald-200 border-emerald-500/25 text-xs'
+                                      }
+                                    >
+                                      {isReversal ? 'Reversal' : 'Posted'}
+                                    </Badge>
+                                    {entry.metadata?.paymentChainIsHistorical ? (
+                                      <Badge className="bg-gray-700/80 text-gray-300 border-gray-600 text-[10px]">
+                                        Historical
+                                      </Badge>
+                                    ) : null}
+                                    {entry.metadata?.paymentChainIsTail &&
+                                    (entry.metadata?.paymentChainMemberCount ?? 0) > 1 ? (
+                                      <Badge className="bg-emerald-900/50 text-emerald-200 border-emerald-700/40 text-[10px]">
+                                        Latest
+                                      </Badge>
+                                    ) : null}
+                                  </div>
                                 </td>
                                 <td
                                   className="px-4 py-3 text-xs text-gray-400 max-w-[min(280px,40vw)]"
@@ -1400,7 +1558,7 @@ export const AccountingDashboard = () => {
                                             onClick={() => {
                                               setSelectedGroupEntries(null);
                                               setTransactionDetailAutoEdit(false);
-                                              setTransactionReference(entry.referenceNo || entry.id);
+                                              setTransactionReference(flatDetailRef);
                                             }}
                                             title="Open journal detail (read-only)"
                                           >
@@ -1428,30 +1586,80 @@ export const AccountingDashboard = () => {
                                               size="sm"
                                               className="h-8 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
                                               onClick={() => void handleOpenJournalSourceDocument(entry)}
-                                              title="Open sale, purchase, or rental in its module"
+                                              title="Open sale, purchase, return, or rental in its module"
                                             >
                                               <ExternalLink className="w-4 h-4 mr-1" />
                                               Open source
                                             </Button>
                                           ) : null}
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-                                            onClick={() => {
-                                              if (
-                                                window.confirm(
-                                                  'Create a reversal entry for this journal entry? This will post a new entry that offsets the original.'
-                                                )
-                                              ) {
-                                                accounting.createReversalEntry(entry.id);
-                                              }
-                                            }}
-                                            title="Create reversal (manual correction)"
-                                          >
-                                            <RotateCcw className="w-4 h-4 mr-1" />
-                                            Reverse
-                                          </Button>
+                                          {(() => {
+                                            const flatChainPaymentId = entry.metadata?.paymentId || null;
+                                            const flatChainMembers = entry.metadata?.paymentChainMemberCount ?? 0;
+                                            const isFlatMultiChain = flatChainMembers > 1 && flatChainPaymentId;
+                                            const flatChainReverseDisabled =
+                                              lockFlatPaymentChainReverse || !allowJournalReversalUiFlat;
+                                            return isFlatMultiChain ? (
+                                              <>
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="h-8 text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 disabled:opacity-40"
+                                                  disabled={flatChainReverseDisabled}
+                                                  title={
+                                                    journalReverseBlockReasonFlat ||
+                                                    'Undo last edit — voids the latest adjustment JE and restores previous payment state'
+                                                  }
+                                                  onClick={() => {
+                                                    if (window.confirm('Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.')) {
+                                                      void accounting.undoLastPaymentMutation(flatChainPaymentId);
+                                                    }
+                                                  }}
+                                                >
+                                                  <Undo2 className="w-4 h-4 mr-1" />
+                                                  Undo edit
+                                                </Button>
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="h-8 text-red-400 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                                                  disabled={flatChainReverseDisabled}
+                                                  title={
+                                                    journalReverseBlockReasonFlat ||
+                                                    'Cancel full payment — voids entire chain (all edits + original)'
+                                                  }
+                                                  onClick={() => {
+                                                    if (window.confirm('Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.')) {
+                                                      void accounting.createReversalEntry(entry.id);
+                                                    }
+                                                  }}
+                                                >
+                                                  <RotateCcw className="w-4 h-4 mr-1" />
+                                                  Cancel payment
+                                                </Button>
+                                              </>
+                                            ) : (
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 disabled:opacity-40"
+                                                disabled={flatChainReverseDisabled}
+                                                title={
+                                                  journalReverseBlockReasonFlat ||
+                                                  (lockFlatPaymentChainReverse
+                                                    ? 'This row is not the latest payment journal line — reverse the Latest row instead.'
+                                                    : 'Create reversal (manual correction)')
+                                                }
+                                                onClick={() => {
+                                                  if (window.confirm('Create a reversal entry for this journal entry? This will post a new entry that offsets the original.')) {
+                                                    void accounting.createReversalEntry(entry.id);
+                                                  }
+                                                }}
+                                              >
+                                                <RotateCcw className="w-4 h-4 mr-1" />
+                                                Reverse
+                                              </Button>
+                                            );
+                                          })()}
                                         </>
                                       )}
                                     </div>

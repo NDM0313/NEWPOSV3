@@ -10,6 +10,14 @@ import { Loader2, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown, Pencil } fro
 import { cn } from '../ui/utils';
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
 import { allowsDayBookUnifiedEdit } from '@/app/lib/journalEntryEditPolicy';
+import {
+  journalEntryPresentationFromHeader,
+  presentationLabel,
+  type JournalLinePresentationKind,
+} from '@/app/lib/journalLinePresentation';
+import { netEconomicMeaning } from '@/app/lib/accountFlowPresentation';
+import { Switch } from '@/app/components/ui/switch';
+import { Label } from '@/app/components/ui/label';
 
 export interface DayBookEntry {
   id: string;
@@ -17,6 +25,8 @@ export interface DayBookEntry {
   journalEntryId: string;
   /** Raw journal_entries.reference_type (edit policy). */
   referenceTypeRaw: string;
+  /** Phase 4: PF-14 / reversal classification for Effective vs Audit copy. */
+  presentationKind: JournalLinePresentationKind;
   /** When set, row is settlement — editable from unified payment flow. */
   paymentId: string | null;
   /** Business / entry_date (primary for lists) */
@@ -32,6 +42,12 @@ export interface DayBookEntry {
   debit: number;
   credit: number;
   type: 'Sale' | 'Purchase' | 'Expense' | 'Transfer' | 'Payment' | 'Journal' | 'Rental';
+  /** Counterparty side label(s) for this line (other JE lines). */
+  fromAccount: string;
+  toAccount: string;
+  economicMeaning: string;
+  /** True when a non-void correction_reversal JE references this journal header — same lock as Journal Entries. */
+  hasActiveCorrectionReversal?: boolean;
 }
 
 function refTypeToDisplayType(ref: string): DayBookEntry['type'] {
@@ -78,9 +94,21 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
   });
   const [entries, setEntries] = useState<DayBookEntry[]>([]);
   const [loading, setLoading] = useState(!!companyId);
+  /** Phase 4: Audit = every line; Effective = same lines, transfer/delta rows visually de-emphasized + badges. */
+  const [auditMode, setAuditMode] = useState(true);
 
   // Table sort: default by date+time descending (newest first)
-  type DayBookSortKey = 'date' | 'voucher' | 'account' | 'description' | 'debit' | 'credit' | 'type';
+  type DayBookSortKey =
+    | 'date'
+    | 'voucher'
+    | 'presentation'
+    | 'flow'
+    | 'economic'
+    | 'account'
+    | 'description'
+    | 'debit'
+    | 'credit'
+    | 'type';
   const [sortKey, setSortKey] = useState<DayBookSortKey>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
@@ -111,7 +139,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
       let q = supabase
         .from('journal_entries')
         .select(`
-          id, entry_no, entry_date, description, reference_type, created_at, payment_id,
+          id, entry_no, entry_date, description, reference_type, created_at, payment_id, action_fingerprint, economic_event_id,
           lines:journal_entry_lines(id, debit, credit, description, account:accounts(name, code))
         `)
         .eq('company_id', companyId)
@@ -132,6 +160,25 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         return;
       }
 
+      const jeIds = (data || []).map((j: { id?: string }) => String(j.id || '').trim()).filter(Boolean);
+      const reversedOriginalIds = new Set<string>();
+      for (let i = 0; i < jeIds.length; i += 150) {
+        const chunk = jeIds.slice(i, i + 150);
+        const { data: revParents } = await supabase
+          .from('journal_entries')
+          .select('reference_id')
+          .eq('company_id', companyId)
+          .eq('reference_type', 'correction_reversal')
+          .in('reference_id', chunk)
+          .or('is_void.is.null,is_void.eq.false');
+        for (const r of revParents || []) {
+          const rid = (r as { reference_id?: string }).reference_id;
+          if (rid) reversedOriginalIds.add(String(rid));
+        }
+      }
+
+      if (cancelled) return;
+
       const list: DayBookEntry[] = [];
       for (const je of data || []) {
         const lines =
@@ -151,11 +198,15 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         const voucher = String(je.entry_no ?? `JE-${String(je.id ?? '').slice(0, 8)}`);
         // PF-14.3B: Make clear in Day Book that these are edit adjustments for the same document, not new sales
         const refType = String(je.reference_type ?? '');
+        const fp = String((je as { action_fingerprint?: string }).action_fingerprint || '');
+        const presentationKind = journalEntryPresentationFromHeader(refType, fp);
         const payId = je.payment_id != null && String(je.payment_id).trim() ? String(je.payment_id) : null;
         const descSuffix = refType === 'sale_adjustment' ? ' (sale edit)' : refType === 'payment_adjustment' ? ' (payment edit)' : '';
         const desc = String(je.description ?? '') + descSuffix;
         const type = refTypeToDisplayType(refType);
 
+        type Fmt = { lineId: string; debit: number; credit: number; accountStr: string; lineDesc: string };
+        const formatted: Fmt[] = [];
         let lineIdx = 0;
         for (const line of lines) {
           const debit = Number(line.debit ?? 0);
@@ -172,21 +223,60 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
             : 'Unknown Account';
           const lineId = line.id != null ? String(line.id) : `i${lineIdx}`;
           lineIdx += 1;
+          formatted.push({
+            lineId,
+            debit,
+            credit,
+            accountStr: accountNameStr,
+            lineDesc: String(line.description ?? desc),
+          });
+        }
+
+        for (const row of formatted) {
+          const others = formatted.filter((x) => x.lineId !== row.lineId);
+          const counterLabel = others.map((o) => o.accountStr).join(' · ') || '—';
+          let fromAccount = '—';
+          let toAccount = '—';
+          if (row.debit > 0) {
+            fromAccount = counterLabel;
+            toAccount = row.accountStr;
+          } else if (row.credit > 0) {
+            fromAccount = row.accountStr;
+            toAccount = counterLabel;
+          }
+          const meaning = netEconomicMeaning(
+            {
+              debit: row.debit,
+              credit: row.credit,
+              account_name: row.accountStr,
+              counter_account: counterLabel,
+              description: row.lineDesc,
+              je_reference_type: refType,
+              je_action_fingerprint: fp,
+              source_module: type === 'Payment' ? 'Payment' : undefined,
+            },
+            presentationKind
+          );
           list.push({
-            id: `${je.id}-${lineId}`,
+            id: `${je.id}-${row.lineId}`,
             journalEntryId: String(je.id),
             referenceTypeRaw: refType,
+            presentationKind,
             paymentId: payId,
             entryDate,
             createdAt,
             dateTime: dateTimeStr,
             time: timeStr,
             voucher,
-            account: accountNameStr,
-            description: line.description ?? desc,
-            debit,
-            credit,
+            account: row.accountStr,
+            description: row.lineDesc,
+            debit: row.debit,
+            credit: row.credit,
             type,
+            fromAccount,
+            toAccount,
+            economicMeaning: meaning,
+            hasActiveCorrectionReversal: Boolean(je.id && reversedOriginalIds.has(String(je.id))),
           });
         }
       }
@@ -201,6 +291,12 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         return e.entryDate.getTime();
       case 'voucher':
         return (e.voucher ?? '').toLowerCase();
+      case 'presentation':
+        return presentationLabel(e.presentationKind).toLowerCase();
+      case 'flow':
+        return `${e.fromAccount} ${e.toAccount}`.toLowerCase();
+      case 'economic':
+        return (e.economicMeaning ?? '').toLowerCase();
       case 'account':
         return (e.account ?? '').toLowerCase();
       case 'description':
@@ -265,11 +361,28 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
   const displayTotalCredit = totalCredit + adjustmentCredit;
 
   const exportData = {
-    headers: ['Txn date', 'Posted', 'Voucher #', 'Account', 'Description', 'Debit (₨)', 'Credit (₨)', 'Type'],
+    headers: [
+      'Txn date',
+      'Posted',
+      'Voucher #',
+      'Presentation',
+      'From account',
+      'To account',
+      'Economic meaning',
+      'Account (line)',
+      'Description',
+      'Debit (₨)',
+      'Credit (₨)',
+      'Type',
+    ],
     rows: sortedEntries.map((e) => [
       e.entryDate.toISOString().slice(0, 10),
       e.dateTime,
       e.voucher,
+      presentationLabel(e.presentationKind),
+      e.fromAccount,
+      e.toAccount,
+      e.economicMeaning,
       e.account,
       e.description,
       e.debit,
@@ -305,6 +418,21 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
       {useGlobalRange && (
         <p className="text-sm text-gray-400">Using global date range from top bar</p>
       )}
+      <div className="flex flex-wrap items-center gap-3 py-2">
+        <div className="flex items-center gap-2">
+          <Switch id="daybook-audit-mode" checked={auditMode} onCheckedChange={setAuditMode} />
+          <Label htmlFor="daybook-audit-mode" className="text-sm text-gray-400 cursor-pointer">
+            Audit mode (all rows equal weight)
+          </Label>
+        </div>
+        {!auditMode && (
+          <p className="text-xs text-amber-200/85 max-w-xl">
+            Effective view: PF-14 <strong className="text-gray-200">transfer</strong> /{' '}
+            <strong className="text-gray-200">amount delta</strong> rows are dimmed — same economic receipt/payment, not a second
+            business event. Turn Audit on to see every voucher with equal emphasis.
+          </p>
+        )}
+      </div>
       <p
         className="text-xs text-gray-500 border border-gray-800/80 rounded-lg px-3 py-2 bg-gray-950/40"
         role="status"
@@ -334,7 +462,10 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                     {([
                       { key: 'date' as const, label: 'Txn date / posted', className: 'w-44', align: 'left' },
                       { key: 'voucher' as const, label: 'Voucher #', className: 'w-24', align: 'left' },
-                      { key: 'account' as const, label: 'Account', className: '', align: 'left' },
+                      { key: 'presentation' as const, label: 'Presentation', className: 'w-36', align: 'left' },
+                      { key: 'flow' as const, label: 'Account flow', className: 'min-w-[12rem]', align: 'left' },
+                      { key: 'economic' as const, label: 'Economic meaning', className: 'min-w-[10rem]', align: 'left' },
+                      { key: 'account' as const, label: 'Account (line)', className: '', align: 'left' },
                       { key: 'description' as const, label: 'Description', className: '', align: 'left' },
                       { key: 'debit' as const, label: 'Debit (₨)', className: 'w-28', align: 'right' },
                       { key: 'credit' as const, label: 'Credit (₨)', className: 'w-28', align: 'right' },
@@ -376,7 +507,16 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                 </thead>
                 <tbody className="divide-y divide-gray-800">
                   {paginatedEntries.map((e, i) => (
-                  <tr key={e.id} className={cn('hover:bg-gray-800/30', i % 2 === 0 ? 'bg-gray-950/30' : 'bg-gray-900/20')}>
+                  <tr
+                    key={e.id}
+                    className={cn(
+                      'hover:bg-gray-800/30',
+                      i % 2 === 0 ? 'bg-gray-950/30' : 'bg-gray-900/20',
+                      !auditMode &&
+                        (e.presentationKind === 'liquidity_transfer' || e.presentationKind === 'amount_delta') &&
+                        'opacity-60'
+                    )}
+                  >
                     <td className="px-4 py-3 text-gray-300 whitespace-nowrap">
                       <div className="flex flex-col gap-0.5">
                         <DateTimeDisplay date={e.entryDate} dateOnly className="text-gray-300" />
@@ -395,6 +535,29 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                       ) : (
                         e.voucher
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-[11px]">
+                      <span
+                        className={cn(
+                          'inline-block rounded px-2 py-0.5 border text-gray-300',
+                          e.presentationKind === 'liquidity_transfer' && 'border-sky-600/50 text-sky-300/95',
+                          e.presentationKind === 'amount_delta' && 'border-amber-600/50 text-amber-200/90',
+                          e.presentationKind === 'business_primary' && 'border-emerald-700/50 text-emerald-200/90',
+                          !['liquidity_transfer', 'amount_delta', 'business_primary'].includes(e.presentationKind) &&
+                            'border-gray-700 text-gray-400'
+                        )}
+                      >
+                        {presentationLabel(e.presentationKind)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-300 max-w-[14rem] leading-snug">
+                      <span className="text-gray-500">From </span>
+                      <span className="text-gray-200">{e.fromAccount}</span>
+                      <span className="text-gray-600 mx-1">→</span>
+                      <span className="text-sky-300/90">{e.toAccount}</span>
+                    </td>
+                    <td className="px-4 py-3 text-[11px] text-gray-400 max-w-[12rem] leading-snug" title={e.economicMeaning}>
+                      {e.economicMeaning}
                     </td>
                     <td className="px-4 py-3 text-white">{e.account}</td>
                     <td className="px-4 py-3 text-gray-400 max-w-xs truncate" title={e.description}>{e.description}</td>
@@ -421,7 +584,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                     </td>
                     {onEditJournalEntry && (
                       <td className="px-4 py-3 text-right">
-                        {allowsDayBookUnifiedEdit(e.referenceTypeRaw, e.paymentId) ? (
+                        {allowsDayBookUnifiedEdit(e.referenceTypeRaw, e.paymentId, e.hasActiveCorrectionReversal) ? (
                           <Button
                             type="button"
                             variant="ghost"
@@ -430,7 +593,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                             onClick={() => onEditJournalEntry(e.journalEntryId)}
                           >
                             <Pencil size={14} className="mr-1 inline" />
-                            Edit
+                            {e.paymentId ? 'Edit payment' : 'Edit'}
                           </Button>
                         ) : (
                           <span className="text-gray-600 text-xs tabular-nums">—</span>
@@ -443,8 +606,11 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                   <tr className="bg-amber-950/30 border-t border-amber-700/50">
                     <td className="px-4 py-3 text-gray-500 italic">—</td>
                     <td className="px-4 py-3 font-mono text-amber-400">—</td>
-                    <td className="px-4 py-3 text-amber-400/90 italic">Rounding / Unbalanced difference</td>
-                    <td className="px-4 py-3 text-amber-500/80 italic text-xs">Display-only adjustment so totals balance</td>
+                    <td className="px-4 py-3 text-amber-400/80 text-xs">—</td>
+                    <td className="px-4 py-3 text-amber-400/80 text-xs">—</td>
+                    <td className="px-4 py-3 text-amber-400/80 text-xs">—</td>
+                    <td className="px-4 py-3 text-amber-400/80">—</td>
+                    <td className="px-4 py-3 text-amber-400/90 italic">Rounding / Unbalanced difference — display-only</td>
                     <td className="px-4 py-3 text-right font-mono text-green-400">
                       {adjustmentDebit > 0 ? adjustmentDebit.toLocaleString() : '—'}
                     </td>
@@ -460,7 +626,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
               </tbody>
               <tfoot className="bg-gray-900 border-t-2 border-gray-700">
                 <tr>
-                  <td colSpan={4} className="px-4 py-3 font-bold text-white">
+                  <td colSpan={5} className="px-4 py-3 font-bold text-white">
                     Totals
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-green-400">

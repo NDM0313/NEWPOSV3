@@ -200,6 +200,9 @@ export const saleReturnService = {
       .single();
     if (fetchErr || !existing) throw new Error('Sale return not found');
     if (existing.status === 'final') throw new Error('Cannot update a finalized sale return. It is locked.');
+    if (String(existing.status || '').toLowerCase() === 'void') {
+      throw new Error('Cannot update a voided sale return. It is locked for audit (same as a cancelled purchase return).');
+    }
 
     const { return_date, customer_id, customer_name, items, reason, notes, subtotal: providedSubtotal, discount_amount: providedDiscount, total: providedTotal } = data;
     const subtotal = providedSubtotal !== undefined ? providedSubtotal : items.reduce((sum, item) => sum + item.total, 0);
@@ -573,7 +576,9 @@ export const saleReturnService = {
         for (const row of docJes || []) {
           const jeId = (row as { id: string }).id;
           try {
-            await accountingService.createReversalEntry(companyId, branchForJe, jeId, userId || null, reason);
+            await accountingService.createReversalEntry(companyId, branchForJe, jeId, userId || null, reason, {
+              bypassJournalSourceControlPolicy: true,
+            });
           } catch (revErr: any) {
             console.warn('[voidSaleReturn] reversal JE skipped/failed for', jeId, revErr?.message || revErr);
           }
@@ -609,22 +614,36 @@ export const saleReturnService = {
           continue;
         }
 
-        await productService.createStockMovement({
-          company_id: companyId,
-          branch_id: branchIdToUse,
-          product_id: item.product_id,
-          variation_id: item.variation_id || undefined,
-          movement_type: 'sale_return_void',
-          quantity: -Number(item.quantity),
-          unit_cost: Number(item.unit_price),
-          total_cost: Number(item.total),
-          reference_type: 'sale_return',
-          reference_id: returnId,
-          notes: `Void Sale Return ${saleReturn.return_no || returnId}: ${item.product_name}`,
-          created_by: userId,
-          box_change: boxChange !== 0 ? boxChange : undefined,
-          piece_change: pieceChange !== 0 ? pieceChange : undefined,
-        });
+        try {
+          await productService.createStockMovement({
+            company_id: companyId,
+            branch_id: branchIdToUse,
+            product_id: item.product_id,
+            variation_id: item.variation_id || undefined,
+            movement_type: 'sale_return_void',
+            quantity: -Number(item.quantity),
+            unit_cost: Number(item.unit_price),
+            total_cost: Number(item.total),
+            reference_type: 'sale_return',
+            reference_id: returnId,
+            notes: `Void Sale Return ${saleReturn.return_no || returnId}: ${item.product_name}`,
+            created_by: userId,
+            box_change: boxChange !== 0 ? boxChange : undefined,
+            piece_change: pieceChange !== 0 ? pieceChange : undefined,
+          });
+        } catch (movErr: any) {
+          const code = movErr?.code ?? movErr?.error?.code;
+          const msg = String(movErr?.message || movErr || '');
+          const dup =
+            code === '23505' ||
+            msg.toLowerCase().includes('duplicate') ||
+            msg.toLowerCase().includes('unique');
+          if (dup && (await saleReturnHasStockLine(companyId, returnId, 'sale_return_void', item.product_id, item.variation_id))) {
+            console.warn('[voidSaleReturn] duplicate sale_return_void row skipped (race or unique index):', returnId, item.product_id);
+            continue;
+          }
+          throw movErr;
+        }
       }
 
       if (saleReturn.original_sale_id) {
@@ -875,6 +894,9 @@ export const saleReturnService = {
       .single();
     if (existing?.status === 'final') {
       throw new Error('Cannot delete a finalized sale return. It is locked.');
+    }
+    if (String(existing?.status || '').toLowerCase() === 'void') {
+      throw new Error('Cannot delete a voided sale return. It is locked for audit.');
     }
     const { error } = await supabase
       .from('sale_returns')

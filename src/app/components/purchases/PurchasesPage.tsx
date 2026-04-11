@@ -157,6 +157,29 @@ export const PurchasesPage = () => {
       }
     }
   }, []);
+
+  /** Open a specific purchase return from Accounting → “Open source” on a purchase_return journal row. */
+  useEffect(() => {
+    if (typeof window === 'undefined' || !companyId) return;
+    const pendingId = sessionStorage.getItem('pendingAccountingOpen_purchaseReturnId');
+    if (!pendingId) return;
+    sessionStorage.removeItem('pendingAccountingOpen_purchaseReturnId');
+    let cancelled = false;
+    void (async () => {
+      try {
+        const full = await purchaseReturnService.getPurchaseReturnById(pendingId, companyId);
+        if (cancelled || !full) return;
+        setSelectedPurchaseReturn(full);
+        setViewPurchaseReturnDetailsOpen(true);
+        toast.info(`Opened purchase return ${full.return_no || full.id?.slice(0, 8)} — manage void/cancel from here.`);
+      } catch {
+        toast.error('Could not open purchase return from journal link.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
   const [statusFilter, setStatusFilter] = useState<'all' | PurchaseStatus>('all');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | PaymentStatus>('all');
   const [branchFilter, setBranchFilter] = useState('all');

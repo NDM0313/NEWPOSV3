@@ -46,6 +46,10 @@ export interface JournalTransactionLike {
   payment_id?: string | null;
   is_void?: boolean | null;
   description?: string | null;
+  /** When true, this row is superseded in a PF-14 payment chain — do not open payment editor. */
+  payment_chain_is_historical?: boolean;
+  /** Active PF-07 correction_reversal exists for this journal header — terminal for unified edit. */
+  has_active_correction_reversal?: boolean | null;
 }
 
 export interface PaymentRowLike {
@@ -67,9 +71,16 @@ export function inferTransactionKind(transaction: JournalTransactionLike, paymen
   const desc = String(transaction.description || '').toLowerCase();
   const payment = normPayment(paymentObj);
   const prt = String(payment?.reference_type || '').toLowerCase();
+  const payJeId = String(transaction.payment_id || '').trim();
 
   if (rt === 'journal') return 'manual_journal';
   if (rt === 'transfer') return 'transfer';
+
+  // Sale/purchase customer receipts post with reference_type = sale/purchase on the JE header while payment_id links
+  // the row — still a payment for PF-14 / edit routing (do not open full sale/purchase on "Edit payment").
+  if (payJeId && (rt === 'sale' || rt === 'purchase')) {
+    return 'payment';
+  }
 
   if (
     rt === 'payment' ||
@@ -112,11 +123,33 @@ export function resolveUnifiedJournalEdit(
   if (transaction.is_void === true) {
     return { kind: 'blocked', reason: 'This journal entry is voided.' };
   }
+  if (transaction.has_active_correction_reversal === true) {
+    return {
+      kind: 'blocked',
+      reason:
+        'Already reversed (offsetting correction is posted). This row is view-only — do not edit amounts or post another reversal from here.',
+    };
+  }
+  if (transaction.payment_chain_is_historical === true) {
+    return {
+      kind: 'blocked',
+      reason:
+        'This payment line is historical (a later edit or transfer exists). Open the latest journal row for this receipt to edit.',
+    };
+  }
   const rt = String(transaction.reference_type || '').toLowerCase();
   if (rt === 'correction_reversal') {
     return {
       kind: 'blocked',
       reason: 'This is a correction reversal. Edit the original source document or post a new adjustment.',
+    };
+  }
+
+  if (rt === 'sale_return' || rt === 'purchase_return') {
+    return {
+      kind: 'blocked',
+      reason:
+        'Return postings are source-controlled. Cancel or void the return from Sales or Purchases — not from Journal Entries or this transaction dialog.',
     };
   }
 
@@ -133,12 +166,27 @@ export function resolveUnifiedJournalEdit(
   }
   if (kind === 'document_total') {
     if (!transaction.reference_id) return { kind: 'noop', reason: 'Missing document reference on this journal.' };
-    if (rt === 'sale') return { kind: 'document_editor', transactionKind: 'document_total', sourceType: 'sale', sourceId: String(transaction.reference_id) };
-    if (rt === 'purchase') return { kind: 'document_editor', transactionKind: 'document_total', sourceType: 'purchase', sourceId: String(transaction.reference_id) };
-    if (rt === 'rental') return { kind: 'document_editor', transactionKind: 'document_total', sourceType: 'rental', sourceId: String(transaction.reference_id) };
-    return { kind: 'noop', reason: 'Unsupported document-level source type.' };
+    return {
+      kind: 'blocked',
+      reason:
+        'Invoice / PO / rental totals follow document lines. Open the sale, purchase, or rental from its module — journal amount/account edit is not allowed here.',
+    };
   }
   if (kind === 'payment') {
+    // PF-14 adjustment voucher: always edit the underlying payment, not the sale/purchase document.
+    if (rt === 'payment_adjustment') {
+      const pidFromJe =
+        String(transaction.payment_id || '').trim() || String(transaction.reference_id || '').trim();
+      if (pidFromJe) {
+        return {
+          kind: 'payment_editor',
+          transactionKind: 'payment',
+          context: 'customer',
+          sourceId: pidFromJe,
+          paymentReferenceType: 'payment_adjustment',
+        };
+      }
+    }
     if (rt === 'manual_receipt') {
       return { kind: 'payment_editor', transactionKind: 'payment', context: 'customer', sourceId: String(transaction.reference_id || '') };
     }
