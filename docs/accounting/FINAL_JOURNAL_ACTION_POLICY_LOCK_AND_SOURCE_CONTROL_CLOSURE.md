@@ -61,3 +61,11 @@ If operators created **duplicate** active reversals (data anomaly), use accounta
 ## Deploy
 
 Production deploy uses `bash deploy/deploy.sh` on the VPS after `git pull` on the tracked branch (see `deploy/deploy.sh`). Ensure commits are pushed to `origin` before deploying so the VPS reset matches this closure.
+
+**Shipped commits (main):** `99023d5` (policy + context + services + UI), `c9a674d` (`journalLinePresentation` + `accountFlowPresentation` required by Day Book), `1dfe2d3` (minimal `truthLabTraceWorkbenchService` stub so Docker `vite build` succeeds — Transaction Detail “Full payment trace” sheet loads empty counts until the full workbench module and its dependencies are committed).
+
+**Note:** One deploy migration logged `ERROR: must be owner of view v_accounting_tb_company_totals` (pre-existing ownership); deploy script still completed with exit code 0.
+
+## Full Truth Lab workbench (optional follow-up)
+
+If you had a local-only `truthLabTraceWorkbenchService.ts` (~1.2k lines) with `transactionMutationService` / `arApTruthLabService` wiring, restore it from your backup or IDE history and commit it together with those services so the Payment / GL trace sheet is populated again in production.
