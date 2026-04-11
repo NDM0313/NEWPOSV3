@@ -4,6 +4,29 @@
  */
 import { supabase } from '@/lib/supabase';
 import { productService } from './productService';
+import { accountingService } from './accountingService';
+
+async function purchaseReturnHasStockLine(
+  companyId: string,
+  returnId: string,
+  movementType: 'purchase_return' | 'purchase_return_void',
+  productId: string,
+  variationId: string | null | undefined
+): Promise<boolean> {
+  let q = supabase
+    .from('stock_movements')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('reference_type', 'purchase_return')
+    .eq('reference_id', returnId)
+    .eq('movement_type', movementType)
+    .eq('product_id', productId)
+    .limit(1);
+  if (variationId) q = q.eq('variation_id', variationId);
+  else q = q.is('variation_id', null);
+  const { data } = await q.maybeSingle();
+  return !!data;
+}
 
 export interface PurchaseReturn {
   id?: string;
@@ -171,7 +194,10 @@ export const purchaseReturnService = {
 
     if (returnError) throw returnError;
     if (!purchaseReturn) throw new Error('Purchase return not found');
-    if (purchaseReturn.status === 'final') throw new Error('Purchase return already finalized');
+    const pst = String(purchaseReturn.status || '').toLowerCase();
+    if (pst === 'final') return;
+    if (pst === 'void') throw new Error('Cannot finalize a voided purchase return.');
+    if (pst !== 'draft') throw new Error('Purchase return must be in draft status to finalize.');
 
     const isStandalone = !purchaseReturn.original_purchase_id;
     let purchaseItems: any[] | null = null;
@@ -217,6 +243,32 @@ export const purchaseReturnService = {
       }
     }
 
+    const { data: claimedPrFinal, error: claimPrErr } = await supabase
+      .from('purchase_returns')
+      .update({ status: 'final', updated_at: new Date().toISOString() })
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .eq('status', 'draft')
+      .select('id')
+      .maybeSingle();
+
+    if (claimPrErr) throw claimPrErr;
+    if (!claimedPrFinal) {
+      const { data: cur } = await supabase.from('purchase_returns').select('status').eq('id', returnId).eq('company_id', companyId).maybeSingle();
+      if (String((cur as { status?: string } | null)?.status || '').toLowerCase() === 'final') return;
+      throw new Error('Purchase return could not be finalized (concurrent update or invalid status).');
+    }
+
+    const rollbackPurchaseDraft = async () => {
+      await supabase
+        .from('purchase_returns')
+        .update({ status: 'draft', updated_at: new Date().toISOString() })
+        .eq('id', returnId)
+        .eq('company_id', companyId)
+        .eq('status', 'final');
+    };
+
+    try {
     // Stock movements: NEGATIVE (stock OUT)
     for (const item of purchaseReturn.items) {
       let boxChange = 0;
@@ -246,6 +298,10 @@ export const purchaseReturnService = {
         pieceChange = Math.round((packing.total_pieces || 0));
       }
 
+      if (await purchaseReturnHasStockLine(companyId, returnId, 'purchase_return', item.product_id, item.variation_id)) {
+        continue;
+      }
+
       await productService.createStockMovement({
         company_id: companyId,
         branch_id: branchId === 'all' ? undefined : branchId,
@@ -269,24 +325,30 @@ export const purchaseReturnService = {
       window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
     }
 
-    const { error: updateError } = await supabase
-      .from('purchase_returns')
-      .update({ status: 'final', updated_at: new Date().toISOString() })
-      .eq('id', returnId);
-
-    if (updateError) throw updateError;
+    if (purchaseReturn.original_purchase_id) {
+      await supabase.rpc('recalc_purchase_payment_totals', { p_purchase_id: purchaseReturn.original_purchase_id });
+    }
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('purchaseReturnsChanged'));
+    }
+    } catch (e) {
+      await rollbackPurchaseDraft();
+      throw e;
     }
   },
 
   /**
    * Void a finalized purchase return (same as Sale Return: saved by mistake).
-   * Reverses stock (positive movement = stock back IN); supplier statement refreshes from purchases + payments.
-   * Marks return as void; record kept for audit.
+   * Idempotent: already-void → `{ alreadyVoided: true }` with no mutations.
+   * Reverses stock (positive movement = stock back IN); posts correction_reversal for `purchase_return` JEs.
    */
-  async voidPurchaseReturn(returnId: string, companyId: string, branchId?: string, userId?: string): Promise<void> {
+  async voidPurchaseReturn(
+    returnId: string,
+    companyId: string,
+    branchId?: string,
+    userId?: string
+  ): Promise<{ alreadyVoided: boolean }> {
     const { data: purchaseReturn, error: returnError } = await supabase
       .from('purchase_returns')
       .select(`
@@ -299,7 +361,12 @@ export const purchaseReturnService = {
 
     if (returnError) throw returnError;
     if (!purchaseReturn) throw new Error('Purchase return not found');
-    if (purchaseReturn.status !== 'final') {
+
+    const vst = String(purchaseReturn.status || '').toLowerCase();
+    if (vst === 'void') {
+      return { alreadyVoided: true };
+    }
+    if (vst !== 'final') {
       throw new Error('Only finalized purchase returns can be voided. Draft returns can be deleted.');
     }
 
@@ -314,66 +381,199 @@ export const purchaseReturnService = {
     }
 
     const branchIdToUse = branchId === 'all' ? undefined : branchId;
+    const branchForJe: string | null =
+      branchIdToUse ??
+      (purchaseReturn.branch_id && String(purchaseReturn.branch_id) !== 'all'
+        ? String(purchaseReturn.branch_id)
+        : null);
 
-    for (const item of purchaseReturn.items) {
-      let boxChange = 0;
-      let pieceChange = 0;
-      if (!isStandalone && purchaseItems?.length) {
-        const originalItem = purchaseItems.find(
-          (p: any) => p.product_id === item.product_id &&
-            (p.variation_id === item.variation_id || (!p.variation_id && !item.variation_id))
-        );
-        if (originalItem) {
-          const originalPacking = originalItem.packing_details || {};
-          const originalQty = Number(originalItem.quantity);
-          const returnQty = Number(item.quantity);
-          if (originalQty > 0 && originalPacking) {
-            const returnRatio = returnQty / originalQty;
-            boxChange = Math.round((originalPacking.total_boxes || 0) * returnRatio);
-            pieceChange = Math.round((originalPacking.total_pieces || 0) * returnRatio);
-          }
-        }
-      } else {
-        const packing = item.packing_details || {};
-        boxChange = Math.round(Number(packing.total_boxes || 0));
-        pieceChange = Math.round(Number(packing.total_pieces || 0));
-      }
-
-      await productService.createStockMovement({
-        company_id: companyId,
-        branch_id: branchIdToUse,
-        product_id: item.product_id,
-        variation_id: item.variation_id || undefined,
-        movement_type: 'purchase_return_void',
-        quantity: Number(item.quantity), // POSITIVE = stock back IN
-        unit_cost: Number(item.unit_price),
-        total_cost: Number(item.total),
-        reference_type: 'purchase_return',
-        reference_id: returnId,
-        notes: `Void Purchase Return ${purchaseReturn.return_no || returnId}: ${item.product_name}`,
-        created_by: userId,
-        box_change: boxChange > 0 ? boxChange : undefined,
-        piece_change: pieceChange > 0 ? pieceChange : undefined,
-      });
-    }
-
-    const supplierId = purchaseReturn.supplier_id;
-    if (companyId && supplierId && typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
-    }
-
-    const { error: updateError } = await supabase
+    const { data: claimedPrVoid, error: claimPrVoidErr } = await supabase
       .from('purchase_returns')
       .update({ status: 'void', updated_at: new Date().toISOString() })
       .eq('id', returnId)
       .eq('company_id', companyId)
-      .eq('status', 'final');
+      .eq('status', 'final')
+      .select('id, supplier_id, original_purchase_id')
+      .maybeSingle();
+
+    if (claimPrVoidErr) throw claimPrVoidErr;
+    if (!claimedPrVoid) {
+      const { data: cur } = await supabase.from('purchase_returns').select('status').eq('id', returnId).eq('company_id', companyId).maybeSingle();
+      if (String((cur as { status?: string } | null)?.status || '').toLowerCase() === 'void') {
+        return { alreadyVoided: true };
+      }
+      throw new Error('Purchase return could not be voided (concurrent update). Try again.');
+    }
+
+    const rollbackPurchaseFinal = async () => {
+      await supabase
+        .from('purchase_returns')
+        .update({ status: 'final', updated_at: new Date().toISOString() })
+        .eq('id', returnId)
+        .eq('company_id', companyId)
+        .eq('status', 'void');
+    };
+
+    try {
+      const { data: prJes, error: prJeErr } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('reference_type', 'purchase_return')
+        .eq('reference_id', returnId)
+        .or('is_void.is.null,is_void.eq.false');
+
+      if (prJeErr) {
+        console.warn('[voidPurchaseReturn] journal list:', prJeErr.message);
+      } else {
+        const reason = `Void purchase return ${(purchaseReturn as { return_no?: string }).return_no || returnId}`;
+        for (const row of prJes || []) {
+          const jeId = (row as { id: string }).id;
+          try {
+            await accountingService.createReversalEntry(companyId, branchForJe, jeId, userId || null, reason);
+          } catch (revErr: any) {
+            console.warn('[voidPurchaseReturn] reversal JE skipped/failed for', jeId, revErr?.message || revErr);
+          }
+        }
+      }
+
+      for (const item of purchaseReturn.items) {
+        let boxChange = 0;
+        let pieceChange = 0;
+        if (!isStandalone && purchaseItems?.length) {
+          const originalItem = purchaseItems.find(
+            (p: any) =>
+              p.product_id === item.product_id &&
+              (p.variation_id === item.variation_id || (!p.variation_id && !item.variation_id))
+          );
+          if (originalItem) {
+            const originalPacking = originalItem.packing_details || {};
+            const originalQty = Number(originalItem.quantity);
+            const returnQty = Number(item.quantity);
+            if (originalQty > 0 && originalPacking) {
+              const returnRatio = returnQty / originalQty;
+              boxChange = Math.round((originalPacking.total_boxes || 0) * returnRatio);
+              pieceChange = Math.round((originalPacking.total_pieces || 0) * returnRatio);
+            }
+          }
+        } else {
+          const packing = item.packing_details || {};
+          boxChange = Math.round(Number(packing.total_boxes || 0));
+          pieceChange = Math.round(Number(packing.total_pieces || 0));
+        }
+
+        if (await purchaseReturnHasStockLine(companyId, returnId, 'purchase_return_void', item.product_id, item.variation_id)) {
+          continue;
+        }
+
+        await productService.createStockMovement({
+          company_id: companyId,
+          branch_id: branchIdToUse,
+          product_id: item.product_id,
+          variation_id: item.variation_id || undefined,
+          movement_type: 'purchase_return_void',
+          quantity: Number(item.quantity), // POSITIVE = stock back IN
+          unit_cost: Number(item.unit_price),
+          total_cost: Number(item.total),
+          reference_type: 'purchase_return',
+          reference_id: returnId,
+          notes: `Void Purchase Return ${purchaseReturn.return_no || returnId}: ${item.product_name}`,
+          created_by: userId,
+          box_change: boxChange > 0 ? boxChange : undefined,
+          piece_change: pieceChange > 0 ? pieceChange : undefined,
+        });
+      }
+
+      const supplierId = purchaseReturn.supplier_id;
+      if (companyId && supplierId && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
+      }
+
+      if (purchaseReturn.original_purchase_id) {
+        await supabase.rpc('recalc_purchase_payment_totals', { p_purchase_id: purchaseReturn.original_purchase_id });
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('purchaseReturnsChanged'));
+      }
+      return { alreadyVoided: false };
+    } catch (e) {
+      await rollbackPurchaseFinal();
+      throw e;
+    }
+  },
+
+  /**
+   * After void: move return back to `draft` and remove stock movements for this return
+   * (`purchase_return` + `purchase_return_void`) so **Finalize** can be run again safely.
+   * Does not remove posted journal entries — if a JE was created on first finalize, void or
+   * reverse that in accounting separately before re-posting, or expect a second JE on re-finalize.
+   */
+  async restoreVoidedPurchaseReturnToDraft(returnId: string, companyId: string): Promise<void> {
+    const { data: purchaseReturn, error: returnError } = await supabase
+      .from('purchase_returns')
+      .select('id, status, original_purchase_id, supplier_id')
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .single();
+
+    if (returnError) throw returnError;
+    if (!purchaseReturn) throw new Error('Purchase return not found');
+    if (String(purchaseReturn.status || '').toLowerCase().trim() !== 'void') {
+      throw new Error('Only voided returns can be restored to draft. Draft returns can be deleted; final returns must be voided first.');
+    }
+
+    const { error: movErr } = await supabase
+      .from('stock_movements')
+      .delete()
+      .eq('company_id', companyId)
+      .eq('reference_id', returnId)
+      .eq('reference_type', 'purchase_return')
+      .in('movement_type', ['purchase_return', 'purchase_return_void']);
+
+    if (movErr) throw movErr;
+
+    const { error: updateError } = await supabase
+      .from('purchase_returns')
+      .update({ status: 'draft', updated_at: new Date().toISOString() })
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .eq('status', 'void');
 
     if (updateError) throw updateError;
 
+    if (purchaseReturn.original_purchase_id) {
+      await supabase.rpc('recalc_purchase_payment_totals', { p_purchase_id: purchaseReturn.original_purchase_id });
+    }
+
+    const supplierId = purchaseReturn.supplier_id as string | undefined;
+    if (companyId && supplierId && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
+    }
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('purchaseReturnsChanged'));
     }
+  },
+
+  /** Restores the most recently updated void return for the company (optional branch filter). */
+  async restoreLatestVoidedPurchaseReturnToDraft(companyId: string, branchId?: string): Promise<string> {
+    let q = supabase
+      .from('purchase_returns')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('status', 'void')
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (branchId && branchId !== 'all') {
+      q = q.eq('branch_id', branchId);
+    }
+    const { data, error } = await q.maybeSingle();
+    if (error) throw error;
+    if (!data?.id) {
+      throw new Error('No voided purchase return found for this company/branch.');
+    }
+    await this.restoreVoidedPurchaseReturnToDraft(data.id, companyId);
+    return data.id;
   },
 
   async getPurchaseReturnById(returnId: string, companyId: string): Promise<PurchaseReturn & { items: PurchaseReturnItem[] }> {

@@ -8,6 +8,7 @@ import {
   summarizeJournalLinesAccountPairs,
   withPartyContextForLine,
 } from '@/app/lib/journalEntryAccountLabels';
+import { pickCanonicalInventoryAssetAccount } from '@/app/lib/inventoryAccountRouting';
 import { accountingReportsService } from '@/app/services/accountingReportsService';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
@@ -15,7 +16,16 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { warnIfUsingStoredBalanceAsTruth } from '@/app/services/accountingCanonicalGuard';
-import { CONTACT_BALANCES_REFRESH_EVENT, dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
+import {
+  buildPaymentChainIndex,
+  paymentChainFlagsForJournalEntry,
+  type PaymentChainIndex,
+} from '@/app/lib/paymentChainMutability';
+import {
+  isPaymentChainHistoricalErrorMessage,
+  stripPaymentChainHistoricalPrefix,
+} from '@/app/services/paymentChainMutationGuard';
 
 /** Leading numeric segment of account code (e.g. "1021-NDM" → "1021"). */
 function accountCodeDigits(acc: { code?: string } | null): string {
@@ -76,6 +86,7 @@ export type AccountType =
   | 'Security Deposit'
   | 'Rental Advance'
   | 'Sales Income'
+  | 'Sales Revenue'
   | 'Rental Income'
   | 'Studio Sales Income'
   | 'Rental Damage Income'
@@ -86,11 +97,13 @@ export type AccountType =
 
 export type TransactionSource = 
   | 'Sale' 
+  | 'Sale_Return'
   | 'Rental' 
   | 'Studio' 
   | 'Expense' 
   | 'Payment'
   | 'Purchase'
+  | 'Purchase_Return'
   | 'Manual'
   | 'Reversal';
 
@@ -127,6 +140,13 @@ export interface AccountingEntry {
     bookingId?: string;
     invoiceId?: string;
     purchaseId?: string;
+    /** Explicit GL account for debit line (e.g. party AP id). */
+    debitAccountId?: string;
+    /** Explicit GL account for credit line (e.g. canonical inventory 1200). */
+    creditAccountId?: string;
+    purchaseReturnId?: string;
+    /** Canonical sale return row — journal reference_id when source is Sale_Return. */
+    saleReturnId?: string;
     stage?: string;
     /** Attachments for journal entry (saved to journal_entries.attachments). */
     attachments?: { url: string; name: string }[];
@@ -142,6 +162,18 @@ export interface AccountingEntry {
     /** Compact Dr/Cr account text from all lines (multi-line JEs). */
     journalLinesSummary?: { debitLabel: string; creditLabel: string };
     journalLineCount?: number;
+    /** journal_entries.action_fingerprint — PF-14 classification. */
+    actionFingerprint?: string | null;
+    /** journal_entries.economic_event_id */
+    economicEventId?: string | null;
+    /** Linked `payments.reference_type` when this row is a PF-14 `payment_adjustment` (supplier vs customer label). */
+    linkedPaymentReferenceType?: string | null;
+    /** PF-14 chain: this row is superseded by a later payment JE for the same `payments.id`. */
+    paymentChainIsHistorical?: boolean;
+    /** True when this JE is the latest active row for that payment (edit/reverse allowed). */
+    paymentChainIsTail?: boolean;
+    paymentChainTailJournalId?: string | null;
+    paymentChainMemberCount?: number;
   };
 }
 
@@ -159,6 +191,7 @@ interface AccountingContextType {
   // Core functions
   createEntry: (entry: Omit<AccountingEntry, 'id' | 'date' | 'createdBy'>) => Promise<boolean>;
   createReversalEntry: (originalJournalEntryId: string, reason?: string) => Promise<boolean>;
+  undoLastPaymentMutation: (paymentId: string) => Promise<boolean>;
   refreshEntries: () => Promise<void>;
   getEntriesByReference: (referenceNo: string) => AccountingEntry[];
   getEntriesBySource: (source: TransactionSource) => AccountingEntry[];
@@ -185,6 +218,8 @@ interface AccountingContextType {
   recordExpense: (params: ExpenseParams) => Promise<boolean>;
   recordPurchase: (params: PurchaseParams) => Promise<boolean>;
   recordPurchaseReturn: (params: PurchaseReturnParams) => Promise<boolean>;
+  /** Sale return settlement — Dr Sales Revenue, Cr party AR (adjust) or Cr Cash/Bank; mirrors recordPurchaseReturn. */
+  recordSaleReturn: (params: SaleReturnParams) => Promise<boolean>;
   recordSupplierPayment: (params: SupplierPaymentParams) => Promise<boolean>;
   /** On-account customer payment (no invoice): Dr Cash/Bank, Cr AR; ledger by customerId */
   recordOnAccountCustomerPayment: (params: OnAccountCustomerPaymentParams) => Promise<boolean>;
@@ -316,6 +351,27 @@ export interface PurchaseReturnParams {
   creditAccount?: 'Inventory' | 'Purchase Expense';
 }
 
+export interface SaleReturnParams {
+  saleReturnId: string;
+  returnNo: string;
+  customerName: string;
+  customerId?: string | null;
+  amount: number;
+  /** Linked sale UUID when return is against an invoice; optional for standalone returns. */
+  originalSaleId?: string | null;
+  refundMethod: 'cash' | 'bank' | 'adjust';
+  /** GL account id for cash/bank refund leg (metadata.creditAccountId). */
+  refundAccountId?: string | null;
+  /**
+   * Dr revenue line — prefer explicit id. When omitted, canonical **4000** (never name-loose match to rental).
+   * Use 4200 only when the originating document is truly rental (caller must pass id for that case).
+   */
+  revenueDebitAccountId?: string | null;
+  description: string;
+  /** yyyy-MM-dd on return document */
+  postingDate?: string;
+}
+
 export interface SupplierPaymentParams {
   purchaseId?: string;
   supplierName: string;
@@ -412,14 +468,16 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   }, []);
   
   // Convert journal entry from Supabase to AccountingEntry format
-  const convertFromJournalEntry = useCallback((journalEntry: JournalEntryWithLines): AccountingEntry => {
+  const convertFromJournalEntry = useCallback(
+    (journalEntry: JournalEntryWithLines, chainIndex?: PaymentChainIndex | null): AccountingEntry => {
     const lines = journalEntry.lines || [];
     const activeLines = lines.filter((line: any) => Number(line?.debit || 0) > 0 || Number(line?.credit || 0) > 0);
     const debitLine = activeLines.find((line: any) => Number(line.debit || 0) > 0);
     const creditLine = activeLines.find((line: any) => Number(line.credit || 0) > 0);
     const payParty = (journalEntry as { _payment_contact_name?: string })._payment_contact_name;
     const purParty = (journalEntry as { _purchase_supplier_name?: string })._purchase_supplier_name;
-    const partyForContext = payParty || purParty;
+    const saleRetParty = (journalEntry as { _sale_return_customer_name?: string })._sale_return_customer_name;
+    const partyForContext = payParty || purParty || saleRetParty;
 
     // Determine source from reference_type (PF-14.3B: sale_adjustment/payment_adjustment show as Sale/Payment for grouping)
     const sourceMap: Record<string, TransactionSource> = {
@@ -427,7 +485,9 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       'sale_adjustment': 'Sale',
       'purchase': 'Purchase',
       'purchase_adjustment': 'Purchase',
+      'purchase_return': 'Purchase',
       'purchase_reversal': 'Reversal',
+      'sale_return': 'Sale_Return',
       'manual_payment': 'Payment',
       /** Customer manual receipt / contact receipt — must map to Payment so Journal “by document” sums with payment_adjustment. */
       'manual_receipt': 'Payment',
@@ -443,7 +503,11 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       'correction_reversal': 'Reversal',
     };
 
-    const source = sourceMap[journalEntry.reference_type || 'manual'] || 'Manual';
+    const rtNorm = String(journalEntry.reference_type || 'manual')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '_');
+    const source = sourceMap[rtNorm] || sourceMap[journalEntry.reference_type || 'manual'] || 'Manual';
 
     // Payment reference: no longer embedded in main query; use entry_no as primary
     const paymentRef = (journalEntry as any).payment ? (Array.isArray((journalEntry as any).payment) ? (journalEntry as any).payment[0]?.reference_number : (journalEntry as any).payment?.reference_number) : undefined;
@@ -487,18 +551,38 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
 
     // Extract metadata from description or reference (PF-14.3B: root for grouped Journal list)
     const raw = journalEntry as { root_reference_id?: string; root_reference_type?: string };
+    const linkedPayRt =
+      (journalEntry as { _linked_payment_reference_type?: string })._linked_payment_reference_type ?? undefined;
+
     const metadata: AccountingEntry['metadata'] = {
       journalEntryId: journalEntry.id,
       referenceId: journalEntry.reference_id,
       referenceType: journalEntry.reference_type,
       paymentId: journalEntry.payment_id,
+      linkedPaymentReferenceType: linkedPayRt ?? undefined,
       paymentMethod: paymentMethod,
       createdAt: (journalEntry as { created_at?: string }).created_at ?? undefined,
       rootReferenceId: raw.root_reference_id ?? journalEntry.reference_id ?? undefined,
       rootReferenceType: raw.root_reference_type ?? journalEntry.reference_type ?? undefined,
       journalLinesSummary: linesSummary,
       journalLineCount: activeLines.length,
+      actionFingerprint: (journalEntry as { action_fingerprint?: string | null }).action_fingerprint ?? undefined,
+      economicEventId: (journalEntry as { economic_event_id?: string | null }).economic_event_id ?? undefined,
     };
+
+    const chainFlags = paymentChainFlagsForJournalEntry(
+      {
+        id: journalEntry.id || '',
+        payment_id: journalEntry.payment_id,
+        reference_type: journalEntry.reference_type,
+        reference_id: journalEntry.reference_id,
+      },
+      chainIndex ?? null
+    );
+    metadata.paymentChainIsHistorical = chainFlags.paymentChainIsHistorical;
+    metadata.paymentChainIsTail = chainFlags.paymentChainIsTail;
+    metadata.paymentChainTailJournalId = chainFlags.paymentChainTailJournalId ?? undefined;
+    metadata.paymentChainMemberCount = chainFlags.paymentChainMemberCount;
     
     if (journalEntry.reference_id) {
       if (source === 'Sale') metadata.invoiceId = journalEntry.reference_id;
@@ -610,7 +694,17 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       // account-adjustment JE so Cash/Bank ledgers show correctly without per-screen fixes.
       try {
         const { syncPaymentAccountAdjustmentsForCompany } = await import('@/app/services/paymentAdjustmentService');
-        const { synced } = await syncPaymentAccountAdjustmentsForCompany(companyId);
+        const syncResult = await syncPaymentAccountAdjustmentsForCompany(companyId);
+        const { synced } = syncResult;
+        const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+        tracePaymentEditFlow('AccountingContext.loadEntries.sync_payment_accounts', {
+          companyId,
+          synced,
+          errors: syncResult.errors,
+          skippedDuplicates: syncResult.skippedDuplicates,
+          skippedAmbiguous: syncResult.skippedAmbiguous,
+          skippedPf14Chain: syncResult.skippedPf14Chain,
+        });
         if (synced > 0 && typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
         }
@@ -627,7 +721,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         startDate,
         endDate
       );
-      const convertedEntries = data.map(convertFromJournalEntry);
+      const chainIndex = buildPaymentChainIndex(data as any[]);
+      const convertedEntries = data.map((je) => convertFromJournalEntry(je as JournalEntryWithLines, chainIndex));
       setEntries(convertedEntries);
       if (import.meta.env?.DEV) console.log('✅ Journal entries loaded:', convertedEntries.length);
       
@@ -693,7 +788,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     const bump = () => {
       void loadAccounts();
       void loadEntries();
-      dispatchContactBalancesRefresh(companyId);
+      // Do not dispatch CONTACT_BALANCES_REFRESH here: callers already fire it where needed, and it retriggers
+      // listeners (e.g. statement page journalRefreshTick) in the same turn as accountingEntriesChanged/paymentAdded.
     };
     /** Payments / receipts dispatch contact refresh without always firing accountingEntriesChanged — reload GL so COA balances match party RPCs. */
     const onContactBalancesRefresh = (ev: Event) => {
@@ -836,49 +932,75 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       if (debitAccountIdFromMeta) {
         debitAccountObj = accounts.find(acc => acc.id === debitAccountIdFromMeta);
       }
-      if (!debitAccountObj) {
-      // CRITICAL FIX: accountType might not exist, use type, name, and code for lookup
-      debitAccountObj = accounts.find(acc => {
-        const accType = acc.accountType || acc.type || '';
-        const accName = acc.name || '';
-        const accCode = acc.code || '';
-        return (
-          accType.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
-          accType.toLowerCase().replace(/_/g, ' ') === normalizedDebitAccount.toLowerCase() ||
-          accName.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
-          accName.toLowerCase().includes(normalizedDebitAccount.toLowerCase()) ||
-          // Match by code for default accounts
-          (normalizedDebitAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
-          (normalizedDebitAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
-          (normalizedDebitAccount === 'Mobile Wallet' && (accCode === '1020' || accType.toLowerCase().includes('mobile') || accName.toLowerCase().includes('wallet'))) ||
-          (normalizedDebitAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
-          (normalizedDebitAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
-          (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker'))) ||
-          (normalizedDebitAccount === 'Expense' && (accCode === '5100' || accCode === '5200' || accCode === '6000' || accType.toLowerCase() === 'expense' || accName.toLowerCase().includes('expense')))
-        );
-      });
+      const creditAccountIdFromMeta = (entry.metadata as any)?.creditAccountId;
+      if (creditAccountIdFromMeta) {
+        creditAccountObj = accounts.find(acc => acc.id === creditAccountIdFromMeta);
       }
-      creditAccountObj = accounts.find(acc => {
-        const accType = acc.accountType || acc.type || '';
-        const accName = acc.name || '';
-        const accCode = acc.code || '';
-        return (
-          accType.toLowerCase() === normalizedCreditAccount.toLowerCase() ||
-          accName.toLowerCase() === normalizedCreditAccount.toLowerCase() ||
-          accName.toLowerCase().includes(normalizedCreditAccount.toLowerCase()) ||
-          // Match by code for default accounts
-          (normalizedCreditAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
-          (normalizedCreditAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
-          (normalizedCreditAccount === 'Mobile Wallet' && (accCode === '1020' || accType.toLowerCase().includes('mobile') || accName.toLowerCase().includes('wallet') || accName.toLowerCase().includes('jazz') || accName.toLowerCase().includes('easypaisa'))) ||
-          (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
-          (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
-          (normalizedCreditAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker'))) ||
-          // Rental/Sales revenue fallback
-          (normalizedCreditAccount === 'Rental Income' && (accName.toLowerCase().includes('rental') || accName.toLowerCase().includes('revenue') || accName.toLowerCase().includes('sales'))) ||
-          (normalizedCreditAccount === 'Rental Damage Income' && (accName.toLowerCase().includes('rental') || accName.toLowerCase().includes('damage') || accName.toLowerCase().includes('income'))) ||
-          (normalizedCreditAccount === 'Sales Revenue' && (accName.toLowerCase().includes('sales') || accName.toLowerCase().includes('revenue') || accName.toLowerCase().includes('income')))
-        );
-      });
+      const invNorm = (s: string) => s === 'Inventory' || s.toLowerCase() === 'inventory';
+      if (!debitAccountObj && invNorm(normalizedDebitAccount)) {
+        debitAccountObj = pickCanonicalInventoryAssetAccount(accounts);
+      }
+      if (!creditAccountObj && invNorm(normalizedCreditAccount)) {
+        creditAccountObj = pickCanonicalInventoryAssetAccount(accounts);
+      }
+      if (!debitAccountObj) {
+        // CRITICAL FIX: accountType might not exist, use type, name, and code for lookup
+        debitAccountObj = accounts.find((acc) => {
+          if (invNorm(normalizedDebitAccount)) return false;
+          const accType = acc.accountType || acc.type || '';
+          const accName = acc.name || '';
+          const accCode = acc.code || '';
+          return (
+            accType.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
+            accType.toLowerCase().replace(/_/g, ' ') === normalizedDebitAccount.toLowerCase() ||
+            accName.toLowerCase() === normalizedDebitAccount.toLowerCase() ||
+            accName.toLowerCase().includes(normalizedDebitAccount.toLowerCase()) ||
+            (normalizedDebitAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
+            (normalizedDebitAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
+            (normalizedDebitAccount === 'Mobile Wallet' && (accCode === '1020' || accType.toLowerCase().includes('mobile') || accName.toLowerCase().includes('wallet'))) ||
+            (normalizedDebitAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
+            (normalizedDebitAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
+            (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker'))) ||
+            (normalizedDebitAccount === 'Sales Revenue' &&
+              (accCode === '4000' ||
+                accCode === '4010' ||
+                (accName.toLowerCase().includes('sales') &&
+                  (accName.toLowerCase().includes('revenue') || accName.toLowerCase().includes('income')) &&
+                  !accName.toLowerCase().includes('rental')))) ||
+            (normalizedDebitAccount === 'Expense' && (accCode === '5100' || accCode === '5200' || accCode === '6000' || accType.toLowerCase() === 'expense' || accName.toLowerCase().includes('expense')))
+          );
+        });
+      }
+      if (!creditAccountObj) {
+        creditAccountObj = accounts.find((acc) => {
+          if (invNorm(normalizedCreditAccount)) return false;
+          const accType = acc.accountType || acc.type || '';
+          const accName = acc.name || '';
+          const accCode = acc.code || '';
+          return (
+            accType.toLowerCase() === normalizedCreditAccount.toLowerCase() ||
+            accName.toLowerCase() === normalizedCreditAccount.toLowerCase() ||
+            accName.toLowerCase().includes(normalizedCreditAccount.toLowerCase()) ||
+            (normalizedCreditAccount === 'Cash' && (accCode === '1000' || accName.toLowerCase().includes('cash'))) ||
+            (normalizedCreditAccount === 'Bank' && (accCode === '1010' || accName.toLowerCase().includes('bank'))) ||
+            (normalizedCreditAccount === 'Mobile Wallet' && (accCode === '1020' || accType.toLowerCase().includes('mobile') || accName.toLowerCase().includes('wallet') || accName.toLowerCase().includes('jazz') || accName.toLowerCase().includes('easypaisa'))) ||
+            (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '1100' || accName.toLowerCase().includes('receivable'))) ||
+            (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.toLowerCase().includes('payable'))) ||
+            (normalizedCreditAccount === 'Worker Payable' && (accCode === '2010' || accName.toLowerCase().includes('worker'))) ||
+            (normalizedCreditAccount === 'Rental Income' &&
+              (accCode === '4200' ||
+                (accName.toLowerCase().includes('rental') &&
+                  (accName.toLowerCase().includes('income') || accName.toLowerCase().includes('revenue'))))) ||
+            (normalizedCreditAccount === 'Rental Damage Income' && (accName.toLowerCase().includes('rental') || accName.toLowerCase().includes('damage') || accName.toLowerCase().includes('income'))) ||
+            (normalizedCreditAccount === 'Sales Revenue' &&
+              (accCode === '4000' ||
+                accCode === '4010' ||
+                (accName.toLowerCase().includes('sales') &&
+                  (accName.toLowerCase().includes('revenue') || accName.toLowerCase().includes('income')) &&
+                  !accName.toLowerCase().includes('rental'))))
+          );
+        });
+      }
       // Expense payment fallback: if credit (payment method) not found, use Cash (1000) so double-entry always completes
       if (!creditAccountObj && entry.debitAccount === 'Expense' && entry.source === 'Expense') {
         creditAccountObj = accounts.find(acc => acc.code === '1000' || (acc.name || '').toLowerCase().includes('cash'));
@@ -917,42 +1039,48 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
               branch: acc.branch_name || acc.branch_id || '',
               isActive: acc.is_active !== false,
               code: acc.code || undefined, // CRITICAL FIX: Include code for account lookup
+              is_group: acc.is_group === true,
+              parent_id: acc.parent_id ?? null,
             }));
             setAccounts(refreshedAccounts);
             
             // Retry lookup with refreshed accounts (include code in search)
-            const retryDebit = refreshedAccounts.find(acc => {
-              const accType = (acc.accountType || acc.type || '').toString().toLowerCase();
-              const accName = (acc.name || '').toLowerCase();
-              const accCode = acc.code || '';
-              return (
-                accType === normalizedDebitAccount.toLowerCase() ||
-                accName === normalizedDebitAccount.toLowerCase() ||
-                accName.includes(normalizedDebitAccount.toLowerCase()) ||
-                (normalizedDebitAccount === 'Cash' && (accCode === '1000' || accName.includes('cash'))) ||
-                (normalizedDebitAccount === 'Bank' && (accCode === '1010' || accName.includes('bank'))) ||
-                (normalizedDebitAccount === 'Mobile Wallet' && (accCode === '1020' || accType.includes('mobile') || accName.includes('wallet'))) ||
-                (normalizedDebitAccount === 'Accounts Receivable' && (accCode === '1100' || accName.includes('receivable'))) ||
-                (normalizedDebitAccount === 'Accounts Payable' && (accCode === '2000' || accName.includes('payable'))) ||
-                (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.includes('worker')))
-              );
-            });
-            const retryCredit = refreshedAccounts.find(acc => {
-              const accType = (acc.accountType || acc.type || '').toString().toLowerCase();
-              const accName = (acc.name || '').toLowerCase();
-              const accCode = acc.code || '';
-              return (
-                accType === normalizedCreditAccount.toLowerCase() ||
-                accName === normalizedCreditAccount.toLowerCase() ||
-                accName.includes(normalizedCreditAccount.toLowerCase()) ||
-                (normalizedCreditAccount === 'Cash' && (accCode === '1000' || accName.includes('cash'))) ||
-                (normalizedCreditAccount === 'Bank' && (accCode === '1010' || accName.includes('bank'))) ||
-                (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '1100' || accName.includes('receivable'))) ||
-                (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.includes('payable'))) ||
-                (normalizedCreditAccount === 'Worker Payable' && (accCode === '2010' || accName.includes('worker'))) ||
-                (normalizedCreditAccount === 'Sales Revenue' && (accCode === '4000' || accName.includes('sales') || accName.includes('revenue')))
-              );
-            });
+            const retryDebit = invNorm(normalizedDebitAccount)
+              ? pickCanonicalInventoryAssetAccount(refreshedAccounts)
+              : refreshedAccounts.find((acc) => {
+                  const accType = (acc.accountType || acc.type || '').toString().toLowerCase();
+                  const accName = (acc.name || '').toLowerCase();
+                  const accCode = acc.code || '';
+                  return (
+                    accType === normalizedDebitAccount.toLowerCase() ||
+                    accName === normalizedDebitAccount.toLowerCase() ||
+                    accName.includes(normalizedDebitAccount.toLowerCase()) ||
+                    (normalizedDebitAccount === 'Cash' && (accCode === '1000' || accName.includes('cash'))) ||
+                    (normalizedDebitAccount === 'Bank' && (accCode === '1010' || accName.includes('bank'))) ||
+                    (normalizedDebitAccount === 'Mobile Wallet' && (accCode === '1020' || accType.includes('mobile') || accName.includes('wallet'))) ||
+                    (normalizedDebitAccount === 'Accounts Receivable' && (accCode === '1100' || accName.includes('receivable'))) ||
+                    (normalizedDebitAccount === 'Accounts Payable' && (accCode === '2000' || accName.includes('payable'))) ||
+                    (normalizedDebitAccount === 'Worker Payable' && (accCode === '2010' || accName.includes('worker')))
+                  );
+                });
+            const retryCredit = invNorm(normalizedCreditAccount)
+              ? pickCanonicalInventoryAssetAccount(refreshedAccounts)
+              : refreshedAccounts.find((acc) => {
+                  const accType = (acc.accountType || acc.type || '').toString().toLowerCase();
+                  const accName = (acc.name || '').toLowerCase();
+                  const accCode = acc.code || '';
+                  return (
+                    accType === normalizedCreditAccount.toLowerCase() ||
+                    accName === normalizedCreditAccount.toLowerCase() ||
+                    accName.includes(normalizedCreditAccount.toLowerCase()) ||
+                    (normalizedCreditAccount === 'Cash' && (accCode === '1000' || accName.includes('cash'))) ||
+                    (normalizedCreditAccount === 'Bank' && (accCode === '1010' || accName.includes('bank'))) ||
+                    (normalizedCreditAccount === 'Accounts Receivable' && (accCode === '1100' || accName.includes('receivable'))) ||
+                    (normalizedCreditAccount === 'Accounts Payable' && (accCode === '2000' || accName.includes('payable'))) ||
+                    (normalizedCreditAccount === 'Worker Payable' && (accCode === '2010' || accName.includes('worker'))) ||
+                    (normalizedCreditAccount === 'Sales Revenue' && (accCode === '4000' || accName.includes('sales') || accName.includes('revenue')))
+                  );
+                });
             
             if (retryDebit && retryCredit) {
               // Update the account objects for use in journal entry creation
@@ -1057,7 +1185,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
 
       if (entry.source === 'Manual' && debitAccountObj && creditAccountObj) {
         if (debitIsPayment && !creditIsPayment) {
-          const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment').catch(() => generatePaymentReference(null));
+          const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'customer_receipt').catch(() => generatePaymentReference(null));
           const { data: { user } } = await supabase.auth.getUser();
           const manualCustomerId = (entry.metadata as { customerId?: string } | undefined)?.customerId ?? null;
           const manualReceiptPayload: Record<string, unknown> = {
@@ -1078,7 +1206,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
           const { data: row, error } = await supabase.from('payments').insert(manualReceiptPayload).select('id').single();
           if (!error && row) { manualPaymentId = (row as { id: string }).id; manualRefType = 'manual_receipt'; }
         } else if (!debitIsPayment && creditIsPayment) {
-          const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment').catch(() => generatePaymentReference(null));
+          const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'supplier_payment').catch(() => generatePaymentReference(null));
           const { data: { user } } = await supabase.auth.getUser();
           const manualPaymentPayload: Record<string, unknown> = {
             company_id: companyId,
@@ -1107,7 +1235,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
 
       // Expense: Dr Expense Cr Cash/Bank → must create payments row (reference_type = expense) so Roznamcha shows it
       if (entry.source === 'Expense' && creditAccountObj && debitAccountObj && creditIsPayment) {
-        const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment').catch(() => generatePaymentReference(null));
+        const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'expense').catch(() => generatePaymentReference(null));
         const { data: { user } } = await supabase.auth.getUser();
         const expenseId = (entry.metadata as any)?.expenseId ?? null;
         const { data: row, error } = await supabase.from('payments').insert({
@@ -1168,6 +1296,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
           : manualRefType === 'manual_receipt' && (entry.metadata as { customerId?: string })?.customerId
             ? (entry.metadata as { customerId?: string }).customerId
             : (prelinkedCustomerPaymentId ||
+                entry.metadata?.saleReturnId ||
                 entry.metadata?.purchaseReturnId ||
                 entry.metadata?.saleId ||
                 entry.metadata?.purchaseId ||
@@ -1953,19 +2082,107 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     });
   };
 
-  /** Issue 12: Purchase return accounting reversal — Dr AP (reduce payable), Cr Inventory/Purchase Expense */
+  /** Issue 12: Purchase return — Dr party AP (reduce payable), Cr Inventory. `source` lowercases to `purchase_return` on JE. */
   const recordPurchaseReturn = async (params: PurchaseReturnParams): Promise<boolean> => {
     const { returnId, returnNo, supplierName, supplierId, amount, creditAccount = 'Inventory' } = params;
     if (!amount || amount <= 0) return true;
+    let debitAccountId: string | undefined;
+    if (companyId && supplierId) {
+      try {
+        const { resolvePayablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+        debitAccountId = (await resolvePayablePostingAccountId(companyId, supplierId)) || undefined;
+      } catch {
+        debitAccountId = undefined;
+      }
+    }
+    let creditAccountId: string | undefined;
+    if (companyId && (creditAccount === 'Inventory' || !creditAccount)) {
+      try {
+        const { accountHelperService } = await import('@/app/services/accountHelperService');
+        const inv = await accountHelperService.getAccountByCode('1200', companyId);
+        creditAccountId = inv?.id;
+      } catch {
+        creditAccountId = undefined;
+      }
+    }
     return await createEntry({
-      source: 'Purchase Return',
+      source: 'Purchase_Return',
       referenceNo: returnNo,
       debitAccount: 'Accounts Payable',
       creditAccount,
       amount,
       description: `Purchase Return ${returnNo} - ${supplierName}`,
       module: 'Purchases',
-      metadata: { supplierId, supplierName, purchaseReturnId: returnId }
+      metadata: {
+        supplierId,
+        supplierName,
+        purchaseReturnId: returnId,
+        ...(debitAccountId ? { debitAccountId } : {}),
+        ...(creditAccountId ? { creditAccountId } : {}),
+      },
+    });
+  };
+
+  /** Dr Sales Revenue, Cr party AR (adjust) or Cr liquidity — same party subledger pattern as recordPurchaseReturn. */
+  const recordSaleReturn = async (params: SaleReturnParams): Promise<boolean> => {
+    const {
+      saleReturnId,
+      returnNo,
+      customerName,
+      customerId,
+      amount,
+      originalSaleId,
+      refundMethod,
+      refundAccountId,
+      revenueDebitAccountId,
+      description,
+      postingDate,
+    } = params;
+    if (!amount || amount <= 0) return true;
+
+    let debitAccountId: string | undefined = revenueDebitAccountId || undefined;
+    if (!debitAccountId && companyId) {
+      try {
+        const { accountHelperService } = await import('@/app/services/accountHelperService');
+        debitAccountId = (await accountHelperService.getAccountByCode('4000', companyId))?.id || undefined;
+      } catch {
+        debitAccountId = undefined;
+      }
+    }
+
+    let creditAccount: AccountType = 'Accounts Receivable';
+    if (refundMethod === 'cash') creditAccount = 'Cash';
+    else if (refundMethod === 'bank') creditAccount = 'Bank';
+
+    let creditAccountId: string | undefined;
+    if (refundMethod === 'adjust' && companyId && customerId) {
+      try {
+        const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+        creditAccountId = (await resolveReceivablePostingAccountId(companyId, customerId)) || undefined;
+      } catch {
+        creditAccountId = undefined;
+      }
+    } else if ((refundMethod === 'cash' || refundMethod === 'bank') && refundAccountId) {
+      creditAccountId = refundAccountId;
+    }
+
+    return await createEntry({
+      source: 'Sale_Return',
+      referenceNo: returnNo,
+      debitAccount: 'Sales Revenue',
+      creditAccount,
+      amount,
+      description,
+      module: 'sales',
+      metadata: {
+        customerId: customerId || undefined,
+        customerName,
+        saleReturnId,
+        ...(originalSaleId ? { saleId: originalSaleId } : {}),
+        ...(debitAccountId ? { debitAccountId } : {}),
+        ...(creditAccountId ? { creditAccountId } : {}),
+        ...(postingDate ? { postingDate } : {}),
+      },
     });
   };
 
@@ -2044,11 +2261,43 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       toast.error('Could not create reversal (entry not found or wrong company)');
       return false;
     } catch (e: any) {
+      const msg = String(e?.message || '');
+      if (isPaymentChainHistoricalErrorMessage(msg)) {
+        toast.error(stripPaymentChainHistoricalPrefix(msg));
+        return false;
+      }
       console.error('[ACCOUNTING] createReversalEntry failed:', e);
       toast.error(e?.message || 'Failed to create reversal');
       return false;
     }
   }, [companyId, branchId, refreshEntries]);
+
+  const undoLastPaymentMutation = useCallback(async (paymentId: string): Promise<boolean> => {
+    if (!companyId) {
+      toast.error('Company not set');
+      return false;
+    }
+    try {
+      const { undoLastPaymentMutation: undoFn } = await import('@/app/services/paymentLifecycleService');
+      const result = await undoFn({ companyId, paymentId });
+      if (result) {
+        await refreshEntries();
+        toast.success(`Undo ${result.mutationType}: restored previous state`);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('paymentAdded'));
+          window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+          window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: {} }));
+        }
+        return true;
+      }
+      toast.error('No undoable mutation found for this payment');
+      return false;
+    } catch (e: any) {
+      console.error('[ACCOUNTING] undoLastPaymentMutation failed:', e);
+      toast.error(e?.message || 'Failed to undo last mutation');
+      return false;
+    }
+  }, [companyId, refreshEntries]);
 
   const getAccountsByType = useCallback((type: PaymentMethod) => accounts.filter(account => account.type === type), [accounts]);
   const getAccountById = useCallback((id: string) => accounts.find(account => account.id === id), [accounts]);
@@ -2059,6 +2308,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     loading,
     createEntry,
     createReversalEntry,
+    undoLastPaymentMutation,
     refreshEntries,
     getEntriesByReference,
     getEntriesBySource,
@@ -2081,6 +2331,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     recordExpense,
     recordPurchase,
     recordPurchaseReturn,
+    recordSaleReturn,
     recordSupplierPayment,
     recordOnAccountCustomerPayment,
     accounts,
@@ -2088,13 +2339,13 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     getAccountById,
   }), [
     entries, balances, loading, accounts,
-    createEntry, createReversalEntry, refreshEntries, getEntriesByReference, getEntriesBySource,
+    createEntry, createReversalEntry, undoLastPaymentMutation, refreshEntries, getEntriesByReference, getEntriesBySource,
     getAccountBalance, getEntriesBySupplier, getEntriesByCustomer, getEntriesByWorker,
     getSupplierBalance, getCustomerBalance, getWorkerBalance,
     recordSale, recordSalePayment, recordRentalBooking, recordRentalDelivery,
     recordRentalCreditDelivery, recordRentalReturn, recordStudioSale,
     recordWorkerJobCompletion, recordWorkerPayment, recordExpense, recordPurchase,
-    recordPurchaseReturn, recordSupplierPayment, recordOnAccountCustomerPayment, getAccountsByType, getAccountById,
+    recordPurchaseReturn, recordSaleReturn, recordSupplierPayment, recordOnAccountCustomerPayment, getAccountsByType, getAccountById,
   ]);
 
   return (

@@ -1987,6 +1987,14 @@ export const SalesPage = () => {
                                       </DropdownMenuItem>
                                     </>
                                   )}
+                                  {String(ret?.status).toLowerCase() === 'void' && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem disabled className="opacity-50 cursor-not-allowed text-gray-500">
+                                        Return cancelled — no further action
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem 
                                     onClick={async () => {
@@ -3013,8 +3021,17 @@ export const SalesPage = () => {
                 if (!returnToVoid || !companyId) return;
                 setVoidingReturn(true);
                 try {
-                  await saleReturnService.voidSaleReturn(returnToVoid.id, companyId, branchId === 'all' ? undefined : branchId, undefined);
-                  toast.success('Return voided successfully. Stock reversed.');
+                  const vr = await saleReturnService.voidSaleReturn(
+                    returnToVoid.id,
+                    companyId,
+                    branchId === 'all' ? undefined : branchId,
+                    undefined
+                  );
+                  if (vr.alreadyVoided) {
+                    toast.message('Return already cancelled — no further action applied.');
+                  } else {
+                    toast.success('Return voided successfully. Stock reversed and settlement posted to the ledger.');
+                  }
                   setVoidReturnDialogOpen(false);
                   setReturnToVoid(null);
                   const returns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);

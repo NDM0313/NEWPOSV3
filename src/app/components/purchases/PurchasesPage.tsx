@@ -33,6 +33,7 @@ import {
 import { useNavigation } from '@/app/context/NavigationContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useAccounting } from '@/app/context/AccountingContext';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { purchaseService } from '@/app/services/purchaseService';
 import { branchService, Branch } from '@/app/services/branchService';
@@ -99,7 +100,8 @@ interface Purchase {
 
 export const PurchasesPage = () => {
   const { openDrawer } = useNavigation();
-  const { companyId, branchId } = useSupabase();
+  const { companyId, branchId, user } = useSupabase();
+  const accounting = useAccounting();
   const { canDeletePurchase } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
   const globalFilter = useGlobalFilter();
@@ -186,6 +188,10 @@ export const PurchasesPage = () => {
   const [voidPurchaseReturnDialogOpen, setVoidPurchaseReturnDialogOpen] = useState(false);
   const [returnToVoidPurchase, setReturnToVoidPurchase] = useState<any | null>(null);
   const [voidingPurchaseReturn, setVoidingPurchaseReturn] = useState(false);
+  const [restorePurchaseReturnDialogOpen, setRestorePurchaseReturnDialogOpen] = useState(false);
+  const [returnToRestoreDraft, setReturnToRestoreDraft] = useState<any | null>(null);
+  const [restoringPurchaseReturn, setRestoringPurchaseReturn] = useState(false);
+  const [finalizeDraftReturnBusyId, setFinalizeDraftReturnBusyId] = useState<string | null>(null);
   const [selectedReturnForPrint, setSelectedReturnForPrint] = useState<any | null>(null);
   const [printReturnOpen, setPrintReturnOpen] = useState(false);
 
@@ -598,6 +604,71 @@ export const PurchasesPage = () => {
     window.addEventListener('purchaseReturnsChanged', onReturnsChanged);
     return () => window.removeEventListener('purchaseReturnsChanged', onReturnsChanged);
   }, [companyId, branchId]);
+
+  const reloadPurchaseReturnsTable = useCallback(async () => {
+    if (!companyId) return;
+    const list = await purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId);
+    setPurchaseReturnsList(list);
+    setPurchaseReturnsTotalAmount((list || []).reduce((s, r: any) => s + (Number(r.total) || 0), 0));
+    const returnPurchaseIds = new Set(list.map((r: any) => r.original_purchase_id).filter(Boolean));
+    setPurchasesWithReturns(returnPurchaseIds);
+  }, [companyId, branchId]);
+
+  /** Draft return (e.g. after restore from void): stock finalize + optional GL, same as PurchaseReturnForm. */
+  const finalizeDraftPurchaseReturn = useCallback(
+    async (ret: any) => {
+      if (!companyId || !ret?.id) return;
+      setFinalizeDraftReturnBusyId(ret.id);
+      try {
+        const full = await purchaseReturnService.getPurchaseReturnById(ret.id, companyId);
+        await purchaseReturnService.finalizePurchaseReturn(
+          full.id!,
+          companyId,
+          branchId === 'all' ? undefined : branchId,
+          user?.id
+        );
+        let supplierId = (full as any).supplier_id as string | undefined;
+        let supplierName = full.supplier_name;
+        if ((!supplierId || !supplierName) && full.original_purchase_id) {
+          try {
+            const row = await purchaseService.getPurchase(full.original_purchase_id);
+            supplierId = supplierId || row?.supplier_id || row?.supplier?.id;
+            supplierName = supplierName || row?.supplier_name || row?.supplier?.name || row?.supplier;
+          } catch {
+            /* ignore */
+          }
+        }
+        if (Number(full.total) > 0) {
+          if (supplierId) {
+            await accounting.recordPurchaseReturn({
+              returnId: full.id!,
+              returnNo: full.return_no || `PRET-${full.id?.slice(0, 8)}`,
+              supplierName: supplierName || 'Supplier',
+              supplierId,
+              amount: Number(full.total),
+              creditAccount: 'Inventory',
+            }).catch((err) => {
+              console.warn('[PurchasesPage] recordPurchaseReturn:', err);
+              toast.warning('Stock updated; accounting entry may have failed — check the ledger.');
+            });
+          } else {
+            toast.warning('Stock updated; supplier not resolved — post return to GL manually if needed.');
+          }
+        }
+        toast.success(`Return ${full.return_no || full.id} finalized.`);
+        await reloadPurchaseReturnsTable();
+        loadPurchases();
+        if (refreshPurchases) refreshPurchases();
+        const updated = await purchaseReturnService.getPurchaseReturnById(ret.id, companyId);
+        setSelectedPurchaseReturn((prev: any) => (prev?.id === ret.id ? updated : prev));
+      } catch (e: any) {
+        toast.error(e?.message || 'Finalize failed');
+      } finally {
+        setFinalizeDraftReturnBusyId(null);
+      }
+    },
+    [companyId, branchId, user?.id, accounting, reloadPurchaseReturnsTable, loadPurchases, refreshPurchases]
+  );
 
   // 🔒 CLONE FROM SALE PAGE: Re-resolve locations when branchMap is updated
   useEffect(() => {
@@ -1238,6 +1309,34 @@ export const PurchasesPage = () => {
                                 >
                                   <RotateCcw size={14} className="mr-2" />
                                   Void / Cancel Return
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            {String(ret?.status).toLowerCase() === 'void' && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="hover:bg-gray-800 text-cyan-400 cursor-pointer"
+                                  onClick={() => {
+                                    setReturnToRestoreDraft(ret);
+                                    setRestorePurchaseReturnDialogOpen(true);
+                                  }}
+                                >
+                                  <RotateCcw size={14} className="mr-2" />
+                                  Restore to draft (retry)
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            {String(ret?.status).toLowerCase() === 'draft' && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="hover:bg-gray-800 text-emerald-400 cursor-pointer"
+                                  disabled={finalizeDraftReturnBusyId === ret.id}
+                                  onClick={() => finalizeDraftPurchaseReturn(ret)}
+                                >
+                                  <CheckCircle size={14} className="mr-2" />
+                                  {finalizeDraftReturnBusyId === ret.id ? 'Finalizing…' : 'Finalize & post (stock + GL)'}
                                 </DropdownMenuItem>
                               </>
                             )}
@@ -2098,6 +2197,31 @@ export const PurchasesPage = () => {
                                 <RotateCcw size={14} className="mr-2" /> Void / Cancel Return
                               </DropdownMenuItem>
                             )}
+                            {String(ret?.status).toLowerCase() === 'void' && (
+                              <DropdownMenuItem
+                                className="hover:bg-gray-800 text-cyan-400 cursor-pointer"
+                                onClick={() => {
+                                  setPurchaseReturnsDialogOpen(false);
+                                  setReturnToRestoreDraft(ret);
+                                  setRestorePurchaseReturnDialogOpen(true);
+                                }}
+                              >
+                                <RotateCcw size={14} className="mr-2" /> Restore to draft (retry)
+                              </DropdownMenuItem>
+                            )}
+                            {String(ret?.status).toLowerCase() === 'draft' && (
+                              <DropdownMenuItem
+                                className="hover:bg-gray-800 text-emerald-400 cursor-pointer"
+                                disabled={finalizeDraftReturnBusyId === ret.id}
+                                onClick={() => {
+                                  setPurchaseReturnsDialogOpen(false);
+                                  finalizeDraftPurchaseReturn(ret);
+                                }}
+                              >
+                                <CheckCircle size={14} className="mr-2" />
+                                {finalizeDraftReturnBusyId === ret.id ? 'Finalizing…' : 'Finalize & post (stock + GL)'}
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator className="bg-gray-700" />
                             <DropdownMenuItem
                               className="hover:bg-gray-800 cursor-pointer"
@@ -2242,7 +2366,30 @@ export const PurchasesPage = () => {
                 )}
               </div>
             </div>
-            <DialogFooter className="mt-6 border-t border-gray-800 pt-4">
+            <DialogFooter className="mt-6 border-t border-gray-800 pt-4 flex flex-wrap gap-2 justify-end">
+              {selectedPurchaseReturn && String(selectedPurchaseReturn.status).toLowerCase() === 'void' && (
+                <Button
+                  variant="outline"
+                  className="border-cyan-700 text-cyan-300 hover:bg-cyan-950"
+                  onClick={() => {
+                    setReturnToRestoreDraft(selectedPurchaseReturn);
+                    setRestorePurchaseReturnDialogOpen(true);
+                  }}
+                >
+                  <RotateCcw size={16} className="mr-2" />
+                  Restore to draft (retry)
+                </Button>
+              )}
+              {selectedPurchaseReturn && String(selectedPurchaseReturn.status).toLowerCase() === 'draft' && (
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  disabled={finalizeDraftReturnBusyId === selectedPurchaseReturn.id}
+                  onClick={() => finalizeDraftPurchaseReturn(selectedPurchaseReturn)}
+                >
+                  <CheckCircle size={16} className="mr-2" />
+                  {finalizeDraftReturnBusyId === selectedPurchaseReturn.id ? 'Finalizing…' : 'Finalize & post'}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={() => setViewPurchaseReturnDetailsOpen(false)}
@@ -2381,8 +2528,17 @@ export const PurchasesPage = () => {
                 if (!returnToVoidPurchase || !companyId) return;
                 setVoidingPurchaseReturn(true);
                 try {
-                  await purchaseReturnService.voidPurchaseReturn(returnToVoidPurchase.id, companyId, branchId === 'all' ? undefined : branchId, undefined);
-                  toast.success('Return voided successfully. Stock reversed.');
+                  const pr = await purchaseReturnService.voidPurchaseReturn(
+                    returnToVoidPurchase.id,
+                    companyId,
+                    branchId === 'all' ? undefined : branchId,
+                    undefined
+                  );
+                  if (pr.alreadyVoided) {
+                    toast.message('Return already cancelled — no further action applied.');
+                  } else {
+                    toast.success('Return voided successfully. Stock reversed and GL settlement reversed.');
+                  }
                   setVoidPurchaseReturnDialogOpen(false);
                   setReturnToVoidPurchase(null);
                   const list = await purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId);
@@ -2395,6 +2551,56 @@ export const PurchasesPage = () => {
               }}
             >
               {voidingPurchaseReturn ? 'Voiding…' : 'Void Return'}
+            </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Restore voided purchase return → draft (clear stock rows so finalize can run again) */}
+      <AlertDialog open={restorePurchaseReturnDialogOpen} onOpenChange={(open) => { setRestorePurchaseReturnDialogOpen(open); if (!open) setReturnToRestoreDraft(null); }}>
+        <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore return to draft?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-300">
+              <span className="font-semibold text-cyan-400">{returnToRestoreDraft?.return_no || returnToRestoreDraft?.id?.slice(0, 8)}</span>
+              {' '}will become <strong>draft</strong>. Stock movements for this return (original + void reversal) will be removed so you can run <strong>Finalize &amp; post</strong> again without double stock.
+              <br /><br />
+              <span className="text-amber-300/90 text-sm">If a journal entry was already posted for this return, void or reverse that JE in Accounting before re-finalizing, or you may duplicate GL.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-gray-700 text-gray-300 hover:bg-gray-800" disabled={restoringPurchaseReturn}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-cyan-600 hover:bg-cyan-700"
+              disabled={restoringPurchaseReturn}
+              onClick={async () => {
+                if (!returnToRestoreDraft?.id || !companyId) return;
+                setRestoringPurchaseReturn(true);
+                try {
+                  await purchaseReturnService.restoreVoidedPurchaseReturnToDraft(returnToRestoreDraft.id, companyId);
+                  toast.success('Return restored to draft. Use “Finalize & post” to run stock + GL again.');
+                  setRestorePurchaseReturnDialogOpen(false);
+                  const rid = returnToRestoreDraft.id;
+                  setReturnToRestoreDraft(null);
+                  await reloadPurchaseReturnsTable();
+                  loadPurchases();
+                  if (refreshPurchases) refreshPurchases();
+                  try {
+                    const refreshed = await purchaseReturnService.getPurchaseReturnById(rid, companyId);
+                    setSelectedPurchaseReturn((prev) => (prev?.id === rid ? refreshed : prev));
+                  } catch {
+                    /* ignore */
+                  }
+                } catch (e: any) {
+                  toast.error(e?.message || 'Restore failed');
+                } finally {
+                  setRestoringPurchaseReturn(false);
+                }
+              }}
+            >
+              {restoringPurchaseReturn ? 'Restoring…' : 'Restore to draft'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

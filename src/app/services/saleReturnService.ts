@@ -1,5 +1,28 @@
 import { supabase } from '@/lib/supabase';
 import { productService } from './productService';
+import { accountingService } from './accountingService';
+
+async function saleReturnHasStockLine(
+  companyId: string,
+  returnId: string,
+  movementType: 'sale_return' | 'sale_return_void',
+  productId: string,
+  variationId: string | null | undefined
+): Promise<boolean> {
+  let q = supabase
+    .from('stock_movements')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('reference_type', 'sale_return')
+    .eq('reference_id', returnId)
+    .eq('movement_type', movementType)
+    .eq('product_id', productId)
+    .limit(1);
+  if (variationId) q = q.eq('variation_id', variationId);
+  else q = q.is('variation_id', null);
+  const { data } = await q.maybeSingle();
+  return !!data;
+}
 export interface SaleReturn {
   id?: string;
   company_id: string;
@@ -266,7 +289,10 @@ export const saleReturnService = {
 
     if (returnError) throw returnError;
     if (!saleReturn) throw new Error('Sale return not found');
-    if (saleReturn.status === 'final') throw new Error('Sale return already finalized');
+    const stInit = String(saleReturn.status || '').toLowerCase();
+    if (stInit === 'final') return;
+    if (stInit === 'void') throw new Error('Cannot finalize a voided sale return.');
+    if (stInit !== 'draft') throw new Error('Sale return must be in draft status to finalize.');
 
     const isStandalone = !saleReturn.original_sale_id;
     let originalSale: { invoice_no?: string } | null = null;
@@ -344,6 +370,32 @@ export const saleReturnService = {
       }
     }
 
+    const { data: claimedFinal, error: claimErr } = await supabase
+      .from('sale_returns')
+      .update({ status: 'final', updated_at: new Date().toISOString() })
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .eq('status', 'draft')
+      .select('id')
+      .maybeSingle();
+
+    if (claimErr) throw claimErr;
+    if (!claimedFinal) {
+      const { data: cur } = await supabase.from('sale_returns').select('status').eq('id', returnId).eq('company_id', companyId).maybeSingle();
+      if (String((cur as { status?: string } | null)?.status || '').toLowerCase() === 'final') return;
+      throw new Error('Sale return could not be finalized (concurrent update or invalid status).');
+    }
+
+    const rollbackToDraft = async () => {
+      await supabase
+        .from('sale_returns')
+        .update({ status: 'draft', updated_at: new Date().toISOString() })
+        .eq('id', returnId)
+        .eq('company_id', companyId)
+        .eq('status', 'final');
+    };
+
+    try {
     // Create stock movements (POSITIVE - stock IN)
     for (const item of saleReturn.items) {
       let boxChange = 0;
@@ -379,6 +431,10 @@ export const saleReturnService = {
       const notesStandalone = `Sale Return ${saleReturn.return_no || returnId} (no invoice): ${item.product_name}${item.variation_id ? ' (Variation)' : ''}`;
       const notesLinked = `Sale Return ${saleReturn.return_no || returnId}: Original ${originalSale?.invoice_no || 'N/A'} - ${item.product_name}${item.variation_id ? ' (Variation)' : ''}`;
 
+      if (await saleReturnHasStockLine(companyId, returnId, 'sale_return', item.product_id, item.variation_id)) {
+        continue;
+      }
+
       await productService.createStockMovement({
         company_id: companyId,
         branch_id: branchId === 'all' ? undefined : branchId,
@@ -397,27 +453,34 @@ export const saleReturnService = {
       });
     }
 
-    // Customer Ledger: Sale Return already appears in customerLedgerAPI.getTransactions()
-    // The customerLedgerAPI automatically includes sale_returns in the transaction list
-    // No separate ledger entry needed - customer balance is calculated from sales, payments, and returns
-    console.log('[SALE RETURN] ✅ Customer ledger will show this return via customerLedgerAPI');
+    if (saleReturn.original_sale_id) {
+      await supabase.rpc('recalc_sale_payment_totals', { p_sale_id: saleReturn.original_sale_id });
+    }
 
-    // Update sale return status to final
-    const { error: updateError } = await supabase
-      .from('sale_returns')
-      .update({ status: 'final', updated_at: new Date().toISOString() })
-      .eq('id', returnId);
-
-    if (updateError) throw updateError;
+    if (typeof window !== 'undefined') {
+      const cid = saleReturn.customer_id;
+      if (companyId && cid) {
+        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: cid } }));
+      }
+    }
+    } catch (e) {
+      await rollbackToDraft();
+      throw e;
+    }
   },
 
   /**
    * Void a finalized sale return (standard method when saved by mistake).
-   * Reverses stock (takes back the returned qty from inventory) and marks return as void.
-   * Void returns are excluded from customer ledger (only status = 'final' counts).
-   * Record is kept for audit trail.
+   * Idempotent: if already void, returns `{ alreadyVoided: true }` with **no** stock or GL mutations.
+   * Exclusive claim: only one concurrent caller can transition `final` → `void`; losers get no-op.
+   * Posts `correction_reversal` JEs for active `sale_return` settlement rows (audit trail), then stock void lines (deduped).
    */
-  async voidSaleReturn(returnId: string, companyId: string, branchId?: string, userId?: string): Promise<void> {
+  async voidSaleReturn(
+    returnId: string,
+    companyId: string,
+    branchId?: string,
+    userId?: string
+  ): Promise<{ alreadyVoided: boolean }> {
     const { data: saleReturn, error: returnError } = await supabase
       .from('sale_returns')
       .select(`
@@ -430,7 +493,12 @@ export const saleReturnService = {
 
     if (returnError) throw returnError;
     if (!saleReturn) throw new Error('Sale return not found');
-    if (saleReturn.status !== 'final') {
+
+    const st0 = String(saleReturn.status || '').toLowerCase();
+    if (st0 === 'void') {
+      return { alreadyVoided: true };
+    }
+    if (st0 !== 'final') {
       throw new Error('Only finalized sale returns can be voided. Draft returns can be deleted.');
     }
 
@@ -460,57 +528,120 @@ export const saleReturnService = {
     }
 
     const branchIdToUse = branchId === 'all' ? undefined : branchId;
+    const branchForJe = branchIdToUse ?? (saleReturn.branch_id && saleReturn.branch_id !== 'all' ? saleReturn.branch_id : null);
 
-    for (const item of saleReturn.items) {
-      let boxChange = 0;
-      let pieceChange = 0;
-      const originalItem = originalItems?.find(
-        (oi: any) => oi.product_id === item.product_id &&
-        (oi.variation_id === item.variation_id || (!oi.variation_id && !item.variation_id))
-      );
-      if (originalItem && item.packing_details) {
-        const originalPacking = item.packing_details;
-        const originalQty = Number(originalItem.quantity);
-        const returnQty = Number(item.quantity);
-        if (originalQty > 0) {
-          const returnRatio = returnQty / originalQty;
-          const originalBoxes = originalPacking.total_boxes || 0;
-          const originalPieces = originalPacking.total_pieces || 0;
-          boxChange = -Math.round(originalBoxes * returnRatio);
-          pieceChange = -Math.round(originalPieces * returnRatio);
-        }
-      } else if (item.packing_details) {
-        const packing = item.packing_details;
-        boxChange = -Math.round(Number(packing.total_boxes || 0));
-        pieceChange = -Math.round(Number(packing.total_pieces || 0));
-      }
-
-      await productService.createStockMovement({
-        company_id: companyId,
-        branch_id: branchIdToUse,
-        product_id: item.product_id,
-        variation_id: item.variation_id || undefined,
-        movement_type: 'sale_return_void',
-        quantity: -Number(item.quantity),
-        unit_cost: Number(item.unit_price),
-        total_cost: Number(item.total),
-        reference_type: 'sale_return',
-        reference_id: returnId,
-        notes: `Void Sale Return ${saleReturn.return_no || returnId}: ${item.product_name}`,
-        created_by: userId,
-        box_change: boxChange !== 0 ? boxChange : undefined,
-        piece_change: pieceChange !== 0 ? pieceChange : undefined,
-      });
-    }
-
-    const { error: updateError } = await supabase
+    const { data: claimedVoid, error: claimVoidErr } = await supabase
       .from('sale_returns')
       .update({ status: 'void', updated_at: new Date().toISOString() })
       .eq('id', returnId)
       .eq('company_id', companyId)
-      .eq('status', 'final');
+      .eq('status', 'final')
+      .select('id, customer_id, original_sale_id')
+      .maybeSingle();
 
-    if (updateError) throw updateError;
+    if (claimVoidErr) throw claimVoidErr;
+    if (!claimedVoid) {
+      const { data: cur } = await supabase.from('sale_returns').select('status').eq('id', returnId).eq('company_id', companyId).maybeSingle();
+      if (String((cur as { status?: string } | null)?.status || '').toLowerCase() === 'void') {
+        return { alreadyVoided: true };
+      }
+      throw new Error('Return could not be voided (concurrent update). Try again.');
+    }
+
+    const rollbackToFinal = async () => {
+      await supabase
+        .from('sale_returns')
+        .update({ status: 'final', updated_at: new Date().toISOString() })
+        .eq('id', returnId)
+        .eq('company_id', companyId)
+        .eq('status', 'void');
+    };
+
+    try {
+      const { data: docJes, error: jeListErr } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('reference_type', 'sale_return')
+        .eq('reference_id', returnId)
+        .or('is_void.is.null,is_void.eq.false');
+
+      if (jeListErr) {
+        console.warn('[voidSaleReturn] journal list:', jeListErr.message);
+      } else {
+        const reason = `Void sale return ${(saleReturn as { return_no?: string }).return_no || returnId}`;
+        for (const row of docJes || []) {
+          const jeId = (row as { id: string }).id;
+          try {
+            await accountingService.createReversalEntry(companyId, branchForJe, jeId, userId || null, reason);
+          } catch (revErr: any) {
+            console.warn('[voidSaleReturn] reversal JE skipped/failed for', jeId, revErr?.message || revErr);
+          }
+        }
+      }
+
+      for (const item of saleReturn.items) {
+        let boxChange = 0;
+        let pieceChange = 0;
+        const originalItem = originalItems?.find(
+          (oi: any) =>
+            oi.product_id === item.product_id &&
+            (oi.variation_id === item.variation_id || (!oi.variation_id && !item.variation_id))
+        );
+        if (originalItem && item.packing_details) {
+          const originalPacking = item.packing_details;
+          const originalQty = Number(originalItem.quantity);
+          const returnQty = Number(item.quantity);
+          if (originalQty > 0) {
+            const returnRatio = returnQty / originalQty;
+            const originalBoxes = originalPacking.total_boxes || 0;
+            const originalPieces = originalPacking.total_pieces || 0;
+            boxChange = -Math.round(originalBoxes * returnRatio);
+            pieceChange = -Math.round(originalPieces * returnRatio);
+          }
+        } else if (item.packing_details) {
+          const packing = item.packing_details;
+          boxChange = -Math.round(Number(packing.total_boxes || 0));
+          pieceChange = -Math.round(Number(packing.total_pieces || 0));
+        }
+
+        if (await saleReturnHasStockLine(companyId, returnId, 'sale_return_void', item.product_id, item.variation_id)) {
+          continue;
+        }
+
+        await productService.createStockMovement({
+          company_id: companyId,
+          branch_id: branchIdToUse,
+          product_id: item.product_id,
+          variation_id: item.variation_id || undefined,
+          movement_type: 'sale_return_void',
+          quantity: -Number(item.quantity),
+          unit_cost: Number(item.unit_price),
+          total_cost: Number(item.total),
+          reference_type: 'sale_return',
+          reference_id: returnId,
+          notes: `Void Sale Return ${saleReturn.return_no || returnId}: ${item.product_name}`,
+          created_by: userId,
+          box_change: boxChange !== 0 ? boxChange : undefined,
+          piece_change: pieceChange !== 0 ? pieceChange : undefined,
+        });
+      }
+
+      if (saleReturn.original_sale_id) {
+        await supabase.rpc('recalc_sale_payment_totals', { p_sale_id: saleReturn.original_sale_id });
+      }
+
+      if (typeof window !== 'undefined') {
+        const cid = saleReturn.customer_id;
+        if (companyId && cid) {
+          window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: cid } }));
+        }
+      }
+      return { alreadyVoided: false };
+    } catch (e) {
+      await rollbackToFinal();
+      throw e;
+    }
   },
 
   /**
