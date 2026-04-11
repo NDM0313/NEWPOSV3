@@ -38,7 +38,11 @@ Two production failures were addressed:
 
 ## VPS / production
 
-Deploy requires **git push** of this branch, then on the server `git pull` and your usual **`bash deploy/deploy.sh`**. Apply any pending SQL migrations from prior workstreams if not yet on production.
+Deployed from `main` after commits **`d14dd52`** (engine + UI + scripts), plus follow-up **`213bf85`**, **`001005a`**, **`aa04013`** adding **`paymentChainMutability`**, **`inventoryAccountRouting`**, and **`paymentChainMutationGuard`** so `AccountingContext` builds cleanly in Docker (those modules were present locally but not yet on `origin` when the return work landed).
+
+On the server: `cd /root/NEWPOSV3 && git pull origin main && bash deploy/deploy.sh` — **completed successfully** after the above files were pushed.
+
+Apply any pending SQL migrations from prior workstreams if not yet on production (e.g. party resolver **`20260444`** from the sales-return AR closure).
 
 ## Residual risk
 
