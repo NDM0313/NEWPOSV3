@@ -904,6 +904,113 @@ export const saleAccountingService = {
 
     return { adjustmentCount };
   },
+
+  /**
+   * Post the inventory / COGS reversal JE for a finalized sale return.
+   *
+   * Standard sale return accounting requires TWO journal entries:
+   *   1. Settlement JE  — Dr Sales Revenue / Cr AR or Cash/Bank (handled by AccountingContext.recordSaleReturn)
+   *   2. Inventory JE   — Dr Inventory (1200) / Cr COGS (5000)  ← THIS function
+   *
+   * Both must be tagged reference_type='sale_return', reference_id=returnId so that
+   * voidSaleReturn can reverse them automatically via createReversalEntry.
+   *
+   * Idempotent via action_fingerprint = "sale_return_cogs:<companyId>:<returnId>".
+   * Safe to call from finalizeSaleReturn without risk of double-posting.
+   */
+  async createSaleReturnInventoryReversalJE(params: {
+    returnId: string;
+    companyId: string;
+    branchId?: string | null;
+    /** Sum of canonicalSaleReturnStockEconomics.totalCost across all return lines. */
+    totalCostAmount: number;
+    returnNo: string;
+    performedBy?: string | null;
+  }): Promise<string | null> {
+    const { returnId, companyId, branchId, totalCostAmount, returnNo, performedBy } = params;
+
+    if (!returnId || !companyId || totalCostAmount <= 0) {
+      console.log('[saleAccountingService] createSaleReturnInventoryReversalJE: skipping (no cost or missing ids)');
+      return null;
+    }
+
+    const fingerprint = `sale_return_cogs:${companyId}:${returnId}`;
+
+    // Idempotency: skip if this JE was already posted (e.g. retry or double-submit)
+    try {
+      const { data: existing } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('action_fingerprint', fingerprint)
+        .or('is_void.is.null,is_void.eq.false')
+        .limit(1)
+        .maybeSingle();
+      if (existing?.id) {
+        console.log(`[saleAccountingService] Inventory reversal JE already exists for return ${returnNo}: ${existing.id}`);
+        return existing.id as string;
+      }
+    } catch (e) {
+      console.warn('[saleAccountingService] createSaleReturnInventoryReversalJE fingerprint check failed:', e);
+    }
+
+    const invAccount = await ensureInventoryAccount(companyId);
+    const cogsAccount = await ensureCOGSAccount(companyId);
+
+    if (!invAccount?.id || !cogsAccount?.id) {
+      console.warn('[saleAccountingService] createSaleReturnInventoryReversalJE: Inventory or COGS account not found — skipping');
+      return null;
+    }
+
+    const branchIdSafe = branchId && branchId !== 'all' ? branchId : undefined;
+    const entryNo = `JE-RTN-INV-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    const entryDate = new Date().toISOString().split('T')[0];
+
+    const entry: JournalEntry = {
+      id: '',
+      company_id: companyId,
+      branch_id: branchIdSafe,
+      entry_no: entryNo,
+      entry_date: entryDate,
+      description: `Sale Return ${returnNo} – Inventory reversal (cost)`,
+      reference_type: 'sale_return',
+      reference_id: returnId,
+      created_by: performedBy || undefined,
+      action_fingerprint: fingerprint,
+    };
+
+    const lines: JournalEntryLine[] = [
+      {
+        id: '',
+        journal_entry_id: '',
+        account_id: invAccount.id,
+        debit: totalCostAmount,
+        credit: 0,
+        description: `Inventory returned – ${returnNo}`,
+      },
+      {
+        id: '',
+        journal_entry_id: '',
+        account_id: cogsAccount.id,
+        debit: 0,
+        credit: totalCostAmount,
+        description: `COGS reversal – ${returnNo}`,
+      },
+    ];
+
+    try {
+      const result = await accountingService.createEntry(entry, lines);
+      const journalEntryId = (result as any)?.id ?? null;
+      console.log(`[saleAccountingService] Inventory reversal JE created for return ${returnNo}: ${journalEntryId}`);
+      if (journalEntryId && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+      }
+      return journalEntryId;
+    } catch (err: any) {
+      console.error('[saleAccountingService] Failed to create inventory reversal JE for return:', err.message);
+      return null;
+    }
+  },
 };
 
 function sumCharges(charges: { charge_type?: string; amount?: number }[], type: string | ((t: string) => boolean)): number {

@@ -45,6 +45,7 @@ type View =
   | 'branch-management-test'
   | 'accounting-chart-test'
   | 'accounting-edit-trace'
+  | 'ar-ap-truth-lab'
   | 'expense-edit-trace'
   | 'customer-ledger-test'
   | 'test-ledger'
@@ -69,7 +70,8 @@ type View =
   | 'studio-order-detail-v3'
   | 'manufacturing-bom'
   | 'manufacturing-orders'
-  | 'manufacturing-workflow';
+  | 'manufacturing-workflow'
+  | 'party-ledger';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 
@@ -110,6 +112,10 @@ interface NavigationContextType {
   openPackingModal?: (data: { itemId: number | string; productName: string; initialData?: any; onSave: (details: any) => void }) => void;
   closePackingModal?: () => void;
   packingModalData?: { itemId: number | string | null; productName: string; initialData?: any; onSave?: (details: any) => void } | null;
+  /** Party-ledger navigation state */
+  partyLedgerParams?: { contactId?: string; contactName?: string; contactType?: 'customer' | 'supplier' } | null;
+  setPartyLedgerParams?: (p: { contactId?: string; contactName?: string; contactType?: 'customer' | 'supplier' } | null) => void;
+  openPartyLedger?: (params: { contactId?: string; contactName?: string; contactType?: 'customer' | 'supplier' }) => void;
 }
 
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
@@ -135,6 +141,9 @@ const defaultNavigationContext: NavigationContextType = {
   closePackingModal: () => {},
   packingModalOpen: false,
   packingModalData: null,
+  partyLedgerParams: null,
+  setPartyLedgerParams: () => {},
+  openPartyLedger: () => {},
 };
 
 export const NavigationProvider = ({ children }: { children: ReactNode }) => {
@@ -183,6 +192,13 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     setTimeout(() => {
       setPackingModalData(null);
     }, 200);
+  }, []);
+
+  const [partyLedgerParams, setPartyLedgerParams] = useState<{ contactId?: string; contactName?: string; contactType?: 'customer' | 'supplier' } | null>(null);
+
+  const openPartyLedger = useCallback((params: { contactId?: string; contactName?: string; contactType?: 'customer' | 'supplier' }) => {
+    setPartyLedgerParams(params);
+    setCurrentView('party-ledger');
   }, []);
 
   // Use functional updater to avoid stale closure on isSidebarOpen
@@ -291,14 +307,17 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     packingModalOpen,
     openPackingModal,
     closePackingModal,
-    packingModalData
+    packingModalData,
+    partyLedgerParams,
+    setPartyLedgerParams,
+    openPartyLedger,
   }), [
     currentView, isSidebarOpen, mobileNavOpen, activeDrawer, parentDrawer,
     selectedStudioSaleId, openSaleIdForView, selectedWorkerId, selectedProductionId,
     selectedStudioOrderIdV3, selectedManufacturingOrderId, drawerContactType, drawerData, drawerPrefillName,
     drawerPrefillPhone, createdContactId, createdContactType, createdProduct, packingModalOpen,
-    packingModalData, toggleSidebar, openDrawer, closeDrawer, setCreatedContactId, setCreatedProduct,
-    openPackingModal, closePackingModal
+    packingModalData, partyLedgerParams, toggleSidebar, openDrawer, closeDrawer, setCreatedContactId, setCreatedProduct,
+    openPackingModal, closePackingModal, openPartyLedger
   ]);
 
   return (

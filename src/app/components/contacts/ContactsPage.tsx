@@ -160,7 +160,7 @@ function contactPartyGlPayableSigned(
 }
 
 export const ContactsPage = () => {
-  const { openDrawer, setCurrentView, createdContactId, setCreatedContactId } = useNavigation();
+  const { openDrawer, setCurrentView, createdContactId, setCreatedContactId, openPartyLedger } = useNavigation();
   const { companyId, branchId } = useSupabase();
   const [contacts, setContacts] = useState<Contact[]>([]);
   /** True until first contact list is ready to show (before / without balance RPC). */
@@ -990,7 +990,10 @@ export const ContactsPage = () => {
             <h1 className="text-xl font-bold text-white sm:text-2xl">Contacts</h1>
             <p className="text-xs text-gray-400 mt-0.5 sm:text-sm">Manage your suppliers, customers, and workers</p>
             <details className="mt-2 text-xs text-gray-500 max-w-3xl group">
-              <summary className="cursor-pointer text-gray-400 hover:text-gray-300 list-none flex items-center gap-1 [&::-webkit-details-marker]:hidden">
+              <summary
+                className="cursor-pointer text-gray-400 hover:text-gray-300 list-none flex items-center gap-1 [&::-webkit-details-marker]:hidden"
+                title="Operational balance: get_contact_balances_summary (payments/allocations). Party GL: get_contact_party_gl_balances on AR/AP subtree — different RPC family; variance is timing or PF-14 attribution, not a duplicate column."
+              >
                 <span className="underline-offset-2 group-open:underline">Balance &amp; GL notes</span>
               </summary>
               <p className="mt-2 leading-relaxed pl-0 border-l-2 border-gray-700 pl-3">
@@ -1002,7 +1005,14 @@ export const ContactsPage = () => {
                   <span className="text-amber-400/90"> (RPC failed — refresh or check grants / migration 20260430). </span>
                 )}
                 When the party GL map is loaded, a <strong className="text-gray-400">second line</strong> shows signed{' '}
-                <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code> (1100 / 2000 / worker) so you can trace to the GL control and party statements without mixing bases into one number. Amber icon = operational still differs from party GL slice (e.g. credits on AR).
+                <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code> (1100 / 2000 / worker) —
+                same engine as Customer statement → <strong className="text-gray-400">GL (journal)</strong> tab and{' '}
+                <strong className="text-gray-400">Reconciliation</strong>.                 Amber icon = operational still differs from party GL
+                slice (timing / attribution).{' '}
+                <strong className="text-gray-400">Do not</strong> read the violet party-GL strip as a duplicate of the green
+                operational row — two different engines. After payment edits, if amber persists, trace the payment in Developer
+                Tools → <span className="text-gray-300">AR / AP Truth Lab</span> and repair bad PF-14 JEs (do not hide lines from
+                the chart).
               </p>
             </details>
           </div>
@@ -2018,6 +2028,15 @@ export const ContactsPage = () => {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => {
+                                    openPartyLedger?.({ contactId: contact.uuid || contact.id?.toString(), contactName: contact.name, contactType: 'customer' });
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
+                                  <BarChart3 size={14} className="mr-2 text-indigo-400" />
+                                  View Ledger
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
                                     setSelectedContact(contact);
                                     setLedgerOpen(true);
                                   }}
@@ -2088,6 +2107,15 @@ export const ContactsPage = () => {
                                 >
                                   <DollarSign size={14} className="mr-2 text-red-400" />
                                   Make Payment
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    openPartyLedger?.({ contactId: contact.uuid || contact.id?.toString(), contactName: contact.name, contactType: 'supplier' });
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer"
+                                >
+                                  <BarChart3 size={14} className="mr-2 text-indigo-400" />
+                                  View Ledger
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => {
@@ -2305,7 +2333,8 @@ export const ContactsPage = () => {
                 {selectedContact.type === 'supplier' ? 'Supplier' : 'Worker'} statement — {selectedContact.name}
               </h2>
               <p className="text-[11px] text-gray-500 mt-1 max-w-xl">
-                Operational (Not GL) · GL (Journal) · Reconciliation (Variance) — three engines; no mixed running balance.
+                <span className="text-amber-400/90 font-medium">LEGACY supplier/worker statement</span> — not canonical
+                truth; same three engines as customer (no mixed running balance). Prefer AR/AP Truth Lab for AR/AP deltas.
               </p>
             </div>
             <Button

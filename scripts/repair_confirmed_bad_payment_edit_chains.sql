@@ -1,0 +1,61 @@
+-- repair_confirmed_bad_payment_edit_chains.sql
+--
+-- Controlled repair for **confirmed** bad PF-14 payment-edit chains only.
+-- Run detect + verify scripts first:
+--   scripts/detect_duplicate_payment_posting.sql
+--   scripts/verify-payment-mutation-chain.sql
+--
+-- RULES
+--   • Dry-run SELECT sections first; uncomment APPLY only with written approval.
+--   • No mass UPDATE; list explicit UUIDs per tenant.
+--   • Prefer is_void + reason, or post reversing JEs via app — avoid DELETE.
+--   • Preserve auditability.
+
+-- =============================================================================
+-- SECTION 1 — DRY RUN: list JEs you intend to void (paste UUIDs)
+-- =============================================================================
+-- SELECT id, company_id, entry_no, reference_type, payment_id, reference_id, action_fingerprint, created_at, description
+-- FROM journal_entries
+-- WHERE id IN (
+--   'JE_UUID_1'::uuid,
+--   'JE_UUID_2'::uuid
+-- );
+
+-- =============================================================================
+-- SECTION 2 — DRY RUN: per-payment net check before/after (paste payment_id)
+-- =============================================================================
+-- See scripts/verify-payment-mutation-chain.sql (replace PAYMENT_UUID_HERE).
+
+-- =============================================================================
+-- SECTION 3 — APPLY (commented): void duplicate adjustment JE
+-- =============================================================================
+-- Only if your schema has these columns; align with production.
+--
+-- BEGIN;
+-- UPDATE journal_entries
+-- SET
+--   is_void = true,
+--   voided_at = NOW(),
+--   void_reason = 'Repair confirmed duplicate PF-14 adjustment — repair_confirmed_bad_payment_edit_chains.sql'
+-- WHERE id = 'JE_UUID_HERE'::uuid
+--   AND company_id = 'COMPANY_UUID_HERE'::uuid
+--   AND reference_type = 'payment_adjustment'
+--   AND (is_void IS NULL OR is_void = false);
+-- COMMIT;
+
+-- =============================================================================
+-- SECTION 4 — APPLY (commented): post corrective entry
+-- =============================================================================
+-- Prefer posting through the app journal entry screen or a reviewed RPC so
+-- descriptions and fingerprints stay consistent. Anonymous line INSERTs are
+-- discouraged here.
+
+-- =============================================================================
+-- EVIDENCE LOG (paste into docs/accounting/FINAL_PAYMENT_EDIT_REPAIR_AND_EFFECTIVE_LEDGER_CLOSURE.md)
+-- =============================================================================
+-- Date:
+-- Operator:
+-- Company:
+-- Payment ids:
+-- JE ids voided:
+-- Before/after nets (Cash / Wallet / NDM / AR):

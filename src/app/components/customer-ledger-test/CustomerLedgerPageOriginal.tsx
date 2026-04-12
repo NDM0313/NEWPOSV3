@@ -218,14 +218,13 @@ export default function CustomerLedgerPageOriginal({
       setGlLoading(true);
       setGlError(null);
       try {
-        const entries = await accountingService.getCustomerLedger(
+        /** Same RPC path as Contacts party GL strip + Reconciliation: get_customer_ar_gl_ledger_for_contact (1100 subtree). */
+        const entries = await accountingService.getCustomerArGlJournalLedger(
           selectedCustomer.id,
           companyId,
           branchId ?? undefined,
-          dateRange.from,
-          dateRange.to,
           undefined,
-          'gl_journal_only'
+          undefined
         );
         if (!cancelled) setGlEntries(entries);
       } catch (e: unknown) {
@@ -238,15 +237,7 @@ export default function CustomerLedgerPageOriginal({
     return () => {
       cancelled = true;
     };
-  }, [
-    statementEngine,
-    selectedCustomer?.id,
-    companyId,
-    branchId,
-    dateRange.from,
-    dateRange.to,
-    balanceRefreshTick,
-  ]);
+  }, [statementEngine, selectedCustomer?.id, companyId, branchId, balanceRefreshTick]);
 
   useEffect(() => {
     if (statementEngine !== 'reconciliation' || !selectedCustomer || !companyId) return;
@@ -532,6 +523,11 @@ export default function CustomerLedgerPageOriginal({
                     Operational (Not GL) · GL (Journal) · Reconciliation (Variance) — three engines only; no blended
                     balance.
                   </p>
+                  <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100/95 leading-relaxed max-w-2xl">
+                    <strong className="text-amber-200">LEGACY mixed statement</strong> — not the canonical AR source of
+                    truth. Use Contacts + AR/AP Reconciliation, customer statement from Reports, or Developer Tools →{' '}
+                    <span className="text-gray-300">AR / AP Truth Lab</span> for line-level operational vs party GL.
+                  </div>
                 </div>
               </div>
             </div>
@@ -700,15 +696,17 @@ export default function CustomerLedgerPageOriginal({
           <div className="space-y-3">
             <p className="text-[11px] text-violet-200/85">
               <Badge className="mr-2 bg-violet-600/30 text-violet-100 border-0">GL (journal)</Badge>
-              Running balance from AR journal lines only — no sales/rentals due column merged here.
+              Life-to-date AR lines on 1100 subtree (same engine as Contacts mini GL and Reconciliation). Not merged with
+              operational subledger.
             </p>
             <CustomerGlJournalTable
               entries={glEntries}
               loading={glLoading}
               error={glError}
               formatCurrency={formatCurrency}
-              dateFrom={dateRange.from}
-              dateTo={dateRange.to}
+              dateFrom="(life-to-date)"
+              dateTo="(today)"
+              showAccountCodeColumn
             />
           </div>
         )}

@@ -17,6 +17,17 @@ import { cn } from '@/app/components/ui/utils';
 import { toast } from 'sonner';
 import { TransactionDetailModal } from './TransactionDetailModal';
 import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
+import { Switch } from '@/app/components/ui/switch';
+import { Label } from '@/app/components/ui/label';
+import {
+  classifyAccountFlowBadge,
+  accountFlowBadgeLabel,
+  accountFlowBadgeClass,
+  deriveFromToForLedgerLine,
+  netEconomicMeaning,
+  presentationKindForLine,
+} from '@/app/lib/accountFlowPresentation';
+import { presentationLabel } from '@/app/lib/journalLinePresentation';
 
 interface AccountLedgerPageProps {
   accountId: string;
@@ -46,6 +57,8 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
   const [selectedReference, setSelectedReference] = useState<string | null>(null);
   const [ledgerDetailAutoEdit, setLedgerDetailAutoEdit] = useState(false);
   const [openingBalance, setOpeningBalance] = useState<number>(0);
+  /** Audit = all rows equal weight; Effective = dim PF-14 helper rows (running balance unchanged). */
+  const [ledgerViewAudit, setLedgerViewAudit] = useState(true);
 
   // Load branches
   useEffect(() => {
@@ -305,6 +318,17 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
               }}
             />
           </div>
+          <div className="flex items-center gap-2 border-l border-gray-800 pl-4">
+            <Switch id="ledger-audit-mode" checked={ledgerViewAudit} onCheckedChange={setLedgerViewAudit} />
+            <Label htmlFor="ledger-audit-mode" className="text-xs text-gray-400 cursor-pointer whitespace-nowrap">
+              Audit (full weight)
+            </Label>
+          </div>
+          {!ledgerViewAudit && (
+            <p className="text-xs text-amber-200/85 max-w-xl">
+              Effective: PF-14 transfer / amount-delta rows are dimmed — running balance for this account stays the real GL total.
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -357,10 +381,13 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
               <thead className="bg-gray-900 sticky top-0 border-b border-gray-800">
                 <tr className="text-xs font-semibold text-gray-400 uppercase">
                   <th className="px-4 py-3 text-left">Date</th>
-                  <th className="px-4 py-3 text-left">Reference No</th>
+                  <th className="px-4 py-3 text-left">Reference</th>
+                  <th className="px-4 py-3 text-left min-w-[7rem]">Presentation</th>
+                  <th className="px-4 py-3 text-left min-w-[10rem]">Account flow</th>
+                  <th className="px-4 py-3 text-left min-w-[8rem]">Economic meaning</th>
                   <th className="px-4 py-3 text-left">Source</th>
                   <th className="px-4 py-3 text-left">Description</th>
-                  <th className="px-4 py-3 text-left">Counter Account</th>
+                  <th className="px-4 py-3 text-left">Party / offset</th>
                   <th className="px-4 py-3 text-right">Debit</th>
                   <th className="px-4 py-3 text-right">Credit</th>
                   <th className="px-4 py-3 text-right">Running Balance</th>
@@ -372,6 +399,9 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                 {/* Opening Balance Row */}
                 <tr className="bg-blue-500/10 border-b border-gray-800 font-semibold">
                   <td className="px-4 py-3 text-gray-300">-</td>
+                  <td className="px-4 py-3 text-gray-500">-</td>
+                  <td className="px-4 py-3 text-gray-500">-</td>
+                  <td className="px-4 py-3 text-gray-500">-</td>
                   <td className="px-4 py-3 text-gray-500">-</td>
                   <td className="px-4 py-3 text-white">Opening Balance</td>
                   <td className="px-4 py-3 text-gray-500">-</td>
@@ -396,13 +426,20 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                   const branch = entry.branch_name 
                     ? { name: entry.branch_name, code: null }
                     : branches.find(b => b.id === entry.branch_id);
+                  const pres = presentationKindForLine(entry);
+                  const flow = deriveFromToForLedgerLine(entry);
+                  const meaning = netEconomicMeaning(entry, pres);
+                  const badgeKind = classifyAccountFlowBadge(entry, pres);
+                  const dimPf14 =
+                    !ledgerViewAudit && (pres === 'liquidity_transfer' || pres === 'amount_delta');
 
                   return (
                     <tr
                       key={`${entry.journal_entry_id}-${index}`}
                       className={cn(
                         'border-b border-gray-800 hover:bg-gray-800/50 transition-colors',
-                        entry.ledger_kind === 'reversal' && 'bg-amber-500/5 border-amber-900/40'
+                        entry.ledger_kind === 'reversal' && 'bg-amber-500/5 border-amber-900/40',
+                        dimPf14 && 'opacity-55'
                       )}
                     >
                       <td className="px-4 py-3 text-sm text-gray-300 whitespace-nowrap">
@@ -425,6 +462,30 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                         >
                           {entry.reference_number}
                         </button>
+                        {entry.economic_event_id ? (
+                          <div className="text-[10px] text-gray-600 font-sans mt-0.5" title="economic_event_id">
+                            EE: {String(entry.economic_event_id).slice(0, 8)}…
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-[11px]">
+                        <span
+                          className={cn(
+                            'inline-block rounded px-2 py-0.5 border',
+                            accountFlowBadgeClass(badgeKind)
+                          )}
+                        >
+                          {presentationLabel(pres)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-300 max-w-[14rem] leading-snug">
+                        <span className="text-gray-500">From </span>
+                        <span className="text-gray-200">{flow.from}</span>
+                        <span className="text-gray-600 mx-1">→</span>
+                        <span className="text-sky-300/90">{flow.to}</span>
+                      </td>
+                      <td className="px-4 py-3 text-[11px] text-gray-400 max-w-[12rem] leading-snug" title={meaning}>
+                        {meaning}
                       </td>
                       <td className="px-4 py-3">
                         <Badge className="bg-gray-700 text-gray-300 text-xs">
@@ -482,7 +543,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                           onClick={() => openLedgerTransactionDetail(entry.journal_entry_id, true)}
                         >
                           <Edit size={14} className="mr-1" />
-                          Edit
+                          {entry.payment_id ? 'Edit payment' : 'Edit'}
                         </Button>
                       </td>
                     </tr>
@@ -491,7 +552,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
 
                 {/* Closing Balance Row */}
                 <tr className="bg-gray-900 font-bold border-t-2 border-blue-500/30">
-                  <td colSpan={5} className="px-4 py-3 text-right text-white uppercase text-sm">
+                  <td colSpan={8} className="px-4 py-3 text-right text-white uppercase text-sm">
                     Closing Balance:
                   </td>
                   <td className="px-4 py-3 text-right text-green-400 text-lg">

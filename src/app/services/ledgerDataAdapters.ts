@@ -113,6 +113,31 @@ export async function getSupplierOperationalLedgerData(
     });
   });
 
+  const { data: purchaseReturnRows } = await supabase
+    .from('purchase_returns')
+    .select('id, return_no, return_date, total, status, created_at, original_purchase_id')
+    .eq('company_id', companyId)
+    .eq('supplier_id', supplierId)
+    .eq('status', 'final');
+
+  (purchaseReturnRows || []).forEach((r: any) => {
+    const d = effectiveYmdFromDoc({ po_date: r.return_date, created_at: r.created_at });
+    if (!d) return;
+    const amt = Math.abs(Number(r.total) || 0);
+    if (amt <= 0) return;
+    events.push({
+      ts: new Date(d + 'T12:00:00').getTime(),
+      date: d,
+      ord: 2,
+      debit: amt,
+      credit: 0,
+      ref: r.return_no || `PRET-${String(r.id).slice(0, 8)}`,
+      desc: `Purchase Return ${r.return_no || ''}`.trim() || 'Purchase Return',
+      docType: 'Purchase Return',
+      id: r.id,
+    });
+  });
+
   (payments || []).forEach((p: any) => {
     if (p.voided_at) return;
     const rt = String(p.reference_type || '').toLowerCase();

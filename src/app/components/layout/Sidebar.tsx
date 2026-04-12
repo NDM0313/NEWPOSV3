@@ -27,6 +27,7 @@ import {
   Plus,
   Shield,
   Scale,
+  BookOpen,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useModules } from '../../context/ModuleContext';
@@ -46,7 +47,7 @@ type NavItem = {
 };
 
 export const Sidebar = () => {
-  const { currentView, setCurrentView, isSidebarOpen, toggleSidebar, openDrawer } = useNavigation();
+  const { currentView, setCurrentView, isSidebarOpen, toggleSidebar, openDrawer, setPartyLedgerParams } = useNavigation();
   const { modules: moduleContextModules } = useModules();
   const { modules: settingsModules, featureFlags, isPermissionLoaded } = useSettings();
   const { hasPermission } = useCheckPermission();
@@ -97,6 +98,7 @@ export const Sidebar = () => {
     },
     { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !hasPermission('expenses.view') },
     { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
+    { id: 'party-ledger', label: 'Party Ledger', icon: BookOpen, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
     {
       id: 'ar-ap-reconciliation-center',
       label: 'AR/AP Reconciliation',
@@ -114,8 +116,9 @@ export const Sidebar = () => {
         { id: 'permission-inspector', label: 'Permission Inspector' },
         { id: 'test-account-entry', label: 'Account Entry' },
         { id: 'accounting-edit-trace', label: 'Accounting Edit Trace (Unified)' },
+        { id: 'ar-ap-truth-lab', label: 'AR / AP Truth Lab (canonical)' },
         { id: 'expense-edit-trace', label: 'Expense Edit Trace' },
-        { id: 'customer-ledger-test', label: 'Customer Ledger Test' },
+        { id: 'customer-ledger-test', label: 'Legacy: Customer Ledger Test' },
         { id: 'ledger-debug-test', label: 'Ledger Debug (RPC vs API)' },
         { id: 'test-ledger', label: 'Test Ledger (API Tests)' },
         { id: 'customer-ledger-interactive-test', label: 'Interactive Test (Manual)' },
@@ -147,6 +150,9 @@ export const Sidebar = () => {
       if (!isSidebarOpen) toggleSidebar();
       toggleExpand(item.id);
     } else {
+      if (item.id === 'party-ledger') {
+        setPartyLedgerParams?.(null);
+      }
       setCurrentView(item.id as any);
       if (typeof window !== 'undefined') {
         if (item.id === 'permission-inspector') {
@@ -156,6 +162,7 @@ export const Sidebar = () => {
           pathname === '/admin/developer-integrity-lab' ||
           pathname === '/admin/accounting-test-bench' ||
           pathname === '/test/accounting-edit-trace' ||
+          pathname === '/test/ar-ap-truth-lab' ||
           pathname === '/test/expense-edit-trace' ||
           pathname === '/test/accounting-accounts-hierarchy'
         ) {
@@ -205,6 +212,7 @@ export const Sidebar = () => {
                 pathname === '/admin/developer-integrity-lab' ||
                 pathname === '/admin/accounting-test-bench' ||
                 pathname === '/test/accounting-edit-trace' ||
+                pathname === '/test/ar-ap-truth-lab' ||
                 pathname === '/test/expense-edit-trace' ||
                 pathname === '/test/accounting-accounts-hierarchy'));
           
@@ -290,6 +298,8 @@ export const Sidebar = () => {
                                 window.history.pushState({}, '', '/admin/developer-integrity-lab');
                               } else if (child.id === 'accounting-edit-trace') {
                                 window.history.pushState({}, '', '/test/accounting-edit-trace');
+                              } else if (child.id === 'ar-ap-truth-lab') {
+                                window.history.pushState({}, '', '/test/ar-ap-truth-lab');
                               } else if (child.id === 'expense-edit-trace') {
                                 window.history.pushState({}, '', '/test/expense-edit-trace');
                               } else if (
@@ -297,6 +307,7 @@ export const Sidebar = () => {
                                 p === '/admin/developer-integrity-lab' ||
                                 p === '/admin/accounting-test-bench' ||
                                 p === '/test/accounting-edit-trace' ||
+                                p === '/test/ar-ap-truth-lab' ||
                                 p === '/test/expense-edit-trace' ||
                                 p === '/test/accounting-accounts-hierarchy'
                               ) {
@@ -308,6 +319,7 @@ export const Sidebar = () => {
                             "w-full text-left py-2 px-3 text-sm rounded-lg transition-colors",
                             currentView === child.id ||
                               (child.id === 'accounting-edit-trace' && pathname === '/test/accounting-edit-trace') ||
+                              (child.id === 'ar-ap-truth-lab' && pathname === '/test/ar-ap-truth-lab') ||
                               (child.id === 'expense-edit-trace' && pathname === '/test/expense-edit-trace')
                               ? "text-blue-400 bg-blue-500/10 font-medium" 
                               : "text-gray-500 hover:text-white hover:bg-gray-800/50"

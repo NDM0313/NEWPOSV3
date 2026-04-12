@@ -75,6 +75,8 @@ export function inferTransactionKind(transaction: JournalTransactionLike, paymen
 
   if (rt === 'journal') return 'manual_journal';
   if (rt === 'transfer') return 'transfer';
+  /** Source documents — unified edit is blocked in resolveUnifiedJournalEdit; never treat as payment. */
+  if (rt === 'sale_return' || rt === 'purchase_return') return 'generic_adjustment';
 
   // Sale/purchase customer receipts post with reference_type = sale/purchase on the JE header while payment_id links
   // the row — still a payment for PF-14 / edit routing (do not open full sale/purchase on "Edit payment").

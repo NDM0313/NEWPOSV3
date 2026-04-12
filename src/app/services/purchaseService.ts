@@ -1183,6 +1183,12 @@ export const purchaseService = {
     }
   ) {
     try {
+      const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+      tracePaymentEditFlow('purchaseService.updatePayment.start', {
+        paymentId,
+        purchaseId,
+        updatesKeys: Object.keys(updates),
+      });
       // Phase 3: Capture current payment before update (for amount/account adjustment JEs)
       let oldAmount: number | null = null;
       let oldAccountId: string | null = null;
@@ -1253,6 +1259,14 @@ export const purchaseService = {
       }
 
       const newAmount = updates.amount !== undefined ? Number(updates.amount) : oldAmount;
+      tracePaymentEditFlow('purchaseService.updatePayment.db_updated', {
+        paymentId,
+        purchaseId,
+        oldAmount,
+        oldAccountId,
+        newAmount,
+        newAccountId: (data as any)?.payment_account_id ?? updates.accountId ?? null,
+      });
 
       // Phase 3: Post payment amount adjustment JE when amount changed (original payment JE stays untouched)
       if (
@@ -1273,6 +1287,13 @@ export const purchaseService = {
           }
           const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
           const { data: { user } } = await supabase.auth.getUser();
+          tracePaymentEditFlow('purchaseService.updatePayment.post_amount_adjust', {
+            paymentId,
+            purchaseId,
+            oldAmount,
+            newAmount,
+            deltaLiquidityAccountId: oldAccountId || paymentAccountId,
+          });
           await postPaymentAmountAdjustment({
             context: 'purchase',
             companyId,
@@ -1281,7 +1302,8 @@ export const purchaseService = {
             referenceId: purchaseId,
             oldAmount,
             newAmount,
-            paymentAccountId: updates.accountId ?? paymentAccountId,
+            /** PF-14 hotfix: supplier payment delta hits pre-update liquidity; transfer JE moves final amount separately. */
+            paymentAccountId: oldAccountId || paymentAccountId || '',
             invoiceNoOrRef: poNo,
             entryDate: (updates.paymentDate || paymentDate || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
             createdBy: (user as any)?.id ?? null,
@@ -1309,6 +1331,13 @@ export const purchaseService = {
           const poNo = (purchaseRow as any)?.po_no ?? `PUR-${purchaseId.substring(0, 8)}`;
           const { postPaymentAccountAdjustment } = await import('@/app/services/paymentAdjustmentService');
           const { data: { user } } = await supabase.auth.getUser();
+          tracePaymentEditFlow('purchaseService.updatePayment.post_account_adjust', {
+            paymentId,
+            purchaseId,
+            oldAccountId,
+            newAccountId,
+            amount: newAmount,
+          });
           await postPaymentAccountAdjustment({
             context: 'purchase',
             companyId,

@@ -1,6 +1,76 @@
 import { supabase } from '@/lib/supabase';
 import { productService } from './productService';
 import { accountingService } from './accountingService';
+import { saleAccountingService } from './saleAccountingService';
+
+function roundMoney2(n: number): number {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+/** Original sale line shape used to proportionalize return stock $ (never full line on partial qty). */
+type OriginalSaleLineRow = {
+  id?: string;
+  product_id: string;
+  variation_id?: string | null;
+  quantity: number;
+  total?: number | null;
+  unit_price?: number | null;
+  price?: number | null;
+};
+
+function matchOriginalSaleLineForReturnItem(
+  returnItem: { sale_item_id?: string | null; product_id: string; variation_id?: string | null },
+  originalItems: OriginalSaleLineRow[]
+): OriginalSaleLineRow | undefined {
+  if (returnItem.sale_item_id) {
+    const byId = originalItems.find((o) => o.id && String(o.id) === String(returnItem.sale_item_id));
+    if (byId) return byId;
+  }
+  return originalItems.find(
+    (oi) =>
+      oi.product_id === returnItem.product_id &&
+      (oi.variation_id === returnItem.variation_id || (!oi.variation_id && !returnItem.variation_id))
+  );
+}
+
+/**
+ * Canonical stock economics for a sale return line.
+ * Linked returns: inventory value = (returned_qty / original_qty) × original_line_total (never full line on partial qty).
+ * Standalone: qty × unit_price, with total/qty fallback when unit is missing.
+ */
+export function canonicalSaleReturnStockEconomics(
+  returnItem: { quantity: unknown; unit_price: unknown; total: unknown; sale_item_id?: string | null; product_id: string; variation_id?: string | null },
+  originalLine: OriginalSaleLineRow | undefined
+): { qty: number; unitCost: number; totalCost: number } {
+  const qty = Math.abs(Number(returnItem.quantity) || 0);
+
+  if (originalLine) {
+    const oq = Math.abs(Number(originalLine.quantity) || 0);
+    const oTotalRaw =
+      Number(originalLine.total ?? 0) ||
+      (oq > 0 ? oq * (Number(originalLine.unit_price ?? originalLine.price ?? 0) || 0) : 0);
+    const oTotal = roundMoney2(oTotalRaw);
+    if (oq > 0 && oTotal > 0 && qty > 0) {
+      const isFull = Math.abs(qty - oq) < 1e-6;
+      const totalCost = isFull ? oTotal : roundMoney2((qty / oq) * oTotal);
+      const unitCost = qty > 0 ? roundMoney2(totalCost / qty) : roundMoney2(oTotal / oq);
+      return { qty, unitCost, totalCost };
+    }
+  }
+
+  const storedUnit = Number(returnItem.unit_price) || 0;
+  const storedTotal = Number(returnItem.total) || 0;
+  let unitCost = storedUnit;
+  let totalCost = qty > 0 && unitCost > 0 ? roundMoney2(qty * unitCost) : roundMoney2(storedTotal);
+  if (qty > 0 && totalCost <= 0 && storedTotal > 0) {
+    unitCost = roundMoney2(storedTotal / qty);
+    totalCost = roundMoney2(qty * unitCost);
+  }
+  if (qty > 0 && unitCost <= 0 && totalCost > 0) {
+    unitCost = roundMoney2(totalCost / qty);
+  }
+  return { qty, unitCost: roundMoney2(unitCost), totalCost: roundMoney2(totalCost) };
+}
 
 async function saleReturnHasStockLine(
   companyId: string,
@@ -319,14 +389,14 @@ export const saleReturnService = {
 
       const { data: salesItemsData, error: salesItemsError } = await supabase
         .from('sales_items')
-        .select('id, product_id, variation_id, quantity')
+        .select('id, product_id, variation_id, quantity, total, unit_price, packing_details')
         .eq('sale_id', saleReturn.original_sale_id);
 
       if (salesItemsError) {
         if (salesItemsError.code === '42P01' || salesItemsError.message?.includes('does not exist')) {
           const { data: saleItemsData, error: saleItemsError } = await supabase
             .from('sale_items')
-            .select('id, product_id, variation_id, quantity, packing_details')
+            .select('id, product_id, variation_id, quantity, total, unit_price, price, packing_details')
             .eq('sale_id', saleReturn.original_sale_id);
           if (!saleItemsError && saleItemsData) originalItems = saleItemsData;
         } else {
@@ -399,7 +469,42 @@ export const saleReturnService = {
     };
 
     try {
-    // Create stock movements (POSITIVE - stock IN)
+    const origList = (originalItems || []) as OriginalSaleLineRow[];
+
+    // Accumulate canonical cost across all return lines for the inventory/COGS reversal JE.
+    // Computed here (pre-patch loop) to reflect the true cost basis before any DB write.
+    let totalInventoryCostForJE = 0;
+    for (const item of saleReturn.items as any[]) {
+      const origForCost = isStandalone ? undefined : matchOriginalSaleLineForReturnItem(item, origList);
+      const econForCost = canonicalSaleReturnStockEconomics(item, origForCost);
+      totalInventoryCostForJE = roundMoney2(totalInventoryCostForJE + econForCost.totalCost);
+    }
+
+    // Align sale_return_items $ with canonical economics (partial return safety) before stock + GL context
+    for (const item of saleReturn.items as any[]) {
+      const orig = isStandalone ? undefined : matchOriginalSaleLineForReturnItem(item, origList);
+      const econ = canonicalSaleReturnStockEconomics(item, orig);
+      const rowId = item.id as string | undefined;
+      if (
+        rowId &&
+        (roundMoney2(Number(item.total) || 0) !== econ.totalCost ||
+          roundMoney2(Number(item.unit_price) || 0) !== econ.unitCost)
+      ) {
+        const { error: patchErr } = await supabase
+          .from('sale_return_items')
+          .update({
+            unit_price: econ.unitCost,
+            total: econ.totalCost,
+          })
+          .eq('id', rowId)
+          .eq('sale_return_id', returnId);
+        if (patchErr) {
+          console.warn('[finalizeSaleReturn] Could not patch sale_return_items economics:', rowId, patchErr.message);
+        }
+      }
+    }
+
+    // Create stock movements (POSITIVE - stock IN) — use canonical $ only
     for (const item of saleReturn.items) {
       let boxChange = 0;
       let pieceChange = 0;
@@ -438,15 +543,18 @@ export const saleReturnService = {
         continue;
       }
 
+      const orig = isStandalone ? undefined : matchOriginalSaleLineForReturnItem(item, origList);
+      const econ = canonicalSaleReturnStockEconomics(item, orig);
+
       await productService.createStockMovement({
         company_id: companyId,
         branch_id: branchId === 'all' ? undefined : branchId,
         product_id: item.product_id,
         variation_id: item.variation_id || undefined,
         movement_type: 'sale_return',
-        quantity: Number(item.quantity),
-        unit_cost: Number(item.unit_price),
-        total_cost: Number(item.total),
+        quantity: econ.qty,
+        unit_cost: econ.unitCost,
+        total_cost: econ.totalCost,
         reference_type: 'sale_return',
         reference_id: returnId,
         notes: isStandalone ? notesStandalone : notesLinked,
@@ -456,8 +564,45 @@ export const saleReturnService = {
       });
     }
 
+    const { data: lineTotals } = await supabase.from('sale_return_items').select('total').eq('sale_return_id', returnId);
+    const lineSum = roundMoney2((lineTotals || []).reduce((s, r) => s + Number((r as { total?: number }).total || 0), 0));
+    const disc = Number(saleReturn.discount_amount) || 0;
+    const tax = Number(saleReturn.tax_amount) || 0;
+    await supabase
+      .from('sale_returns')
+      .update({
+        subtotal: lineSum,
+        total: Math.max(0, roundMoney2(lineSum - disc + tax)),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', returnId)
+      .eq('company_id', companyId);
+
     if (saleReturn.original_sale_id) {
       await supabase.rpc('recalc_sale_payment_totals', { p_sale_id: saleReturn.original_sale_id });
+    }
+
+    // Post inventory/COGS reversal JE: Dr Inventory (1200) / Cr COGS (5000).
+    // This is the second half of the complete sale-return double-entry.
+    // The first half (Dr Sales Revenue / Cr AR or Cash/Bank) is handled separately
+    // by accounting.recordSaleReturn() called from the UI after finalize.
+    // Both JEs share reference_type='sale_return' / reference_id=returnId so
+    // voidSaleReturn() auto-reverses them together.
+    if (totalInventoryCostForJE > 0) {
+      try {
+        const returnBranchId = branchId === 'all' ? null : (branchId || null);
+        await saleAccountingService.createSaleReturnInventoryReversalJE({
+          returnId,
+          companyId,
+          branchId: returnBranchId,
+          totalCostAmount: totalInventoryCostForJE,
+          returnNo: (saleReturn as { return_no?: string }).return_no || returnId,
+          performedBy: userId || null,
+        });
+      } catch (jeErr: any) {
+        // Non-blocking: stock movements are the authoritative record; JE failure is surfaced as a warning.
+        console.warn('[finalizeSaleReturn] Inventory reversal JE failed (non-blocking):', jeErr?.message || jeErr);
+      }
     }
 
     if (typeof window !== 'undefined') {
@@ -517,18 +662,20 @@ export const saleReturnService = {
 
       const { data: salesItemsData } = await supabase
         .from('sales_items')
-        .select('id, product_id, variation_id, quantity')
+        .select('id, product_id, variation_id, quantity, total, unit_price')
         .eq('sale_id', saleReturn.original_sale_id);
       if (salesItemsData?.length) {
         originalItems = salesItemsData;
       } else {
         const { data: saleItemsData } = await supabase
           .from('sale_items')
-          .select('id, product_id, variation_id, quantity')
+          .select('id, product_id, variation_id, quantity, total, unit_price, price')
           .eq('sale_id', saleReturn.original_sale_id);
         if (saleItemsData) originalItems = saleItemsData;
       }
     }
+
+    const origListVoid = (originalItems || []) as OriginalSaleLineRow[];
 
     const branchIdToUse = branchId === 'all' ? undefined : branchId;
     const branchForJe = branchIdToUse ?? (saleReturn.branch_id && saleReturn.branch_id !== 'all' ? saleReturn.branch_id : null);
@@ -614,6 +761,9 @@ export const saleReturnService = {
           continue;
         }
 
+        const origV = saleReturn.original_sale_id ? matchOriginalSaleLineForReturnItem(item, origListVoid) : undefined;
+        const econV = canonicalSaleReturnStockEconomics(item, origV);
+
         try {
           await productService.createStockMovement({
             company_id: companyId,
@@ -621,9 +771,9 @@ export const saleReturnService = {
             product_id: item.product_id,
             variation_id: item.variation_id || undefined,
             movement_type: 'sale_return_void',
-            quantity: -Number(item.quantity),
-            unit_cost: Number(item.unit_price),
-            total_cost: Number(item.total),
+            quantity: -econV.qty,
+            unit_cost: econV.unitCost,
+            total_cost: econV.totalCost,
             reference_type: 'sale_return',
             reference_id: returnId,
             notes: `Void Sale Return ${saleReturn.return_no || returnId}: ${item.product_name}`,
@@ -661,6 +811,126 @@ export const saleReturnService = {
       await rollbackToFinal();
       throw e;
     }
+  },
+
+  /**
+   * Undo **void** for a sale return (advanced / ops): removes `sale_return_void` stock rows, soft-voids active
+   * `correction_reversal` JEs that point at this return’s document JEs, sets status back to `final`.
+   * Original `sale_return` stock and original `sale_return` journal rows are left as-is (they were never removed on void).
+   * Idempotent: if status is already `final`, returns `{ alreadyFinal: true }`.
+   *
+   * Note: RLS may block `stock_movements` delete for some roles — use `scripts/admin/restore-last-voided-sale-return.ts` with service role if the app call fails.
+   */
+  async restoreVoidedSaleReturnToFinal(
+    returnId: string,
+    companyId: string
+  ): Promise<{ alreadyFinal: boolean; voidedReversalJeCount: number; deletedVoidStockRows: number }> {
+    const { data: row, error } = await supabase
+      .from('sale_returns')
+      .select('id, status, original_sale_id, customer_id')
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!row) throw new Error('Sale return not found');
+    const st = String((row as { status?: string }).status || '').toLowerCase();
+    if (st === 'final') {
+      return { alreadyFinal: true, voidedReversalJeCount: 0, deletedVoidStockRows: 0 };
+    }
+    if (st !== 'void') {
+      throw new Error(
+        'Only voided sale returns can be restored to final. For draft returns, use delete or edit from Sales.'
+      );
+    }
+
+    const refId = String(returnId);
+
+    const { data: docJes } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'sale_return')
+      .eq('reference_id', refId)
+      .or('is_void.is.null,is_void.eq.false');
+
+    const originalJeIds = (docJes || []).map((r) => (r as { id: string }).id);
+    let reversalVoided = 0;
+    for (const origId of originalJeIds) {
+      const { data: revs } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('reference_type', 'correction_reversal')
+        .eq('reference_id', origId)
+        .or('is_void.is.null,is_void.eq.false');
+      for (const rev of revs || []) {
+        const { error: uErr } = await supabase
+          .from('journal_entries')
+          .update({ is_void: true })
+          .eq('id', (rev as { id: string }).id)
+          .eq('company_id', companyId);
+        if (!uErr) reversalVoided += 1;
+      }
+    }
+
+    const { data: deletedRows, error: delErr } = await supabase
+      .from('stock_movements')
+      .delete()
+      .eq('company_id', companyId)
+      .eq('reference_type', 'sale_return')
+      .eq('reference_id', refId)
+      .eq('movement_type', 'sale_return_void')
+      .select('id');
+    if (delErr) throw delErr;
+    const deletedCount = Array.isArray(deletedRows) ? deletedRows.length : 0;
+
+    const { data: claimed, error: claimErr } = await supabase
+      .from('sale_returns')
+      .update({ status: 'final', updated_at: new Date().toISOString() })
+      .eq('id', returnId)
+      .eq('company_id', companyId)
+      .eq('status', 'void')
+      .select('id')
+      .maybeSingle();
+    if (claimErr) throw claimErr;
+    if (!claimed) {
+      throw new Error('Could not restore return to final (concurrent update?).');
+    }
+
+    const origSale = (row as { original_sale_id?: string | null }).original_sale_id;
+    if (origSale) {
+      await supabase.rpc('recalc_sale_payment_totals', { p_sale_id: origSale });
+    }
+
+    if (typeof window !== 'undefined') {
+      const cid = (row as { customer_id?: string | null }).customer_id;
+      if (companyId && cid) {
+        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: cid } }));
+      }
+    }
+
+    return { alreadyFinal: false, voidedReversalJeCount: reversalVoided, deletedVoidStockRows: deletedCount };
+  },
+
+  /** Most recently updated void return for company (optional branch), restored to `final`. */
+  async restoreLatestVoidedSaleReturnToFinal(companyId: string, branchId?: string): Promise<string> {
+    let q = supabase
+      .from('sale_returns')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('status', 'void')
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .limit(1);
+    if (branchId && branchId !== 'all') {
+      q = q.eq('branch_id', branchId);
+    }
+    const { data, error } = await q.maybeSingle();
+    if (error) throw error;
+    if (!data?.id) {
+      throw new Error('No voided sale return found for this company/branch.');
+    }
+    await this.restoreVoidedSaleReturnToFinal(data.id as string, companyId);
+    return data.id as string;
   },
 
   /**

@@ -1133,6 +1133,10 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         entry.source === 'Payment' && (entry.metadata as { paymentId?: string })?.paymentId
           ? String((entry.metadata as { paymentId?: string }).paymentId)
           : null;
+      const saleReturnSettlementFingerprintRetry =
+        entry.source === 'Sale_Return' && companyId && entry.metadata?.saleReturnId
+          ? `sale_return_settlement:${companyId}:${entry.metadata.saleReturnId}`
+          : undefined;
       const journalEntry: JournalEntry = {
         company_id: companyId,
         branch_id: validBranchId,
@@ -1151,6 +1155,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
               null),
         created_by: currentUserId || null,
         attachments: entry.metadata?.attachments && entry.metadata.attachments.length > 0 ? entry.metadata.attachments : undefined,
+        ...(saleReturnSettlementFingerprintRetry ? { action_fingerprint: saleReturnSettlementFingerprintRetry } : {}),
       };
       const lines: JournalEntryLine[] = [
         { account_id: retryDebit.id, debit: entry.amount, credit: 0, description: descRetry || entry.description },
@@ -1319,6 +1324,10 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
           creditAccountId: creditAccountObj?.id,
         });
       }
+      const saleReturnSettlementFingerprint =
+        entry.source === 'Sale_Return' && companyId && entry.metadata?.saleReturnId
+          ? `sale_return_settlement:${companyId}:${entry.metadata.saleReturnId}`
+          : undefined;
       const journalEntry: JournalEntry = {
         company_id: companyId,
         branch_id: validBranchId,
@@ -1340,6 +1349,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
                 null),
         created_by: currentUserId || null,
         attachments: entry.metadata?.attachments && entry.metadata.attachments.length > 0 ? entry.metadata.attachments : undefined,
+        ...(saleReturnSettlementFingerprint ? { action_fingerprint: saleReturnSettlementFingerprint } : {}),
       };
 
       // Create journal entry lines (matching database schema - no account_name)

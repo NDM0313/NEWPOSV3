@@ -7,6 +7,7 @@
 import { supabase } from '@/lib/supabase';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
+import { recordTransactionMutation } from './transactionMutationService';
 
 /** Journal rows linked to a payment but not the PF-14 adjustment layer (those use reference_id only). */
 function isPrimaryPaymentLinkedJe(je: { reference_type?: string | null; payment_id?: string | null }): boolean {
@@ -16,6 +17,67 @@ function isPrimaryPaymentLinkedJe(je: { reference_type?: string | null; payment_
 }
 
 export type PaymentContext = 'sale' | 'purchase';
+
+/**
+ * True when at least one non-void PF-14 "Payment account changed" JE exists for this payment.
+ * The primary receipt JE still shows the **original** liquidity account; comparing primary-only
+ * liquidity to `payments.payment_account_id` would be wrong — PF-14 transfers already moved cash.
+ * Used to skip `syncPaymentAccountAdjustmentsForCompany` backfill that would otherwise replay Petty→Bank on every load.
+ */
+export async function hasPaymentAccountChangedPf14Journal(companyId: string, paymentId: string): Promise<boolean> {
+  if (!companyId || !paymentId) return false;
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('reference_type', 'payment_adjustment')
+    .eq('reference_id', paymentId)
+    .ilike('description', '%Payment account changed%')
+    .or('is_void.is.null,is_void.eq.false')
+    .limit(1);
+  if (error) return false;
+  return Array.isArray(data) && data.length > 0;
+}
+
+export type PaymentEffectiveLiquiditySnapshot = {
+  paymentId: string;
+  declaredPaymentAccountId: string | null;
+  amount: number;
+  primaryJeLiquidityAccountId: string | null;
+  hasPf14AccountTransferJournals: boolean;
+  /** If true, comparing primary JE to payments row would be misleading (PF-14 owns the chain). */
+  primaryLiquidityLikelyStaleVsDeclared: boolean;
+};
+
+/** Read-only snapshot for Truth Lab / audits — does not post. */
+export async function getPaymentEffectiveLiquiditySnapshot(
+  companyId: string,
+  paymentId: string,
+  primaryLines: { account_id?: string | null; debit?: number | null; credit?: number | null }[],
+  apId: string | null,
+  arId: string | null
+): Promise<PaymentEffectiveLiquiditySnapshot | null> {
+  const { data: pay, error } = await supabase
+    .from('payments')
+    .select('id, amount, payment_account_id')
+    .eq('company_id', companyId)
+    .eq('id', paymentId)
+    .maybeSingle();
+  if (error || !pay) return null;
+  const declared = String((pay as { payment_account_id?: string | null }).payment_account_id || '').trim() || null;
+  const amount = Math.round(Number((pay as { amount?: number }).amount ?? 0) * 100) / 100;
+  const primaryLiq = liquidityAccountOnPrimaryJe(primaryLines, apId, arId);
+  const hasPf = await hasPaymentAccountChangedPf14Journal(companyId, paymentId);
+  const stale = Boolean(hasPf && primaryLiq && declared && primaryLiq !== declared);
+  return {
+    paymentId,
+    declaredPaymentAccountId: declared,
+    amount,
+    primaryJeLiquidityAccountId: primaryLiq,
+    hasPf14AccountTransferJournals: hasPf,
+    primaryLiquidityLikelyStaleVsDeclared: stale,
+  };
+}
 
 /**
  * Post a single journal entry for the difference between old and new payment amount.
@@ -56,12 +118,33 @@ export async function postPaymentAmountAdjustment(params: {
     receivableAccountId: receivableAccountIdParam,
   } = params;
 
+  const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+  tracePaymentEditFlow('paymentAdjustment.post_amount_adjust.enter', {
+    paymentId,
+    companyId,
+    oldAmount,
+    newAmount,
+    paymentAccountId,
+    context,
+  });
+
   const delta = Math.round((newAmount - oldAmount) * 100) / 100;
   if (delta === 0) return;
+  if (!String(paymentAccountId || '').trim()) {
+    console.warn('[paymentAdjustmentService] Missing liquidity account for amount delta; skipping.');
+    return;
+  }
 
-  // PF-14.4: Idempotency – skip if this payment amount adjustment already exists.
-  const alreadyExists = await accountingService.hasExistingPaymentAmountAdjustment(companyId, paymentId, oldAmount, newAmount);
+  // PF-14.4: Idempotency – fingerprint includes liquidity account so a corrected re-post is not blocked by description-only match.
+  const alreadyExists = await accountingService.hasExistingPaymentAmountAdjustment(
+    companyId,
+    paymentId,
+    oldAmount,
+    newAmount,
+    paymentAccountId
+  );
   if (alreadyExists) {
+    tracePaymentEditFlow('paymentAdjustment.post_amount_adjust.skip_idempotent', { paymentId, oldAmount, newAmount });
     if (import.meta.env?.DEV) console.log('[paymentAdjustmentService] Skipping duplicate payment amount adjustment JE (idempotent):', paymentId);
     return;
   }
@@ -75,7 +158,7 @@ export async function postPaymentAmountAdjustment(params: {
       ? `Payment edited: was Rs ${Number(oldAmount).toLocaleString()}, now Rs ${Number(newAmount).toLocaleString()} – ${invoiceNoOrRef}`
       : `Payment edited: was Rs ${Number(oldAmount).toLocaleString()}, now Rs ${Number(newAmount).toLocaleString()} – ${invoiceNoOrRef}`;
 
-  const fingerprintAmount = `payment_adjustment_amount:${companyId}:${paymentId}:${oldAmount}:${newAmount}`;
+  const fingerprintAmount = `payment_adjustment_amount:${companyId}:${paymentId}:${oldAmount}:${newAmount}:${paymentAccountId}`;
   const entry: JournalEntry = {
     id: '',
     company_id: companyId,
@@ -87,6 +170,7 @@ export async function postPaymentAmountAdjustment(params: {
     reference_id: paymentId,
     created_by: createdBy || undefined,
     action_fingerprint: fingerprintAmount,
+    economic_event_id: paymentId,
   };
 
   let lines: JournalEntryLine[];
@@ -132,13 +216,63 @@ export async function postPaymentAmountAdjustment(params: {
     }
   }
 
-  await accountingService.createEntry(entry, lines);
+  tracePaymentEditFlow('paymentAdjustment.post_amount_adjust.createEntry', {
+    paymentId,
+    fingerprint: fingerprintAmount,
+    economic_event_id: paymentId,
+  });
+  const saved = await accountingService.createEntry(entry, lines, paymentId);
+  const jeId = String((saved as { id?: string })?.id || '');
+  if (jeId) {
+    void recordTransactionMutation({
+      companyId,
+      branchId,
+      entityType: 'payment',
+      entityId: paymentId,
+      mutationType: 'amount_edit',
+      oldState: { amount: oldAmount },
+      newState: { amount: newAmount },
+      deltaAmount: delta,
+      adjustmentJournalEntryId: jeId,
+      actorUserId: createdBy ?? null,
+      reason: 'PF-14 payment amount delta JE',
+      metadata: { fingerprint: fingerprintAmount },
+    });
+  }
+}
+
+/**
+ * Sum Dr on `accountId` across active "Payment account changed" PF-14 JEs for this payment.
+ * Used to block stale UI `oldAccountId` (e.g. wallet) after liquidity already moved via another leg (e.g. wallet→cash→NDM).
+ */
+async function sumDebitOnAccountPaymentAccountChangeJes(
+  companyId: string,
+  paymentId: string,
+  accountId: string
+): Promise<number> {
+  const { data: jes, error } = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('reference_type', 'payment_adjustment')
+    .eq('reference_id', paymentId)
+    .ilike('description', '%Payment account changed%')
+    .or('is_void.is.null,is_void.eq.false');
+  if (error || !jes?.length) return 0;
+  const ids = jes.map((j: { id: string }) => j.id);
+  const { data: lines } = await supabase
+    .from('journal_entry_lines')
+    .select('debit')
+    .in('journal_entry_id', ids)
+    .eq('account_id', accountId);
+  return (lines || []).reduce((s, l) => s + Number((l as { debit?: number }).debit ?? 0), 0);
 }
 
 /**
  * PF-14.1: When user changes payment method/account only (e.g. Cash → Bank/NDM), post a single JE
  * that moves the amount from old account to new account: Dr New, Cr Old.
  * Original payment JE is never modified; this keeps books correct and matches Payment Details UI.
+ * @returns true if a new JE was inserted; false if skipped (invalid args or idempotent duplicate).
  */
 export async function postPaymentAccountAdjustment(params: {
   context: PaymentContext;
@@ -152,7 +286,7 @@ export async function postPaymentAccountAdjustment(params: {
   invoiceNoOrRef: string;
   entryDate: string;
   createdBy?: string | null;
-}): Promise<void> {
+}): Promise<boolean> {
   const {
     context,
     companyId,
@@ -167,15 +301,58 @@ export async function postPaymentAccountAdjustment(params: {
     createdBy,
   } = params;
 
-  if (amount <= 0 || oldAccountId === newAccountId) return;
+  const { tracePaymentEditFlow: traceAcc } = await import('@/app/lib/paymentEditFlowTrace');
+  traceAcc('paymentAdjustment.post_account_adjust.enter', {
+    paymentId,
+    companyId,
+    oldAccountId,
+    newAccountId,
+    amount,
+    context,
+  });
+
+  if (amount <= 0 || oldAccountId === newAccountId) return false;
+
+  const { data: payRow } = await supabase
+    .from('payments')
+    .select('payment_account_id, amount')
+    .eq('id', paymentId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  const payAcc = String((payRow as { payment_account_id?: string | null } | null)?.payment_account_id || '').trim();
+  const payAmt = Number((payRow as { amount?: number } | null)?.amount ?? 0);
+  if (
+    payAcc &&
+    payAcc === String(newAccountId).trim() &&
+    payAmt > 0 &&
+    Math.abs(amount - payAmt) < 0.02
+  ) {
+    const funded = await sumDebitOnAccountPaymentAccountChangeJes(companyId, paymentId, newAccountId);
+    if (funded >= amount - 0.02) {
+      traceAcc('paymentAdjustment.post_account_adjust.skip_destination_already_funded', {
+        paymentId,
+        newAccountId,
+        amount,
+        fundedDrOnNew: funded,
+      });
+      if (import.meta.env?.DEV) {
+        console.log(
+          '[paymentAdjustmentService] Skipping account adjustment — destination already funded from prior PF-14 transfer:',
+          paymentId
+        );
+      }
+      return false;
+    }
+  }
 
   // PF-14.4: Idempotency – skip if this payment account adjustment already exists (e.g. from sync or double save).
   const alreadyExists = await accountingService.hasExistingPaymentAccountAdjustment(
     companyId, paymentId, oldAccountId, newAccountId, amount
   );
   if (alreadyExists) {
+    traceAcc('paymentAdjustment.post_account_adjust.skip_idempotent', { paymentId, oldAccountId, newAccountId, amount });
     if (import.meta.env?.DEV) console.log('[paymentAdjustmentService] Skipping duplicate payment account adjustment JE (idempotent):', paymentId);
-    return;
+    return false;
   }
 
   const entryNo = `JE-PAY-ACC-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
@@ -196,15 +373,44 @@ export async function postPaymentAccountAdjustment(params: {
     reference_id: paymentId,
     created_by: createdBy || undefined,
     action_fingerprint: fingerprintAccount,
+    economic_event_id: paymentId,
   };
 
-  // Dr new account (money now in Bank), Cr old account (money left Cash)
-  const lines: JournalEntryLine[] = [
-    { id: '', journal_entry_id: '', account_id: newAccountId, debit: amount, credit: 0, description: `Payment – ${invoiceNoOrRef}` },
-    { id: '', journal_entry_id: '', account_id: oldAccountId, debit: 0, credit: amount, description: `Transfer out – ${invoiceNoOrRef}` },
-  ];
+  // Customer receipt primary = Dr Cash(old), Cr AR → inflow; move debit from old→new: Dr new, Cr old.
+  // Purchase payment primary = Dr AP, Cr Cash(old) → outflow; move credit from old→new: Dr old, Cr new.
+  const lines: JournalEntryLine[] = context === 'purchase'
+    ? [
+        { id: '', journal_entry_id: '', account_id: oldAccountId, debit: amount, credit: 0, description: `Neutralize outflow – ${invoiceNoOrRef}` },
+        { id: '', journal_entry_id: '', account_id: newAccountId, debit: 0, credit: amount, description: `New outflow – ${invoiceNoOrRef}` },
+      ]
+    : [
+        { id: '', journal_entry_id: '', account_id: newAccountId, debit: amount, credit: 0, description: `Payment – ${invoiceNoOrRef}` },
+        { id: '', journal_entry_id: '', account_id: oldAccountId, debit: 0, credit: amount, description: `Transfer out – ${invoiceNoOrRef}` },
+      ];
 
-  await accountingService.createEntry(entry, lines);
+  traceAcc('paymentAdjustment.post_account_adjust.createEntry', {
+    paymentId,
+    fingerprint: fingerprintAccount,
+    economic_event_id: paymentId,
+  });
+  const saved = await accountingService.createEntry(entry, lines, paymentId);
+  const jeId = String((saved as { id?: string })?.id || '');
+  if (jeId) {
+    void recordTransactionMutation({
+      companyId,
+      branchId,
+      entityType: 'payment',
+      entityId: paymentId,
+      mutationType: 'account_change',
+      oldState: { payment_account_id: oldAccountId },
+      newState: { payment_account_id: newAccountId, amount },
+      adjustmentJournalEntryId: jeId,
+      actorUserId: createdBy ?? null,
+      reason: 'PF-14 liquidity transfer (same receipt, new cash/bank account)',
+      metadata: { fingerprint: fingerprintAccount },
+    });
+  }
+  return true;
 }
 
 /**
@@ -254,8 +460,12 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
   errors: number;
   skippedDuplicates: number;
   skippedAmbiguous: number;
+  /** PF-14 account-change JEs exist — primary JE liquidity is not authoritative; sync skipped (prevents duplicate replay). */
+  skippedPf14Chain: number;
 }> {
-  if (!companyId) return { synced: 0, errors: 0, skippedDuplicates: 0, skippedAmbiguous: 0 };
+  if (!companyId) {
+    return { synced: 0, errors: 0, skippedDuplicates: 0, skippedAmbiguous: 0, skippedPf14Chain: 0 };
+  }
 
   const apAccount = await accountHelperService.getAccountByCode('2000', companyId);
   const arAccount = await accountHelperService.getAccountByCode('1100', companyId);
@@ -268,7 +478,9 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
     .eq('company_id', companyId)
     .not('payment_account_id', 'is', null);
 
-  if (payErr || !payments?.length) return { synced: 0, errors: 0, skippedDuplicates: 0, skippedAmbiguous: 0 };
+  if (payErr || !payments?.length) {
+    return { synced: 0, errors: 0, skippedDuplicates: 0, skippedAmbiguous: 0, skippedPf14Chain: 0 };
+  }
 
   const paymentIds = payments.map((p: any) => p.id);
   const { data: paymentJEs } = await supabase
@@ -302,6 +514,7 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
   let errors = 0;
   let skippedDuplicates = 0;
   let skippedAmbiguous = 0;
+  let skippedPf14Chain = 0;
 
   for (const p of payments as any[]) {
     const paymentId = p.id;
@@ -327,6 +540,20 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
     }
     if (effectiveLiquidity === currentAccountId) continue;
 
+    // PF-14.7: After one or more user-driven account transfers, primary JE still shows the **original**
+    // receipt account. payments.payment_account_id is authoritative. Do NOT post another transfer from
+    // primary liquidity — that replays Petty→Bank on every Accounting tab load (duplicate JE-0078 class bugs).
+    if (await hasPaymentAccountChangedPf14Journal(companyId, paymentId)) {
+      skippedPf14Chain++;
+      if (import.meta.env?.DEV) {
+        console.warn(
+          '[paymentAdjustmentService] Skip payment_account sync: PF-14 account-change JEs exist (primary JE liquidity stale vs payments row):',
+          paymentId
+        );
+      }
+      continue;
+    }
+
     const amount = Math.round((p.amount ?? 0) * 100) / 100;
     if (amount <= 0) continue;
 
@@ -340,7 +567,7 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
           : `Payment ${paymentId.slice(0, 8)}`;
 
     try {
-      await postPaymentAccountAdjustment({
+      const posted = await postPaymentAccountAdjustment({
         context,
         companyId: p.company_id,
         branchId: primary.branch_id ?? p.branch_id ?? null,
@@ -353,11 +580,11 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
         entryDate: (p.payment_date || primary.entry_date || new Date().toISOString().slice(0, 10)).toString().slice(0, 10),
         createdBy: null,
       });
-      synced++;
+      if (posted) synced++;
     } catch {
       errors++;
     }
   }
-  return { synced, errors, skippedDuplicates, skippedAmbiguous };
+  return { synced, errors, skippedDuplicates, skippedAmbiguous, skippedPf14Chain };
 }
 

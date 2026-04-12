@@ -69,6 +69,11 @@ export const contactService = {
     return data;
   },
 
+  /** Alias for `getAllContacts` — Party Ledger and pickers use this name. */
+  async getContacts(companyId: string, type?: 'customer' | 'supplier' | 'worker' | 'both') {
+    return this.getAllContacts(companyId, type);
+  },
+
   /**
    * Get receivables/payables per contact in one RPC (avoids loading all sales + purchases).
    * On failure, `error` is set and `map` is empty — callers must not substitute client-side “merged” math as if it were canonical.

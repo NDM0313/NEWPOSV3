@@ -10,7 +10,24 @@ import { supabase } from '@/lib/supabase';
 export type DocumentType = 'invoice' | 'quotation' | 'draft' | 'order' | 'purchase' | 'rental' | 'studio' | 'expense' | 'payment' | 'job' | 'journal' | 'production';
 
 /** Document types for ERP Numbering Engine (generate_document_number RPC). Includes documents + master records. */
-export type ErpDocumentType = 'sale' | 'purchase' | 'payment' | 'expense' | 'rental' | 'stock' | 'stock_adjustment' | 'journal' | 'product' | 'studio' | 'job' | 'pos' | 'customer' | 'supplier' | 'worker';
+export type ErpDocumentType =
+  | 'sale'
+  | 'purchase'
+  | 'payment'
+  | 'supplier_payment'
+  | 'customer_receipt'
+  | 'expense'
+  | 'rental'
+  | 'stock'
+  | 'stock_adjustment'
+  | 'journal'
+  | 'product'
+  | 'studio'
+  | 'job'
+  | 'pos'
+  | 'customer'
+  | 'supplier'
+  | 'worker';
 
 interface DocumentNumberCheck {
   exists: boolean;

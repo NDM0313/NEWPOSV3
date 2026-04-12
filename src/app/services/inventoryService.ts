@@ -31,12 +31,11 @@ function isMissingColumnError(error: { code?: string; message?: string } | null)
   return (m.includes('column') && m.includes('does not exist')) || m.includes('pgrst');
 }
 
-/** Richest-first select for overview variation rows (attributes + pricing for child-row UI). */
+/** Variation select layers ordered by likelihood — actual minimal schema first, richer schemas as fallback. */
 const PRODUCT_VARIATIONS_OVERVIEW_SELECT_LAYERS = [
+  'id, product_id, sku, barcode, attributes, price, stock, is_active',
   'id, product_id, sku, barcode, attributes, cost_price, purchase_price, retail_price, selling_price, wholesale_price, price',
   'id, product_id, sku, barcode, attributes, cost_price, retail_price, wholesale_price, price',
-  'id, product_id, sku, barcode, attributes, cost_price, retail_price, wholesale_price',
-  'id, product_id, sku, barcode, attributes, cost_price, retail_price',
   'id, product_id, sku, barcode, attributes',
   'id, product_id, sku, attributes',
   'id, product_id, sku',

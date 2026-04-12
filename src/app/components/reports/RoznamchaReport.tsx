@@ -166,6 +166,11 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
 
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+      <p className="text-xs text-gray-500 border border-gray-800/80 rounded-lg px-3 py-2 bg-gray-950/40 max-w-3xl">
+        One row per <strong className="text-gray-400">payments</strong> record. Account changes (PF-14 transfer JEs) update the
+        payment row; they do not create a second cash-book receipt — use Journal Day Book with Presentation column to see
+        transfer vouchers.
+      </p>
       <ReportActions
         title="Roznamcha"
         onPrint={() => window.print()}

@@ -18,6 +18,90 @@ import {
 } from '@/app/lib/accounting/statementEngineTypes';
 import { nearestPartyControlAncestorId } from '@/app/lib/partyControlAccounts';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
+import {
+  journalEntryPresentationFromHeader,
+  presentationLabel,
+  type JournalLinePresentationKind,
+} from '@/app/lib/journalLinePresentation';
+import { Switch } from '@/app/components/ui/switch';
+import { Label } from '@/app/components/ui/label';
+import { cn } from '@/app/components/ui/utils';
+import {
+  deriveFromToForLedgerLine,
+  netEconomicMeaning,
+  editTargetTypeLabel,
+} from '@/app/lib/accountFlowPresentation';
+
+function formatLiquidityAccountLabel(a: { name?: string | null; code?: string | null }): string {
+  const name = String(a.name || '').trim();
+  const code = String(a.code || '').trim();
+  if (!name) return '';
+  return code ? `${name} (${code})` : name;
+}
+
+type SettlementColumnOpts = {
+  /** Selected statement account (GL / cash_bank / account_contact). */
+  viewedAccountId?: string;
+  /** payments.id → payments.payment_account_id */
+  paymentLiquidityAccountIdByPaymentId?: Record<string, string>;
+};
+
+/**
+ * Supplier/AP: liquidity from payment; cash/bank book: if this row IS the payment liquidity book, show **offset** (AP/party),
+ * not a duplicate of CASH G140 / Mobile Wallet.
+ */
+function settlementAccountForRow(
+  e: AccountLedgerEntry,
+  settlementByPaymentId: Record<string, string>,
+  opts?: SettlementColumnOpts
+): { primary: string; glLineNote?: string } {
+  const line = String(e.account_name || '').trim();
+  const counter = String(e.counter_account || '').trim();
+  const pid = e.payment_id;
+  const liqId = pid && opts?.paymentLiquidityAccountIdByPaymentId?.[pid];
+  const viewed = opts?.viewedAccountId;
+
+  if (pid && viewed && liqId && liqId === viewed) {
+    const s = settlementByPaymentId[pid];
+    if (counter) {
+      return {
+        primary: counter,
+        glLineNote: s ? `This book: ${s}` : line ? `GL line: ${line}` : undefined,
+      };
+    }
+    if (s) return { primary: s, glLineNote: line && line !== s ? line : undefined };
+    return { primary: line || '—' };
+  }
+
+  if (pid) {
+    const s = settlementByPaymentId[pid];
+    if (s) {
+      return line && line !== s ? { primary: s, glLineNote: line } : { primary: s };
+    }
+  }
+  if (counter) return { primary: counter };
+  return { primary: line || '—' };
+}
+
+function settlementAccountExportString(
+  e: AccountLedgerEntry,
+  settlementByPaymentId: Record<string, string>,
+  opts?: SettlementColumnOpts
+): string {
+  const sd = settlementAccountForRow(e, settlementByPaymentId, opts);
+  return sd.glLineNote ? `${sd.primary} · ${sd.glLineNote}` : sd.primary;
+}
+
+/** PF-14 rows (JE-0039…) vs primary cash JE (JE-0032) — same payment, different entry_no. */
+function referenceExportWithCashVoucher(
+  e: AccountLedgerEntry,
+  primaryCashJeByPaymentId: Record<string, string>
+): string {
+  const cur = String(e.reference_number || '').trim();
+  const cashJe = e.payment_id ? primaryCashJeByPaymentId[e.payment_id] : '';
+  if (cashJe && cashJe !== cur) return `${cur} (cash/bank ${cashJe})`;
+  return cur;
+}
 
 type StatementType = AccountingStatementMode;
 
@@ -43,7 +127,16 @@ type PresentedLedgerRow = AccountLedgerEntry & {
   displayCredit: number;
   displayRunningBalance: number;
   displayStatus: string;
+  presentationKind: JournalLinePresentationKind;
 };
+
+function presentationForLedgerEntry(e: AccountLedgerEntry): JournalLinePresentationKind {
+  if (e.ledger_kind === 'reversal' || normalizeLower(e.document_type).includes('reversal')) return 'reversal';
+  return journalEntryPresentationFromHeader(
+    e.je_reference_type ?? e.document_type ?? null,
+    e.je_action_fingerprint ?? null
+  );
+}
 
 const ACCOUNT_CATEGORY_ORDER = [
   'Assets',
@@ -250,6 +343,14 @@ export const AccountLedgerReportPage: React.FC<{
   });
   const [entries, setEntries] = useState<AccountLedgerEntry[]>([]);
   const [partyByKey, setPartyByKey] = useState<Record<string, { name: string; contactId: string }>>({});
+  /** payment_id → label from payments.payment_account_id (cash / bank / wallet). */
+  const [paymentSettlementById, setPaymentSettlementById] = useState<Record<string, string>>({});
+  /** payments.payment_account_id UUID per payment — detect “viewing this liquidity book” vs offset. */
+  const [paymentLiquidityAccountIdByPaymentId, setPaymentLiquidityAccountIdByPaymentId] = useState<Record<string, string>>(
+    {}
+  );
+  /** payment_id → oldest non–payment_adjustment JE entry_no (e.g. JE-0032 / Cash G140 voucher). */
+  const [primaryCashVoucherByPaymentId, setPrimaryCashVoucherByPaymentId] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [journalRefreshTick, setJournalRefreshTick] = useState(0);
@@ -270,6 +371,8 @@ export const AccountLedgerReportPage: React.FC<{
 
   const isPartyStatement = applied.statementType === 'supplier' || applied.statementType === 'customer';
   const viewMode: 'effective' | 'audit' = (!applied.includeAdjustments && !applied.includeReversals) ? 'effective' : 'audit';
+  /** When false, PF-14 transfer / amount-delta rows are visually de-emphasized (same idea as Day Book). */
+  const [statementPresentationAudit, setStatementPresentationAudit] = useState(true);
 
   useEffect(() => {
     if (!companyId) return;
@@ -480,12 +583,16 @@ export const AccountLedgerReportPage: React.FC<{
     const paymentIds = [...new Set(entries.map((e) => e.payment_id).filter(Boolean))] as string[];
     if (!paymentIds.length) {
       setPartyByKey({});
+      setPaymentSettlementById({});
+      setPaymentLiquidityAccountIdByPaymentId({});
+      setPrimaryCashVoucherByPaymentId({});
       return;
     }
+    if (!companyId) return;
     (async () => {
       const { data } = await supabase
         .from('payments')
-        .select('id, contact_id, contact:contacts(name)')
+        .select('id, contact_id, payment_account_id, contact:contacts(name)')
         .in('id', paymentIds);
       const map: Record<string, { name: string; contactId: string }> = {};
       (data || []).forEach((p: any) => {
@@ -495,8 +602,79 @@ export const AccountLedgerReportPage: React.FC<{
         };
       });
       setPartyByKey(map);
+
+      const accIds = [...new Set((data || []).map((p: any) => p.payment_account_id).filter(Boolean))] as string[];
+      const settlement: Record<string, string> = {};
+      if (accIds.length) {
+        const { data: accs } = await supabase
+          .from('accounts')
+          .select('id, name, code')
+          .in('id', accIds)
+          .eq('company_id', companyId);
+        const accById = new Map<string, { name: string; code: string }>();
+        (accs || []).forEach((a: any) =>
+          accById.set(a.id, { name: String(a.name || ''), code: String(a.code || '') })
+        );
+        (data || []).forEach((p: any) => {
+          if (!p.payment_account_id) return;
+          const a = accById.get(p.payment_account_id);
+          const label = a ? formatLiquidityAccountLabel(a) : '';
+          if (label) settlement[p.id] = label;
+        });
+      }
+      const liqIds: Record<string, string> = {};
+      (data || []).forEach((p: any) => {
+        if (p.payment_account_id) liqIds[p.id] = String(p.payment_account_id);
+      });
+      setPaymentLiquidityAccountIdByPaymentId(liqIds);
+      setPaymentSettlementById(settlement);
     })();
-  }, [entries]);
+  }, [entries, companyId]);
+
+  const settlementColumnOpts = useMemo((): SettlementColumnOpts => {
+    const st = applied.statementType;
+    const showViewed =
+      (st === 'gl' || st === 'cash_bank' || st === 'account_contact') && applied.selectedAccountId
+        ? applied.selectedAccountId
+        : undefined;
+    return {
+      viewedAccountId: showViewed,
+      paymentLiquidityAccountIdByPaymentId,
+    };
+  }, [applied.statementType, applied.selectedAccountId, paymentLiquidityAccountIdByPaymentId]);
+
+  useEffect(() => {
+    const paymentIds = [...new Set(entries.map((e) => e.payment_id).filter(Boolean))] as string[];
+    if (!paymentIds.length || !companyId) {
+      setPrimaryCashVoucherByPaymentId({});
+      return;
+    }
+    (async () => {
+      const best = new Map<string, { no: string; t: number }>();
+      const chunk = 120;
+      for (let i = 0; i < paymentIds.length; i += chunk) {
+        const slice = paymentIds.slice(i, i + chunk);
+        const { data } = await supabase
+          .from('journal_entries')
+          .select('payment_id, entry_no, created_at')
+          .eq('company_id', companyId)
+          .in('payment_id', slice)
+          .or('is_void.is.null,is_void.eq.false')
+          .neq('reference_type', 'payment_adjustment');
+        for (const row of data || []) {
+          const pid = String((row as { payment_id?: string }).payment_id || '');
+          const eno = String((row as { entry_no?: string }).entry_no || '').trim();
+          if (!pid || !eno) continue;
+          const t = new Date((row as { created_at?: string }).created_at || 0).getTime();
+          const prev = best.get(pid);
+          if (!prev || t < prev.t) best.set(pid, { no: eno, t });
+        }
+      }
+      const map: Record<string, string> = {};
+      for (const [pid, v] of best) map[pid] = v.no;
+      setPrimaryCashVoucherByPaymentId(map);
+    })();
+  }, [entries, companyId]);
 
   /** Default statement order: calendar date, then time-of-day (created_at), then stable id. */
   const sortedEntries = useMemo(() => {
@@ -511,7 +689,11 @@ export const AccountLedgerReportPage: React.FC<{
       if (applied.searchTerm.trim()) {
         const q = applied.searchTerm.toLowerCase();
         const party = e.payment_id ? (partyByKey[e.payment_id]?.name || '') : '';
-        const hay = `${e.reference_number || ''} ${e.description || ''} ${e.source_module || ''} ${party}`.toLowerCase();
+        const settle =
+          e.payment_id && paymentSettlementById[e.payment_id] ? paymentSettlementById[e.payment_id] : '';
+        const cashV = e.payment_id ? primaryCashVoucherByPaymentId[e.payment_id] || '' : '';
+        const hay = `${e.reference_number || ''} ${e.description || ''} ${e.source_module || ''} ${party} ${settle} ${cashV} ${e.counter_account || ''} ${e.account_name || ''}`
+          .toLowerCase();
         if (!hay.includes(q)) return false;
       }
       // Customer / supplier / worker statements are already scoped by getCustomerLedger / getSupplierApGlJournalLedger /
@@ -543,6 +725,8 @@ export const AccountLedgerReportPage: React.FC<{
     applied,
     contacts,
     partyByKey,
+    paymentSettlementById,
+    primaryCashVoucherByPaymentId,
   ]);
 
   const accountById = useMemo(() => {
@@ -684,6 +868,7 @@ export const AccountLedgerReportPage: React.FC<{
             displayStatus: hasReversalTwin(e)
               ? 'Reversed'
               : (e.document_type || e.ledger_kind || (isReversalRow(e) ? 'Reversal' : '—')),
+            presentationKind: presentationForLedgerEntry(e),
           };
         });
       return alignRunningBalances(auditRows, applied.statementType === 'supplier');
@@ -709,6 +894,7 @@ export const AccountLedgerReportPage: React.FC<{
             displayCredit: delta < 0 ? Math.abs(delta) : 0,
             displayRunningBalance: Number(e.running_balance || 0),
             displayStatus: e.document_type || '—',
+            presentationKind: presentationForLedgerEntry(e),
           };
         });
       return alignRunningBalances(effectiveGlRows, false);
@@ -760,6 +946,9 @@ export const AccountLedgerReportPage: React.FC<{
         description: compactEffectiveDescription(baseLine.description, partLabels),
         displayDebit: totalDebit,
         displayCredit: totalCredit,
+        displayRunningBalance: Number(representative.running_balance || 0),
+        displayStatus: representative.document_type || '—',
+        presentationKind: presentationForLedgerEntry(representative),
       });
       g.indices.forEach((idx) => consumedIndices.add(idx));
     });
@@ -779,6 +968,7 @@ export const AccountLedgerReportPage: React.FC<{
         displayCredit: Number(row.credit || 0),
         displayRunningBalance: Number(row.running_balance || 0),
         displayStatus: row.document_type || row.ledger_kind || '—',
+        presentationKind: presentationForLedgerEntry(row),
       });
     });
     return alignRunningBalances(out, applied.statementType === 'supplier');
@@ -839,27 +1029,46 @@ export const AccountLedgerReportPage: React.FC<{
         'Reference',
         'Branch',
         'Module',
+        'Presentation',
         'Contact',
         'Description',
-        'Payment Account',
+        'Counter account (GL)',
+        'From account',
+        'To account',
+        'Economic meaning',
+        'Economic event id',
+        'Source type (JE)',
+        'Edit target type',
+        'Settlement / payment account',
         'Debit',
         'Credit',
         'Balance',
         'Status/Source',
       ],
-      rows: presentedEntries.map((e) => [
-        e.date,
-        e.reference_number,
-        e.branch_name || e.branch_id || '',
-        e.source_module || '',
-        e.payment_id ? (partyByKey[e.payment_id]?.name || '') : '',
-        e.description,
-        e.account_name || '',
-        e.displayDebit,
-        e.displayCredit,
-        e.displayRunningBalance,
-        e.displayStatus,
-      ]),
+      rows: presentedEntries.map((e) => {
+        const flow = deriveFromToForLedgerLine(e);
+        return [
+          e.date,
+          referenceExportWithCashVoucher(e, primaryCashVoucherByPaymentId),
+          e.branch_name || e.branch_id || '',
+          e.source_module || '',
+          presentationLabel(e.presentationKind),
+          e.payment_id ? (partyByKey[e.payment_id]?.name || '') : '',
+          e.description,
+          e.counter_account || '',
+          flow.from,
+          flow.to,
+          netEconomicMeaning(e, e.presentationKind),
+          e.economic_event_id ? String(e.economic_event_id) : '',
+          e.je_reference_type || '',
+          editTargetTypeLabel(e.je_reference_type),
+          settlementAccountExportString(e, paymentSettlementById, settlementColumnOpts),
+          e.displayDebit,
+          e.displayCredit,
+          e.displayRunningBalance,
+          e.displayStatus,
+        ];
+      }),
     };
   };
   const handleExportPDF = () => exportToPDF(toExport(), accountingStatementExportSlug(applied.statementType));
@@ -960,7 +1169,7 @@ export const AccountLedgerReportPage: React.FC<{
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 space-y-3 sticky top-2 z-10 backdrop-blur">
+      <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <div>
             <label className="text-xs text-gray-400">Statement Type</label>
@@ -1096,6 +1305,26 @@ export const AccountLedgerReportPage: React.FC<{
           <label className="text-xs text-gray-300 flex items-center gap-2"><input type="checkbox" checked={includeAdjustments} onChange={(e) => setIncludeAdjustments(e.target.checked)} /> Include adjustments</label>
         </div>
 
+        <div className="flex flex-wrap items-center gap-3 py-1 border-t border-gray-800/80 pt-3">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="statement-pres-audit"
+              checked={statementPresentationAudit}
+              onCheckedChange={setStatementPresentationAudit}
+            />
+            <Label htmlFor="statement-pres-audit" className="text-xs text-gray-300 cursor-pointer">
+              Row presentation: audit (full weight)
+            </Label>
+          </div>
+          {!statementPresentationAudit && (
+            <p className="text-xs text-amber-200/85 max-w-2xl">
+              Effective: PF-14 <strong className="text-gray-200">transfer</strong> /{' '}
+              <strong className="text-gray-200">amount delta</strong> rows are dimmed — same economic receipt, not duplicate
+              business events. Turn audit on to emphasize every voucher equally.
+            </p>
+          )}
+        </div>
+
         <div className="flex gap-2 justify-end">
           <Button variant="outline" size="sm" onClick={resetFilters} className="gap-1"><RotateCcw size={14} /> Reset</Button>
           <Button variant="outline" size="sm" onClick={applyFilters} className="gap-1"><Filter size={14} /> Apply</Button>
@@ -1147,9 +1376,21 @@ export const AccountLedgerReportPage: React.FC<{
                 <th className="p-3 text-left font-medium text-gray-300">Reference</th>
                 <th className="p-3 text-left font-medium text-gray-300">Branch</th>
                 <th className="p-3 text-left font-medium text-gray-300">Module</th>
+                <th className="p-3 text-left font-medium text-gray-300 w-36">Presentation</th>
                 <th className="p-3 text-left font-medium text-gray-300">Contact / Party</th>
                 <th className="p-3 text-left font-medium text-gray-300">Description</th>
-                <th className="p-3 text-left font-medium text-gray-300">Payment Account</th>
+                <th className="p-3 text-left font-medium text-gray-300 max-w-[9rem]">Counter (GL)</th>
+                <th className="p-3 text-left font-medium text-gray-300 max-w-[10rem]">From → To</th>
+                <th className="p-3 text-left font-medium text-gray-300 max-w-[10rem]">Economic meaning</th>
+                <th className="p-3 text-left font-medium text-gray-300">Economic event</th>
+                <th className="p-3 text-left font-medium text-gray-300">Source type</th>
+                <th className="p-3 text-left font-medium text-gray-300">Edit target</th>
+                <th
+                  className="p-3 text-left font-medium text-gray-300 max-w-[14rem]"
+                  title="Cash, bank, or wallet from the linked payment record; if none, the offsetting GL account."
+                >
+                  Settlement / payment account
+                </th>
                 <th className="p-3 text-right font-medium text-gray-300">Debit</th>
                 <th className="p-3 text-right font-medium text-gray-300">Credit</th>
                 <th className="p-3 text-right font-medium text-gray-300">Balance</th>
@@ -1160,34 +1401,106 @@ export const AccountLedgerReportPage: React.FC<{
             <tbody className="divide-y divide-gray-800">
               {presentedEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="p-6 text-center text-gray-500">
+                  <td colSpan={19} className="p-6 text-center text-gray-500">
                     No transactions in this period.
                   </td>
                 </tr>
               ) : (
                 presentedEntries.map((e, i) => (
-                  <tr key={`${e.journal_entry_id}-${i}`} className="hover:bg-gray-800/30">
+                  <tr
+                    key={`${e.journal_entry_id}-${i}`}
+                    className={cn(
+                      'hover:bg-gray-800/30',
+                      !statementPresentationAudit &&
+                        (e.presentationKind === 'liquidity_transfer' || e.presentationKind === 'amount_delta') &&
+                        'opacity-60'
+                    )}
+                  >
                     <td className="p-3 text-gray-300">{e.created_at ? <DateTimeDisplay date={e.created_at} /> : e.date}</td>
-                    <td className="p-3 font-mono text-gray-300">
-                      {e.journal_entry_id ? (
-                        <button
-                          type="button"
-                          className="text-left text-sky-400 hover:text-sky-300 hover:underline"
-                          onClick={() =>
-                            openStatementTransaction(String(e.entry_no || '').trim() || e.journal_entry_id, false)
-                          }
-                        >
-                          {e.reference_number}
-                        </button>
-                      ) : (
-                        e.reference_number
-                      )}
+                    <td className="p-3 font-mono text-gray-300 align-top">
+                      <div className="flex flex-col gap-0.5 items-start max-w-[14rem]">
+                        {e.journal_entry_id ? (
+                          <button
+                            type="button"
+                            className="text-left text-sky-400 hover:text-sky-300 hover:underline"
+                            onClick={() =>
+                              openStatementTransaction(String(e.entry_no || '').trim() || e.journal_entry_id, false)
+                            }
+                          >
+                            {e.reference_number}
+                          </button>
+                        ) : (
+                          e.reference_number
+                        )}
+                        {(() => {
+                          const cashJe = e.payment_id ? primaryCashVoucherByPaymentId[e.payment_id] : '';
+                          const cur = String(e.entry_no || e.reference_number || '').trim();
+                          if (!cashJe || !cur || cashJe === cur) return null;
+                          return (
+                            <span
+                              className="text-[11px] text-sky-300/90 font-sans leading-snug"
+                              title="Primary payment journal (bank/cash side). PF-14 adjustment lines show a different voucher for the same payment."
+                            >
+                              Cash/bank voucher: {cashJe}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </td>
                     <td className="p-3 text-gray-400 text-xs">{e.branch_name || e.branch_id || '—'}</td>
                     <td className="p-3 text-gray-300">{e.source_module || '—'}</td>
+                    <td className="p-3 text-[11px]">
+                      <span
+                        className={cn(
+                          'inline-block rounded px-2 py-0.5 border text-gray-300',
+                          e.presentationKind === 'liquidity_transfer' && 'border-sky-600/50 text-sky-300/95',
+                          e.presentationKind === 'amount_delta' && 'border-amber-600/50 text-amber-200/90',
+                          e.presentationKind === 'business_primary' && 'border-emerald-700/50 text-emerald-200/90',
+                          e.presentationKind === 'reversal' && 'border-rose-700/50 text-rose-200/90',
+                          !['liquidity_transfer', 'amount_delta', 'business_primary', 'reversal'].includes(e.presentationKind) &&
+                            'border-gray-700 text-gray-400'
+                        )}
+                      >
+                        {presentationLabel(e.presentationKind)}
+                      </span>
+                    </td>
                     <td className="p-3 text-white">{e.payment_id ? (partyByKey[e.payment_id]?.name || '—') : '—'}</td>
                     <td className="p-3 text-white">{e.description}</td>
-                    <td className="p-3 text-gray-300">{e.account_name || '—'}</td>
+                    <td className="p-3 text-xs text-gray-400 max-w-[9rem] leading-snug">{e.counter_account || '—'}</td>
+                    <td className="p-3 text-xs text-gray-300 max-w-[10rem] leading-snug">
+                      {(() => {
+                        const flow = deriveFromToForLedgerLine(e);
+                        return (
+                          <>
+                            <span className="text-gray-500">From </span>
+                            {flow.from}
+                            <span className="text-gray-600 mx-1">→</span>
+                            {flow.to}
+                          </>
+                        );
+                      })()}
+                    </td>
+                    <td className="p-3 text-[11px] text-gray-400 max-w-[10rem] leading-snug">
+                      {netEconomicMeaning(e, e.presentationKind)}
+                    </td>
+                    <td className="p-3 text-[10px] font-mono text-gray-500" title={e.economic_event_id ? String(e.economic_event_id) : ''}>
+                      {e.economic_event_id ? `${String(e.economic_event_id).slice(0, 8)}…` : '—'}
+                    </td>
+                    <td className="p-3 text-[11px] text-gray-400 font-mono">{e.je_reference_type || '—'}</td>
+                    <td className="p-3 text-[11px] text-gray-400">{editTargetTypeLabel(e.je_reference_type)}</td>
+                    <td className="p-3 max-w-[14rem]">
+                      {(() => {
+                        const sd = settlementAccountForRow(e, paymentSettlementById, settlementColumnOpts);
+                        return (
+                          <div title={sd.glLineNote ? `GL line: ${sd.glLineNote}` : undefined}>
+                            <div className="text-white font-medium leading-snug">{sd.primary}</div>
+                            {sd.glLineNote ? (
+                              <div className="text-[11px] text-gray-500 mt-0.5 leading-snug">GL line: {sd.glLineNote}</div>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
+                    </td>
                     <td className="p-3 text-right text-gray-300">{e.displayDebit ? formatCurrency(e.displayDebit) : '—'}</td>
                     <td className="p-3 text-right text-gray-300">{e.displayCredit ? formatCurrency(e.displayCredit) : '—'}</td>
                     <td className="p-3 text-right font-medium text-white">{formatCurrency(e.displayRunningBalance)}</td>
@@ -1215,7 +1528,7 @@ export const AccountLedgerReportPage: React.FC<{
                             onClick={() => openStatementTransaction(e.journal_entry_id, true)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
-                            Edit
+                            {e.payment_id ? 'Edit payment' : 'Edit'}
                           </Button>
                         </div>
                       ) : (

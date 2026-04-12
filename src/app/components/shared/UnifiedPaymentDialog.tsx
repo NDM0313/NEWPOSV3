@@ -53,6 +53,8 @@ export interface PaymentDialogProps {
   onSuccess?: (paymentRef?: string, amountPaid?: number) => void;
   /** Pre-filled attachment files (e.g. from purchase form Attachments card) – included when recording payment */
   initialAttachmentFiles?: File[];
+  /** When opened from ledger / transaction detail — shows which JE you are editing (e.g. JE-0073). */
+  linkedJournalEntryNo?: string;
   // Edit mode props
   editMode?: boolean;
   paymentToEdit?: {
@@ -110,14 +112,23 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   workerStageId,
   onSuccess,
   initialAttachmentFiles,
+  linkedJournalEntryNo,
   editMode = false,
   paymentToEdit
 }) => {
-  // Derive outstanding from total - paid when caller passes 0 but total/paid suggest otherwise
-  const effectiveOutstanding =
-    totalAmount != null && paidAmount != null && outstandingAmount === 0 && (totalAmount - paidAmount) > 0
-      ? Math.max(0, totalAmount - paidAmount)
-      : outstandingAmount;
+  // Derive outstanding from total - paid when caller passes 0 but total/paid suggest otherwise.
+  // In edit mode, add back the original payment amount — it will be replaced, so the user
+  // should be allowed up to (current outstanding + original payment).
+  const effectiveOutstanding = (() => {
+    let base =
+      totalAmount != null && paidAmount != null && outstandingAmount === 0 && (totalAmount - paidAmount) > 0
+        ? Math.max(0, totalAmount - paidAmount)
+        : outstandingAmount;
+    if (editMode && paymentToEdit) {
+      base += paymentToEdit.amount;
+    }
+    return base;
+  })();
 
   const accounting = useAccounting();
   const settings = useSettings();
@@ -146,6 +157,8 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   // Existing attachments (when editing) – from DB, so they show and are re-sent on save
   const [existingAttachments, setExistingAttachments] = useState<{ url: string; name: string }[]>([]);
   const prevOpenRef = React.useRef(false);
+  /** After user taps Cash/Bank/Wallet in edit mode, stop forcing the saved payment_account_id + inferred method. */
+  const userPickedPaymentMethodRef = React.useRef(false);
 
   // Reset form when dialog opens; set attachments from initialAttachmentFiles only when opening (so purchase-form files are not overwritten)
   React.useEffect(() => {
@@ -155,7 +168,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       if (editMode && paymentToEdit) {
         setAmount(paymentToEdit.amount);
         setPaymentMethod((paymentToEdit.method.charAt(0).toUpperCase() + paymentToEdit.method.slice(1)) as PaymentMethod || 'Cash');
-        setSelectedAccount(paymentToEdit.accountId || '');
+        setSelectedAccount(String(paymentToEdit.accountId || '').trim());
         setNotes(paymentToEdit.notes || '');
         let raw: any = paymentToEdit.attachments;
         if (typeof raw === 'string' && raw.trim()) {
@@ -211,6 +224,10 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     }
   }, [isOpen, editMode, paymentToEdit, initialAttachmentFiles, effectiveOutstanding, workerStageId, defaultPaymentNotes]);
 
+  React.useEffect(() => {
+    if (!isOpen) userPickedPaymentMethodRef.current = false;
+  }, [isOpen]);
+
   // Refresh accounts when dialog opens so user-assigned accounts (user_account_access) are visible after RLS
   React.useEffect(() => {
     if (isOpen && companyId) {
@@ -254,65 +271,120 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     });
   };
 
-  // Reset account selection when payment method changes + Auto-select default account
+  /** Align UI payment method with a saved GL row (e.g. Petty Cash under Cash) when filter bucket was wrong. */
+  const inferPaymentMethodForSavedAccount = (account: Account): PaymentMethod => {
+    const accType = normalizePaymentType(String((account as any).type ?? account.accountType ?? ''));
+    const accCode = String((account as any).code ?? '');
+    const accName = (account.name || '').toLowerCase();
+    if (
+      accType === 'mobile_wallet' ||
+      accType === 'wallet' ||
+      accCode === '1020' ||
+      accName.includes('wallet') ||
+      accCode.startsWith('102')
+    ) {
+      return 'Mobile Wallet';
+    }
+    if (accType === 'bank' || accCode === '1010' || accName.includes('bank') || accCode.startsWith('101')) {
+      return 'Bank';
+    }
+    return 'Cash';
+  };
+
+  /** Dropdown options: normal filter + saved payment account when edit mode would otherwise hide it (branch / type edge). */
+  const getAccountsForPaymentSelect = (): Account[] => {
+    const filtered = getFilteredAccounts();
+    if (!editMode || !paymentToEdit?.accountId || userPickedPaymentMethodRef.current) return filtered;
+    const savedId = String(paymentToEdit.accountId).trim();
+    if (!savedId || filtered.some((a) => a.id === savedId)) return filtered;
+    const saved = accounting.accounts.find((a) => a.id === savedId);
+    if (!saved) return filtered;
+    return [saved, ...filtered];
+  };
+
+  // Reset account selection when payment method changes + Auto-select default account (never clobber edit prefill)
   React.useEffect(() => {
-    if (!companyId || !isOpen) return; // Don't auto-select if dialog not open or no company
-    
+    if (!companyId || !isOpen) return;
+
     const filteredAccounts = getFilteredAccounts();
+    const savedEditId = editMode && paymentToEdit?.accountId ? String(paymentToEdit.accountId).trim() : '';
+
+    if (savedEditId) {
+      if (accounting.accounts.length === 0) {
+        return;
+      }
+      const savedRow = accounting.accounts.find((a) => a.id === savedEditId);
+      if (savedRow && !userPickedPaymentMethodRef.current) {
+        const inFiltered = filteredAccounts.some((a) => a.id === savedEditId);
+        if (!inFiltered) {
+          const inferred = inferPaymentMethodForSavedAccount(savedRow);
+          if (inferred !== paymentMethod) {
+            setPaymentMethod(inferred);
+            return;
+          }
+        }
+        setSelectedAccount(savedEditId);
+        return;
+      }
+      if (!savedRow) {
+        setSelectedAccount(savedEditId);
+        return;
+      }
+      // Edit mode but user chose a different payment method — fall through to default account for that method
+    }
+
     if (filteredAccounts.length === 0) {
       setSelectedAccount('');
       return;
     }
-    
-    // 🔧 FIX: Auto-select default account based on payment method
-    // Priority: Settings → Code (1000/1010) → Name (Cash/Bank) → First available
-    
-    // Step 1: Check settings for default account
-    const defaultPayment = settings.defaultAccounts?.paymentMethods?.find(
-      p => p.method === paymentMethod
-    );
-    
+
+    const defaultPayment = settings.defaultAccounts?.paymentMethods?.find((p) => p.method === paymentMethod);
+
     if (defaultPayment?.defaultAccount) {
-      const matchingAccount = filteredAccounts.find(
-        acc => acc.name === defaultPayment.defaultAccount
-      );
+      const matchingAccount = filteredAccounts.find((acc) => acc.name === defaultPayment.defaultAccount);
       if (matchingAccount) {
         setSelectedAccount(matchingAccount.id);
         return;
       }
     }
-    
-    // Step 2: For Cash → Look for account with code 1000 or name "Cash"
+
     if (paymentMethod === 'Cash') {
       const cashAccount = filteredAccounts.find(
-        acc => acc.code === '1000' || acc.name.toLowerCase() === 'cash'
+        (acc) => acc.code === '1000' || acc.name.toLowerCase() === 'cash'
       );
       if (cashAccount) {
         setSelectedAccount(cashAccount.id);
         return;
       }
     }
-    
-    // Step 3: For Bank → Look for account with code 1010 or name "Bank"
+
     if (paymentMethod === 'Bank') {
       const bankAccount = filteredAccounts.find(
-        acc => acc.code === '1010' || acc.name.toLowerCase() === 'bank'
+        (acc) => acc.code === '1010' || acc.name.toLowerCase() === 'bank'
       );
       if (bankAccount) {
         setSelectedAccount(bankAccount.id);
         return;
       }
     }
-    
-    // Step 4: Fallback to first available account of this type
+
     if (filteredAccounts.length > 0) {
       setSelectedAccount(filteredAccounts[0].id);
       return;
     }
-    
-    // Last resort: clear selection
+
     setSelectedAccount('');
-  }, [paymentMethod, settings.defaultAccounts, accounting.accounts, companyId, isOpen, branchId]);
+  }, [
+    paymentMethod,
+    settings.defaultAccounts,
+    accounting.accounts,
+    companyId,
+    isOpen,
+    branchId,
+    editMode,
+    paymentToEdit?.accountId,
+    paymentToEdit?.id,
+  ]);
 
   // Handle file upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -492,10 +564,24 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           return;
         }
         if (context === 'customer' && referenceId) {
+          const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+          tracePaymentEditFlow('UnifiedPaymentDialog.edit.sale_purchase_routed', {
+            route: 'saleService.updatePayment',
+            paymentId: paymentIdForUpdate,
+            referenceId,
+            updatePayload,
+          });
           const { saleService } = await import('@/app/services/saleService');
           await saleService.updatePayment(paymentIdForUpdate, referenceId, updatePayload);
           success = true;
         } else if (context === 'supplier' && referenceId) {
+          const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+          tracePaymentEditFlow('UnifiedPaymentDialog.edit.sale_purchase_routed', {
+            route: 'purchaseService.updatePayment',
+            paymentId: paymentIdForUpdate,
+            referenceId,
+            updatePayload,
+          });
           const { purchaseService } = await import('@/app/services/purchaseService');
           await purchaseService.updatePayment(paymentIdForUpdate, referenceId, updatePayload);
           success = true;
@@ -514,15 +600,18 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           // Manual / on-account payment edits may not have source referenceId.
           let preManualAmount: number | null = null;
           let preManualBranch: string | null = null;
+          let preManualAccountId: string | null = null;
           if (editMode && paymentToEdit) {
             const { data: preRow } = await supabase
               .from('payments')
-              .select('amount, branch_id')
+              .select('amount, branch_id, payment_account_id')
               .eq('id', paymentIdForUpdate)
               .single();
             if (preRow) {
               preManualAmount = Number((preRow as { amount?: number }).amount ?? 0);
               preManualBranch = (preRow as { branch_id?: string | null }).branch_id ?? null;
+              const pa = (preRow as { payment_account_id?: string | null }).payment_account_id;
+              preManualAccountId = pa && String(pa).trim() ? String(pa) : null;
             }
           }
           const paymentMethodMap: Record<string, string> = {
@@ -552,6 +641,18 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             .single();
           if (upErr) throw upErr;
           const rt = String((updatedPayment as any)?.reference_type || '').toLowerCase();
+          {
+            const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+            tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_patch_done', {
+              paymentId: paymentIdForUpdate,
+              context,
+              reference_type: rt,
+              preManualAmount,
+              preManualAccountId,
+              newAmount: amount,
+              newAccountId: selectedAccount,
+            });
+          }
           if (rt === 'manual_receipt') await rebuildManualReceiptFifoAllocations({ paymentId: paymentIdForUpdate });
           if (rt === 'manual_payment') await rebuildManualSupplierFifoAllocations({ paymentId: paymentIdForUpdate });
           if (companyId && paymentDate) {
@@ -562,16 +663,27 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             });
           }
           // Supplier Add Entry / on-account manual_payment: amount edit updated `payments` only — GL must get a delta JE (same as purchase-linked path).
+          const deltaLiquidityId =
+            preManualAccountId ||
+            (paymentToEdit?.accountId && String(paymentToEdit.accountId).trim() ? String(paymentToEdit.accountId) : null);
           if (
             editMode &&
             context === 'supplier' &&
             rt === 'manual_payment' &&
             preManualAmount != null &&
             companyId &&
-            selectedAccount &&
+            deltaLiquidityId &&
             Math.abs(preManualAmount - amount) > 0.009
           ) {
             try {
+              const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+              tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust', {
+                paymentId: paymentIdForUpdate,
+                kind: 'manual_payment',
+                preManualAmount,
+                amount,
+                deltaLiquidityId,
+              });
               const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
               const { resolvePayablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
               const apId = entityId ? await resolvePayablePostingAccountId(companyId, entityId) : null;
@@ -587,7 +699,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 referenceId: paymentIdForUpdate,
                 oldAmount: preManualAmount,
                 newAmount: amount,
-                paymentAccountId: selectedAccount,
+                paymentAccountId: deltaLiquidityId,
                 invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Supplier payment'),
                 entryDate: paymentDate,
                 createdBy: (user as any)?.id ?? null,
@@ -607,10 +719,18 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             rt === 'manual_receipt' &&
             preManualAmount != null &&
             companyId &&
-            selectedAccount &&
+            deltaLiquidityId &&
             Math.abs(preManualAmount - amount) > 0.009
           ) {
             try {
+              const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+              tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_amount_adjust', {
+                paymentId: paymentIdForUpdate,
+                kind: 'manual_receipt',
+                preManualAmount,
+                amount,
+                deltaLiquidityId,
+              });
               const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
               const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
               const arId = entityId ? await resolveReceivablePostingAccountId(companyId, entityId) : null;
@@ -626,7 +746,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 referenceId: paymentIdForUpdate,
                 oldAmount: preManualAmount,
                 newAmount: amount,
-                paymentAccountId: selectedAccount,
+                paymentAccountId: deltaLiquidityId,
                 invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Customer receipt'),
                 entryDate: paymentDate,
                 createdBy: (user as any)?.id ?? null,
@@ -637,6 +757,86 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               }
             } catch (adjErr) {
               console.warn('[UnifiedPaymentDialog] Customer manual_receipt amount adjustment JE failed:', adjErr);
+            }
+          }
+          // PF-14: manual receipt/payment account change — post Dr new / Cr old for final amount (after any amount delta above).
+          if (
+            editMode &&
+            companyId &&
+            preManualAccountId &&
+            selectedAccount &&
+            preManualAccountId !== selectedAccount &&
+            amount > 0.009
+          ) {
+            if (context === 'customer' && rt === 'manual_receipt') {
+              try {
+                const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+                tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_account_transfer', {
+                  paymentId: paymentIdForUpdate,
+                  kind: 'manual_receipt',
+                  preManualAccountId,
+                  selectedAccount,
+                  amount,
+                });
+                const { postPaymentAccountAdjustment } = await import('@/app/services/paymentAdjustmentService');
+                const { data: { user } } = await supabase.auth.getUser();
+                await postPaymentAccountAdjustment({
+                  context: 'sale',
+                  companyId,
+                  branchId:
+                    preManualBranch && String(preManualBranch).trim() && preManualBranch !== 'all'
+                      ? preManualBranch
+                      : null,
+                  paymentId: paymentIdForUpdate,
+                  referenceId: paymentIdForUpdate,
+                  oldAccountId: preManualAccountId,
+                  newAccountId: selectedAccount,
+                  amount,
+                  invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Customer receipt'),
+                  entryDate: paymentDate,
+                  createdBy: (user as any)?.id ?? null,
+                });
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+                }
+              } catch (accErr) {
+                console.warn('[UnifiedPaymentDialog] Customer manual_receipt account transfer JE failed:', accErr);
+              }
+            }
+            if (context === 'supplier' && rt === 'manual_payment') {
+              try {
+                const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+                tracePaymentEditFlow('UnifiedPaymentDialog.edit.manual_account_transfer', {
+                  paymentId: paymentIdForUpdate,
+                  kind: 'manual_payment',
+                  preManualAccountId,
+                  selectedAccount,
+                  amount,
+                });
+                const { postPaymentAccountAdjustment } = await import('@/app/services/paymentAdjustmentService');
+                const { data: { user } } = await supabase.auth.getUser();
+                await postPaymentAccountAdjustment({
+                  context: 'purchase',
+                  companyId,
+                  branchId:
+                    preManualBranch && String(preManualBranch).trim() && preManualBranch !== 'all'
+                      ? preManualBranch
+                      : null,
+                  paymentId: paymentIdForUpdate,
+                  referenceId: paymentIdForUpdate,
+                  oldAccountId: preManualAccountId,
+                  newAccountId: selectedAccount,
+                  amount,
+                  invoiceNoOrRef: String((paymentToEdit as any).referenceNumber || 'Supplier payment'),
+                  entryDate: paymentDate,
+                  createdBy: (user as any)?.id ?? null,
+                });
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+                }
+              } catch (accErr) {
+                console.warn('[UnifiedPaymentDialog] Supplier manual_payment account transfer JE failed:', accErr);
+              }
             }
           }
           success = true;
@@ -1080,10 +1280,35 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     </Badge>
                   </div>
                   <p className="text-lg font-bold text-white mb-1">{entityName}</p>
-                  {referenceNo && (
-                    <p className="text-xs text-gray-500 font-mono bg-gray-900/50 px-2 py-1 rounded inline-block">
-                      Ref: {referenceNo}
-                    </p>
+                  {editMode ? (
+                    <div className="space-y-1.5 mb-2 text-[11px] leading-snug">
+                      {linkedJournalEntryNo ? (
+                        <p className="text-gray-300">
+                          <span className="text-gray-500">Ledger entry</span>{' '}
+                          <span className="font-mono text-amber-200/90">{linkedJournalEntryNo}</span>
+                        </p>
+                      ) : null}
+                      {referenceNo ? (
+                        <p className="text-gray-300">
+                          <span className="text-gray-500">Document / context</span>{' '}
+                          <span className="text-gray-100">{referenceNo}</span>
+                        </p>
+                      ) : null}
+                      {paymentToEdit?.referenceNumber ? (
+                        <p className="text-gray-300">
+                          <span className="text-gray-500">Payment voucher</span>{' '}
+                          <span className="font-mono text-sky-200/90">{paymentToEdit.referenceNumber}</span>
+                        </p>
+                      ) : (
+                        <p className="text-amber-400/85 text-[10px]">Payment voucher: — (check notes below)</p>
+                      )}
+                    </div>
+                  ) : (
+                    referenceNo && (
+                      <p className="text-xs text-gray-500 font-mono bg-gray-900/50 px-2 py-1 rounded inline-block">
+                        Ref: {referenceNo}
+                      </p>
+                    )
                   )}
                   <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
                     {/* Show total amount if provided */}
@@ -1197,7 +1422,10 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
-                      onClick={() => setPaymentMethod('Cash')}
+                      onClick={() => {
+                        userPickedPaymentMethodRef.current = true;
+                        setPaymentMethod('Cash');
+                      }}
                       className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all ${
                         paymentMethod === 'Cash'
                           ? 'border-blue-500 bg-blue-500/10'
@@ -1212,7 +1440,10 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => setPaymentMethod('Bank')}
+                      onClick={() => {
+                        userPickedPaymentMethodRef.current = true;
+                        setPaymentMethod('Bank');
+                      }}
                       className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all ${
                         paymentMethod === 'Bank'
                           ? 'border-blue-500 bg-blue-500/10'
@@ -1227,7 +1458,10 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => setPaymentMethod('Mobile Wallet')}
+                      onClick={() => {
+                        userPickedPaymentMethodRef.current = true;
+                        setPaymentMethod('Mobile Wallet');
+                      }}
                       className={`flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-lg border-2 transition-all ${
                         paymentMethod === 'Mobile Wallet'
                           ? 'border-blue-500 bg-blue-500/10'
@@ -1258,7 +1492,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                         {paymentMethod === 'Bank' && 'Select Bank Account'}
                         {paymentMethod === 'Mobile Wallet' && 'Select Wallet Account'}
                       </option>
-                      {getFilteredAccounts().map(account => (
+                      {getAccountsForPaymentSelect().map((account) => (
                         <option key={account.id} value={account.id} className="text-white bg-gray-900">
                           {account.name} • GL: {formatCurrency(account.balance)}
                         </option>
@@ -1266,13 +1500,13 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                   </div>
-                  {getFilteredAccounts().length === 0 && (
+                  {getAccountsForPaymentSelect().length === 0 && (
                     <p className="text-xs text-amber-500/90 mt-1.5 flex items-center gap-1">
                       <AlertCircle size={11} />
                       No accounts available. Ensure account access is assigned in User Management → Edit User → Account Access, and that your admin has applied the accounts RLS migration on the server.
                     </p>
                   )}
-                  {selectedAccount === '' && getFilteredAccounts().length > 0 && (
+                  {selectedAccount === '' && getAccountsForPaymentSelect().length > 0 && (
                     <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
                       <AlertCircle size={11} />
                       Please select an account to proceed

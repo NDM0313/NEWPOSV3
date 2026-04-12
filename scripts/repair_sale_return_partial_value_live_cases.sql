@@ -1,0 +1,38 @@
+-- repair_sale_return_partial_value_live_cases.sql
+-- AUDIT / PLAYBOOK ONLY — review each block before running in production.
+-- Do not hard-delete accounting history. Prefer: void + correction_reversal (existing app flow),
+-- or proportional adjustment JEs documented in your change ticket.
+--
+-- Typical bad pattern (pre-fix engine): sale_return_items.quantity < original sale line quantity
+-- but sale_return_items.total = original sale line total (full line amount on partial qty).
+--
+-- 1) IDENTIFY (read-only) — same logic as verify_sale_return_partial_value_and_terminal_state.sql
+--
+-- 2) OPTIONAL: normalize line totals in place (ONLY if business approves; re-states subledger rows;
+--    you must still post correcting GL if JEs were already posted at wrong amounts).
+--    Example shape (commented):
+--
+-- WITH bad AS (
+--   SELECT sri.id, round((sri.quantity / si.quantity) * si.total, 2) AS new_total,
+--          round(((si.total / si.quantity) * sri.quantity) / nullif(sri.quantity, 0), 2) AS new_unit_price
+--   FROM sale_return_items sri
+--   JOIN sale_returns r ON r.id = sri.sale_return_id AND r.company_id = '<company>'::uuid
+--   JOIN sales_items si ON si.id = sri.sale_item_id
+--   WHERE r.status = 'final'
+--     AND sri.quantity < si.quantity
+--     AND abs(sri.total - si.total) <= greatest(0.02, 0.0001 * si.total)
+-- )
+-- UPDATE sale_return_items sri
+-- SET total = bad.new_total, unit_price = bad.new_unit_price
+-- FROM bad WHERE sri.id = bad.id;
+--
+-- 3) STOCK: stock_movements.total_cost for movement_type IN ('sale_return','sale_return_void') may need
+--    matching correction movements — do NOT delete rows; insert offsetting movements with notes
+--    referencing this playbook + ticket id.
+--
+-- 4) VOID / TERMINAL: if return should be unwound, use Sales UI "Void / Cancel Return" (calls
+--    saleReturnService.voidSaleReturn) — idempotent, posts correction_reversal JEs, inserts void stock.
+--
+-- 5) RE-VERIFY: run scripts/verify_sale_return_partial_value_and_terminal_state.sql
+
+SELECT 'No automatic mutations in this file — human-driven repair only.' AS note;

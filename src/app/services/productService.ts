@@ -60,13 +60,11 @@ function ensureProductIds(payload: Record<string, unknown>): Record<string, unkn
 const PRODUCT_SELECT_SAFE =
   'id, company_id, category_id, brand_id, unit_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, max_stock, has_variations, is_rentable, is_sellable, track_stock, is_active, image_urls, product_type, source_type, created_at, updated_at';
 
-/** Try richest embed first; fall back when DB has fewer columns (see docs/products/VARIATION_EDIT_AND_MASTER.md). */
+/** Variation select layers — actual minimal schema first, richer schemas as fallback for future column additions. */
 const VARIATION_SELECT_LAYERS = [
-  'id, product_id, sku, barcode, attributes, cost_price, purchase_price, retail_price, selling_price, wholesale_price, current_stock, price, stock, name, is_active',
-  'id, product_id, sku, barcode, attributes, cost_price, retail_price, wholesale_price, current_stock, price, stock, name, is_active',
-  'id, product_id, sku, barcode, attributes, cost_price, retail_price, wholesale_price, current_stock, name, is_active',
-  'id, product_id, sku, barcode, attributes, cost_price, retail_price, current_stock, name, is_active',
   'id, product_id, sku, barcode, attributes, price, stock, is_active',
+  'id, product_id, sku, barcode, attributes, cost_price, purchase_price, retail_price, selling_price, wholesale_price, current_stock, price, stock, name, is_active',
+  'id, product_id, sku, barcode, attributes, cost_price, retail_price, wholesale_price, current_stock, name, is_active',
   'id, product_id, sku, barcode, attributes',
   'id, product_id, sku, attributes',
 ] as const;

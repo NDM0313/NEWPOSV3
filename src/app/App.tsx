@@ -112,6 +112,15 @@ const ExpenseEditTraceTestPage = lazy(() =>
 const AccountingEditTracePage = lazy(() =>
   import('./components/test/AccountingEditTracePage').then((m) => ({ default: m.default }))
 );
+const SimpleCanonicalStatementPage = lazy(() =>
+  import('./components/test/SimpleCanonicalStatementPage').then((m) => ({ default: m.default }))
+);
+const ArApTruthLabPage = lazy(() =>
+  import('./components/test/ArApTruthLabPage').then((m) => ({ default: m.default }))
+);
+const EffectivePartyLedgerPage = lazy(() =>
+  import('./components/accounting/EffectivePartyLedgerPage').then((m) => ({ default: m.default }))
+);
 
 // v1.0.1 - Enhanced Product Form with SKU auto-generation and global access
 
@@ -125,7 +134,7 @@ const ProductionOrdersPage = lazy(() => import('./manufacturing/ProductionOrders
 const ProductionWorkflow = lazy(() => import('./manufacturing/ProductionWorkflow').then(m => ({ default: m.ProductionWorkflow })));
 
 const AppContent = () => {
-  const { currentView } = useNavigation();
+  const { currentView, partyLedgerParams, setCurrentView, setPartyLedgerParams } = useNavigation();
   const { modules, featureFlags } = useSettings();
   const studioProductionV2 = featureFlags?.studio_production_v2 === true;
   const studioProductionV3 = featureFlags?.studio_production_v3 === true;
@@ -162,6 +171,28 @@ const AppContent = () => {
       <Layout>
         <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading…</div>}>
           <AccountingEditTracePage />
+        </Suspense>
+        <GlobalDrawer />
+      </Layout>
+    );
+  }
+
+  if (pathname === '/test/simple-canonical-statement') {
+    return (
+      <Layout>
+        <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading…</div>}>
+          <SimpleCanonicalStatementPage />
+        </Suspense>
+        <GlobalDrawer />
+      </Layout>
+    );
+  }
+
+  if (pathname === '/test/ar-ap-truth-lab') {
+    return (
+      <Layout>
+        <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading…</div>}>
+          <ArApTruthLabPage />
         </Suspense>
         <GlobalDrawer />
       </Layout>
@@ -413,6 +444,19 @@ const AppContent = () => {
       {currentView === 'ar-ap-reconciliation-center' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading…</div></div>}>
           <ArApReconciliationCenterPage />
+        </Suspense>
+      )}
+      {currentView === 'party-ledger' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading ledger…</div></div>}>
+          <EffectivePartyLedgerPage
+            contactId={partyLedgerParams?.contactId}
+            contactName={partyLedgerParams?.contactName}
+            contactType={partyLedgerParams?.contactType}
+            onClose={() => {
+              setPartyLedgerParams?.(null);
+              setCurrentView('contacts');
+            }}
+          />
         </Suspense>
       )}
       {currentView === 'test-ledger' && <TestLedger />}

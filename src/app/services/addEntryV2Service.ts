@@ -31,9 +31,17 @@ function validBranchId(branchId: string | null | undefined): string | null {
   return branchId && branchId !== 'all' ? branchId : null;
 }
 
-async function getPayRef(companyId: string, branchId: string | null): Promise<string> {
+async function getCustomerReceiptRef(companyId: string, branchId: string | null): Promise<string> {
   try {
-    return await documentNumberService.getNextDocumentNumber(companyId, branchId, 'payment');
+    return await documentNumberService.getNextDocumentNumber(companyId, branchId, 'customer_receipt');
+  } catch {
+    return generatePaymentReference(null);
+  }
+}
+
+async function getOutgoingPaymentRef(companyId: string, branchId: string | null): Promise<string> {
+  try {
+    return await documentNumberService.getNextDocumentNumber(companyId, branchId, 'supplier_payment');
   } catch {
     return generatePaymentReference(null);
   }
@@ -127,7 +135,7 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
   const { companyId, branchId, customerId, customerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments, invoiceAllocations } = params;
   if (!companyId || !customerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid customer receipt params');
   const branch = validBranchId(branchId);
-  const refNo = await getPayRef(companyId, branch);
+  const refNo = await getCustomerReceiptRef(companyId, branch);
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
 
@@ -220,7 +228,7 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
   const { companyId, branchId, supplierContactId, supplierName, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments } = params;
   if (!companyId || !supplierContactId || amount <= 0 || !paymentAccountId) throw new Error('Invalid supplier payment params');
   const branch = validBranchId(branchId);
-  const refNo = await getPayRef(companyId, branch);
+  const refNo = await getOutgoingPaymentRef(companyId, branch);
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
 
@@ -305,7 +313,7 @@ export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams
   const { companyId, branchId, workerId, workerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, stageId, attachments } = params;
   if (!companyId || !workerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid worker payment params');
   const branch = validBranchId(branchId);
-  const refNo = await getPayRef(companyId, branch);
+  const refNo = await getOutgoingPaymentRef(companyId, branch);
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
 
@@ -385,7 +393,12 @@ export async function createExpensePaymentEntry(params: CreateExpensePaymentPara
   const { companyId, branchId, expenseAccountId, amount, paymentAccountId, paymentDate, paymentMethod, notes } = params;
   if (!companyId || !expenseAccountId || amount <= 0 || !paymentAccountId) throw new Error('Invalid expense payment params');
   const branch = validBranchId(branchId);
-  const refNo = await getPayRef(companyId, branch);
+  let refNo: string;
+  try {
+    refNo = await documentNumberService.getNextDocumentNumber(companyId, branch, 'expense');
+  } catch {
+    refNo = generatePaymentReference(null);
+  }
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
 
@@ -484,7 +497,7 @@ export async function createCourierPaymentEntry(params: CreateCourierPaymentPara
   const { companyId, branchId, courierId, courierName, courierContactId, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments } = params;
   if (!companyId || !courierId || amount <= 0 || !paymentAccountId) throw new Error('Invalid courier payment params');
   const branch = validBranchId(branchId);
-  const refNo = await getPayRef(companyId, branch);
+  const refNo = await getOutgoingPaymentRef(companyId, branch);
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
 

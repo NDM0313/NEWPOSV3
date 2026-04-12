@@ -4,7 +4,7 @@
 WITH params AS (
   SELECT
     '00000000-0000-0000-0000-000000000000'::uuid AS return_id,
-    '00000000-0000-0000-0000-000000000000'::uuid AS company_id
+    '595c08c2-1e47-4581-89c9-1f78de51c613'::uuid AS company_id
 ),
 sr AS (
   SELECT s.status

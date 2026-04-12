@@ -366,31 +366,26 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
       const saleReturn = await saleReturnService.createSaleReturn(pendingReturnData);
       await saleReturnService.finalizeSaleReturn(saleReturn.id!, companyId, branch, user?.id);
 
-      let creditAccount = 'Accounts Receivable';
-      if (refundMethod === 'cash' || refundMethod === 'bank') {
-        const acc = accounting.getAccountById(selectedRefundAccountId);
-        creditAccount = (acc?.name || (refundMethod === 'cash' ? 'Cash' : 'Bank')) as any;
-      }
+      const refreshedReturn = await saleReturnService.getSaleReturnById(saleReturn.id!, companyId);
+      const settlementAmount = Math.max(0, Number(refreshedReturn.total) || 0);
 
       try {
         const settlementLabel = refundMethod === 'cash' ? 'Cash' : refundMethod === 'bank' ? 'Bank' : 'Adjust in Customer Account';
         const desc = settlementNotes.trim()
           ? `Sale Return (no invoice): ${saleReturn.return_no || saleReturn.id} - ${customerName} - Settlement: ${settlementLabel}. ${settlementNotes.trim()}`
           : `Sale Return (no invoice): ${saleReturn.return_no || saleReturn.id} - ${customerName} - Settlement: ${settlementLabel}`;
-        await accounting.createEntry({
-          source: 'Sale Return',
-          referenceNo: saleReturn.return_no || `SR-${saleReturn.id?.slice(0, 8)}`,
-          debitAccount: 'Sales Revenue',
-          creditAccount,
-          amount: subtotal,
+        await accounting.recordSaleReturn({
+          saleReturnId: saleReturn.id!,
+          returnNo: saleReturn.return_no || `SR-${saleReturn.id?.slice(0, 8)}`,
+          customerName: pendingReturnData.customer_name || customerName,
+          customerId: pendingReturnData.customer_id || customerId || undefined,
+          amount: settlementAmount,
+          originalSaleId: null,
+          refundMethod,
+          refundAccountId:
+            refundMethod === 'cash' || refundMethod === 'bank' ? selectedRefundAccountId || null : null,
           description: desc,
-          module: 'sales',
-          metadata: {
-            customerId: pendingReturnData.customer_id,
-            customerName: pendingReturnData.customer_name,
-            saleReturnId: saleReturn.id,
-            refundMethod,
-          },
+          postingDate: pendingReturnData.return_date,
         });
       } catch (accErr: any) {
         console.warn('[STANDALONE RETURN] Accounting entry failed (non-blocking):', accErr);

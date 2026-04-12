@@ -1283,7 +1283,7 @@ export const saleService = {
       uniqueRef = callerRef;
     } else {
       try {
-        uniqueRef = await documentNumberService.getNextDocumentNumber(companyId, branchId ?? null, 'payment');
+        uniqueRef = await documentNumberService.getNextDocumentNumber(companyId, branchId ?? null, 'customer_receipt');
       } catch {
         uniqueRef = generatePaymentReference(null);
       }
@@ -1389,7 +1389,7 @@ export const saleService = {
     const authUserId = authUser?.id ?? null;
     let uniqueRef: string;
     try {
-      uniqueRef = await documentNumberService.getNextDocumentNumber(companyId, branchId ?? null, 'payment');
+      uniqueRef = await documentNumberService.getNextDocumentNumber(companyId, branchId ?? null, 'customer_receipt');
     } catch {
       uniqueRef = generatePaymentReference(null);
     }
@@ -1451,6 +1451,12 @@ export const saleService = {
     }
   ) {
     try {
+      const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+      tracePaymentEditFlow('saleService.updatePayment.start', {
+        paymentId,
+        saleId,
+        updatesKeys: Object.keys(updates),
+      });
       // PF-14.1: Capture current payment before update (for amount and/or account adjustment JEs)
       let oldAmount: number | null = null;
       let oldAccountId: string | null = null;
@@ -1527,6 +1533,14 @@ export const saleService = {
         throw updateResult.error;
       }
       const data = updateResult.data;
+      tracePaymentEditFlow('saleService.updatePayment.db_updated', {
+        paymentId,
+        saleId,
+        oldAmount,
+        oldAccountId,
+        newAmount: updates.amount !== undefined ? Number(updates.amount) : oldAmount,
+        newAccountId: (data as any)?.payment_account_id ?? updates.accountId ?? null,
+      });
 
       // Phase 3: Log payment_edited only when something changed; avoid "from 33000 to 33000"
       const newAmount = updates.amount !== undefined ? Number(updates.amount) : oldAmount;
@@ -1575,6 +1589,13 @@ export const saleService = {
           }
           const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
           const { data: { user } } = await supabase.auth.getUser();
+          tracePaymentEditFlow('saleService.updatePayment.post_amount_adjust', {
+            paymentId,
+            saleId,
+            oldAmount,
+            newAmount,
+            deltaLiquidityAccountId: oldAccountId || paymentAccountId,
+          });
           await postPaymentAmountAdjustment({
             context: 'sale',
             companyId,
@@ -1583,7 +1604,8 @@ export const saleService = {
             referenceId: saleId,
             oldAmount,
             newAmount,
-            paymentAccountId: updates.accountId || paymentAccountId,
+            /** PF-14 hotfix: delta liquidity leg must use pre-update account only — never the new account when both amount and account change in one save. */
+            paymentAccountId: oldAccountId || paymentAccountId || '',
             invoiceNoOrRef: invoiceNo,
             entryDate: (updates.paymentDate || paymentDate || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
             createdBy: (user as any)?.id ?? null,
@@ -1611,6 +1633,13 @@ export const saleService = {
           const saleRow = await this.getSaleById(saleId).catch(() => null);
           const invoiceNo = (saleRow as any)?.invoice_no ?? (saleRow as any)?.invoiceNo ?? saleId?.slice(0, 8) ?? 'N/A';
           const { data: { user } } = await supabase.auth.getUser();
+          tracePaymentEditFlow('saleService.updatePayment.post_account_adjust', {
+            paymentId,
+            saleId,
+            oldAccountId,
+            newAccountId,
+            amount: newAmount,
+          });
           await postPaymentAccountAdjustment({
             context: 'sale',
             companyId,
@@ -1643,6 +1672,7 @@ export const saleService = {
           console.debug('[SALE SERVICE] updatePayment: rebuildManualReceiptAllocations', { paymentId, refType });
         }
         try {
+          tracePaymentEditFlow('saleService.updatePayment.rebuild_manual_receipt_allocations', { paymentId, saleId });
           await this.rebuildManualReceiptAllocations(paymentId);
         } catch (fifoErr: any) {
           console.warn(
@@ -1768,6 +1798,7 @@ export const saleService = {
       attachments,
       created_at,
       updated_at,
+      voided_at,
       received_by,
       account:accounts(id, name)
     `;
@@ -1792,6 +1823,7 @@ export const saleService = {
           notes,
           created_at,
           updated_at,
+          voided_at,
           received_by,
           account:accounts(id, name)
         `)
@@ -1820,6 +1852,7 @@ export const saleService = {
         });
       }
       for (const p of data as any[]) {
+        if (p.voided_at) continue;
         let att = p.attachments;
         if (typeof att === 'string' && att) {
           try {
@@ -1857,12 +1890,13 @@ export const saleService = {
         const { data: parents } = await supabase
           .from('payments')
           .select(
-            `id, payment_date, reference_number, amount, payment_method, payment_account_id, notes, attachments, account:accounts(id, name)`
+            `id, payment_date, reference_number, amount, payment_method, payment_account_id, notes, attachments, voided_at, created_at, updated_at, account:accounts(id, name)`
           )
           .in('id', payIds);
         const parentById = new Map((parents || []).map((p: any) => [p.id, p]));
         for (const a of allocs as any[]) {
           const p = parentById.get(a.payment_id);
+          if (!p || (p as any).voided_at) continue;
           const ord = Number(a.allocation_order) || 0;
           allocRows.push({
             id: `alloc:${a.id}`,

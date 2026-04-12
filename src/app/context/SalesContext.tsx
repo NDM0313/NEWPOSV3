@@ -1789,10 +1789,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               }
               
               // Phase 3: Only touch payment when paid or account actually changed (document-only edit must not repost payment)
-              const existingSum = existingPayments.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
-              const paymentUnchanged = existingPayments.length === 1 &&
+              const normPayAcct = (u: string | null | undefined) =>
+                u && String(u).trim() ? String(u).replace(/-/g, '').toLowerCase() : '';
+              const payAcctSame =
+                normPayAcct(existingPayments[0].payment_account_id) === normPayAcct(paymentAccountId) ||
+                !existingPayments[0].payment_account_id;
+              const paymentUnchanged =
+                existingPayments.length === 1 &&
                 Math.round((paidAmount - (Number(existingPayments[0].amount) || 0)) * 100) === 0 &&
-                (existingPayments[0].payment_account_id === paymentAccountId || !existingPayments[0].payment_account_id);
+                payAcctSame;
 
               if (existingPayments.length === 0 && paidAmount > 0) {
                 await saleService.recordPayment(
@@ -1807,6 +1812,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 );
                 console.log('[SALES CONTEXT] ✅ Payment record created in payments table');
               } else if (existingPayments.length === 1 && !paymentUnchanged) {
+                const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+                tracePaymentEditFlow('SalesContext.sync_sale_payment.updatePayment', {
+                  paymentId: existingPayments[0].id,
+                  saleId: id,
+                  amount: paidAmount,
+                  accountId: paymentAccountId,
+                });
                 await saleService.updatePayment(
                   existingPayments[0].id,
                   id,

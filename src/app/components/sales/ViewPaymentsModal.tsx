@@ -174,10 +174,13 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
     window.addEventListener('accountingEntriesChanged', bump);
     window.addEventListener('paymentAdded', bump);
     window.addEventListener('rentalPaymentsChanged', bump);
+    /** GL reversal / composite void clears allocations — same as purchase path filtering `voided_at`. */
+    window.addEventListener('ledgerUpdated', bump);
     return () => {
       window.removeEventListener('accountingEntriesChanged', bump);
       window.removeEventListener('paymentAdded', bump);
       window.removeEventListener('rentalPaymentsChanged', bump);
+      window.removeEventListener('ledgerUpdated', bump);
     };
   }, [isOpen]);
 
@@ -291,8 +294,9 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
   if (!isOpen || !invoice) return null;
 
   // Use sum of actual payment records as Paid when loaded (fixes mismatch with Payment History)
+  /** Active (non-voided) rows only — matches `getSalePayments` / purchase filter. */
   const sumPayments = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const displayedPaid = !loadingPayments && payments.length > 0 ? sumPayments : invoice.paid;
+  const displayedPaid = !loadingPayments ? sumPayments : invoice.paid;
   const displayedDue = Math.max(0, invoice.total - displayedPaid);
 
   const statusConfig = getPaymentStatusConfig(invoice.paymentStatus) ?? DEFAULT_PAYMENT_CONFIG;

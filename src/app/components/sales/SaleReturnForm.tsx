@@ -88,10 +88,42 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
   const [restockingFee, setRestockingFee] = useState(0);
   const [manualAdjustment, setManualAdjustment] = useState(0);
   const [refundMethod, setRefundMethod] = useState<'cash' | 'bank' | 'adjust'>('cash');
-  
+  const [selectedRefundAccountId, setSelectedRefundAccountId] = useState<string>('');
+
   // Settlement dialog state
   const [showSettlementDialog, setShowSettlementDialog] = useState(false);
   const [pendingReturnData, setPendingReturnData] = useState<CreateSaleReturnData | null>(null);
+
+  // Refund accounts: cash or bank accounts filtered from accounting context
+  const refundAccounts = useMemo(() => {
+    if (refundMethod !== 'cash' && refundMethod !== 'bank') return [];
+    const isCash = refundMethod === 'cash';
+    const isBank = refundMethod === 'bank';
+    return (accounting.accounts || []).filter((a: any) => {
+      const typeNorm = String(a.type || '').toLowerCase().trim();
+      const codeStr = String(a.code || '');
+      const nameNorm = String(a.name || '').toLowerCase();
+      if (isCash) return typeNorm === 'cash' || codeStr === '1000' || nameNorm.includes('cash');
+      if (isBank) return typeNorm === 'bank' || codeStr === '1010' || nameNorm.includes('bank');
+      return false;
+    });
+  }, [refundMethod, accounting.accounts]);
+
+  // Auto-select first available account when refund method changes
+  useEffect(() => {
+    if (refundMethod === 'adjust') {
+      setSelectedRefundAccountId('');
+      return;
+    }
+    if (refundAccounts.length > 0) {
+      setSelectedRefundAccountId((prev) => {
+        const stillValid = refundAccounts.some((a: any) => a.id === prev);
+        return stillValid ? prev : refundAccounts[0].id;
+      });
+    } else {
+      setSelectedRefundAccountId('');
+    }
+  }, [refundMethod, refundAccounts]);
 
   // Return Packing dialog: single source of truth for return qty when packing enabled
   const [packingModalOpen, setPackingModalOpen] = useState(false);
@@ -227,14 +259,6 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
     loadData();
   }, [companyId, saleId, returnId, onClose]);
 
-  // Calculate totals when return quantities change
-  useEffect(() => {
-    setReturnItems(items => items.map(item => ({
-      ...item,
-      total: item.return_quantity * item.unit_price,
-    })));
-  }, []);
-
   const handleQuantityChange = (index: number, quantity: number) => {
     const item = returnItems[index];
     // When packing is enabled and item has packing_details, qty is controlled ONLY by Return Packing dialog
@@ -333,6 +357,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
               total_meters: Math.round(originalMeters * returnRatio * 100) / 100,
             };
           }
+          const lineTotal = Math.round(item.return_quantity * item.unit_price * 100) / 100;
           return {
             sale_item_id: item.sale_item_id,
             product_id: item.product_id,
@@ -342,7 +367,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
             quantity: item.return_quantity,
             unit: item.unit,
             unit_price: item.unit_price,
-            total: item.total,
+            total: lineTotal,
             packing_type: item.packing_type,
             packing_quantity: item.packing_quantity && item.original_quantity > 0
               ? (item.packing_quantity * item.return_quantity / item.original_quantity)
@@ -419,44 +444,30 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
 
       // Finalize the return (creates stock movements and accounting)
       await saleReturnService.finalizeSaleReturn(saleReturn.id!, companyId, branchId, user?.id);
-      
-      // Create accounting reversal entry
-      // Determine credit account based on refund method
-      let creditAccount = 'Accounts Receivable';
-      if (refundMethod === 'cash') {
-        creditAccount = 'Cash'; // Cash refund
-      } else if (refundMethod === 'bank') {
-        creditAccount = 'Bank'; // Bank refund
-      } else if (refundMethod === 'adjust') {
-        creditAccount = 'Accounts Receivable'; // Adjust in customer account
-      }
 
+      const refreshedReturn = await saleReturnService.getSaleReturnById(saleReturn.id!, companyId);
+      const settlementAmount = Math.max(0, Number(refreshedReturn.total) || 0);
+      
       try {
-        const reversalSuccess = await accounting.createEntry({
-          source: 'Sale Return',
-          referenceNo: saleReturn.return_no || `RET-${saleReturn.id}`,
-          debitAccount: 'Sales Revenue', // Reduces revenue
-          creditAccount: creditAccount, // Based on refund method
-          amount: total,
-          description: `Sale Return: ${saleReturn.return_no || saleReturn.id} - Original: ${originalSale.invoice_no} - ${originalSale.customer_name}${discountAmount > 0 ? ` (Discount: ${formatCurrency(discountAmount)})` : ''}${restockingFee > 0 ? ` (Restocking Fee: ${formatCurrency(restockingFee)})` : ''}${manualAdjustment !== 0 ? ` (Adjustment: ${formatCurrency(manualAdjustment)})` : ''} - Settlement: ${refundMethod === 'cash' ? 'Cash Refund' : refundMethod === 'bank' ? 'Bank Refund' : 'Adjust in Customer Account'}`,
-          module: 'sales',
-          metadata: {
-            customerId: originalSale.customer_id,
-            customerName: originalSale.customer_name,
-            saleId: saleReturn.original_sale_id,
-            invoiceId: originalSale.invoice_no,
-            refundMethod: refundMethod,
-            discountAmount: discountAmount,
-            restockingFee: restockingFee,
-            manualAdjustment: manualAdjustment,
-          },
+        const desc = `Sale Return: ${saleReturn.return_no || saleReturn.id} - Original: ${originalSale.invoice_no} - ${originalSale.customer_name}${discountAmount > 0 ? ` (Discount: ${formatCurrency(discountAmount)})` : ''}${restockingFee > 0 ? ` (Restocking Fee: ${formatCurrency(restockingFee)})` : ''}${manualAdjustment !== 0 ? ` (Adjustment: ${formatCurrency(manualAdjustment)})` : ''} - Settlement: ${refundMethod === 'cash' ? 'Cash Refund' : refundMethod === 'bank' ? 'Bank Refund' : 'Adjust in Customer Account'}`;
+        const reversalSuccess = await accounting.recordSaleReturn({
+          saleReturnId: saleReturn.id!,
+          returnNo: saleReturn.return_no || `RET-${saleReturn.id}`,
+          customerName: originalSale.customer_name || 'Customer',
+          customerId: originalSale.customer_id || undefined,
+          amount: settlementAmount,
+          originalSaleId: saleReturn.original_sale_id || undefined,
+          refundMethod,
+          refundAccountId: (refundMethod === 'cash' || refundMethod === 'bank') ? selectedRefundAccountId || null : null,
+          description: desc,
+          postingDate: pendingReturnData.return_date,
         });
 
         if (!reversalSuccess) {
           console.warn('[SALE RETURN] Accounting reversal may have failed, but stock movements were created');
           toast.warning('Sale return finalized, but accounting entry may have failed. Please check manually.');
         } else {
-          console.log('[SALE RETURN] ✅ Accounting reversal entry created');
+          console.log('[SALE RETURN] ✅ Accounting reversal entry created (party AR when adjusting)');
         }
       } catch (accountingError: any) {
         console.error('[SALE RETURN] Accounting reversal error (non-blocking):', accountingError);
@@ -886,6 +897,33 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
               </div>
             </div>
           </div>
+          {(refundMethod === 'cash' || refundMethod === 'bank') && (
+            <div className="px-1 pt-3">
+              <label className="block text-xs text-gray-400 mb-1.5">
+                Select Account <span className="text-red-400">*</span>
+              </label>
+              <select
+                value={selectedRefundAccountId}
+                onChange={(e) => setSelectedRefundAccountId(e.target.value)}
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+              >
+                <option value="">
+                  {refundMethod === 'cash' ? 'Select Cash Account' : 'Select Bank Account'}
+                </option>
+                {refundAccounts.map((account: any) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+              {selectedRefundAccountId === '' && (
+                <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                  <AlertCircle size={11} />
+                  Please select an account to proceed
+                </p>
+              )}
+            </div>
+          )}
           <DialogFooter className="mt-6 border-t border-gray-800 pt-4">
             <Button
               variant="outline"
@@ -900,7 +938,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
             </Button>
             <Button
               onClick={handleSettlementConfirm}
-              disabled={saving}
+              disabled={saving || ((refundMethod === 'cash' || refundMethod === 'bank') && !selectedRefundAccountId)}
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               {saving ? (

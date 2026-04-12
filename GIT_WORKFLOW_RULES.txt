@@ -54,7 +54,7 @@ git commit -m "Bug fix: Purchase service FK issue"
 
 On current machine:
 git add .
-git commit -m "coa fix 06 osx "
+git commit -m "claude coa "
 git push origin main
 
 On new machine:

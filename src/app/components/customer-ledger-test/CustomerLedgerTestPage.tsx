@@ -176,7 +176,9 @@ export const CustomerLedgerTestPage: React.FC = () => {
                 </div>
                 Customer Ledger
               </h1>
-              <p className="text-sm text-slate-500 mt-1 ml-13">Manage and track customer accounts</p>
+              <p className="text-sm text-amber-800/90 mt-1 ml-13">
+                Legacy test harness — not canonical. Use AR/AP Truth Lab or operational vs party GL flows for decisions.
+              </p>
             </div>
             
             <div className="flex items-center gap-3">

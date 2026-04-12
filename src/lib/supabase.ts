@@ -41,6 +41,27 @@ if (!supabaseUrl || !isValidSupabaseUrl || !supabaseAnonKey) {
   throw new Error(msg);
 }
 
+// Self-hosted stack: if the SPA was built without a real project anon key, JWT iss stays "supabase-demo"
+// → realtime WebSocket and /auth/v1/token refresh often fail with 502/HTML while REST may still work.
+if (typeof window !== 'undefined' && /dincouture\.pk$/i.test(window.location.hostname)) {
+  try {
+    const parts = supabaseAnonKey.split('.');
+    if (parts.length === 3) {
+      const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const pad = (4 - (b64.length % 4)) % 4;
+      const json = atob(b64 + '='.repeat(pad));
+      const payload = JSON.parse(json) as { iss?: string };
+      if (payload?.iss === 'supabase-demo') {
+        console.warn(
+          '[Supabase] VITE_SUPABASE_ANON_KEY decodes to iss=supabase-demo. Rebuild the ERP image with your project anon JWT; otherwise Realtime and auth refresh will fail on erp.dincouture.pk.'
+        );
+      }
+    }
+  } catch {
+    /* ignore decode errors */
+  }
+}
+
 // ============================================
 // SAFE STORAGE (avoids SecurityError when localStorage is denied, e.g. iframe/strict privacy)
 // ============================================

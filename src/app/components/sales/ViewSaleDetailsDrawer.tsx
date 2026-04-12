@@ -936,7 +936,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                       <ul className="space-y-2">
                         {saleReturns.map((ret: any) => {
                           const retStatus = (ret.status || '').toString().toLowerCase();
-                          const statusLabel = retStatus === 'void' ? 'Voided' : retStatus === 'final' ? 'Final' : 'Draft';
+                          const statusLabel =
+                            retStatus === 'void' ? 'VOID / LOCKED' : retStatus === 'final' ? 'FINAL / LOCKED' : 'Draft';
                           const statusClass = retStatus === 'void' ? 'bg-gray-500/20 text-gray-400 border-gray-500/30' : retStatus === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
                           return (
                             <li key={ret.id} className="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">

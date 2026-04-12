@@ -2633,7 +2633,12 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                             </div>
                                             ) : (
                                                 <>
-                                                    {filteredCustomers.map((cust) => (
+                                                    {filteredCustomers.map((cust) => {
+                                                        const cidStr =
+                                                            customerId != null && customerId !== ''
+                                                                ? String(customerId)
+                                                                : '';
+                                                        return (
                                                         <button
                                                             key={cust.id}
                                                             type="button"
@@ -2644,11 +2649,13 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                             }}
                                                             className={cn(
                                                                 "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center justify-between",
-                                                                // 🔒 CRITICAL FIX: Use normalized comparison for UUID matching
-                                                                (customerId === cust.id.toString() || 
-                                                                 customerId === String(cust.id) ||
-                                                                 (customerId && cust.id && 
-                                                                  customerId.replace(/-/g, '').toLowerCase() === cust.id.toString().replace(/-/g, '').toLowerCase()))
+                                                                // 🔒 CRITICAL FIX: Use normalized comparison for UUID matching (customerId may be non-string from API)
+                                                                (cidStr === cust.id.toString() ||
+                                                                 cidStr === String(cust.id) ||
+                                                                 (cidStr &&
+                                                                    cust.id &&
+                                                                    cidStr.replace(/-/g, '').toLowerCase() ===
+                                                                        cust.id.toString().replace(/-/g, '').toLowerCase()))
                                                                     ? "bg-gray-800 text-white"
                                                                     : "text-gray-400 hover:bg-gray-800 hover:text-white"
                                                             )}
@@ -2663,7 +2670,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                                 {formatDueBalanceCompact(cust.dueBalance)}
                                                             </span>
                                                         </button>
-                                                    ))}
+                                                    );
+                                                    })}
                                                 </>
                                             )}
                                             </div>

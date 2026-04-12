@@ -24,7 +24,7 @@ const GROUP_ROWS: SeedDef[] = [
   { code: '1060', name: 'Bank Accounts', type: 'asset', parentCode: null, is_group: true },
   { code: '1070', name: 'Mobile Wallets', type: 'asset', parentCode: null, is_group: true },
   { code: '1080', name: 'Worker Advances', type: 'asset', parentCode: null, is_group: true },
-  { code: '1090', name: 'Inventory', type: 'asset', parentCode: null, is_group: true },
+  { code: '1090', name: 'Inventory (group — post to 1200)', type: 'asset', parentCode: null, is_group: true },
   { code: '2090', name: 'Trade & Other Payables', type: 'liability', parentCode: null, is_group: true },
   { code: '3090', name: 'Equity', type: 'equity', parentCode: null, is_group: true },
   { code: '4050', name: 'Revenue', type: 'revenue', parentCode: null, is_group: true },

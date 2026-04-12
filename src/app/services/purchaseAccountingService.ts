@@ -10,6 +10,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { pickCanonicalInventoryAssetAccount } from '@/app/lib/inventoryAccountRouting';
 import { canPostAccountingForPurchaseStatus } from '@/app/lib/postingStatusGate';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 import { resolvePayablePostingAccountId } from './partySubledgerAccountService';
@@ -130,6 +131,30 @@ async function assertPurchaseEligibleForDocumentJournal(purchaseId: string, poNo
   return true;
 }
 
+/** Posting inventory asset: canonical leaf **1200** (never chart group **1090**). */
+async function resolveInventoryGlAccountIdForPurchase(companyId: string): Promise<string | null> {
+  const { data: invRows, error } = await supabase
+    .from('accounts')
+    .select('id, code, type, name, is_group, is_active')
+    .eq('company_id', companyId)
+    .or('code.eq.1200,code.eq.1500,type.eq.inventory');
+  if (error) {
+    console.warn('[purchaseAccountingService] resolveInventoryGlAccountId:', error.message);
+    return null;
+  }
+  const rows = (invRows || []).map(
+    (a: { id: string; code?: string; type?: string; name?: string; is_group?: boolean; is_active?: boolean }) => ({
+      id: a.id,
+      code: a.code,
+      type: a.type,
+      name: a.name,
+      is_group: a.is_group === true,
+      isActive: a.is_active !== false,
+    })
+  );
+  return pickCanonicalInventoryAssetAccount(rows)?.id ?? null;
+}
+
 export async function createPurchaseJournalEntry(params: {
   purchaseId: string;
   companyId: string;
@@ -169,22 +194,12 @@ export async function createPurchaseJournalEntry(params: {
   const { data: purRow } = await supabase.from('purchases').select('supplier_id').eq('id', purchaseId).maybeSingle();
   const supplierContactId = (purRow as { supplier_id?: string | null } | null)?.supplier_id ?? null;
 
-  let inventoryAccountId: string | null = null;
+  let inventoryAccountId: string | null = await resolveInventoryGlAccountIdForPurchase(companyId);
   let apAccountId: string | null = null;
   let discountAccountId: string | null = null;
-  const { data: invRows } = await supabase
-    .from('accounts')
-    .select('id, code')
-    .eq('company_id', companyId)
-    .eq('is_active', true)
-    .or('code.eq.1200,code.eq.1500,name.ilike.%Inventory%,name.ilike.%Stock%');
-  const invList = (invRows || []) as { id: string; code: string }[];
-  const inv1200 = invList.find((a) => a.code === '1200');
-  const inv1500 = invList.find((a) => a.code === '1500');
-  inventoryAccountId = (inv1200 ?? inv1500 ?? invList[0])?.id ?? null;
   if (!inventoryAccountId) {
-    const { data: asset } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('type', 'asset').limit(1);
-    inventoryAccountId = asset?.[0]?.id ?? null;
+    console.warn('[purchaseAccountingService] No canonical inventory (1200) for company', companyId);
+    return null;
   }
   const { data: apRows } = await supabase
     .from('accounts')
@@ -312,19 +327,9 @@ export async function postPurchaseEditAdjustments(params: {
   const supplierContactId = (purSupplier as { supplier_id?: string | null } | null)?.supplier_id ?? null;
 
   // Phase 3: Payment isolation – only document deltas (inventory, AP, discount); never touch payment_id JEs.
-  // Resolve accounts once. Phase 2: Inventory canonical = 1200; fallback 1500 then name.
-  let inventoryAccountId: string | null = null;
+  let inventoryAccountId: string | null = await resolveInventoryGlAccountIdForPurchase(companyId);
   let apAccountId: string | null = null;
   let discountAccountId: string | null = null;
-  const { data: invRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('code.eq.1200,code.eq.1500,name.ilike.%Inventory%,name.ilike.%Stock%');
-  const invList = (invRows || []) as { id: string; code: string }[];
-  const inv1200 = invList.find((a) => a.code === '1200');
-  const inv1500 = invList.find((a) => a.code === '1500');
-  inventoryAccountId = (inv1200 ?? inv1500 ?? invList[0])?.id ?? null;
-  if (!inventoryAccountId) {
-    const { data: asset } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('type', 'asset').limit(1);
-    inventoryAccountId = asset?.[0]?.id ?? null;
-  }
   const { data: apRows } = await supabase.from('accounts').select('id, code').eq('company_id', companyId).eq('is_active', true).or('name.ilike.%Accounts Payable%,code.eq.2000');
   const apList = (apRows || []) as { id: string; code: string }[];
   apAccountId = apList.find((a) => a.code === '2000')?.id ?? apList[0]?.id ?? null;

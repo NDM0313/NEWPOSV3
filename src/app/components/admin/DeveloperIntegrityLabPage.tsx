@@ -73,7 +73,7 @@ import { PartyTieOutRepairPanel } from '@/app/components/admin/PartyTieOutRepair
 import { runFullAccountingAudit, type FullAccountingAuditResult } from '@/app/services/fullAccountingAuditService';
 import { defaultAccountsService } from '@/app/services/defaultAccountsService';
 import {
-  previewDuplicatePrimaryPaymentJournals,
+  previewAllJournalPostingDuplicates,
   runFullPostingRepair,
 } from '@/app/services/postingDuplicateRepairService';
 
@@ -261,12 +261,14 @@ export default function DeveloperIntegrityLabPage() {
     if (!companyId) return;
     setPostingPreviewLoading(true);
     try {
-      const p = await previewDuplicatePrimaryPaymentJournals(companyId);
-      setPostingRepairJson(JSON.stringify(p, null, 2));
+      const pack = await previewAllJournalPostingDuplicates(companyId);
+      setPostingRepairJson(JSON.stringify(pack, null, 2));
+      const n =
+        pack.primary.duplicateCount + pack.entryNo.duplicateCount + pack.fingerprint.duplicateCount;
       toast.success(
-        p.duplicateCount > 0
-          ? `Duplicate primary JEs: ${p.duplicateCount} row(s) / ${p.duplicatePrimaryGroups.length} payment(s)`
-          : 'No duplicate primary payment journals'
+        n > 0
+          ? `Duplicates — primary: ${pack.primary.duplicateCount}, same entry_no: ${pack.entryNo.duplicateCount}, same fingerprint: ${pack.fingerprint.duplicateCount}`
+          : 'No duplicate primary / entry_no / fingerprint journals'
       );
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Preview failed');
@@ -279,12 +281,20 @@ export default function DeveloperIntegrityLabPage() {
     if (!companyId) return;
     setPostingRepairLoading(true);
     try {
-      const r = await runFullPostingRepair(companyId, { voidDuplicates: true, dryRun: false });
+      const r = await runFullPostingRepair(companyId, {
+        voidDuplicates: true,
+        voidDuplicateEntryNos: true,
+        voidDuplicateFingerprints: true,
+        dryRun: false,
+      });
       setPostingRepairJson(JSON.stringify(r, null, 2));
       if (r.errors.length) toast.error(r.errors.join('; '));
-      else toast.success(
-        `Voided ${r.voidedJournalEntryIds.length} duplicate JE(s); payment-account sync +${r.sync.synced} (skipped dup=${r.sync.skippedDuplicates}, ambiguous=${r.sync.skippedAmbiguous})`
-      );
+      else {
+        const { voidedByCategory: c } = r;
+        toast.success(
+          `Voided ${r.voidedJournalEntryIds.length} JE(s) — primary:${c.duplicatePrimary.length} entry_no:${c.duplicateEntryNo.length} fp:${c.duplicateFingerprint.length}; sync +${r.sync.synced} (skipped dup=${r.sync.skippedDuplicates})`
+        );
+      }
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Repair failed');
     } finally {
@@ -1064,10 +1074,13 @@ export default function DeveloperIntegrityLabPage() {
         <TabsContent value="fix" className="space-y-3">
           <Card className="border-amber-900/40 bg-amber-950/20">
             <CardHeader className="py-3">
-              <CardTitle className="text-sm text-amber-200">Duplicate payment posting (global)</CardTitle>
+              <CardTitle className="text-sm text-amber-200">Journal duplicate repair (global)</CardTitle>
               <CardDescription className="text-xs text-amber-200/70">
-                Detects multiple active primary JEs per <code className="text-[10px]">payments.id</code>, voids extras (keeps
-                oldest), then runs fixed payment-account sync (purchase Dr AP / Cr bank was mis-detected before).
+                Scans active <code className="text-[10px]">journal_entries</code>: (1) multiple primary JEs per{' '}
+                <code className="text-[10px]">payment_id</code> excluding <code className="text-[10px]">payment_adjustment</code>, (2)
+                duplicate <code className="text-[10px]">entry_no</code> (e.g. JE-0039), (3) duplicate{' '}
+                <code className="text-[10px]">action_fingerprint</code>. Keeps oldest row per group, voids the rest, then runs
+                payment-account sync.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
