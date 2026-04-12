@@ -129,6 +129,65 @@ export const businessService = {
    * Link current auth user to existing business by email (for "Create your business" fix).
    * Call when user is signed in but has no companyId — finds company by auth user email and creates/updates public.users row.
    */
+  /**
+   * Retry business creation for an already-signed-in user whose initial create_business_transaction failed.
+   * Uses the current auth session — no signUp/signIn needed.
+   */
+  async retryCreateBusiness(data: {
+    businessName: string;
+    ownerName?: string;
+    currency?: string;
+    branchName?: string;
+    branchCode?: string;
+    phone?: string;
+    address?: string;
+    country?: string;
+    timezone?: string;
+    businessType?: string;
+    modules?: string[];
+  }): Promise<CreateBusinessResponse> {
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData?.user?.id) {
+        return { success: false, error: 'Not signed in. Please sign out and create a business from the login page.' };
+      }
+      const user = authData.user;
+      const email = user.email || '';
+      const ownerName = data.ownerName || user.user_metadata?.full_name || email;
+
+      const { data: txResult, error: txError } = await supabase.rpc('create_business_transaction', {
+        p_business_name: data.businessName,
+        p_owner_name: ownerName,
+        p_email: email,
+        p_password: '',
+        p_user_id: user.id,
+        p_currency: data.currency || 'PKR',
+        p_fiscal_year_start: null,
+        p_branch_name: data.branchName || 'Main Branch',
+        p_branch_code: data.branchCode || 'HQ',
+        p_phone: data.phone || null,
+        p_address: data.address || null,
+        p_country: data.country || null,
+        p_timezone: data.timezone || null,
+        p_business_type: data.businessType || null,
+        p_modules: data.modules && data.modules.length > 0 ? data.modules : null,
+      });
+
+      if (txError) {
+        return { success: false, error: txError.message || 'Failed to create business' };
+      }
+
+      const result = txResult as { success?: boolean; userId?: string; companyId?: string; branchId?: string; error?: string } | null;
+      if (!result || result.success !== true) {
+        return { success: false, error: (result as any)?.error || 'Failed to create business' };
+      }
+
+      return { success: true, userId: result.userId, companyId: result.companyId, branchId: result.branchId };
+    } catch (error: any) {
+      return { success: false, error: error?.message || 'Unknown error' };
+    }
+  },
+
   async linkAuthUserToBusiness(): Promise<{ success: boolean; error?: string; email_looked_up?: string }> {
     try {
       const { data, error } = await supabase.rpc('link_auth_user_to_business');

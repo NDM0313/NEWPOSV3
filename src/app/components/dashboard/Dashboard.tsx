@@ -24,6 +24,11 @@ const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#0
 const CreateYourBusinessCard: React.FC<{ signOut: () => Promise<void> }> = ({ signOut }) => {
   const [fixing, setFixing] = useState(false);
   const [fixError, setFixError] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [businessName, setBusinessName] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const handleFixAccount = async () => {
     setFixError(null);
     setFixing(true);
@@ -40,27 +45,100 @@ const CreateYourBusinessCard: React.FC<{ signOut: () => Promise<void> }> = ({ si
       setFixing(false);
     }
   };
+
+  const handleCreateBusiness = async () => {
+    if (!businessName.trim()) {
+      setCreateError('Business name is required');
+      return;
+    }
+    setCreateError(null);
+    setCreating(true);
+    try {
+      const result = await businessService.retryCreateBusiness({
+        businessName: businessName.trim(),
+      });
+      if (result.success) {
+        window.location.reload();
+        return;
+      }
+      setCreateError(result.error || 'Failed to create business.');
+    } catch {
+      setCreateError('Something went wrong. Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  if (showCreateForm) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="max-w-md w-full p-8 rounded-xl bg-[#1F2937] border border-[#374151]">
+          <h2 className="text-xl font-bold text-white mb-2 text-center">Create your business</h2>
+          <p className="text-[#9CA3AF] text-sm mb-6 text-center">Enter your business name to get started. You can update all settings later.</p>
+          {createError && <p className="text-red-400 text-sm mb-3 text-center">{createError}</p>}
+          <input
+            type="text"
+            placeholder="Business name"
+            value={businessName}
+            onChange={(e) => setBusinessName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleCreateBusiness()}
+            className="w-full px-4 py-2.5 rounded-lg bg-[#111827] border border-[#374151] text-white placeholder-[#6B7280] focus:outline-none focus:ring-2 focus:ring-[#3B82F6] mb-4"
+            autoFocus
+            disabled={creating}
+          />
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#10B981] text-white font-medium hover:bg-[#059669] disabled:opacity-50"
+              onClick={handleCreateBusiness}
+              disabled={creating || !businessName.trim()}
+            >
+              {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Create Business
+            </button>
+            <button
+              type="button"
+              className="w-full px-4 py-2 rounded-lg text-[#9CA3AF] hover:text-white text-sm"
+              onClick={() => { setShowCreateForm(false); setCreateError(null); }}
+              disabled={creating}
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-center min-h-[400px]">
       <div className="text-center max-w-md p-8 rounded-xl bg-[#1F2937] border border-[#374151]">
         <h2 className="text-xl font-bold text-white mb-2">Create your business</h2>
         <p className="text-[#9CA3AF] mb-6">
-          You’re signed in but don’t have a business yet. Sign out and use <strong className="text-white">Create New Business</strong> on the login page to get started.
+          You're signed in but don't have a business yet. Sign out and use <strong className="text-white">Create New Business</strong> on the login page to get started.
         </p>
         {fixError && <p className="text-red-400 text-sm mb-3">{fixError}</p>}
-        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+        <div className="flex flex-col gap-2">
           <button
             type="button"
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[#10B981] text-white hover:bg-[#059669] disabled:opacity-50"
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[#10B981] text-white hover:bg-[#059669] disabled:opacity-50"
+            onClick={() => setShowCreateForm(true)}
+            disabled={fixing}
+          >
+            Create New Business
+          </button>
+          <button
+            type="button"
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-[#374151] text-[#9CA3AF] hover:bg-[#4B5563] hover:text-white disabled:opacity-50"
             onClick={handleFixAccount}
             disabled={fixing}
           >
             {fixing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            I already created a business – fix my account
+            I already created a business - fix my account
           </button>
           <button
             type="button"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#3B82F6] text-white hover:bg-[#2563EB]"
+            className="w-full inline-flex items-center gap-2 justify-center px-4 py-2 rounded-lg text-[#6B7280] hover:text-white text-sm"
             onClick={async () => {
               await signOut();
               window.location.href = '/';
