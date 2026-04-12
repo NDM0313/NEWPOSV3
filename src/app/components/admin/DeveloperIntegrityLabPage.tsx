@@ -158,7 +158,7 @@ export default function DeveloperIntegrityLabPage() {
   const [coaSeedLoading, setCoaSeedLoading] = useState(false);
 
   const [obSyncLoading, setObSyncLoading] = useState(false);
-  const [obSyncResult, setObSyncResult] = useState<{ totalContacts: number; synced: number; errors: string[] } | null>(null);
+  const [obSyncResult, setObSyncResult] = useState<{ totalContacts: number; synced: number; subledgersCreated: number; inventoryMovementsSynced: number; errors: string[] } | null>(null);
 
   const [postingPreviewLoading, setPostingPreviewLoading] = useState(false);
   const [postingRepairLoading, setPostingRepairLoading] = useState(false);
@@ -1322,8 +1322,8 @@ export default function DeveloperIntegrityLabPage() {
                 Contact Opening Balance GL Sync
               </CardTitle>
               <CardDescription>
-                Posts or reconciles journal entries for all contacts with opening balances. Creates AR entries for
-                customers, AP entries for suppliers, and worker payable/advance entries. Idempotent — safe to re-run.
+                Posts/reconciles journal entries for all contacts with opening balances, creates AR/AP sub-ledger
+                accounts, and syncs inventory opening stock to GL. Idempotent — safe to re-run.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1352,11 +1352,19 @@ export default function DeveloperIntegrityLabPage() {
                 <div className="rounded-lg border border-gray-800 bg-gray-950/50 p-4 space-y-2">
                   <div className="flex flex-wrap items-center gap-3 text-sm">
                     <span className="text-gray-400">
-                      Contacts with balances: <strong className="text-white">{obSyncResult.totalContacts}</strong>
+                      Contacts: <strong className="text-white">{obSyncResult.totalContacts}</strong>
                     </span>
                     <span className="text-gray-600">·</span>
                     <span className="text-gray-400">
-                      Synced: <strong className="text-emerald-400">{obSyncResult.synced}</strong>
+                      GL synced: <strong className="text-emerald-400">{obSyncResult.synced}</strong>
+                    </span>
+                    <span className="text-gray-600">·</span>
+                    <span className="text-gray-400">
+                      Sub-ledgers: <strong className="text-blue-400">{obSyncResult.subledgersCreated}</strong>
+                    </span>
+                    <span className="text-gray-600">·</span>
+                    <span className="text-gray-400">
+                      Inventory: <strong className="text-amber-400">{obSyncResult.inventoryMovementsSynced}</strong>
                     </span>
                     {obSyncResult.errors.length > 0 && (
                       <>

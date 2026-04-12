@@ -7,22 +7,27 @@ import { supabase } from '@/lib/supabase';
 import { accountHelperService } from '@/app/services/accountHelperService';
 import { accountService } from '@/app/services/accountService';
 
-function slugFromContactId(contactId: string): string {
-  return contactId.replace(/-/g, '').slice(0, 12).toUpperCase();
+function slugFromContactCode(contactCode: string | null | undefined, contactId: string): string {
+  if (contactCode) {
+    // CUS-0004 → CUS0004, SUP-0001 → SUP0001
+    return contactCode.replace(/-/g, '').toUpperCase();
+  }
+  // Fallback: short UUID slug (6 chars)
+  return contactId.replace(/-/g, '').slice(0, 6).toUpperCase();
 }
 
 async function getContactRow(
   companyId: string,
   contactId: string
-): Promise<{ id: string; name: string; type: string } | null> {
+): Promise<{ id: string; name: string; type: string; code?: string | null } | null> {
   const { data, error } = await supabase
     .from('contacts')
-    .select('id, name, type')
+    .select('id, name, type, code')
     .eq('company_id', companyId)
     .eq('id', contactId)
     .maybeSingle();
   if (error || !data) return null;
-  return data as { id: string; name: string; type: string };
+  return data as { id: string; name: string; type: string; code?: string | null };
 }
 
 /** Find existing party subledger: same contact + parent control (AR vs AP both-type contacts need two rows). */
@@ -59,7 +64,7 @@ export async function ensureReceivableSubaccountForContact(companyId: string, co
   const t = String(contact.type || '').toLowerCase();
   if (!t.includes('customer') && t !== 'both') return null;
 
-  const slug = slugFromContactId(contactId);
+  const slug = slugFromContactCode(contact.code, contactId);
   const code = `AR-${slug}`;
   const name = `Receivable — ${contact.name}`.slice(0, 250);
 
@@ -123,7 +128,7 @@ export async function ensurePayableSubaccountForContact(companyId: string, conta
   const t = String(contact.type || '').toLowerCase();
   if (!t.includes('supplier') && t !== 'both') return null;
 
-  const slug = slugFromContactId(contactId);
+  const slug = slugFromContactCode(contact.code, contactId);
   const code = `AP-${slug}`;
   const name = `Payable — ${contact.name}`.slice(0, 250);
 

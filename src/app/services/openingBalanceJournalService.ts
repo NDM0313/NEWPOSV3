@@ -627,10 +627,13 @@ export const openingBalanceJournalService = {
   async syncAllContactOpeningBalances(companyId: string): Promise<{
     totalContacts: number;
     synced: number;
+    subledgersCreated: number;
+    inventoryMovementsSynced: number;
     errors: string[];
   }> {
     await defaultAccountsService.ensureDefaultAccounts(companyId);
 
+    // --- 1. Sync contact opening balance journal entries
     const { data: rows, error } = await supabase
       .from('contacts')
       .select('id, name, type, opening_balance, supplier_opening_balance')
@@ -639,6 +642,7 @@ export const openingBalanceJournalService = {
     if (error) throw error;
 
     let synced = 0;
+    let subledgersCreated = 0;
     const errors: string[] = [];
 
     for (const row of rows || []) {
@@ -650,6 +654,44 @@ export const openingBalanceJournalService = {
       }
     }
 
-    return { totalContacts: (rows || []).length, synced, errors };
+    // --- 2. Ensure party sub-ledger accounts exist for all contacts
+    try {
+      const { data: allContacts } = await supabase
+        .from('contacts')
+        .select('id, type')
+        .eq('company_id', companyId)
+        .in('type', ['customer', 'supplier', 'both']);
+      const { ensurePartySubledgersForContact } = await import('./partySubledgerAccountService');
+      for (const c of allContacts || []) {
+        try {
+          await ensurePartySubledgersForContact(companyId, (c as { id: string }).id, (c as { type: string }).type);
+          subledgersCreated++;
+        } catch { /* already exists or column missing — skip */ }
+      }
+    } catch (e: any) {
+      errors.push(`Sub-ledger creation: ${e?.message || String(e)}`);
+    }
+
+    // --- 3. Sync inventory opening stock movements to GL
+    let inventoryMovementsSynced = 0;
+    try {
+      const { data: movements } = await supabase
+        .from('stock_movements')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('reference_type', 'opening_balance');
+      for (const m of movements || []) {
+        try {
+          await this.syncInventoryOpeningFromStockMovementId((m as { id: string }).id);
+          inventoryMovementsSynced++;
+        } catch (e: any) {
+          errors.push(`Inventory movement: ${e?.message || String(e)}`);
+        }
+      }
+    } catch (e: any) {
+      errors.push(`Inventory sync: ${e?.message || String(e)}`);
+    }
+
+    return { totalContacts: (rows || []).length, synced, subledgersCreated, inventoryMovementsSynced, errors };
   },
 };
