@@ -407,6 +407,21 @@ export const saleReturnService = {
       }
 
       if (originalItems.length > 0) {
+        // Pre-fetch IDs of all FINAL returns for this sale (exclude drafts).
+        // Drafts are abandoned attempts that didn't commit — they must not inflate alreadyReturned.
+        // This is consistent with getOriginalSaleItems which also filters by status='final'.
+        const { data: finalReturnsForSale } = await supabase
+          .from('sale_returns')
+          .select('id')
+          .eq('original_sale_id', saleReturn.original_sale_id)
+          .eq('company_id', companyId)
+          .eq('status', 'final');
+        const finalReturnIds: string[] = (finalReturnsForSale || []).map((r: any) => r.id);
+        // Sentinel for .in() when list is empty (avoids PostgREST syntax error with empty array)
+        const finalReturnIdsOrSentinel = finalReturnIds.length > 0
+          ? finalReturnIds
+          : ['00000000-0000-0000-0000-000000000000'];
+
         for (const returnItem of saleReturn.items) {
           const originalItem = originalItems.find(
             (oi: any) => oi.product_id === returnItem.product_id &&
@@ -421,7 +436,7 @@ export const saleReturnService = {
               .from('sale_return_items')
               .select('quantity')
               .eq('sale_item_id', returnItem.sale_item_id)
-              .neq('sale_return_id', returnId);
+              .in('sale_return_id', finalReturnIdsOrSentinel);
             alreadyReturned = existingReturns?.reduce((sum: number, r: any) => sum + Number(r.quantity), 0) || 0;
           } else {
             const { data: existingReturns } = await supabase
@@ -430,7 +445,7 @@ export const saleReturnService = {
               .eq('product_id', returnItem.product_id)
               .eq('variation_id', returnItem.variation_id || null)
               .is('sale_item_id', null)
-              .neq('sale_return_id', returnId);
+              .in('sale_return_id', finalReturnIdsOrSentinel);
             alreadyReturned = existingReturns?.reduce((sum: number, r: any) => sum + Number(r.quantity), 0) || 0;
           }
           const totalReturned = alreadyReturned + Number(returnItem.quantity);
@@ -666,12 +681,6 @@ export const saleReturnService = {
         .eq('sale_id', saleReturn.original_sale_id);
       if (salesItemsData?.length) {
         originalItems = salesItemsData;
-      } else {
-        const { data: saleItemsData } = await supabase
-          .from('sale_items')
-          .select('id, product_id, variation_id, quantity, total, unit_price, price')
-          .eq('sale_id', saleReturn.original_sale_id);
-        if (saleItemsData) originalItems = saleItemsData;
       }
     }
 

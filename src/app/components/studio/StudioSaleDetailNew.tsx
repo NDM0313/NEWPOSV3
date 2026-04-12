@@ -1658,12 +1658,8 @@ export const StudioSaleDetailNew = () => {
           .update(itemUpdatePayload)
           .eq('id', finalItemId);
         if (upErr) {
-          // Try legacy table name
-          const { error: upErr2 } = await supabase
-            .from('sale_items')
-            .update(itemUpdatePayload)
-            .eq('id', finalItemId);
-          if (upErr2) throw new Error(upErr2.message || 'Failed to update invoice item');
+          // P1-2b: legacy sale_items update path removed — if sales_items update fails, throw immediately
+          throw new Error(upErr.message || 'Failed to update invoice item');
         }
         // Recalc sale total: remove old price, add new price
         const { data: saleRow } = await supabase.from('sales').select('total, paid_amount').eq('id', saleDetail.id).single();
@@ -1689,24 +1685,23 @@ export const StudioSaleDetailNew = () => {
           .select('id')
           .single();
         if (insErr) {
+          // P1-2b: fallback uses sales_items (canonical) only — was: sale_items (legacy)
+          // Normalized payload: unit_price instead of price, no is_studio_product (column not in sales_items)
           const fallback: Record<string, unknown> = {
             sale_id: saleDetail.id,
             quantity: 1,
             product_id: product.id,
             product_name: product.name,
             sku: invoiceSku,
-            price: salePriceNum,
+            unit_price: salePriceNum,
             total: salePriceNum,
           };
           if (variationId) fallback.variation_id = variationId;
-          let { data: fbData, error: fbErr } = await supabase
-            .from('sale_items')
-            .insert({ ...fallback, is_studio_product: true })
+          const { data: fbData, error: fbErr } = await supabase
+            .from('sales_items')
+            .insert(fallback)
             .select('id')
             .single();
-          if (fbErr && (fbErr.code === '42703' || String(fbErr.message || '').includes('is_studio_product'))) {
-            ({ data: fbData, error: fbErr } = await supabase.from('sale_items').insert(fallback).select('id').single());
-          }
           if (fbErr) throw new Error(fbErr.message || 'Failed to add item to invoice');
           newItemId = (fbData as any)?.id ?? null;
         } else {

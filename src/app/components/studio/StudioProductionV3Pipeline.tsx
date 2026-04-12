@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Loader2, Package } from 'lucide-react';
+import { ChevronLeft, Loader2, Package, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { useNavigation } from '@/app/context/NavigationContext';
@@ -65,6 +65,18 @@ export const StudioProductionV3Pipeline = () => {
         <div>
           <h1 className="text-2xl font-bold text-white">Studio Production V3 Pipeline</h1>
           <p className="text-sm text-gray-400">Stages, workers, cost summary</p>
+        </div>
+      </div>
+
+      {/* P1-5 / Task 3: V3 accounting not yet implemented — warn users on entry */}
+      <div className="rounded-lg border border-amber-600/50 bg-amber-900/20 p-4 flex items-start gap-3">
+        <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+        <div className="text-sm">
+          <p className="font-semibold text-amber-300">Studio V3 — Read Only</p>
+          <p className="text-amber-200/80 mt-1">
+            Stage completion is currently disabled in V3 pending accounting integration.
+            To record production costs and generate invoices with GL entries, use <strong>Studio V1</strong>.
+          </p>
         </div>
       </div>
 

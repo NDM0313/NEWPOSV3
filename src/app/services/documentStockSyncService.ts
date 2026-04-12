@@ -33,13 +33,6 @@ async function fetchSaleLines(saleId: string): Promise<
     .from('sales_items')
     .select('product_id, variation_id, quantity, unit_price')
     .eq('sale_id', saleId);
-  if (!data?.length) {
-    const r2 = await supabase
-      .from('sale_items')
-      .select('product_id, variation_id, quantity, unit_price')
-      .eq('sale_id', saleId);
-    data = r2.data as typeof data;
-  }
   return (data || []).map((r: any) => ({
     product_id: String(r.product_id ?? ''),
     variation_id: r.variation_id ?? null,

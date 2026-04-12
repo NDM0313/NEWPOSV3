@@ -152,14 +152,6 @@ export const bulkInvoiceService = {
         .eq('sale_id', saleId)
         .order('id');
       if (salesItems?.length) saleItems = salesItems as any[];
-      else {
-        const { data: fallbackItems } = await supabase
-          .from('sale_items')
-          .select('product_id, product_name, sku, quantity, unit, unit_price, discount_amount, tax_amount, total')
-          .eq('sale_id', saleId)
-          .order('id');
-        if (fallbackItems?.length) saleItems = fallbackItems as any[];
-      }
 
       for (let i = 0; i < plItems.length; i++) {
         const pi = plItems[i] as { product_id?: string; product_name?: string; sku?: string; pieces: number; cartons: number };

@@ -1546,12 +1546,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             .eq('sale_id', id);
           if (!itemsErr && itemsFromSalesItems?.length) {
             currentItems = itemsFromSalesItems;
-          } else {
-            const { data: itemsFromSaleItems } = await sb
-              .from('sale_items')
-              .select('product_id, variation_id, quantity, unit_price, product_name')
-              .eq('sale_id', id);
-            if (itemsFromSaleItems?.length) currentItems = itemsFromSaleItems;
           }
           if (currentItems.length > 0) {
             const { data: { user: authUser } } = await sb.auth.getUser();

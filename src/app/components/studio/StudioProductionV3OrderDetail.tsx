@@ -17,6 +17,7 @@ import {
   FileText,
   Truck,
   Eye,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -286,6 +287,18 @@ export const StudioProductionV3OrderDetail = () => {
         </div>
       </div>
 
+      {/* P1-5 / Task 3: Studio V3 accounting is not yet implemented. Block is intentional. */}
+      <div className="rounded-lg border border-amber-600/50 bg-amber-900/20 p-4 flex items-start gap-3">
+        <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+        <div className="text-sm">
+          <p className="font-semibold text-amber-300">Studio V3 — Stage Completion Blocked</p>
+          <p className="text-amber-200/80 mt-1">
+            Stage completion is disabled in V3 until the accounting journal entry layer is implemented.
+            Use the <strong>Studio V1 workflow</strong> to record costs and generate invoices with GL entries.
+          </p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="rounded-lg border border-gray-700/50 bg-gray-800/30 p-4 space-y-2">
           <div className="flex items-center gap-2 text-sm">
@@ -372,13 +385,13 @@ export const StudioProductionV3OrderDetail = () => {
                               <option key={w.id} value={w.id}>{w.name}</option>
                             ))}
                           </select>
+                          {/* P1-5: Complete is disabled — V3 accounting JE layer not yet implemented */}
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => {
-                              setEditingStageCost(stage.id);
-                              setEditingCostValue(String(stage.expected_cost || 0));
-                            }}
+                            disabled
+                            title="Stage completion blocked: V3 accounting not yet implemented. Use Studio V1."
+                            className="opacity-40 cursor-not-allowed"
                           >
                             Complete
                           </Button>

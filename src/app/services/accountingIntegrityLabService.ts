@@ -2017,11 +2017,7 @@ function stockLineKey(productId: string, variationId: string | null | undefined)
 }
 
 async function fetchSaleLineItemsForLab(saleId: string) {
-  let { data } = await supabase.from('sales_items').select('product_id, variation_id, quantity').eq('sale_id', saleId);
-  if (!data?.length) {
-    const r2 = await supabase.from('sale_items').select('product_id, variation_id, quantity').eq('sale_id', saleId);
-    data = r2.data;
-  }
+  const { data } = await supabase.from('sales_items').select('product_id, variation_id, quantity').eq('sale_id', saleId);
   return data || [];
 }
 

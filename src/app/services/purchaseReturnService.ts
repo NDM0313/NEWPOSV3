@@ -5,6 +5,8 @@
 import { supabase } from '@/lib/supabase';
 import { productService } from './productService';
 import { accountingService } from './accountingService';
+import { resolvePayablePostingAccountId } from './partySubledgerAccountService';
+import { documentNumberService } from './documentNumberService';
 
 async function purchaseReturnHasStockLine(
   companyId: string,
@@ -319,6 +321,47 @@ export const purchaseReturnService = {
         piece_change: pieceChange > 0 ? -pieceChange : undefined, // NEGATIVE for stock OUT
       });
     }
+
+    // ── P1-1: Post purchase return settlement JE (GL fix 2026-04-12) ──────────────
+    // Dr AP subledger (or 2000 fallback) / Cr Inventory (1200) = purchaseReturn.total
+    // Fingerprint: purchase_return_settlement:{companyId}:{returnId}
+    const prFingerprint = `purchase_return_settlement:${companyId}:${returnId}`;
+    const prSupplierId = purchaseReturn.supplier_id || originalPurchase?.supplier_id || null;
+    const prApAccountId: string | null =
+      (await resolvePayablePostingAccountId(companyId, prSupplierId || undefined)) ??
+      ((await supabase.from('accounts').select('id').eq('company_id', companyId).eq('code', '2000').eq('is_active', true).maybeSingle()).data?.id ?? null);
+    const prInvAccountId: string | null =
+      (await supabase.from('accounts').select('id').eq('company_id', companyId).in('code', ['1200', '1500']).eq('is_active', true).limit(1).maybeSingle()).data?.id ?? null;
+    const prReturnTotal = Number(purchaseReturn.total) || 0;
+    if (prReturnTotal > 0 && prApAccountId && prInvAccountId) {
+      const { data: existingPrJe } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('action_fingerprint', prFingerprint)
+        .or('is_void.is.null,is_void.eq.false')
+        .maybeSingle();
+      if (!existingPrJe) {
+        const prBranchId = branchId === 'all' ? undefined : branchId;
+        await accountingService.createEntry(
+          {
+            company_id: companyId,
+            branch_id: prBranchId,
+            entry_date: new Date().toISOString().split('T')[0],
+            description: `Purchase Return Settlement: ${(purchaseReturn as any).return_no || returnId}`,
+            reference_type: 'purchase_return',
+            reference_id: returnId,
+            action_fingerprint: prFingerprint,
+            created_by: userId || null,
+          },
+          [
+            { account_id: prApAccountId, debit: prReturnTotal, credit: 0, description: 'Purchase Return — AP reversal' },
+            { account_id: prInvAccountId, debit: 0, credit: prReturnTotal, description: 'Purchase Return — Inventory out' },
+          ]
+        );
+      }
+    }
+    // ── end P1-1 ──────────────────────────────────────────────────────────────────
 
     const supplierId = purchaseReturn.supplier_id || originalPurchase?.supplier_id;
     if (companyId && supplierId && typeof window !== 'undefined') {
@@ -716,23 +759,19 @@ export const purchaseReturnService = {
   },
 
   async generateReturnNumber(companyId: string, branchId?: string): Promise<string> {
-    const { data: sequence } = await supabase
-      .from('document_sequences')
-      .select('id, current_number, prefix, padding')
-      .eq('company_id', companyId)
-      .eq('document_type', 'purchase_return')
-      .eq('branch_id', branchId || null)
-      .maybeSingle();
-
-    if (sequence) {
-      const nextNumber = (sequence.current_number || 0) + 1;
-      const padded = String(nextNumber).padStart(sequence.padding || 4, '0');
-      await supabase.from('document_sequences').update({ current_number: nextNumber }).eq('id', sequence.id);
-      return `${sequence.prefix}${padded}`;
+    // P1-4: Use canonical erp_document_sequences via generate_document_number RPC
+    // P2: Changed from shared 'purchase' type to dedicated 'purchase_return' type (PRET- prefix)
+    // See: 39_PURCHASE_RETURN_NUMBERING_DECISION.md, 43_PURCHASE_RETURN_NUMBERING_IMPLEMENTATION.md
+    try {
+      return await documentNumberService.getNextDocumentNumber(
+        companyId,
+        branchId && branchId !== 'all' ? branchId : null,
+        'purchase_return'
+      );
+    } catch {
+      const d = new Date();
+      return `PRET-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${Date.now().toString().slice(-4)}`;
     }
-
-    const d = new Date();
-    return `PRET-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${Date.now().toString().slice(-4)}`;
   },
 
   async deletePurchaseReturn(returnId: string, companyId: string): Promise<void> {

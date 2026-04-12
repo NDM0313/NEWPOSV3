@@ -42,12 +42,6 @@ export async function getSalesByCategory(
     .in('sale_id', saleIds);
   if (itemsSales?.length) {
     items = itemsSales;
-  } else {
-    const { data: itemsLegacy } = await supabase
-      .from('sale_items')
-      .select(itemsSelect)
-      .in('sale_id', saleIds);
-    if (itemsLegacy?.length) items = itemsLegacy;
   }
 
   const byCategory: Record<string, number> = {};

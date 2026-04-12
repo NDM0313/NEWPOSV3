@@ -1278,7 +1278,7 @@ export const PurchasesPage = () => {
                   {purchaseReturnsList.map((ret: any) => (
                     <tr key={ret.id} className="hover:bg-gray-800/30">
                       <td className="px-4 py-3 text-sm text-gray-300">{formatDateAndTime(ret.return_date).date}</td>
-                      <td className="px-4 py-3 text-sm font-mono text-purple-400">{ret.return_no || `PR-${ret.id?.slice(0, 8)}`}</td>
+                      <td className="px-4 py-3 text-sm font-mono text-purple-400">{ret.return_no || `PRET-${ret.id?.slice(0, 8)}`}</td>
                       <td className="px-4 py-3 text-sm text-white">{ret.supplier_name}</td>
                       <td className="px-4 py-3 text-sm text-gray-400">{ret.original_purchase_id ? ret.original_purchase_id.slice(0, 8) : '—'}</td>
                       <td className="px-4 py-3 text-center">

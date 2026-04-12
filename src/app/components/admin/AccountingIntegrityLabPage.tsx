@@ -926,12 +926,9 @@ export function AccountingIntegrityLabPage() {
                         await saleService.updateSale(selectedSaleId, { expenses: (Number((data as any)?.expenses) || 0) + 15 } as any);
                       }) },
                       { label: 'Sale: line qty+1', dis: !selectedSaleId, run: () => wrapAction('Bump first line qty +1', async () => {
-                        let { data: row } = await supabase.from('sales_items').select('id, quantity').eq('sale_id', selectedSaleId).limit(1).maybeSingle();
-                        if (!row) {
-                          const r2 = await supabase.from('sale_items').select('id, quantity').eq('sale_id', selectedSaleId).limit(1).maybeSingle();
-                          row = r2.data as any;
-                          if (row) await supabase.from('sale_items').update({ quantity: (Number(row.quantity) || 0) + 1 }).eq('id', row.id);
-                        } else await supabase.from('sales_items').update({ quantity: (Number(row.quantity) || 0) + 1 }).eq('id', row.id);
+                        // P1-2: use sales_items (canonical) only — was: fallback to sale_items (legacy)
+                        const { data: row } = await supabase.from('sales_items').select('id, quantity').eq('sale_id', selectedSaleId).limit(1).maybeSingle();
+                        if (row) await supabase.from('sales_items').update({ quantity: (Number(row.quantity) || 0) + 1 }).eq('id', row.id);
                         if (!row) throw new Error('No line items');
                       }) },
                       { label: 'Sale: pay amount', dis: !selectedSaleId, run: () => wrapAction('Edit sale payment amount', async () => {
@@ -1122,27 +1119,14 @@ export function AccountingIntegrityLabPage() {
                     onClick={() =>
                       wrapAction('Bump first line qty +1', async () => {
                         if (!selectedSaleId) throw new Error('Select sale');
-                        let { data: row } = await supabase
+                        // P1-2: use sales_items (canonical) only — was: fallback to sale_items (legacy)
+                        const { data: row } = await supabase
                           .from('sales_items')
                           .select('id, quantity')
                           .eq('sale_id', selectedSaleId)
                           .limit(1)
                           .maybeSingle();
-                        if (!row) {
-                          const r2 = await supabase
-                            .from('sale_items')
-                            .select('id, quantity')
-                            .eq('sale_id', selectedSaleId)
-                            .limit(1)
-                            .maybeSingle();
-                          row = r2.data as any;
-                          if (row) {
-                            await supabase
-                              .from('sale_items')
-                              .update({ quantity: (Number(row.quantity) || 0) + 1 })
-                              .eq('id', row.id);
-                          }
-                        } else {
+                        if (row) {
                           await supabase
                             .from('sales_items')
                             .update({ quantity: (Number(row.quantity) || 0) + 1 })

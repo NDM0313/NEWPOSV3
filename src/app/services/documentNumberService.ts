@@ -13,6 +13,7 @@ export type DocumentType = 'invoice' | 'quotation' | 'draft' | 'order' | 'purcha
 export type ErpDocumentType =
   | 'sale'
   | 'purchase'
+  | 'purchase_return'   // P2: dedicated sequence with PRET- prefix (see 39_PURCHASE_RETURN_NUMBERING_DECISION.md)
   | 'payment'
   | 'supplier_payment'
   | 'customer_receipt'

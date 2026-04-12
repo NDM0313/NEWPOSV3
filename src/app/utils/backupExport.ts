@@ -29,7 +29,9 @@ export async function exportCompanyBackupJSON(options: BackupOptions): Promise<B
 
   if (modules.includes('sales')) {
     backup.sales = await fetchTable('sales', companyId);
-    backup.sale_items = await fetchTable('sale_items', companyId, 'company_id').catch(() => []);
+    // P2: Export canonical sales_items; also keep legacy sale_items for any pre-migration historical data
+    backup.sales_items = await fetchTable('sales_items', companyId, 'company_id').catch(() => []);
+    backup.sale_items_legacy = await fetchTable('sale_items', companyId, 'company_id').catch(() => []);
   }
   if (modules.includes('purchases')) {
     backup.purchases = await fetchTable('purchases', companyId);

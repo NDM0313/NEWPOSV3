@@ -111,18 +111,6 @@ export async function getSaleInfoForOrder(orderId: string): Promise<SaleInfoForO
       firstProductId = first.product_id;
       firstProductName = first.product_name || firstProductName;
       firstProductSku = first.sku || firstProductSku;
-    } else {
-      const { data: legacyItems } = await supabase
-        .from('sale_items')
-        .select('product_id, product_name, sku')
-        .eq('sale_id', order.sale_id)
-        .limit(1);
-      if (legacyItems && legacyItems.length > 0) {
-        const first = legacyItems[0] as { product_id: string; product_name?: string; sku?: string };
-        firstProductId = first.product_id;
-        firstProductName = first.product_name || firstProductName;
-        firstProductSku = first.sku || firstProductSku;
-      }
     }
   }
 

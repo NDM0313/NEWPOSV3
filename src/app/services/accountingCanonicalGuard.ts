@@ -79,11 +79,16 @@ export function warnLegacyRead(screen: string, reason: string, extra?: Record<st
 }
 
 /**
- * Throws in CI/dev when VITE_ACCOUNTING_LEGACY_HARD_FAIL=true — use for forbidden code paths in tests.
+ * Throws in non-production environments unless VITE_ACCOUNTING_LEGACY_HARD_FAIL=false explicitly opts out.
+ * In production: always warn-only (safe degradation until all writes are migrated).
+ * Phase 3 (2026-04-12): default-throw in dev/staging without requiring env var.
  */
 export function failLegacyReadInDev(screen: string, reason: string): void {
   warnLegacyRead(screen, reason);
-  if (shouldHardFailLegacyReads()) {
+  // Throw in non-production by default; opt out with VITE_ACCOUNTING_LEGACY_HARD_FAIL=false
+  const isProduction = typeof import.meta.env !== 'undefined' && import.meta.env?.MODE === 'production';
+  const hardFailOptOut = typeof import.meta.env !== 'undefined' && import.meta.env?.VITE_ACCOUNTING_LEGACY_HARD_FAIL === 'false';
+  if (!isProduction && !hardFailOptOut) {
     throw new Error(`[accounting:legacy-blocked] ${screen}: ${reason}`);
   }
 }

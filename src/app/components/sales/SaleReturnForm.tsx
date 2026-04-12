@@ -501,6 +501,19 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
     return Math.max(0, adjustedTotal); // Ensure non-negative
   }, [subtotal, discountAmount, restockingFee, manualAdjustment]);
 
+  // Auto-populate proportional discount from original sale when return quantities change.
+  // Only applies in CREATE mode (returnId === null/undefined).
+  // Formula: returnDiscount = sale.discount_amount × (returnSubtotal / sale.subtotal)
+  useEffect(() => {
+    if (returnId) return; // Edit mode: discount already loaded from existing return record (line 174)
+    const origDiscount = Number(originalSale?.discount_amount) || 0;
+    const origSubtotal = Number(originalSale?.subtotal) || 0;
+    if (origDiscount <= 0 || origSubtotal <= 0) return;
+    const discountRate = origDiscount / origSubtotal;
+    const proportionalDiscount = Math.round(subtotal * discountRate * 100) / 100;
+    setDiscountAmount(proportionalDiscount);
+  }, [subtotal, originalSale, returnId]);
+
   const [itemSearch, setItemSearch] = useState('');
   const filteredReturnItems = useMemo(() => {
     if (!itemSearch.trim()) return returnItems;

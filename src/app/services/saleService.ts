@@ -372,15 +372,7 @@ export const saleService = {
       .insert(itemsWithSaleId);
     
     if (salesItemsError) {
-      // If table doesn't exist, try old table name
-      if (salesItemsError.code === '42P01' || salesItemsError.message?.includes('does not exist')) {
-        const { error: fallbackError } = await supabase
-          .from('sale_items')
-          .insert(itemsWithSaleId);
-        itemsError = fallbackError;
-      } else {
-        itemsError = salesItemsError;
-      }
+      itemsError = salesItemsError;
     }
 
     if (itemsError) {
@@ -484,10 +476,10 @@ export const saleService = {
 
     // If items missing (wrong table or RLS), fetch line items directly
     if (!data.items || data.items.length === 0) {
-      const { data: rows } = await supabase.from('sale_items').select('*, product:products(id, name, sku, cost_price, retail_price, has_variations), variation:product_variations(id, product_id, sku, attributes)').eq('sale_id', saleId);
+      const { data: rows } = await supabase.from('sales_items').select('*, product:products(id, name, sku, cost_price, retail_price, has_variations), variation:product_variations(id, product_id, sku, attributes)').eq('sale_id', saleId);
       if (rows && rows.length > 0) data.items = rows;
       else {
-        const { data: rows2 } = await supabase.from('sales_items').select('*, product:products(id, name, sku, cost_price, retail_price, has_variations), variation:product_variations(id, product_id, sku, attributes)').eq('sale_id', saleId);
+        const { data: rows2 } = await supabase.from('sale_items').select('*, product:products(id, name, sku, cost_price, retail_price, has_variations), variation:product_variations(id, product_id, sku, attributes)').eq('sale_id', saleId);
         if (rows2 && rows2.length > 0) data.items = rows2;
       }
     }

@@ -380,16 +380,18 @@ export const ContactsPage = () => {
         return;
       }
 
-      const { data: workerRows } = await supabase
-        .from('workers')
-        .select('id, current_balance')
-        .eq('company_id', companyId);
-      const workerBalMap = new Map<string, number>(
-        (workerRows || []).map((w: { id: string; current_balance?: number | null }) => [
-          String(w.id),
-          Number(w.current_balance) || 0,
-        ])
-      );
+      // P1-3: workers.current_balance is no longer maintained — derive from GL ledger.
+      // Matches getWorkersWithStats() pendingAmount: sum of worker_ledger_entries where status != 'paid'.
+      const { data: ledgerRows } = await supabase
+        .from('worker_ledger_entries')
+        .select('worker_id, amount, status')
+        .eq('company_id', companyId)
+        .or('status.neq.paid,status.is.null');
+      const workerBalMap = new Map<string, number>();
+      (ledgerRows || []).forEach((row: { worker_id: string; amount?: number | null }) => {
+        const prev = workerBalMap.get(String(row.worker_id)) || 0;
+        workerBalMap.set(String(row.worker_id), prev + (Number(row.amount) || 0));
+      });
 
       if (myGen !== loadContactsGenerationRef.current) {
         clearBalanceTimeout();

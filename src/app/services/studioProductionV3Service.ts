@@ -207,8 +207,13 @@ export const studioProductionV3Service = {
     });
   },
 
-  async completeStage(stageId: string, actualCost: number): Promise<void> {
-    await this.updateStage(stageId, { actual_cost: actualCost, status: 'completed' });
+  async completeStage(_stageId: string, _actualCost: number): Promise<void> {
+    // P1-5: V3 accounting not yet implemented. Block stage completion until JE layer is added.
+    // TODO: Implement purchase_return_settlement-style JE (Dr Revenue / Cr Liability) on stage completion,
+    //       then remove this block. See docs/system-audit/32_P1_STUDIO_V3_ACCOUNTING_HARD_BLOCK.md
+    throw new Error(
+      '[Studio V3] Cannot complete stage: accounting journal entry layer not yet implemented. Use Studio V1 workflow.'
+    );
   },
 
   /** Recompute production_cost from stages and persist on order */

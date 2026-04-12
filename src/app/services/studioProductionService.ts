@@ -691,27 +691,22 @@ export const studioProductionService = {
       .select('id')
       .single();
     if (itemErr) {
+      // P1-2: fallback also writes to sales_items (canonical) — was: sale_items (legacy)
+      // Strip is_studio_product (column may not exist in sales_items schema)
       const fallbackPayload: Record<string, unknown> = {
         sale_id: saleId,
         product_id: product.id,
         product_name: product.name,
         sku: product.sku,
         quantity: 1,
-        price: 0,
+        unit_price: 0,
         total: 0,
       };
-      let { data: fallbackData, error: fallbackErr } = await supabase
-        .from('sale_items')
-        .insert({ ...fallbackPayload, is_studio_product: true })
+      const { data: fallbackData, error: fallbackErr } = await supabase
+        .from('sales_items')
+        .insert(fallbackPayload)
         .select('id')
         .single();
-      if (fallbackErr && (fallbackErr.code === '42703' || String(fallbackErr.message || '').includes('is_studio_product'))) {
-        ({ data: fallbackData, error: fallbackErr } = await supabase
-          .from('sale_items')
-          .insert(fallbackPayload)
-          .select('id')
-          .single());
-      }
       if (fallbackErr) {
         console.error('[studio_production] studio line insert failed', fallbackErr);
         throw new Error(`Failed to add studio product line: ${fallbackErr.message}. Add studio line from Studio Sale Detail.`);
@@ -719,7 +714,7 @@ export const studioProductionService = {
       const insertedItemId = (fallbackData as any)?.id;
       await this.setGeneratedInvoiceItem(productionId, product.id, insertedItemId);
       if (import.meta.env?.DEV) {
-        console.log('[studio_production] studio line added (sale_items), links saved', { generatedProductId: product.id, generatedInvoiceItemId: insertedItemId });
+        console.log('[studio_production] studio line added (sales_items fallback), links saved', { generatedProductId: product.id, generatedInvoiceItemId: insertedItemId });
       }
       return { generatedProductId: product.id, generatedInvoiceItemId: insertedItemId };
     }
@@ -1406,9 +1401,7 @@ export const studioProductionService = {
       console.warn('[studioProductionService] ensureWorkerLedgerEntry failed:', ledgerErr.message);
       return;
     }
-    const { data: workerRow } = await supabase.from('workers').select('current_balance').eq('id', workerId).single();
-    const currentBalance = Number((workerRow as any)?.current_balance) || 0;
-    await supabase.from('workers').update({ current_balance: currentBalance + cost, updated_at: new Date().toISOString() }).eq('id', workerId);
+    // P1-3: balance is derived from GL — do not write workers.current_balance
   },
 
   async updateStage(
@@ -1660,9 +1653,7 @@ export const studioProductionService = {
           const entry = ledgerRow as { id: string; worker_id: string; amount: number; status?: string };
           await supabase.from('worker_ledger_entries').delete().eq('id', entry.id);
           if (entry.status !== 'paid' && entry.worker_id) {
-            const { data: wRow } = await supabase.from('workers').select('current_balance').eq('id', entry.worker_id).single();
-            const bal = Number((wRow as any)?.current_balance) || 0;
-            await supabase.from('workers').update({ current_balance: Math.max(0, bal - cost), updated_at: new Date().toISOString() }).eq('id', entry.worker_id);
+            // P1-3: balance is derived from GL — do not write workers.current_balance
           }
         }
       }
@@ -1754,10 +1745,7 @@ export const studioProductionService = {
       .maybeSingle();
     if (ledgerRow && stage.assigned_worker_id) {
       await supabase.from('worker_ledger_entries').update({ amount: newCost }).eq('id', (ledgerRow as any).id);
-      const diff = newCost - oldCost;
-      const { data: wRow } = await supabase.from('workers').select('current_balance').eq('id', stage.assigned_worker_id).single();
-      const bal = Number((wRow as any)?.current_balance) || 0;
-      await supabase.from('workers').update({ current_balance: Math.max(0, bal + diff), updated_at: new Date().toISOString() }).eq('id', stage.assigned_worker_id);
+      // P1-3: balance is derived from GL — do not write workers.current_balance
     }
     const { data: d } = await supabase.from('studio_production_stages').select('*').eq('id', stageId).single();
     if (d) {
@@ -1794,12 +1782,7 @@ export const studioProductionService = {
       })
       .eq('id', entry.id);
     if (updateErr) throw new Error(`Ledger update failed: ${updateErr.message}`);
-    if (amount > 0 && entry.worker_id) {
-      const { data: workerRow } = await supabase.from('workers').select('current_balance').eq('id', entry.worker_id).single();
-      const currentBalance = Number((workerRow as any)?.current_balance) || 0;
-      const newBalance = Math.max(0, currentBalance - amount);
-      await supabase.from('workers').update({ current_balance: newBalance, updated_at: new Date().toISOString() }).eq('id', entry.worker_id);
-    }
+    // P1-3: balance is derived from GL — do not write workers.current_balance
   },
 
   /**
@@ -1900,11 +1883,7 @@ export const studioProductionService = {
     }
     if (error) throw new Error(`Worker ledger (accounting payment) failed: ${error.message}`);
     await this.allocateUnpaidStageJobsAfterWorkerPayment(companyId, workerId, amount);
-    // Reduce worker's current_balance (amount we owe) only when we actually inserted
-    const { data: workerRow } = await supabase.from('workers').select('current_balance').eq('id', workerId).single();
-    const currentBalance = Number((workerRow as any)?.current_balance) || 0;
-    const newBalance = Math.max(0, currentBalance - amount);
-    await supabase.from('workers').update({ current_balance: newBalance, updated_at: new Date().toISOString() }).eq('id', workerId);
+    // P1-3: balance is derived from GL — do not write workers.current_balance
   },
 
   /**

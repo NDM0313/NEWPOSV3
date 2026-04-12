@@ -125,13 +125,6 @@ export const packingListService = {
       .order('id');
     if (salesItems && salesItems.length > 0) {
       items = salesItems as any[];
-    } else {
-      const { data: saleItems } = await supabase
-        .from('sale_items')
-        .select('product_id, product_name, sku, quantity, packing_details, packing_quantity')
-        .eq('sale_id', saleId)
-        .order('id');
-      if (saleItems && saleItems.length > 0) items = saleItems as any[];
     }
 
     const toInsert = items.map((it, idx) => {
