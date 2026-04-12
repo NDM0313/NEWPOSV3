@@ -618,4 +618,38 @@ export const openingBalanceJournalService = {
 
     return { companyId, supplierOnlyNormalized, contactsResynced };
   },
+
+  /**
+   * Sync opening balance journal entries for ALL contacts in a company that have
+   * opening_balance > 0 or supplier_opening_balance > 0.
+   * Idempotent: syncFromContactRow() uses reconcileOrVoidOpeningJe() internally.
+   */
+  async syncAllContactOpeningBalances(companyId: string): Promise<{
+    totalContacts: number;
+    synced: number;
+    errors: string[];
+  }> {
+    await defaultAccountsService.ensureDefaultAccounts(companyId);
+
+    const { data: rows, error } = await supabase
+      .from('contacts')
+      .select('id, name, type, opening_balance, supplier_opening_balance')
+      .eq('company_id', companyId)
+      .or('opening_balance.gt.0,supplier_opening_balance.gt.0');
+    if (error) throw error;
+
+    let synced = 0;
+    const errors: string[] = [];
+
+    for (const row of rows || []) {
+      try {
+        await this.syncFromContactRow((row as { id: string }).id);
+        synced++;
+      } catch (e: any) {
+        errors.push(`${(row as { name: string }).name}: ${e?.message || String(e)}`);
+      }
+    }
+
+    return { totalContacts: (rows || []).length, synced, errors };
+  },
 };

@@ -157,6 +157,9 @@ export default function DeveloperIntegrityLabPage() {
   const [coaAuditResult, setCoaAuditResult] = useState<FullAccountingAuditResult | null>(null);
   const [coaSeedLoading, setCoaSeedLoading] = useState(false);
 
+  const [obSyncLoading, setObSyncLoading] = useState(false);
+  const [obSyncResult, setObSyncResult] = useState<{ totalContacts: number; synced: number; errors: string[] } | null>(null);
+
   const [postingPreviewLoading, setPostingPreviewLoading] = useState(false);
   const [postingRepairLoading, setPostingRepairLoading] = useState(false);
   const [postingRepairJson, setPostingRepairJson] = useState<string | null>(null);
@@ -661,6 +664,7 @@ export default function DeveloperIntegrityLabPage() {
           <TabsTrigger value="fix">F · Fix queue</TabsTrigger>
           <TabsTrigger value="party-tieout">G · Party tie-out</TabsTrigger>
           <TabsTrigger value="coa-audit">H · COA audit</TabsTrigger>
+          <TabsTrigger value="ob-sync">I · OB sync</TabsTrigger>
         </TabsList>
 
         <TabsContent value="trace" className="space-y-4">
@@ -1305,6 +1309,75 @@ export default function DeveloperIntegrityLabPage() {
                 </div>
               ) : (
                 <p className="text-sm text-gray-500">Run the audit to load results for the current company.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ob-sync" className="space-y-4">
+          <Card className="border-gray-800 bg-gray-900/40">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Scale className="h-5 w-5 text-emerald-400" />
+                Contact Opening Balance GL Sync
+              </CardTitle>
+              <CardDescription>
+                Posts or reconciles journal entries for all contacts with opening balances. Creates AR entries for
+                customers, AP entries for suppliers, and worker payable/advance entries. Idempotent — safe to re-run.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button
+                onClick={async () => {
+                  if (!companyId) return;
+                  setObSyncLoading(true);
+                  setObSyncResult(null);
+                  try {
+                    const { openingBalanceJournalService } = await import('@/app/services/openingBalanceJournalService');
+                    const result = await openingBalanceJournalService.syncAllContactOpeningBalances(companyId);
+                    setObSyncResult(result);
+                  } catch (e: any) {
+                    setObSyncResult({ totalContacts: 0, synced: 0, errors: [e?.message || String(e)] });
+                  } finally {
+                    setObSyncLoading(false);
+                  }
+                }}
+                disabled={obSyncLoading || !companyId}
+              >
+                {obSyncLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                Run Opening Balance Sync
+              </Button>
+
+              {obSyncResult && (
+                <div className="rounded-lg border border-gray-800 bg-gray-950/50 p-4 space-y-2">
+                  <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <span className="text-gray-400">
+                      Contacts with balances: <strong className="text-white">{obSyncResult.totalContacts}</strong>
+                    </span>
+                    <span className="text-gray-600">·</span>
+                    <span className="text-gray-400">
+                      Synced: <strong className="text-emerald-400">{obSyncResult.synced}</strong>
+                    </span>
+                    {obSyncResult.errors.length > 0 && (
+                      <>
+                        <span className="text-gray-600">·</span>
+                        <span className="text-gray-400">
+                          Errors: <strong className="text-red-400">{obSyncResult.errors.length}</strong>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {obSyncResult.errors.length > 0 && (
+                    <div className="text-xs text-red-400 space-y-1">
+                      {obSyncResult.errors.map((err, i) => (
+                        <p key={i}>{err}</p>
+                      ))}
+                    </div>
+                  )}
+                  {obSyncResult.synced > 0 && obSyncResult.errors.length === 0 && (
+                    <p className="text-sm text-emerald-400">All contact opening balances synced to GL successfully.</p>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>

@@ -8,6 +8,12 @@ export type ContactPartyGlBalancesSlice = {
   glWorkerPayable: number;
 };
 
+function isContactCodeUniqueViolation(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err || err.code !== '23505') return false;
+  const m = String(err.message || '');
+  return m.includes('idx_contacts_company_code_unique') || (m.includes('code') && m.includes('duplicate'));
+}
+
 async function syncOpeningGlForContact(contactId: string | undefined | null) {
   if (!contactId) return;
   try {
@@ -183,39 +189,66 @@ export const contactService = {
       throw new Error('company_id, type, and name are required');
     }
 
-    // Customer code: DB-only global sequence (never frontend). Skip for walk-in (code already set).
-    const isCustomer = payload.type === 'customer' || payload.type === 'both';
-    if (isCustomer && !payload.code && !payload.is_system_generated) {
-      try {
-        const code = await documentNumberService.getNextDocumentNumberGlobal(
-          String(payload.company_id),
-          'CUS'
-        );
-        payload = { ...payload, code };
-      } catch (e) {
-        console.warn('[CONTACT SERVICE] get_next_document_number_global for CUS failed:', e);
+    // Auto-generate contact code from global sequence. Skip for walk-in (code already set).
+    const companyIdStr = String(payload.company_id);
+    if (!payload.code && !payload.is_system_generated) {
+      const codeType =
+        (payload.type === 'customer' || payload.type === 'both') ? 'CUS' :
+        payload.type === 'supplier' ? 'SUP' :
+        payload.type === 'worker' ? 'WRK' : null;
+      if (codeType) {
+        try {
+          const code = await documentNumberService.getNextDocumentNumberGlobal(companyIdStr, codeType);
+          payload = { ...payload, code };
+        } catch (e) {
+          console.warn(`[CONTACT SERVICE] get_next_document_number_global for ${codeType} failed:`, e);
+        }
       }
     }
 
-    const { data, error } = await supabase
-      .from('contacts')
-      .insert(payload)
-      .select()
-      .single();
+    // Insert with retry on code unique constraint violation (max 3 attempts)
+    const MAX_CODE_RETRIES = 3;
+    let lastInsertError: any = null;
+    for (let attempt = 0; attempt < MAX_CODE_RETRIES; attempt++) {
+      const { data, error } = await supabase
+        .from('contacts')
+        .insert(payload)
+        .select()
+        .single();
 
-    if (!error) {
-      await syncOpeningGlForContact((data as { id?: string })?.id);
-      const newId = (data as { id?: string; type?: string })?.id;
-      if (newId) {
-        import('./partySubledgerAccountService')
-          .then(({ ensurePartySubledgersForContact }) =>
-            ensurePartySubledgersForContact(String(payload.company_id), newId, String((data as { type?: string }).type || payload.type))
-          )
-          .catch(() => {});
+      if (!error) {
+        await syncOpeningGlForContact((data as { id?: string })?.id);
+        const newId = (data as { id?: string; type?: string })?.id;
+        if (newId) {
+          import('./partySubledgerAccountService')
+            .then(({ ensurePartySubledgersForContact }) =>
+              ensurePartySubledgersForContact(companyIdStr, newId, String((data as { type?: string }).type || payload.type))
+            )
+            .catch(() => {});
+        }
+        return data;
       }
-      return data;
+
+      // If code unique violation, get next code and retry
+      if (isContactCodeUniqueViolation(error) && payload.code) {
+        const codeType =
+          (payload.type === 'customer' || payload.type === 'both') ? 'CUS' :
+          payload.type === 'supplier' ? 'SUP' :
+          payload.type === 'worker' ? 'WRK' : null;
+        if (codeType) {
+          try {
+            const newCode = await documentNumberService.getNextDocumentNumberGlobal(companyIdStr, codeType);
+            payload = { ...payload, code: newCode };
+            continue;
+          } catch { /* fall through to error handling */ }
+        }
+      }
+
+      lastInsertError = error;
+      break;
     }
 
+    const error = lastInsertError;
     const isBadRequest = error.code === 'PGRST204' || error.code === 'PGRST116' || (error as any).status === 400;
     if (!isBadRequest) throw error;
 
