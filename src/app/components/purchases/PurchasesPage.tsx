@@ -650,34 +650,7 @@ export const PurchasesPage = () => {
           branchId === 'all' ? undefined : branchId,
           user?.id
         );
-        let supplierId = (full as any).supplier_id as string | undefined;
-        let supplierName = full.supplier_name;
-        if ((!supplierId || !supplierName) && full.original_purchase_id) {
-          try {
-            const row = await purchaseService.getPurchase(full.original_purchase_id);
-            supplierId = supplierId || row?.supplier_id || row?.supplier?.id;
-            supplierName = supplierName || row?.supplier_name || row?.supplier?.name || row?.supplier;
-          } catch {
-            /* ignore */
-          }
-        }
-        if (Number(full.total) > 0) {
-          if (supplierId) {
-            await accounting.recordPurchaseReturn({
-              returnId: full.id!,
-              returnNo: full.return_no || `PRET-${full.id?.slice(0, 8)}`,
-              supplierName: supplierName || 'Supplier',
-              supplierId,
-              amount: Number(full.total),
-              creditAccount: 'Inventory',
-            }).catch((err) => {
-              console.warn('[PurchasesPage] recordPurchaseReturn:', err);
-              toast.warning('Stock updated; accounting entry may have failed — check the ledger.');
-            });
-          } else {
-            toast.warning('Stock updated; supplier not resolved — post return to GL manually if needed.');
-          }
-        }
+        // finalizePurchaseReturn already posts the GL entry (DR AP / CR Inventory)
         toast.success(`Return ${full.return_no || full.id} finalized.`);
         await reloadPurchaseReturnsTable();
         loadPurchases();

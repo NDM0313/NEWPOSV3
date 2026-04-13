@@ -165,20 +165,8 @@ export const PurchaseReturnForm: React.FC<PurchaseReturnFormProps> = ({ purchase
         total: returnAmount,
       };
       const purchaseReturn = await purchaseReturnService.createPurchaseReturn(returnData);
+      // finalizePurchaseReturn already posts the GL entry (DR AP / CR Inventory)
       await purchaseReturnService.finalizePurchaseReturn(purchaseReturn.id!, companyId, branchId, user?.id);
-      if (purchaseReturn.total > 0) {
-        accounting.recordPurchaseReturn({
-          returnId: purchaseReturn.id!,
-          returnNo: purchaseReturn.return_no || `PRET-${purchaseReturn.id?.slice(0, 8)}`,
-          supplierName: purchaseReturn.supplier_name || originalPurchase.supplier_name || 'Supplier',
-          supplierId: originalPurchase.supplier_id || originalPurchase.supplier,
-          amount: purchaseReturn.total,
-          creditAccount: 'Inventory',
-        }).catch((err) => {
-          console.warn('[PurchaseReturnForm] Accounting reversal may have failed:', err);
-          toast.warning('Return finalized, but accounting entry may have failed. Check manually.');
-        });
-      }
       toast.success(`Purchase return ${purchaseReturn.return_no || purchaseReturn.id} created and finalized`);
       if (onSuccess) onSuccess();
       onClose();
