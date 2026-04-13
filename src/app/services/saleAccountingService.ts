@@ -806,8 +806,10 @@ export const saleAccountingService = {
     createdBy: string | null;
     oldSnapshot: { total: number; subtotal: number; discount: number; extraExpense: number; shippingCharges: number };
     newSnapshot: { total: number; subtotal: number; discount: number; extraExpense: number; shippingCharges: number };
+    customerName?: string;
   }): Promise<{ adjustmentCount: number }> {
     const { companyId, branchId, saleId, invoiceNo, entryDate, createdBy, oldSnapshot, newSnapshot } = params;
+    const customerName = params.customerName || 'Customer';
     let adjustmentCount = 0;
 
     const eligible = await assertSaleEligibleForDocumentJournal(saleId, invoiceNo);
@@ -821,22 +823,25 @@ export const saleAccountingService = {
     const branchIdSafe = branchId && branchId !== 'all' ? branchId : undefined;
 
     const fmt = (n: number) => Number(n).toLocaleString();
+    const dfmt = (n: number) => (n > 0 ? `+Rs ${fmt(n)}` : `-Rs ${fmt(-n)}`);
+
     // 1) Sales revenue delta (gross = subtotal; change in revenue)
     const oldGross = oldSnapshot.subtotal || oldSnapshot.total + oldSnapshot.discount;
     const newGross = newSnapshot.subtotal || newSnapshot.total + newSnapshot.discount;
     const deltaRevenue = Math.round((newGross - oldGross) * 100) / 100;
     if (deltaRevenue !== 0) {
-      const desc = `Sale adjustment – revenue change (was Rs ${fmt(oldGross)}, now Rs ${fmt(newGross)}) – ${invoiceNo}`;
+      const abs = Math.abs(deltaRevenue);
+      const desc = `Sale edit ${invoiceNo}: Subtotal Rs ${fmt(oldGross)} → Rs ${fmt(newGross)} (${dfmt(deltaRevenue)}) – ${customerName}`;
       if (deltaRevenue > 0) {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: arAccount.id, debit: deltaRevenue, credit: 0, description: `AR – ${invoiceNo}` },
-          { accountId: revenueAccount.id, debit: 0, credit: deltaRevenue, description: `Sales Revenue – ${invoiceNo}` },
+          { accountId: arAccount.id, debit: abs, credit: 0, description: `AR ${dfmt(deltaRevenue)} – ${invoiceNo}` },
+          { accountId: revenueAccount.id, debit: 0, credit: abs, description: `Revenue ${dfmt(deltaRevenue)} – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       } else {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: revenueAccount.id, debit: -deltaRevenue, credit: 0, description: `Sales Revenue reversal – ${invoiceNo}` },
-          { accountId: arAccount.id, debit: 0, credit: -deltaRevenue, description: `AR reversal – ${invoiceNo}` },
+          { accountId: revenueAccount.id, debit: abs, credit: 0, description: `Revenue ${dfmt(deltaRevenue)} – ${invoiceNo}` },
+          { accountId: arAccount.id, debit: 0, credit: abs, description: `AR ${dfmt(deltaRevenue)} – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       }
@@ -845,37 +850,38 @@ export const saleAccountingService = {
     // 2) Discount delta
     const deltaDiscount = Math.round((newSnapshot.discount - oldSnapshot.discount) * 100) / 100;
     if (deltaDiscount !== 0 && discountAccount?.id) {
-      const desc = `Sale adjustment – discount change (was Rs ${fmt(oldSnapshot.discount)}, now Rs ${fmt(newSnapshot.discount)}) – ${invoiceNo}`;
+      const abs = Math.abs(deltaDiscount);
+      const desc = `Sale edit ${invoiceNo}: Discount Rs ${fmt(oldSnapshot.discount)} → Rs ${fmt(newSnapshot.discount)} (${dfmt(deltaDiscount)}) – ${customerName}`;
       if (deltaDiscount > 0) {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: discountAccount.id, debit: deltaDiscount, credit: 0, description: `Discount Allowed – ${invoiceNo}` },
-          { accountId: revenueAccount.id, debit: 0, credit: deltaDiscount, description: `Sales Revenue – ${invoiceNo}` },
+          { accountId: discountAccount.id, debit: abs, credit: 0, description: `Discount +Rs ${fmt(abs)} – ${invoiceNo}` },
+          { accountId: revenueAccount.id, debit: 0, credit: abs, description: `Revenue offset discount – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       } else {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: revenueAccount.id, debit: -deltaDiscount, credit: 0, description: `Sales Revenue – ${invoiceNo}` },
-          { accountId: discountAccount.id, debit: 0, credit: -deltaDiscount, description: `Discount reversal – ${invoiceNo}` },
+          { accountId: revenueAccount.id, debit: abs, credit: 0, description: `Revenue reversal discount – ${invoiceNo}` },
+          { accountId: discountAccount.id, debit: 0, credit: abs, description: `Discount -Rs ${fmt(abs)} – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       }
     }
 
-    // 3) Extra charges on invoice (stitching, etc.) delta — same economics as shipping to customer:
-    //    Dr AR, Cr Sales Revenue. NOT Dr Extra Expense / Cr AP (that is for supplier bills, not invoice add-ons).
+    // 3) Extra charges on invoice (stitching, etc.) delta
     const deltaExtra = Math.round((newSnapshot.extraExpense - oldSnapshot.extraExpense) * 100) / 100;
     if (deltaExtra !== 0) {
-      const desc = `Sale adjustment – extra charges on invoice (was Rs ${fmt(oldSnapshot.extraExpense)}, now Rs ${fmt(newSnapshot.extraExpense)}) – ${invoiceNo}`;
+      const abs = Math.abs(deltaExtra);
+      const desc = `Sale edit ${invoiceNo}: Extra charges Rs ${fmt(oldSnapshot.extraExpense)} → Rs ${fmt(newSnapshot.extraExpense)} (${dfmt(deltaExtra)}) – ${customerName}`;
       if (deltaExtra > 0) {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: arAccount.id, debit: deltaExtra, credit: 0, description: `AR – extra charges – ${invoiceNo}` },
-          { accountId: revenueAccount.id, debit: 0, credit: deltaExtra, description: `Sales Revenue (extra charges) – ${invoiceNo}` },
+          { accountId: arAccount.id, debit: abs, credit: 0, description: `AR extra ${dfmt(deltaExtra)} – ${invoiceNo}` },
+          { accountId: revenueAccount.id, debit: 0, credit: abs, description: `Revenue extra ${dfmt(deltaExtra)} – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       } else {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: revenueAccount.id, debit: -deltaExtra, credit: 0, description: `Sales Revenue reversal (extra charges) – ${invoiceNo}` },
-          { accountId: arAccount.id, debit: 0, credit: -deltaExtra, description: `AR reversal – extra charges – ${invoiceNo}` },
+          { accountId: revenueAccount.id, debit: abs, credit: 0, description: `Revenue extra reversal ${dfmt(deltaExtra)} – ${invoiceNo}` },
+          { accountId: arAccount.id, debit: 0, credit: abs, description: `AR extra reversal ${dfmt(deltaExtra)} – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       }
@@ -884,19 +890,20 @@ export const saleAccountingService = {
     // 4) Shipping (charged to customer) delta – Cr Shipping Income (4110), not Sales Revenue
     const deltaShipping = Math.round((newSnapshot.shippingCharges - oldSnapshot.shippingCharges) * 100) / 100;
     if (deltaShipping !== 0) {
+      const abs = Math.abs(deltaShipping);
       const shippingIncomeAccount = await ensureShippingIncomeAccount(companyId);
       const creditAccountId = shippingIncomeAccount?.id ?? revenueAccount.id;
-      const desc = `Sale adjustment – shipping change (was Rs ${fmt(oldSnapshot.shippingCharges)}, now Rs ${fmt(newSnapshot.shippingCharges)}) – ${invoiceNo}`;
+      const desc = `Sale edit ${invoiceNo}: Shipping Rs ${fmt(oldSnapshot.shippingCharges)} → Rs ${fmt(newSnapshot.shippingCharges)} (${dfmt(deltaShipping)}) – ${customerName}`;
       if (deltaShipping > 0) {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: arAccount.id, debit: deltaShipping, credit: 0, description: `AR shipping – ${invoiceNo}` },
-          { accountId: creditAccountId, debit: 0, credit: deltaShipping, description: `Shipping Income – ${invoiceNo}` },
+          { accountId: arAccount.id, debit: abs, credit: 0, description: `AR shipping ${dfmt(deltaShipping)} – ${invoiceNo}` },
+          { accountId: creditAccountId, debit: 0, credit: abs, description: `Shipping income ${dfmt(deltaShipping)} – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       } else {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: creditAccountId, debit: -deltaShipping, credit: 0, description: `Shipping Income reversal – ${invoiceNo}` },
-          { accountId: arAccount.id, debit: 0, credit: -deltaShipping, description: `AR reversal – ${invoiceNo}` },
+          { accountId: creditAccountId, debit: abs, credit: 0, description: `Shipping reversal ${dfmt(deltaShipping)} – ${invoiceNo}` },
+          { accountId: arAccount.id, debit: 0, credit: abs, description: `AR shipping reversal ${dfmt(deltaShipping)} – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       }

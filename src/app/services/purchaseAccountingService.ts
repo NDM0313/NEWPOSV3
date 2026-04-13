@@ -41,13 +41,17 @@ export function getPurchaseAccountingSnapshot(purchase: {
   subtotal?: number;
   discount_amount?: number;
   discount?: number;
+  shipping_cost?: number;
   charges?: { charge_type?: string; chargeType?: string; amount?: number }[];
   purchase_charges?: { charge_type?: string; chargeType?: string; amount?: number }[];
 }): PurchaseAccountingSnapshot {
   const total = Number(purchase?.total ?? 0) || 0;
   const charges = Array.isArray(purchase?.charges) ? purchase.charges : (Array.isArray((purchase as any).purchase_charges) ? (purchase as any).purchase_charges : []);
   const discount = Number(purchase?.discount_amount ?? purchase?.discount ?? 0) || sumCharges(charges, t => t === 'discount');
-  const otherCharges = sumCharges(charges, t => t !== 'discount');
+  // Include shipping_cost column (form stores freight here, not in purchase_charges)
+  const shippingCost = Number((purchase as any)?.shipping_cost ?? 0) || 0;
+  const chargesOther = sumCharges(charges, t => t !== 'discount');
+  const otherCharges = chargesOther + shippingCost;
   const subtotal = Number(purchase?.subtotal ?? 0) || total + discount - otherCharges;
   if (subtotal <= 0 && total > 0) {
     return { total, subtotal: total + discount - otherCharges, discount, otherCharges };
@@ -345,21 +349,23 @@ export async function postPurchaseEditAdjustments(params: {
   }
 
   const fmt = (n: number) => Number(n).toLocaleString();
+  const delta = (n: number) => (n > 0 ? `+Rs ${fmt(n)}` : `-Rs ${fmt(-n)}`);
 
   // 1) Items subtotal delta (purchase value) – Dr Inventory Cr AP (or reverse)
   const deltaSubtotal = Math.round((newSnapshot.subtotal - oldSnapshot.subtotal) * 100) / 100;
   if (deltaSubtotal !== 0) {
-    const desc = `Purchase adjustment – value change (was Rs ${fmt(oldSnapshot.subtotal)}, now Rs ${fmt(newSnapshot.subtotal)}) – ${poNo}`;
+    const desc = `Purchase edit ${poNo}: Subtotal Rs ${fmt(oldSnapshot.subtotal)} → Rs ${fmt(newSnapshot.subtotal)} (${delta(deltaSubtotal)}) – ${supplierName}`;
+    const abs = Math.abs(deltaSubtotal);
     if (deltaSubtotal > 0) {
       await postPurchaseAdjustmentJE(companyId, branchIdSafe, purchaseId, entryDate, createdBy, desc, [
-        { accountId: inventoryAccountId, debit: deltaSubtotal, credit: 0, description: `Inventory – ${poNo}` },
-        { accountId: effectiveApId!, debit: 0, credit: deltaSubtotal, description: `Payable – ${supplierName}` },
+        { accountId: inventoryAccountId, debit: abs, credit: 0, description: `Inventory ${delta(deltaSubtotal)} – ${poNo}` },
+        { accountId: effectiveApId!, debit: 0, credit: abs, description: `AP ${supplierName} ${delta(deltaSubtotal)} – ${poNo}` },
       ]);
       adjustmentCount++;
     } else {
       await postPurchaseAdjustmentJE(companyId, branchIdSafe, purchaseId, entryDate, createdBy, desc, [
-        { accountId: effectiveApId!, debit: -deltaSubtotal, credit: 0, description: `Payable reversal – ${poNo}` },
-        { accountId: inventoryAccountId, debit: 0, credit: -deltaSubtotal, description: `Inventory reversal – ${poNo}` },
+        { accountId: effectiveApId!, debit: abs, credit: 0, description: `AP ${supplierName} ${delta(deltaSubtotal)} – ${poNo}` },
+        { accountId: inventoryAccountId, debit: 0, credit: abs, description: `Inventory ${delta(deltaSubtotal)} – ${poNo}` },
       ]);
       adjustmentCount++;
     }
@@ -368,17 +374,18 @@ export async function postPurchaseEditAdjustments(params: {
   // 2) Discount delta – Dr AP Cr Discount Received (or reverse)
   const deltaDiscount = Math.round((newSnapshot.discount - oldSnapshot.discount) * 100) / 100;
   if (deltaDiscount !== 0 && discountAccountId) {
-    const desc = `Purchase adjustment – discount change (was Rs ${fmt(oldSnapshot.discount)}, now Rs ${fmt(newSnapshot.discount)}) – ${poNo}`;
+    const desc = `Purchase edit ${poNo}: Discount Rs ${fmt(oldSnapshot.discount)} → Rs ${fmt(newSnapshot.discount)} (${delta(deltaDiscount)}) – ${supplierName}`;
+    const abs = Math.abs(deltaDiscount);
     if (deltaDiscount > 0) {
       await postPurchaseAdjustmentJE(companyId, branchIdSafe, purchaseId, entryDate, createdBy, desc, [
-        { accountId: effectiveApId!, debit: deltaDiscount, credit: 0, description: `Purchase discount – ${poNo}` },
-        { accountId: discountAccountId, debit: 0, credit: deltaDiscount, description: `Discount received – ${poNo}` },
+        { accountId: effectiveApId!, debit: abs, credit: 0, description: `Discount +Rs ${fmt(abs)} reduces AP – ${poNo}` },
+        { accountId: discountAccountId, debit: 0, credit: abs, description: `Discount received Rs ${fmt(abs)} – ${poNo}` },
       ]);
       adjustmentCount++;
     } else {
       await postPurchaseAdjustmentJE(companyId, branchIdSafe, purchaseId, entryDate, createdBy, desc, [
-        { accountId: discountAccountId, debit: -deltaDiscount, credit: 0, description: `Discount reversal – ${poNo}` },
-        { accountId: effectiveApId!, debit: 0, credit: -deltaDiscount, description: `Payable reversal – ${poNo}` },
+        { accountId: discountAccountId, debit: abs, credit: 0, description: `Discount reversal Rs ${fmt(abs)} – ${poNo}` },
+        { accountId: effectiveApId!, debit: 0, credit: abs, description: `Discount reversal increases AP – ${poNo}` },
       ]);
       adjustmentCount++;
     }
@@ -387,17 +394,18 @@ export async function postPurchaseEditAdjustments(params: {
   // 3) Other charges (freight/labor/extra) – Dr Inventory Cr AP (or reverse)
   const deltaOther = Math.round((newSnapshot.otherCharges - oldSnapshot.otherCharges) * 100) / 100;
   if (deltaOther !== 0) {
-    const desc = `Purchase adjustment – freight/expense change (was Rs ${fmt(oldSnapshot.otherCharges)}, now Rs ${fmt(newSnapshot.otherCharges)}) – ${poNo}`;
+    const desc = `Purchase edit ${poNo}: Freight/Extra Rs ${fmt(oldSnapshot.otherCharges)} → Rs ${fmt(newSnapshot.otherCharges)} (${delta(deltaOther)}) – ${supplierName}`;
+    const abs = Math.abs(deltaOther);
     if (deltaOther > 0) {
       await postPurchaseAdjustmentJE(companyId, branchIdSafe, purchaseId, entryDate, createdBy, desc, [
-        { accountId: inventoryAccountId, debit: deltaOther, credit: 0, description: `Freight/expense – ${poNo}` },
-        { accountId: effectiveApId!, debit: 0, credit: deltaOther, description: `Payable – ${poNo}` },
+        { accountId: inventoryAccountId, debit: abs, credit: 0, description: `Freight/Extra +Rs ${fmt(abs)} – ${poNo}` },
+        { accountId: effectiveApId!, debit: 0, credit: abs, description: `AP ${supplierName} freight +Rs ${fmt(abs)} – ${poNo}` },
       ]);
       adjustmentCount++;
     } else {
       await postPurchaseAdjustmentJE(companyId, branchIdSafe, purchaseId, entryDate, createdBy, desc, [
-        { accountId: effectiveApId!, debit: -deltaOther, credit: 0, description: `Payable reversal – ${poNo}` },
-        { accountId: inventoryAccountId, debit: 0, credit: -deltaOther, description: `Freight/expense reversal – ${poNo}` },
+        { accountId: effectiveApId!, debit: abs, credit: 0, description: `AP ${supplierName} freight -Rs ${fmt(abs)} – ${poNo}` },
+        { accountId: inventoryAccountId, debit: 0, credit: abs, description: `Freight/Extra -Rs ${fmt(abs)} – ${poNo}` },
       ]);
       adjustmentCount++;
     }
