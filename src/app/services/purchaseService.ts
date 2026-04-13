@@ -833,18 +833,6 @@ export const purchaseService = {
     if (existingPurchase && (existingPurchase as any).status === 'cancelled') {
       throw new Error('Cannot edit a cancelled purchase order.');
     }
-    // 🔒 LOCK CHECK: Prevent editing if purchase has returns
-    const { data: returns } = await supabase
-      .from('purchase_returns')
-      .select('id')
-      .eq('original_purchase_id', id)
-      .eq('status', 'final')
-      .limit(1);
-    
-    if (returns && returns.length > 0) {
-      throw new Error('Cannot edit purchase: This purchase has a return and is locked. Returns cannot be edited or deleted.');
-    }
-
     const raw = updates as Record<string, unknown>;
     const sanitized: Record<string, unknown> = {};
     const allowed = new Set(PURCHASE_INSERT_KEYS);
