@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(ssh dincouture-vps 'docker exec -i supabase-db psql -U postgres -d postgres -c \":*)"
     ]
   }
 }
