@@ -501,6 +501,9 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       'rental_return': 'Rental Return',
       'sale_cancelled': 'SALE CANCELLED',
       'purchase_cancelled': 'PURCHASE CANCELLED',
+      'opening_stock': 'Opening Stock',
+      'opening_balance': 'Opening Balance',
+      'production': 'Production',
     };
     return labels[type.toLowerCase()] || type;
   };

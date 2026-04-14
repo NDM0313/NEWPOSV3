@@ -847,7 +847,9 @@ export const saleAccountingService = {
       }
     }
 
-    // 2) Discount delta
+    // 2) Discount delta — affects AR (customer owes less/more), NOT revenue.
+    // Discount increase: Dr Discount Allowed (expense) / Cr AR (reduces customer balance).
+    // Discount decrease: Dr AR (customer owes more) / Cr Discount Allowed (reversal).
     const deltaDiscount = Math.round((newSnapshot.discount - oldSnapshot.discount) * 100) / 100;
     if (deltaDiscount !== 0 && discountAccount?.id) {
       const abs = Math.abs(deltaDiscount);
@@ -855,12 +857,12 @@ export const saleAccountingService = {
       if (deltaDiscount > 0) {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
           { accountId: discountAccount.id, debit: abs, credit: 0, description: `Discount +Rs ${fmt(abs)} – ${invoiceNo}` },
-          { accountId: revenueAccount.id, debit: 0, credit: abs, description: `Revenue offset discount – ${invoiceNo}` },
+          { accountId: arAccount.id, debit: 0, credit: abs, description: `AR discount reduce – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       } else {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: revenueAccount.id, debit: abs, credit: 0, description: `Revenue reversal discount – ${invoiceNo}` },
+          { accountId: arAccount.id, debit: abs, credit: 0, description: `AR discount reversal – ${invoiceNo}` },
           { accountId: discountAccount.id, debit: 0, credit: abs, description: `Discount -Rs ${fmt(abs)} – ${invoiceNo}` },
         ]);
         adjustmentCount++;

@@ -778,36 +778,30 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
             try {
                 setLoading(true);
                 
-                // Load suppliers (contacts with type='supplier')
                 const contactsData = await contactService.getAllContacts(companyId);
-                
-                // Load purchases to calculate supplier due balances
-                const purchasesData = await purchaseService.getAllPurchases(companyId);
-                
-                // Calculate due balance for each supplier from purchases
-                const supplierDueMap = new Map<string, number>();
-                purchasesData.forEach((p: any) => {
-                    const supplierId = p.supplier_id || p.supplier?.id;
-                    if (supplierId) {
-                        const currentDue = supplierDueMap.get(supplierId) || 0;
-                        const purchaseDue = p.due_amount || (p.total || 0) - (p.paid_amount || 0);
-                        supplierDueMap.set(supplierId, currentDue + purchaseDue);
-                    }
-                });
-                
+                const branchForBalances =
+                    branchId && branchId !== 'all' && String(branchId).trim() !== ''
+                        ? branchId
+                        : contextBranchId && contextBranchId !== 'all'
+                          ? contextBranchId
+                          : null;
+                const { map: payableMap, error: balanceErr } = await contactService.getContactBalancesSummary(
+                    companyId,
+                    branchForBalances
+                );
+                if (balanceErr && import.meta.env?.DEV) {
+                    console.warn('[PURCHASE FORM] getContactBalancesSummary:', balanceErr);
+                }
+
                 const supplierContacts = contactsData
                     .filter(c => c.type === 'supplier' || c.type === 'both')
                     .map(c => {
                         const contactId = c.id || c.uuid || '';
-                        const dueBalance = supplierDueMap.get(contactId) || 
-                                          c.supplier_opening_balance || 
-                                          c.current_balance || 
-                                          c.opening_balance || 
-                                          0;
+                        const dueBalance = payableMap.get(String(contactId))?.payables ?? 0;
                         return {
                             id: contactId,
                             name: c.name || '',
-                            dueBalance: dueBalance
+                            dueBalance,
                         };
                     });
                 setSuppliers(supplierContacts);
@@ -847,6 +841,35 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         
         loadData();
     }, [companyId]);
+
+    // Recompute supplier AP when branch / context branch changes (operational RPC scope)
+    useEffect(() => {
+        if (!companyId) return;
+        const branchForBalances =
+            branchId && branchId !== 'all' && String(branchId).trim() !== ''
+                ? branchId
+                : contextBranchId && contextBranchId !== 'all'
+                  ? contextBranchId
+                  : null;
+        let cancelled = false;
+        (async () => {
+            const { map, error } = await contactService.getContactBalancesSummary(companyId, branchForBalances);
+            if (cancelled) return;
+            if (error && import.meta.env?.DEV) {
+                console.warn('[PURCHASE FORM] getContactBalancesSummary (branch refresh):', error);
+            }
+            setSuppliers((prev) => {
+                if (!prev.length) return prev;
+                return prev.map((s) => ({
+                    ...s,
+                    dueBalance: map.get(String(s.id))?.payables ?? 0,
+                }));
+            });
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [companyId, branchId, contextBranchId]);
 
     // Load branches
     useEffect(() => {
@@ -944,13 +967,23 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     // Small delay to ensure DB commit
                     await new Promise(resolve => setTimeout(resolve, 200));
                     
-                    const contactsData = await contactService.getAllContacts(companyId);
+                    const branchForBalances =
+                        branchId && branchId !== 'all' && String(branchId).trim() !== ''
+                            ? branchId
+                            : contextBranchId && contextBranchId !== 'all'
+                              ? contextBranchId
+                              : null;
+                    const [contactsData, balanceReload] = await Promise.all([
+                        contactService.getAllContacts(companyId),
+                        contactService.getContactBalancesSummary(companyId, branchForBalances),
+                    ]);
+                    const payableReload = balanceReload.map;
                     const supplierContacts = contactsData
                         .filter(c => c.type === 'supplier' || c.type === 'both')
                         .map(c => ({
                             id: c.id || c.uuid || '',
                             name: c.name || '',
-                            dueBalance: c.payables || 0
+                            dueBalance: payableReload.get(String(c.id || c.uuid || ''))?.payables ?? 0,
                         }));
                     
                     console.log('[PURCHASE FORM] Reloaded suppliers:', supplierContacts.length, 'IDs:', supplierContacts.map(c => c.id));
@@ -988,13 +1021,23 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                         console.warn('[PURCHASE FORM] ❌ Could not find created contact:', contactIdStr, 'Available IDs:', supplierContacts.map(c => c.id));
                         // Try one more time after a longer delay (DB might need more time)
                         setTimeout(async () => {
-                            const retryData = await contactService.getAllContacts(companyId);
+                            const branchRetry =
+                                branchId && branchId !== 'all' && String(branchId).trim() !== ''
+                                    ? branchId
+                                    : contextBranchId && contextBranchId !== 'all'
+                                      ? contextBranchId
+                                      : null;
+                            const [retryData, retryBalance] = await Promise.all([
+                                contactService.getAllContacts(companyId),
+                                contactService.getContactBalancesSummary(companyId, branchRetry),
+                            ]);
+                            const retryPay = retryBalance.map;
                             const retryContacts = retryData
                                 .filter(c => c.type === 'supplier' || c.type === 'both')
                                 .map(c => ({
                                     id: c.id || c.uuid || '',
                                     name: c.name || '',
-                                    dueBalance: c.payables || 0
+                                    dueBalance: retryPay.get(String(c.id || c.uuid || ''))?.payables ?? 0,
                                 }));
                             const retryFound = retryContacts.find(c => {
                                 const cId = c.id?.toString() || '';
@@ -1026,7 +1069,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
         };
         
         reloadSuppliers();
-    }, [activeDrawer, companyId, createdContactId, createdContactType, setCreatedContactId]);
+    }, [activeDrawer, companyId, createdContactId, createdContactType, setCreatedContactId, branchId, contextBranchId]);
 
     // Generate PO number for new purchases
     // Track if PO number has been generated for new purchases

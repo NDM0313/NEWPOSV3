@@ -563,7 +563,9 @@ export const productService = {
       .eq('company_id', companyId)
       .order('created_at', { ascending: true });
     if (branchId && branchId !== 'all') {
-      query = query.eq('branch_id', branchId);
+      // Include both branch-specific AND company-wide (null branch) movements.
+      // Opening stock and other company-level movements have branch_id = null and must count.
+      query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
     }
     const { data, error } = await query;
     if (error) {

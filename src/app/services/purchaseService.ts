@@ -1215,11 +1215,11 @@ export const purchaseService = {
           'Card': 'card',
           'cheque': 'other',
           'Cheque': 'other',
-          'mobile wallet': 'mobile_wallet',
-          'Mobile Wallet': 'mobile_wallet',
-          'mobile_wallet': 'mobile_wallet',
-          'wallet': 'mobile_wallet',
-          'Wallet': 'mobile_wallet',
+          'mobile wallet': 'other',
+          'Mobile Wallet': 'other',
+          'mobile_wallet': 'other',
+          'wallet': 'other',
+          'Wallet': 'other',
         };
         normalizedPaymentMethod = paymentMethodMap[updates.paymentMethod] || paymentMethodMap[normalized] || 'cash';
       }

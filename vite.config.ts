@@ -9,6 +9,16 @@ export default defineConfig({
   server: {
     host: true, // Expose on 0.0.0.0 for mobile/network access
     hmr: true,  // Explicitly enable Hot Module Replacement
+    proxy: {
+      // Local dev CORS bypass for self-hosted Supabase/Kong
+      '/supabase': {
+        target: 'https://supabase.dincouture.pk',
+        changeOrigin: true,
+        secure: true,
+        ws: true,
+        rewrite: (path) => path.replace(/^\/supabase/, ''),
+      },
+    },
   },
   build: {
     sourcemap: true,

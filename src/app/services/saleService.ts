@@ -1239,7 +1239,7 @@ export const saleService = {
     const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
     
     // CRITICAL FIX: Normalize payment method to lowercase enum values
-    // DB / Roznamcha: use cash, bank, card, mobile_wallet, other (lowercase). Wallet must not map to `other` or cash book misses method-based hints.
+    // DB enum payment_method_enum: cash, bank, card, other (lowercase only). mobile_wallet maps to 'other'.
     // PaymentMethod type uses: 'Cash', 'Bank', 'Mobile Wallet' (capitalized)
     const normalizedPaymentMethod = paymentMethod.toLowerCase().trim();
     const paymentMethodMap: Record<string, string> = {
@@ -1251,11 +1251,11 @@ export const saleService = {
       'Card': 'card',
       'cheque': 'other',
       'Cheque': 'other',
-      'mobile wallet': 'mobile_wallet',
-      'Mobile Wallet': 'mobile_wallet',
-      'mobile_wallet': 'mobile_wallet',
-      'wallet': 'mobile_wallet',
-      'Wallet': 'mobile_wallet',
+      'mobile wallet': 'other',
+      'Mobile Wallet': 'other',
+      'mobile_wallet': 'other',
+      'wallet': 'other',
+      'Wallet': 'other',
     };
     // Try exact match first, then normalized match, then default to 'cash'
     const enumPaymentMethod = paymentMethodMap[paymentMethod] || paymentMethodMap[normalizedPaymentMethod] || 'cash';
@@ -1372,8 +1372,8 @@ export const saleService = {
     const normalizedPaymentMethod = (paymentMethod || 'cash').toLowerCase().trim();
     const paymentMethodMap: Record<string, string> = {
       cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', card: 'card', Card: 'card',
-      cheque: 'other', Cheque: 'other', 'mobile wallet': 'mobile_wallet', 'Mobile Wallet': 'mobile_wallet',
-      mobile_wallet: 'mobile_wallet', wallet: 'mobile_wallet', Wallet: 'mobile_wallet',
+      cheque: 'other', Cheque: 'other', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
+      mobile_wallet: 'other', wallet: 'other', Wallet: 'other',
     };
     const enumPaymentMethod = paymentMethodMap[paymentMethod] || paymentMethodMap[normalizedPaymentMethod] || 'cash';
     const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
@@ -1487,11 +1487,11 @@ export const saleService = {
           'Card': 'card',
           'cheque': 'other',
           'Cheque': 'other',
-          'mobile wallet': 'mobile_wallet',
-          'Mobile Wallet': 'mobile_wallet',
-          'mobile_wallet': 'mobile_wallet',
-          'wallet': 'mobile_wallet',
-          'Wallet': 'mobile_wallet',
+          'mobile wallet': 'other',
+          'Mobile Wallet': 'other',
+          'mobile_wallet': 'other',
+          'wallet': 'other',
+          'Wallet': 'other',
         };
         normalizedPaymentMethod = paymentMethodMap[updates.paymentMethod] || paymentMethodMap[normalized] || 'cash';
       }

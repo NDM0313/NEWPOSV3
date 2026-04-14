@@ -79,6 +79,11 @@ export function calculateStockFromMovements(movements: StockMovement[]): StockCa
         totalAdjustmentNegative += Math.abs(qty);
       }
       currentBalance += qty; // Include adjustment in balance
+    } else if (movementType === 'opening_stock' || movementType === 'opening_balance' || movementType === 'production') {
+      // Opening stock / opening balance / production: always additive
+      currentBalance += qty;
+      if (qty > 0) totalAdjustmentPositive += qty;
+      else if (qty < 0) totalAdjustmentNegative += Math.abs(qty);
     }
   });
 

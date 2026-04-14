@@ -18,8 +18,8 @@ import {
 import { resolvePayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {
-  cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', 'mobile wallet': 'mobile_wallet', 'Mobile Wallet': 'mobile_wallet',
-  wallet: 'mobile_wallet', Wallet: 'mobile_wallet', card: 'other', cheque: 'other',
+  cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
+  wallet: 'other', Wallet: 'other', mobile_wallet: 'other', card: 'other', cheque: 'other',
 };
 
 function normalizePaymentMethod(m: string): string {

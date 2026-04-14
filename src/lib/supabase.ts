@@ -17,7 +17,10 @@ let supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUB
 // Production (app served from erp.dincouture.pk): same-origin so /auth/, /rest/ go through nginx → Kong (avoids SecurityError).
 // Localhost / other origins: hit supabase.dincouture.pk directly so auth returns JSON (erp.dincouture.pk from another origin can return 5xx/HTML).
 if (typeof window !== 'undefined') {
-  if (window.location.origin.includes('erp.dincouture.pk')) {
+  if (import.meta.env.DEV && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) {
+    // Dev CORS bypass: use Vite same-origin proxy (/supabase -> https://supabase.dincouture.pk)
+    supabaseUrl = `${window.location.origin}/supabase`;
+  } else if (window.location.origin.includes('erp.dincouture.pk')) {
     supabaseUrl = window.location.origin;
   } else if (supabaseUrl.includes('erp.dincouture.pk')) {
     supabaseUrl = 'https://supabase.dincouture.pk';

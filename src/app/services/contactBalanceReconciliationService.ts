@@ -329,8 +329,29 @@ export async function getSingleSupplierPartyReconciliation(
   const end = new Date().toISOString().slice(0, 10);
   const b = safeBranchForRpc(branchId);
 
-  const [opRes, glRpc, unmappedRpc] = await Promise.all([
-    contactService.getContactBalancesSummary(companyId, branchId ?? null),
+  // Compute operational payable directly from source data (self-healing).
+  // The RPC get_contact_balances_summary uses purchases.due_amount which depends on a DB trigger
+  // (recalc_purchase_payment_totals from migration 20260441) to subtract finalized purchase returns.
+  // If that trigger didn't apply, due_amount is stale → operational payable is over-stated by the return total.
+  // Instead of relying on the RPC for this single-supplier view, compute from source tables.
+  const [contactRes, purchasesRes, returnsRes, glRpc, unmappedRpc] = await Promise.all([
+    supabase
+      .from('contacts')
+      .select('supplier_opening_balance, opening_balance, type')
+      .eq('id', supplierId)
+      .maybeSingle(),
+    supabase
+      .from('purchases')
+      .select('id, total, paid_amount')
+      .eq('company_id', companyId)
+      .eq('supplier_id', supplierId)
+      .in('status', ['final', 'received']),
+    supabase
+      .from('purchase_returns')
+      .select('total, original_purchase_id')
+      .eq('company_id', companyId)
+      .eq('supplier_id', supplierId)
+      .eq('status', 'final'),
     supabase.rpc('get_contact_party_gl_balances', {
       p_company_id: companyId,
       p_branch_id: b,
@@ -342,7 +363,31 @@ export async function getSingleSupplierPartyReconciliation(
     }),
   ]);
 
-  const operationalPayable = !opRes.error ? (opRes.map.get(supplierId)?.payables ?? 0) : 0;
+  // Build return totals keyed by original_purchase_id
+  const returnsByPurchase: Record<string, number> = {};
+  let standaloneReturnTotal = 0;
+  for (const r of (returnsRes.data ?? []) as { total: number; original_purchase_id: string | null }[]) {
+    const amt = Number(r.total) || 0;
+    if (r.original_purchase_id) {
+      returnsByPurchase[r.original_purchase_id] = (returnsByPurchase[r.original_purchase_id] || 0) + amt;
+    } else {
+      standaloneReturnTotal += amt;
+    }
+  }
+
+  // Supplier opening balance
+  const cRow = contactRes.data as { supplier_opening_balance?: number; opening_balance?: number; type?: string } | null;
+  const opening = Math.max(0, Number(cRow?.supplier_opening_balance ?? cRow?.opening_balance ?? 0));
+
+  // Sum purchase due: total minus finalized returns minus paid (inline, no dependency on DB triggers).
+  // paid_amount already includes direct purchase-linked payments + allocated manual payments.
+  let purchaseDueTotal = 0;
+  for (const p of (purchasesRes.data ?? []) as { id: string; total: number; paid_amount: number }[]) {
+    const purchaseReturns = returnsByPurchase[p.id] || 0;
+    purchaseDueTotal += Math.max(0, (Number(p.total) || 0) - purchaseReturns - (Number(p.paid_amount) || 0));
+  }
+
+  let operationalPayable = Math.max(0, opening + purchaseDueTotal - standaloneReturnTotal);
 
   let glApPayable = 0;
   if (!glRpc.error && Array.isArray(glRpc.data)) {

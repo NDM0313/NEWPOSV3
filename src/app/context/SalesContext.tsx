@@ -35,6 +35,17 @@ function isValidBranchId(id: string | null): id is string {
   return !!id && UUID_REGEX.test(id);
 }
 
+/** Sale header `location` is branch UUID. Prefer it over context `branchId` (often `'all'` for admins). */
+function branchIdFromSaleHeader(
+  locationOrBranch: string | null | undefined,
+  contextBranchId: string | null | undefined
+): string | null {
+  const fromSale = typeof locationOrBranch === 'string' ? locationOrBranch.trim() : '';
+  if (isValidBranchId(fromSale)) return fromSale;
+  if (isValidBranchId(contextBranchId ?? null)) return contextBranchId as string;
+  return null;
+}
+
 // ============================================
 // TYPES
 // ============================================
@@ -472,8 +483,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     if (!companyId || !user) {
       throw new Error('Company ID and User are required');
     }
-    // DB requires branch_id UUID; when Admin has "All Branches", branchId is 'all' – resolve to first branch
-    let effectiveBranchId = isValidBranchId(branchId) ? branchId : null;
+    // DB requires branch_id UUID. Prefer sale header branch (SaleForm `location`) — context branch is often `'all'` for admins.
+    let effectiveBranchId = branchIdFromSaleHeader((saleData as any).location, branchId);
     if (!effectiveBranchId) {
       const branches = await branchService.getAllBranches(companyId);
       if (!branches?.length) throw new Error('No branch found. Please create at least one branch.');
@@ -1347,11 +1358,22 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const allowNegativeUpdate = companyId
         ? await import('@/app/services/settingsService').then(m => m.settingsService.getAllowNegativeStock(companyId))
         : false;
+      let headerBranchForStockEdit: string | undefined =
+        updates.location !== undefined ? updates.location : undefined;
+      if (headerBranchForStockEdit === undefined && companyId) {
+        const row = await saleService.getSaleById(id);
+        headerBranchForStockEdit = (row as any)?.branch_id ?? undefined;
+      }
+      let effectiveBranchIdForStockEdit = branchIdFromSaleHeader(headerBranchForStockEdit, branchId);
+      if (!effectiveBranchIdForStockEdit && companyId) {
+        const branches = await branchService.getAllBranches(companyId);
+        effectiveBranchIdForStockEdit = branches?.length ? branches[0].id : null;
+      }
       if (!allowNegativeUpdate && reducingDeltas.length > 0 && companyId) {
         const { supabase } = await import('@/lib/supabase');
         const productIds = [...new Set(reducingDeltas.map((d) => d.productId))];
         const [stockMap, { data: prods }] = await Promise.all([
-          productService.getStockForProducts(productIds, companyId, effectiveBranchId ?? undefined),
+          productService.getStockForProducts(productIds, companyId, effectiveBranchIdForStockEdit ?? undefined),
           supabase.from('products').select('id, has_variations').in('id', productIds),
         ]);
         const productMap = new Map((prods || []).map((p: any) => [p.id, p]));
@@ -1452,8 +1474,12 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
           console.log('[SALES CONTEXT] 🔄 Creating stock movements for deltas:', stockMovementDeltas.length);
           
-          // Get branch ID
-          let effectiveBranchId = isValidBranchId(branchId) ? branchId : null;
+          const saleForStock = await saleService.getSaleById(id);
+          const saleBranchFromRow = (saleForStock as any)?.branch_id as string | undefined;
+          let effectiveBranchId = branchIdFromSaleHeader(
+            updates.location !== undefined ? updates.location : saleBranchFromRow,
+            branchId
+          );
           if (!effectiveBranchId && companyId) {
             const branches = await branchService.getAllBranches(companyId);
             effectiveBranchId = branches?.length ? branches[0].id : null;
@@ -1461,7 +1487,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           
           // Create stock movements for DELTA only
           const stockMovementErrors: string[] = [];
-          const saleForStock = await saleService.getSaleById(id);
           const saleInvoiceNo = getSaleDisplayNumber(saleForStock as any) || (saleForStock as any)?.invoice_no || id;
           
           for (const delta of stockMovementDeltas) {

@@ -224,6 +224,20 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // Branch State - Locked for regular users, open for admin
     const [branchId, setBranchId] = useState<string>(contextBranchId || '');
     const [branches, setBranches] = useState<Branch[]>([]);
+
+    // Legacy picker used synthetic id "walk-in"; resolve to real `contacts` row (matches Contacts page)
+    useEffect(() => {
+        if (!companyId || customerId !== 'walk-in') return;
+        let cancelled = false;
+        (async () => {
+            const w = await contactService.getWalkingCustomer(companyId);
+            if (!cancelled && w?.id) setCustomerId(String(w.id));
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [companyId, customerId]);
+
     const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
     const [salesmanDropdownOpen, setSalesmanDropdownOpen] = useState(false);
     const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
@@ -578,20 +592,29 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             
             try {
                 setLoading(true);
-                
-                // Load customers (contacts with type='customer') and their due balance from sales
-                const [contactsData, salesData] = await Promise.all([
+
+                await contactService.ensureDefaultWalkingCustomerForCompany(companyId);
+
+                // Load customers + operational AR per contact (RPC; not raw SUM(sales.due_amount))
+                const branchForBalances =
+                    branchId && branchId !== 'all'
+                        ? branchId
+                        : contextBranchId && contextBranchId !== 'all'
+                          ? contextBranchId
+                          : null;
+                const [contactsData, balanceSummary] = await Promise.all([
                     contactService.getAllContacts(companyId),
-                    saleService.getAllSales(companyId, contextBranchId === 'all' ? undefined : contextBranchId || undefined).catch(() => [])
+                    contactService.getContactBalancesSummary(companyId, branchForBalances),
                 ]);
-                const salesList = Array.isArray(salesData) ? salesData : [];
+                const { map: receivableMap, error: balanceErr } = balanceSummary;
+                if (balanceErr && import.meta.env?.DEV) {
+                    console.warn('[SALE FORM] getContactBalancesSummary:', balanceErr);
+                }
                 const customerContacts = (contactsData || [])
                     .filter((c: any) => c.type === 'customer' || c.type === 'both')
                     .map((c: any) => {
                         const cId = c.id || c.uuid || '';
-                        const dueBalance = salesList
-                            .filter((s: any) => (s.customer_id || s.customer_name) && (String(s.customer_id) === String(cId) || (s.customer_name && s.customer_name === c.name)))
-                            .reduce((sum: number, s: any) => sum + (Number(s.due_amount) ?? 0), 0);
+                        const dueBalance = receivableMap.get(String(cId))?.receivables ?? 0;
                         return {
                             id: cId,
                             name: c.name || '',
@@ -599,35 +622,34 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         };
                     });
                 
-                // Mandatory default (Walk-in) customer for auto-selection
-                let defaultCustomerId: string | null = null;
+                // Default walk-in exists as a real `contacts` row (same as Contacts page) — no synthetic duplicate row
+                let defaultCustomerRow: Awaited<ReturnType<typeof contactService.getDefaultCustomer>> = null;
                 try {
-                    const defaultCustomer = await contactService.getDefaultCustomer(companyId);
-                    if (defaultCustomer) {
-                        defaultCustomerId = defaultCustomer.id || null;
-                        console.log('[SALE FORM] Found default customer:', defaultCustomerId);
-                    }
+                    defaultCustomerRow = await contactService.getDefaultCustomer(companyId);
                 } catch (error) {
                     console.warn('[SALE FORM] Could not fetch default customer:', error);
                 }
-                if (!defaultCustomerId) {
+                if (!defaultCustomerRow) {
                     try {
-                        const walkingCustomer = await contactService.getWalkingCustomer(companyId);
-                        if (walkingCustomer) defaultCustomerId = walkingCustomer.id || null;
+                        defaultCustomerRow = await contactService.getWalkingCustomer(companyId);
                     } catch (_) {}
                 }
+                const defaultCustomerId = defaultCustomerRow?.id ? String(defaultCustomerRow.id) : null;
 
-                // Build list: include walk-in placeholder for backward compat; prefer actual default if exists
-                const customerList = [
-                    { id: 'walk-in', name: "Walk-in Customer", dueBalance: 0 },
-                    ...customerContacts
-                ];
-                if (defaultCustomerId && !customerContacts.some(c => c.id === defaultCustomerId)) {
-                    customerList.push({
-                        id: defaultCustomerId,
-                        name: "Walk-in Customer",
-                        dueBalance: 0
-                    });
+                let customerList = [...customerContacts];
+                if (
+                    defaultCustomerId &&
+                    !customerList.some((c) => String(c.id) === defaultCustomerId) &&
+                    defaultCustomerRow
+                ) {
+                    customerList = [
+                        {
+                            id: defaultCustomerId,
+                            name: defaultCustomerRow.name || 'Walk-in Customer',
+                            dueBalance: receivableMap.get(defaultCustomerId)?.receivables ?? 0,
+                        },
+                        ...customerList,
+                    ];
                 }
 
                 setCustomers(customerList);
@@ -638,8 +660,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         console.log('[SALE FORM] Auto-selecting default customer:', defaultCustomerId);
                         setCustomerId(defaultCustomerId);
                     } else {
-                        console.log('[SALE FORM] Auto-selecting walk-in (fallback)');
-                        setCustomerId('walk-in');
+                        console.log('[SALE FORM] No default walking customer — leave selection empty');
                     }
                 }
                 
@@ -858,28 +879,31 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     // Small delay to ensure DB commit (reduced since we're not waiting for drawer close)
                     await new Promise(resolve => setTimeout(resolve, 300));
                     
-                    const [contactsDataReload, salesDataReload] = await Promise.all([
+                    const branchForBalances =
+                        branchId && branchId !== 'all'
+                            ? branchId
+                            : contextBranchId && contextBranchId !== 'all'
+                              ? contextBranchId
+                              : null;
+                    const [contactsDataReload, balanceReload] = await Promise.all([
                         contactService.getAllContacts(companyId),
-                        saleService.getAllSales(companyId, contextBranchId === 'all' ? undefined : contextBranchId || undefined).catch(() => [])
+                        contactService.getContactBalancesSummary(companyId, branchForBalances),
                     ]);
-                    const salesListReload = Array.isArray(salesDataReload) ? salesDataReload : [];
+                    const { map: receivableMapReload, error: balanceReloadErr } = balanceReload;
+                    if (balanceReloadErr && import.meta.env?.DEV) {
+                        console.warn('[SALE FORM] getContactBalancesSummary (reload):', balanceReloadErr);
+                    }
                     const customerContacts = (contactsDataReload || [])
                         .filter((c: any) => c.type === 'customer' || c.type === 'both')
                         .map((c: any) => {
                             const cId = c.id || c.uuid || '';
-                            const dueBalance = salesListReload
-                                .filter((s: any) => (s.customer_id || s.customer_name) && (String(s.customer_id) === String(cId) || (s.customer_name && s.customer_name === c.name)))
-                                .reduce((sum: number, s: any) => sum + (Number(s.due_amount) ?? 0), 0);
+                            const dueBalance = receivableMapReload.get(String(cId))?.receivables ?? 0;
                             return { id: cId, name: c.name || '', dueBalance };
                         });
                     
                     console.log('[SALE FORM] Reloaded customers:', customerContacts.length, 'IDs:', customerContacts.map(c => c.id));
                     
-                    // Prepare updated customers list
-                    const updatedCustomers = [
-                        { id: 'walk-in', name: "Walk-in Customer", dueBalance: 0 },
-                        ...customerContacts
-                    ];
+                    const updatedCustomers = [...customerContacts];
                     
                     // Auto-select newly created contact
                     const contactIdStr = contactIdToSelect.toString();
@@ -912,18 +936,22 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         console.warn('[SALE FORM] ❌ Could not find created contact:', contactIdStr, 'Available IDs:', customerContacts.map(c => c.id));
                         // Try one more time after a longer delay (DB might need more time)
                         setTimeout(async () => {
-                            const [retryContactsData, retrySalesData] = await Promise.all([
+                            const branchForBalancesRetry =
+                                branchId && branchId !== 'all'
+                                    ? branchId
+                                    : contextBranchId && contextBranchId !== 'all'
+                                      ? contextBranchId
+                                      : null;
+                            const [retryContactsData, retryBalance] = await Promise.all([
                                 contactService.getAllContacts(companyId),
-                                saleService.getAllSales(companyId, contextBranchId === 'all' ? undefined : contextBranchId || undefined).catch(() => [])
+                                contactService.getContactBalancesSummary(companyId, branchForBalancesRetry),
                             ]);
-                            const retrySalesList = Array.isArray(retrySalesData) ? retrySalesData : [];
+                            const { map: retryRecvMap } = retryBalance;
                             const retryContacts = (retryContactsData || [])
                                 .filter((c: any) => c.type === 'customer' || c.type === 'both')
                                 .map((c: any) => {
                                     const cId = c.id || c.uuid || '';
-                                    const dueBalance = retrySalesList
-                                        .filter((s: any) => (s.customer_id || s.customer_name) && (String(s.customer_id) === String(cId) || (s.customer_name && s.customer_name === c.name)))
-                                        .reduce((sum: number, s: any) => sum + (Number(s.due_amount) ?? 0), 0);
+                                    const dueBalance = retryRecvMap.get(String(cId))?.receivables ?? 0;
                                     return { id: cId, name: c.name || '', dueBalance };
                                 });
                             const retryFound = retryContacts.find(c => {
@@ -931,10 +959,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 return cId === contactIdStr || c.id === contactIdToSelect;
                             });
                             if (retryFound) {
-                                setCustomers([
-                                    { id: 'walk-in', name: "Walk-in Customer", dueBalance: 0 },
-                                    ...retryContacts
-                                ]);
+                                setCustomers([...retryContacts]);
                                 const retrySelectedId = retryFound.id.toString();
                                 // Auto-select immediately
                                 setCustomerId(retrySelectedId);
@@ -958,7 +983,36 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
         };
         
         reloadCustomers();
-    }, [companyId, createdContactId, createdContactType, setCreatedContactId]);
+    }, [companyId, createdContactId, createdContactType, setCreatedContactId, branchId, contextBranchId]);
+
+    // Recompute customer AR when sale branch / context branch changes (operational RPC scope)
+    useEffect(() => {
+        if (!companyId) return;
+        const branchForBalances =
+            branchId && branchId !== 'all'
+                ? branchId
+                : contextBranchId && contextBranchId !== 'all'
+                  ? contextBranchId
+                  : null;
+        let cancelled = false;
+        (async () => {
+            const { map, error } = await contactService.getContactBalancesSummary(companyId, branchForBalances);
+            if (cancelled) return;
+            if (error && import.meta.env?.DEV) {
+                console.warn('[SALE FORM] getContactBalancesSummary (branch refresh):', error);
+            }
+            setCustomers((prev) => {
+                if (!prev.length) return prev;
+                return prev.map((c) => {
+                    const row = map.get(String(c.id));
+                    return { ...c, dueBalance: row?.receivables ?? 0 };
+                });
+            });
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [companyId, branchId, contextBranchId]);
 
     // Separate useEffect to handle customer auto-selection AFTER customers array is updated
     // This ensures proper state sequencing - customers array updates first, then customerId

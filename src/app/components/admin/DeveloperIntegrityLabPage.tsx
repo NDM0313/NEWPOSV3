@@ -158,7 +158,7 @@ export default function DeveloperIntegrityLabPage() {
   const [coaSeedLoading, setCoaSeedLoading] = useState(false);
 
   const [obSyncLoading, setObSyncLoading] = useState(false);
-  const [obSyncResult, setObSyncResult] = useState<{ totalContacts: number; synced: number; subledgersCreated: number; inventoryMovementsSynced: number; errors: string[] } | null>(null);
+  const [obSyncResult, setObSyncResult] = useState<{ totalContacts: number; synced: number; subledgersCreated?: number; inventoryMovementsSynced?: number; inventoryJEsPosted?: number; inventoryJEsKept?: number; inventoryZeroCostSkipped?: number; inventoryTotalValue?: number; errors: string[] } | null>(null);
 
   const [postingPreviewLoading, setPostingPreviewLoading] = useState(false);
   const [postingRepairLoading, setPostingRepairLoading] = useState(false);
@@ -1337,7 +1337,7 @@ export default function DeveloperIntegrityLabPage() {
                     const result = await openingBalanceJournalService.syncAllContactOpeningBalances(companyId);
                     setObSyncResult(result);
                   } catch (e: any) {
-                    setObSyncResult({ totalContacts: 0, synced: 0, errors: [e?.message || String(e)] });
+                    setObSyncResult({ totalContacts: 0, synced: 0, inventoryMovementsSynced: 0, errors: [e?.message || String(e)] });
                   } finally {
                     setObSyncLoading(false);
                   }
@@ -1363,9 +1363,33 @@ export default function DeveloperIntegrityLabPage() {
                       Sub-ledgers: <strong className="text-blue-400">{obSyncResult.subledgersCreated}</strong>
                     </span>
                     <span className="text-gray-600">·</span>
-                    <span className="text-gray-400">
-                      Inventory: <strong className="text-amber-400">{obSyncResult.inventoryMovementsSynced}</strong>
-                    </span>
+                    {(obSyncResult.inventoryJEsPosted ?? 0) > 0 ? (
+                      <span className="text-gray-400">
+                        Inventory JEs posted: <strong className="text-emerald-400">{obSyncResult.inventoryJEsPosted}</strong>
+                        {(obSyncResult.inventoryTotalValue ?? 0) > 0 && (
+                          <span className="text-gray-500"> (Rs.{obSyncResult.inventoryTotalValue?.toLocaleString()})</span>
+                        )}
+                      </span>
+                    ) : (obSyncResult.inventoryJEsKept ?? 0) > 0 ? (
+                      <span className="text-gray-400">
+                        Inventory JEs kept: <strong className="text-blue-400">{obSyncResult.inventoryJEsKept}</strong>
+                        {(obSyncResult.inventoryTotalValue ?? 0) > 0 && (
+                          <span className="text-gray-500"> (Rs.{obSyncResult.inventoryTotalValue?.toLocaleString()})</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">
+                        Inventory: <strong className="text-amber-400">{obSyncResult.inventoryMovementsSynced ?? 0}</strong>
+                      </span>
+                    )}
+                    {(obSyncResult.inventoryZeroCostSkipped ?? 0) > 0 && (
+                      <>
+                        <span className="text-gray-600">·</span>
+                        <span className="text-gray-400">
+                          Zero-cost skipped: <strong className="text-yellow-500">{obSyncResult.inventoryZeroCostSkipped}</strong>
+                        </span>
+                      </>
+                    )}
                     {obSyncResult.errors.length > 0 && (
                       <>
                         <span className="text-gray-600">·</span>

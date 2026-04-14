@@ -456,22 +456,76 @@ export const openingBalanceJournalService = {
    * Canonical GL for `stock_movements` with reference_type = opening_balance.
    * Dr Inventory (1200 or type inventory) / Cr Owner Capital (3000). reference_id = movement id.
    * Voids active `stock_adjustment` JEs on the same movement (legacy wrong contra account).
+   *
+   * Returns a result object so callers can aggregate accurate diagnostic counts.
+   * - posted: a new JE was created
+   * - kept: an existing JE with correct amount was kept (idempotent)
+   * - skippedZeroCost: movement has zero cost even after product cost fallback
+   * - amount: the Rs. amount posted (or kept)
    */
-  async syncInventoryOpeningFromStockMovementId(movementId: string): Promise<void> {
+  async syncInventoryOpeningFromStockMovementId(movementId: string): Promise<{
+    posted: boolean;
+    kept: boolean;
+    skippedZeroCost: boolean;
+    amount: number;
+  }> {
+    const SKIP = { posted: false, kept: false, skippedZeroCost: false, amount: 0 };
     const { data: m, error } = await supabase.from('stock_movements').select('*').eq('id', movementId).maybeSingle();
     if (error || !m) {
       if (error) console.warn('[openingBalanceJournalService] syncInventoryOpening load movement:', error.message);
-      return;
+      return SKIP;
     }
-    if (String(m.reference_type || '').toLowerCase().trim() !== 'opening_balance') return;
-    if (String(m.movement_type || '').toLowerCase().trim() !== 'adjustment') return;
+    if (String(m.reference_type || '').toLowerCase().trim() !== 'opening_balance') return SKIP;
+    // reference_type='opening_balance' is the sole discriminator. Do NOT gate on movement_type —
+    // legacy rows may have any movement_type (null, 'adjustment', 'purchase', etc.) and must all be posted.
 
     const companyId = m.company_id as string;
     await voidMisclassifiedStockAdjustmentJesForMovement(movementId);
 
-    const amt = roundMoney(
+    let amt = roundMoney(
       Number(m.total_cost) || (Number(m.quantity) || 0) * (Number(m.unit_cost) || 0) || 0
     );
+
+    // Cost fallback: movement has no cost data but product/variation has a cost_price.
+    // This happens when opening stock was saved before cost price was entered, or via older code paths.
+    // The Inventory Management UI uses products.cost_price for stock value — align GL sync with same source.
+    if (amt < MONEY_EPS) {
+      const qty = Number(m.quantity) || 0;
+      const vid = (m as { variation_id?: string | null }).variation_id;
+      let productCost = 0;
+      if (vid) {
+        try {
+          const { data: pv } = await supabase
+            .from('product_variations')
+            .select('cost_price, purchase_price')
+            .eq('id', vid)
+            .maybeSingle();
+          productCost = Number((pv as any)?.cost_price) || Number((pv as any)?.purchase_price) || 0;
+        } catch { /* ignore */ }
+      }
+      if (!productCost && m.product_id) {
+        try {
+          const { data: prod } = await supabase
+            .from('products')
+            .select('cost_price')
+            .eq('id', m.product_id)
+            .maybeSingle();
+          productCost = Number((prod as any)?.cost_price) || 0;
+        } catch { /* ignore */ }
+      }
+      const fallbackAmt = roundMoney(qty * productCost);
+      if (fallbackAmt > MONEY_EPS) {
+        // Update the movement to be canonical for future syncs (also fix movement_type for legacy null rows)
+        await supabase
+          .from('stock_movements')
+          .update({ unit_cost: productCost, total_cost: fallbackAmt, movement_type: 'adjustment' })
+          .eq('id', movementId);
+        console.info(
+          `[openingBalanceJournalService] Inventory OB cost fallback: movement ${movementId} had zero cost; used product cost_price ${productCost} → Rs.${fallbackAmt}`
+        );
+        amt = fallbackAmt;
+      }
+    }
 
     const invId = await resolveInventoryAssetAccountId(companyId);
     if (!invId) {
@@ -479,7 +533,7 @@ export const openingBalanceJournalService = {
         '[openingBalanceJournalService] No inventory account (code 1200 or type inventory) for company',
         companyId
       );
-      return;
+      return SKIP;
     }
 
     await defaultAccountsService.ensureDefaultAccounts(companyId);
@@ -488,6 +542,7 @@ export const openingBalanceJournalService = {
     const entryDate = String(m.created_at || new Date().toISOString()).slice(0, 10);
 
     if (amt < MONEY_EPS) {
+      // Truly zero cost even after fallback — void any stale JE and skip
       const ex = await findActiveOpeningEntry(companyId, OPENING_BALANCE_REFERENCE.INVENTORY_OPENING, movementId);
       if (ex) await voidJournalEntry(ex.id);
       try {
@@ -496,7 +551,7 @@ export const openingBalanceJournalService = {
       } catch {
         /* ignore */
       }
-      return;
+      return { posted: false, kept: false, skippedZeroCost: true, amount: 0 };
     }
 
     const ok = await reconcileOrVoidOpeningJe({
@@ -513,7 +568,7 @@ export const openingBalanceJournalService = {
       } catch {
         /* ignore */
       }
-      return;
+      return { posted: false, kept: true, skippedZeroCost: false, amount: amt };
     }
 
     let productLabel = '';
@@ -563,6 +618,7 @@ export const openingBalanceJournalService = {
       entryDate,
       entryNo: `INV-OB-${String(movementId).replace(/-/g, '').slice(0, 12)}`,
     });
+    return { posted: true, kept: false, skippedZeroCost: false, amount: amt };
   },
 
   /**
@@ -628,7 +684,12 @@ export const openingBalanceJournalService = {
     totalContacts: number;
     synced: number;
     subledgersCreated: number;
+    /** @deprecated Use inventoryJEsPosted + inventoryJEsKept for accurate counts */
     inventoryMovementsSynced: number;
+    inventoryJEsPosted: number;
+    inventoryJEsKept: number;
+    inventoryZeroCostSkipped: number;
+    inventoryTotalValue: number;
     errors: string[];
   }> {
     await defaultAccountsService.ensureDefaultAccounts(companyId);
@@ -673,7 +734,13 @@ export const openingBalanceJournalService = {
     }
 
     // --- 3. Sync inventory opening stock movements to GL
+    // Query all opening_balance rows regardless of movement_type (older rows may have NULL movement_type;
+    // the inner function accepts null/empty as well as 'adjustment' and rejects only explicit non-adjustment types).
     let inventoryMovementsSynced = 0;
+    let inventoryJEsPosted = 0;
+    let inventoryJEsKept = 0;
+    let inventoryZeroCostSkipped = 0;
+    let inventoryTotalValue = 0;
     try {
       const { data: movements } = await supabase
         .from('stock_movements')
@@ -682,16 +749,32 @@ export const openingBalanceJournalService = {
         .eq('reference_type', 'opening_balance');
       for (const m of movements || []) {
         try {
-          await this.syncInventoryOpeningFromStockMovementId((m as { id: string }).id);
+          const result = await this.syncInventoryOpeningFromStockMovementId((m as { id: string }).id);
           inventoryMovementsSynced++;
+          if (result.posted) { inventoryJEsPosted++; inventoryTotalValue = roundMoney(inventoryTotalValue + result.amount); }
+          else if (result.kept) { inventoryJEsKept++; inventoryTotalValue = roundMoney(inventoryTotalValue + result.amount); }
+          else if (result.skippedZeroCost) inventoryZeroCostSkipped++;
         } catch (e: any) {
           errors.push(`Inventory movement: ${e?.message || String(e)}`);
         }
       }
+      console.info(
+        `[openingBalanceJournalService] Inventory OB sync complete: posted=${inventoryJEsPosted} kept=${inventoryJEsKept} zeroCostSkipped=${inventoryZeroCostSkipped} totalValue=Rs.${inventoryTotalValue}`
+      );
     } catch (e: any) {
       errors.push(`Inventory sync: ${e?.message || String(e)}`);
     }
 
-    return { totalContacts: (rows || []).length, synced, subledgersCreated, inventoryMovementsSynced, errors };
+    return {
+      totalContacts: (rows || []).length,
+      synced,
+      subledgersCreated,
+      inventoryMovementsSynced,
+      inventoryJEsPosted,
+      inventoryJEsKept,
+      inventoryZeroCostSkipped,
+      inventoryTotalValue,
+      errors,
+    };
   },
 };
