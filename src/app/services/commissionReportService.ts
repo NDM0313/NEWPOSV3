@@ -215,7 +215,19 @@ export async function getCommissionReport(
 async function ensureCommissionAccounts(companyId: string): Promise<{ expenseAccountId: string; payableAccountId: string }> {
   let expense = await accountHelperService.getAccountByCode('5110', companyId);
   if (!expense?.id) expense = await accountHelperService.getAccountByCode('5100', companyId);
-  if (!expense?.id) throw new Error('Sales Commission Expense account (5110 or 5100) not found. Add it in Chart of Accounts.');
+  if (!expense?.id) {
+    // Auto-create 5110 if missing
+    const { accountService } = await import('./accountService');
+    const created = await accountService.createAccount({
+      company_id: companyId,
+      code: '5110',
+      name: 'Sales Commission Expense',
+      type: 'expense',
+      is_active: true,
+    });
+    expense = created ?? (await accountHelperService.getAccountByCode('5110', companyId));
+  }
+  if (!expense?.id) throw new Error('Sales Commission Expense account (5110 or 5100) not found and could not be created.');
   let payable = await accountHelperService.getAccountByCode('2040', companyId);
   if (!payable?.id) {
     const { accountService } = await import('./accountService');

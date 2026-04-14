@@ -350,26 +350,53 @@ async function ensureInventoryAccount(companyId: string): Promise<{ id: string }
  * Issue 08: Compute total COGS for a sale from line items (quantity × product.cost_price).
  * Uses sales_items first, fallback sale_items. Returns 0 if no items or no cost.
  */
+/**
+ * Calculate COGS for a sale using weighted average cost from stock_movements.
+ * Falls back to product.cost_price only when no purchase/opening movements exist.
+ */
 async function getSaleCogs(saleId: string): Promise<number> {
-  let items: { quantity: number; product?: { cost_price?: number } | null }[] = [];
+  // Get sale items with product_id and quantity
+  let items: { product_id?: string; quantity: number; product?: { cost_price?: number; company_id?: string } | null }[] = [];
   const { data: fromSalesItems, error: err1 } = await supabase
     .from('sales_items')
-    .select('quantity, product:products(cost_price)')
+    .select('product_id, quantity, product:products(cost_price, company_id)')
     .eq('sale_id', saleId);
   if (!err1 && fromSalesItems?.length) {
     items = fromSalesItems as typeof items;
-  } else {
-    const { data: fromSaleItems } = await supabase
-      .from('sale_items')
-      .select('quantity, product:products(cost_price)')
-      .eq('sale_id', saleId);
-    if (fromSaleItems?.length) items = fromSaleItems as typeof items;
   }
+
   let total = 0;
   for (const row of items) {
     const qty = Number(row.quantity) || 0;
-    const cost = Number(row.product?.cost_price) || 0;
-    total += qty * cost;
+    if (qty <= 0 || !row.product_id) continue;
+
+    // Calculate weighted average cost from stock_movements (purchases + opening stock)
+    const companyId = (row.product as any)?.company_id;
+    let avgCost = 0;
+    if (companyId) {
+      const { data: movements } = await supabase
+        .from('stock_movements')
+        .select('quantity, unit_cost, total_cost')
+        .eq('product_id', row.product_id)
+        .eq('company_id', companyId)
+        .in('movement_type', ['purchase', 'opening_stock']);
+      if (movements?.length) {
+        let costSum = 0;
+        let costQty = 0;
+        for (const m of movements) {
+          const mQty = Math.abs(Number((m as any).quantity) || 0);
+          const mCost = Number((m as any).total_cost) || (mQty * (Number((m as any).unit_cost) || 0));
+          costSum += Math.abs(mCost);
+          costQty += mQty;
+        }
+        if (costQty > 0) avgCost = costSum / costQty;
+      }
+    }
+
+    // Fallback to product.cost_price if no movements found
+    if (avgCost <= 0) avgCost = Number(row.product?.cost_price) || 0;
+
+    total += qty * avgCost;
   }
   return Math.round(total * 100) / 100;
 }

@@ -895,12 +895,39 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         
         const stockMovementErrors: string[] = [];
 
-        // Fetch cost prices for all products (use cost_price NOT selling price for stock movements)
+        // Fetch weighted average cost for all products from stock_movements (actual purchase/opening cost)
+        // Falls back to product.cost_price if no purchase movements exist
         const saleProductIds = newSale.items.map((i: any) => i.productId).filter(Boolean);
         const costPriceMap = new Map<string, number>();
-        if (saleProductIds.length > 0) {
-          const { data: costRows } = await supabase.from('products').select('id, cost_price').in('id', saleProductIds);
-          for (const r of costRows || []) costPriceMap.set(r.id, Number((r as any).cost_price) || 0);
+        if (saleProductIds.length > 0 && companyId) {
+          const { data: movements } = await supabase
+            .from('stock_movements')
+            .select('product_id, quantity, unit_cost, total_cost')
+            .eq('company_id', companyId)
+            .in('product_id', saleProductIds)
+            .in('movement_type', ['purchase', 'opening_stock']);
+          // Calculate weighted average per product
+          const costAcc = new Map<string, { sum: number; qty: number }>();
+          for (const m of movements || []) {
+            const pid = (m as any).product_id;
+            const mQty = Math.abs(Number((m as any).quantity) || 0);
+            const mCost = Math.abs(Number((m as any).total_cost) || (mQty * (Number((m as any).unit_cost) || 0)));
+            const acc = costAcc.get(pid) || { sum: 0, qty: 0 };
+            acc.sum += mCost;
+            acc.qty += mQty;
+            costAcc.set(pid, acc);
+          }
+          for (const [pid, acc] of costAcc) {
+            if (acc.qty > 0) costPriceMap.set(pid, acc.sum / acc.qty);
+          }
+          // Fallback: products without purchase movements use cost_price
+          const missingIds = saleProductIds.filter((id: string) => !costPriceMap.has(id));
+          if (missingIds.length > 0) {
+            const { data: fallback } = await supabase.from('products').select('id, cost_price').in('id', missingIds);
+            for (const r of fallback || []) {
+              if (!costPriceMap.has(r.id)) costPriceMap.set(r.id, Number((r as any).cost_price) || 0);
+            }
+          }
         }
 
         for (const item of newSale.items) {
@@ -1497,12 +1524,36 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           const stockMovementErrors: string[] = [];
           const saleInvoiceNo = getSaleDisplayNumber(saleForStock as any) || (saleForStock as any)?.invoice_no || id;
 
-          // Fetch cost prices (use cost_price NOT selling price for stock movements)
+          // Fetch weighted average cost from stock_movements (actual purchase cost, not static cost_price)
           const editProductIds = stockMovementDeltas.map(d => d.productId).filter(Boolean);
           const editCostMap = new Map<string, number>();
-          if (editProductIds.length > 0) {
-            const { data: costRows } = await supabase.from('products').select('id, cost_price').in('id', editProductIds);
-            for (const r of costRows || []) editCostMap.set(r.id, Number((r as any).cost_price) || 0);
+          if (editProductIds.length > 0 && companyId) {
+            const { data: movements } = await supabase
+              .from('stock_movements')
+              .select('product_id, quantity, unit_cost, total_cost')
+              .eq('company_id', companyId)
+              .in('product_id', editProductIds)
+              .in('movement_type', ['purchase', 'opening_stock']);
+            const costAcc = new Map<string, { sum: number; qty: number }>();
+            for (const m of movements || []) {
+              const pid = (m as any).product_id;
+              const mQty = Math.abs(Number((m as any).quantity) || 0);
+              const mCost = Math.abs(Number((m as any).total_cost) || (mQty * (Number((m as any).unit_cost) || 0)));
+              const acc = costAcc.get(pid) || { sum: 0, qty: 0 };
+              acc.sum += mCost;
+              acc.qty += mQty;
+              costAcc.set(pid, acc);
+            }
+            for (const [pid, acc] of costAcc) {
+              if (acc.qty > 0) editCostMap.set(pid, acc.sum / acc.qty);
+            }
+            const missingIds = editProductIds.filter((id: string) => !editCostMap.has(id));
+            if (missingIds.length > 0) {
+              const { data: fallback } = await supabase.from('products').select('id, cost_price').in('id', missingIds);
+              for (const r of fallback || []) {
+                if (!editCostMap.has(r.id)) editCostMap.set(r.id, Number((r as any).cost_price) || 0);
+              }
+            }
           }
 
           for (const delta of stockMovementDeltas) {
@@ -1602,12 +1653,36 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               effectiveBranchId = branches?.length ? branches[0].id : null;
             }
             if (effectiveBranchId === 'all') effectiveBranchId = null;
-            // Fetch cost prices for status-change stock movements
+            // Fetch weighted average cost from stock_movements (actual purchase cost)
             const statusChangeProductIds = currentItems.map(i => i.product_id).filter(Boolean);
             const statusCostMap = new Map<string, number>();
-            if (statusChangeProductIds.length > 0) {
-              const { data: costRows } = await sb.from('products').select('id, cost_price').in('id', statusChangeProductIds);
-              for (const r of costRows || []) statusCostMap.set(r.id, Number((r as any).cost_price) || 0);
+            if (statusChangeProductIds.length > 0 && effectiveCompanyId) {
+              const { data: movements } = await sb
+                .from('stock_movements')
+                .select('product_id, quantity, unit_cost, total_cost')
+                .eq('company_id', effectiveCompanyId)
+                .in('product_id', statusChangeProductIds)
+                .in('movement_type', ['purchase', 'opening_stock']);
+              const costAcc = new Map<string, { sum: number; qty: number }>();
+              for (const m of movements || []) {
+                const pid = (m as any).product_id;
+                const mQty = Math.abs(Number((m as any).quantity) || 0);
+                const mCost = Math.abs(Number((m as any).total_cost) || (mQty * (Number((m as any).unit_cost) || 0)));
+                const acc = costAcc.get(pid) || { sum: 0, qty: 0 };
+                acc.sum += mCost;
+                acc.qty += mQty;
+                costAcc.set(pid, acc);
+              }
+              for (const [pid, acc] of costAcc) {
+                if (acc.qty > 0) statusCostMap.set(pid, acc.sum / acc.qty);
+              }
+              const missingIds = statusChangeProductIds.filter((id: string) => !statusCostMap.has(id));
+              if (missingIds.length > 0) {
+                const { data: fallback } = await sb.from('products').select('id, cost_price').in('id', missingIds);
+                for (const r of fallback || []) {
+                  if (!statusCostMap.has(r.id)) statusCostMap.set(r.id, Number((r as any).cost_price) || 0);
+                }
+              }
             }
             for (const item of currentItems) {
               const qty = Number(item.quantity) || 0;
