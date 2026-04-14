@@ -622,6 +622,7 @@ export const SalesPage = () => {
     actions: true,
     date: true,
     invoiceNo: true,
+    notes: true, // Reference / Notes
     type: true, // POS vs Regular (same as SalesListDesignTestPage)
     customer: true,
     contact: false, // REMOVED from default view
@@ -647,6 +648,7 @@ export const SalesPage = () => {
     'actions', // Action column first for easier access
     'date',
     'invoiceNo',
+    'notes',
     'type', // POS vs Regular (same as SalesListDesignTestPage)
     'customer',
     'location',
@@ -668,6 +670,7 @@ export const SalesPage = () => {
       actions: 'Actions',
       date: 'Date',
       invoiceNo: 'Invoice No.',
+      notes: 'Ref / Notes',
       type: 'Type',
       customer: 'Customer',
       contact: 'Contact',
@@ -717,6 +720,7 @@ export const SalesPage = () => {
       actions: '60px',
       date: '100px',
       invoiceNo: '110px',
+      notes: '120px',
       type: '100px',
       customer: '200px',
       contact: '140px',
@@ -1128,6 +1132,13 @@ export const SalesPage = () => {
           </button>
         );
       }
+
+      case 'notes':
+        return (
+          <div className="text-sm text-gray-400 truncate max-w-[120px]" title={(sale as any).notes || ''}>
+            {(sale as any).notes || '-'}
+          </div>
+        );
 
       case 'type':
         return getSourceBadge(sale);

@@ -894,7 +894,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         console.log('[SALES CONTEXT] 🔄 Creating stock movements for sale:', newSale.id, 'Items:', newSale.items.length);
         
         const stockMovementErrors: string[] = [];
-        
+
+        // Fetch cost prices for all products (use cost_price NOT selling price for stock movements)
+        const saleProductIds = newSale.items.map((i: any) => i.productId).filter(Boolean);
+        const costPriceMap = new Map<string, number>();
+        if (saleProductIds.length > 0) {
+          const { data: costRows } = await supabase.from('products').select('id, cost_price').in('id', saleProductIds);
+          for (const r of costRows || []) costPriceMap.set(r.id, Number((r as any).cost_price) || 0);
+        }
+
         for (const item of newSale.items) {
           if (item.productId && item.quantity > 0) {
             try {
@@ -943,8 +951,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                       variation_id: comboItem.variation_id || undefined,
                       movement_type: 'sale',
                       quantity: -componentQty, // Negative for stock OUT
-                      unit_cost: comboItem.unit_price || 0,
-                      total_cost: -(componentQty * (comboItem.unit_price || 0)),
+                      unit_cost: costPriceMap.get(comboItem.product_id) || comboItem.unit_price || 0,
+                      total_cost: -(componentQty * (costPriceMap.get(comboItem.product_id) || comboItem.unit_price || 0)),
                       reference_type: 'sale',
                       reference_id: newSale.id,
                       notes: `Combo sale ${newSale.invoiceNo}: ${combo.combo_name} - Component: ${comboItem.product_id}${comboItem.variation_id ? ' (Variation)' : ''}`,
@@ -991,8 +999,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 variation_id: item.variationId || undefined,
                 movement_type: 'sale',
                 quantity: -item.quantity,
-                unit_cost: item.price || 0,
-                total_cost: -((item.price || 0) * item.quantity),
+                unit_cost: costPriceMap.get(item.productId) || item.price || 0,
+                total_cost: -((costPriceMap.get(item.productId) || item.price || 0) * item.quantity),
                 reference_type: 'sale',
                 reference_id: newSale.id,
                 notes: `Sale ${newSale.invoiceNo} - ${item.productName}${item.variationId ? ' (Variation)' : ''}`,
@@ -1488,7 +1496,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           // Create stock movements for DELTA only
           const stockMovementErrors: string[] = [];
           const saleInvoiceNo = getSaleDisplayNumber(saleForStock as any) || (saleForStock as any)?.invoice_no || id;
-          
+
+          // Fetch cost prices (use cost_price NOT selling price for stock movements)
+          const editProductIds = stockMovementDeltas.map(d => d.productId).filter(Boolean);
+          const editCostMap = new Map<string, number>();
+          if (editProductIds.length > 0) {
+            const { data: costRows } = await supabase.from('products').select('id, cost_price').in('id', editProductIds);
+            for (const r of costRows || []) editCostMap.set(r.id, Number((r as any).cost_price) || 0);
+          }
+
           for (const delta of stockMovementDeltas) {
             try {
               // deltaQty > 0 means item was removed/reduced → restore stock (positive movement)
@@ -1511,8 +1527,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 variation_id: delta.variationId,
                 movement_type: 'sale',
                 quantity: movementQty, // Positive = restore stock, Negative = reduce stock
-                unit_cost: delta.price,
-                total_cost: movementQty * delta.price,
+                unit_cost: editCostMap.get(delta.productId) || delta.price,
+                total_cost: movementQty * (editCostMap.get(delta.productId) || delta.price),
                 reference_type: 'sale',
                 reference_id: id,
                 notes: `Sale Edit ${saleInvoiceNo} - ${delta.name}${delta.variationId ? ' (Variation)' : ''} - Delta: ${delta.deltaQty > 0 ? 'Restore' : 'Reduce'}`,
@@ -1586,6 +1602,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               effectiveBranchId = branches?.length ? branches[0].id : null;
             }
             if (effectiveBranchId === 'all') effectiveBranchId = null;
+            // Fetch cost prices for status-change stock movements
+            const statusChangeProductIds = currentItems.map(i => i.product_id).filter(Boolean);
+            const statusCostMap = new Map<string, number>();
+            if (statusChangeProductIds.length > 0) {
+              const { data: costRows } = await sb.from('products').select('id, cost_price').in('id', statusChangeProductIds);
+              for (const r of costRows || []) statusCostMap.set(r.id, Number((r as any).cost_price) || 0);
+            }
             for (const item of currentItems) {
               const qty = Number(item.quantity) || 0;
               if (qty <= 0) continue;
@@ -1623,7 +1646,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 variation_id: variationId,
                 movement_type: 'sale',
                 quantity: -qty,
-                unit_cost: Number(item.unit_price) || 0,
+                unit_cost: statusCostMap.get(productId) || Number(item.unit_price) || 0,
                 reference_type: 'sale',
                 reference_id: id,
                 notes: `Sale ${saleInvoiceNo} – ${(item as any).product_name || 'Item'}`,
