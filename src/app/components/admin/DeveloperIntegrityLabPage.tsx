@@ -157,6 +157,13 @@ export default function DeveloperIntegrityLabPage() {
   const [coaAuditResult, setCoaAuditResult] = useState<FullAccountingAuditResult | null>(null);
   const [coaSeedLoading, setCoaSeedLoading] = useState(false);
 
+  const [glAuditLoading, setGlAuditLoading] = useState(false);
+  const [glAuditData, setGlAuditData] = useState<{ code: string; name: string; gl_balance: number; stored_balance: number; mismatch: number }[] | null>(null);
+  const [glSyncLoading, setGlSyncLoading] = useState(false);
+
+  const [invDetailLoading, setInvDetailLoading] = useState(false);
+  const [invDetailData, setInvDetailData] = useState<{ product: string; sku: string; variation: string; var_sku: string; qty: number; cost: number; sale_price: number; stock_value: number; margin: number }[] | null>(null);
+
   const [obSyncLoading, setObSyncLoading] = useState(false);
   const [obSyncResult, setObSyncResult] = useState<{ totalContacts: number; synced: number; subledgersCreated?: number; inventoryMovementsSynced?: number; inventoryJEsPosted?: number; inventoryJEsKept?: number; inventoryZeroCostSkipped?: number; inventoryTotalValue?: number; errors: string[] } | null>(null);
 
@@ -668,6 +675,8 @@ export default function DeveloperIntegrityLabPage() {
           <TabsTrigger value="party-tieout">G · Party tie-out</TabsTrigger>
           <TabsTrigger value="coa-audit">H · COA audit</TabsTrigger>
           <TabsTrigger value="ob-sync">I · OB sync</TabsTrigger>
+          <TabsTrigger value="gl-audit">J · GL Audit</TabsTrigger>
+          <TabsTrigger value="inv-detail">K · Inventory</TabsTrigger>
         </TabsList>
 
         <TabsContent value="trace" className="space-y-4">
@@ -1549,6 +1558,246 @@ export default function DeveloperIntegrityLabPage() {
                   {dataRepairResult.map((line, i) => (
                     <p key={i} className={line.startsWith('===') ? 'text-blue-400 font-bold' : line.startsWith('ERROR') ? 'text-red-400' : 'text-gray-300'}>{line}</p>
                   ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="gl-audit" className="space-y-4">
+          <Card className="border-gray-800 bg-gray-900/40">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Scale className="h-5 w-5 text-blue-400" />
+                GL Balance Audit
+              </CardTitle>
+              <CardDescription>
+                Compares stored account balances with journal-derived GL balances. Mismatches indicate data drift.
+                Click "Sync All" to fix stored balances to match GL truth.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Button
+                  onClick={async () => {
+                    if (!companyId) return;
+                    setGlAuditLoading(true);
+                    try {
+                      const { data } = await supabase.rpc('gl_audit_all_accounts', { p_company_id: companyId }).throwOnError();
+                      setGlAuditData(null); // will use direct query instead
+                      // Direct query approach since RPC may not exist
+                    } catch {
+                      // Fallback: query directly
+                      try {
+                        const { data: accounts } = await supabase.from('accounts').select('id, code, name, balance').eq('company_id', companyId).eq('is_active', true);
+                        const { data: entries } = await supabase.from('journal_entries').select('id').eq('company_id', companyId).or('is_void.is.null,is_void.eq.false');
+                        const jeIds = (entries || []).map((e: any) => e.id);
+                        const { data: lines } = jeIds.length > 0 ? await supabase.from('journal_entry_lines').select('account_id, debit, credit').in('journal_entry_id', jeIds) : { data: [] };
+                        const glMap = new Map<string, number>();
+                        for (const l of (lines || []) as any[]) {
+                          glMap.set(l.account_id, (glMap.get(l.account_id) || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0));
+                        }
+                        const rows = (accounts || []).map((a: any) => {
+                          const gl = Math.round((glMap.get(a.id) || 0) * 100) / 100;
+                          const stored = Math.round((Number(a.balance) || 0) * 100) / 100;
+                          return { code: a.code, name: a.name, gl_balance: gl, stored_balance: stored, mismatch: Math.round((gl - stored) * 100) / 100 };
+                        }).filter((r: any) => r.gl_balance !== 0 || r.stored_balance !== 0);
+                        rows.sort((a: any, b: any) => a.code.localeCompare(b.code));
+                        setGlAuditData(rows);
+                      } catch (e: any) {
+                        console.error('GL audit failed:', e);
+                      }
+                    }
+                    setGlAuditLoading(false);
+                  }}
+                  disabled={glAuditLoading || !companyId}
+                >
+                  {glAuditLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Search className="h-4 w-4 mr-1" />}
+                  Run GL Audit
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    if (!companyId) return;
+                    setGlSyncLoading(true);
+                    try {
+                      const { syncAccountsBalanceFromJournal } = await import('@/app/services/liveDataRepairService');
+                      const { updated } = await syncAccountsBalanceFromJournal(companyId);
+                      if (updated > 0) {
+                        alert(`Synced ${updated} account balances to GL truth.`);
+                        // Re-run audit
+                        const btn = document.querySelector('[data-gl-audit-btn]') as HTMLButtonElement;
+                        btn?.click();
+                      } else alert('No mismatches to sync.');
+                    } catch (e: any) { alert('Sync failed: ' + e?.message); }
+                    setGlSyncLoading(false);
+                  }}
+                  disabled={glSyncLoading || !companyId}
+                >
+                  {glSyncLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                  Sync All Balances
+                </Button>
+              </div>
+              {glAuditData && (
+                <div className="rounded-lg border border-gray-800 bg-gray-950/50 overflow-auto max-h-[60vh]">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-gray-900 text-gray-500 uppercase">
+                      <tr>
+                        <th className="text-left p-2">Code</th>
+                        <th className="text-left p-2">Account</th>
+                        <th className="text-right p-2">GL Balance</th>
+                        <th className="text-right p-2">Stored</th>
+                        <th className="text-right p-2">Mismatch</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {glAuditData.map((r, i) => (
+                        <tr key={r.code + i} className={`border-t border-gray-800/50 ${Math.abs(r.mismatch) > 0.01 ? 'bg-red-950/30' : ''}`}>
+                          <td className="p-2 font-mono text-gray-400">{r.code}</td>
+                          <td className="p-2 text-gray-300">{r.name}</td>
+                          <td className="p-2 text-right text-white">{r.gl_balance.toLocaleString()}</td>
+                          <td className="p-2 text-right text-gray-400">{r.stored_balance.toLocaleString()}</td>
+                          <td className={`p-2 text-right font-bold ${Math.abs(r.mismatch) > 0.01 ? 'text-red-400' : 'text-emerald-400'}`}>
+                            {Math.abs(r.mismatch) > 0.01 ? r.mismatch.toLocaleString() : '0'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="p-2 text-xs text-gray-500 border-t border-gray-800">
+                    {glAuditData.filter(r => Math.abs(r.mismatch) > 0.01).length} mismatches of {glAuditData.length} accounts
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="inv-detail" className="space-y-4">
+          <Card className="border-gray-800 bg-gray-900/40">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ClipboardList className="h-5 w-5 text-amber-400" />
+                Inventory Detail (Per-Variation)
+              </CardTitle>
+              <CardDescription>
+                Shows each product and variation with quantity, cost price, sale price, stock value, and profit margin.
+                Cost is weighted average from actual purchases.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button
+                onClick={async () => {
+                  if (!companyId) return;
+                  setInvDetailLoading(true);
+                  try {
+                    // Fetch products + variations
+                    const { data: products } = await supabase.from('products').select('id, name, sku, cost_price, retail_price, has_variations').eq('company_id', companyId);
+                    const prodIds = (products || []).map((p: any) => p.id);
+                    const { data: variations } = prodIds.length > 0 ? await supabase.from('product_variations').select('id, product_id, sku, attributes, price, stock').in('product_id', prodIds) : { data: [] };
+                    // Fetch weighted avg cost from stock_movements
+                    const { data: movements } = prodIds.length > 0 ? await supabase.from('stock_movements').select('product_id, variation_id, quantity, unit_cost, total_cost').eq('company_id', companyId).in('movement_type', ['purchase', 'opening_stock']).in('product_id', prodIds) : { data: [] };
+                    // Build cost maps
+                    const prodCostAcc = new Map<string, { sum: number; qty: number }>();
+                    const varCostAcc = new Map<string, { sum: number; qty: number }>();
+                    for (const m of (movements || []) as any[]) {
+                      const q = Math.abs(Number(m.quantity) || 0);
+                      const c = Math.abs(Number(m.total_cost) || (q * (Number(m.unit_cost) || 0)));
+                      const pk = m.product_id;
+                      const acc = prodCostAcc.get(pk) || { sum: 0, qty: 0 };
+                      acc.sum += c; acc.qty += q; prodCostAcc.set(pk, acc);
+                      if (m.variation_id) {
+                        const vk = m.variation_id;
+                        const vacc = varCostAcc.get(vk) || { sum: 0, qty: 0 };
+                        vacc.sum += c; vacc.qty += q; varCostAcc.set(vk, vacc);
+                      }
+                    }
+                    // Fetch stock from stock_movements (actual stock = sum of all movements)
+                    const { data: allMov } = prodIds.length > 0 ? await supabase.from('stock_movements').select('product_id, variation_id, quantity').eq('company_id', companyId).in('product_id', prodIds) : { data: [] };
+                    const stockMap = new Map<string, number>();
+                    const varStockMap = new Map<string, number>();
+                    for (const m of (allMov || []) as any[]) {
+                      const q = Number(m.quantity) || 0;
+                      stockMap.set(m.product_id, (stockMap.get(m.product_id) || 0) + q);
+                      if (m.variation_id) varStockMap.set(m.variation_id, (varStockMap.get(m.variation_id) || 0) + q);
+                    }
+                    // Build rows
+                    const rows: typeof invDetailData extends (infer T)[] | null ? T[] : never[] = [];
+                    for (const p of (products || []) as any[]) {
+                      const varList = ((variations || []) as any[]).filter(v => v.product_id === p.id);
+                      if (varList.length > 0) {
+                        for (const v of varList) {
+                          const qty = Math.round((varStockMap.get(v.id) || Number(v.stock) || 0) * 100) / 100;
+                          const costAcc = varCostAcc.get(v.id) || prodCostAcc.get(p.id);
+                          const cost = costAcc && costAcc.qty > 0 ? Math.round((costAcc.sum / costAcc.qty) * 100) / 100 : Number(p.cost_price) || 0;
+                          const salePrice = Number(v.price) || Number(p.retail_price) || 0;
+                          const stockValue = Math.round(qty * cost * 100) / 100;
+                          const margin = salePrice > 0 ? Math.round(((salePrice - cost) / salePrice) * 10000) / 100 : 0;
+                          const attrs = v.attributes && typeof v.attributes === 'object' ? Object.entries(v.attributes).filter(([k]) => !k.startsWith('__')).map(([k, val]) => `${k}: ${val}`).join(', ') : '';
+                          rows.push({ product: p.name, sku: p.sku, variation: attrs || v.sku, var_sku: v.sku, qty, cost, sale_price: salePrice, stock_value: stockValue, margin });
+                        }
+                      } else {
+                        const qty = Math.round((stockMap.get(p.id) || Number(p.current_stock) || 0) * 100) / 100;
+                        const costAcc = prodCostAcc.get(p.id);
+                        const cost = costAcc && costAcc.qty > 0 ? Math.round((costAcc.sum / costAcc.qty) * 100) / 100 : Number(p.cost_price) || 0;
+                        const salePrice = Number(p.retail_price) || 0;
+                        const stockValue = Math.round(qty * cost * 100) / 100;
+                        const margin = salePrice > 0 ? Math.round(((salePrice - cost) / salePrice) * 10000) / 100 : 0;
+                        rows.push({ product: p.name, sku: p.sku, variation: '—', var_sku: '—', qty, cost, sale_price: salePrice, stock_value: stockValue, margin });
+                      }
+                    }
+                    rows.sort((a, b) => a.product.localeCompare(b.product) || a.variation.localeCompare(b.variation));
+                    setInvDetailData(rows);
+                  } catch (e: any) { console.error('Inventory detail failed:', e); }
+                  setInvDetailLoading(false);
+                }}
+                disabled={invDetailLoading || !companyId}
+              >
+                {invDetailLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Search className="h-4 w-4 mr-1" />}
+                Load Inventory Detail
+              </Button>
+              {invDetailData && (
+                <div className="rounded-lg border border-gray-800 bg-gray-950/50 overflow-auto max-h-[60vh]">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-gray-900 text-gray-500 uppercase">
+                      <tr>
+                        <th className="text-left p-2">Product</th>
+                        <th className="text-left p-2">Variation</th>
+                        <th className="text-left p-2">SKU</th>
+                        <th className="text-right p-2">Qty</th>
+                        <th className="text-right p-2">Avg Cost</th>
+                        <th className="text-right p-2">Sale Price</th>
+                        <th className="text-right p-2">Stock Value</th>
+                        <th className="text-right p-2">Margin %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invDetailData.map((r, i) => (
+                        <tr key={r.sku + r.var_sku + i} className="border-t border-gray-800/50">
+                          <td className="p-2 text-white font-medium">{r.product}</td>
+                          <td className="p-2 text-gray-400">{r.variation}</td>
+                          <td className="p-2 font-mono text-gray-500">{r.var_sku}</td>
+                          <td className={`p-2 text-right ${r.qty < 0 ? 'text-red-400' : r.qty > 0 ? 'text-white' : 'text-gray-600'}`}>{r.qty}</td>
+                          <td className="p-2 text-right text-amber-300">{r.cost > 0 ? `Rs. ${r.cost.toLocaleString()}` : '—'}</td>
+                          <td className="p-2 text-right text-blue-300">{r.sale_price > 0 ? `Rs. ${r.sale_price.toLocaleString()}` : '—'}</td>
+                          <td className="p-2 text-right text-white font-medium">{r.stock_value > 0 ? `Rs. ${r.stock_value.toLocaleString()}` : r.stock_value < 0 ? `(Rs. ${Math.abs(r.stock_value).toLocaleString()})` : '—'}</td>
+                          <td className={`p-2 text-right font-bold ${r.margin > 30 ? 'text-emerald-400' : r.margin > 0 ? 'text-amber-400' : 'text-gray-600'}`}>
+                            {r.margin > 0 ? `${r.margin}%` : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-900 border-t border-gray-700">
+                      <tr>
+                        <td className="p-2 text-white font-bold" colSpan={3}>Total</td>
+                        <td className="p-2 text-right text-white font-bold">{invDetailData.reduce((s, r) => s + r.qty, 0).toLocaleString()}</td>
+                        <td className="p-2"></td>
+                        <td className="p-2"></td>
+                        <td className="p-2 text-right text-white font-bold">Rs. {invDetailData.reduce((s, r) => s + r.stock_value, 0).toLocaleString()}</td>
+                        <td className="p-2"></td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
               )}
             </CardContent>
