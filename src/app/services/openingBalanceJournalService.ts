@@ -226,8 +226,24 @@ export const openingBalanceJournalService = {
 
     await defaultAccountsService.ensureDefaultAccounts(companyId);
     const equityId = await resolveOpeningEquityAccountId(companyId);
-    const arId = await findAccountIdByCode(companyId, '1100');
-    const apId = await findAccountIdByCode(companyId, '2000');
+    // Use customer/supplier sub-ledger accounts when available (AR-CUS0001, AP-SUP0001)
+    // Falls back to parent control (1100, 2000) if no sub-ledger exists
+    let arId = await findAccountIdByCode(companyId, '1100');
+    let apId = await findAccountIdByCode(companyId, '2000');
+    if (type === 'customer' || type === 'both') {
+      try {
+        const { resolveReceivablePostingAccountId } = await import('./partySubledgerAccountService');
+        const subId = await resolveReceivablePostingAccountId(companyId, contactId);
+        if (subId) arId = subId;
+      } catch { /* fallback to parent 1100 */ }
+    }
+    if (type === 'supplier' || type === 'both') {
+      try {
+        const { resolvePayablePostingAccountId } = await import('./partySubledgerAccountService');
+        const subId = await resolvePayablePostingAccountId(companyId, contactId);
+        if (subId) apId = subId;
+      } catch { /* fallback to parent 2000 */ }
+    }
     const wpId = await findAccountIdByCode(companyId, '2010');
     const waId = await findAccountIdByCode(companyId, '1180');
 

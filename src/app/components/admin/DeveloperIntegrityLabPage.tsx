@@ -161,6 +161,9 @@ export default function DeveloperIntegrityLabPage() {
   const [glAuditData, setGlAuditData] = useState<{ code: string; name: string; gl_balance: number; stored_balance: number; mismatch: number }[] | null>(null);
   const [glSyncLoading, setGlSyncLoading] = useState(false);
 
+  const [contactReconLoading, setContactReconLoading] = useState(false);
+  const [contactReconData, setContactReconData] = useState<{ name: string; code: string; type: string; opening: number; sales_due: number; operational: number; gl_balance: number; diff: number; sub_account: string }[] | null>(null);
+
   const [invDetailLoading, setInvDetailLoading] = useState(false);
   const [invDetailData, setInvDetailData] = useState<{ product: string; sku: string; variation: string; var_sku: string; qty: number; cost: number; sale_price: number; stock_value: number; margin: number }[] | null>(null);
 
@@ -677,6 +680,7 @@ export default function DeveloperIntegrityLabPage() {
           <TabsTrigger value="ob-sync">I · OB sync</TabsTrigger>
           <TabsTrigger value="gl-audit">J · GL Audit</TabsTrigger>
           <TabsTrigger value="inv-detail">K · Inventory</TabsTrigger>
+          <TabsTrigger value="contact-recon">L · Contact Recon</TabsTrigger>
         </TabsList>
 
         <TabsContent value="trace" className="space-y-4">
@@ -1798,6 +1802,147 @@ export default function DeveloperIntegrityLabPage() {
                       </tr>
                     </tfoot>
                   </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="contact-recon" className="space-y-4">
+          <Card className="border-gray-800 bg-gray-900/40">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Scale className="h-5 w-5 text-purple-400" />
+                Contact Balance Reconciliation
+              </CardTitle>
+              <CardDescription>
+                Compares each contact's operational balance (opening + sales due - paid - returns) vs GL balance
+                (journal entries on AR/AP sub-ledger). Shows where mismatches occur and why.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Button
+                  onClick={async () => {
+                    if (!companyId) return;
+                    setContactReconLoading(true);
+                    try {
+                      // Fetch all customers/suppliers
+                      const { data: contacts } = await supabase.from('contacts').select('id, name, code, type, opening_balance, supplier_opening_balance').eq('company_id', companyId).in('type', ['customer', 'supplier', 'both']);
+                      // Fetch sub-ledger accounts
+                      const { data: subAccounts } = await supabase.from('accounts').select('id, code, name, linked_contact_id').eq('company_id', companyId).eq('is_active', true).not('linked_contact_id', 'is', null);
+                      const subMap = new Map<string, { id: string; code: string }>();
+                      for (const a of (subAccounts || []) as any[]) subMap.set(a.linked_contact_id, { id: a.id, code: a.code });
+                      // Fetch GL balances for all sub-ledger accounts
+                      const subIds = (subAccounts || []).map((a: any) => a.id);
+                      let glMap = new Map<string, number>();
+                      if (subIds.length > 0) {
+                        const { data: entries } = await supabase.from('journal_entries').select('id').eq('company_id', companyId).or('is_void.is.null,is_void.eq.false');
+                        const jeIds = (entries || []).map((e: any) => e.id);
+                        if (jeIds.length > 0) {
+                          const { data: lines } = await supabase.from('journal_entry_lines').select('account_id, debit, credit').in('journal_entry_id', jeIds).in('account_id', subIds);
+                          for (const l of (lines || []) as any[]) glMap.set(l.account_id, (glMap.get(l.account_id) || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0));
+                        }
+                      }
+                      // Fetch sales data per customer
+                      const { data: sales } = await supabase.from('sales').select('id, customer_id, total, paid_amount, due_amount, discount_amount, shipment_charges').eq('company_id', companyId).eq('status', 'final');
+                      const salesByCustomer = new Map<string, { totalSales: number; totalPaid: number; totalDue: number }>();
+                      for (const s of (sales || []) as any[]) {
+                        if (!s.customer_id) continue;
+                        const acc = salesByCustomer.get(s.customer_id) || { totalSales: 0, totalPaid: 0, totalDue: 0 };
+                        acc.totalSales += Number(s.total) || 0;
+                        acc.totalPaid += Number(s.paid_amount) || 0;
+                        acc.totalDue += Number(s.due_amount) || 0;
+                        salesByCustomer.set(s.customer_id, acc);
+                      }
+                      // Fetch returns per customer
+                      const { data: returns } = await supabase.from('sale_returns').select('id, original_sale_id, total').eq('company_id', companyId).eq('status', 'final');
+                      const saleCustomerMap = new Map<string, string>();
+                      for (const s of (sales || []) as any[]) if (s.customer_id) saleCustomerMap.set(s.id, s.customer_id);
+                      const returnsByCustomer = new Map<string, number>();
+                      for (const r of (returns || []) as any[]) {
+                        const custId = saleCustomerMap.get(r.original_sale_id);
+                        if (custId) returnsByCustomer.set(custId, (returnsByCustomer.get(custId) || 0) + (Number(r.total) || 0));
+                      }
+                      // Build rows
+                      const rows: typeof contactReconData extends (infer T)[] | null ? T[] : never[] = [];
+                      for (const c of (contacts || []) as any[]) {
+                        const isCustomer = c.type === 'customer' || c.type === 'both';
+                        const opening = isCustomer ? (Number(c.opening_balance) || 0) : (Number(c.supplier_opening_balance) || 0);
+                        const sd = salesByCustomer.get(c.id);
+                        const salesDue = sd ? sd.totalDue : 0;
+                        const totalReturns = returnsByCustomer.get(c.id) || 0;
+                        const operational = Math.round((opening + salesDue - totalReturns) * 100) / 100;
+                        const sub = subMap.get(c.id);
+                        const glBal = sub ? Math.round((glMap.get(sub.id) || 0) * 100) / 100 : 0;
+                        const diff = Math.round((operational - glBal) * 100) / 100;
+                        rows.push({ name: c.name, code: c.code || '', type: c.type, opening, sales_due: salesDue, operational, gl_balance: glBal, diff, sub_account: sub?.code || 'NONE' });
+                      }
+                      rows.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+                      setContactReconData(rows);
+                    } catch (e: any) { console.error('Contact recon failed:', e); }
+                    setContactReconLoading(false);
+                  }}
+                  disabled={contactReconLoading || !companyId}
+                >
+                  {contactReconLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Search className="h-4 w-4 mr-1" />}
+                  Run Contact Reconciliation
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={async () => {
+                    if (!companyId) return;
+                    setContactReconLoading(true);
+                    try {
+                      const { openingBalanceJournalService } = await import('@/app/services/openingBalanceJournalService');
+                      const result = await openingBalanceJournalService.syncAllContactOpeningBalances(companyId);
+                      alert(`Synced ${result.synced} contacts, ${result.subledgersCreated} sub-ledgers, ${result.inventoryMovementsSynced} inventory. Errors: ${result.errors.length}`);
+                    } catch (e: any) { alert('Sync failed: ' + e?.message); }
+                    setContactReconLoading(false);
+                  }}
+                  disabled={contactReconLoading || !companyId}
+                >
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Re-sync All Opening Balances
+                </Button>
+              </div>
+              {contactReconData && (
+                <div className="rounded-lg border border-gray-800 bg-gray-950/50 overflow-auto max-h-[60vh]">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-gray-900 text-gray-500 uppercase">
+                      <tr>
+                        <th className="text-left p-2">Contact</th>
+                        <th className="text-left p-2">Code</th>
+                        <th className="text-left p-2">Type</th>
+                        <th className="text-left p-2">Sub-Ledger</th>
+                        <th className="text-right p-2">Opening</th>
+                        <th className="text-right p-2">Sales Due</th>
+                        <th className="text-right p-2">Operational</th>
+                        <th className="text-right p-2">GL Balance</th>
+                        <th className="text-right p-2">Difference</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {contactReconData.map((r, i) => (
+                        <tr key={r.code + i} className={`border-t border-gray-800/50 ${Math.abs(r.diff) > 0.01 ? 'bg-red-950/30' : ''}`}>
+                          <td className="p-2 text-white font-medium">{r.name}</td>
+                          <td className="p-2 font-mono text-gray-500">{r.code}</td>
+                          <td className="p-2 text-gray-400">{r.type}</td>
+                          <td className="p-2 font-mono text-blue-400">{r.sub_account}</td>
+                          <td className="p-2 text-right text-gray-400">{r.opening > 0 ? r.opening.toLocaleString() : '—'}</td>
+                          <td className="p-2 text-right text-gray-400">{r.sales_due > 0 ? r.sales_due.toLocaleString() : '—'}</td>
+                          <td className="p-2 text-right text-white">{r.operational.toLocaleString()}</td>
+                          <td className="p-2 text-right text-amber-300">{r.gl_balance.toLocaleString()}</td>
+                          <td className={`p-2 text-right font-bold ${Math.abs(r.diff) > 0.01 ? 'text-red-400' : 'text-emerald-400'}`}>
+                            {Math.abs(r.diff) > 0.01 ? r.diff.toLocaleString() : '0'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="p-2 text-xs text-gray-500 border-t border-gray-800">
+                    {contactReconData.filter(r => Math.abs(r.diff) > 0.01).length} mismatches of {contactReconData.length} contacts
+                  </div>
                 </div>
               )}
             </CardContent>
