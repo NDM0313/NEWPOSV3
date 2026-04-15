@@ -486,13 +486,47 @@ export const saleReturnService = {
     try {
     const origList = (originalItems || []) as OriginalSaleLineRow[];
 
-    // Accumulate canonical cost across all return lines for the inventory/COGS reversal JE.
-    // Computed here (pre-patch loop) to reflect the true cost basis before any DB write.
+    // Accumulate COGS reversal using weighted average PURCHASE cost (not selling price).
+    // This ensures inventory and COGS reversal reflect actual cost, not revenue.
     let totalInventoryCostForJE = 0;
-    for (const item of saleReturn.items as any[]) {
-      const origForCost = isStandalone ? undefined : matchOriginalSaleLineForReturnItem(item, origList);
-      const econForCost = canonicalSaleReturnStockEconomics(item, origForCost);
-      totalInventoryCostForJE = roundMoney2(totalInventoryCostForJE + econForCost.totalCost);
+    {
+      const returnProductIds = (saleReturn.items as any[]).map((i: any) => i.product_id).filter(Boolean);
+      const returnCostMap = new Map<string, number>();
+      if (returnProductIds.length > 0) {
+        const { data: costMovements } = await supabase
+          .from('stock_movements')
+          .select('product_id, quantity, unit_cost, total_cost')
+          .eq('company_id', companyId)
+          .in('product_id', returnProductIds)
+          .in('movement_type', ['purchase', 'opening_stock']);
+        const costAcc = new Map<string, { sum: number; qty: number }>();
+        for (const m of costMovements || []) {
+          const pid = (m as any).product_id;
+          const mQty = Math.abs(Number((m as any).quantity) || 0);
+          const mCost = Math.abs(Number((m as any).total_cost) || (mQty * (Number((m as any).unit_cost) || 0)));
+          const acc = costAcc.get(pid) || { sum: 0, qty: 0 };
+          acc.sum += mCost; acc.qty += mQty;
+          costAcc.set(pid, acc);
+        }
+        for (const [pid, acc] of costAcc) {
+          if (acc.qty > 0) returnCostMap.set(pid, acc.sum / acc.qty);
+        }
+        // Fallback: products without purchase movements use product.cost_price
+        const missingIds = returnProductIds.filter((id: string) => !returnCostMap.has(id));
+        if (missingIds.length > 0) {
+          const { data: fallback } = await supabase.from('products').select('id, cost_price').in('id', missingIds);
+          for (const r of fallback || []) {
+            if (!returnCostMap.has(r.id)) returnCostMap.set(r.id, Number((r as any).cost_price) || 0);
+          }
+        }
+      }
+      for (const item of saleReturn.items as any[]) {
+        const qty = Math.abs(Number(item.quantity) || 0);
+        const avgCost = returnCostMap.get(item.product_id) || 0;
+        if (qty > 0 && avgCost > 0) {
+          totalInventoryCostForJE = roundMoney2(totalInventoryCostForJE + roundMoney2(qty * avgCost));
+        }
+      }
     }
 
     // Align sale_return_items $ with canonical economics (partial return safety) before stock + GL context
@@ -978,6 +1012,21 @@ export const saleReturnService = {
     }
 
     const { data, error } = await query;
+    if (error) throw error;
+    return (data || []) as (SaleReturn & { items: SaleReturnItem[] })[];
+  },
+
+  /** Returns linked to one invoice (detail drawer, AR) — avoids loading all company returns. */
+  async getSaleReturnsForOriginalSale(
+    companyId: string,
+    originalSaleId: string
+  ): Promise<(SaleReturn & { items: SaleReturnItem[] })[]> {
+    const { data, error } = await supabase
+      .from('sale_returns')
+      .select(`*, items:sale_return_items(*)`)
+      .eq('company_id', companyId)
+      .eq('original_sale_id', originalSaleId)
+      .order('return_date', { ascending: false });
     if (error) throw error;
     return (data || []) as (SaleReturn & { items: SaleReturnItem[] })[];
   },

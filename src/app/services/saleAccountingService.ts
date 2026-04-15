@@ -1211,10 +1211,50 @@ export async function ensureSalePaymentJournalIfMissing(paymentId: string): Prom
   return (saved as { id: string }).id;
 }
 
+/**
+ * After trigger (or app) creates a payment JE, patch the AR line from parent 1100
+ * to the customer's sub-ledger account (AR-CUS0001 etc.) if one exists.
+ * The DB trigger hardcodes 1100; this corrects it so the customer ledger is accurate.
+ */
+async function patchPaymentJeToSubLedger(paymentId: string, jeId: string): Promise<void> {
+  try {
+    const { data: pay } = await supabase
+      .from('payments')
+      .select('company_id, reference_type, reference_id')
+      .eq('id', paymentId)
+      .maybeSingle();
+    if (!pay || String((pay as any).reference_type || '').toLowerCase() !== 'sale') return;
+    const companyId = (pay as any).company_id as string;
+    const saleId = (pay as any).reference_id as string;
+    if (!companyId || !saleId) return;
+
+    const { data: sale } = await supabase.from('sales').select('customer_id').eq('id', saleId).maybeSingle();
+    const customerId = (sale as any)?.customer_id;
+    if (!customerId) return;
+
+    const subLedgerId = await resolveReceivablePostingAccountId(companyId, customerId);
+    if (!subLedgerId) return;
+
+    // Get parent AR (1100) account ID
+    const parentAr = await ensureARAccount(companyId);
+    if (!parentAr?.id || subLedgerId === parentAr.id) return;
+
+    // Patch: replace parent 1100 with sub-ledger on the credit line
+    await supabase
+      .from('journal_entry_lines')
+      .update({ account_id: subLedgerId })
+      .eq('journal_entry_id', jeId)
+      .eq('account_id', parentAr.id);
+  } catch (e) {
+    console.warn('[saleAccountingService] patchPaymentJeToSubLedger failed (non-critical):', e);
+  }
+}
+
 /** After insert of a sale payment row: wait for trigger, else app-side JE (avoids PAYMENT_WITHOUT_JE if trigger is off). */
 export async function ensureSalePaymentJournalAfterInsert(paymentId: string): Promise<string | null> {
   let jeId = await waitForJournalOnPaymentId(paymentId);
   if (!jeId) jeId = await ensureSalePaymentJournalIfMissing(paymentId);
+  if (jeId) await patchPaymentJeToSubLedger(paymentId, jeId);
   return jeId;
 }
 
