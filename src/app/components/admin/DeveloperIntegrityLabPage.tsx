@@ -1864,17 +1864,37 @@ export default function DeveloperIntegrityLabPage() {
                         const custId = saleCustomerMap.get(r.original_sale_id);
                         if (custId) returnsByCustomer.set(custId, (returnsByCustomer.get(custId) || 0) + (Number(r.total) || 0));
                       }
+                      // Fetch purchases for supplier operational calculation
+                      const { data: purchasesData } = await supabase.from('purchases').select('id, supplier_id, total, paid_amount, due_amount').eq('company_id', companyId).in('status', ['final', 'received']);
+                      const purchasesBySupplier = new Map<string, number>();
+                      for (const p of (purchasesData || []) as any[]) {
+                        if (!p.supplier_id) continue;
+                        const due = Number(p.due_amount ?? 0) || (Number(p.total ?? 0) - Number(p.paid_amount ?? 0));
+                        if (due > 0) purchasesBySupplier.set(p.supplier_id, (purchasesBySupplier.get(p.supplier_id) || 0) + due);
+                      }
                       // Build rows
                       const rows: typeof contactReconData extends (infer T)[] | null ? T[] : never[] = [];
                       for (const c of (contacts || []) as any[]) {
                         const isCustomer = c.type === 'customer' || c.type === 'both';
-                        const opening = isCustomer ? (Number(c.opening_balance) || 0) : (Number(c.supplier_opening_balance) || 0);
-                        const sd = salesByCustomer.get(c.id);
-                        const salesDue = sd ? sd.totalDue : 0;
-                        const totalReturns = returnsByCustomer.get(c.id) || 0;
+                        const isSupplier = c.type === 'supplier' || c.type === 'both';
+                        let opening = 0;
+                        let salesDue = 0;
+                        if (isCustomer) {
+                          opening = Number(c.opening_balance) || 0;
+                          const sd = salesByCustomer.get(c.id);
+                          salesDue = sd ? sd.totalDue : 0;
+                        }
+                        if (isSupplier) {
+                          opening = Number(c.supplier_opening_balance) || Number(c.opening_balance) || 0;
+                          salesDue = purchasesBySupplier.get(c.id) || 0;
+                        }
+                        const totalReturns = isCustomer ? (returnsByCustomer.get(c.id) || 0) : 0;
                         const operational = Math.round((opening + salesDue - totalReturns) * 100) / 100;
                         const sub = subMap.get(c.id);
-                        const glBal = sub ? Math.round((glMap.get(sub.id) || 0) * 100) / 100 : 0;
+                        const rawGl = sub ? Math.round((glMap.get(sub.id) || 0) * 100) / 100 : 0;
+                        // AP accounts have negative GL balance (credit-side); flip sign for comparison
+                        const isSupplierType = c.type === 'supplier' || (c.type === 'both' && sub?.code?.startsWith('AP-'));
+                        const glBal = isSupplierType ? Math.abs(rawGl) : rawGl;
                         const diff = Math.round((operational - glBal) * 100) / 100;
                         rows.push({ name: c.name, code: c.code || '', type: c.type, opening, sales_due: salesDue, operational, gl_balance: glBal, diff, sub_account: sub?.code || 'NONE' });
                       }
