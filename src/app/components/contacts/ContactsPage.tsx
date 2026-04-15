@@ -246,21 +246,29 @@ export const ContactsPage = () => {
     const contactType: 'customer' | 'supplier' | 'worker' | 'both' =
       supabaseContact.type === 'both' ? 'both' : isWorker ? 'worker' : isSupplier ? 'supplier' : 'customer';
 
-    // Receivables: opening_balance + sales due (for customer or both)
+    // Receivables: prefer GL sub-ledger balance (includes opening + sales + payments + returns)
+    // Fallback: opening_balance + sales due (doesn't account for payments against opening)
     const cid = String(supabaseContact.id ?? '');
-    const contactSales = sales.filter(
-      (s) =>
-        String(s.customer_id ?? '') === cid ||
-        (s.customer_name && s.customer_name === supabaseContact.name)
-    );
-    const salesReceivables = contactSales.reduce((sum, s) => {
-      const due = s.due_amount != null ? Number(s.due_amount) : (Number(s.total) || 0) - (Number(s.paid_amount) || 0);
-      return sum + Math.max(0, due);
-    }, 0);
-    const openingReceivables = isCustomer ? Math.max(0, Number(supabaseContact.opening_balance) || 0) : 0;
-    const receivables = salesReceivables + openingReceivables;
+    const glData = partyGlByContactId?.get(cid);
 
-    // Payables: supplier_opening/opening + purchases for supplier/both; current_balance/opening for workers
+    let receivables = 0;
+    if (isCustomer && glData && glData.glArReceivable !== undefined) {
+      // GL sub-ledger is the source of truth — includes all transactions
+      receivables = Math.max(0, Number(glData.glArReceivable) || 0);
+    } else if (isCustomer) {
+      // Fallback: operational calculation
+      const contactSales = sales.filter(
+        (s) => String(s.customer_id ?? '') === cid || (s.customer_name && s.customer_name === supabaseContact.name)
+      );
+      const salesReceivables = contactSales.reduce((sum, s) => {
+        const due = s.due_amount != null ? Number(s.due_amount) : (Number(s.total) || 0) - (Number(s.paid_amount) || 0);
+        return sum + Math.max(0, due);
+      }, 0);
+      const openingReceivables = Math.max(0, Number(supabaseContact.opening_balance) || 0);
+      receivables = salesReceivables + openingReceivables;
+    }
+
+    // Payables: prefer GL sub-ledger for suppliers; worker ledger for workers
     let payables = 0;
     if (isWorker) {
       const wid = String(supabaseContact.id);
@@ -271,11 +279,13 @@ export const ContactsPage = () => {
           ? fromWorkers
           : Number(supabaseContact.current_balance) || Number(supabaseContact.opening_balance) || 0
       );
+    } else if (isSupplier && glData && glData.glApPayable !== undefined) {
+      // GL sub-ledger is source of truth for supplier payables
+      payables = Math.max(0, Number(glData.glApPayable) || 0);
     } else if (isSupplier) {
+      // Fallback: operational calculation
       const contactPurchases = purchases.filter(
-        (p) =>
-          String(p.supplier_id ?? '') === cid ||
-          (p.supplier_name && p.supplier_name === supabaseContact.name)
+        (p) => String(p.supplier_id ?? '') === cid || (p.supplier_name && p.supplier_name === supabaseContact.name)
       );
       const purchasePayables = contactPurchases.reduce((sum, p) => {
         const due = p.due_amount != null ? Number(p.due_amount) : (Number(p.total) || 0) - (Number(p.paid_amount) || 0);
