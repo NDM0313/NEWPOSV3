@@ -312,6 +312,9 @@ export async function getUserLedgerData(
     });
   });
 
+  // Commission entries: CREDIT = company owes salesman (liability).
+  // When salary/expense is paid to user → DEBIT (reduces what we owe).
+  // Net balance: positive = company paid more (advance), negative = salesman is owed.
   (commSales || []).forEach((s: any) => {
     const amt = Number(s.commission_amount) || 0;
     if (amt <= 0) return;
@@ -322,10 +325,10 @@ export async function getUserLedgerData(
       ts: new Date(d + 'T12:00:00').getTime(),
       date: d,
       ord: 1,
-      debit: amt,
-      credit: 0,
+      debit: 0,
+      credit: amt,
       ref,
-      desc: `Commission — ${ref}`,
+      desc: `Commission earned — ${ref}`,
       docType: 'Expense',
       id: s.id,
     });

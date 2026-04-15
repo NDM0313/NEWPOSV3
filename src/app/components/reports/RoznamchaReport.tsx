@@ -25,12 +25,22 @@ import {
   type RoznamchaResult,
   type RoznamchaRowWithBalance,
 } from '@/app/services/roznamchaService';
+import { accountService } from '@/app/services/accountService';
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
 import { Loader2, BookOpen, Wallet, Building2, CreditCard, Smartphone } from 'lucide-react';
 import { cn } from '../ui/utils';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
+
+function rowSortTimestamp(r: RoznamchaRowWithBalance): number {
+  const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '00:00:00';
+  try {
+    return new Date(`${r.date}T${t}`).getTime();
+  } catch {
+    return 0;
+  }
+}
 
 function AccountBadge({
   accountLabel,
@@ -72,23 +82,91 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const today = new Date();
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({ from: today, to: today });
   const [accountFilter, setAccountFilter] = useState<AccountFilter>('all');
+  /** Ledger row filter: single payment (cash/bank/wallet) account — all types when empty */
+  const [paymentLedgerAccountId, setPaymentLedgerAccountId] = useState<string>('');
+  const [paymentAccountOptions, setPaymentAccountOptions] = useState<Array<{ id: string; label: string }>>([]);
   /** Default off: voided payments (e.g. reversed receipts) are excluded from cash book totals. */
   const [includeVoidedReversed, setIncludeVoidedReversed] = useState(false);
+  const [dateSort, setDateSort] = useState<'asc' | 'desc'>('asc');
+  const [pageSize, setPageSize] = useState(50);
   const [data, setData] = useState<RoznamchaResult | null>(null);
   const [loading, setLoading] = useState(!!companyId);
-  const PAGE_SIZE = 50;
   const [currentPage, setCurrentPage] = useState(1);
-  const totalRows = data?.rows?.length ?? 0;
-  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
-  const paginatedRows = useMemo(() => {
+  /** When Accounting uses global header dates, still allow a local start/end (or single day) here */
+  const [overrideGlobalDates, setOverrideGlobalDates] = useState(false);
+
+  useEffect(() => {
+    if (!companyId) {
+      setPaymentAccountOptions([]);
+      return;
+    }
+    let cancelled = false;
+    accountService
+      .getPaymentAccountsOnly(companyId)
+      .then((list) => {
+        if (cancelled) return;
+        setPaymentAccountOptions(
+          (list || []).map((a: { id: string; name?: string; code?: string }) => ({
+            id: String(a.id),
+            label: [a.code, a.name].filter(Boolean).join(' — ') || a.name || String(a.id),
+          }))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setPaymentAccountOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
+
+  const orderedRows = useMemo(() => {
     if (!data?.rows?.length) return [];
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return data.rows.slice(start, start + PAGE_SIZE);
-  }, [data?.rows, currentPage, PAGE_SIZE]);
+    const copy = [...data.rows];
+    copy.sort((a, b) => rowSortTimestamp(a) - rowSortTimestamp(b));
+    if (dateSort === 'desc') copy.reverse();
+    return copy;
+  }, [data?.rows, dateSort]);
+
+  const totalRows = orderedRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const paginatedRows = useMemo(() => {
+    if (!orderedRows.length) return [];
+    const start = (currentPage - 1) * pageSize;
+    return orderedRows.slice(start, start + pageSize);
+  }, [orderedRows, currentPage, pageSize]);
 
   const useGlobalRange = Boolean(globalStartDate && globalEndDate);
-  const dateFrom = useGlobalRange ? (globalStartDate ?? '').slice(0, 10) : (dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : '');
-  const dateTo = useGlobalRange ? (globalEndDate ?? '').slice(0, 10) : (dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : dateFrom);
+  const dateFrom = useMemo(() => {
+    if (useGlobalRange && !overrideGlobalDates) {
+      return (globalStartDate ?? '').slice(0, 10);
+    }
+    if (dateRange.from) return format(dateRange.from, 'yyyy-MM-dd');
+    return '';
+  }, [useGlobalRange, overrideGlobalDates, globalStartDate, dateRange.from]);
+
+  const dateTo = useMemo(() => {
+    if (useGlobalRange && !overrideGlobalDates) {
+      return (globalEndDate ?? '').slice(0, 10);
+    }
+    if (dateRange.to) return format(dateRange.to, 'yyyy-MM-dd');
+    if (dateRange.from) return format(dateRange.from, 'yyyy-MM-dd');
+    return dateFrom;
+  }, [useGlobalRange, overrideGlobalDates, globalEndDate, dateRange.to, dateRange.from, dateFrom]);
+
+  useEffect(() => {
+    if (!useGlobalRange || !overrideGlobalDates) return;
+    if (dateRange.from && dateRange.to) return;
+    try {
+      const gs = globalStartDate?.slice(0, 10);
+      const ge = globalEndDate?.slice(0, 10);
+      if (gs && ge) {
+        setDateRange({ from: parseISO(gs), to: parseISO(ge) });
+      }
+    } catch {
+      /* keep existing range */
+    }
+  }, [useGlobalRange, overrideGlobalDates, globalStartDate, globalEndDate, dateRange.from, dateRange.to]);
 
   const rowDateTime = (r: RoznamchaRowWithBalance) => {
     if (!r.date) return r.time || '—';
@@ -117,7 +195,8 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         dateFrom,
         dateTo,
         accountFilter,
-        includeVoidedReversed
+        includeVoidedReversed,
+        paymentLedgerAccountId.trim() ? paymentLedgerAccountId.trim() : null
       );
       setData(result);
     } catch {
@@ -125,7 +204,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     } finally {
       setLoading(false);
     }
-  }, [companyId, effectiveBranchId, dateFrom, dateTo, accountFilter, includeVoidedReversed]);
+  }, [companyId, effectiveBranchId, dateFrom, dateTo, accountFilter, includeVoidedReversed, paymentLedgerAccountId]);
 
   useEffect(() => {
     load();
@@ -135,31 +214,28 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   }, [currentPage, totalPages]);
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFrom, dateTo, accountFilter, includeVoidedReversed]);
+  }, [dateFrom, dateTo, accountFilter, includeVoidedReversed, paymentLedgerAccountId, dateSort, pageSize, overrideGlobalDates]);
 
   const selectedBranchLabel = contextBranchId === 'all' || !contextBranchId ? 'All Branches' : 'Selected branch';
 
   const exportData = {
     title: `Roznamcha ${dateFrom} to ${dateTo} – ${selectedBranchLabel}`,
-    headers: ['Date & Time', 'Ref', 'Details', 'Account', 'Cash In', 'Cash Out', 'Balance'],
+    headers: ['Date & Time', 'Ref / Journal', 'Details', 'Account', 'Cash In', 'Cash Out', 'Balance'],
     rows: data
       ? [
           ['Opening', '—', 'Opening Balance', '—', '', '', data.summary.openingBalance],
-          ...data.rows.map((r: RoznamchaRowWithBalance) => [
+          ...orderedRows.map((r: RoznamchaRowWithBalance) => {
+            const meta = [r.referenceDisplay, r.partyLine, r.createdBy ? `by ${r.createdBy}` : ''].filter(Boolean).join(' • ');
+            return [
             rowDateTime(r),
-            r.ref,
-            r.referenceDisplay && r.createdBy
-              ? `${r.details}\n${r.referenceDisplay} • by ${r.createdBy}`
-              : r.referenceDisplay
-                ? `${r.details}\n${r.referenceDisplay}`
-                : r.createdBy
-                  ? `${r.details}\nby ${r.createdBy}`
-                  : r.details,
+            r.journalEntryNo ? `${r.ref}\n${r.journalEntryNo}` : r.ref,
+            meta ? `${r.details}\n${meta}` : r.details,
             r.accountLabel || '—',
             r.cashIn || '',
             r.cashOut || '',
             r.runningBalance,
-          ]),
+          ];
+          }),
         ]
       : [],
   };
@@ -169,7 +245,10 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       <p className="text-xs text-gray-500 border border-gray-800/80 rounded-lg px-3 py-2 bg-gray-950/40 max-w-3xl">
         One row per <strong className="text-gray-400">payments</strong> record. Account changes (PF-14 transfer JEs) update the
         payment row; they do not create a second cash-book receipt — use Journal Day Book with Presentation column to see
-        transfer vouchers.
+        transfer vouchers.{' '}
+        <span className="text-gray-600">
+          Use filters for a specific ledger account (Cash/Bank/Wallet GL), liquidity bucket, date order, and rows per page.
+        </span>
       </p>
       <ReportActions
         title="Roznamcha"
@@ -182,28 +261,101 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       {/* 1. FILTERS */}
       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
         <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Filters</h3>
-        <div className="flex flex-nowrap justify-start items-start gap-[57px]">
-          {useGlobalRange ? (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-400">Date Range</span>
-              <span className="text-sm text-gray-500">Using global date range from top bar</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-400">Date Range</span>
-              <DateRangePicker
-                value={dateRange}
-                onChange={setDateRange}
-                placeholder="Select range"
-              />
-            </div>
-          )}
-          {/* Global rule: BranchSelector hides when single branch */}
-          <BranchSelector variant="inline" showAllBranchesOption />
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-400">Account</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5 items-start">
+          <div className="flex flex-col gap-2 min-w-0">
+            <Label className="text-xs text-gray-500 uppercase tracking-wide">Date range</Label>
+            {useGlobalRange ? (
+              <>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Header: {globalStartDate?.slice(0, 10)} → {globalEndDate?.slice(0, 10)}
+                  {!overrideGlobalDates ? ' (active)' : ''}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="roznamcha-override-global-dates"
+                    checked={overrideGlobalDates}
+                    onCheckedChange={setOverrideGlobalDates}
+                  />
+                  <Label htmlFor="roznamcha-override-global-dates" className="text-sm text-gray-300 cursor-pointer">
+                    Custom start / end (override)
+                  </Label>
+                </div>
+                {overrideGlobalDates && (
+                  <>
+                    <DateRangePicker value={dateRange} onChange={setDateRange} placeholder="Start & end (or one day)" />
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 border-gray-700 text-gray-200"
+                        onClick={() => {
+                          const t = new Date();
+                          setDateRange({ from: t, to: t });
+                        }}
+                      >
+                        Today
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 border-gray-700 text-gray-200"
+                        onClick={() => {
+                          const t = new Date();
+                          t.setDate(t.getDate() - 1);
+                          setDateRange({ from: t, to: t });
+                        }}
+                      >
+                        Yesterday
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <DateRangePicker value={dateRange} onChange={setDateRange} placeholder="Start & end (same day = single date)" />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 border-gray-700 text-gray-200"
+                    onClick={() => {
+                      const t = new Date();
+                      setDateRange({ from: t, to: t });
+                    }}
+                  >
+                    Today
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 border-gray-700 text-gray-200"
+                    onClick={() => {
+                      const t = new Date();
+                      t.setDate(t.getDate() - 1);
+                      setDateRange({ from: t, to: t });
+                    }}
+                  >
+                    Yesterday
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 min-w-0">
+            <Label className="text-xs text-gray-500 uppercase tracking-wide">Branch</Label>
+            <BranchSelector variant="inline" showAllBranchesOption />
+          </div>
+
+          <div className="flex flex-col gap-2 min-w-0">
+            <Label className="text-xs text-gray-500 uppercase tracking-wide">Liquidity</Label>
             <Select value={accountFilter} onValueChange={(v: AccountFilter) => setAccountFilter(v)}>
-              <SelectTrigger className="w-[140px] bg-gray-950 border-gray-700 text-white">
+              <SelectTrigger className="w-full max-w-[200px] bg-gray-950 border-gray-700 text-white">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -214,25 +366,83 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1 max-w-[220px]">
+
+          <div className="flex flex-col gap-2 min-w-0">
+            <Label className="text-xs text-gray-500 uppercase tracking-wide">Ledger account</Label>
+            <Select
+              value={paymentLedgerAccountId || '__all__'}
+              onValueChange={(v) => setPaymentLedgerAccountId(v === '__all__' ? '' : v)}
+            >
+              <SelectTrigger className="w-full min-w-0 max-w-[320px] bg-gray-950 border-gray-700 text-white">
+                <SelectValue placeholder="All payment accounts" />
+              </SelectTrigger>
+              <SelectContent className="max-h-72">
+                <SelectItem value="__all__">All payment accounts</SelectItem>
+                {paymentAccountOptions.map((opt) => (
+                  <SelectItem key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-gray-600">One Cash/Bank/Wallet GL book (optional).</span>
+          </div>
+
+          <div className="flex flex-col gap-2 min-w-0">
+            <Label className="text-xs text-gray-500 uppercase tracking-wide">Date order</Label>
+            <Select value={dateSort} onValueChange={(v: 'asc' | 'desc') => setDateSort(v)}>
+              <SelectTrigger className="w-full max-w-[200px] bg-gray-950 border-gray-700 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="asc">Oldest first</SelectItem>
+                <SelectItem value="desc">Newest first</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-2 min-w-0">
+            <Label className="text-xs text-gray-500 uppercase tracking-wide">Rows per page</Label>
+            <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+              <SelectTrigger className="w-full max-w-[120px] bg-gray-950 border-gray-700 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-2 min-w-0 sm:col-span-2 lg:col-span-2">
             <div className="flex items-center gap-2">
               <Switch
                 id="roznamcha-include-voided"
                 checked={includeVoidedReversed}
                 onCheckedChange={setIncludeVoidedReversed}
               />
-              <Label htmlFor="roznamcha-include-voided" className="text-sm text-gray-400 cursor-pointer leading-snug">
+              <Label htmlFor="roznamcha-include-voided" className="text-sm text-gray-300 cursor-pointer leading-snug">
                 Include voided payments (audit)
               </Label>
             </div>
-            <span className="text-xs text-gray-600 pl-11">
+            <span className="text-xs text-gray-600">
               Off by default: reversed/voided receipts do not affect Roznamcha totals.
             </span>
           </div>
         </div>
-        <p className="text-xs text-gray-500 mt-2">
-          Date: {dateFrom} → {dateTo} · Branch: {selectedBranchLabel} · Account:{' '}
+        <p className="text-xs text-gray-500 mt-3 pt-3 border-t border-gray-800/80">
+          Date: {dateFrom} → {dateTo}
+          {useGlobalRange && !overrideGlobalDates ? ' (from top bar)' : ''}
+          {useGlobalRange && overrideGlobalDates ? ' (custom override)' : ''}
+          {' · '}
+          Branch: {selectedBranchLabel} · Liquidity:{' '}
           {accountFilter === 'all' ? 'All' : accountFilter === 'wallet' ? 'Wallet' : accountFilter}
+          {paymentLedgerAccountId
+            ? ` · Ledger: ${paymentAccountOptions.find((o) => o.id === paymentLedgerAccountId)?.label || paymentLedgerAccountId}`
+            : ''}
+          {' · '}
+          Order: {dateSort === 'asc' ? 'oldest first' : 'newest first'} · {pageSize}/page
           {includeVoidedReversed ? ' · Voided rows shown' : ''}
         </p>
       </div>
@@ -318,7 +528,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                 <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium w-40">Date & Time</th>
-                    <th className="px-4 py-3 text-left font-medium w-28">Ref</th>
+                    <th className="px-4 py-3 text-left font-medium w-36">Ref / Journal</th>
                     <th className="px-4 py-3 text-left font-medium">Details</th>
                     <th className="px-4 py-3 text-left font-medium w-24">Account</th>
                     <th className="px-4 py-3 text-right font-medium w-28">Cash In</th>
@@ -355,16 +565,23 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                           rowDateTime(r)
                         )}
                       </td>
-                      <td className="px-4 py-3 font-mono text-gray-300">{r.ref}</td>
+                      <td className="px-4 py-3 align-top min-w-[7rem]">
+                        <div className="font-mono text-gray-300">{r.ref}</div>
+                        {r.journalEntryNo ? (
+                          <div className="text-xs text-gray-500 mt-0.5 font-sans">{r.journalEntryNo}</div>
+                        ) : null}
+                      </td>
                       <td className="px-4 py-3 max-w-xs">
                         <div className="font-medium text-white">{r.details}</div>
-                        {(r.referenceDisplay || r.createdBy) && (
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            {r.referenceDisplay && r.createdBy
-                              ? `${r.referenceDisplay} • by ${r.createdBy}`
-                              : r.referenceDisplay
-                                ? r.referenceDisplay
-                                : `by ${r.createdBy}`}
+                        {(r.referenceDisplay || r.partyLine || r.createdBy) && (
+                          <div className="text-xs text-gray-400 mt-0.5 leading-snug">
+                            {[
+                              r.referenceDisplay,
+                              r.partyLine,
+                              r.createdBy ? `by ${r.createdBy}` : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' • ')}
                           </div>
                         )}
                       </td>
@@ -404,7 +621,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
             {totalPages > 1 && (
               <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-gray-800 bg-gray-900/80">
                 <p className="text-xs text-gray-400">
-                  Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, totalRows)} of {totalRows}
+                  Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalRows)} of {totalRows}
                 </p>
                 <div className="flex items-center gap-1">
                   <Button
@@ -449,7 +666,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         </>
       ) : null}
 
-      {!loading && (!data || data.rows.length === 0) && (
+      {!loading && (!data || orderedRows.length === 0) && (
         <div className="text-center py-16 rounded-xl border border-gray-800 bg-gray-900/30">
           <BookOpen className="w-16 h-16 mx-auto mb-4 text-gray-600" />
           <p className="text-gray-400">No cash transactions in this period</p>

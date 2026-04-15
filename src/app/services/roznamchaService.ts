@@ -18,6 +18,10 @@ export interface RoznamchaRow {
   referenceDisplay: string;
   /** Resolved user name for "by Ali" (from received_by) */
   createdBy: string | null;
+  /** Counterparty context: Customer / Supplier / Expense line for subtitle row */
+  partyLine?: string | null;
+  /** Journal voucher no. linked to this payment (shown under PAY-* in Ref column) */
+  journalEntryNo?: string | null;
   cashIn: number;
   cashOut: number;
   direction: 'IN' | 'OUT';
@@ -71,6 +75,7 @@ function getTypeLabel(referenceType: string): string {
     rental: 'Rental Payment',
     studio_order: 'Studio Payment',
     worker_payment: 'Worker Payment',
+    courier_payment: 'Courier Payment',
     manual_receipt: 'Manual Receipt',
     manual_payment: 'Manual Payment',
   };
@@ -224,7 +229,9 @@ async function fetchPaymentRows(
   dateTo: string,
   accountFilter: AccountFilter,
   /** Default false: exclude voided/reversed payment rows (Option 1 — Roznamcha economic view). */
-  includeVoidedReversed = false
+  includeVoidedReversed = false,
+  /** When set, only payments posted to this ledger (cash/bank/wallet) account */
+  paymentLedgerAccountId: string | null = null
 ): Promise<RoznamchaRow[]> {
   let q = supabase
     .from('payments')
@@ -253,6 +260,7 @@ async function fetchPaymentRows(
 
   if (branchId) q = q.eq('branch_id', branchId);
   if (!includeVoidedReversed) q = q.is('voided_at', null);
+  if (paymentLedgerAccountId) q = q.eq('payment_account_id', paymentLedgerAccountId);
 
   const { data, error } = await q;
   if (error) return [];
@@ -264,14 +272,27 @@ async function fetchPaymentRows(
   );
   const expenseEntityIds = [...new Set(expensePayments.map((p: any) => p.reference_id).filter(Boolean))] as string[];
   const expensePaymentIds = expensePayments.map((p: any) => p.id as string);
+  const allPaymentIds = [...new Set(paymentList.map((p: any) => p.id).filter(Boolean))] as string[];
+  const courierRefIds = [
+    ...new Set(
+      paymentList
+        .filter((p: any) => String((p as any).reference_type || '').toLowerCase() === 'courier_payment')
+        .map((p: any) => p.reference_id)
+        .filter(Boolean)
+        .map((id: any) => String(id))
+    ),
+  ] as string[];
 
-  const [accRes, expRes, jeRes] = await Promise.all([
+  const [accRes, expRes, jeRes, jeByPaymentRes, courierRes] = await Promise.all([
     accountIds.length > 0
       ? supabase.from('accounts').select('id, name, type, code').in('id', accountIds)
       : Promise.resolve({ data: [] as { id: string; name: string; type: string; code?: string | null }[] }),
     expenseEntityIds.length > 0
-      ? supabase.from('expenses').select('id, expense_no').in('id', expenseEntityIds)
-      : Promise.resolve({ data: [] as { id: string; expense_no: string }[] }),
+      ? supabase
+          .from('expenses')
+          .select('id, expense_no, description, vendor_name')
+          .in('id', expenseEntityIds)
+      : Promise.resolve({ data: [] as { id: string; expense_no: string; description?: string; vendor_name?: string }[] }),
     expensePaymentIds.length > 0
       ? supabase
           .from('journal_entries')
@@ -280,6 +301,16 @@ async function fetchPaymentRows(
           .eq('reference_type', 'expense')
           .eq('company_id', companyId)
       : Promise.resolve({ data: [] as { payment_id: string; entry_no: string }[] }),
+    allPaymentIds.length > 0
+      ? supabase
+          .from('journal_entries')
+          .select('payment_id, entry_no')
+          .eq('company_id', companyId)
+          .in('payment_id', allPaymentIds)
+      : Promise.resolve({ data: [] as { payment_id: string; entry_no: string }[] }),
+    courierRefIds.length > 0
+      ? supabase.from('contacts').select('id, name').in('id', courierRefIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
 
   const accountById = new Map<string, { name: string; type: string; code: string | null }>();
@@ -294,8 +325,17 @@ async function fetchPaymentRows(
   });
 
   const expenseNoById = new Map<string, string>();
+  const expensePartyById = new Map<string, string>();
   (expRes.data || []).forEach((e: any) => {
     if (e?.id && e.expense_no) expenseNoById.set(String(e.id), String(e.expense_no).trim());
+    if (e?.id) {
+      const parts: string[] = [];
+      const d = String(e.description || '').trim();
+      const v = String(e.vendor_name || '').trim();
+      if (d) parts.push(d);
+      if (v) parts.push(v);
+      if (parts.length) expensePartyById.set(String(e.id), parts.join(' · '));
+    }
   });
 
   const jeByPaymentId = new Map<string, string>();
@@ -307,6 +347,33 @@ async function fetchPaymentRows(
     if (!prev) jeByPaymentId.set(pid, eno);
     else if (/^EXP-/i.test(eno) && !/^EXP-/i.test(prev)) jeByPaymentId.set(pid, eno);
   }
+
+  /** Prefer journal-style entry numbers (JV-, JE-, …) over raw PAY-* when multiple rows exist. */
+  const journalEntryNoByPaymentId = new Map<string, string>();
+  const pickBetterJeNo = (prev: string, next: string): string => {
+    const a = String(prev || '').trim();
+    const b = String(next || '').trim();
+    if (!a) return b;
+    if (!b) return a;
+    const aDoc = /^[A-Za-z]{2,}-\d+/i.test(a) && !/^PAY-/i.test(a);
+    const bDoc = /^[A-Za-z]{2,}-\d+/i.test(b) && !/^PAY-/i.test(b);
+    if (bDoc && !aDoc) return b;
+    if (aDoc && !bDoc) return a;
+    return b.length > a.length ? b : a;
+  };
+  for (const je of jeByPaymentRes.data || []) {
+    const pid = String((je as any).payment_id || '');
+    const eno = String((je as any).entry_no || '').trim();
+    if (!pid || !eno) continue;
+    const prev = journalEntryNoByPaymentId.get(pid);
+    journalEntryNoByPaymentId.set(pid, prev ? pickBetterJeNo(prev, eno) : eno);
+  }
+
+  const courierNameById = new Map<string, string>();
+  (courierRes.data || []).forEach((c: any) => {
+    const nm = String(c?.name || '').trim();
+    if (c?.id && nm) courierNameById.set(String(c.id), nm);
+  });
 
   const rows: RoznamchaRow[] = [];
   for (const p of paymentList) {
@@ -355,6 +422,8 @@ async function fetchPaymentRows(
       ref,
       details,
       referenceDisplay,
+      partyLine: null,
+      journalEntryNo: journalEntryNoByPaymentId.get(String((p as any).id)) || null,
       createdBy: null, // filled below via received_by
       cashIn: direction === 'IN' ? amount : 0,
       cashOut: direction === 'OUT' ? amount : 0,
@@ -373,17 +442,23 @@ async function fetchPaymentRows(
   const purchaseIds = [...new Set(paymentList.filter((p: any) => (p as any).reference_type === 'purchase').map((p: any) => (p as any).reference_id).filter(Boolean))] as string[];
 
   const saleInvoiceByRefId = new Map<string, string>();
+  const saleCustomerByRefId = new Map<string, string>();
   const purchasePoByRefId = new Map<string, string>();
+  const purchaseSupplierByRefId = new Map<string, string>();
   if (saleIds.length > 0) {
-    const { data: sales } = await supabase.from('sales').select('id, invoice_no').in('id', saleIds);
+    const { data: sales } = await supabase.from('sales').select('id, invoice_no, customer_name').in('id', saleIds);
     (sales || []).forEach((s: any) => {
       if (s?.id && s.invoice_no) saleInvoiceByRefId.set(s.id, s.invoice_no);
+      const cn = String(s?.customer_name || '').trim();
+      if (s?.id && cn) saleCustomerByRefId.set(String(s.id), cn);
     });
   }
   if (purchaseIds.length > 0) {
-    const { data: purchases } = await supabase.from('purchases').select('id, po_no').in('id', purchaseIds);
+    const { data: purchases } = await supabase.from('purchases').select('id, po_no, supplier_name').in('id', purchaseIds);
     (purchases || []).forEach((p: any) => {
       if (p?.id && p.po_no) purchasePoByRefId.set(p.id, p.po_no);
+      const sn = String(p?.supplier_name || '').trim();
+      if (p?.id && sn) purchaseSupplierByRefId.set(String(p.id), sn);
     });
   }
 
@@ -426,6 +501,22 @@ async function fetchPaymentRows(
     });
   }
 
+  rows.forEach((r) => {
+    const pay = paymentById.get(r.id) as any;
+    if (!pay) return;
+    const refType = String(pay.reference_type || '').toLowerCase();
+    const refId = pay.reference_id ? String(pay.reference_id) : '';
+    if (refType === 'sale' && refId && saleCustomerByRefId.has(refId)) {
+      r.partyLine = `Customer: ${saleCustomerByRefId.get(refId)!}`;
+    } else if (refType === 'purchase' && refId && purchaseSupplierByRefId.has(refId)) {
+      r.partyLine = `Supplier: ${purchaseSupplierByRefId.get(refId)!}`;
+    } else if (refType === 'expense' && refId && expensePartyById.has(refId)) {
+      r.partyLine = `Expense: ${expensePartyById.get(refId)!}`;
+    } else if (refType === 'courier_payment' && refId && courierNameById.has(refId)) {
+      r.partyLine = `Courier: ${courierNameById.get(refId)!}`;
+    }
+  });
+
   return rows;
 }
 
@@ -435,7 +526,8 @@ export async function getOpeningBalance(
   branchId: string | null,
   beforeDate: string,
   accountFilter: AccountFilter,
-  includeVoidedReversed = false
+  includeVoidedReversed = false,
+  paymentLedgerAccountId: string | null = null
 ): Promise<number> {
   let q = supabase
     .from('payments')
@@ -445,6 +537,7 @@ export async function getOpeningBalance(
 
   if (branchId) q = q.eq('branch_id', branchId);
   if (!includeVoidedReversed) q = q.is('voided_at', null);
+  if (paymentLedgerAccountId) q = q.eq('payment_account_id', paymentLedgerAccountId);
   const { data, error } = await q;
   if (error) return 0;
 
@@ -539,14 +632,16 @@ export async function getRoznamcha(
   dateFrom: string,
   dateTo: string,
   accountFilterParam: AccountFilter = 'all',
-  includeVoidedReversed = false
+  includeVoidedReversed = false,
+  paymentLedgerAccountId: string | null = null
 ): Promise<RoznamchaResult> {
   const openingBalance = await getOpeningBalance(
     companyId,
     branchId,
     dateFrom,
     accountFilterParam,
-    includeVoidedReversed
+    includeVoidedReversed,
+    paymentLedgerAccountId
   );
   const rows = await fetchPaymentRows(
     companyId,
@@ -554,7 +649,8 @@ export async function getRoznamcha(
     dateFrom,
     dateTo,
     accountFilterParam,
-    includeVoidedReversed
+    includeVoidedReversed,
+    paymentLedgerAccountId
   );
   const { rowsWithBalance, summary, cashSplit } = buildSummaryAndRunning(rows, openingBalance);
   return {

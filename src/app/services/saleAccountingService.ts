@@ -405,7 +405,7 @@ export const saleAccountingService = {
   /**
    * Create journal entry when sale is finalized (Phase 4: one contract).
    *
-   * Dr AR (1100) = total. Cr: Sales Revenue (4000) for product, Shipping Income (4110) for shipping, Discount (5200) if any.
+   * Dr AR (1100) = total + shipping (full customer receivable). Cr: Sales Revenue (4000), Shipping Income (4110), Dr Discount (5200) if any.
    * COGS: Dr Cost of Production (5000), Cr Inventory (1200).
    * Safe to call multiple times — duplicate is detected and skipped.
    */
@@ -469,14 +469,20 @@ export const saleAccountingService = {
     };
 
     const hasDiscount = discountAmount > 0;
-    const grossTotal = hasDiscount ? total + discountAmount : total;
+    const shippingAmount = Math.round((Number(shipmentCharges) || 0) * 100) / 100;
+    // AR = the FULL amount the customer owes: product total + shipping.
+    // sales.total may exclude shipping (PF-03: product-only total when shipping exists),
+    // so we always add shippingAmount to ensure AR reflects the complete receivable.
+    const arDebit = Math.round((total + shippingAmount) * 100) / 100;
+    // grossTotal = items subtotal (before discount) + shipping, used to split revenue vs shipping credits.
+    const grossTotal = (hasDiscount ? total + discountAmount : total) + shippingAmount;
 
     const lines: JournalEntryLine[] = [
       {
         id: '',
         journal_entry_id: '',
         account_id: arAccount.id,
-        debit: total,
+        debit: arDebit,
         credit: 0,
         description: `Accounts Receivable – ${invoiceNo}`,
       },
@@ -496,7 +502,6 @@ export const saleAccountingService = {
       }
     }
 
-    const shippingAmount = Math.round((Number(shipmentCharges) || 0) * 100) / 100;
     const revenueCredit = Math.round((grossTotal - shippingAmount) * 100) / 100;
     if (revenueCredit > 0) {
       lines.push({

@@ -877,20 +877,16 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       
       setSales((prev) => [newSale, ...prev]);
       
-      // Stock OUT only when status is posted (`final`). Never use type=invoice alone (draft invoice must not move stock).
-      // If DB trigger already inserted movements (INSERT final), skip app loop to avoid duplicates.
-      // STEP 1 RULE: Silent fail NOT allowed - throw error if stock movement fails
+      // Stock OUT: handled by DB trigger (if exists) + syncSaleStockForDocument (Z1 below).
+      // The manual stock creation loop was removed because it raced with the DB trigger,
+      // causing double entries. The Z1 sync at line ~1074 is idempotent and handles both cases:
+      // - Trigger exists → sync sees correct movements, delta=0, skips
+      // - Trigger missing → sync creates movements from sale_items
       if (canPostStockForSaleStatus(newSale.status) && newSale.items && newSale.items.length > 0) {
-        const { supabase: sbStock } = await import('@/lib/supabase');
-        const { count: existingSaleMov } = await sbStock
-          .from('stock_movements')
-          .select('*', { count: 'exact', head: true })
-          .eq('reference_type', 'sale')
-          .eq('reference_id', newSale.id);
-        if ((existingSaleMov ?? 0) > 0) {
-          console.log('[SALES CONTEXT] Stock already posted for sale (DB trigger); skipping duplicate app stock loop.');
-          window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: newSale.id } }));
-        } else {
+        // Skip manual stock creation — syncSaleStockForDocument handles it below.
+        console.log('[SALES CONTEXT] Stock movements delegated to Z1 sync for sale:', newSale.id);
+        if (false) {
+          // DISABLED: Manual stock creation loop — kept for reference only
         console.log('[SALES CONTEXT] 🔄 Creating stock movements for sale:', newSale.id, 'Items:', newSale.items.length);
         
         const stockMovementErrors: string[] = [];

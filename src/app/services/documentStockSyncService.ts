@@ -80,8 +80,16 @@ export async function syncSaleStockForDocument(saleId: string): Promise<Document
     .eq('reference_type', 'sale')
     .eq('reference_id', saleId);
 
-  /** Cancelled: net per SKU = sum(sale) + sum(sale_cancelled); insert sale Δ to reach zero. */
+  /** Cancelled: skip if SALE_CANCELLED reversals already exist (created by saleService.updateSaleStatus).
+   *  Only create reconciliation movements if no reversal entries exist at all. */
   if (st === 'cancelled') {
+    const hasSaleCancelledReversals = (movements || []).some(
+      (m: any) => normMovType(m.movement_type) === 'sale_cancelled'
+    );
+    if (hasSaleCancelledReversals) {
+      // saleService.updateSaleStatus already created SALE_CANCELLED reversals — no additional sync needed.
+      return { saleId, adjustmentsInserted: 0, keysAdjusted: [] };
+    }
     const movMap = new Map<string, number>();
     for (const m of movements || []) {
       const mt = normMovType((m as any).movement_type);

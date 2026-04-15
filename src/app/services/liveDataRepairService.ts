@@ -183,14 +183,19 @@ export async function getReceivablesReconciliation(companyId: string): Promise<R
     new Date().toISOString().slice(0, 10),
     undefined
   );
+  // Include BOTH parent AR (1100) AND all AR sub-ledger accounts (AR-*)
   const { data: arAccounts } = await supabase
     .from('accounts')
     .select('id, code')
     .eq('company_id', companyId)
     .eq('is_active', true)
-    .or('code.eq.1100,name.ilike.%Accounts Receivable%');
+    .or('code.eq.1100,code.like.AR-*,name.ilike.%Accounts Receivable%');
   const arId = (arAccounts && (arAccounts as any[]).find((a: any) => a.code === '1100'))?.id ?? (arAccounts?.[0] as any)?.id ?? null;
-  const arBalance = arId != null ? journalBalances[arId] ?? 0 : 0;
+  // Sum balances across parent + all sub-ledgers
+  let arBalance = 0;
+  for (const a of (arAccounts || []) as { id: string; code: string }[]) {
+    arBalance += journalBalances[a.id] ?? 0;
+  }
 
   const { data: sales } = await supabase
     .from('sales')
@@ -221,14 +226,19 @@ export async function getPayablesReconciliation(companyId: string): Promise<Paya
     new Date().toISOString().slice(0, 10),
     undefined
   );
+  // Include BOTH parent AP (2000) AND all AP sub-ledger accounts (AP-*)
   const { data: apAccounts } = await supabase
     .from('accounts')
     .select('id, code')
     .eq('company_id', companyId)
     .eq('is_active', true)
-    .or('code.eq.2000,name.ilike.%Accounts Payable%');
+    .or('code.eq.2000,code.like.AP-*,name.ilike.%Accounts Payable%');
   const apId = (apAccounts && (apAccounts as any[]).find((a: any) => a.code === '2000'))?.id ?? (apAccounts?.[0] as any)?.id ?? null;
-  const apBalance = apId != null ? journalBalances[apId] ?? 0 : 0;
+  // Sum balances across parent + all sub-ledgers
+  let apBalance = 0;
+  for (const a of (apAccounts || []) as { id: string; code: string }[]) {
+    apBalance += journalBalances[a.id] ?? 0;
+  }
 
   const { data: purchases } = await supabase
     .from('purchases')

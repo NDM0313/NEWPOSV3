@@ -224,6 +224,7 @@ export const SalesPage = () => {
   const [returnPaymentSaleId, setReturnPaymentSaleId] = useState<string | null>(null);
   const [cancelInvoiceDialogOpen, setCancelInvoiceDialogOpen] = useState(false);
   const [cancellingInvoice, setCancellingInvoice] = useState(false);
+  const [cancelDeductShipping, setCancelDeductShipping] = useState(true);
 
   // Add Shipment modal (from row dropdown) – uses shared ShipmentModal (PART 3, PART 4)
   const [addShipmentSaleId, setAddShipmentSaleId] = useState<string | null>(null);
@@ -575,9 +576,11 @@ export const SalesPage = () => {
     if (!selectedSale) return;
     setCancellingInvoice(true);
     try {
-      await saleService.updateSaleStatus(selectedSale.id, 'cancelled');
-      toast.success(`Invoice ${selectedSale.invoiceNo} has been cancelled. Reversed entry created.`);
+      const shippingToDeduct = cancelDeductShipping ? (Number((selectedSale as any).shippingCharges) || 0) : 0;
+      await saleService.cancelSale(selectedSale.id, { shippingDeduction: shippingToDeduct });
+      toast.success(`Invoice ${selectedSale.invoiceNo} has been cancelled.${shippingToDeduct > 0 ? ` Shipping Rs.${shippingToDeduct.toLocaleString()} deducted from refund.` : ''}`);
       setCancelInvoiceDialogOpen(false);
+      setCancelDeductShipping(true);
       setSelectedSale(null);
       setViewDetailsOpen(false);
       await refreshSales();
@@ -2523,30 +2526,54 @@ export const SalesPage = () => {
       </AlertDialog>
 
       {/* 🎯 CANCEL INVOICE CONFIRMATION DIALOG */}
-      <AlertDialog open={cancelInvoiceDialogOpen} onOpenChange={setCancelInvoiceDialogOpen}>
+      <AlertDialog open={cancelInvoiceDialogOpen} onOpenChange={(open) => { setCancelInvoiceDialogOpen(open); if (!open) setCancelDeductShipping(true); }}>
         <AlertDialogContent className="bg-gray-900 border-gray-700">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">Cancel Invoice</AlertDialogTitle>
-            <AlertDialogDescription className="text-gray-400">
-              {selectedSale && (
-                <>
-                  Are you sure you want to cancel invoice <span className="font-semibold text-white">{selectedSale.invoiceNo}</span>?
-                  <br />
-                  A reversal entry will be created. This action cannot be undone.
-                </>
-              )}
+            <AlertDialogDescription asChild>
+              <div className="text-gray-400 space-y-3">
+                {selectedSale && (
+                  <>
+                    <p>
+                      Are you sure you want to cancel invoice <span className="font-semibold text-white">{selectedSale.invoiceNo}</span>?
+                      A reversal entry will be created.
+                    </p>
+                    <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 space-y-1.5 text-sm">
+                      <div className="flex justify-between"><span>Sale Total:</span><span className="text-white">Rs. {Number(selectedSale.total).toLocaleString()}</span></div>
+                      <div className="flex justify-between"><span>Already Paid:</span><span className="text-white">Rs. {Number(selectedSale.paid).toLocaleString()}</span></div>
+                      {(Number((selectedSale as any).shippingCharges) || 0) > 0 && (
+                        <>
+                          <div className="flex justify-between"><span>Shipping Charged:</span><span className="text-amber-400">Rs. {Number((selectedSale as any).shippingCharges).toLocaleString()}</span></div>
+                          <div className="border-t border-gray-700 pt-2 mt-2">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input type="checkbox" checked={cancelDeductShipping} onChange={(e) => setCancelDeductShipping(e.target.checked)} className="rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-amber-500" />
+                              <span>Deduct shipping from refund (courier already paid)</span>
+                            </label>
+                          </div>
+                          <div className="flex justify-between font-semibold pt-1">
+                            <span>Refund Amount:</span>
+                            <span className="text-emerald-400">
+                              Rs. {(Number(selectedSale.paid) - (cancelDeductShipping ? (Number((selectedSale as any).shippingCharges) || 0) : 0)).toLocaleString()}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="bg-gray-800 hover:bg-gray-700 text-white border-gray-700" disabled={cancellingInvoice}>
-              Cancel
+              Keep Invoice
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleCancelInvoice}
               disabled={cancellingInvoice}
               className="bg-amber-600 hover:bg-amber-500 text-white"
             >
-              {cancellingInvoice ? 'Cancelling...' : 'Cancel Invoice'}
+              {cancellingInvoice ? 'Cancelling...' : 'Cancel Invoice & Process Refund'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

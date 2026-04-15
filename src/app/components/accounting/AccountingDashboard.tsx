@@ -1745,7 +1745,13 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'roznamcha' && (
           <div className="space-y-4">
-            <h3 className="text-lg font-bold text-white">Roznamcha (Daily Cash Book)</h3>
+            <div>
+              <h3 className="text-lg font-bold text-white">Roznamcha (Daily Cash Book)</h3>
+              <p className="text-sm text-gray-400 mt-1">
+                Filter by date, branch, liquidity (cash/bank/wallet), a specific ledger account, row order, and page size.
+                Party lines show customer, supplier, or expense context next to each reference.
+              </p>
+            </div>
             <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
               <RoznamchaReport
                 globalStartDate={globalStartDate}

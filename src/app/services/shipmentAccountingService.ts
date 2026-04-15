@@ -236,6 +236,8 @@ export const shipmentAccountingService = {
     courierAccountId?: string | null;
     invoiceNo?: string;
     performedBy?: string | null;
+    /** Customer AR sub-ledger account ID (resolved from sale). When set, used instead of generic 1100. */
+    customerArAccountId?: string | null;
   }): Promise<string | null> {
     const {
       shipmentId,
@@ -262,8 +264,34 @@ export const shipmentAccountingService = {
     }
 
     const label = invoiceNo ? ` – ${invoiceNo}` : '';
-    const [arAccount, shippingIncomeAccount, shippingExpenseAccount] = await Promise.all([
-      ensureAccount('1100', 'Accounts Receivable', 'asset', companyId),
+
+    // Resolve customer AR sub-ledger: use provided ID, or look up from shipment → sale → customer
+    let arAccountId = params.customerArAccountId ?? null;
+    if (!arAccountId && shipmentId) {
+      try {
+        const { resolveReceivablePostingAccountId } = await import('./partySubledgerAccountService');
+        const { data: shipRow } = await supabase
+          .from('sale_shipments')
+          .select('sale_id')
+          .eq('id', shipmentId)
+          .maybeSingle();
+        if (shipRow?.sale_id) {
+          const { data: saleRow } = await supabase
+            .from('sales')
+            .select('customer_id')
+            .eq('id', (shipRow as any).sale_id)
+            .maybeSingle();
+          const custId = (saleRow as any)?.customer_id;
+          if (custId) {
+            arAccountId = await resolveReceivablePostingAccountId(companyId, custId);
+          }
+        }
+      } catch { /* fallback to 1100 */ }
+    }
+    const arAccountFallback = await ensureAccount('1100', 'Accounts Receivable', 'asset', companyId);
+    const arAccount = arAccountId ? { id: arAccountId } : arAccountFallback;
+
+    const [shippingIncomeAccount, shippingExpenseAccount] = await Promise.all([
       ensureAccount('4110', 'Shipping Income', 'Revenue', companyId),
       ensureAccount('5100', 'Shipping Expense', 'Expense', companyId),
     ]);

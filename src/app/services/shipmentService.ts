@@ -174,6 +174,17 @@ export const shipmentService = {
       courierAccountId = (courier as any)?.account_id ?? null;
     }
 
+    // Resolve customer AR sub-ledger for this sale
+    let customerArAccountId: string | null = null;
+    try {
+      const { data: saleRow } = await supabase.from('sales').select('customer_id').eq('id', saleId).maybeSingle();
+      const custId = (saleRow as any)?.customer_id;
+      if (custId) {
+        const { resolveReceivablePostingAccountId } = await import('./partySubledgerAccountService');
+        customerArAccountId = await resolveReceivablePostingAccountId(companyId, custId);
+      }
+    } catch { /* fallback handled in accounting service */ }
+
     // Create journal entries (fire-and-forget — don't fail shipment creation)
     void shipmentAccountingService.createShipmentJournalEntry({
       shipmentId: shipment.id,
@@ -186,6 +197,7 @@ export const shipmentService = {
       courierAccountId: courierAccountId ?? undefined,
       invoiceNo,
       performedBy: createdBy,
+      customerArAccountId,
     });
 
     // Log shipment history

@@ -1152,8 +1152,49 @@ export const accountingService = {
       ? `Reversal: ${reason}`
       : `Reversal of: ${(original as any).description || (original as any).entry_no || 'Journal entry'}`;
 
+    // Resolve parent→sub-ledger mapping for AR/AP lines.
+    // When original JE used parent 1100/2000 but a sub-ledger exists for the linked party,
+    // the reversal must use the same sub-ledger to keep customer/supplier ledger balanced.
+    let parentToSubLedgerMap: Record<string, string> = {};
+    try {
+      const origRefType = String((original as any).reference_type || '').toLowerCase();
+      const origRefId = (original as any).reference_id;
+      if (origRefType === 'sale' && origRefId) {
+        const { data: saleRow } = await supabase.from('sales').select('customer_id').eq('id', origRefId).maybeSingle();
+        const custId = (saleRow as any)?.customer_id;
+        if (custId) {
+          const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+          const subId = await resolveReceivablePostingAccountId(companyId, custId);
+          if (subId) {
+            // Find parent AR (1100) id to map
+            const { accountService: acctSvc } = await import('@/app/services/accountService');
+            const allAccts = await acctSvc.getAllAccounts(companyId);
+            const parent1100 = (allAccts || []).find((a: any) => String(a.code || '').trim() === '1100');
+            if (parent1100?.id && subId !== parent1100.id) {
+              parentToSubLedgerMap[parent1100.id as string] = subId;
+            }
+          }
+        }
+      } else if (origRefType === 'purchase' && origRefId) {
+        const { data: purRow } = await supabase.from('purchases').select('supplier_id').eq('id', origRefId).maybeSingle();
+        const supId = (purRow as any)?.supplier_id;
+        if (supId) {
+          const { resolvePayablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+          const subId = await resolvePayablePostingAccountId(companyId, supId);
+          if (subId) {
+            const { accountService: acctSvc } = await import('@/app/services/accountService');
+            const allAccts = await acctSvc.getAllAccounts(companyId);
+            const parent2000 = (allAccts || []).find((a: any) => String(a.code || '').trim() === '2000');
+            if (parent2000?.id && subId !== parent2000.id) {
+              parentToSubLedgerMap[parent2000.id as string] = subId;
+            }
+          }
+        }
+      }
+    } catch { /* fallback: use original account_id as-is */ }
+
     const reversalLines: JournalEntryLine[] = lines.map((line: any) => ({
-      account_id: line.account_id,
+      account_id: parentToSubLedgerMap[line.account_id] || line.account_id,
       debit: line.credit || 0,
       credit: line.debit || 0,
       description: line.description ? `Reversal: ${line.description}` : undefined,

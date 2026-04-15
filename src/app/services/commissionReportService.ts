@@ -364,6 +364,36 @@ export async function postCommissionBatch(params: PostCommissionBatchParams): Pr
 
   if (updateError) throw updateError;
 
+  // Create worker_ledger_entries per salesman so commission appears in their worker ledger / balance.
+  // Group sales by salesman_id and sum commission per person.
+  const commissionBySalesman = new Map<string, number>();
+  for (const s of pendingSales as { salesman_id: string | null; commission_amount: number }[]) {
+    if (!s.salesman_id) continue;
+    commissionBySalesman.set(s.salesman_id, (commissionBySalesman.get(s.salesman_id) ?? 0) + (Number(s.commission_amount) || 0));
+  }
+  // Look up contact_id for each salesman (workers are linked to contacts)
+  for (const [salesmanUserId, amount] of commissionBySalesman.entries()) {
+    if (amount <= 0) continue;
+    try {
+      // Find worker contact_id from users table (salesman_id is a users.id)
+      const { data: userRow } = await supabase.from('users').select('id, contact_id').eq('id', salesmanUserId).maybeSingle();
+      const workerId = (userRow as any)?.contact_id ?? salesmanUserId;
+      const { error: ledgerErr } = await supabase.from('worker_ledger_entries').insert({
+        company_id: companyId,
+        worker_id: workerId,
+        amount,
+        reference_type: 'commission_batch',
+        reference_id: batch.id,
+        notes: `Sales commission batch ${batchNo}`,
+        document_no: batchNo,
+        status: 'unpaid',
+      });
+      if (ledgerErr) console.warn('[commissionReportService] Worker ledger entry failed:', workerId, ledgerErr.message);
+    } catch (e: any) {
+      console.warn('[commissionReportService] Worker ledger entry failed for salesman:', salesmanUserId, e?.message);
+    }
+  }
+
   if (typeof window !== 'undefined') {
     const uids = new Set<string>();
     for (const s of pendingSales as { salesman_id: string | null }[]) {

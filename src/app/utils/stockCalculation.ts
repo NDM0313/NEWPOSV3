@@ -84,6 +84,13 @@ export function calculateStockFromMovements(movements: StockMovement[]): StockCa
       currentBalance += qty;
       if (qty > 0) totalAdjustmentPositive += qty;
       else if (qty < 0) totalAdjustmentNegative += Math.abs(qty);
+    } else if (movementType === 'sale_cancelled') {
+      // Sale cancellation reversal: positive qty restoring stock
+      totalReturned += qty;
+      currentBalance += qty;
+    } else if (movementType === 'purchase_cancelled') {
+      // Purchase cancellation: negative qty removing stock
+      currentBalance += qty;
     }
   });
 

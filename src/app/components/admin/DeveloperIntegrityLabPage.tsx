@@ -160,6 +160,9 @@ export default function DeveloperIntegrityLabPage() {
   const [obSyncLoading, setObSyncLoading] = useState(false);
   const [obSyncResult, setObSyncResult] = useState<{ totalContacts: number; synced: number; subledgersCreated?: number; inventoryMovementsSynced?: number; inventoryJEsPosted?: number; inventoryJEsKept?: number; inventoryZeroCostSkipped?: number; inventoryTotalValue?: number; errors: string[] } | null>(null);
 
+  const [dataRepairLoading, setDataRepairLoading] = useState(false);
+  const [dataRepairResult, setDataRepairResult] = useState<string[] | null>(null);
+
   const [postingPreviewLoading, setPostingPreviewLoading] = useState(false);
   const [postingRepairLoading, setPostingRepairLoading] = useState(false);
   const [postingRepairJson, setPostingRepairJson] = useState<string | null>(null);
@@ -1409,6 +1412,143 @@ export default function DeveloperIntegrityLabPage() {
                   {obSyncResult.synced > 0 && obSyncResult.errors.length === 0 && (
                     <p className="text-sm text-emerald-400">All contact opening balances synced to GL successfully.</p>
                   )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-gray-800 bg-gray-900/40 mt-4">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">Data Repair — Stock Dedup + Shipping AR</CardTitle>
+              <CardDescription>
+                Removes duplicate sale stock movements and creates corrective JEs for sales where shipping was missing from AR.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button
+                onClick={async () => {
+                  if (!companyId) return;
+                  setDataRepairLoading(true);
+                  setDataRepairResult(null);
+                  const log: string[] = [];
+                  try {
+                    const { supabase } = await import('@/lib/supabase');
+
+                    // PART 1: Fix duplicate sale stock movements
+                    log.push('=== Stock Dedup ===');
+                    const { data: allMov } = await supabase
+                      .from('stock_movements')
+                      .select('id, product_id, variation_id, movement_type, quantity, reference_id, created_at')
+                      .eq('company_id', companyId)
+                      .eq('reference_type', 'sale')
+                      .order('created_at', { ascending: true });
+
+                    const groups = new Map<string, typeof allMov>();
+                    for (const m of allMov || []) {
+                      const mt = ((m as any).movement_type || '').toLowerCase().trim();
+                      const key = `${(m as any).reference_id}|${(m as any).product_id}|${(m as any).variation_id || ''}|${mt}`;
+                      if (!groups.has(key)) groups.set(key, []);
+                      groups.get(key)!.push(m);
+                    }
+                    const toDelete: string[] = [];
+                    for (const [, rows] of groups.entries()) {
+                      if ((rows || []).length <= 1) continue;
+                      for (let i = 1; i < (rows || []).length; i++) toDelete.push((rows![i] as any).id);
+                    }
+                    // Also remove positive qty 'sale' type (sync artifacts)
+                    for (const m of allMov || []) {
+                      const mt = ((m as any).movement_type || '').toLowerCase().trim();
+                      if (mt === 'sale' && (m as any).quantity > 0 && !toDelete.includes((m as any).id))
+                        toDelete.push((m as any).id);
+                    }
+                    if (toDelete.length > 0) {
+                      for (let i = 0; i < toDelete.length; i += 20) {
+                        await supabase.from('stock_movements').delete().in('id', toDelete.slice(i, i + 20));
+                      }
+                      log.push(`Deleted ${toDelete.length} duplicate/artifact stock movements`);
+                    } else {
+                      log.push('No duplicate stock movements found');
+                    }
+
+                    // PART 2: Fix missing shipping in AR
+                    log.push('=== Shipping AR Repair ===');
+                    const { data: salesShip } = await supabase
+                      .from('sales')
+                      .select('id, invoice_no, total, shipment_charges, branch_id')
+                      .eq('company_id', companyId)
+                      .eq('status', 'final')
+                      .gt('shipment_charges', 0);
+
+                    let repaired = 0;
+                    for (const sale of salesShip || []) {
+                      const shipping = Number((sale as any).shipment_charges) || 0;
+                      if (shipping <= 0) continue;
+
+                      const { data: jes } = await supabase
+                        .from('journal_entries')
+                        .select('id')
+                        .eq('reference_type', 'sale')
+                        .eq('reference_id', (sale as any).id)
+                        .or('is_void.is.null,is_void.eq.false')
+                        .limit(1);
+                      if (!jes?.length) continue;
+
+                      const { data: lines } = await supabase
+                        .from('journal_entry_lines')
+                        .select('account_id, debit, description')
+                        .eq('journal_entry_id', (jes[0] as any).id)
+                        .gt('debit', 0);
+
+                      const arLine = (lines || []).find((l: any) =>
+                        (l.description || '').toLowerCase().includes('receivable') || (l.description || '').toLowerCase().includes(' ar ')
+                      );
+                      if (!arLine) continue;
+
+                      const gap = Math.round((Number((sale as any).total) + shipping - Number((arLine as any).debit)) * 100) / 100;
+                      if (gap <= 0.01) continue;
+
+                      const entryNo = `JE-SHIP-REPAIR-${(sale as any).invoice_no}`;
+                      const { data: existing } = await supabase.from('journal_entries').select('id').eq('company_id', companyId).eq('entry_no', entryNo).or('is_void.is.null,is_void.eq.false').limit(1);
+                      if (existing?.length) continue;
+
+                      const { data: shipAcct } = await supabase.from('accounts').select('id').eq('company_id', companyId).eq('code', '4110').limit(1);
+                      if (!shipAcct?.length) { log.push('No 4110 Shipping Income account'); break; }
+
+                      const { data: newJe } = await supabase.from('journal_entries').insert({
+                        company_id: companyId, branch_id: (sale as any).branch_id || null,
+                        entry_no: entryNo, entry_date: new Date().toISOString().slice(0, 10),
+                        description: `Shipping AR correction ${(sale as any).invoice_no}: +Rs ${gap}`,
+                        reference_type: 'sale_adjustment', reference_id: (sale as any).id,
+                        total_debit: gap, total_credit: gap,
+                      }).select('id').single();
+
+                      if (newJe?.id) {
+                        await supabase.from('journal_entry_lines').insert([
+                          { journal_entry_id: (newJe as any).id, account_id: (arLine as any).account_id, debit: gap, credit: 0, description: `AR shipping +Rs ${gap}` },
+                          { journal_entry_id: (newJe as any).id, account_id: (shipAcct[0] as any).id, debit: 0, credit: gap, description: `Shipping income Rs ${gap}` },
+                        ]);
+                        log.push(`${(sale as any).invoice_no}: +Rs ${gap} → AR corrected`);
+                        repaired++;
+                      }
+                    }
+                    log.push(`Shipping repair: ${repaired} sales corrected`);
+                  } catch (e: any) {
+                    log.push(`ERROR: ${e?.message || String(e)}`);
+                  }
+                  setDataRepairResult(log);
+                  setDataRepairLoading(false);
+                }}
+                disabled={dataRepairLoading || !companyId}
+                variant="destructive"
+              >
+                {dataRepairLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                Run Data Repair
+              </Button>
+              {dataRepairResult && (
+                <div className="rounded-lg border border-gray-800 bg-gray-950/50 p-3 text-xs font-mono space-y-0.5">
+                  {dataRepairResult.map((line, i) => (
+                    <p key={i} className={line.startsWith('===') ? 'text-blue-400 font-bold' : line.startsWith('ERROR') ? 'text-red-400' : 'text-gray-300'}>{line}</p>
+                  ))}
                 </div>
               )}
             </CardContent>

@@ -769,12 +769,60 @@ export const saleService = {
     return saleData;
   },
 
-  /** Cancel final sale: reverses stock, sets status=cancelled. Optionally credit note/refund via options. */
+  /** Cancel final sale: reverses stock, sets status=cancelled. shippingDeduction keeps that amount in AR (not refunded to customer). */
   async cancelSale(
     id: string,
-    _options?: { reason?: string; performedBy?: string; refundOption?: string; refundAmount?: number; refundMethod?: string; refundAccountId?: string }
+    options?: { reason?: string; performedBy?: string; refundOption?: string; refundAmount?: number; refundMethod?: string; refundAccountId?: string; shippingDeduction?: number }
   ) {
     await this.updateSaleStatus(id, 'cancelled');
+
+    // If shipping deduction specified, create a corrective JE: Dr AR / Cr Shipping Income
+    // This keeps the shipping amount in the customer's receivable (not refunded back).
+    const shippingDeduction = Number(options?.shippingDeduction) || 0;
+    if (shippingDeduction > 0) {
+      try {
+        const { data: sale } = await supabase.from('sales').select('company_id, branch_id, invoice_no').eq('id', id).maybeSingle();
+        if (sale) {
+          const companyId = (sale as any).company_id;
+          const branchId = (sale as any).branch_id;
+          const invoiceNo = (sale as any).invoice_no || `SL-${id.slice(0, 8)}`;
+
+          // Resolve AR and Shipping Income accounts
+          const { accountHelperService } = await import('./accountHelperService');
+          const arAcct = await accountHelperService.getAccountByCode('1100', companyId);
+          const shipAcct = await accountHelperService.getAccountByCode('4110', companyId);
+
+          // If no 1100, try to find the AR sub-ledger for the customer
+          let arId = arAcct?.id;
+          if (!arId) {
+            const allAccounts = (await import('./accountService')).accountService;
+            const accts = await allAccounts.getAllAccounts(companyId);
+            const arHit = (accts || []).find((a: any) => String(a.code || '').startsWith('AR-'));
+            arId = arHit?.id;
+          }
+
+          if (arId && shipAcct?.id) {
+            const { accountingService } = await import('./accountingService');
+            await accountingService.createEntry(
+              {
+                id: '', company_id: companyId, branch_id: branchId || undefined,
+                entry_no: `JE-SHIP-DEDUCT-${invoiceNo}`,
+                entry_date: new Date().toISOString().slice(0, 10),
+                description: `Shipping deduction on cancel ${invoiceNo}: customer charged Rs ${shippingDeduction} (courier already paid)`,
+                reference_type: 'sale_adjustment', reference_id: id,
+              } as any,
+              [
+                { id: '', journal_entry_id: '', account_id: arId, debit: shippingDeduction, credit: 0, description: `AR shipping deduction – ${invoiceNo}` },
+                { id: '', journal_entry_id: '', account_id: shipAcct.id, debit: 0, credit: shippingDeduction, description: `Shipping income retained – ${invoiceNo}` },
+              ]
+            );
+            console.log(`[saleService] Shipping deduction Rs.${shippingDeduction} posted for cancelled ${invoiceNo}`);
+          }
+        }
+      } catch (shipErr: any) {
+        console.warn('[saleService] Shipping deduction JE failed (non-critical):', shipErr?.message);
+      }
+    }
   },
 
   // Update sale status (when 'cancelled': create SALE_CANCELLED stock reversals, then update status)
@@ -833,6 +881,11 @@ export const saleService = {
           if (insertErr) throw insertErr;
         }
       }
+
+      // Payments are NOT voided on cancel — the money was received and stays in the books.
+      // After cancellation, customer has a credit balance (we owe them refund).
+      // Shipping JEs also stay (courier was already paid).
+      // The refund is processed manually when the company pays the customer back.
 
       const { data, error } = await supabase.from('sales').update({ status }).eq('id', id).select().single();
       if (error) throw error;
