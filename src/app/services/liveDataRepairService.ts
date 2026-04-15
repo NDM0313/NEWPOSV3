@@ -199,12 +199,12 @@ export async function getReceivablesReconciliation(companyId: string): Promise<R
 
   const { data: sales } = await supabase
     .from('sales')
-    .select('total, paid')
+    .select('total, paid_amount, due_amount')
     .eq('company_id', companyId)
     .eq('status', 'final');
   let documentTotalDue = 0;
   (sales || []).forEach((s: any) => {
-    const due = Number(s.total ?? 0) - Number(s.paid ?? 0);
+    const due = Number(s.due_amount ?? 0) || (Number(s.total ?? 0) - Number(s.paid_amount ?? 0));
     if (due > 0) documentTotalDue += due;
   });
   documentTotalDue = Math.round(documentTotalDue * 100) / 100;
@@ -242,12 +242,12 @@ export async function getPayablesReconciliation(companyId: string): Promise<Paya
 
   const { data: purchases } = await supabase
     .from('purchases')
-    .select('total, paid')
+    .select('total, paid_amount, due_amount')
     .eq('company_id', companyId)
     .in('status', ['received', 'final']);
   let documentTotalDue = 0;
   (purchases || []).forEach((p: any) => {
-    const due = Number(p.total ?? 0) - Number(p.paid ?? 0);
+    const due = Number(p.due_amount ?? 0) || (Number(p.total ?? 0) - Number(p.paid_amount ?? 0));
     if (due > 0) documentTotalDue += due;
   });
   documentTotalDue = Math.round(documentTotalDue * 100) / 100;
