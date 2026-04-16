@@ -129,6 +129,33 @@ function controlKindDisplayLabel(kind: ControlAccountBreakdownResult['controlKin
   }
 }
 
+/** Reference type badge color mapping for journal entries. */
+const REF_TYPE_COLORS: Record<string, string> = {
+  sale: 'bg-blue-900/50 text-blue-300',
+  sale_adjustment: 'bg-blue-900/30 text-blue-400',
+  sale_return: 'bg-orange-900/50 text-orange-300',
+  sale_reversal: 'bg-red-900/40 text-red-300',
+  purchase: 'bg-purple-900/50 text-purple-300',
+  purchase_adjustment: 'bg-purple-900/30 text-purple-400',
+  purchase_return: 'bg-pink-900/50 text-pink-300',
+  purchase_reversal: 'bg-red-900/30 text-red-400',
+  payment: 'bg-green-900/50 text-green-300',
+  payment_adjustment: 'bg-green-900/30 text-green-400',
+  shipment: 'bg-amber-900/50 text-amber-300',
+  stock_adjustment: 'bg-yellow-900/40 text-yellow-300',
+  opening_balance_contact_ar: 'bg-cyan-900/40 text-cyan-300',
+  opening_balance_contact_ap: 'bg-cyan-900/40 text-cyan-300',
+  opening_balance_account: 'bg-cyan-900/40 text-cyan-300',
+  opening_balance_inventory: 'bg-cyan-900/40 text-cyan-300',
+  opening_balance_contact_worker: 'bg-cyan-900/40 text-cyan-300',
+  commission_batch: 'bg-teal-900/50 text-teal-300',
+  manual: 'bg-gray-800 text-gray-400',
+};
+
+function refTypeBadgeLabel(rt: string): string {
+  return rt.replace(/_/g, ' ').replace(/opening balance /g, 'OB ');
+}
+
 /** Journal list: line amount is stored positive; classify by module/source (sign-based Income/Expense was wrong for all rows). */
 function journalRowPresentation(entry: AccountingEntry): {
   typeLabel: string;
@@ -766,13 +793,20 @@ export const AccountingDashboard = () => {
       );
     }
 
-    // Type filter
+    // Type filter — supports both source-based and reference_type-based filtering
     if (typeFilter !== 'all') {
       filtered = filtered.filter(txn => {
-        if (typeFilter === 'expense') return txn.source === 'Expense';
-        if (typeFilter === 'sale') return txn.source === 'Sale';
-        if (typeFilter === 'purchase') return txn.source === 'Purchase';
-        if (typeFilter === 'payment') return txn.source === 'Payment';
+        const ref = ((txn.metadata as any)?.referenceType || '').toLowerCase();
+        if (typeFilter === 'sale') return ref === 'sale' || ref === 'sale_adjustment' || txn.source === 'Sale';
+        if (typeFilter === 'sale_return') return ref === 'sale_return' || ref === 'sale_reversal';
+        if (typeFilter === 'purchase') return ref === 'purchase' || ref === 'purchase_adjustment' || txn.source === 'Purchase';
+        if (typeFilter === 'purchase_return') return ref === 'purchase_return';
+        if (typeFilter === 'payment') return ref === 'payment' || ref === 'payment_adjustment' || (txn.metadata as any)?.paymentId || txn.source === 'Payment';
+        if (typeFilter === 'opening') return ref.startsWith('opening_balance');
+        if (typeFilter === 'shipment') return ref === 'shipment';
+        if (typeFilter === 'expense') return txn.source === 'Expense' || ref === 'expense';
+        if (typeFilter === 'cancel') return ref === 'sale_reversal' || ref === 'purchase_reversal' || ref.includes('cancel');
+        if (typeFilter === 'adjustment') return ref.includes('adjustment');
         return true;
       });
     }
@@ -1122,6 +1156,37 @@ export const AccountingDashboard = () => {
               </div>
             </div>
 
+            {/* Filter pills by transaction type */}
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { key: 'all', label: 'All', color: 'bg-gray-700' },
+                { key: 'sale', label: 'Sales', color: 'bg-blue-900/60' },
+                { key: 'sale_return', label: 'Sale Returns', color: 'bg-orange-900/60' },
+                { key: 'purchase', label: 'Purchases', color: 'bg-purple-900/60' },
+                { key: 'purchase_return', label: 'Purchase Returns', color: 'bg-pink-900/60' },
+                { key: 'payment', label: 'Payments', color: 'bg-green-900/60' },
+                { key: 'opening', label: 'Opening Balance', color: 'bg-cyan-900/60' },
+                { key: 'shipment', label: 'Shipment', color: 'bg-amber-900/60' },
+                { key: 'adjustment', label: 'Adjustments', color: 'bg-yellow-900/60' },
+                { key: 'cancel', label: 'Cancelled', color: 'bg-red-900/60' },
+              ].map(f => (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setTypeFilter(f.key)}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-xs font-medium transition-all',
+                    typeFilter === f.key
+                      ? `${f.color} text-white ring-1 ring-white/20`
+                      : 'bg-gray-800/50 text-gray-500 hover:text-gray-300 hover:bg-gray-800'
+                  )}
+                >
+                  {f.label}
+                  {typeFilter === 'all' || typeFilter === f.key ? '' : ''}
+                </button>
+              ))}
+            </div>
+
             {/* Journal Entries Table with pagination */}
             <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
               {filteredTransactions.length === 0 ? (
@@ -1263,7 +1328,9 @@ export const AccountingDashboard = () => {
                                 <td className={cn('px-4 py-3 text-sm font-semibold text-right tabular-nums', pres.amountClass)}>
                                   {formatCurrency(Math.abs(amount))}
                                 </td>
-                                <td className="px-4 py-3 text-xs text-gray-400">{entry.source || 'Manual'}</td>
+                                <td className="px-4 py-3">
+                                  {(() => { const rt = ((entry.metadata as any)?.referenceType || entry.source || 'manual').toLowerCase(); return <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${REF_TYPE_COLORS[rt] || 'bg-gray-800 text-gray-400'}`}>{refTypeBadgeLabel(rt)}</span>; })()}
+                                </td>
                                 <td className="px-4 py-3 text-sm text-gray-300 tabular-nums">{group.entries.length}</td>
                                 <td className="px-4 py-3">
                                   <div className="flex flex-wrap items-center gap-1">
@@ -1511,7 +1578,9 @@ export const AccountingDashboard = () => {
                                 <td className={cn('px-4 py-3 text-sm font-semibold text-right tabular-nums', pres.amountClass)}>
                                   {formatCurrency(Math.abs(amount))}
                                 </td>
-                                <td className="px-4 py-3 text-xs text-gray-400">{entry.source || 'Manual'}</td>
+                                <td className="px-4 py-3">
+                                  {(() => { const rt = ((entry.metadata as any)?.referenceType || entry.source || 'manual').toLowerCase(); return <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${REF_TYPE_COLORS[rt] || 'bg-gray-800 text-gray-400'}`}>{refTypeBadgeLabel(rt)}</span>; })()}
+                                </td>
                                 <td className="px-4 py-3 text-sm text-gray-300 tabular-nums">1</td>
                                 <td className="px-4 py-3">
                                   <div className="flex flex-wrap items-center gap-1">
