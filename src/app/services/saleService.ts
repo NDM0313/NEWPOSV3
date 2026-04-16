@@ -775,54 +775,8 @@ export const saleService = {
     options?: { reason?: string; performedBy?: string; refundOption?: string; refundAmount?: number; refundMethod?: string; refundAccountId?: string; shippingDeduction?: number }
   ) {
     await this.updateSaleStatus(id, 'cancelled');
-
-    // If shipping deduction specified, create a corrective JE: Dr AR / Cr Shipping Income
-    // This keeps the shipping amount in the customer's receivable (not refunded back).
-    const shippingDeduction = Number(options?.shippingDeduction) || 0;
-    if (shippingDeduction > 0) {
-      try {
-        const { data: sale } = await supabase.from('sales').select('company_id, branch_id, invoice_no').eq('id', id).maybeSingle();
-        if (sale) {
-          const companyId = (sale as any).company_id;
-          const branchId = (sale as any).branch_id;
-          const invoiceNo = (sale as any).invoice_no || `SL-${id.slice(0, 8)}`;
-
-          // Resolve AR and Shipping Income accounts
-          const { accountHelperService } = await import('./accountHelperService');
-          const arAcct = await accountHelperService.getAccountByCode('1100', companyId);
-          const shipAcct = await accountHelperService.getAccountByCode('4110', companyId);
-
-          // If no 1100, try to find the AR sub-ledger for the customer
-          let arId = arAcct?.id;
-          if (!arId) {
-            const allAccounts = (await import('./accountService')).accountService;
-            const accts = await allAccounts.getAllAccounts(companyId);
-            const arHit = (accts || []).find((a: any) => String(a.code || '').startsWith('AR-'));
-            arId = arHit?.id;
-          }
-
-          if (arId && shipAcct?.id) {
-            const { accountingService } = await import('./accountingService');
-            await accountingService.createEntry(
-              {
-                id: '', company_id: companyId, branch_id: branchId || undefined,
-                entry_no: `JE-SHIP-DEDUCT-${invoiceNo}`,
-                entry_date: new Date().toISOString().slice(0, 10),
-                description: `Shipping deduction on cancel ${invoiceNo}: customer charged Rs ${shippingDeduction} (courier already paid)`,
-                reference_type: 'sale_adjustment', reference_id: id,
-              } as any,
-              [
-                { id: '', journal_entry_id: '', account_id: arId, debit: shippingDeduction, credit: 0, description: `AR shipping deduction – ${invoiceNo}` },
-                { id: '', journal_entry_id: '', account_id: shipAcct.id, debit: 0, credit: shippingDeduction, description: `Shipping income retained – ${invoiceNo}` },
-              ]
-            );
-            console.log(`[saleService] Shipping deduction Rs.${shippingDeduction} posted for cancelled ${invoiceNo}`);
-          }
-        }
-      } catch (shipErr: any) {
-        console.warn('[saleService] Shipping deduction JE failed (non-critical):', shipErr?.message);
-      }
-    }
+    // Shipping is non-refundable: shipping JE (Dr AR, Cr Shipping Income) stays active.
+    // No shipping deduction JE needed since cancel reversal no longer touches shipping.
   },
 
   // Update sale status (when 'cancelled': create SALE_CANCELLED stock reversals, then update status)
@@ -860,23 +814,72 @@ export const saleService = {
         .eq('reference_id', id)
         .eq('movement_type', 'sale');
 
+      // Smart cancel: subtract already-returned quantities so we don't double-count.
+      // Returns that are still active (not voided) already added stock back; only reverse the NET remaining.
+      const returnedQtyMap = new Map<string, number>();
+      const returnedBoxMap = new Map<string, number>();
+      const returnedPieceMap = new Map<string, number>();
+      {
+        const { data: activeReturns } = await supabase
+          .from('sale_returns')
+          .select('id')
+          .eq('original_sale_id', id)
+          .neq('status', 'void');
+        const activeReturnIds = (activeReturns || []).map((r: any) => r.id);
+        if (activeReturnIds.length > 0) {
+          // Get return stock movements (positive qty = stock added back)
+          const { data: returnMov } = await supabase
+            .from('stock_movements')
+            .select('product_id, variation_id, quantity, box_change, piece_change')
+            .in('reference_id', activeReturnIds)
+            .eq('reference_type', 'sale_return')
+            .in('movement_type', ['sale_return', 'sell_return']);
+          for (const rm of returnMov || []) {
+            const key = `${rm.product_id}:${rm.variation_id || ''}`;
+            returnedQtyMap.set(key, (returnedQtyMap.get(key) || 0) + Math.abs(Number(rm.quantity) || 0));
+            if (rm.box_change != null) returnedBoxMap.set(key, (returnedBoxMap.get(key) || 0) + Math.abs(Number(rm.box_change) || 0));
+            if (rm.piece_change != null) returnedPieceMap.set(key, (returnedPieceMap.get(key) || 0) + Math.abs(Number(rm.piece_change) || 0));
+          }
+        }
+      }
+
       if (stockMovements && stockMovements.length > 0) {
         for (const m of stockMovements) {
+          const key = `${m.product_id}:${m.variation_id || ''}`;
+          const alreadyReturned = returnedQtyMap.get(key) || 0;
+          const originalQty = Math.abs(Number(m.quantity) || 0);
+          const netReverseQty = Math.max(0, originalQty - alreadyReturned);
+          // Consume used return qty so it's not double-subtracted for a second movement with same key
+          if (alreadyReturned > 0) returnedQtyMap.set(key, Math.max(0, alreadyReturned - originalQty));
+
+          if (netReverseQty <= 0) continue; // Fully returned — nothing to reverse
+
+          const originalCost = Math.abs(Number(m.total_cost) || 0);
+          const costRatio = originalQty > 0 ? netReverseQty / originalQty : 1;
+
           const reverseMovement: Record<string, unknown> = {
             company_id: m.company_id,
             branch_id: m.branch_id,
             product_id: m.product_id,
             variation_id: m.variation_id ?? null,
             movement_type: 'SALE_CANCELLED',
-            quantity: Math.abs(Number(m.quantity) || 0),
+            quantity: netReverseQty,
             unit_cost: Number(m.unit_cost) || 0,
-            total_cost: Math.abs(Number(m.total_cost) || 0),
+            total_cost: Math.round(originalCost * costRatio * 100) / 100,
             reference_type: 'sale',
             reference_id: id,
-            notes: `Reversal of ${invoiceNo} (Cancelled)`,
+            notes: alreadyReturned > 0
+              ? `Reversal of ${invoiceNo} (Cancelled, net of ${alreadyReturned} returned)`
+              : `Reversal of ${invoiceNo} (Cancelled)`,
           };
-          if (m.box_change != null) reverseMovement.box_change = Math.abs(Number(m.box_change) || 0);
-          if (m.piece_change != null) reverseMovement.piece_change = Math.abs(Number(m.piece_change) || 0);
+          if (m.box_change != null) {
+            const retBox = returnedBoxMap.get(key) || 0;
+            reverseMovement.box_change = Math.max(0, Math.abs(Number(m.box_change) || 0) - retBox);
+          }
+          if (m.piece_change != null) {
+            const retPiece = returnedPieceMap.get(key) || 0;
+            reverseMovement.piece_change = Math.max(0, Math.abs(Number(m.piece_change) || 0) - retPiece);
+          }
           const { error: insertErr } = await supabase.from('stock_movements').insert(reverseMovement);
           if (insertErr) throw insertErr;
         }

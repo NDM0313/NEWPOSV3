@@ -37,16 +37,9 @@ export async function cancelSale(saleId: string, options: CancelOptions): Promis
     throw new Error('Only final invoices can be cancelled. Draft sales can be deleted.');
   }
 
-  // Check for returns
-  const { data: returns } = await supabase
-    .from('sale_returns')
-    .select('id')
-    .eq('original_sale_id', saleId)
-    .neq('status', 'void');
-
-  if (returns && returns.length > 0) {
-    throw new Error('Cannot cancel sale: It has linked returns. Void the returns first.');
-  }
+  // Smart cancel: active returns are accounted for in the stock/accounting reversal.
+  // The cancel flow subtracts already-returned quantities from the reversal so there is no double-count.
+  // (Previously this blocked cancellation entirely; now it proceeds and adjusts automatically.)
 
   await saleService.cancelSale(saleId, {
     reason: options.reason,

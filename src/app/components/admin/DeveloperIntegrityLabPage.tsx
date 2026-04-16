@@ -71,6 +71,7 @@ import type { AccountingUiRef } from '@/app/lib/accountingDisplayReference';
 import { toast } from 'sonner';
 import { PartyTieOutRepairPanel } from '@/app/components/admin/PartyTieOutRepairPanel';
 import { runFullAccountingAudit, type FullAccountingAuditResult } from '@/app/services/fullAccountingAuditService';
+import { integrityRepairService, type StockIssue, type StockMovementTrace, type ContactBalanceIssue } from '@/app/services/integrityRepairService';
 import { defaultAccountsService } from '@/app/services/defaultAccountsService';
 import {
   previewAllJournalPostingDuplicates,
@@ -176,6 +177,17 @@ export default function DeveloperIntegrityLabPage() {
   const [postingPreviewLoading, setPostingPreviewLoading] = useState(false);
   const [postingRepairLoading, setPostingRepairLoading] = useState(false);
   const [postingRepairJson, setPostingRepairJson] = useState<string | null>(null);
+
+  // Stock Integrity Analyzer
+  const [stockDiagLoading, setStockDiagLoading] = useState(false);
+  const [stockIssues, setStockIssues] = useState<StockIssue[] | null>(null);
+  const [stockTraces, setStockTraces] = useState<StockMovementTrace[] | null>(null);
+  const [stockFixingId, setStockFixingId] = useState<string | null>(null);
+  const [expandedStockProduct, setExpandedStockProduct] = useState<string | null>(null);
+  // Contact Balance Auto-Fix
+  const [contactIssues, setContactIssues] = useState<ContactBalanceIssue[] | null>(null);
+  const [contactDiagLoading, setContactDiagLoading] = useState(false);
+  const [contactFixingId, setContactFixingId] = useState<string | null>(null);
 
   const effBranch = filterBranch !== 'all' ? filterBranch : null;
 
@@ -1678,6 +1690,147 @@ export default function DeveloperIntegrityLabPage() {
         </TabsContent>
 
         <TabsContent value="inv-detail" className="space-y-4">
+          {/* Stock Integrity Analyzer */}
+          <Card className="border-gray-800 bg-gray-900/40">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <ShieldAlert className="h-5 w-5 text-red-400" />
+                Stock Integrity Analyzer
+              </CardTitle>
+              <CardDescription>
+                Traces all stock movements per product, detects issues (cancel without return adjustment, negative stock, orphan movements), and offers one-click fixes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Button
+                  onClick={async () => {
+                    if (!companyId) return;
+                    setStockDiagLoading(true);
+                    try {
+                      const [issues, traces] = await Promise.all([
+                        integrityRepairService.diagnoseStockIssues(companyId),
+                        integrityRepairService.traceAllStock(companyId),
+                      ]);
+                      setStockIssues(issues);
+                      setStockTraces(traces);
+                      if (issues.length === 0) toast.success('No stock issues found!');
+                      else toast.warning(`Found ${issues.length} stock issue(s)`);
+                    } catch (e: any) { toast.error('Stock diagnosis failed: ' + e?.message); }
+                    setStockDiagLoading(false);
+                  }}
+                  disabled={stockDiagLoading || !companyId}
+                >
+                  {stockDiagLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Search className="h-4 w-4 mr-1" />}
+                  Run Stock Integrity Check
+                </Button>
+              </div>
+              {/* Issues */}
+              {stockIssues && stockIssues.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-red-400">{stockIssues.length} Issue(s) Found</div>
+                  {stockIssues.map((issue, i) => (
+                    <div key={i} className="rounded-lg border border-red-800/50 bg-red-950/20 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-white font-medium text-sm">{issue.productName}</span>
+                          <span className="text-gray-500 text-xs ml-2">({issue.sku})</span>
+                          <SevBadge s={issue.severity} />
+                        </div>
+                        {issue.fixable && (
+                          <Button
+                            size="sm"
+                            className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs"
+                            disabled={stockFixingId === issue.fixData?.movementId}
+                            onClick={async () => {
+                              setStockFixingId(issue.fixData?.movementId as string);
+                              const result = await integrityRepairService.fixStockIssue(issue);
+                              if (result.success) {
+                                toast.success('Stock issue fixed!');
+                                setStockIssues(prev => prev?.filter((_, idx) => idx !== i) || null);
+                              } else toast.error('Fix failed: ' + result.error);
+                              setStockFixingId(null);
+                            }}
+                          >
+                            <Wrench className="h-3 w-3 mr-1" />
+                            {issue.fixDescription || 'Fix'}
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400">{issue.description}</p>
+                      <div className="text-xs text-gray-500">
+                        Expected: {issue.expectedStock} | Actual: {issue.actualStock} | Diff: {issue.difference}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {stockIssues && stockIssues.length === 0 && (
+                <div className="text-sm text-emerald-400 flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> All stock movements verified — no issues found.</div>
+              )}
+              {/* Movement Traces (expandable per product) */}
+              {stockTraces && stockTraces.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-gray-300 mt-4">Movement Traces ({stockTraces.length} products)</div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/50 overflow-auto max-h-[50vh]">
+                    {stockTraces.map(t => (
+                      <div key={t.productId} className="border-b border-gray-800/50">
+                        <button
+                          type="button"
+                          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-gray-800/30 transition-colors"
+                          onClick={() => setExpandedStockProduct(prev => prev === t.productId ? null : t.productId)}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-white text-xs font-medium truncate">{t.productName}</span>
+                            <span className="text-gray-500 text-[10px] font-mono">{t.sku}</span>
+                          </div>
+                          <div className="flex items-center gap-3 text-[10px] shrink-0">
+                            <span className="text-blue-400">Stock: {t.finalStock}</span>
+                            <span className="text-green-400">Buy: {t.purchaseTotal}</span>
+                            <span className="text-red-400">Sell: {t.saleTotal}</span>
+                            {t.returnTotal > 0 && <span className="text-amber-400">Ret: {t.returnTotal}</span>}
+                            {t.cancelTotal > 0 && <span className="text-purple-400">Cancel: {t.cancelTotal}</span>}
+                          </div>
+                        </button>
+                        {expandedStockProduct === t.productId && (
+                          <div className="px-3 pb-2">
+                            <table className="w-full text-[10px]">
+                              <thead className="text-gray-500 uppercase">
+                                <tr>
+                                  <th className="text-left p-1">Date</th>
+                                  <th className="text-left p-1">Type</th>
+                                  <th className="text-right p-1">Qty</th>
+                                  <th className="text-right p-1">Running</th>
+                                  <th className="text-left p-1">Notes</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {t.movements.map(m => (
+                                  <tr key={m.id} className="border-t border-gray-800/30">
+                                    <td className="p-1 text-gray-500">{m.createdAt?.slice(0, 10)}</td>
+                                    <td className="p-1">
+                                      <Badge className={`text-[9px] ${m.type.includes('cancel') || m.type.includes('CANCEL') ? 'bg-purple-500/20 text-purple-400' : m.type === 'sale' ? 'bg-red-500/20 text-red-400' : m.type === 'purchase' || m.type === 'opening_stock' ? 'bg-green-500/20 text-green-400' : m.type.includes('return') ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                                        {m.type}
+                                      </Badge>
+                                    </td>
+                                    <td className={`p-1 text-right font-mono ${m.quantity < 0 ? 'text-red-400' : 'text-green-400'}`}>{m.quantity > 0 ? '+' : ''}{m.quantity}</td>
+                                    <td className="p-1 text-right font-mono text-white">{m.runningTotal}</td>
+                                    <td className="p-1 text-gray-500 truncate max-w-[200px]">{m.notes}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Original Inventory Detail Table */}
           <Card className="border-gray-800 bg-gray-900/40">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -1925,7 +2078,75 @@ export default function DeveloperIntegrityLabPage() {
                   <RefreshCw className="h-4 w-4 mr-1" />
                   Re-sync All Opening Balances
                 </Button>
+                <Button
+                  variant="outline"
+                  className="border-red-700 text-red-400 hover:bg-red-950"
+                  onClick={async () => {
+                    if (!companyId) return;
+                    setContactDiagLoading(true);
+                    try {
+                      const issues = await integrityRepairService.diagnoseContactIssues(companyId);
+                      setContactIssues(issues);
+                      if (issues.length === 0) toast.success('No contact balance issues found!');
+                      else toast.warning(`Found ${issues.length} contact balance issue(s)`);
+                    } catch (e: any) { toast.error('Diagnosis failed: ' + e?.message); }
+                    setContactDiagLoading(false);
+                  }}
+                  disabled={contactDiagLoading || !companyId}
+                >
+                  {contactDiagLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <ShieldAlert className="h-4 w-4 mr-1" />}
+                  Diagnose &amp; Auto-Fix
+                </Button>
               </div>
+              {/* Auto-Fix Issues Panel */}
+              {contactIssues && contactIssues.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  <div className="text-sm font-medium text-red-400">{contactIssues.length} Contact Balance Issue(s)</div>
+                  {contactIssues.map((issue, i) => (
+                    <div key={i} className="rounded-lg border border-amber-800/50 bg-amber-950/20 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-white font-medium text-sm">{issue.contactName}</span>
+                          <span className="text-gray-500 text-xs ml-2">({issue.contactType})</span>
+                          <Badge className="ml-2 bg-gray-700 text-gray-300 text-[10px]">{issue.subLedgerCode}</Badge>
+                          <Badge className={`ml-1 text-[10px] ${issue.issueType === 'purchase_return_not_in_due' ? 'bg-purple-700' : issue.issueType === 'orphan_shipping' ? 'bg-amber-700' : 'bg-gray-700'} text-white`}>
+                            {issue.issueType.replace(/_/g, ' ')}
+                          </Badge>
+                        </div>
+                        {issue.fixable && (
+                          <Button
+                            size="sm"
+                            className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs"
+                            disabled={contactFixingId === issue.contactId}
+                            onClick={async () => {
+                              if (!companyId) return;
+                              setContactFixingId(issue.contactId);
+                              const result = await integrityRepairService.fixContactIssue(issue, companyId);
+                              if (result.success) {
+                                toast.success(`Fixed: ${issue.contactName}`);
+                                setContactIssues(prev => prev?.filter((_, idx) => idx !== i) || null);
+                              } else toast.error('Fix failed: ' + result.error);
+                              setContactFixingId(null);
+                            }}
+                          >
+                            <Wrench className="h-3 w-3 mr-1" />
+                            {issue.fixDescription || 'Fix'}
+                          </Button>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400">{issue.description}</p>
+                      <div className="flex gap-4 text-[10px] text-gray-500">
+                        <span>GL: {issue.glBalance.toLocaleString()}</span>
+                        <span>Operational: {issue.operationalBalance.toLocaleString()}</span>
+                        <span className="text-red-400 font-bold">Diff: {issue.difference.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {contactIssues && contactIssues.length === 0 && (
+                <div className="text-sm text-emerald-400 flex items-center gap-1 mb-4"><CheckCircle2 className="h-4 w-4" /> All contact balances verified — no fixable issues found.</div>
+              )}
               {contactReconData && (
                 <div className="rounded-lg border border-gray-800 bg-gray-950/50 overflow-auto max-h-[60vh]">
                   <table className="w-full text-xs">

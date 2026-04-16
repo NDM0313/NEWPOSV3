@@ -673,8 +673,10 @@ export const saleAccountingService = {
     shipmentCharges?: number;
     invoiceNo: string;
     performedBy?: string | null;
+    /** 0-1 fraction of COGS to reverse (for partial cancel after return). Default 1. */
+    cogsMultiplier?: number;
   }): Promise<string | null> {
-    const { saleId, companyId, branchId, total, discountAmount = 0, shipmentCharges = 0, invoiceNo, performedBy } = params;
+    const { saleId, companyId, branchId, total, discountAmount = 0, shipmentCharges = 0, invoiceNo, performedBy, cogsMultiplier = 1 } = params;
 
     if (!saleId || !companyId || total <= 0) return null;
 
@@ -710,8 +712,10 @@ export const saleAccountingService = {
 
     const hasDiscount = discountAmount > 0;
     const grossTotal = hasDiscount ? total + discountAmount : total;
-    const shippingAmount = Math.round((Number(shipmentCharges) || 0) * 100) / 100;
-    const revenueReversal = Math.round((grossTotal - shippingAmount) * 100) / 100;
+    // Shipping is NON-REFUNDABLE: shipping stays charged to customer even on cancel.
+    // Cancel reversal only reverses product revenue + discount, NOT shipping.
+    // Shipping JE (Dr AR, Cr Shipping Income) remains active on AR.
+    const revenueReversal = Math.round(grossTotal * 100) / 100;
 
     const lines: JournalEntryLine[] = [];
     if (revenueReversal > 0) {
@@ -724,28 +728,7 @@ export const saleAccountingService = {
         description: `Reversal Sales Revenue – ${invoiceNo}`,
       });
     }
-    if (shippingAmount > 0) {
-      const shippingAccount = await ensureShippingIncomeAccount(companyId);
-      if (shippingAccount?.id) {
-        lines.push({
-          id: '',
-          journal_entry_id: '',
-          account_id: shippingAccount.id,
-          debit: shippingAmount,
-          credit: 0,
-          description: `Reversal Shipping Income – ${invoiceNo}`,
-        });
-      } else {
-        lines.push({
-          id: '',
-          journal_entry_id: '',
-          account_id: revenueAccount.id,
-          debit: shippingAmount,
-          credit: 0,
-          description: `Reversal Shipping (Revenue) – ${invoiceNo}`,
-        });
-      }
-    }
+    // Shipping Income is NOT reversed — shipping is non-refundable (courier already paid).
     if (hasDiscount) {
       const discountAccount = await ensureDiscountAllowedAccount(companyId);
       if (discountAccount?.id) {
@@ -767,7 +750,9 @@ export const saleAccountingService = {
     });
 
     // Issue 08: Reverse COGS – Dr Inventory (1200), Cr Cost of Production (5000)
-    const totalCogs = await getSaleCogs(saleId);
+    // Apply cogsMultiplier to only reverse the un-returned portion (returns already reversed their COGS)
+    const fullCogs = await getSaleCogs(saleId);
+    const totalCogs = Math.round(fullCogs * cogsMultiplier * 100) / 100;
     if (totalCogs > 0) {
       const cogsAccount = await ensureCOGSAccount(companyId);
       const invAccount = await ensureInventoryAccount(companyId);

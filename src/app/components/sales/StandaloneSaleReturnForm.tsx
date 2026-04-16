@@ -374,6 +374,8 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
         const desc = settlementNotes.trim()
           ? `Sale Return (no invoice): ${saleReturn.return_no || saleReturn.id} - ${customerName} - Settlement: ${settlementLabel}. ${settlementNotes.trim()}`
           : `Sale Return (no invoice): ${saleReturn.return_no || saleReturn.id} - ${customerName} - Settlement: ${settlementLabel}`;
+        const standaloneDisc = Number(refreshedReturn.discount_amount) || 0;
+        const standaloneSub = Number(refreshedReturn.subtotal) || (settlementAmount + standaloneDisc);
         await accounting.recordSaleReturn({
           saleReturnId: saleReturn.id!,
           returnNo: saleReturn.return_no || `SR-${saleReturn.id?.slice(0, 8)}`,
@@ -386,6 +388,8 @@ export const StandaloneSaleReturnForm: React.FC<StandaloneSaleReturnFormProps> =
             refundMethod === 'cash' || refundMethod === 'bank' ? selectedRefundAccountId || null : null,
           description: desc,
           postingDate: pendingReturnData.return_date,
+          discountAmount: standaloneDisc > 0 ? standaloneDisc : undefined,
+          subtotal: standaloneDisc > 0 ? standaloneSub : undefined,
         });
       } catch (accErr: any) {
         console.warn('[STANDALONE RETURN] Accounting entry failed (non-blocking):', accErr);

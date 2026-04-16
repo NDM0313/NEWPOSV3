@@ -82,6 +82,15 @@ export interface InventoryOverviewRow {
   /** Combo/bundle: product is a virtual bundle; stock from components */
   isComboProduct?: boolean;
   comboItemCount?: number;
+  brandId?: string | null;
+}
+
+export interface MovementAggregate {
+  productId: string;
+  variationId: string | null;
+  totalSold: number;
+  totalTransferred: number;
+  totalAdjusted: number;
 }
 
 export interface InventoryMovementRow {
@@ -157,6 +166,7 @@ export const inventoryService = {
         retail_price,
         min_stock,
         category_id,
+        brand_id,
         has_variations,
         is_combo_product,
         unit_id,
@@ -376,6 +386,7 @@ export const inventoryService = {
         name: p.name || '',
         category: p.product_categories?.name || 'Uncategorized',
         categoryId: p.category_id,
+        brandId: (p as any).brand_id || null,
         stock: totalStock,
         boxes: Math.round(totalBoxes * 100) / 100,
         pieces: Math.round(totalPieces * 100) / 100,
@@ -843,5 +854,54 @@ export const inventoryService = {
     const mt = String(movement.movement_type || movement.type || '').toLowerCase().trim();
     if (ref !== 'opening_balance' || mt !== 'adjustment') return;
     await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(movement.id);
+  },
+
+  /**
+   * Movement Aggregates – per product/variation totals for Stock Report.
+   * Returns total sold, transferred, and adjusted quantities grouped by product_id + variation_id.
+   */
+  async getMovementAggregates(
+    companyId: string,
+    branchId?: string | null
+  ): Promise<MovementAggregate[]> {
+    let query = supabase
+      .from('stock_movements')
+      .select('product_id, variation_id, quantity, movement_type')
+      .eq('company_id', companyId);
+    if (branchId && branchId !== 'all') {
+      query = query.eq('branch_id', branchId);
+    }
+    const { data: movements, error } = await query;
+    if (error) {
+      console.warn('[INVENTORY SERVICE] getMovementAggregates error:', error.message);
+      return [];
+    }
+    if (!movements?.length) return [];
+
+    const SOLD_TYPES = new Set(['sale']);
+    const TRANSFER_TYPES = new Set(['transfer', 'transfer_in', 'transfer_out']);
+    const ADJUST_TYPES = new Set(['adjustment']);
+
+    const map = new Map<string, { productId: string; variationId: string | null; totalSold: number; totalTransferred: number; totalAdjusted: number }>();
+
+    for (const m of movements) {
+      const key = `${m.product_id}:${m.variation_id || ''}`;
+      if (!map.has(key)) {
+        map.set(key, { productId: m.product_id, variationId: m.variation_id || null, totalSold: 0, totalTransferred: 0, totalAdjusted: 0 });
+      }
+      const agg = map.get(key)!;
+      const mt = (m.movement_type || '').toLowerCase().trim();
+      const qty = Number(m.quantity) || 0;
+
+      if (SOLD_TYPES.has(mt)) {
+        agg.totalSold += Math.abs(qty);
+      } else if (TRANSFER_TYPES.has(mt)) {
+        agg.totalTransferred += Math.abs(qty);
+      } else if (ADJUST_TYPES.has(mt)) {
+        agg.totalAdjusted += qty;
+      }
+    }
+
+    return Array.from(map.values());
   },
 };

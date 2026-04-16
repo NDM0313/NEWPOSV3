@@ -71,7 +71,8 @@ type View =
   | 'manufacturing-bom'
   | 'manufacturing-orders'
   | 'manufacturing-workflow'
-  | 'party-ledger';
+  | 'party-ledger'
+  | 'stock-report';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 

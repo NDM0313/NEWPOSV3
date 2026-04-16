@@ -28,6 +28,7 @@ import {
   Shield,
   Scale,
   BookOpen,
+  FileBarChart,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useModules } from '../../context/ModuleContext';
@@ -69,6 +70,7 @@ export const Sidebar = () => {
     { id: 'contacts', label: 'Contacts', icon: Users, isHidden: !hasPermission('contacts.view') },
     { id: 'products', label: 'Products', icon: Package, isHidden: !hasPermission('products.view') },
     { id: 'inventory', label: 'Inventory', icon: Warehouse, isHidden: !hasPermission('inventory.view') },
+    { id: 'stock-report', label: 'Stock Report', icon: FileBarChart, isHidden: !hasPermission('inventory.view') },
     { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !hasPermission('purchases.view') },
     { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !hasPermission('sales.view') },
     { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled || !hasPermission('rentals.view') },

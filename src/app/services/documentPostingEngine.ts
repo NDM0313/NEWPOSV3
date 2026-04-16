@@ -68,15 +68,45 @@ export async function reverseSaleDocumentAccounting(saleId: string): Promise<str
     .eq('id', saleId)
     .maybeSingle();
   if (error || !sale) return null;
+
+  let saleTotal = Number((sale as { total?: number }).total) || 0;
+  let saleDiscount = Number((sale as { discount_amount?: number }).discount_amount ?? 0) || 0;
+
+  // Smart cancel: subtract amounts already reversed by active (non-void) returns
+  // so the cancellation JE only reverses the NET remaining portion.
+  const { data: activeReturns } = await supabase
+    .from('sale_returns')
+    .select('id, total, subtotal, discount_amount')
+    .eq('original_sale_id', saleId)
+    .neq('status', 'void');
+  if (activeReturns && activeReturns.length > 0) {
+    const returnTotal = activeReturns.reduce((s: number, r: any) => s + (Number(r.total) || 0), 0);
+    const returnDiscount = activeReturns.reduce((s: number, r: any) => s + (Number(r.discount_amount) || 0), 0);
+    saleTotal = Math.max(0, saleTotal - returnTotal);
+    saleDiscount = Math.max(0, saleDiscount - returnDiscount);
+  }
+
+  const originalTotal = Number((sale as { total?: number }).total) || 0;
+  if (saleTotal <= 0) {
+    console.log(`[documentPostingEngine] Sale ${(sale as any).invoice_no} fully returned — no accounting reversal needed`);
+    return null;
+  }
+
+  // Pass COGS multiplier so only the un-returned portion of COGS is reversed
+  const cogsMultiplier = originalTotal > 0 ? saleTotal / originalTotal : 1;
+
+  // Shipping is non-refundable: pass 0 for shipmentCharges so cancel JE does NOT reverse shipping.
+  // Shipping JE (Dr AR, Cr Shipping Income) stays active on customer AR.
   return saleAccountingService.reverseSaleJournalEntry({
     saleId,
     companyId: (sale as { company_id: string }).company_id,
     branchId: (sale as { branch_id?: string | null }).branch_id,
-    total: Number((sale as { total?: number }).total) || 0,
-    discountAmount: Number((sale as { discount_amount?: number }).discount_amount ?? 0) || undefined,
-    shipmentCharges: Number((sale as { shipment_charges?: number }).shipment_charges ?? 0) || undefined,
+    total: saleTotal,
+    discountAmount: saleDiscount > 0 ? saleDiscount : undefined,
+    shipmentCharges: 0,
     invoiceNo: (sale as { invoice_no?: string }).invoice_no || `SL-${saleId.slice(0, 8)}`,
     performedBy: (sale as { created_by?: string | null }).created_by ?? null,
+    cogsMultiplier,
   });
 }
 

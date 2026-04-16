@@ -450,6 +450,8 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
       
       try {
         const desc = `Sale Return: ${saleReturn.return_no || saleReturn.id} - Original: ${originalSale.invoice_no} - ${originalSale.customer_name}${discountAmount > 0 ? ` (Discount: ${formatCurrency(discountAmount)})` : ''}${restockingFee > 0 ? ` (Restocking Fee: ${formatCurrency(restockingFee)})` : ''}${manualAdjustment !== 0 ? ` (Adjustment: ${formatCurrency(manualAdjustment)})` : ''} - Settlement: ${refundMethod === 'cash' ? 'Cash Refund' : refundMethod === 'bank' ? 'Bank Refund' : 'Adjust in Customer Account'}`;
+        const returnDiscountAmt = Number(refreshedReturn.discount_amount) || 0;
+        const returnSubtotalAmt = Number(refreshedReturn.subtotal) || (settlementAmount + returnDiscountAmt);
         const reversalSuccess = await accounting.recordSaleReturn({
           saleReturnId: saleReturn.id!,
           returnNo: saleReturn.return_no || `RET-${saleReturn.id}`,
@@ -461,6 +463,8 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
           refundAccountId: (refundMethod === 'cash' || refundMethod === 'bank') ? selectedRefundAccountId || null : null,
           description: desc,
           postingDate: pendingReturnData.return_date,
+          discountAmount: returnDiscountAmt > 0 ? returnDiscountAmt : undefined,
+          subtotal: returnDiscountAmt > 0 ? returnSubtotalAmt : undefined,
         });
 
         if (!reversalSuccess) {

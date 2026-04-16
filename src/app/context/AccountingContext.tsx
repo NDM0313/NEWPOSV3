@@ -374,6 +374,10 @@ export interface SaleReturnParams {
   description: string;
   /** yyyy-MM-dd on return document */
   postingDate?: string;
+  /** Discount portion of the return (Cr Discount Allowed 5200). Revenue Dr = amount + discountAmount. */
+  discountAmount?: number;
+  /** Gross subtotal before discount (= amount + discountAmount). If provided, used as Revenue Dr amount. */
+  subtotal?: number;
 }
 
 export interface SupplierPaymentParams {
@@ -2182,9 +2186,74 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       revenueDebitAccountId,
       description,
       postingDate,
+      discountAmount: returnDiscount = 0,
+      subtotal: returnSubtotal,
     } = params;
     if (!amount || amount <= 0) return true;
 
+    // If discount exists, use direct JE creation for proper 3-line entry:
+    //   Dr Revenue (subtotal)  /  Cr Discount (discount)  /  Cr AR|Cash (net amount)
+    // Without discount, fall back to simple createEntry.
+    const hasReturnDiscount = returnDiscount > 0 && companyId;
+
+    if (hasReturnDiscount) {
+      try {
+        const { accountHelperService } = await import('@/app/services/accountHelperService');
+        const { accountingService: acctSvc } = await import('@/app/services/accountingService');
+        const { ensureDiscountAllowedAccount } = await import('@/app/services/saleAccountingService');
+
+        // Revenue account (Dr)
+        let revenueAcctId = revenueDebitAccountId || undefined;
+        if (!revenueAcctId) {
+          revenueAcctId = (await accountHelperService.getAccountByCode('4100', companyId!))?.id
+            || (await accountHelperService.getAccountByCode('4000', companyId!))?.id || undefined;
+        }
+
+        // Discount account (Cr)
+        const discountAcct = await ensureDiscountAllowedAccount(companyId!);
+
+        // Credit account (AR sub-ledger or Cash/Bank)
+        let creditAcctId: string | undefined;
+        if (refundMethod === 'adjust' && customerId) {
+          const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+          creditAcctId = (await resolveReceivablePostingAccountId(companyId!, customerId)) || undefined;
+        } else if ((refundMethod === 'cash' || refundMethod === 'bank') && refundAccountId) {
+          creditAcctId = refundAccountId;
+        }
+        if (!creditAcctId) {
+          creditAcctId = (await accountHelperService.getAccountByCode('1100', companyId!))?.id || undefined;
+        }
+
+        if (!revenueAcctId || !creditAcctId) {
+          console.warn('[recordSaleReturn] Missing account IDs, falling back to simple entry');
+        } else {
+          const grossAmount = returnSubtotal || (amount + returnDiscount);
+          const jeLines: Array<{ id: string; journal_entry_id: string; account_id: string; debit: number; credit: number; description: string }> = [
+            { id: '', journal_entry_id: '', account_id: revenueAcctId, debit: grossAmount, credit: 0, description: `Return Revenue – ${returnNo}` },
+            { id: '', journal_entry_id: '', account_id: creditAcctId, debit: 0, credit: amount, description: `Return settlement – ${returnNo}` },
+          ];
+          if (discountAcct?.id) {
+            jeLines.push({ id: '', journal_entry_id: '', account_id: discountAcct.id, debit: 0, credit: returnDiscount, description: `Return Discount reversal – ${returnNo}` });
+          }
+
+          const result = await acctSvc.createEntry(
+            {
+              id: '', company_id: companyId!, branch_id: branchId || undefined,
+              entry_no: `JE-RTN-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
+              entry_date: postingDate || new Date().toISOString().split('T')[0],
+              description: description || `Sale Return: ${returnNo} - ${customerName}`,
+              reference_type: 'sale_return', reference_id: saleReturnId,
+            } as any,
+            jeLines,
+          );
+          return !!result;
+        }
+      } catch (e: any) {
+        console.warn('[recordSaleReturn] Discount JE failed, falling back:', e?.message);
+      }
+    }
+
+    // Fallback: simple 2-line entry (no discount)
     let debitAccountId: string | undefined = revenueDebitAccountId || undefined;
     if (!debitAccountId && companyId) {
       try {

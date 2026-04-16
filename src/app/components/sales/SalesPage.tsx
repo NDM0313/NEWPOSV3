@@ -58,6 +58,7 @@ import { BulkInvoiceWorkflow } from '@/app/wholesale';
 import { QuotationWorkflow } from './QuotationWorkflow';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { saleService } from '@/app/services/saleService';
+import { supabase } from '@/lib/supabase';
 import { branchService, Branch } from '@/app/services/branchService';
 import { saleReturnService } from '@/app/services/saleReturnService';
 import { shipmentService } from '@/app/services/shipmentService';
@@ -481,9 +482,21 @@ export const SalesPage = () => {
         setPaymentDialogOpen(true);
         break;
       
-      case 'cancel_invoice':
-        setCancelInvoiceDialogOpen(true);
+      case 'cancel_invoice': {
+        // Fetch return info BEFORE opening dialog so it shows immediately
+        const fetchAndOpenCancel = async () => {
+          if (selectedSale && companyId) {
+            const { data: rets } = await supabase.from('sale_returns').select('id, total, discount_amount, status')
+              .eq('original_sale_id', selectedSale.id).neq('status', 'void');
+            const returnTotal = (rets || []).reduce((s: number, r: any) => s + (Number(r.total) || 0), 0);
+            const returnDiscount = (rets || []).reduce((s: number, r: any) => s + (Number(r.discount_amount) || 0), 0);
+            setSelectedSale(prev => prev ? { ...prev, returnTotal, returnDiscount } as any : prev);
+          }
+          setCancelInvoiceDialogOpen(true);
+        };
+        fetchAndOpenCancel();
         break;
+      }
         
       case 'view_ledger':
         setLedgerOpen(true);
@@ -2565,27 +2578,46 @@ export const SalesPage = () => {
                       Are you sure you want to cancel invoice <span className="font-semibold text-white">{selectedSale.invoiceNo}</span>?
                       A reversal entry will be created.
                     </p>
-                    <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 space-y-1.5 text-sm">
-                      <div className="flex justify-between"><span>Sale Total:</span><span className="text-white">Rs. {Number(selectedSale.total).toLocaleString()}</span></div>
-                      <div className="flex justify-between"><span>Already Paid:</span><span className="text-white">Rs. {Number(selectedSale.paid).toLocaleString()}</span></div>
-                      {(Number((selectedSale as any).shippingCharges) || 0) > 0 && (
-                        <>
-                          <div className="flex justify-between"><span>Shipping Charged:</span><span className="text-amber-400">Rs. {Number((selectedSale as any).shippingCharges).toLocaleString()}</span></div>
-                          <div className="border-t border-gray-700 pt-2 mt-2">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input type="checkbox" checked={cancelDeductShipping} onChange={(e) => setCancelDeductShipping(e.target.checked)} className="rounded border-gray-600 bg-gray-700 text-amber-500 focus:ring-amber-500" />
-                              <span>Deduct shipping from refund (courier already paid)</span>
-                            </label>
+                    {(() => {
+                      const saleTotal = Number(selectedSale.total) || 0;
+                      const alreadyPaid = Number(selectedSale.paid) || 0;
+                      const shipping = Number((selectedSale as any).shippingCharges) || 0;
+                      const discount = Number((selectedSale as any).discountAmount) || 0;
+                      const returnTotal = Number((selectedSale as any).returnTotal) || 0;
+                      const returnDiscount = Number((selectedSale as any).returnDiscount) || 0;
+                      const netCancelAmount = Math.max(0, saleTotal - returnTotal);
+                      const customerRefund = Math.max(0, alreadyPaid - returnTotal - shipping);
+                      return (
+                        <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 space-y-1.5 text-sm">
+                          <div className="flex justify-between"><span>Sale Total:</span><span className="text-white">Rs. {saleTotal.toLocaleString()}</span></div>
+                          {discount > 0 && (
+                            <div className="flex justify-between"><span>Discount Given:</span><span className="text-purple-400">Rs. {discount.toLocaleString()}</span></div>
+                          )}
+                          <div className="flex justify-between"><span>Already Paid:</span><span className="text-white">Rs. {alreadyPaid.toLocaleString()}</span></div>
+                          {shipping > 0 && (
+                            <div className="flex justify-between"><span>Shipping Charged:</span><span className="text-amber-400">Rs. {shipping.toLocaleString()} <span className="text-xs text-gray-500">(non-refundable)</span></span></div>
+                          )}
+                          {returnTotal > 0 && (
+                            <>
+                              <div className="border-t border-gray-700 my-2" />
+                              <div className="flex justify-between"><span>Already Returned:</span><span className="text-orange-400">Rs. {returnTotal.toLocaleString()}</span></div>
+                              {returnDiscount > 0 && (
+                                <div className="flex justify-between text-xs"><span className="text-gray-500">Return Discount Reversed:</span><span className="text-gray-400">Rs. {returnDiscount.toLocaleString()}</span></div>
+                              )}
+                            </>
+                          )}
+                          <div className="border-t border-gray-700 my-2" />
+                          <div className="flex justify-between"><span>Net Cancel Amount:</span><span className="text-white">Rs. {netCancelAmount.toLocaleString()}</span></div>
+                          {shipping > 0 && (
+                            <div className="flex justify-between text-xs"><span className="text-gray-500">Less Shipping (non-refundable):</span><span className="text-gray-400">- Rs. {shipping.toLocaleString()}</span></div>
+                          )}
+                          <div className="flex justify-between font-semibold text-base pt-1">
+                            <span>Customer Refund Due:</span>
+                            <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">Rs. {customerRefund.toLocaleString()}</span>
                           </div>
-                          <div className="flex justify-between font-semibold pt-1">
-                            <span>Refund Amount:</span>
-                            <span className="text-emerald-400">
-                              Rs. {(Number(selectedSale.paid) - (cancelDeductShipping ? (Number((selectedSale as any).shippingCharges) || 0) : 0)).toLocaleString()}
-                            </span>
-                          </div>
-                        </>
-                      )}
-                    </div>
+                        </div>
+                      );
+                    })()}
                   </>
                 )}
               </div>

@@ -44,6 +44,7 @@ const InventoryDashboard = lazy(() => import('./components/inventory/InventoryDa
 const InventoryDashboardNew = lazy(() => import('./components/inventory/InventoryDashboardNew').then(m => ({ default: m.InventoryDashboardNew })));
 const InventoryDesignTestPage = lazy(() => import('./components/inventory/InventoryDesignTestPage').then(m => ({ default: m.InventoryDesignTestPage })));
 const InventoryAnalyticsTestPage = lazy(() => import('./components/inventory/InventoryAnalyticsTestPage').then(m => ({ default: m.InventoryAnalyticsTestPage })));
+const StockReportPage = lazy(() => import('./components/reports/StockReportPage').then(m => ({ default: m.StockReportPage })));
 const StudioDashboardNew = lazy(() => import('./components/studio/StudioDashboardNew').then(m => ({ default: m.StudioDashboardNew })));
 import { SettingsPage } from './components/settings/SettingsPage';
 const SettingsPageNew = lazy(() => import('./components/settings/SettingsPageNew').then(m => ({ default: m.SettingsPageNew })));
@@ -474,6 +475,11 @@ const AppContent = () => {
       {currentView === 'inventory-analytics-test' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
           <InventoryAnalyticsTestPage />
+        </Suspense>
+      )}
+      {currentView === 'stock-report' && (
+        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
+          <StockReportPage />
         </Suspense>
       )}
 
