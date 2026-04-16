@@ -214,6 +214,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     const [customerId, setCustomerId] = useState("");
     const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
     const [customerSearchTerm, setCustomerSearchTerm] = useState("");
+    /** Keyboard highlight index in customer dropdown (-1 = none). */
+    const [customerSearchHighlightIndex, setCustomerSearchHighlightIndex] = useState(-1);
     const [pendingCustomerId, setPendingCustomerId] = useState<string | null>(null);
     const dataLoadedRef = useRef(false); // Track if initial data load has completed
     const [saleDate, setSaleDate] = useState<Date>(new Date());
@@ -265,6 +267,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     
     // Focus Refs
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const customerPopoverSearchRef = useRef<HTMLInputElement>(null);
     const qtyInputRef = useRef<HTMLInputElement>(null);
     const priceInputRef = useRef<HTMLInputElement>(null);
     const addBtnRef = useRef<HTMLButtonElement>(null);
@@ -1521,10 +1524,59 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     
     const getSelectedCustomer = () => selectedCustomer;
 
-    // Filter customers based on search term
-    const filteredCustomers = customers.filter(c =>
-        c.name.toLowerCase().includes(customerSearchTerm.toLowerCase())
-    );
+    // Filter customers: name, code, phone (optional REF # is not on contact — list search only)
+    const filteredCustomers = useMemo(() => {
+        const q = customerSearchTerm.trim().toLowerCase();
+        return customers.filter((c) => {
+            if (!q) return true;
+            const name = (c.name || '').toLowerCase();
+            const code = String((c as { code?: string }).code || '').toLowerCase();
+            const phone = String((c as { phone?: string }).phone || '').toLowerCase();
+            return name.includes(q) || code.includes(q) || phone.includes(q);
+        });
+    }, [customers, customerSearchTerm]);
+
+    useEffect(() => {
+        if (!customerSearchOpen) return;
+        setCustomerSearchHighlightIndex(filteredCustomers.length > 0 ? 0 : -1);
+    }, [customerSearchOpen, customerSearchTerm, customers, filteredCustomers.length]);
+
+    useEffect(() => {
+        if (!customerSearchOpen) return;
+        const id = requestAnimationFrame(() => customerPopoverSearchRef.current?.focus());
+        return () => cancelAnimationFrame(id);
+    }, [customerSearchOpen]);
+
+    const selectCustomerFromDropdown = (cust: (typeof customers)[number]) => {
+        setCustomerId(cust.id.toString());
+        setCustomerSearchOpen(false);
+        setCustomerSearchTerm('');
+        setCustomerSearchHighlightIndex(-1);
+    };
+
+    const handleCustomerSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Tab') return;
+        if (!filteredCustomers.length) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setCustomerSearchHighlightIndex((i) => {
+                if (filteredCustomers.length === 0) return -1;
+                if (i < 0) return 0;
+                return Math.min(i + 1, filteredCustomers.length - 1);
+            });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setCustomerSearchHighlightIndex((i) => Math.max(0, i < 0 ? 0 : i - 1));
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const idx = customerSearchHighlightIndex >= 0 ? customerSearchHighlightIndex : 0;
+            const cust = filteredCustomers[idx];
+            if (cust) selectCustomerFromDropdown(cust);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            setCustomerSearchOpen(false);
+        }
+    };
 
     // Helper to format due balance as currency (compact for header & dropdown). Uses Rs. for PKR globally.
     const formatDueBalanceCompact = (due: number) => {
@@ -2632,7 +2684,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             <Popover 
                                 key={`customer-select-${customerId || 'none'}-${customers.length}-${selectedCustomer?.id || 'none'}`} 
                                 open={customerSearchOpen} 
-                                onOpenChange={setCustomerSearchOpen}
+                                onOpenChange={(open) => {
+                                    setCustomerSearchOpen(open);
+                                    if (!open) setCustomerSearchHighlightIndex(-1);
+                                }}
                             >
                                 <PopoverTrigger asChild>
                                     <div className="flex items-center gap-2 bg-gray-900/50 border border-gray-800 rounded-lg px-2.5 py-1 hover:bg-gray-800 transition-colors cursor-pointer w-[748px] h-10 min-h-[40px]">
@@ -2664,21 +2719,24 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 <PopoverContent 
                                     className="w-80 bg-gray-900 border-gray-800 text-white p-2 flex flex-col overflow-hidden max-h-[320px]"
                                     align="start"
-                                    onOpenAutoFocus={(e) => e.preventDefault()}
                                 >
                                     <div className="space-y-2 flex flex-col min-h-0 flex-1 overflow-hidden">
                                         {/* Search Input */}
                                         <Input
+                                            ref={customerPopoverSearchRef}
                                             placeholder="Search customers..."
                                             value={customerSearchTerm}
                                             onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                                            onKeyDown={handleCustomerSearchKeyDown}
                                             className="bg-gray-800 border-gray-700 text-white text-sm h-9 shrink-0"
+                                            autoComplete="off"
                                         />
-                                        {/* Customer List - scrollable; wheel + touch scroll */}
+                                        {/* Customer List - scrollable; wheel + touch scroll (no tabIndex — keeps Tab order natural) */}
                                         <div
                                             className="space-y-1 overflow-y-auto overflow-x-hidden overscroll-contain max-h-64"
                                             style={{ WebkitOverflowScrolling: 'touch' }}
-                                            tabIndex={0}
+                                            role="listbox"
+                                            aria-label="Customers"
                                             onWheel={(e) => e.stopPropagation()}
                                         >
                                             {filteredCustomers.length === 0 ? (
@@ -2687,20 +2745,20 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                             </div>
                                             ) : (
                                                 <>
-                                                    {filteredCustomers.map((cust) => {
+                                                    {filteredCustomers.map((cust, idx) => {
                                                         const cidStr =
                                                             customerId != null && customerId !== ''
                                                                 ? String(customerId)
                                                                 : '';
+                                                        const isSelectedRow = customerSearchHighlightIndex === idx;
                                                         return (
                                                         <button
                                                             key={cust.id}
                                                             type="button"
-                                                            onClick={() => {
-                                                                setCustomerId(cust.id.toString());
-                                                                setCustomerSearchOpen(false);
-                                                                setCustomerSearchTerm('');
-                                                            }}
+                                                            role="option"
+                                                            aria-selected={isSelectedRow}
+                                                            onMouseEnter={() => setCustomerSearchHighlightIndex(idx)}
+                                                            onClick={() => selectCustomerFromDropdown(cust)}
                                                             className={cn(
                                                                 "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center justify-between",
                                                                 // 🔒 CRITICAL FIX: Use normalized comparison for UUID matching (customerId may be non-string from API)
@@ -2711,7 +2769,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                                     cidStr.replace(/-/g, '').toLowerCase() ===
                                                                         cust.id.toString().replace(/-/g, '').toLowerCase()))
                                                                     ? "bg-gray-800 text-white"
-                                                                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                                                                    : "text-gray-400 hover:bg-gray-800 hover:text-white",
+                                                                isSelectedRow && "ring-1 ring-inset ring-blue-500 bg-gray-800/90"
                                                             )}
                                                         >
                                                             <span className="font-medium">{cust.name}</span>

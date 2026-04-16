@@ -85,6 +85,41 @@ import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { transitionSaleLifecycle, restoreSaleFromCancelled } from '@/app/lib/documentLifecycleActions';
 import { SaleLifecycleMenuBlock, type SaleLifecycleAction } from '@/app/components/sales/SaleLifecycleMenuBlock';
 
+/** Shipment / freight charged to customer (trigger-synced `shipment_charges` on sale). Matches ViewSaleDetailsDrawer. */
+function getSaleShippingChargesAmount(sale: Sale): number {
+  return Number(sale.shippingCharges ?? sale.expenses ?? (sale as { shipment_charges?: number }).shipment_charges) || 0;
+}
+
+/** Invoice amount before payments: product total + shipment to customer + studio (when applicable). */
+function getSaleBillableAmount(sale: Sale): number {
+  return (sale.total ?? 0) + getSaleShippingChargesAmount(sale) + (Number(sale.studioCharges ?? 0) || 0);
+}
+
+/** List search: invoice / customer / branch / notes (includes optional REF #) / stage numbers / line SKU or product name. */
+function saleMatchesSearchTerm(sale: Sale, raw: string): boolean {
+  const search = raw.trim().toLowerCase();
+  if (!search) return true;
+  const fields = [
+    sale.invoiceNo,
+    sale.customer,
+    sale.customerName,
+    sale.contactNumber || '',
+    sale.location || '',
+    (sale as Sale & { draftNo?: string }).draftNo,
+    (sale as Sale & { quotationNo?: string }).quotationNo,
+    (sale as Sale & { orderNo?: string }).orderNo,
+    (sale as Sale & { notes?: string }).notes,
+  ];
+  if (fields.some((f) => String(f || '').toLowerCase().includes(search))) return true;
+  const items = sale.items || [];
+  for (const it of items as Array<{ sku?: string; productName?: string; name?: string }>) {
+    const sku = String(it.sku || '').toLowerCase();
+    const name = String(it.productName || it.name || '').toLowerCase();
+    if (sku.includes(search) || name.includes(search)) return true;
+  }
+  return false;
+}
+
 // Mock data removed - using SalesContext which loads from Supabase
 
 export const SalesPage = () => {
@@ -401,7 +436,7 @@ export const SalesPage = () => {
         break;
       case 'share_whatsapp': {
         const due = getEffectiveDue(sale);
-        const total = (sale.total ?? 0) + (sale.studioCharges ?? 0);
+        const total = getSaleBillableAmount(sale);
         const baseUrl = window.location.origin + (import.meta.env?.BASE_URL || '');
         const link = `${baseUrl}/sales?invoice=${encodeURIComponent(sale.id)}`;
         const text = [
@@ -865,17 +900,8 @@ export const SalesPage = () => {
       }
       // If no date range, show all (no filter applied)
 
-      // Search filter
-      if (searchTerm) {
-        const search = searchTerm.toLowerCase();
-        const matchesSearch = 
-          sale.invoiceNo.toLowerCase().includes(search) ||
-          sale.customer.toLowerCase().includes(search) ||
-          sale.customerName.toLowerCase().includes(search) ||
-          sale.contactNumber.includes(search) ||
-          sale.location.toLowerCase().includes(search);
-        if (!matchesSearch) return false;
-      }
+      // Search filter (invoice, customer, branch, REF in notes, draft/quote/order #, SKU / product on lines)
+      if (searchTerm && !saleMatchesSearchTerm(sale, searchTerm)) return false;
 
       // Date filter (local filter - can be removed if using global date range only)
       if (dateFilter !== 'all') {
@@ -916,6 +942,7 @@ export const SalesPage = () => {
     if (key === 'shipping') return s.shippingStatus || '';
     if (key === 'items') return s.itemsCount ?? s.items?.length ?? 0;
     if (key === 'createdBy') return s.createdBy ?? '';
+    if (key === 'total') return getSaleBillableAmount(s);
     const v = (s as any)[key];
     if (typeof v === 'number') return v;
     return String(v ?? '');
@@ -942,9 +969,9 @@ export const SalesPage = () => {
     setCurrentPage(1);
   };
 
-  // Effective due = (total + studio cost) - paid (so studio sales show correct balance)
+  // Effective due = billable invoice (product + shipment + studio) − paid
   const getEffectiveDue = useCallback((s: Sale) =>
-    Math.max(0, (s.total ?? 0) + (s.studioCharges ?? 0) - (s.paid ?? 0)), []);
+    Math.max(0, getSaleBillableAmount(s) - (s.paid ?? 0)), []);
 
   // ERP golden rule: only FINAL (posted) sales affect totals
   const finalSalesForSummary = useMemo(
@@ -952,7 +979,7 @@ export const SalesPage = () => {
     [sortedSales]
   );
   const summary = useMemo(() => ({
-    totalSales: finalSalesForSummary.reduce((sum, s) => sum + s.total, 0),
+    totalSales: finalSalesForSummary.reduce((sum, s) => sum + getSaleBillableAmount(s), 0),
     totalPaid: finalSalesForSummary.reduce((sum, s) => sum + s.paid, 0),
     totalDue: finalSalesForSummary.reduce((sum, s) => sum + getEffectiveDue(s), 0),
     invoiceCount: finalSalesForSummary.length,
@@ -1000,7 +1027,7 @@ export const SalesPage = () => {
     (sale: Sale) =>
       Math.max(
         0,
-        (sale.total ?? 0) + (sale.studioCharges ?? 0) - (paidBySaleId.get(sale.id) ?? sale.paid ?? 0)
+        getSaleBillableAmount(sale) - (paidBySaleId.get(sale.id) ?? sale.paid ?? 0)
       ),
     [paidBySaleId]
   );
@@ -1336,7 +1363,7 @@ export const SalesPage = () => {
       case 'total':
         return (
           <div className="text-sm font-semibold text-white tabular-nums">
-            {formatCurrency(sale.total)}
+            {formatCurrency(getSaleBillableAmount(sale))}
           </div>
         );
       
@@ -1557,7 +1584,7 @@ export const SalesPage = () => {
                 <p className="text-2xl font-bold text-red-400 mt-1">{formatCurrency(summary.totalDue)}</p>
                 <p className="text-xs text-gray-500 mt-1">Pending payments</p>
                 <p className="text-[10px] text-gray-500 mt-2 leading-snug">
-                  Listed final sales: effective due (total + studio charges − paid). Not Contacts operational receivables or GL AR 1100 — use Contacts reconciliation or Financial reports to tie out.
+                  Listed final sales: effective due (product + shipment to customer + studio − paid). Not Contacts operational receivables or GL AR 1100 — use Contacts reconciliation or Financial reports to tie out.
                 </p>
               </div>
               <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
@@ -1587,7 +1614,7 @@ export const SalesPage = () => {
         search={{
           value: searchTerm,
           onChange: setSearchTerm,
-          placeholder: "Search by invoice #, customer, SKU, branch..."
+          placeholder: "Search invoice #, customer, REF (in notes), draft/quote/order #, SKU, product, branch..."
         }}
         rowsSelector={{
           value: pageSize,
@@ -1785,7 +1812,7 @@ export const SalesPage = () => {
           onExportCSV: () => {
             const data: ExportData = {
               headers: ['Invoice #', 'Date', 'Customer', 'Contact', 'Location', 'Items', 'Subtotal', 'Total', 'Paid', 'Due', 'Payment Status', 'Payment Method'],
-              rows: sortedSales.map(s => [s.invoiceNo, s.date, s.customerName, s.contactNumber || '', s.location || '', s.itemsCount, s.subtotal, s.total, s.paid, s.due, s.paymentStatus, s.paymentMethod || '']),
+              rows: sortedSales.map(s => [s.invoiceNo, s.date, s.customerName, s.contactNumber || '', s.location || '', s.itemsCount, s.subtotal, getSaleBillableAmount(s), s.paid, s.due, s.paymentStatus, s.paymentMethod || '']),
               title: 'Sales'
             };
             try { exportToCSV(data, 'sales'); toast.success('Sales exported as CSV'); } catch (e) { toast.error('Export failed'); }
@@ -1793,7 +1820,7 @@ export const SalesPage = () => {
           onExportExcel: () => {
             const data: ExportData = {
               headers: ['Invoice #', 'Date', 'Customer', 'Contact', 'Location', 'Items', 'Subtotal', 'Total', 'Paid', 'Due', 'Payment Status', 'Payment Method'],
-              rows: sortedSales.map(s => [s.invoiceNo, s.date, s.customerName, s.contactNumber || '', s.location || '', s.itemsCount, s.subtotal, s.total, s.paid, s.due, s.paymentStatus, s.paymentMethod || '']),
+              rows: sortedSales.map(s => [s.invoiceNo, s.date, s.customerName, s.contactNumber || '', s.location || '', s.itemsCount, s.subtotal, getSaleBillableAmount(s), s.paid, s.due, s.paymentStatus, s.paymentMethod || '']),
               title: 'Sales'
             };
             try { exportToExcel(data, 'sales'); toast.success('Sales exported as Excel'); } catch (e) { toast.error('Export failed'); }
@@ -1801,7 +1828,7 @@ export const SalesPage = () => {
           onExportPDF: () => {
             const data: ExportData = {
               headers: ['Invoice #', 'Date', 'Customer', 'Contact', 'Location', 'Items', 'Subtotal', 'Total', 'Paid', 'Due', 'Payment Status', 'Payment Method'],
-              rows: sortedSales.map(s => [s.invoiceNo, s.date, s.customerName, s.contactNumber || '', s.location || '', s.itemsCount, s.subtotal, s.total, s.paid, s.due, s.paymentStatus, s.paymentMethod || '']),
+              rows: sortedSales.map(s => [s.invoiceNo, s.date, s.customerName, s.contactNumber || '', s.location || '', s.itemsCount, s.subtotal, getSaleBillableAmount(s), s.paid, s.due, s.paymentStatus, s.paymentMethod || '']),
               title: 'Sales'
             };
             try { exportToPDF(data, 'sales'); toast.success('PDF opened for print'); } catch (e) { toast.error('Export failed'); }
@@ -2371,7 +2398,7 @@ export const SalesPage = () => {
             date: selectedSale.date,
             customerName: selectedSale.customerName,
             customerId: selectedSale.customer,
-            total: selectedSale.total,
+            total: getSaleBillableAmount(selectedSale),
             paid: selectedSale.paid,
             due: getEffectiveDue(selectedSale),
             paymentStatus: selectedSale.paymentStatus,
@@ -2437,7 +2464,7 @@ export const SalesPage = () => {
           entityName={selectedSale.customerName}
           entityId={selectedSale.customer}
           outstandingAmount={getEffectiveDue(selectedSale)}
-          totalAmount={(selectedSale.total ?? 0) + (selectedSale.studioCharges ?? 0)}
+          totalAmount={getSaleBillableAmount(selectedSale)}
           paidAmount={selectedSale.paid}
           previousPayments={(selectedSale as any).payments || []}
           referenceNo={selectedSale.invoiceNo}

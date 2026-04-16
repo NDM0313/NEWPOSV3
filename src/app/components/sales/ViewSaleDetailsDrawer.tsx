@@ -478,7 +478,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
     return () => window.removeEventListener('saleUpdated', handler as EventListener);
   }, [saleId, reloadSaleData]);
 
-  // Load sale returns for this sale when final (so effective status can show Returned/Partially Returned)
+  // Load sale returns for this sale when final (targeted query — not whole-company list)
   useEffect(() => {
     if (!companyId || !saleId || !sale) return;
     const isFinal = (sale.status || '').toString().toLowerCase() === 'final';
@@ -486,12 +486,14 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
       setSaleReturns([]);
       return;
     }
+    let cancelled = false;
     setLoadingSaleReturns(true);
-    saleReturnService.getSaleReturns(companyId, undefined)
-      .then((list) => {
-        const forThisSale = (list || []).filter((r: any) => r.original_sale_id === saleId);
-        setSaleReturns(forThisSale);
-        if (forThisSale.length > 0) {
+    saleReturnService
+      .getSaleReturnsForOriginalSale(companyId, saleId)
+      .then((forThisSale) => {
+        if (cancelled) return;
+        setSaleReturns(forThisSale || []);
+        if ((forThisSale || []).length > 0) {
           setSale((prev) => {
             if (!prev) return null;
             const count = forThisSale.length;
@@ -500,9 +502,16 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
           });
         }
       })
-      .catch(() => setSaleReturns([]))
-      .finally(() => setLoadingSaleReturns(false));
-  }, [companyId, saleId, sale?.id, (sale as any)?.status]);
+      .catch(() => {
+        if (!cancelled) setSaleReturns([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSaleReturns(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, saleId, sale?.id, (sale as any)?.status, (sale as any)?.returnDue]);
 
   const salesmanId = (sale as any)?.salesmanId ?? (sale as any)?.salesman_id;
   useEffect(() => {
@@ -856,6 +865,34 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         </div>
                       ) : null;
                     })()}
+                    {(((sale as any).hasReturn || (sale as any).returnDue > 0 || saleReturns.length > 0) || loadingSaleReturns) && (() => {
+                      const finalReturns = saleReturns.filter((r: any) => String(r.status || '').toLowerCase() === 'final');
+                      const sumFinal = finalReturns.reduce((s, r: any) => s + (Number(r.total) || 0), 0);
+                      return (
+                        <div className="flex justify-between gap-3 border-t border-gray-800/60 pt-3 mt-1">
+                          <span className="text-xs text-gray-500 shrink-0">Sale returns</span>
+                          <span className="text-white text-sm text-right">
+                            {loadingSaleReturns ? (
+                              <span className="text-gray-500">Loading…</span>
+                            ) : saleReturns.length === 0 ? (
+                              <span className="text-gray-500">None loaded</span>
+                            ) : (
+                              <>
+                                <span className="font-medium text-purple-300">{saleReturns.length}</span>
+                                <span className="text-gray-400"> credit note(s)</span>
+                                {sumFinal > 0 && (
+                                  <>
+                                    <span className="text-gray-500"> · </span>
+                                    <span className="text-amber-200 tabular-nums">Returned {formatCurrency(sumFinal)}</span>
+                                    <span className="text-gray-500"> (final)</span>
+                                  </>
+                                )}
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -919,31 +956,59 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                 </div>
               </div>
 
-              {/* Sale Returns - when this sale has returns */}
-              {((sale as any).hasReturn || (sale as any).returnCount > 0 || saleReturns.length > 0) && (
+              {/* Sale Returns — amounts, lines, reason (not only invoice metadata) */}
+              {((sale as any).hasReturn || (sale as any).returnCount > 0 || (sale as any).returnDue > 0 || saleReturns.length > 0 || loadingSaleReturns) && (
                 <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-                  <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center gap-2">
-                    <RotateCcw size={16} className="text-purple-400" />
-                    <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Sale Returns</h3>
-                    {loadingSaleReturns && <span className="text-xs text-gray-500">Loading...</span>}
+                  <div className="px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <RotateCcw size={16} className="text-purple-400" />
+                      <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Sale returns</h3>
+                      {loadingSaleReturns && <span className="text-xs text-gray-500">Loading…</span>}
+                    </div>
+                    {!loadingSaleReturns && saleReturns.length > 0 && (() => {
+                      const sumFinal = saleReturns
+                        .filter((r: any) => String(r.status || '').toLowerCase() === 'final')
+                        .reduce((s, r: any) => s + (Number(r.total) || 0), 0);
+                      return sumFinal > 0 ? (
+                        <span className="text-xs text-gray-400">
+                          Total returned (final): <span className="text-amber-200 font-semibold tabular-nums">{formatCurrency(sumFinal)}</span>
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                   <div className="p-4">
                     {loadingSaleReturns ? (
-                      <p className="text-sm text-gray-500">Loading returns...</p>
+                      <p className="text-sm text-gray-500">Loading returns…</p>
                     ) : saleReturns.length === 0 ? (
-                      <p className="text-sm text-gray-500">No returns found for this sale.</p>
+                      <p className="text-sm text-gray-500">No return documents linked to this invoice yet.</p>
                     ) : (
-                      <ul className="space-y-2">
+                      <ul className="space-y-3">
                         {saleReturns.map((ret: any) => {
                           const retStatus = (ret.status || '').toString().toLowerCase();
                           const statusLabel =
-                            retStatus === 'void' ? 'VOID / LOCKED' : retStatus === 'final' ? 'FINAL / LOCKED' : 'Draft';
+                            retStatus === 'void' ? 'Void' : retStatus === 'final' ? 'Final' : 'Draft';
                           const statusClass = retStatus === 'void' ? 'bg-gray-500/20 text-gray-400 border-gray-500/30' : retStatus === 'final' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+                          const lineCount = Array.isArray(ret.items) ? ret.items.length : 0;
+                          const amt = Number(ret.total) || 0;
                           return (
-                            <li key={ret.id} className="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
-                              <span className="text-sm font-medium text-white font-mono">{ret.return_no || ret.id || '—'}</span>
-                              <Badge className={cn('text-xs', statusClass)}>{statusLabel}</Badge>
-                              <span className="text-xs text-gray-500">{ret.return_date ? new Date(ret.return_date).toLocaleDateString() : ''}</span>
+                            <li key={ret.id} className="rounded-lg border border-gray-800/80 bg-gray-950/40 p-3 space-y-2">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-sm font-semibold text-white font-mono">{ret.return_no || ret.id?.slice?.(0, 8) || '—'}</span>
+                                <Badge className={cn('text-xs border', statusClass)}>{statusLabel}</Badge>
+                              </div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400">
+                                <span>Date: <span className="text-gray-200">{ret.return_date ? new Date(ret.return_date).toLocaleString() : '—'}</span></span>
+                                <span>Lines: <span className="text-gray-200">{lineCount}</span></span>
+                                <span className="text-amber-200/90 font-semibold tabular-nums">Amount: {formatCurrency(amt)}</span>
+                              </div>
+                              {(ret.reason || ret.notes) && (
+                                <p className="text-xs text-gray-500 line-clamp-3">
+                                  <span className="text-gray-600">Note: </span>
+                                  {String(ret.reason || '').trim()}
+                                  {ret.reason && ret.notes ? ' · ' : ''}
+                                  {String(ret.notes || '').trim()}
+                                </p>
+                              )}
                             </li>
                           );
                         })}
