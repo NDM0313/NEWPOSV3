@@ -542,133 +542,57 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         (classification.kind === 'FULL_REVERSE_REPOST' || classification.kind === 'DELTA_ADJUSTMENT') &&
         companyId
       ) {
+        // In-place update: modify existing JE lines directly instead of reverse + repost
         const { data: jeRow } = await supabase
           .from('journal_entries')
-          .select('id')
+          .select('id, description')
           .eq('company_id', companyId)
           .eq('reference_type', 'expense')
           .eq('reference_id', id)
           .or('is_void.is.null,is_void.eq.false')
-          .order('created_at', { ascending: false })
+          .not('reference_type', 'eq', 'correction_reversal')
+          .order('created_at', { ascending: true })
           .limit(1)
           .maybeSingle();
-        const jeId = (jeRow as { id?: string } | null)?.id;
+        const jeId = (jeRow as { id?: string; description?: string } | null)?.id;
         if (jeId) {
-          const { data: revRow } = await supabase
-            .from('journal_entries')
-            .select('id')
-            .eq('company_id', companyId)
-            .eq('reference_type', 'correction_reversal')
-            .eq('reference_id', jeId)
-            .or('is_void.is.null,is_void.eq.false')
-            .limit(1)
-            .maybeSingle();
+          const newAmount = Number(mergedAmount) || 0;
+          // Update all debit lines to new amount
+          await supabase
+            .from('journal_entry_lines')
+            .update({ debit: newAmount })
+            .eq('journal_entry_id', jeId)
+            .gt('debit', 0);
+          // Update all credit lines to new amount
+          await supabase
+            .from('journal_entry_lines')
+            .update({ credit: newAmount })
+            .eq('journal_entry_id', jeId)
+            .gt('credit', 0);
+          // Update description and log edit
+          const ts = new Date().toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
+          const oldDesc = (jeRow as any)?.description || '';
+          const newDesc = mergedDescription || String(mergedCategory) || oldDesc;
+          const editNote = `[Edited ${ts}: Rs ${Number(existing?.amount || 0).toLocaleString()} → Rs ${newAmount.toLocaleString()}]`;
+          await supabase.from('journal_entries').update({
+            description: `${newDesc} ${editNote}`.slice(0, 500),
+            entry_date: mergedDate || undefined,
+          }).eq('id', jeId);
 
-          const { data: auth } = await supabase.auth.getUser();
-          const uid = (auth?.user as { id?: string } | undefined)?.id ?? null;
-          const validBranchId = branchId && branchId !== 'all' ? branchId : null;
+          pushExpenseEditTrace({
+            traceId,
+            ts: new Date().toISOString(),
+            expenseId: id,
+            companyId: companyId || null,
+            phase: 'inplace_update',
+            data: { jeId, oldAmount: existing?.amount, newAmount, description: newDesc },
+          });
 
-          let newReversalId: string | null = null;
-          try {
-            if (!revRow) {
-              hardBlockPosting('reversal');
-              pushExpenseEditTrace({
-                traceId,
-                ts: new Date().toISOString(),
-                expenseId: id,
-                companyId: companyId || null,
-                phase: 'reversal_start',
-                data: { originalJournalEntryId: jeId },
-              });
-              const revResult = await accountingService.createReversalEntry(
-                companyId,
-                validBranchId,
-                jeId,
-                uid,
-                'Expense edit — reverse prior posting'
-              );
-              if (!revResult) {
-                throw new Error('Could not reverse the posted journal entry. Nothing was changed.');
-              }
-              if (!revResult.alreadyExisted) newReversalId = revResult.id;
-              pushExpenseEditTrace({
-                traceId,
-                ts: new Date().toISOString(),
-                expenseId: id,
-                companyId: companyId || null,
-                phase: 'reversal_done',
-                data: {
-                  reversalId: revResult.id,
-                  alreadyExisted: revResult.alreadyExisted,
-                },
-              });
-            }
-            hardBlockPosting('repost');
-            pushExpenseEditTrace({
-              traceId,
-              ts: new Date().toISOString(),
-              expenseId: id,
-              companyId: companyId || null,
-              phase: 'repost_start',
-              data: {
-                amount: Number(mergedAmount) || 0,
-                paymentMethod: mergedPaymentMethod,
-                date: mergedDate,
-                category: String(mergedCategory),
-              },
-            });
-            const reposted = await accounting.recordExpense({
-              expenseId: id,
-              category: String(mergedCategory),
-              amount: Number(mergedAmount) || 0,
-              paymentMethod: mergedPaymentMethod as any,
-              description: mergedDescription || String(mergedCategory),
-              date: mergedDate,
-            });
-            if (!reposted) {
-              throw new Error('Reposting the expense failed. Check Accounting and retry.');
-            }
-            pushExpenseEditTrace({
-              traceId,
-              ts: new Date().toISOString(),
-              expenseId: id,
-              companyId: companyId || null,
-              phase: 'repost_done',
-              data: { reposted: true },
-            });
-          } catch (repostErr) {
-            if (newReversalId) {
-              try {
-                await voidJournalEntries(
-                  companyId,
-                  [newReversalId],
-                  'Expense repost failed — voided compensating reversal (books restored to pre-edit posting).'
-                );
-                pushExpenseEditTrace({
-                  traceId,
-                  ts: new Date().toISOString(),
-                  expenseId: id,
-                  companyId: companyId || null,
-                  phase: 'compensating_void',
-                  data: { reversalId: newReversalId, ok: true },
-                });
-              } catch (voidErr) {
-                console.error(
-                  '[EXPENSE CONTEXT] CRITICAL: repost failed and compensating void failed — manual JE cleanup may be required',
-                  voidErr
-                );
-                pushExpenseEditTrace({
-                  traceId,
-                  ts: new Date().toISOString(),
-                  expenseId: id,
-                  companyId: companyId || null,
-                  phase: 'compensating_void',
-                  data: { reversalId: newReversalId, ok: false, error: (voidErr as any)?.message || String(voidErr) },
-                });
-              }
-            }
-            throw repostErr;
+          // Refresh
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
           }
+
         }
         await persistExpenseRow();
       } else {
