@@ -131,13 +131,21 @@ export const expenseService = {
     return data;
   },
 
-  // Delete expense — true delete + void associated journal entries
+  // Delete expense — true delete + void JEs + void payments
   async deleteExpense(id: string, companyId?: string) {
-    // Void associated JEs first (so GL is cleaned up)
+    const now = new Date().toISOString();
     if (companyId) {
+      // Void associated journal entries
       await supabase
         .from('journal_entries')
-        .update({ is_void: true, void_reason: 'expense_deleted', voided_at: new Date().toISOString() })
+        .update({ is_void: true, void_reason: 'expense_deleted', voided_at: now })
+        .eq('reference_type', 'expense')
+        .eq('reference_id', id)
+        .eq('company_id', companyId);
+      // Void associated payments (so Roznamcha/Day Book don't show deleted expense)
+      await supabase
+        .from('payments')
+        .update({ voided_at: now, voided_reason: 'expense_deleted' })
         .eq('reference_type', 'expense')
         .eq('reference_id', id)
         .eq('company_id', companyId);
