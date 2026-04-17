@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { X, FileText, Paperclip, Image as ImageIcon, File, Pencil, RotateCcw } from 'lucide-react';
+import { X, FileText, Paperclip, Image as ImageIcon, File, Pencil, RotateCcw, Trash2, ArrowLeftRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -659,6 +659,62 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
+  // Void/Cancel: mark JE as void (excluded from GL, reports, balances)
+  const handleVoidJournal = async () => {
+    if (!transaction?.id || !companyId) return;
+    if (!window.confirm('Kya aap is entry ko VOID/CANCEL karna chahte hain? Ye GL, reports aur balances se hat jayegi. Is action ko undo nahi kiya ja sakta.')) return;
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      const { error } = await supabase
+        .from('journal_entries')
+        .update({ is_void: true, void_reason: 'manual_void', voided_at: new Date().toISOString() })
+        .eq('id', transaction.id);
+      if (error) throw error;
+      toast.success('Entry void/cancel ho gayi hai — GL se remove ho gayi');
+      await loadTransaction();
+      dispatchAccountingEditCommitted();
+      accounting.refreshEntries?.();
+    } catch (e: any) {
+      toast.error('Void failed: ' + (e?.message || 'Unknown error'));
+    }
+  };
+
+  // Edit: swap debit/credit accounts on a JE (for wrong account selection fix)
+  const [editingAccounts, setEditingAccounts] = useState(false);
+  const [accountsList, setAccountsList] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [editLineChanges, setEditLineChanges] = useState<Record<string, string>>({});
+
+  const handleLoadAccountsForEdit = async () => {
+    if (!companyId) return;
+    const { supabase } = await import('@/lib/supabase');
+    const { data } = await supabase.from('accounts').select('id, code, name').eq('company_id', companyId).eq('is_active', true).order('code');
+    setAccountsList((data || []) as any[]);
+    setEditingAccounts(true);
+    setEditLineChanges({});
+  };
+
+  const handleSaveAccountEdits = async () => {
+    if (!transaction?.id || Object.keys(editLineChanges).length === 0) return;
+    try {
+      const { supabase } = await import('@/lib/supabase');
+      for (const [lineId, newAccountId] of Object.entries(editLineChanges)) {
+        const { error } = await supabase
+          .from('journal_entry_lines')
+          .update({ account_id: newAccountId })
+          .eq('id', lineId);
+        if (error) throw error;
+      }
+      toast.success(`${Object.keys(editLineChanges).length} line(s) ka account update ho gaya`);
+      setEditingAccounts(false);
+      setEditLineChanges({});
+      await loadTransaction();
+      dispatchAccountingEditCommitted();
+      accounting.refreshEntries?.();
+    } catch (e: any) {
+      toast.error('Account edit failed: ' + (e?.message || 'Unknown error'));
+    }
+  };
+
   if (!transaction && !loading) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -816,9 +872,45 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         onClick={() => void handleReverseJournal()}
                       >
                         <RotateCcw size={14} />
-                        Reverse / void offset
+                        Reverse
                       </Button>
                     )}
+                  {/* Void/Cancel: completely remove from GL */}
+                  {transaction.id && !transaction.is_void && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="gap-1 border-red-500/40 text-red-300"
+                      onClick={() => void handleVoidJournal()}
+                    >
+                      <Trash2 size={14} />
+                      Void / Cancel
+                    </Button>
+                  )}
+                  {/* Edit Accounts: swap DR/CR accounts */}
+                  {transaction.id && !transaction.is_void && !editingAccounts && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="gap-1 border-blue-500/40 text-blue-300"
+                      onClick={() => void handleLoadAccountsForEdit()}
+                    >
+                      <ArrowLeftRight size={14} />
+                      Edit Accounts
+                    </Button>
+                  )}
+                  {editingAccounts && (
+                    <>
+                      <Button size="sm" className="gap-1 bg-blue-600" onClick={() => void handleSaveAccountEdits()} disabled={Object.keys(editLineChanges).length === 0}>
+                        Save Account Changes
+                      </Button>
+                      <Button size="sm" variant="outline" className="gap-1" onClick={() => { setEditingAccounts(false); setEditLineChanges({}); }}>
+                        Cancel Edit
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -1076,13 +1168,26 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       return (
                         <tr key={line.id || line.account_id || idx} className="border-b border-gray-700">
                           <td className="px-4 py-3 text-sm text-white">
-                            <div>
-                              <p className="font-medium">
-                                {account.name || 'Unknown Account'}
-                                {account.code ? ` (${account.code})` : ''}
-                                {partySuffix}
-                              </p>
-                            </div>
+                            {editingAccounts && line.id ? (
+                              <select
+                                className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white"
+                                value={editLineChanges[line.id] || line.account_id || account.id || ''}
+                                onChange={(e) => setEditLineChanges(prev => ({ ...prev, [line.id]: e.target.value }))}
+                              >
+                                <option value={line.account_id || account.id || ''}>{account.name || 'Unknown'} ({account.code})</option>
+                                {accountsList.filter(a => a.id !== (line.account_id || account.id)).map(a => (
+                                  <option key={a.id} value={a.id}>{a.name} ({a.code})</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div>
+                                <p className="font-medium">
+                                  {account.name || 'Unknown Account'}
+                                  {account.code ? ` (${account.code})` : ''}
+                                  {partySuffix}
+                                </p>
+                              </div>
+                            )}
                           </td>
                           <td className={cn(
                             "px-4 py-3 text-sm text-right tabular-nums",
