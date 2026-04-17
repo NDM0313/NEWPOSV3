@@ -683,6 +683,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const [editingAccounts, setEditingAccounts] = useState(false);
   const [accountsList, setAccountsList] = useState<{ id: string; code: string; name: string }[]>([]);
   const [editLineChanges, setEditLineChanges] = useState<Record<string, string>>({});
+  const [editAmountChanges, setEditAmountChanges] = useState<Record<string, { debit: number; credit: number }>>({});
   const [accountSearch, setAccountSearch] = useState<Record<string, string>>({});
 
   const handleLoadAccountsForEdit = async () => {
@@ -692,27 +693,64 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     setAccountsList((data || []) as any[]);
     setEditingAccounts(true);
     setEditLineChanges({});
+    setEditAmountChanges({});
   };
 
   const handleSaveAccountEdits = async () => {
-    if (!transaction?.id || Object.keys(editLineChanges).length === 0) return;
+    if (!transaction?.id) return;
+    const hasAccountChanges = Object.keys(editLineChanges).length > 0;
+    const hasAmountChanges = Object.keys(editAmountChanges).length > 0;
+    if (!hasAccountChanges && !hasAmountChanges) return;
     try {
       const { supabase } = await import('@/lib/supabase');
+
+      // Build edit history log
+      const editLog: string[] = [];
+
+      // Apply account changes
       for (const [lineId, newAccountId] of Object.entries(editLineChanges)) {
+        const oldAcct = rawJournalLines.find((l: any) => l.id === lineId);
+        const oldName = oldAcct?.account?.name || 'Unknown';
+        const newName = accountsList.find(a => a.id === newAccountId)?.name || 'Unknown';
+        editLog.push(`Account: ${oldName} → ${newName}`);
         const { error } = await supabase
           .from('journal_entry_lines')
           .update({ account_id: newAccountId })
           .eq('id', lineId);
         if (error) throw error;
       }
-      toast.success(`${Object.keys(editLineChanges).length} line(s) ka account update ho gaya`);
+
+      // Apply amount changes
+      for (const [lineId, amounts] of Object.entries(editAmountChanges)) {
+        const oldLine = rawJournalLines.find((l: any) => l.id === lineId);
+        const oldDr = Number(oldLine?.debit) || 0;
+        const oldCr = Number(oldLine?.credit) || 0;
+        if (amounts.debit !== oldDr) editLog.push(`Debit: Rs ${oldDr.toLocaleString()} → Rs ${amounts.debit.toLocaleString()}`);
+        if (amounts.credit !== oldCr) editLog.push(`Credit: Rs ${oldCr.toLocaleString()} → Rs ${amounts.credit.toLocaleString()}`);
+        const { error } = await supabase
+          .from('journal_entry_lines')
+          .update({ debit: amounts.debit, credit: amounts.credit })
+          .eq('id', lineId);
+        if (error) throw error;
+      }
+
+      // Append edit history to JE description
+      if (editLog.length > 0) {
+        const oldDesc = transaction.description || '';
+        const timestamp = new Date().toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
+        const newDesc = `${oldDesc} [Edited ${timestamp}: ${editLog.join('; ')}]`;
+        await supabase.from('journal_entries').update({ description: newDesc.slice(0, 500) }).eq('id', transaction.id);
+      }
+
+      toast.success(`Entry updated — ${editLog.length} change(s) saved`);
       setEditingAccounts(false);
       setEditLineChanges({});
+      setEditAmountChanges({});
       await loadTransaction();
       dispatchAccountingEditCommitted();
       accounting.refreshEntries?.();
     } catch (e: any) {
-      toast.error('Account edit failed: ' + (e?.message || 'Unknown error'));
+      toast.error('Edit failed: ' + (e?.message || 'Unknown error'));
     }
   };
 
@@ -909,8 +947,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   })()}
                   {editingAccounts && (
                     <>
-                      <Button size="sm" className="gap-1 bg-blue-600" onClick={() => void handleSaveAccountEdits()} disabled={Object.keys(editLineChanges).length === 0}>
-                        Save Account Changes
+                      <Button size="sm" className="gap-1 bg-blue-600" onClick={() => void handleSaveAccountEdits()} disabled={Object.keys(editLineChanges).length === 0 && Object.keys(editAmountChanges).length === 0}>
+                        Save Changes
                       </Button>
                       <Button size="sm" variant="outline" className="gap-1" onClick={() => { setEditingAccounts(false); setEditLineChanges({}); }}>
                         Cancel Edit
@@ -1228,23 +1266,41 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                               </div>
                             )}
                           </td>
-                          <td className={cn(
-                            "px-4 py-3 text-sm text-right tabular-nums",
-                            line.debit > 0 ? "text-green-400 font-medium" : "text-gray-500"
-                          )}>
-                            {line.debit > 0 ? line.debit.toLocaleString('en-US', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }) : '-'}
+                          <td className={cn("px-4 py-3 text-sm text-right tabular-nums", line.debit > 0 ? "text-green-400 font-medium" : "text-gray-500")}>
+                            {editingAccounts && line.id ? (
+                              <input
+                                type="number"
+                                className="w-24 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-right text-green-400"
+                                value={editAmountChanges[line.id]?.debit ?? line.debit ?? 0}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value) || 0;
+                                  setEditAmountChanges(prev => ({
+                                    ...prev,
+                                    [line.id]: { debit: val, credit: prev[line.id]?.credit ?? line.credit ?? 0 }
+                                  }));
+                                }}
+                              />
+                            ) : (
+                              line.debit > 0 ? line.debit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'
+                            )}
                           </td>
-                          <td className={cn(
-                            "px-4 py-3 text-sm text-right tabular-nums",
-                            line.credit > 0 ? "text-red-400 font-medium" : "text-gray-500"
-                          )}>
-                            {line.credit > 0 ? line.credit.toLocaleString('en-US', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            }) : '-'}
+                          <td className={cn("px-4 py-3 text-sm text-right tabular-nums", line.credit > 0 ? "text-red-400 font-medium" : "text-gray-500")}>
+                            {editingAccounts && line.id ? (
+                              <input
+                                type="number"
+                                className="w-24 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-right text-red-400"
+                                value={editAmountChanges[line.id]?.credit ?? line.credit ?? 0}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value) || 0;
+                                  setEditAmountChanges(prev => ({
+                                    ...prev,
+                                    [line.id]: { debit: prev[line.id]?.debit ?? line.debit ?? 0, credit: val }
+                                  }));
+                                }}
+                              />
+                            ) : (
+                              line.credit > 0 ? line.credit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'
+                            )}
                           </td>
                         </tr>
                       );
