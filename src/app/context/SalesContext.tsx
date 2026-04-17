@@ -1524,7 +1524,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           const editProductIds = stockMovementDeltas.map(d => d.productId).filter(Boolean);
           const editCostMap = new Map<string, number>();
           if (editProductIds.length > 0 && companyId) {
-            const { data: movements } = await supabase
+            const { supabase: sbDelta } = await import('@/lib/supabase');
+            const { data: movements } = await sbDelta
               .from('stock_movements')
               .select('product_id, quantity, unit_cost, total_cost')
               .eq('company_id', companyId)
@@ -1941,7 +1942,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               field: 'Total',
               oldValue: oldTotal,
               newValue: newTotal,
-              performedBy: createdByAuthId ?? undefined,
+              performedBy: (user as any)?.id ?? undefined,
               description: `Total changed from Rs ${Number(oldTotal).toLocaleString()} to Rs ${Number(newTotal).toLocaleString()}`,
             }).catch((e) => console.warn('[SALES CONTEXT] Activity log sale total failed:', e));
           }
@@ -2004,8 +2005,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               const normPayAcct = (u: string | null | undefined) =>
                 u && String(u).trim() ? String(u).replace(/-/g, '').toLowerCase() : '';
               const payAcctSame =
-                normPayAcct(existingPayments[0].payment_account_id) === normPayAcct(paymentAccountId) ||
-                !existingPayments[0].payment_account_id;
+                normPayAcct(existingPayments?.[0]?.payment_account_id) === normPayAcct(paymentAccountId) ||
+                !existingPayments?.[0]?.payment_account_id;
               const paymentUnchanged =
                 existingPayments.length === 1 &&
                 Math.round((paidAmount - (Number(existingPayments[0].amount) || 0)) * 100) === 0 &&
