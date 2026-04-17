@@ -254,6 +254,13 @@ export const ProductStockHistoryDrawer = ({
     return calculateTotals(movements);
   }, [movements, calculateTotals]);
 
+  // Must run every render (before any early return) — Rules of Hooks
+  const sortedMovements = useMemo(() => {
+    return [...movements].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [movements]);
+
   // Lock body scroll when drawer is open
   useEffect(() => {
     if (isOpen) {
@@ -382,13 +389,6 @@ export const ProductStockHistoryDrawer = ({
   };
 
   if (!isOpen) return null;
-
-  // Sort movements by date (newest first for display)
-  const sortedMovements = useMemo(() => {
-    return [...movements].sort((a, b) => 
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-  }, [movements]);
 
   return (
     <div 

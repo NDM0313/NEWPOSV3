@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Loader2, FileText, FileSpreadsheet, Calendar, Users } from 'lucide-react';
+import { Loader2, FileText, FileSpreadsheet, Calendar, Users, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import {
@@ -194,9 +194,12 @@ function SectionBlock({
             <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{g.groupLabel}</div>
             <ul className="space-y-1.5 pl-2">
               {g.items.map((i) => (
-                <li key={i.code || i.name} className="flex justify-between items-center gap-2 text-sm">
+                <li key={i.code || i.name} className={`flex justify-between items-center gap-2 text-sm ${i.amount < -0.005 ? 'bg-amber-500/10 -mx-2 px-2 rounded' : ''}`}>
                   <span className="text-gray-300 flex items-center gap-2 min-w-0">
                     {i.name}
+                    {i.amount < -0.005 && (
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" title="Unusual negative balance — check ledger" />
+                    )}
                     {i.drilldownControl && onPartyDrilldown && (
                       <Button
                         type="button"
@@ -209,7 +212,9 @@ function SectionBlock({
                       </Button>
                     )}
                   </span>
-                  <span className="text-white tabular-nums shrink-0">{formatCurrency(i.amount)}</span>
+                  <span className={`tabular-nums shrink-0 ${i.amount < -0.005 ? 'text-amber-300 font-medium' : 'text-white'}`}>
+                    {formatCurrency(i.amount)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -335,7 +340,12 @@ export const BalanceSheetPage: React.FC<{
             />
           </div>
           {data.difference !== 0 && (
-            <span className="text-amber-400 text-sm">Difference: {formatCurrency(data.difference)}</span>
+            <span
+              className="text-amber-400 text-sm font-medium"
+              title="Assets ≠ L+E after absorbing all accounts. This equals the Trial Balance imbalance — unbalanced journal entries exist. Use Integrity Lab to find them."
+            >
+              ⚠ Difference: {formatCurrency(data.difference)}
+            </span>
           )}
         </div>
         <div className="flex gap-2">
@@ -373,6 +383,27 @@ export const BalanceSheetPage: React.FC<{
         <span className="font-medium text-white">Total Liabilities + Equity</span>
         <span className="text-white tabular-nums">{formatCurrency(data.totalLiabilitiesAndEquity)}</span>
       </div>
+
+      {/* Trial Balance Imbalance diagnostic — shown only when non-zero */}
+      {data.tbImbalance !== 0 && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/[0.07] p-4 flex gap-3">
+          <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-100/95 space-y-1">
+            <p className="font-semibold">
+              Trial Balance imbalance detected: <span className="tabular-nums">{formatCurrency(data.tbImbalance)}</span>
+            </p>
+            <p className="text-amber-200/80 text-xs leading-relaxed">
+              Assets = Liabilities + Equity holds for all properly double-entered transactions.
+              This <strong>{formatCurrency(Math.abs(data.tbImbalance))}</strong> gap means one or more journal entries
+              have unequal debit and credit sides. This is a data integrity issue, not a reporting formula issue.
+            </p>
+            <p className="text-amber-200/80 text-xs">
+              <strong>Fix:</strong> Go to <span className="font-medium text-white">Accounting → Integrity Test Lab → Phase 8</span> (Load detection → Unbalanced JEs table)
+              to identify the specific entry/entries causing this imbalance, then reverse or manually adjust them.
+            </p>
+          </div>
+        </div>
+      )}
 
       <Dialog open={partyKind !== null} onOpenChange={(o) => !o && setPartyKind(null)}>
         <DialogContent className="max-w-lg bg-gray-900 border-gray-800 text-white">

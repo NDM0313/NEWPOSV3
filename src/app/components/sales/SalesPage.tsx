@@ -288,6 +288,114 @@ export const SalesPage = () => {
   const [selectedReturnForPrint, setSelectedReturnForPrint] = useState<any | null>(null);
   const [printReturnOpen, setPrintReturnOpen] = useState(false);
 
+  /** Returns tab column: English-only; refund / ledger actions (UI in English system-wide). */
+  const renderReturnSettlementCell = useCallback(
+    (ret: { status?: string; original_sale_id?: string | null }, originalSale: Sale | null | undefined) => {
+      const st = String(ret?.status || '').toLowerCase();
+      if (st === 'void') {
+        return (
+          <div className="text-xs text-gray-500 leading-snug">
+            Voided — stock and ledger reversals apply where posted.
+          </div>
+        );
+      }
+      if (st !== 'final') {
+        return (
+          <div className="text-xs text-gray-500 leading-snug">
+            Draft — finalize the return before settlement.
+          </div>
+        );
+      }
+      if (!ret.original_sale_id || !originalSale) {
+        return (
+          <div className="text-xs text-amber-200/90 leading-snug">
+            Standalone return — no originating invoice.
+          </div>
+        );
+      }
+      const saleId = ret.original_sale_id as string;
+      const returnDue = Number(originalSale.returnDue ?? 0) || 0;
+      const due = Number(originalSale.due ?? 0) || 0;
+      const paid = Number(originalSale.paid ?? 0) || 0;
+      const ps = String(originalSale.paymentStatus || '').toLowerCase();
+      const psLabel = ps === 'paid' ? 'Paid' : ps === 'partial' ? 'Partial' : 'Unpaid';
+      const creditSettled = returnDue <= 0;
+
+      return (
+        <div className="space-y-1.5 text-left leading-snug" onClick={(e) => e.stopPropagation()}>
+          <div className="text-[11px] text-gray-400">
+            Invoice: <span className="text-gray-200 font-medium">{psLabel}</span>
+            {paid > 0 && (
+              <span className="text-gray-500">
+                {' '}
+                · Collected <span className="text-green-400/90 tabular-nums">{formatCurrency(paid)}</span>
+              </span>
+            )}
+            {due > 0 && (
+              <span className="text-red-300">
+                {' '}
+                · Outstanding <span className="tabular-nums">{formatCurrency(due)}</span>
+              </span>
+            )}
+            {due <= 0 && ps === 'paid' && <span className="text-green-400/70"> · Invoice balance clear</span>}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {creditSettled ? (
+              <Badge className="bg-emerald-500/15 text-emerald-300 border-emerald-500/30 text-[10px] font-medium gap-0.5">
+                <CheckCircle2 size={10} className="shrink-0" />
+                Credit settled / adjusted
+              </Badge>
+            ) : (
+              <Badge className="bg-amber-500/15 text-amber-200 border-amber-500/35 text-[10px] font-medium">
+                Refund owed: {formatCurrency(returnDue)}
+              </Badge>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-1">
+            <Button
+              type="button"
+              size="sm"
+              variant={creditSettled ? 'outline' : 'default'}
+              className={cn(
+                'h-7 text-[11px] px-2',
+                !creditSettled && 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500'
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                setReturnPaymentSaleId(saleId);
+                setReturnPaymentDialogOpen(true);
+              }}
+            >
+              <DollarSign size={12} className="mr-1" />
+              Refund / adjustment
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 text-[11px] px-2 border-gray-600 text-gray-200"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedSale(originalSale);
+                setLedgerOpen(true);
+              }}
+            >
+              <Receipt size={12} className="mr-1" />
+              Ledger
+            </Button>
+          </div>
+
+          <p className="text-[10px] text-gray-600">
+            Final return: inventory &amp; GL posting completed (COGS / revenue path).
+          </p>
+        </div>
+      );
+    },
+    [formatCurrency]
+  );
+
   // Shipment History drawer (opened from shipping status icon)
   const [shipmentHistoryDrawerOpen, setShipmentHistoryDrawerOpen] = useState(false);
   const [shipmentHistoryShipmentId, setShipmentHistoryShipmentId] = useState<string | null>(null);
@@ -1893,13 +2001,13 @@ export const SalesPage = () => {
       <div className="flex-1 overflow-auto px-6 py-4">
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <div className="min-w-[1400px]">
+            <div className={activeTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]'}>
               {/* Table Header - full-width background (w-max so it spans full table when scrolling) */}
-              <div className="sticky top-0 z-10 min-w-[1400px] w-max bg-gray-900 border-b border-gray-800">
+              <div className={cn('sticky top-0 z-10 w-max bg-gray-900 border-b border-gray-800', activeTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]')}>
                 {activeTab === 'returns' ? (
                   // Returns Tab Header - Actions first
                   <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                    style={{ gridTemplateColumns: '60px 120px 130px 180px 150px 150px 130px 120px 100px 150px' }}
+                    style={{ gridTemplateColumns: '60px 120px 130px 180px 150px 150px 130px 240px 120px 100px 150px' }}
                   >
                     <div className="text-center">Actions</div>
                     <div className="text-left">Date & Time</div>
@@ -1908,6 +2016,9 @@ export const SalesPage = () => {
                     <div className="text-left">Original Invoice</div>
                     <div className="text-left">Location</div>
                     <div className="text-center">Status</div>
+                    <div className="text-left normal-case tracking-normal text-[11px] text-gray-400 font-medium">
+                      Payment / credit / ledger
+                    </div>
                     <div className="text-right">Total</div>
                     <div className="text-right">Items</div>
                     <div className="text-left">Reason</div>
@@ -1973,7 +2084,7 @@ export const SalesPage = () => {
               </div>
 
               {/* Table Body - w-max so row lines span full table width (no short lines on right) */}
-              <div className="min-w-[1400px] w-max">
+              <div className={cn('w-max', activeTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]')}>
                 {activeTab === 'returns' ? (
                   // Returns Tab - Show Sale Returns List
                   loadingReturnsList ? (
@@ -1999,8 +2110,8 @@ export const SalesPage = () => {
                               setSelectedReturn(ret);
                               setViewReturnDetailsOpen(true);
                             }}
-                            className="grid gap-3 px-4 h-auto min-h-[60px] py-3 min-w-[1400px] w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0 cursor-pointer"
-                            style={{ gridTemplateColumns: '60px 120px 130px 180px 150px 150px 130px 120px 100px 150px' }}
+                            className="grid gap-3 px-4 h-auto min-h-[60px] py-3 w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0 cursor-pointer min-w-[1580px]"
+                            style={{ gridTemplateColumns: '60px 120px 130px 180px 150px 150px 130px 240px 120px 100px 150px' }}
                           >
                             <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
                               <DropdownMenu>
@@ -2138,6 +2249,9 @@ export const SalesPage = () => {
                                     ? 'FINAL / LOCKED'
                                     : 'Draft'}
                               </Badge>
+                            </div>
+                            <div className="min-w-0 self-center py-0.5">
+                              {renderReturnSettlementCell(ret, originalSale ?? undefined)}
                             </div>
                             <div className="text-right">
                               <div className="text-sm font-semibold text-red-400 tabular-nums">-Rs. {ret.total?.toLocaleString() || '0'}</div>
@@ -2519,7 +2633,7 @@ export const SalesPage = () => {
           }}
           entityType="customer"
           entityName={selectedSale.customerName}
-          entityId={selectedSale.id}
+          entityId={selectedSale.customer}
           saleId={selectedSale.id}
         />
       )}

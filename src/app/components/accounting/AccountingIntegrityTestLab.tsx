@@ -12,9 +12,13 @@ import {
   FileWarning,
   Info,
   Trash2,
+  FileSearch,
+  ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useNavigation } from '@/app/context/NavigationContext';
+import { canAccessDeveloperIntegrityLab } from '@/app/lib/developerAccountingAccess';
 import {
   getIntegritySummary,
   voidDuplicateGroup,
@@ -35,8 +39,48 @@ import {
 import { useAccounting } from '@/app/context/AccountingContext';
 import { toast } from 'sonner';
 
-export function AccountingIntegrityTestLab() {
-  const { companyId } = useSupabase();
+export type AccountingIntegrityTestLabProps = {
+  /** Jump to Journal Entries (audit) with search text — e.g. journal UUID for full trace. */
+  onOpenJournalTrace?: (searchFragment: string) => void;
+};
+
+async function copyToClipboard(text: string, okMessage: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast.success(okMessage);
+  } catch {
+    toast.error('Copy failed');
+  }
+}
+
+function TraceIconButton({
+  title,
+  fragment,
+  onOpenJournalTrace,
+}: {
+  title: string;
+  fragment: string;
+  onOpenJournalTrace?: (s: string) => void;
+}) {
+  if (!onOpenJournalTrace || !fragment.trim()) return null;
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="h-7 w-7 shrink-0 text-blue-400 hover:text-blue-300"
+      title={title}
+      onClick={() => onOpenJournalTrace(fragment.trim())}
+    >
+      <FileSearch className="h-3.5 w-3.5" />
+    </Button>
+  );
+}
+
+export function AccountingIntegrityTestLab({ onOpenJournalTrace }: AccountingIntegrityTestLabProps) {
+  const { companyId, userRole } = useSupabase();
+  const { setCurrentView } = useNavigation();
+  const devLabAllowed = canAccessDeveloperIntegrityLab(userRole);
   const accounting = useAccounting();
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<{
@@ -190,18 +234,56 @@ export function AccountingIntegrityTestLab() {
   const orphans = summary?.orphanEntries ?? [];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+    <div className="space-y-6 max-w-[1600px]">
+      <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4 space-y-3">
+        <p className="text-sm text-gray-300 leading-relaxed">
+          <span className="font-medium text-white">Yeh tab kis liye hai:</span> yahan sirf <span className="text-amber-200/90">tez diagnosis</span> hai —
+          duplicate journal groups, orphan adjustments (jahan sale/payment delete ho chuka lekin JE zinda ho), aur Phase 8 live mismatch signals.
+          Void <span className="text-gray-400">safe audit trail</span> ke sath hota hai; delete nahi.
+        </p>
+        <p className="text-xs text-gray-500 leading-relaxed">
+          <span className="font-medium text-gray-400">Poori tracing / developer tools alag hain:</span>{' '}
+          Sidebar → <span className="text-gray-400">Accounting Integrity Lab</span> (Phase 2 QA, zyada checks){devLabAllowed ? ', aur Developer Integrity Lab (RULE scan, fix queue).' : '.'}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="border-gray-600 text-gray-200"
+            onClick={() => setCurrentView('accounting-integrity-lab')}
+          >
+            <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+            Accounting Integrity Lab (full)
+          </Button>
+          {devLabAllowed && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-violet-700/50 text-violet-200"
+              onClick={() => setCurrentView('developer-integrity-lab')}
+            >
+              <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+              Developer Integrity Lab
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
             <ShieldAlert className="w-5 h-5 text-amber-400" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h2 className="text-lg font-bold text-white">Accounting Integrity Test Lab</h2>
-            <p className="text-xs text-gray-400">PF-14.5B: Detect duplicates & orphans, void safely. Business views exclude voided.</p>
+            <p className="text-xs text-gray-400">
+              PF-14.5B: duplicates & orphans; void safely. Neeche har row par poora ID + copy; journal trace icon se Journal Entries (audit) filter.
+            </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" className="border-gray-700 text-gray-300" onClick={load} disabled={loading}>
+        <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 shrink-0" onClick={load} disabled={loading}>
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
         </Button>
@@ -226,10 +308,17 @@ export function AccountingIntegrityTestLab() {
           </div>
           <div className="text-xs text-gray-500 mt-1">Excluded from business views</div>
         </div>
-        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+        <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4 min-w-0 sm:col-span-2 lg:col-span-1">
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">Active JEs by type</div>
-          <div className="text-sm text-gray-300 mt-1 truncate">
-            {summary?.activeCountByType.slice(0, 3).map((t) => `${t.reference_type}: ${t.count}`).join(', ') ?? '—'}
+          <div className="text-[11px] text-gray-300 mt-1 max-h-28 overflow-y-auto leading-snug space-y-0.5 font-mono">
+            {summary?.activeCountByType.length
+              ? summary.activeCountByType.map((t) => (
+                  <div key={t.reference_type} className="flex justify-between gap-2 border-b border-gray-800/40 pb-0.5">
+                    <span className="text-gray-400 truncate">{t.reference_type}</span>
+                    <span className="text-white shrink-0">{t.count}</span>
+                  </div>
+                ))
+              : '—'}
           </div>
         </div>
       </div>
@@ -247,25 +336,61 @@ export function AccountingIntegrityTestLab() {
           {dupes.length === 0 ? (
             <div className="p-6 text-center text-gray-500 text-sm">No duplicate groups found.</div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[720px]">
               <thead>
                 <tr className="border-b border-gray-800 text-left text-gray-400">
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Root ID</th>
-                  <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3 w-[100px]">Type</th>
+                  <th className="px-4 py-3 min-w-[200px]">Root / doc ID</th>
+                  <th className="px-4 py-3 min-w-[220px]">Journal IDs (group)</th>
+                  <th className="px-4 py-3 min-w-[160px]">Description</th>
                   <th className="px-4 py-3">Count</th>
                   <th className="px-4 py-3">Earliest</th>
-                  <th className="px-4 py-3">Actions</th>
+                  <th className="px-4 py-3 w-[200px]">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {dupes.map((g) => (
-                  <tr key={g.je_ids[0]} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                    <td className="px-4 py-3 font-mono text-xs">{g.reference_type}</td>
-                    <td className="px-4 py-3 font-mono text-xs truncate max-w-[120px]" title={g.root_id}>{g.root_id.slice(0, 8)}…</td>
-                    <td className="px-4 py-3 text-gray-300 max-w-[200px] truncate" title={g.description}>{g.description}</td>
-                    <td className="px-4 py-3 text-amber-400">{g.count}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{g.earliest_created_at?.slice(0, 10)}</td>
+                  <tr key={g.je_ids[0]} className="border-b border-gray-800/50 hover:bg-gray-800/30 align-top">
+                    <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{g.reference_type}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-start gap-1 min-w-0">
+                        <span className="font-mono text-[11px] text-gray-200 break-all">{g.root_id || '—'}</span>
+                        {g.root_id ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            title="Copy root ID"
+                            onClick={() => copyToClipboard(g.root_id, 'Root ID copied')}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : null}
+                        <TraceIconButton title="Journal: filter by root id" fragment={g.root_id} onOpenJournalTrace={onOpenJournalTrace} />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-start gap-1 min-w-0">
+                        <span className="font-mono text-[11px] text-gray-300 break-all">{g.je_ids.join(', ')}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          title="Copy all journal IDs"
+                          onClick={() => copyToClipboard(g.je_ids.join('\n'), 'Journal IDs copied')}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                        <TraceIconButton title="Journal: first JE in group" fragment={g.je_ids[0] || ''} onOpenJournalTrace={onOpenJournalTrace} />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-300 text-xs break-words" title={g.description}>
+                      {g.description}
+                    </td>
+                    <td className="px-4 py-3 text-amber-400 whitespace-nowrap">{g.count}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{g.earliest_created_at?.slice(0, 10)}</td>
                     <td className="px-4 py-3">
                       <Button
                         size="sm"
@@ -310,25 +435,59 @@ export function AccountingIntegrityTestLab() {
           {orphans.length === 0 ? (
             <div className="p-6 text-center text-gray-500 text-sm">No orphan entries found.</div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[800px]">
               <thead>
                 <tr className="border-b border-gray-800 text-left text-gray-400">
                   <th className="px-4 py-3">Entry no</th>
+                  <th className="px-4 py-3">JE id</th>
                   <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Reference ID</th>
-                  <th className="px-4 py-3">Description</th>
+                  <th className="px-4 py-3 min-w-[200px]">Reference ID</th>
+                  <th className="px-4 py-3 min-w-[160px]">Description</th>
                   <th className="px-4 py-3">Created</th>
-                  <th className="px-4 py-3">Actions</th>
+                  <th className="px-4 py-3 w-[140px]">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {orphans.map((o) => (
-                  <tr key={o.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                    <td className="px-4 py-3 font-mono text-xs">{o.entry_no ?? '—'}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{o.reference_type}</td>
-                    <td className="px-4 py-3 font-mono text-xs truncate max-w-[100px]" title={o.reference_id ?? ''}>{o.reference_id?.slice(0, 8)}…</td>
-                    <td className="px-4 py-3 text-gray-300 max-w-[180px] truncate">{o.description ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{o.created_at?.slice(0, 10)}</td>
+                  <tr key={o.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 align-top">
+                    <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{o.entry_no ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-start gap-1 min-w-0">
+                        <span className="font-mono text-[11px] text-gray-200 break-all">{o.id}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          title="Copy JE id"
+                          onClick={() => copyToClipboard(o.id, 'Journal entry id copied')}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                        <TraceIconButton title="Journal: filter by JE id" fragment={o.id} onOpenJournalTrace={onOpenJournalTrace} />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{o.reference_type}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-start gap-1 min-w-0">
+                        <span className="font-mono text-[11px] text-gray-300 break-all">{o.reference_id ?? '—'}</span>
+                        {o.reference_id ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            title="Copy reference id"
+                            onClick={() => copyToClipboard(o.reference_id!, 'Reference id copied')}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : null}
+                        <TraceIconButton title="Journal: filter by reference id" fragment={o.reference_id || ''} onOpenJournalTrace={onOpenJournalTrace} />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-300 text-xs break-words">{o.description ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{o.created_at?.slice(0, 10)}</td>
                     <td className="px-4 py-3">
                       <Button
                         size="sm"
@@ -389,13 +548,42 @@ export function AccountingIntegrityTestLab() {
             </div>
           )}
           {phase8Unbalanced.length > 0 && (
-            <div>
+            <div className="overflow-x-auto">
               <p className="text-gray-400 text-sm font-medium mb-2">Unbalanced journal entries (review manually)</p>
-              <table className="w-full text-sm">
-                <thead><tr className="text-left text-gray-500"><th className="pb-1">Entry</th><th className="pb-1">Debit</th><th className="pb-1">Credit</th><th className="pb-1">Difference</th></tr></thead>
+              <table className="w-full text-sm min-w-[520px]">
+                <thead>
+                  <tr className="text-left text-gray-500">
+                    <th className="pb-1 pr-2">Entry</th>
+                    <th className="pb-1 min-w-[200px]">JE id (copy / journal)</th>
+                    <th className="pb-1">Debit</th>
+                    <th className="pb-1">Credit</th>
+                    <th className="pb-1">Difference</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {phase8Unbalanced.slice(0, 10).map((u) => (
-                    <tr key={u.id} className="border-t border-gray-800/50"><td className="py-1 font-mono">{u.entry_no ?? u.id.slice(0, 8)}</td><td>{u.sum_debit}</td><td>{u.sum_credit}</td><td className="text-amber-400">{u.difference}</td></tr>
+                    <tr key={u.id} className="border-t border-gray-800/50 align-top">
+                      <td className="py-1 font-mono whitespace-nowrap pr-2">{u.entry_no ?? '—'}</td>
+                      <td className="py-1">
+                        <div className="flex items-start gap-1 min-w-0">
+                          <span className="font-mono text-[11px] break-all text-gray-300">{u.id}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            title="Copy JE id"
+                            onClick={() => copyToClipboard(u.id, 'JE id copied')}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                          <TraceIconButton title="Journal: filter by JE id" fragment={u.id} onOpenJournalTrace={onOpenJournalTrace} />
+                        </div>
+                      </td>
+                      <td className="py-1 whitespace-nowrap">{u.sum_debit}</td>
+                      <td className="py-1 whitespace-nowrap">{u.sum_credit}</td>
+                      <td className="py-1 text-amber-400 whitespace-nowrap">{u.difference}</td>
+                    </tr>
                   ))}
                 </tbody>
               </table>

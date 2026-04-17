@@ -172,13 +172,23 @@ function arJournalLineMatchesCustomer(
   customerId: string,
   salesMap: Map<string, any>,
   paymentIds: string[],
-  paymentDetailsMap: Map<string, any>
+  paymentDetailsMap: Map<string, any>,
+  customerSaleReturnIds: Set<string>
 ): boolean {
   const entry = line.journal_entry;
   if (!entry) return false;
 
   const desc = entry.description?.toLowerCase() || '';
   if (desc.includes('commission')) return false;
+
+  const refTypeNorm = String(entry.reference_type || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_');
+  /** Sale return settlement (Dr revenue / Cr AR or cash) — must match party or ledger omits credits and receivable stays wrong. */
+  if (refTypeNorm === 'sale_return' && entry.reference_id) {
+    return customerSaleReturnIds.has(String(entry.reference_id));
+  }
 
   if ((entry.reference_type === 'sale' || entry.reference_type === 'sale_adjustment') && entry.reference_id) {
     const sale = salesMap.get(entry.reference_id);
@@ -219,6 +229,37 @@ function arJournalLineMatchesCustomer(
     return false;
   }
   return false;
+}
+
+/** Build set of sale_return row ids that belong to this customer (by customer_id or by original sale in party sales). */
+async function buildCustomerSaleReturnIdSet(
+  companyId: string,
+  customerId: string,
+  salesMap: Map<string, any>
+): Promise<Set<string>> {
+  const ids = new Set<string>();
+  const { data: rows, error } = await supabase
+    .from('sale_returns')
+    .select('id, customer_id, original_sale_id, status')
+    .eq('company_id', companyId)
+    .neq('status', 'void');
+  if (error) {
+    if (import.meta.env?.DEV) console.warn('[getCustomerLedger] sale_returns fetch:', error.message);
+    return ids;
+  }
+  for (const sr of rows || []) {
+    const id = sr.id != null ? String(sr.id) : '';
+    if (!id) continue;
+    if (String(sr.customer_id || '') === String(customerId)) {
+      ids.add(id);
+      continue;
+    }
+    const orig = sr.original_sale_id != null ? String(sr.original_sale_id) : '';
+    if (orig && salesMap.has(orig)) {
+      ids.add(id);
+    }
+  }
+  return ids;
 }
 
 /** All account ids from AP control (code 2000) through active descendants — matches GL RPC ap_subtree. */
@@ -1991,22 +2032,44 @@ export const accountingService = {
   ): Promise<AccountLedgerEntry[]> {
     const glJournalOnly = ledgerMode === 'gl_journal_only';
     try {
-      // Accounts Receivable only: canonical code 1100. Exclude 2000 (Accounts Payable).
-      const { data: rawAr } = await supabase
+      // Accounts Receivable: control 1100 **and all descendants** (per-contact Receivable — … subledgers).
+      // Old query only matched code 1100 or name ilike %Accounts Receivable%; party AR children are named
+      // "Receivable — {name}" and were excluded — sales/returns on subledgers never appeared in customer ledger.
+      const { data: accountRows } = await supabase
         .from('accounts')
-        .select('id, code, name')
+        .select('id, parent_id, code, name')
         .eq('company_id', companyId)
-        .eq('is_active', true)
-        .or('code.eq.1100,name.ilike.%Accounts Receivable%');
+        .eq('is_active', true);
 
-      const allArAccounts = (rawAr || []).filter((a: any) => a.code !== '2000');
-      if (allArAccounts.length === 0) {
+      const rows = (accountRows || []) as { id: string; parent_id?: string | null; code?: string; name?: string }[];
+      const rootAr =
+        rows.find((a) => String(a.code || '').trim() === '1100') ||
+        rows.find((a) => /^accounts\s*receivable$/i.test(String(a.name || '').trim())) ||
+        rows.find((a) => /accounts\s+receivable/i.test(String(a.name || '')));
+
+      let arAccountIds: string[] = [];
+      if (rootAr) {
+        arAccountIds = collectDescendantAccountIds(
+          rows.map((r) => ({ id: r.id, parent_id: r.parent_id })),
+          String(rootAr.id)
+        );
+      }
+      if (arAccountIds.length === 0) {
+        const { data: rawAr } = await supabase
+          .from('accounts')
+          .select('id, code, name')
+          .eq('company_id', companyId)
+          .eq('is_active', true)
+          .or('code.eq.1100,name.ilike.%Accounts Receivable%');
+        const fallback = (rawAr || []).filter((a: any) => String(a.code || '').trim() !== '2000');
+        arAccountIds = fallback.map((a: any) => a.id);
+      }
+      if (arAccountIds.length === 0) {
         console.warn('[ACCOUNTING SERVICE] Accounts Receivable account not found');
         return [];
       }
 
-      const arAccountIds = allArAccounts.map((a: any) => a.id);
-      console.log('[ACCOUNTING SERVICE] getCustomerLedger - AR Account IDs:', arAccountIds.length, allArAccounts.map((a: any) => a.code));
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - AR account id count (1100 subtree):', arAccountIds.length);
 
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 1: Starting with customerId:', customerId);
 
@@ -2159,6 +2222,9 @@ export const accountingService = {
       });
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - Sales map size:', salesMap.size);
 
+      const customerSaleReturnIds = await buildCustomerSaleReturnIdSet(companyId, customerId, salesMap);
+      console.log('[ACCOUNTING SERVICE] getCustomerLedger - Sale return ids for party:', customerSaleReturnIds.size);
+
       // PHASE 2b: Get rentals and rental_payments for this customer (for customer sub-ledger)
       // Pass null dates to RPC so we get ALL rentals; date filtering happens in merge
       let customerRentals: any[] = [];
@@ -2218,11 +2284,25 @@ export const accountingService = {
           return linesToUse.some((ol: any) => {
             const oe = ol.journal_entry;
             if (!oe || String(oe.id) !== origId) return false;
-            return arJournalLineMatchesCustomer(ol, customerId, salesMap, paymentIds, paymentDetailsMap);
+            return arJournalLineMatchesCustomer(
+              ol,
+              customerId,
+              salesMap,
+              paymentIds,
+              paymentDetailsMap,
+              customerSaleReturnIds
+            );
           });
         }
 
-        const ok = arJournalLineMatchesCustomer(line, customerId, salesMap, paymentIds, paymentDetailsMap);
+        const ok = arJournalLineMatchesCustomer(
+          line,
+          customerId,
+          salesMap,
+          paymentIds,
+          paymentDetailsMap,
+          customerSaleReturnIds
+        );
         if (ok && entry.reference_type === 'sale') saleMatchCount++;
         if (ok && (entry.reference_type === 'payment' || entry.payment_id)) paymentMatchCount++;
         return ok;

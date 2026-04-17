@@ -79,6 +79,8 @@ type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 interface Purchase {
   id: number; // Display ID (index-based for UI compatibility)
   uuid: string; // Actual Supabase UUID for database operations
+  /** Supplier contact UUID (for AP ledger, payments). */
+  supplierId: string;
   poNo: string;
   supplier: string;
   supplierContact: string;
@@ -440,6 +442,7 @@ export const PurchasesPage = () => {
         return {
           id: index + 1, // Use index-based ID for compatibility with existing UI
           uuid: p.id, // Store actual Supabase UUID for database operations
+          supplierId: (p.supplier_id || p.supplier?.id || '') as string,
           poNo: displayPo,
           supplier: p.supplier?.name || p.supplier_name || 'Unknown Supplier',
           supplierContact: p.supplier?.phone || '',
@@ -515,6 +518,7 @@ export const PurchasesPage = () => {
         return {
           id: index + 1,
           uuid: p.id,
+          supplierId: (p.supplier || '') as string,
           poNo: displayPoCtx,
           supplier: p.supplierName || 'Unknown Supplier',
           supplierContact: p.contactNumber || '',
@@ -2026,7 +2030,7 @@ export const PurchasesPage = () => {
           }}
           entityType="supplier"
           entityName={selectedPurchase.supplier}
-          entityId={selectedPurchase.uuid}
+          entityId={selectedPurchase.supplierId || undefined}
         />
       )}
 

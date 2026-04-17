@@ -64,6 +64,8 @@ type RentalType = 'Standard' | 'Premium';
 
 interface RentalOrder {
   id: string;
+  /** Customer contact UUID for AR ledger. */
+  customerId: string | null;
   productName: string;
   productCode: string;
   productImage: string;
@@ -207,6 +209,7 @@ export const RentalOrdersList = () => {
     
     return {
       id: rental.id || rental.booking_no || '',
+      customerId: rental.customer_id || rental.customer?.id || null,
       productName: product.name || firstItem?.product_name || 'Unknown Product',
       productCode: product.sku || firstItem?.product_name || '',
       productImage: product.image_url || '/placeholder-product.jpg',
@@ -1013,7 +1016,7 @@ export const RentalOrdersList = () => {
           }}
           entityType="customer"
           entityName={selectedOrder.customerName}
-          entityId={selectedOrder.id}
+          entityId={selectedOrder.customerId || undefined}
         />
       )}
 

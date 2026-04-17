@@ -213,7 +213,11 @@ export interface BalanceSheetResult {
   equity: BalanceSheetSection;
   totalAssets: number;
   totalLiabilitiesAndEquity: number;
+  /** Assets − (Liabilities + Equity). After BS-FIX-01 absorption this equals tbImbalance. */
   difference: number;
+  /** Raw Trial Balance imbalance = Σ(debit) − Σ(credit) across all posted journal lines.
+   *  Non-zero means unbalanced journal entries exist; use Integrity Lab to find and fix. */
+  tbImbalance: number;
   asOfDate: string;
 }
 
@@ -618,7 +622,10 @@ export const accountingReportsService = {
         amount = rolledApBalance();
       }
       if (cat === 'asset') {
-        const displayAmount = amount > 0 ? amount : -amount;
+        // Preserve actual sign: positive = normal debit-heavy asset (cash/bank/AR).
+        // Negative = credit-heavy (bank overdraft, reversed AR) — shown as negative so BS reflects reality.
+        // Math.abs was used before which hid overdrafts and broke Assets = Liabilities + Equity.
+        const displayAmount = amount + 0; // +0 collapses IEEE-754 negative-zero to 0
         totalAssets += displayAmount;
         const bs_asset_group = classifyBalanceSheetAsset(
           {
@@ -637,7 +644,9 @@ export const accountingReportsService = {
           drilldownControl: codeTrim === '1100' ? 'ar' : undefined,
         });
       } else if (cat === 'liability') {
-        const displayAmount = amount < 0 ? -amount : amount;
+        // Negate TB balance (Dr−Cr): normal credit-heavy liabilities have negative TB balance → positive in BS.
+        // Debit-heavy liability (over-paid supplier etc.) has positive TB balance → negative in BS (flags anomaly).
+        const displayAmount = (-amount) + 0;
         totalLiabilities += displayAmount;
         const bs_liability_group = classifyBalanceSheetLiability(
           {
@@ -656,7 +665,8 @@ export const accountingReportsService = {
           drilldownControl: codeTrim === '2000' ? 'ap' : undefined,
         });
       } else if (cat === 'equity') {
-        const displayAmount = amount < 0 ? -amount : amount;
+        // Negate TB balance: normal credit-heavy equity → positive in BS.
+        const displayAmount = (-amount) + 0;
         totalEquity += displayAmount;
         equityItems.push({ name: a.name || '', amount: displayAmount, code: a.code || '' });
       } else if (cat === 'revenue' || cat === 'expense') {
@@ -666,13 +676,70 @@ export const accountingReportsService = {
     assetItems.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
     liabilityItems.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
     equityItems.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
-    // PF-04 / Issue 04: Include net income in equity so Assets = Liabilities + Equity (balance sheet equation).
-    // Derived from P&L accounts (revenue − expense) to date; no closing entries in frozen model.
+
+    // ── PHASE BS-FIX-01: Absorb balances from excluded group/header accounts ──────────────────────
+    // The main loop skips (a) COA header-code accounts and (b) is_group=true accounts.
+    // If any journal lines were ever posted directly to those accounts (mis-posting, legacy data),
+    // their balance lives in the Trial Balance but is invisible in the BS loop → causes
+    // Assets ≠ Liabilities + Equity.
+    //
+    // Fix: after the line-item loop, iterate all TB rows. For any row whose account was NOT already
+    // processed in the main loop (and is NOT an AR/AP child — those are already rolled up into their
+    // control's amount), classify the balance and absorb it into the matching section total.
+    // The balance is NOT added as a visible line item; it silently corrects the arithmetic.
+    //
+    // After absorption, the only remaining Difference = genuine Trial Balance imbalance
+    // (totalDebit ≠ totalCredit in journal_entries), which is reported as `tbImbalance`.
+    //
+    // Proof: Difference = Σ(all included Dr-Cr) = Σ(all TB rows) − Σ(excluded after absorption)
+    //                   = TB_imbalance − 0 = TB_imbalance.
+    {
+      const processedInMainLoop = new Set<string>();
+      (accounts || []).forEach((a: any) => {
+        const codeTrim = String(a.code || '').trim();
+        if (COA_HEADER_CODES.has(codeTrim)) return;
+        if (a.is_group === true) return;
+        // AR/AP children are skipped from main loop but their balance IS absorbed via rolled control.
+        // We must not add them again here.
+        if (arChildIds.has(a.id) || apChildIds.has(a.id)) return;
+        processedInMainLoop.add(a.id);
+      });
+
+      tb.rows.forEach((r) => {
+        // Already counted in main loop
+        if (processedInMainLoop.has(r.account_id)) return;
+        // AR/AP children: included via rolled-up control account — skip to avoid double-count
+        if (arChildIds.has(r.account_id) || apChildIds.has(r.account_id)) return;
+        if (!r.balance) return; // zero — nothing to absorb
+        const a = accountMapForBs.get(r.account_id) as any;
+        if (!a) return;
+        const cat = accountTypeCategory(a.type || '');
+        if (cat === 'asset') {
+          totalAssets += r.balance;
+        } else if (cat === 'liability') {
+          totalLiabilities += -(r.balance);
+        } else if (cat === 'equity') {
+          totalEquity += -(r.balance);
+        } else {
+          // revenue or expense: fold into P&L sum; netIncome is computed below
+          revenueExpenseBalanceSum += r.balance;
+        }
+      });
+    }
+
+    // PF-04 / Issue 04: Include net income in equity so Assets = Liabilities + Equity.
+    // Must be computed AFTER the absorption step above so revenueExpenseBalanceSum is complete.
     const netIncome = Math.round(-revenueExpenseBalanceSum * 100) / 100;
     if (netIncome !== 0) {
       totalEquity += netIncome;
       equityItems.push({ name: 'Net Income (to date)', amount: netIncome, code: '' });
     }
+
+    // tbImbalance: after absorbing all reachable accounts, any remaining Assets − L+E gap
+    // equals the raw TB imbalance (sum of all Dr-Cr across all journal_entry_lines).
+    // A non-zero value means there are unbalanced journal entries — fixable via Integrity Lab.
+    const tbImbalance = Math.round((tb.totalDebit - tb.totalCredit) * 100) / 100;
+
     const totalLiabilitiesAndEquity = totalLiabilities + totalEquity;
     const difference = Math.round((totalAssets - totalLiabilitiesAndEquity) * 100) / 100;
     return {
@@ -682,6 +749,7 @@ export const accountingReportsService = {
       totalAssets,
       totalLiabilitiesAndEquity,
       difference,
+      tbImbalance,
       asOfDate: end,
     };
   },

@@ -783,14 +783,23 @@ export const AccountingDashboard = () => {
     // Search filter
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
-      filtered = filtered.filter(txn =>
-        txn.referenceNo.toLowerCase().includes(search) ||
-        txn.description.toLowerCase().includes(search) ||
-        txn.module.toLowerCase().includes(search) ||
-        txn.debitAccount.toLowerCase().includes(search) ||
-        txn.creditAccount.toLowerCase().includes(search) ||
-        txn.createdBy.toLowerCase().includes(search)
-      );
+      const meta = (txn: (typeof transactions)[0]) => (txn.metadata || {}) as Record<string, unknown>;
+      filtered = filtered.filter((txn) => {
+        const m = meta(txn);
+        const refId = String(m.referenceId ?? m.reference_id ?? '').toLowerCase();
+        const payId = String(m.paymentId ?? '').toLowerCase();
+        return (
+          String(txn.id || '').toLowerCase().includes(search) ||
+          txn.referenceNo.toLowerCase().includes(search) ||
+          txn.description.toLowerCase().includes(search) ||
+          txn.module.toLowerCase().includes(search) ||
+          txn.debitAccount.toLowerCase().includes(search) ||
+          txn.creditAccount.toLowerCase().includes(search) ||
+          txn.createdBy.toLowerCase().includes(search) ||
+          (refId && refId.includes(search)) ||
+          (payId && payId.includes(search))
+        );
+      });
     }
 
     // Type filter — supports both source-based and reference_type-based filtering
@@ -952,8 +961,8 @@ export const AccountingDashboard = () => {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[#0B0F19] overflow-hidden">
-      {/* Page Header */}
+    <div className="flex flex-col bg-[#0B0F19] min-h-0 min-w-0 w-full max-w-full">
+      {/* Page Header — no h-screen/overflow-hidden so outer main can scroll the full page */}
       <div className="shrink-0 px-6 py-4 border-b border-gray-800 bg-[#0F1419]">
         <div className="flex items-center justify-between">
           <div>
@@ -976,8 +985,8 @@ export const AccountingDashboard = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
-        <div className="grid grid-cols-5 gap-4">
+      <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800 min-w-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {/* Total Income */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
             <div className="flex items-start justify-between mb-3">
@@ -1063,8 +1072,8 @@ export const AccountingDashboard = () => {
       </div>
 
       {/* Tabs – Ledger is dropdown only (no page change on click; select option → same page, same UI) */}
-      <div className="shrink-0 px-6 border-b border-gray-800">
-        <div className="flex gap-1 -mb-px">
+      <div className="shrink-0 px-6 border-b border-gray-800 min-w-0 overflow-x-auto overflow-y-hidden overscroll-x-contain">
+        <div className="flex gap-1 -mb-px flex-nowrap w-max min-w-full">
           {tabs.map(tab => {
             const Icon = tab.icon;
             if (tab.key === 'ledger') {
@@ -1120,8 +1129,8 @@ export const AccountingDashboard = () => {
         </div>
       </div>
 
-      {/* Tab Content */}
-      <div className="flex-1 overflow-auto px-6 py-4 bg-[#0B0F19]">
+      {/* Tab Content — flows with page scroll; inner tables keep their own overflow-x where needed */}
+      <div className="px-6 py-4 bg-[#0B0F19] min-w-0">
         {activeTab === 'journal_entries' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -2295,7 +2304,14 @@ export const AccountingDashboard = () => {
 
         {activeTab === 'integrity_lab' && (
           <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
-            <AccountingIntegrityTestLab />
+            <AccountingIntegrityTestLab
+              onOpenJournalTrace={(fragment) => {
+                setActiveTab('journal_entries');
+                setJournalViewMode('audit');
+                setSearchTerm(fragment.trim());
+                toast.message('Journal Entries (audit view) filtered for trace.');
+              }}
+            />
           </Suspense>
         )}
       </div>
