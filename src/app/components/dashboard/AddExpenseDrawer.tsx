@@ -205,7 +205,17 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
         }
       }
     }
-  }, [isOpen, expenseToEdit?.id, expenseToEdit?.paymentMethod, expenseToEdit?.category, accounts, categoryTree]);
+    // Set paidToUserId from payeeName (reverse lookup for salary expenses)
+    if (expenseToEdit?.payeeName && salaryUsers.length > 0) {
+      const userMatch = salaryUsers.find(u =>
+        u.full_name === expenseToEdit.payeeName || u.id === expenseToEdit.payeeName
+      );
+      if (userMatch) {
+        setPaidToUserId(userMatch.id);
+        setSalaryUserSearch(userMatch.full_name);
+      }
+    }
+  }, [isOpen, expenseToEdit?.id, expenseToEdit?.paymentMethod, expenseToEdit?.category, expenseToEdit?.payeeName, accounts, categoryTree, salaryUsers]);
 
   const handleAmountFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     if (window.innerWidth < 768) {

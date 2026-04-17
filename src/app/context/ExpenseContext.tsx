@@ -661,7 +661,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       // Delete from Supabase
-      await expenseService.deleteExpense(id);
+      await expenseService.deleteExpense(id, companyId || undefined);
       
       // Update local state
       setExpenses(prev => prev.filter(e => e.id !== id));

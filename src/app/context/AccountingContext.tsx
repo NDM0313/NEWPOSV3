@@ -2062,6 +2062,29 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   const recordExpense = async (params: ExpenseParams): Promise<boolean> => {
     const { expenseId, category, amount, paymentMethod, description, date } = params;
 
+    // Map expense category to specific GL account code
+    const catLower = String(category || '').toLowerCase();
+    const categoryAccountMap: Record<string, string> = {
+      salaries: '6110', salary: '6110', wages: '6110',
+      marketing: '6120', advertising: '6120',
+      rent: '6100', utilities: '6100', office: '6100',
+      shipping: '5100', freight: '5100', courier: '5100',
+      production: '5000', manufacturing: '5000',
+    };
+    const targetCode = categoryAccountMap[catLower];
+
+    // Try to find the specific GL account for this category
+    let resolvedDebitAccountId: string | undefined;
+    if (targetCode && companyId) {
+      const match = accounts.find(a => a.code === targetCode && a.isActive);
+      if (match) resolvedDebitAccountId = match.id;
+    }
+    // Fallback: use generic operating expense (6100)
+    if (!resolvedDebitAccountId && companyId) {
+      const fallback = accounts.find(a => a.code === '6100' && a.isActive);
+      if (fallback) resolvedDebitAccountId = fallback.id;
+    }
+
     return await createEntry({
       source: 'Expense',
       referenceNo: expenseId,
@@ -2070,7 +2093,11 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       amount: amount,
       description: `${category} - ${description}`,
       module: 'Expenses',
-      metadata: { expenseId, ...(date ? { postingDate: date.slice(0, 10) } : {}) },
+      metadata: {
+        expenseId,
+        ...(date ? { postingDate: date.slice(0, 10) } : {}),
+        ...(resolvedDebitAccountId ? { debitAccountId: resolvedDebitAccountId } : {}),
+      },
     });
   };
 

@@ -131,13 +131,18 @@ export const expenseService = {
     return data;
   },
 
-  // Delete expense (soft delete by setting status to rejected)
-  async deleteExpense(id: string) {
-    const { error } = await supabase
-      .from('expenses')
-      .update({ status: 'rejected' })
-      .eq('id', id);
-
+  // Delete expense — true delete + void associated journal entries
+  async deleteExpense(id: string, companyId?: string) {
+    // Void associated JEs first (so GL is cleaned up)
+    if (companyId) {
+      await supabase
+        .from('journal_entries')
+        .update({ is_void: true, void_reason: 'expense_deleted', voided_at: new Date().toISOString() })
+        .eq('reference_type', 'expense')
+        .eq('reference_id', id)
+        .eq('company_id', companyId);
+    }
+    const { error } = await supabase.from('expenses').delete().eq('id', id);
     if (error) throw error;
   },
 
