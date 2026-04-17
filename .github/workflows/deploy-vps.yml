@@ -1,11 +1,13 @@
 # Auto-deploy to VPS on push to main or before-mobile-replace
 #
-# GitHub repo → Settings → Secrets and variables → Actions:
-#   VPS_SSH_KEY = full private key whose public half is in root@VPS ~/.ssh/authorized_keys
-#   (same key you use for: ssh dincouture-vps). Must include BEGIN/END lines.
+# GitHub → repo → Settings → Secrets and variables → Actions (Repository secrets):
+#   - VPS_SSH_KEY  = full private key (BEGIN … END), OR
+#   - SSH_PRIVATE_KEY = same (fallback name if the first was mis-typed)
 #
-# If the workflow fails in ~10s with auth errors, the secret is missing/wrong or the
-# public key is not on the server. See docs/DEPLOY_WORKFLOW.md (section A).
+# If you put the key under Settings → Environments → <env>, add to the job below:
+#   environment: <env>
+#
+# The key’s public line must be in root@VPS:~/.ssh/authorized_keys
 #
 name: Deploy to VPS
 
@@ -20,25 +22,36 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Require VPS_SSH_KEY secret
+      # Write multiline key to a file (more reliable than passing raw key into the action only).
+      - name: Prepare SSH key file
+        id: sshkey
         run: |
-          if [ -z "${VPS_SSH_KEY}" ]; then
-            echo "::error::Repository secret VPS_SSH_KEY is not set (or is empty). GitHub cannot SSH to the VPS. Add the private key under Settings → Secrets and variables → Actions."
+          set -euo pipefail
+          KEY="${VPS_KEY_MAIN:-}"
+          if [ -z "$KEY" ]; then KEY="${VPS_KEY_ALT:-}"; fi
+          if [ -z "$KEY" ]; then
+            echo "::error::No deploy private key found. Add repository secret VPS_SSH_KEY or SSH_PRIVATE_KEY (full private key) under Settings → Secrets and variables → Actions."
             exit 1
           fi
+          KEYFILE="${RUNNER_TEMP}/vps_github_actions.pem"
+          printf '%s\n' "$KEY" > "$KEYFILE"
+          chmod 600 "$KEYFILE"
+          echo "keyfile=$KEYFILE" >> "$GITHUB_OUTPUT"
         env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KEY_MAIN: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KEY_ALT: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.2.5
         with:
           host: 72.62.254.176
           username: root
-          key: ${{ secrets.VPS_SSH_KEY }}
+          key_path: ${{ steps.sshkey.outputs.keyfile }}
           port: 22
           timeout: 60s
           command_timeout: 45m
           fingerprint: SHA256:Dg8lMBmQTeyUuwH58i/nvZIKRZgo6cbfJSBo00WTufQ
+          use_insecure_cipher: true
           script: |
             set -e
             cd /root/NEWPOSV3
@@ -50,3 +63,7 @@ jobs:
             export BRANCH
             bash deploy/deploy.sh
             echo "=== Deploy complete ==="
+
+      - name: Remove SSH key file
+        if: always()
+        run: rm -f "${{ steps.sshkey.outputs.keyfile }}"
