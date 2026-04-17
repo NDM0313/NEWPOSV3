@@ -683,6 +683,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const [editingAccounts, setEditingAccounts] = useState(false);
   const [accountsList, setAccountsList] = useState<{ id: string; code: string; name: string }[]>([]);
   const [editLineChanges, setEditLineChanges] = useState<Record<string, string>>({});
+  const [accountSearch, setAccountSearch] = useState<Record<string, string>>({});
 
   const handleLoadAccountsForEdit = async () => {
     if (!companyId) return;
@@ -888,19 +889,24 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       Void / Cancel
                     </Button>
                   )}
-                  {/* Edit Accounts: swap DR/CR accounts */}
-                  {transaction.id && !transaction.is_void && !editingAccounts && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="gap-1 border-blue-500/40 text-blue-300"
-                      onClick={() => void handleLoadAccountsForEdit()}
-                    >
-                      <ArrowLeftRight size={14} />
-                      Edit Accounts
-                    </Button>
-                  )}
+                  {/* Edit Accounts: only for payment/expense/manual — NOT for sale/purchase/return (those are auto-posted) */}
+                  {transaction.id && !transaction.is_void && !editingAccounts && (() => {
+                    const rt = String(transaction.reference_type || '').toLowerCase();
+                    const allowEdit = !rt.startsWith('sale') && !rt.startsWith('purchase') && rt !== 'shipment' && !rt.startsWith('opening_balance') && rt !== 'commission_batch' && rt !== 'stock_adjustment';
+                    if (!allowEdit) return null;
+                    return (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 border-blue-500/40 text-blue-300"
+                        onClick={() => void handleLoadAccountsForEdit()}
+                      >
+                        <ArrowLeftRight size={14} />
+                        Edit Accounts
+                      </Button>
+                    );
+                  })()}
                   {editingAccounts && (
                     <>
                       <Button size="sm" className="gap-1 bg-blue-600" onClick={() => void handleSaveAccountEdits()} disabled={Object.keys(editLineChanges).length === 0}>
@@ -1169,16 +1175,49 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         <tr key={line.id || line.account_id || idx} className="border-b border-gray-700">
                           <td className="px-4 py-3 text-sm text-white">
                             {editingAccounts && line.id ? (
-                              <select
-                                className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white"
-                                value={editLineChanges[line.id] || line.account_id || account.id || ''}
-                                onChange={(e) => setEditLineChanges(prev => ({ ...prev, [line.id]: e.target.value }))}
-                              >
-                                <option value={line.account_id || account.id || ''}>{account.name || 'Unknown'} ({account.code})</option>
-                                {accountsList.filter(a => a.id !== (line.account_id || account.id)).map(a => (
-                                  <option key={a.id} value={a.id}>{a.name} ({a.code})</option>
-                                ))}
-                              </select>
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  placeholder="Search account..."
+                                  className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white mb-1"
+                                  value={accountSearch[line.id] ?? (editLineChanges[line.id] ? accountsList.find(a => a.id === editLineChanges[line.id])?.name || '' : `${account.name || ''} (${account.code || ''})`)}
+                                  onChange={(e) => {
+                                    setAccountSearch(prev => ({ ...prev, [line.id]: e.target.value }));
+                                  }}
+                                  onFocus={() => setAccountSearch(prev => ({ ...prev, [line.id]: '' }))}
+                                />
+                                {accountSearch[line.id] !== undefined && (
+                                  <div className="absolute z-50 w-full max-h-48 overflow-y-auto bg-gray-800 border border-gray-600 rounded shadow-lg">
+                                    {accountsList
+                                      .filter(a => {
+                                        const q = (accountSearch[line.id] || '').toLowerCase();
+                                        if (!q) return true;
+                                        return a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q);
+                                      })
+                                      .slice(0, 20)
+                                      .map(a => (
+                                        <button
+                                          key={a.id}
+                                          type="button"
+                                          className={cn(
+                                            'w-full text-left px-2 py-1.5 text-xs hover:bg-gray-700 transition-colors',
+                                            (editLineChanges[line.id] || line.account_id || account.id) === a.id ? 'bg-blue-900/40 text-blue-300' : 'text-gray-300'
+                                          )}
+                                          onClick={() => {
+                                            setEditLineChanges(prev => ({ ...prev, [line.id]: a.id }));
+                                            setAccountSearch(prev => { const n = { ...prev }; delete n[line.id]; return n; });
+                                          }}
+                                        >
+                                          <span className="font-mono text-gray-500 mr-1">{a.code}</span>
+                                          {a.name}
+                                        </button>
+                                      ))}
+                                  </div>
+                                )}
+                                {editLineChanges[line.id] && accountSearch[line.id] === undefined && (
+                                  <div className="text-[10px] text-blue-400">Changed → {accountsList.find(a => a.id === editLineChanges[line.id])?.code} {accountsList.find(a => a.id === editLineChanges[line.id])?.name}</div>
+                                )}
+                              </div>
                             ) : (
                               <div>
                                 <p className="font-medium">
