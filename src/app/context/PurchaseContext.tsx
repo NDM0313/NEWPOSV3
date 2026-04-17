@@ -1129,20 +1129,78 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           const hasExistingPurchaseJE = await pac.purchaseJournalEntryExists(id);
 
           if (hasExistingPurchaseJE && oldPurchaseSnapshot && priorPosted) {
-            // Component-level: post only adjustment JEs for deltas. Do NOT delete original purchase JE. Do NOT touch payment JEs.
+            // In-place update: modify original document JE lines directly
+            const { supabase: sbPur } = await import('@/lib/supabase');
             const newSnapshot = pac.getPurchaseAccountingSnapshot(updated);
-            const { adjustmentCount } = await pac.postPurchaseEditAdjustments({
-              companyId,
-              branchId: effectiveBranchId,
-              purchaseId: id,
-              poNo,
-              entryDate,
-              createdBy: user?.id ?? null,
-              oldSnapshot: oldPurchaseSnapshot,
-              newSnapshot,
-              supplierName,
-            });
-            console.log('[PURCHASE CONTEXT] PF-COMPONENT: Posted', adjustmentCount, 'purchase adjustment JE(s); original JE and payment JEs unchanged.');
+
+            // Find original purchase document JE
+            const { data: purJe } = await sbPur
+              .from('journal_entries')
+              .select('id, description')
+              .eq('company_id', companyId)
+              .eq('reference_type', 'purchase')
+              .eq('reference_id', id)
+              .is('payment_id', null)
+              .or('is_void.is.null,is_void.eq.false')
+              .order('created_at', { ascending: true })
+              .limit(1)
+              .maybeSingle();
+
+            if (purJe?.id) {
+              const jeId = purJe.id as string;
+              const getAccId = async (code: string) => {
+                const { data } = await sbPur.from('accounts').select('id').eq('code', code).eq('company_id', companyId).eq('is_active', true).maybeSingle();
+                return data?.id as string | null;
+              };
+              const inventoryId = await getAccId('1200');
+              const discountId = await getAccId('5210') || await getAccId('6100');
+
+              // Resolve supplier sub-ledger
+              let apAccountId: string | null = null;
+              if (supplierId) {
+                const { resolvePayablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+                apAccountId = await resolvePayablePostingAccountId(companyId, supplierId);
+              }
+              if (!apAccountId) apAccountId = await getAccId('2000');
+
+              // Get JE lines and update each
+              const { data: jeLines } = await sbPur.from('journal_entry_lines').select('id, account_id, debit, credit').eq('journal_entry_id', jeId);
+
+              for (const line of (jeLines || []) as any[]) {
+                const accId = line.account_id;
+                if (accId === inventoryId) {
+                  if (line.debit > 0) {
+                    // Inventory DR = subtotal + shipping
+                    await sbPur.from('journal_entry_lines').update({ debit: newSnapshot.subtotal + newSnapshot.otherCharges }).eq('id', line.id);
+                  } else if (line.credit > 0 && newSnapshot.otherCharges > 0) {
+                    // Freight DR line
+                    await sbPur.from('journal_entry_lines').update({ debit: newSnapshot.otherCharges, credit: 0 }).eq('id', line.id);
+                  }
+                } else if (accId === apAccountId || accId === (await getAccId('2000'))) {
+                  if (line.credit > 0) {
+                    // AP CR = subtotal + shipping
+                    await sbPur.from('journal_entry_lines').update({ credit: newSnapshot.subtotal + newSnapshot.otherCharges }).eq('id', line.id);
+                  } else if (line.debit > 0) {
+                    // AP DR (discount)
+                    await sbPur.from('journal_entry_lines').update({ debit: newSnapshot.discount }).eq('id', line.id);
+                  }
+                } else if (discountId && accId === discountId && line.credit > 0) {
+                  await sbPur.from('journal_entry_lines').update({ credit: newSnapshot.discount }).eq('id', line.id);
+                }
+              }
+
+              // Log edit
+              const ts = new Date().toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
+              const editLog = `[Edited ${ts}: Total Rs ${oldPurchaseSnapshot.total.toLocaleString()} → Rs ${newSnapshot.total.toLocaleString()}]`;
+              await sbPur.from('journal_entries').update({ description: `${purJe.description || ''} ${editLog}`.slice(0, 500) }).eq('id', jeId);
+
+              console.log('[PURCHASE CONTEXT] In-place updated purchase JE', jeId, 'for', poNo);
+              if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+            } else {
+              // Fallback: use old adjustment approach
+              const newSnapshotFb = pac.getPurchaseAccountingSnapshot(updated);
+              await pac.postPurchaseEditAdjustments({ companyId, branchId: effectiveBranchId, purchaseId: id, poNo, entryDate, createdBy: user?.id ?? null, oldSnapshot: oldPurchaseSnapshot, newSnapshot: newSnapshotFb, supplierName });
+            }
           } else if (!hasExistingPurchaseJE && newTotal > 0 && willBePosted) {
             // No existing canonical JE: single posting engine only (loads charges from DB)
             const { postPurchaseDocumentAccounting } = await import('@/app/services/documentPostingEngine');

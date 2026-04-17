@@ -1781,33 +1781,132 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // PF-14: Posted sale edit — NEVER delete original JEs. Post only delta adjustment JEs per component.
+      // PF-14 v2: In-place update — modify original document JE lines directly instead of creating adjustment JEs.
       if (accountingRepostNeeded && companyId && oldAccountingSnapshot) {
         try {
+          const { supabase: sbEdit } = await import('@/lib/supabase');
           const updatedSale = await saleService.getSaleById(id);
           if (!updatedSale) throw new Error('Sale not found after update');
           const { saleAccountingService: sac } = await import('@/app/services/saleAccountingService');
           const newSnapshot = sac.getSaleAccountingSnapshot(updatedSale);
           const invoiceNo = (updatedSale as any).invoice_no ?? (updatedSale as any).invoiceNo ?? id;
-          const entryDate = ((updatedSale as any).invoice_date ?? (updatedSale as any).date ?? new Date().toISOString().slice(0, 10)).toString().slice(0, 10);
-          let effectiveBranchId = isValidBranchId(branchId) ? branchId : ((updatedSale as any).branch_id && (updatedSale as any).branch_id !== 'all') ? (updatedSale as any).branch_id : null;
-          if (!effectiveBranchId && companyId) {
-            const branches = await branchService.getAllBranches(companyId);
-            effectiveBranchId = branches?.length ? branches[0].id : null;
-          }
-          const createdByAuthId = (user as any)?.id ?? (user as any)?.auth_user_id ?? null;
-          const { adjustmentCount } = await sac.postSaleEditAdjustments({
-            companyId,
-            branchId: effectiveBranchId,
-            saleId: id,
-            invoiceNo,
-            entryDate,
-            createdBy: createdByAuthId,
-            oldSnapshot: oldAccountingSnapshot,
-            newSnapshot,
-          });
-          if (adjustmentCount > 0) {
-            console.log('[SALES CONTEXT] PF-14: Posted', adjustmentCount, 'sale adjustment JE(s); original JEs unchanged.');
+
+          // Find the original sale document JE (not payment, not adjustment, not return)
+          const { data: docJe } = await sbEdit
+            .from('journal_entries')
+            .select('id, description')
+            .eq('company_id', companyId)
+            .eq('reference_type', 'sale')
+            .eq('reference_id', id)
+            .is('payment_id', null)
+            .or('is_void.is.null,is_void.eq.false')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (docJe?.id) {
+            const jeId = docJe.id as string;
+            const newTotal = newSnapshot.total;
+            const newGross = newSnapshot.subtotal || (newTotal + newSnapshot.discount);
+            const newDiscount = newSnapshot.discount;
+            const newShipping = newSnapshot.shippingCharges || 0;
+            const newRevenue = newGross - newShipping;
+
+            // Resolve AR sub-ledger for customer
+            const customerId = (updatedSale as any).customer_id;
+            let arAccountId: string | null = null;
+            if (customerId) {
+              const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+              arAccountId = await resolveReceivablePostingAccountId(companyId, customerId);
+            }
+            if (!arAccountId) {
+              const { data: arAcct } = await sbEdit.from('accounts').select('id').eq('code', '1100').eq('company_id', companyId).maybeSingle();
+              arAccountId = arAcct?.id as string | null;
+            }
+
+            // Get account IDs for Revenue, Discount, Shipping, COGS, Inventory
+            const getAccId = async (code: string) => {
+              const { data } = await sbEdit.from('accounts').select('id').eq('code', code).eq('company_id', companyId).eq('is_active', true).maybeSingle();
+              return data?.id as string | null;
+            };
+            const revenueId = await getAccId('4100');
+            const discountId = await getAccId('5200');
+            const shippingIncomeId = await getAccId('4110');
+            const cogsId = await getAccId('5000');
+            const inventoryId = await getAccId('1200');
+
+            // Fetch current JE lines
+            const { data: jeLines } = await sbEdit.from('journal_entry_lines').select('id, account_id, debit, credit').eq('journal_entry_id', jeId);
+
+            // Update each line based on its account
+            for (const line of (jeLines || []) as any[]) {
+              const accId = line.account_id;
+              let newDebit = 0, newCredit = 0;
+
+              if (accId === arAccountId || accId === (await getAccId('1100'))) {
+                // AR line = net total (what customer owes)
+                newDebit = newTotal; newCredit = 0;
+              } else if (accId === revenueId) {
+                // Revenue = gross (before discount, after shipping deducted)
+                newDebit = 0; newCredit = newRevenue > 0 ? newRevenue : 0;
+              } else if (accId === discountId && newDiscount > 0) {
+                // Discount Allowed
+                newDebit = newDiscount; newCredit = 0;
+              } else if (accId === shippingIncomeId) {
+                // Shipping Income
+                newDebit = 0; newCredit = newShipping;
+              } else if (accId === cogsId && line.debit > 0) {
+                // COGS — recalculate from weighted avg cost
+                const { data: saleItems } = await sbEdit.from('sales_items').select('product_id, quantity').eq('sale_id', id);
+                let totalCogs = 0;
+                for (const si of (saleItems || []) as any[]) {
+                  const qty = Number(si.quantity) || 0;
+                  const { data: movements } = await sbEdit.from('stock_movements').select('quantity, unit_cost, total_cost').eq('product_id', si.product_id).eq('company_id', companyId).in('movement_type', ['purchase', 'opening_stock']);
+                  let costSum = 0, costQty = 0;
+                  for (const m of (movements || []) as any[]) {
+                    costQty += Math.abs(Number(m.quantity) || 0);
+                    costSum += Math.abs(Number(m.total_cost) || (Math.abs(Number(m.quantity) || 0) * (Number(m.unit_cost) || 0)));
+                  }
+                  const avgCost = costQty > 0 ? costSum / costQty : 0;
+                  totalCogs += qty * avgCost;
+                }
+                newDebit = Math.round(totalCogs * 100) / 100; newCredit = 0;
+              } else if (accId === inventoryId && line.credit > 0) {
+                // Inventory (credit side = same as COGS)
+                // Will be set to same as COGS debit
+                continue; // Handle after COGS
+              } else {
+                continue; // Unknown line, skip
+              }
+
+              if (newDebit > 0 || newCredit > 0) {
+                await sbEdit.from('journal_entry_lines').update({ debit: newDebit, credit: newCredit }).eq('id', line.id);
+              }
+            }
+
+            // Update inventory line (credit) to match COGS (debit)
+            if (cogsId && inventoryId) {
+              const { data: cogsLine } = await sbEdit.from('journal_entry_lines').select('debit').eq('journal_entry_id', jeId).eq('account_id', cogsId).maybeSingle();
+              if (cogsLine) {
+                await sbEdit.from('journal_entry_lines').update({ credit: cogsLine.debit }).eq('journal_entry_id', jeId).eq('account_id', inventoryId);
+              }
+            }
+
+            // Handle discount line: add if new, remove if zero
+            if (newDiscount > 0 && discountId) {
+              const { data: discLine } = await sbEdit.from('journal_entry_lines').select('id').eq('journal_entry_id', jeId).eq('account_id', discountId).maybeSingle();
+              if (!discLine) {
+                await sbEdit.from('journal_entry_lines').insert({ journal_entry_id: jeId, account_id: discountId, debit: newDiscount, credit: 0, description: `Discount – ${invoiceNo}` });
+              }
+            }
+
+            // Log edit in JE description
+            const ts = new Date().toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
+            const oldTotal = oldAccountingSnapshot.total;
+            const editLog = `[Edited ${ts}: Total Rs ${oldTotal.toLocaleString()} → Rs ${newTotal.toLocaleString()}]`;
+            await sbEdit.from('journal_entries').update({ description: `${docJe.description || ''} ${editLog}`.slice(0, 500) }).eq('id', jeId);
+
+            console.log('[SALES CONTEXT] PF-14 v2: In-place updated sale document JE', jeId, 'for', invoiceNo);
             window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
           }
 
