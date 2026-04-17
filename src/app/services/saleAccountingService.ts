@@ -1201,20 +1201,27 @@ export async function ensureSalePaymentJournalIfMissing(paymentId: string): Prom
  * to the customer's sub-ledger account (AR-CUS0001 etc.) if one exists.
  * The DB trigger hardcodes 1100; this corrects it so the customer ledger is accurate.
  */
-async function patchPaymentJeToSubLedger(paymentId: string, jeId: string): Promise<void> {
+export async function patchPaymentJeToSubLedger(paymentId: string, jeId: string): Promise<void> {
   try {
     const { data: pay } = await supabase
       .from('payments')
-      .select('company_id, reference_type, reference_id')
+      .select('company_id, reference_type, reference_id, contact_id')
       .eq('id', paymentId)
       .maybeSingle();
-    if (!pay || String((pay as any).reference_type || '').toLowerCase() !== 'sale') return;
+    if (!pay) return;
     const companyId = (pay as any).company_id as string;
-    const saleId = (pay as any).reference_id as string;
-    if (!companyId || !saleId) return;
+    if (!companyId) return;
 
-    const { data: sale } = await supabase.from('sales').select('customer_id').eq('id', saleId).maybeSingle();
-    const customerId = (sale as any)?.customer_id;
+    // Resolve customer: try contact_id first (manual_receipt/on_account), then sale.customer_id
+    let customerId = (pay as any).contact_id as string | null;
+    if (!customerId) {
+      const rt = String((pay as any).reference_type || '').toLowerCase();
+      const refId = (pay as any).reference_id as string | null;
+      if (rt === 'sale' && refId) {
+        const { data: sale } = await supabase.from('sales').select('customer_id').eq('id', refId).maybeSingle();
+        customerId = (sale as any)?.customer_id ?? null;
+      }
+    }
     if (!customerId) return;
 
     const subLedgerId = await resolveReceivablePostingAccountId(companyId, customerId);

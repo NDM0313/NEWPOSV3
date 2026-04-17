@@ -1478,6 +1478,11 @@ export const saleService = {
           'On-account payment was saved but the journal entry could not be posted (AR 1100 or payment account missing).'
         );
       }
+      // Patch trigger JE from parent 1100 to customer sub-ledger
+      if (jeId) {
+        const { patchPaymentJeToSubLedger } = await import('@/app/services/saleAccountingService');
+        await patchPaymentJeToSubLedger(row.id, jeId);
+      }
       await assertActiveJournalForPaymentId(row.id, 'saleService.recordOnAccountPayment');
     }
     dispatchContactBalancesRefresh(companyId);
