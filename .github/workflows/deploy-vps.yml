@@ -1,13 +1,8 @@
 # Auto-deploy to VPS on push to main or before-mobile-replace
 #
-# GitHub → repo → Settings → Secrets and variables → Actions (Repository secrets):
-#   - VPS_SSH_KEY  = full private key (BEGIN … END), OR
-#   - SSH_PRIVATE_KEY = same (fallback name if the first was mis-typed)
-#
-# If you put the key under Settings → Environments → <env>, add to the job below:
-#   environment: <env>
-#
-# The key’s public line must be in root@VPS:~/.ssh/authorized_keys
+# GitHub → Settings → Secrets and variables → Actions:
+#   VPS_SSH_KEY = full private key (-----BEGIN … through … END-----)
+#   Optional: SSH_PRIVATE_KEY (same key if VPS_SSH_KEY name was wrong)
 #
 name: Deploy to VPS
 
@@ -21,8 +16,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      DEPLOY_BRANCH: ${{ github.ref_name }}
     steps:
-      # Write multiline key to a file (more reliable than passing raw key into the action only).
       - name: Prepare SSH key file
         id: sshkey
         run: |
@@ -30,10 +26,10 @@ jobs:
           KEY="${VPS_KEY_MAIN:-}"
           if [ -z "$KEY" ]; then KEY="${VPS_KEY_ALT:-}"; fi
           if [ -z "$KEY" ]; then
-            echo "::error::No deploy private key found. Add repository secret VPS_SSH_KEY or SSH_PRIVATE_KEY (full private key) under Settings → Secrets and variables → Actions."
+            echo "::error::No deploy private key. Add repository secret VPS_SSH_KEY (or SSH_PRIVATE_KEY)."
             exit 1
           fi
-          KEYFILE="${RUNNER_TEMP}/vps_github_actions.pem"
+          KEYFILE="${RUNNER_TEMP}/vps_deploy.pem"
           printf '%s\n' "$KEY" > "$KEYFILE"
           chmod 600 "$KEYFILE"
           echo "keyfile=$KEYFILE" >> "$GITHUB_OUTPUT"
@@ -41,28 +37,32 @@ jobs:
           VPS_KEY_MAIN: ${{ secrets.VPS_SSH_KEY }}
           VPS_KEY_ALT: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1.2.5
-        with:
-          host: 72.62.254.176
-          username: root
-          key_path: ${{ steps.sshkey.outputs.keyfile }}
-          port: 22
-          timeout: 60s
-          command_timeout: 45m
-          fingerprint: SHA256:Dg8lMBmQTeyUuwH58i/nvZIKRZgo6cbfJSBo00WTufQ
-          use_insecure_cipher: true
-          script: |
-            set -e
-            cd /root/NEWPOSV3
-            BRANCH="${{ github.ref_name }}"
-            echo "=== Auto-deploy $(date) ==="
-            echo "  Branch: $BRANCH"
-            git fetch origin "$BRANCH"
-            git reset --hard "origin/$BRANCH"
-            export BRANCH
-            bash deploy/deploy.sh
-            echo "=== Deploy complete ==="
+      - name: Validate key (no secret printed)
+        run: |
+          set -euo pipefail
+          KEYFILE="${{ steps.sshkey.outputs.keyfile }}"
+          ssh-keygen -y -f "$KEYFILE" > /dev/null
+          echo "Private key parses OK."
+          echo "Deploy key fingerprint (compare to root@VPS ~/.ssh/authorized_keys):"
+          ssh-keygen -lf "$KEYFILE"
+
+      - name: Deploy to VPS (OpenSSH)
+        env:
+          KEYFILE: ${{ steps.sshkey.outputs.keyfile }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/ssh"
+          KNOWN="${RUNNER_TEMP}/ssh/known_hosts"
+          ssh-keyscan -T 10 -p 22 72.62.254.176 >> "$KNOWN" 2>/dev/null || true
+          echo "Deploy branch: ${DEPLOY_BRANCH}"
+          ssh -i "$KEYFILE" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$KNOWN" \
+            -o ConnectTimeout=30 \
+            -p 22 \
+            root@72.62.254.176 \
+            "set -euo pipefail; export BRANCH='${DEPLOY_BRANCH}'; cd /root/NEWPOSV3; echo \"=== Auto-deploy \$(date -u) ===\"; echo \"  Branch: \$BRANCH\"; git fetch origin \"\$BRANCH\"; git reset --hard \"origin/\$BRANCH\"; bash deploy/deploy.sh; echo \"=== Deploy complete ===\""
 
       - name: Remove SSH key file
         if: always()
