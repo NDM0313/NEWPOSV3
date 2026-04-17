@@ -1,6 +1,12 @@
 # Auto-deploy to VPS on push to main or before-mobile-replace
-# Requires GitHub secret: VPS_SSH_KEY (private key for dincouture-vps)
-# VPS: 72.62.254.176, user root (from .cursor/rules/vps-ssh.mdc)
+#
+# GitHub repo → Settings → Secrets and variables → Actions:
+#   VPS_SSH_KEY = full private key whose public half is in root@VPS ~/.ssh/authorized_keys
+#   (same key you use for: ssh dincouture-vps). Must include BEGIN/END lines.
+#
+# If the workflow fails in ~10s with auth errors, the secret is missing/wrong or the
+# public key is not on the server. See docs/DEPLOY_WORKFLOW.md (section A).
+#
 name: Deploy to VPS
 
 on:
@@ -8,18 +14,31 @@ on:
     branches:
       - main
       - before-mobile-replace
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Require VPS_SSH_KEY secret
+        run: |
+          if [ -z "${VPS_SSH_KEY}" ]; then
+            echo "::error::Repository secret VPS_SSH_KEY is not set (or is empty). GitHub cannot SSH to the VPS. Add the private key under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+
       - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: 72.62.254.176
           username: root
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
+          timeout: 60s
+          command_timeout: 45m
+          fingerprint: SHA256:Dg8lMBmQTeyUuwH58i/nvZIKRZgo6cbfJSBo00WTufQ
           script: |
             set -e
             cd /root/NEWPOSV3
