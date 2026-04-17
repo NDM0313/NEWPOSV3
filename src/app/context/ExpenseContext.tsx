@@ -557,13 +557,28 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         const jeId = (jeRow as { id?: string; description?: string } | null)?.id;
         if (jeId) {
           const newAmount = Number(mergedAmount) || 0;
-          // Update all debit lines to new amount
+
+          // Resolve correct GL expense account based on category
+          const catLower = String(mergedCategory || '').toLowerCase();
+          const catAccountMap: Record<string, string> = {
+            salaries: '6110', salary: '6110', wages: '6110',
+            marketing: '6120', advertising: '6120',
+            rent: '6100', utilities: '6100', office: '6100',
+            shipping: '5100', freight: '5100', courier: '5100',
+            production: '5000', manufacturing: '5000',
+          };
+          const targetCode = catAccountMap[catLower] || '6100';
+          const { data: targetAcct } = await supabase.from('accounts').select('id').eq('code', targetCode).eq('company_id', companyId).eq('is_active', true).maybeSingle();
+
+          // Update debit lines: amount + correct account
+          const debitUpdate: Record<string, any> = { debit: newAmount };
+          if (targetAcct?.id) debitUpdate.account_id = targetAcct.id;
           await supabase
             .from('journal_entry_lines')
-            .update({ debit: newAmount })
+            .update(debitUpdate)
             .eq('journal_entry_id', jeId)
             .gt('debit', 0);
-          // Update all credit lines to new amount
+          // Update credit lines: amount only
           await supabase
             .from('journal_entry_lines')
             .update({ credit: newAmount })

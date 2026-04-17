@@ -2076,13 +2076,24 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     // Try to find the specific GL account for this category
     let resolvedDebitAccountId: string | undefined;
     if (targetCode && companyId) {
+      // Try context first, then direct DB query as fallback
       const match = accounts.find(a => a.code === targetCode && a.isActive);
-      if (match) resolvedDebitAccountId = match.id;
+      if (match) {
+        resolvedDebitAccountId = match.id;
+      } else {
+        const { data: dbMatch } = await supabase.from('accounts').select('id').eq('code', targetCode).eq('company_id', companyId).eq('is_active', true).maybeSingle();
+        if (dbMatch?.id) resolvedDebitAccountId = dbMatch.id as string;
+      }
     }
     // Fallback: use generic operating expense (6100)
     if (!resolvedDebitAccountId && companyId) {
       const fallback = accounts.find(a => a.code === '6100' && a.isActive);
-      if (fallback) resolvedDebitAccountId = fallback.id;
+      if (fallback) {
+        resolvedDebitAccountId = fallback.id;
+      } else {
+        const { data: dbFallback } = await supabase.from('accounts').select('id').eq('code', '6100').eq('company_id', companyId).eq('is_active', true).maybeSingle();
+        if (dbFallback?.id) resolvedDebitAccountId = dbFallback.id as string;
+      }
     }
 
     return await createEntry({
