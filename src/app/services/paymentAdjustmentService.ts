@@ -16,6 +16,15 @@ function isPrimaryPaymentLinkedJe(je: { reference_type?: string | null; payment_
   return rt !== 'payment_adjustment';
 }
 
+/** Payments confirmed as "skip" during this browser session. Cleared on page refresh. */
+const _skippedPaymentIds = new Set<string>();
+
+/** Clear cache for a specific payment (after edit) or all (on demand). */
+export function clearSkippedPaymentCache(paymentId?: string) {
+  if (paymentId) _skippedPaymentIds.delete(paymentId);
+  else _skippedPaymentIds.clear();
+}
+
 export type PaymentContext = 'sale' | 'purchase';
 
 /**
@@ -518,13 +527,18 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
 
   for (const p of payments as any[]) {
     const paymentId = p.id;
+
+    // Session-level cache: skip payments already evaluated this browser session
+    if (_skippedPaymentIds.has(paymentId)) continue;
+
     const currentAccountId = p.payment_account_id ?? '';
-    if (!currentAccountId) continue;
+    if (!currentAccountId) { _skippedPaymentIds.add(paymentId); continue; }
 
     const primaries = byPaymentPrimary.get(paymentId) || [];
-    if (primaries.length === 0) continue;
+    if (primaries.length === 0) { _skippedPaymentIds.add(paymentId); continue; }
     if (primaries.length > 1) {
       skippedDuplicates++;
+      _skippedPaymentIds.add(paymentId);
       if (import.meta.env?.DEV) {
         console.warn('[paymentAdjustmentService] Skip sync: multiple primary JEs for payment', paymentId);
       }
@@ -536,15 +550,17 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
     const effectiveLiquidity = liquidityAccountOnPrimaryJe(lines, apId, arId);
     if (!effectiveLiquidity) {
       skippedAmbiguous++;
+      _skippedPaymentIds.add(paymentId);
       continue;
     }
-    if (effectiveLiquidity === currentAccountId) continue;
+    if (effectiveLiquidity === currentAccountId) { _skippedPaymentIds.add(paymentId); continue; }
 
     // PF-14.7: After one or more user-driven account transfers, primary JE still shows the **original**
     // receipt account. payments.payment_account_id is authoritative. Do NOT post another transfer from
     // primary liquidity — that replays Petty→Bank on every Accounting tab load (duplicate JE-0078 class bugs).
     if (await hasPaymentAccountChangedPf14Journal(companyId, paymentId)) {
       skippedPf14Chain++;
+      _skippedPaymentIds.add(paymentId);
       if (import.meta.env?.DEV) {
         console.warn(
           '[paymentAdjustmentService] Skip payment_account sync: PF-14 account-change JEs exist (primary JE liquidity stale vs payments row):',

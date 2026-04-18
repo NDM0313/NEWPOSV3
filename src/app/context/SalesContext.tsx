@@ -1553,46 +1553,80 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             }
           }
 
+          // Fetch existing edit movements for this sale to consolidate (avoid duplicate entries)
+          const { supabase: sbEditMov } = await import('@/lib/supabase');
+          const { data: existingEditMovements } = await sbEditMov
+            .from('stock_movements')
+            .select('id, product_id, variation_id, quantity, unit_cost, total_cost, notes')
+            .eq('reference_type', 'sale')
+            .eq('reference_id', id)
+            .eq('movement_type', 'sale')
+            .like('notes', '%Sale Edit%');
+          const existingEditMap = new Map<string, any>();
+          for (const em of existingEditMovements || []) {
+            const key = `${(em as any).product_id}_${(em as any).variation_id || 'null'}`;
+            existingEditMap.set(key, em);
+          }
+
           for (const delta of stockMovementDeltas) {
             try {
               // deltaQty > 0 means item was removed/reduced → restore stock (positive movement)
               // deltaQty < 0 means item was added/increased → reduce stock (negative movement)
-              const movementQty = -delta.deltaQty; // Negate because: if deltaQty is positive (item removed), we restore stock (positive movement)
-              
-              console.log('[SALES CONTEXT] Creating stock movement for delta:', {
-                product_id: delta.productId,
-                variation_id: delta.variationId,
-                deltaQty: delta.deltaQty,
-                movementQty: movementQty,
-                sale_id: id
-              });
-              
-              // Create stock movement
-              const movement = await productService.createStockMovement({
-                company_id: companyId,
-                branch_id: effectiveBranchId === 'all' ? undefined : effectiveBranchId,
-                product_id: delta.productId,
-                variation_id: delta.variationId,
-                movement_type: 'sale',
-                quantity: movementQty, // Positive = restore stock, Negative = reduce stock
-                unit_cost: editCostMap.get(delta.productId) || delta.price,
-                total_cost: movementQty * (editCostMap.get(delta.productId) || delta.price),
-                reference_type: 'sale',
-                reference_id: id,
-                notes: `Sale Edit ${saleInvoiceNo} - ${delta.name}${delta.variationId ? ' (Variation)' : ''} - Delta: ${delta.deltaQty > 0 ? 'Restore' : 'Reduce'}`,
-                created_by: updateCreatedByAuthId,
-              });
-              
-              if (!movement || !movement.id) {
-                throw new Error(`Stock movement creation returned null for product ${delta.productId}`);
+              const movementQty = -delta.deltaQty;
+              const editKey = `${delta.productId}_${delta.variationId || 'null'}`;
+              const existing = existingEditMap.get(editKey);
+
+              if (existing) {
+                // Consolidate: accumulate delta into existing edit movement
+                const newQty = (Number(existing.quantity) || 0) + movementQty;
+                const unitCost = editCostMap.get(delta.productId) || delta.price;
+                if (Math.abs(newQty) < 0.001) {
+                  // Net zero — remove the edit movement entirely
+                  await sbEditMov.from('stock_movements').delete().eq('id', existing.id);
+                  console.log('[SALES CONTEXT] ✅ Stock edit movement net-zero, removed:', delta.name);
+                } else {
+                  await sbEditMov.from('stock_movements').update({
+                    quantity: newQty,
+                    unit_cost: unitCost,
+                    total_cost: Math.abs(newQty) * unitCost,
+                    notes: `Sale Edit ${saleInvoiceNo} - ${delta.name}${delta.variationId ? ' (Variation)' : ''} (accumulated)`,
+                  }).eq('id', existing.id);
+                  console.log('[SALES CONTEXT] ✅ Stock edit movement consolidated:', delta.name, 'New qty:', newQty);
+                }
+              } else {
+                // No existing edit movement — create new one
+                console.log('[SALES CONTEXT] Creating stock movement for delta:', {
+                  product_id: delta.productId,
+                  variation_id: delta.variationId,
+                  deltaQty: delta.deltaQty,
+                  movementQty: movementQty,
+                  sale_id: id
+                });
+
+                const movement = await productService.createStockMovement({
+                  company_id: companyId,
+                  branch_id: effectiveBranchId === 'all' ? undefined : effectiveBranchId,
+                  product_id: delta.productId,
+                  variation_id: delta.variationId,
+                  movement_type: 'sale',
+                  quantity: movementQty,
+                  unit_cost: editCostMap.get(delta.productId) || delta.price,
+                  total_cost: movementQty * (editCostMap.get(delta.productId) || delta.price),
+                  reference_type: 'sale',
+                  reference_id: id,
+                  notes: `Sale Edit ${saleInvoiceNo} - ${delta.name}${delta.variationId ? ' (Variation)' : ''} - Delta: ${delta.deltaQty > 0 ? 'Restore' : 'Reduce'}`,
+                  created_by: updateCreatedByAuthId,
+                });
+
+                if (!movement || !movement.id) {
+                  throw new Error(`Stock movement creation returned null for product ${delta.productId}`);
+                }
+                console.log('[SALES CONTEXT] ✅ Stock movement created for delta:', delta.name, 'Movement ID:', movement.id, 'Qty:', movementQty);
               }
-              
-              console.log('[SALES CONTEXT] ✅ Stock movement created for delta:', delta.name, 'Movement ID:', movement.id, 'Qty:', movementQty);
             } catch (movementError: any) {
               const errorMsg = `Failed to create stock movement for ${delta.name}: ${movementError.message || movementError}`;
               console.error('[SALES CONTEXT] ❌', errorMsg);
               stockMovementErrors.push(errorMsg);
-              // Continue with other deltas even if one fails
             }
           }
           

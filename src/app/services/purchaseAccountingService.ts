@@ -35,6 +35,35 @@ function sumCharges(
   }, 0);
 }
 
+/** Human-readable label for purchase extra-charge `charge_type` (journal line + statements). */
+function purchaseLedgerChargeLabel(typeRaw: string): string {
+  const t = String(typeRaw || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_');
+  const labels: Record<string, string> = {
+    freight: 'Freight / shipping',
+    shipping: 'Freight / shipping',
+    cargo: 'Cargo',
+    courier: 'Courier',
+    loading: 'Loading',
+    unloading: 'Unloading',
+    labor: 'Labor',
+    labour: 'Labor',
+    stitching: 'Stitching',
+    stitch: 'Stitching',
+    handling: 'Handling',
+    insurance: 'Insurance',
+    demurrage: 'Demurrage',
+    customs: 'Customs / duty',
+    duty: 'Customs / duty',
+    discount: 'Discount',
+    other: 'Other charge',
+  };
+  if (!t) return 'Extra charge';
+  return labels[t] || t.replace(/_/g, ' ');
+}
+
 /** Build accounting snapshot from purchase row + charges for delta comparison. */
 export function getPurchaseAccountingSnapshot(purchase: {
   total?: number;
@@ -249,16 +278,17 @@ export async function createPurchaseJournalEntry(params: {
   for (const c of charges) {
     const amount = Number(c?.amount ?? 0);
     const type = String(c?.charge_type ?? c?.chargeType ?? '').toLowerCase();
+    const chargeLabel = purchaseLedgerChargeLabel(type);
     if (amount <= 0) continue;
     if (type === 'discount' && discountAccountId) {
       lines.push(
-        { id: '', journal_entry_id: '', account_id: apAccountId, debit: amount, credit: 0, description: 'Purchase discount' },
-        { id: '', journal_entry_id: '', account_id: discountAccountId, debit: 0, credit: amount, description: 'Discount received' },
+        { id: '', journal_entry_id: '', account_id: apAccountId, debit: amount, credit: 0, description: 'Purchase discount (purchase)' },
+        { id: '', journal_entry_id: '', account_id: discountAccountId, debit: 0, credit: amount, description: 'Discount received (purchase)' },
       );
     } else {
       lines.push(
-        { id: '', journal_entry_id: '', account_id: inventoryAccountId, debit: amount, credit: 0, description: `${type || 'charge'} (purchase)` },
-        { id: '', journal_entry_id: '', account_id: apAccountId, debit: 0, credit: amount, description: `Payable - ${type || 'charge'}` },
+        { id: '', journal_entry_id: '', account_id: inventoryAccountId, debit: amount, credit: 0, description: `${chargeLabel} (purchase)` },
+        { id: '', journal_entry_id: '', account_id: apAccountId, debit: 0, credit: amount, description: `Payable - ${chargeLabel}` },
       );
     }
   }

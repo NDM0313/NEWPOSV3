@@ -8,6 +8,7 @@ interface ReportActionsProps {
   onPrint?: () => void;
   onPdf?: () => void;
   onExcel?: () => void;
+  onCsv?: () => void;
   onWhatsapp?: () => void;
   className?: string;
 }
@@ -17,6 +18,7 @@ export const ReportActions = ({
   onPrint = () => window.print(), 
   onPdf, 
   onExcel, 
+  onCsv,
   onWhatsapp,
   className 
 }: ReportActionsProps) => {
@@ -59,6 +61,18 @@ export const ReportActions = ({
           <FileSpreadsheet size={16} className="text-green-400" />
           <span className="hidden sm:inline">Excel</span>
         </Button>
+
+        {onCsv && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onCsv}
+            className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 gap-2"
+          >
+            <FileText size={16} className="text-cyan-400" />
+            <span className="hidden sm:inline">CSV</span>
+          </Button>
+        )}
         
         <Button 
           variant="outline" 

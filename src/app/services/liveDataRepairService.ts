@@ -282,6 +282,120 @@ export async function getLiveDataRepairSummary(companyId: string): Promise<LiveD
   };
 }
 
+/**
+ * Rebuild purchase document JE lines for a specific purchase.
+ * Fixes the duplicate-amount bug where freight+subtotal lines got the same value.
+ */
+export async function rebuildPurchaseDocumentJELines(companyId: string, purchaseId: string): Promise<{ success: boolean; error?: string }> {
+  const { purchaseAccountingService: pac } = await import('@/app/services/purchaseAccountingService');
+  const { data: purchase } = await supabase.from('purchases').select('*, purchase_charges(charge_type, amount)').eq('id', purchaseId).maybeSingle();
+  if (!purchase) return { success: false, error: 'Purchase not found' };
+
+  const snapshot = pac.getPurchaseAccountingSnapshot(purchase);
+
+  // Find the canonical purchase document JE
+  const { data: je } = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('reference_type', 'purchase')
+    .eq('reference_id', purchaseId)
+    .is('payment_id', null)
+    .or('is_void.is.null,is_void.eq.false')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!je?.id) return { success: false, error: 'No active purchase document JE found' };
+
+  // Resolve accounts
+  const getAccId = async (code: string) => {
+    const { data } = await supabase.from('accounts').select('id').eq('code', code).eq('company_id', companyId).eq('is_active', true).maybeSingle();
+    return data?.id as string | null;
+  };
+  const inventoryId = await getAccId('1200');
+  const discountId = await getAccId('5210') || await getAccId('6100');
+  const supplierId = (purchase as any).supplier_id;
+  let apAccountId: string | null = null;
+  if (supplierId) {
+    const { resolvePayablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+    apAccountId = await resolvePayablePostingAccountId(companyId, supplierId);
+  }
+  if (!apAccountId) apAccountId = await getAccId('2000');
+  if (!inventoryId || !apAccountId) return { success: false, error: 'Missing inventory or AP account' };
+
+  // Delete old lines and insert correct ones
+  await supabase.from('journal_entry_lines').delete().eq('journal_entry_id', je.id);
+  const poNo = (purchase as any).po_no || `PUR-${purchaseId.slice(0, 8)}`;
+  const supplierName = (purchase as any).supplier_name || 'Supplier';
+  const lines: { journal_entry_id: string; account_id: string; debit: number; credit: number; description: string }[] = [];
+  if (snapshot.subtotal > 0) {
+    lines.push(
+      { journal_entry_id: je.id, account_id: inventoryId, debit: snapshot.subtotal, credit: 0, description: `Inventory purchase ${poNo}` },
+      { journal_entry_id: je.id, account_id: apAccountId, debit: 0, credit: snapshot.subtotal, description: `Payable — ${supplierName}` },
+    );
+  }
+  if (snapshot.otherCharges > 0) {
+    lines.push(
+      { journal_entry_id: je.id, account_id: inventoryId, debit: snapshot.otherCharges, credit: 0, description: `Freight (purchase)` },
+      { journal_entry_id: je.id, account_id: apAccountId, debit: 0, credit: snapshot.otherCharges, description: `Payable — freight` },
+    );
+  }
+  if (snapshot.discount > 0 && discountId) {
+    lines.push(
+      { journal_entry_id: je.id, account_id: apAccountId, debit: snapshot.discount, credit: 0, description: `Purchase discount` },
+      { journal_entry_id: je.id, account_id: discountId, debit: 0, credit: snapshot.discount, description: `Discount received` },
+    );
+  }
+  if (lines.length > 0) await supabase.from('journal_entry_lines').insert(lines);
+
+  // Clean description
+  const ts = new Date().toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
+  await supabase.from('journal_entries').update({
+    description: `Purchase ${poNo} from ${supplierName} [Rebuilt ${ts}]`
+  }).eq('id', je.id);
+
+  return { success: true };
+}
+
+/**
+ * Void all legacy adjustment JEs (sale_adjustment, purchase_adjustment, payment_adjustment)
+ * that were created before the in-place edit system. Sets is_void = true.
+ */
+export async function previewLegacyAdjustmentJEs(companyId: string) {
+  const legacyTypes = ['sale_adjustment', 'purchase_adjustment', 'payment_adjustment'];
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .select('id, entry_no, reference_type, description, created_at')
+    .eq('company_id', companyId)
+    .in('reference_type', legacyTypes)
+    .or('is_void.is.null,is_void.eq.false')
+    .order('created_at', { ascending: false });
+  return { entries: data || [], error: error?.message || null };
+}
+
+export async function voidLegacyAdjustmentJEs(
+  companyId: string
+): Promise<{ voided: number; errors: string[] }> {
+  const { entries, error: fetchErr } = await previewLegacyAdjustmentJEs(companyId);
+  if (fetchErr) return { voided: 0, errors: [fetchErr] };
+  if (!entries.length) return { voided: 0, errors: [] };
+
+  let voided = 0;
+  const errors: string[] = [];
+  for (const je of entries) {
+    const { error: voidErr } = await supabase
+      .from('journal_entries')
+      .update({
+        is_void: true,
+        description: `${((je as any).description || '')} [VOIDED: legacy adjustment, superseded by in-place edits]`.slice(0, 500),
+      })
+      .eq('id', (je as any).id);
+    if (voidErr) errors.push(`${(je as any).entry_no || (je as any).id}: ${voidErr.message}`);
+    else voided++;
+  }
+  return { voided, errors };
+}
+
 export const liveDataRepairService = {
   getUnbalancedJournalEntries,
   getAccountBalanceMismatches,
@@ -290,4 +404,7 @@ export const liveDataRepairService = {
   getReceivablesReconciliation,
   getPayablesReconciliation,
   getLiveDataRepairSummary,
+  previewLegacyAdjustmentJEs,
+  voidLegacyAdjustmentJEs,
+  rebuildPurchaseDocumentJELines,
 };

@@ -1054,38 +1054,72 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           const purchaseForStock = purchase || getPurchaseById(id);
           const purchasePoNo = purchaseForStock?.purchaseNo || id;
           
+          // Fetch existing edit movements for this purchase to consolidate (avoid duplicate entries)
+          const { supabase: sbEditMov } = await import('@/lib/supabase');
+          const { data: existingEditMovements } = await sbEditMov
+            .from('stock_movements')
+            .select('id, product_id, variation_id, quantity, unit_cost, total_cost, notes')
+            .eq('reference_type', 'purchase')
+            .eq('reference_id', id)
+            .eq('movement_type', 'purchase')
+            .like('notes', '%Purchase Edit%');
+          const existingEditMap = new Map<string, any>();
+          for (const em of existingEditMovements || []) {
+            const key = `${(em as any).product_id}_${(em as any).variation_id || 'null'}`;
+            existingEditMap.set(key, em);
+          }
+
           for (const delta of stockMovementDeltas) {
             try {
-              // For purchase: deltaQty > 0 means item added/increased → increase stock (positive movement)
-              //               deltaQty < 0 means item removed/reduced → decrease stock (negative movement)
-              const movementQty = delta.deltaQty; // For purchase, deltaQty directly represents stock change
-              
-              console.log('[PURCHASE CONTEXT] Creating stock movement for delta:', {
-                product_id: delta.productId,
-                variation_id: delta.variationId,
-                deltaQty: delta.deltaQty,
-                movementQty: movementQty,
-                purchase_id: id
-              });
-              
-              // Create stock movement
-              const movement = await productService.createStockMovement({
-                company_id: companyId,
-                branch_id: effectiveBranchId === 'all' ? undefined : effectiveBranchId,
-                product_id: delta.productId,
-                variation_id: delta.variationId,
-                movement_type: 'purchase',
-                quantity: movementQty, // Positive for stock IN, negative for stock OUT
-                unit_cost: delta.price || 0,
-                total_cost: (delta.price || 0) * Math.abs(movementQty),
-                reference_type: 'purchase',
-                reference_id: id,
-                notes: `Purchase Edit ${purchasePoNo} - ${delta.name}${delta.variationId ? ' (Variation)' : ''}`,
-                created_by: user?.id,
-              });
-              
-              if (!movement || !movement.id) {
-                stockMovementErrors.push(`Failed to create stock movement for ${delta.name}`);
+              const movementQty = delta.deltaQty;
+              const editKey = `${delta.productId}_${delta.variationId || 'null'}`;
+              const existing = existingEditMap.get(editKey);
+
+              if (existing) {
+                // Consolidate: accumulate delta into existing edit movement
+                const newQty = (Number(existing.quantity) || 0) + movementQty;
+                const unitCost = delta.price || 0;
+                if (Math.abs(newQty) < 0.001) {
+                  // Net zero — remove the edit movement entirely
+                  await sbEditMov.from('stock_movements').delete().eq('id', existing.id);
+                  console.log('[PURCHASE CONTEXT] ✅ Stock edit movement net-zero, removed:', delta.name);
+                } else {
+                  await sbEditMov.from('stock_movements').update({
+                    quantity: newQty,
+                    unit_cost: unitCost,
+                    total_cost: Math.abs(newQty) * unitCost,
+                    notes: `Purchase Edit ${purchasePoNo} - ${delta.name}${delta.variationId ? ' (Variation)' : ''} (accumulated)`,
+                  }).eq('id', existing.id);
+                  console.log('[PURCHASE CONTEXT] ✅ Stock edit movement consolidated:', delta.name, 'New qty:', newQty);
+                }
+              } else {
+                // No existing edit movement — create new one
+                console.log('[PURCHASE CONTEXT] Creating stock movement for delta:', {
+                  product_id: delta.productId,
+                  variation_id: delta.variationId,
+                  deltaQty: delta.deltaQty,
+                  movementQty: movementQty,
+                  purchase_id: id
+                });
+
+                const movement = await productService.createStockMovement({
+                  company_id: companyId,
+                  branch_id: effectiveBranchId === 'all' ? undefined : effectiveBranchId,
+                  product_id: delta.productId,
+                  variation_id: delta.variationId,
+                  movement_type: 'purchase',
+                  quantity: movementQty,
+                  unit_cost: delta.price || 0,
+                  total_cost: (delta.price || 0) * Math.abs(movementQty),
+                  reference_type: 'purchase',
+                  reference_id: id,
+                  notes: `Purchase Edit ${purchasePoNo} - ${delta.name}${delta.variationId ? ' (Variation)' : ''}`,
+                  created_by: user?.id,
+                });
+
+                if (!movement || !movement.id) {
+                  stockMovementErrors.push(`Failed to create stock movement for ${delta.name}`);
+                }
               }
             } catch (movementError: any) {
               console.error(`[PURCHASE CONTEXT] Error creating stock movement for ${delta.name}:`, movementError);
@@ -1163,36 +1197,47 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
               }
               if (!apAccountId) apAccountId = await getAccId('2000');
 
-              // Get JE lines and update each
-              const { data: jeLines } = await sbPur.from('journal_entry_lines').select('id, account_id, debit, credit').eq('journal_entry_id', jeId);
+              // Rebuild JE lines: delete old lines and insert fresh correct ones
+              // (the old per-line update was buggy: freight+subtotal lines shared same account_id
+              //  so both got the same amount, doubling the JE)
+              await sbPur.from('journal_entry_lines').delete().eq('journal_entry_id', jeId);
 
-              for (const line of (jeLines || []) as any[]) {
-                const accId = line.account_id;
-                if (accId === inventoryId) {
-                  if (line.debit > 0) {
-                    // Inventory DR = subtotal + shipping
-                    await sbPur.from('journal_entry_lines').update({ debit: newSnapshot.subtotal + newSnapshot.otherCharges }).eq('id', line.id);
-                  } else if (line.credit > 0 && newSnapshot.otherCharges > 0) {
-                    // Freight DR line
-                    await sbPur.from('journal_entry_lines').update({ debit: newSnapshot.otherCharges, credit: 0 }).eq('id', line.id);
-                  }
-                } else if (accId === apAccountId || accId === (await getAccId('2000'))) {
-                  if (line.credit > 0) {
-                    // AP CR = subtotal + shipping
-                    await sbPur.from('journal_entry_lines').update({ credit: newSnapshot.subtotal + newSnapshot.otherCharges }).eq('id', line.id);
-                  } else if (line.debit > 0) {
-                    // AP DR (discount)
-                    await sbPur.from('journal_entry_lines').update({ debit: newSnapshot.discount }).eq('id', line.id);
-                  }
-                } else if (discountId && accId === discountId && line.credit > 0) {
-                  await sbPur.from('journal_entry_lines').update({ credit: newSnapshot.discount }).eq('id', line.id);
-                }
+              const newLines: { journal_entry_id: string; account_id: string; debit: number; credit: number; description: string }[] = [];
+              const itemsSubtotal = newSnapshot.subtotal;
+              const freight = newSnapshot.otherCharges;
+              const discount = newSnapshot.discount;
+
+              // DR Inventory = subtotal (items)
+              if (itemsSubtotal > 0) {
+                newLines.push({ journal_entry_id: jeId, account_id: inventoryId!, debit: itemsSubtotal, credit: 0, description: `Inventory purchase ${poNo}` });
+              }
+              // CR AP = subtotal (items)
+              if (itemsSubtotal > 0) {
+                newLines.push({ journal_entry_id: jeId, account_id: apAccountId!, debit: 0, credit: itemsSubtotal, description: `Payable — ${(updated as any).supplier_name || 'Supplier'}` });
+              }
+              // DR Inventory = freight, CR AP = freight (if any)
+              if (freight > 0) {
+                newLines.push(
+                  { journal_entry_id: jeId, account_id: inventoryId!, debit: freight, credit: 0, description: `Freight (purchase)` },
+                  { journal_entry_id: jeId, account_id: apAccountId!, debit: 0, credit: freight, description: `Payable — freight` },
+                );
+              }
+              // DR AP = discount, CR Discount Received (if any)
+              if (discount > 0 && discountId) {
+                newLines.push(
+                  { journal_entry_id: jeId, account_id: apAccountId!, debit: discount, credit: 0, description: `Purchase discount` },
+                  { journal_entry_id: jeId, account_id: discountId, debit: 0, credit: discount, description: `Discount received` },
+                );
+              }
+              if (newLines.length > 0) {
+                await sbPur.from('journal_entry_lines').insert(newLines);
               }
 
-              // Log edit
+              // Log edit — replace any prior [Edited...] tag to avoid accumulating stale history
               const ts = new Date().toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
               const editLog = `[Edited ${ts}: Total Rs ${oldPurchaseSnapshot.total.toLocaleString()} → Rs ${newSnapshot.total.toLocaleString()}]`;
-              await sbPur.from('journal_entries').update({ description: `${purJe.description || ''} ${editLog}`.slice(0, 500) }).eq('id', jeId);
+              const baseDesc = (purJe.description || '').replace(/\s*\[Edited[^\]]*\]/g, '').trim();
+              await sbPur.from('journal_entries').update({ description: `${baseDesc} ${editLog}`.slice(0, 500) }).eq('id', jeId);
 
               console.log('[PURCHASE CONTEXT] In-place updated purchase JE', jeId, 'for', poNo);
               if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));

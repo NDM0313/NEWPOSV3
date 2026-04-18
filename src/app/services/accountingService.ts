@@ -470,7 +470,7 @@ async function fetchSupplierApGlJournalLedgerLegacy(
       created_at: entry.created_at,
       reference_number: entry.entry_no || entry.id?.slice(0, 8) || '—',
       entry_no: entry.entry_no,
-      description: entry.description || line.description || '—',
+      description: mergeLedgerEntryDescriptionForStatement(entry.reference_type, entry.description, line.description),
       debit,
       credit,
       running_balance: runningBalance,
@@ -539,6 +539,49 @@ function pickLatestJournalEntryRow<T extends { is_void?: boolean | null; created
     if (tb !== ta) return tb - ta;
     return String(b.id).localeCompare(String(a.id));
   })[0];
+}
+
+/**
+ * Statement list shows one description per line; purchase document JEs set a generic header on the entry
+ * ("Purchase PUR-… from …") while charge-specific text lives on journal lines (freight (purchase), Payable - cargo, …).
+ * Append the line narration when it encodes an extra charge / discount leg so Account Statements read clearly.
+ */
+function mergeLedgerEntryDescriptionForStatement(
+  referenceType: string | null | undefined,
+  entryDescription: string | null | undefined,
+  lineDescription: string | null | undefined
+): string {
+  const ed = String(entryDescription || '').trim();
+  const ld = String(lineDescription || '').trim();
+  const rt = String(referenceType || '').toLowerCase();
+
+  if (!ed && !ld) return '—';
+  if (!ld) return ed || '—';
+  if (!ed) return ld;
+
+  const edL = ed.toLowerCase();
+  const ldL = ld.toLowerCase();
+  if (ldL === edL || edL.includes(ldL)) return ed;
+
+  const append = () => `${ed} — ${ld}`;
+
+  if (rt === 'purchase' || rt === 'purchase_adjustment') {
+    const isChargeOrDiscountLine =
+      /\((purchase|adj)\)\s*$/i.test(ld) ||
+      /^payable\s*[-–]\s*\S+/i.test(ld) ||
+      /\bpurchase\s+discount\b/i.test(ld) ||
+      /^discount\s+received\b/i.test(ld) ||
+      (rt === 'purchase_adjustment' &&
+        (/\bfreight\/extra\b/i.test(ld) || /\bap\b.*\bfreight\b/i.test(ld) || /\bfreight\b.*\brs\b/i.test(ld)));
+    if (isChargeOrDiscountLine) return append();
+  }
+  if (rt === 'purchase_reversal') {
+    if (/^reversal:\s*/i.test(ld) || /\((purchase|adj)\)\s*$/i.test(ld) || /^payable\s*[-–]\s*\S+/i.test(ld)) {
+      return append();
+    }
+  }
+
+  return ed;
 }
 
 export const accountingService = {
@@ -1776,7 +1819,11 @@ export const accountingService = {
         if (searchTerm && searchTerm.trim()) {
           const search = searchTerm.toLowerCase().trim();
           const entryNo = entry.entry_no?.toLowerCase() || '';
-          const description = (entry.description || line.description || '').toLowerCase();
+          const description = mergeLedgerEntryDescriptionForStatement(
+            entry.reference_type,
+            entry.description,
+            line.description
+          ).toLowerCase();
           const amount = ((line.debit || 0) + (line.credit || 0)).toString();
           
           if (!entryNo.includes(search) && 
@@ -1930,10 +1977,10 @@ export const accountingService = {
             }
           }
 
-          let description = entry.description || line.description || '';
+          let description = mergeLedgerEntryDescriptionForStatement(entry.reference_type, entry.description, line.description);
           if (refType === 'correction_reversal') {
             const origNo = entry.reference_id ? reversedEntryNoByJeId.get(entry.reference_id) : '';
-            const base = (entry.description || line.description || '').trim();
+            const base = description.trim();
             if (origNo) {
               description = base.toLowerCase().includes('reversal of')
                 ? base
@@ -2502,7 +2549,7 @@ export const accountingService = {
           // CRITICAL: Store actual entry_no from database (for lookup)
           // If entry_no exists in DB, use it. Otherwise, use referenceNumber (which is generated from entry_no or UUID)
           entry_no: entry.entry_no || null, // Keep actual DB entry_no, don't fallback to generated referenceNumber
-          description: entry.description || line.description || 'Journal Entry',
+          description: mergeLedgerEntryDescriptionForStatement(entry.reference_type, entry.description, line.description) || 'Journal Entry',
           // STEP 1: DIRECT mapping - NO Math.abs(), NO conditionals
           debit: finalDebit,
           credit: finalCredit,
@@ -3085,7 +3132,7 @@ export const accountingService = {
           created_at: entry.created_at,
           reference_number: entry.entry_no || entry.id?.slice(0, 8) || '—',
           entry_no: entry.entry_no,
-          description: `${nameById.get(aid) || line.account?.name || code} — ${entry.description || line.description || '—'}`,
+          description: `${nameById.get(aid) || line.account?.name || code} — ${mergeLedgerEntryDescriptionForStatement(entry.reference_type, entry.description, line.description)}`,
           debit,
           credit,
           running_balance: runningBalance,

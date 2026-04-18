@@ -52,6 +52,7 @@ export interface Expense {
   /** Chart payment account UUID when stored on the expense row */
   paymentAccountId?: string;
   payeeName: string;
+  paidToUserId?: string;
   location: string;
   status: ExpenseStatus;
   submittedBy: string;
@@ -176,6 +177,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         supabaseExpense.supplier_name ||
         supabaseExpense.payee_name ||
         '',
+      paidToUserId: supabaseExpense.paid_to_user_id || undefined,
       location: supabaseExpense.branch_id || '',
       status: supabaseExpense.status || 'draft',
       submittedBy: supabaseExpense.created_by_user?.full_name || supabaseExpense.created_by || '',

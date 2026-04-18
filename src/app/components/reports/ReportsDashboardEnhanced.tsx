@@ -10,6 +10,7 @@ import {
   DollarSign,
   ShoppingCart,
   Package,
+  ShoppingBag,
   Calendar,
   Download,
   FileText,
@@ -49,6 +50,8 @@ import { BalanceSheetPage } from './BalanceSheetPage';
 import { SalesProfitPage } from './SalesProfitPage';
 import { InventoryValuationPage } from './InventoryValuationPage';
 import { CommissionReportPage } from './CommissionReportPage';
+import { ProductLedger } from './ProductLedger';
+import { ProductSellReportPage } from './ProductSellReportPage';
 import {
   accountingReportsService,
   type ProfitLossResult,
@@ -93,7 +96,9 @@ export const ReportsDashboardEnhanced = () => {
     setCurrentModule('reports');
   }, [setCurrentModule]);
 
-  const [reportType, setReportType] = useState<'overview' | 'sales' | 'purchases' | 'expenses' | 'financial' | 'commission'>('overview');
+  const [reportType, setReportType] = useState<
+    'overview' | 'sales' | 'purchases' | 'expenses' | 'financial' | 'commission' | 'product-ledger' | 'product-sell'
+  >('overview');
   /** Overview tab: operational document flow vs canonical GL snapshot (same period as global filter). */
   const [overviewBasis, setOverviewBasis] = useState<'operational' | 'financial_gl'>('operational');
   const [glOverviewLoading, setGlOverviewLoading] = useState(false);
@@ -461,6 +466,8 @@ export const ReportsDashboardEnhanced = () => {
               { key: 'expenses', label: 'Expenses', icon: DollarSign },
               { key: 'financial', label: 'Financial', icon: FileText },
               { key: 'commission', label: 'Commission', icon: Users },
+              { key: 'product-ledger', label: 'Product Ledger', icon: Package },
+              { key: 'product-sell', label: 'Product Sell', icon: ShoppingBag },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -941,6 +948,18 @@ export const ReportsDashboardEnhanced = () => {
             startDate={reportStartDate}
             endDate={reportEndDate}
             branchId={branchId === 'all' ? null : branchId}
+          />
+        )}
+
+        {reportType === 'product-ledger' && (
+          <ProductLedger />
+        )}
+
+        {reportType === 'product-sell' && (
+          <ProductSellReportPage
+            startDate={reportStartDate}
+            endDate={reportEndDate}
+            branchId={branchId && branchId !== 'all' ? branchId : undefined}
           />
         )}
 

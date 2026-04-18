@@ -32,6 +32,29 @@ import {
   editTargetTypeLabel,
 } from '@/app/lib/accountFlowPresentation';
 
+/** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
+const PARTY_BAL_EPS = 0.005;
+
+type PartyBalanceAttention = 'none' | 'customer_ar_credit' | 'supplier_ap_credit';
+
+function partyBalanceAttention(mode: AccountingStatementMode, balance: number): PartyBalanceAttention {
+  const b = Number(balance);
+  if (!Number.isFinite(b)) return 'none';
+  if (mode === 'customer' && b < -PARTY_BAL_EPS) return 'customer_ar_credit';
+  if (mode === 'supplier' && b < -PARTY_BAL_EPS) return 'supplier_ap_credit';
+  return 'none';
+}
+
+function partyBalanceAttentionTitle(kind: PartyBalanceAttention): string | undefined {
+  if (kind === 'customer_ar_credit') {
+    return 'Credit (negative) receivable: you may owe the customer — refund due, advance, or unapplied credit. Review receipts and AR.';
+  }
+  if (kind === 'supplier_ap_credit') {
+    return 'Negative payables: prepaid supplier, supplier credit, or net recoverable — review whether collection or offset applies.';
+  }
+  return undefined;
+}
+
 function formatLiquidityAccountLabel(a: { name?: string | null; code?: string | null }): string {
   const name = String(a.name || '').trim();
   const code = String(a.code || '').trim();
@@ -1011,6 +1034,9 @@ export const AccountLedgerReportPage: React.FC<{
     return { openingBalance, totalDebit, totalCredit, closingBalance, netMovement, txCount: rowsNoOpening.length };
   }, [presentedEntries, applied.statementType]);
 
+  const openingBalanceAttention = partyBalanceAttention(applied.statementType, summary.openingBalance);
+  const closingBalanceAttention = partyBalanceAttention(applied.statementType, summary.closingBalance);
+
   const sourceModules = useMemo(
     () => ['all', ...Array.from(new Set(entries.map((e) => normalizeLower(e.source_module)).filter(Boolean)))],
     [entries]
@@ -1037,13 +1063,12 @@ export const AccountLedgerReportPage: React.FC<{
         'To account',
         'Economic meaning',
         'Economic event id',
-        'Source type (JE)',
-        'Edit target type',
+        'JE link type (human + raw code)',
         'Settlement / payment account',
         'Debit',
         'Credit',
         'Balance',
-        'Status/Source',
+        'Document type',
       ],
       rows: presentedEntries.map((e) => {
         const flow = deriveFromToForLedgerLine(e);
@@ -1060,8 +1085,13 @@ export const AccountLedgerReportPage: React.FC<{
           flow.to,
           netEconomicMeaning(e, e.presentationKind),
           e.economic_event_id ? String(e.economic_event_id) : '',
-          e.je_reference_type || '',
-          editTargetTypeLabel(e.je_reference_type),
+          (() => {
+            const raw = String(e.je_reference_type || '').trim();
+            const human = editTargetTypeLabel(e.je_reference_type);
+            if (!raw) return human;
+            if (raw === human || human === '—') return raw;
+            return `${human} (${raw})`;
+          })(),
           settlementAccountExportString(e, paymentSettlementById, settlementColumnOpts),
           e.displayDebit,
           e.displayCredit,
@@ -1356,10 +1386,32 @@ export const AccountLedgerReportPage: React.FC<{
       </p>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3"><p className="text-xs text-gray-400">Opening Balance</p><p className="text-lg font-semibold text-white">{formatCurrency(summary.openingBalance)}</p></div>
+        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
+          <p className="text-xs text-gray-400">Opening Balance</p>
+          <p
+            className={cn(
+              'text-lg font-semibold',
+              openingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-white'
+            )}
+            title={partyBalanceAttentionTitle(openingBalanceAttention)}
+          >
+            {formatCurrency(summary.openingBalance)}
+          </p>
+        </div>
         <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3"><p className="text-xs text-gray-400">Total Debit</p><p className="text-lg font-semibold text-emerald-400">{formatCurrency(summary.totalDebit)}</p></div>
         <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3"><p className="text-xs text-gray-400">Total Credit</p><p className="text-lg font-semibold text-rose-400">{formatCurrency(summary.totalCredit)}</p></div>
-        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3"><p className="text-xs text-gray-400">Closing Balance</p><p className="text-lg font-semibold text-white">{formatCurrency(summary.closingBalance)}</p></div>
+        <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
+          <p className="text-xs text-gray-400">Closing Balance</p>
+          <p
+            className={cn(
+              'text-lg font-semibold',
+              closingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-white'
+            )}
+            title={partyBalanceAttentionTitle(closingBalanceAttention)}
+          >
+            {formatCurrency(summary.closingBalance)}
+          </p>
+        </div>
         <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3"><p className="text-xs text-gray-400">Transaction Count</p><p className="text-lg font-semibold text-white">{summary.txCount}</p></div>
       </div>
 
@@ -1375,16 +1427,24 @@ export const AccountLedgerReportPage: React.FC<{
                 <th className="p-3 text-left font-medium text-gray-300">Date</th>
                 <th className="p-3 text-left font-medium text-gray-300">Reference</th>
                 <th className="p-3 text-left font-medium text-gray-300">Branch</th>
-                <th className="p-3 text-left font-medium text-gray-300">Module</th>
+                <th className="p-3 text-left font-medium text-gray-300 max-w-[7rem]" title="Which product area posted this line (sales, purchases, accounting, …).">
+                  Module
+                </th>
                 <th className="p-3 text-left font-medium text-gray-300 w-36">Presentation</th>
                 <th className="p-3 text-left font-medium text-gray-300">Contact / Party</th>
-                <th className="p-3 text-left font-medium text-gray-300">Description</th>
+                <th className="p-3 text-left font-medium text-gray-300 min-w-[20rem] w-[24rem] max-w-[32rem]">
+                  Description
+                </th>
                 <th className="p-3 text-left font-medium text-gray-300 max-w-[9rem]">Counter (GL)</th>
                 <th className="p-3 text-left font-medium text-gray-300 max-w-[10rem]">From → To</th>
                 <th className="p-3 text-left font-medium text-gray-300 max-w-[10rem]">Economic meaning</th>
                 <th className="p-3 text-left font-medium text-gray-300">Economic event</th>
-                <th className="p-3 text-left font-medium text-gray-300">Source type</th>
-                <th className="p-3 text-left font-medium text-gray-300">Edit target</th>
+                <th
+                  className="p-3 text-left font-medium text-gray-300 max-w-[9rem]"
+                  title="What business record this journal line is tied to (same information as the former “Source type” + “Edit target” columns, shown once)."
+                >
+                  JE link type
+                </th>
                 <th
                   className="p-3 text-left font-medium text-gray-300 max-w-[14rem]"
                   title="Cash, bank, or wallet from the linked payment record; if none, the offsetting GL account."
@@ -1393,20 +1453,38 @@ export const AccountLedgerReportPage: React.FC<{
                 </th>
                 <th className="p-3 text-right font-medium text-gray-300">Debit</th>
                 <th className="p-3 text-right font-medium text-gray-300">Credit</th>
-                <th className="p-3 text-right font-medium text-gray-300">Balance</th>
-                <th className="p-3 text-left font-medium text-gray-300">Status / Source</th>
+                <th
+                  className="p-3 text-right font-medium text-gray-300"
+                  title={
+                    applied.statementType === 'customer'
+                      ? 'Positive: customer owes you (normal AR). Red row: negative balance — credit in customer’s favour (you may owe them).'
+                      : applied.statementType === 'supplier'
+                        ? 'Positive: you owe supplier (normal AP). Red row: negative — prepaid or net credit from supplier (recoverable / review).'
+                        : undefined
+                  }
+                >
+                  Balance
+                </th>
+                <th
+                  className="p-3 text-left font-medium text-gray-300 max-w-[10rem]"
+                  title="Journal document_type / row state (e.g. Reversed in audit mode). Not the same as Module or JE link type."
+                >
+                  Document type
+                </th>
                 <th className="p-3 text-right font-medium text-gray-300">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
               {presentedEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={19} className="p-6 text-center text-gray-500">
+                  <td colSpan={18} className="p-6 text-center text-gray-500">
                     No transactions in this period.
                   </td>
                 </tr>
               ) : (
-                presentedEntries.map((e, i) => (
+                presentedEntries.map((e, i) => {
+                  const rowBalAtt = partyBalanceAttention(applied.statementType, e.displayRunningBalance);
+                  return (
                   <tr
                     key={`${e.journal_entry_id}-${i}`}
                     className={cn(
@@ -1448,7 +1526,9 @@ export const AccountLedgerReportPage: React.FC<{
                       </div>
                     </td>
                     <td className="p-3 text-gray-400 text-xs">{e.branch_name || e.branch_id || '—'}</td>
-                    <td className="p-3 text-gray-300">{e.source_module || '—'}</td>
+                    <td className="p-3 text-gray-300 max-w-[7rem] break-words" title={e.source_module || undefined}>
+                      {e.source_module || '—'}
+                    </td>
                     <td className="p-3 text-[11px]">
                       <span
                         className={cn(
@@ -1465,7 +1545,9 @@ export const AccountLedgerReportPage: React.FC<{
                       </span>
                     </td>
                     <td className="p-3 text-white">{e.payment_id ? (partyByKey[e.payment_id]?.name || '—') : '—'}</td>
-                    <td className="p-3 text-white">{e.description}</td>
+                    <td className="p-3 text-white min-w-[20rem] w-[24rem] max-w-[32rem] whitespace-normal break-words align-top leading-snug">
+                      {e.description}
+                    </td>
                     <td className="p-3 text-xs text-gray-400 max-w-[9rem] leading-snug">{e.counter_account || '—'}</td>
                     <td className="p-3 text-xs text-gray-300 max-w-[10rem] leading-snug">
                       {(() => {
@@ -1486,8 +1568,21 @@ export const AccountLedgerReportPage: React.FC<{
                     <td className="p-3 text-[10px] font-mono text-gray-500" title={e.economic_event_id ? String(e.economic_event_id) : ''}>
                       {e.economic_event_id ? `${String(e.economic_event_id).slice(0, 8)}…` : '—'}
                     </td>
-                    <td className="p-3 text-[11px] text-gray-400 font-mono">{e.je_reference_type || '—'}</td>
-                    <td className="p-3 text-[11px] text-gray-400">{editTargetTypeLabel(e.je_reference_type)}</td>
+                    <td
+                      className="p-3 text-[11px] text-gray-300 max-w-[9rem] align-top leading-snug"
+                      title={
+                        e.je_reference_type
+                          ? `Raw journal reference type: ${e.je_reference_type}`
+                          : 'No journal reference type on this line'
+                      }
+                    >
+                      <span className="text-gray-200">{editTargetTypeLabel(e.je_reference_type)}</span>
+                      {e.je_reference_type &&
+                      editTargetTypeLabel(e.je_reference_type).replace(/\s/g, '_').toLowerCase() !==
+                        e.je_reference_type.toLowerCase() ? (
+                        <div className="text-[10px] font-mono text-gray-500 mt-0.5 break-all">{e.je_reference_type}</div>
+                      ) : null}
+                    </td>
                     <td className="p-3 max-w-[14rem]">
                       {(() => {
                         const sd = settlementAccountForRow(e, paymentSettlementById, settlementColumnOpts);
@@ -1503,7 +1598,17 @@ export const AccountLedgerReportPage: React.FC<{
                     </td>
                     <td className="p-3 text-right text-gray-300">{e.displayDebit ? formatCurrency(e.displayDebit) : '—'}</td>
                     <td className="p-3 text-right text-gray-300">{e.displayCredit ? formatCurrency(e.displayCredit) : '—'}</td>
-                    <td className="p-3 text-right font-medium text-white">{formatCurrency(e.displayRunningBalance)}</td>
+                    <td
+                      className={cn(
+                        'p-3 text-right tabular-nums',
+                        rowBalAtt === 'none'
+                          ? 'font-medium text-white'
+                          : 'font-semibold text-rose-300 bg-rose-950/35'
+                      )}
+                      title={partyBalanceAttentionTitle(rowBalAtt)}
+                    >
+                      {formatCurrency(e.displayRunningBalance)}
+                    </td>
                     <td className="p-3 text-gray-400 text-xs">{e.displayStatus}</td>
                     <td className="p-3 text-right">
                       {e.journal_entry_id ? (
@@ -1536,7 +1641,8 @@ export const AccountLedgerReportPage: React.FC<{
                       )}
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1549,7 +1655,18 @@ export const AccountLedgerReportPage: React.FC<{
           <div><p className="text-gray-400">Period Debit Total</p><p className="text-emerald-400 font-semibold">{formatCurrency(summary.totalDebit)}</p></div>
           <div><p className="text-gray-400">Period Credit Total</p><p className="text-rose-400 font-semibold">{formatCurrency(summary.totalCredit)}</p></div>
           <div><p className="text-gray-400">Net Movement</p><p className="text-white font-semibold">{formatCurrency(summary.netMovement)}</p></div>
-          <div><p className="text-gray-400">Closing Balance</p><p className="text-white font-semibold">{formatCurrency(summary.closingBalance)}</p></div>
+          <div>
+            <p className="text-gray-400">Closing Balance</p>
+            <p
+              className={cn(
+                'font-semibold',
+                closingBalanceAttention !== 'none' ? 'text-rose-300' : 'text-white'
+              )}
+              title={partyBalanceAttentionTitle(closingBalanceAttention)}
+            >
+              {formatCurrency(summary.closingBalance)}
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -1696,7 +1696,7 @@ export const saleService = {
         }
       }
 
-      // PF-14.1: When only payment account/method changed (Cash → Bank), post JE: Dr new account, Cr old account
+      // PF-14.1: When payment account/method changed (Cash → Bank), update existing JE line's account_id in-place
       const newAccountId = (data as any)?.payment_account_id ?? updates.accountId ?? null;
       if (
         companyId &&
@@ -1706,10 +1706,6 @@ export const saleService = {
         (newAmount != null && newAmount > 0)
       ) {
         try {
-          const { postPaymentAccountAdjustment } = await import('@/app/services/paymentAdjustmentService');
-          const saleRow = await this.getSaleById(saleId).catch(() => null);
-          const invoiceNo = (saleRow as any)?.invoice_no ?? (saleRow as any)?.invoiceNo ?? saleId?.slice(0, 8) ?? 'N/A';
-          const { data: { user } } = await supabase.auth.getUser();
           tracePaymentEditFlow('saleService.updatePayment.post_account_adjust', {
             paymentId,
             saleId,
@@ -1717,19 +1713,47 @@ export const saleService = {
             newAccountId,
             amount: newAmount,
           });
-          await postPaymentAccountAdjustment({
-            context: 'sale',
-            companyId,
-            branchId,
-            paymentId,
-            referenceId: saleId,
-            oldAccountId,
-            newAccountId,
-            amount: newAmount,
-            invoiceNoOrRef: invoiceNo,
-            entryDate: (updates.paymentDate || paymentDate || (data as any)?.payment_date || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
-            createdBy: (user as any)?.id ?? null,
-          });
+          // Find existing primary JE for this payment
+          const { data: existingJe } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('payment_id', paymentId)
+            .or('is_void.is.null,is_void.eq.false')
+            .not('reference_type', 'eq', 'correction_reversal')
+            .not('reference_type', 'eq', 'payment_adjustment')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+          if (existingJe?.id) {
+            // In-place: update the liquidity line's account_id (the line matching oldAccountId)
+            await supabase
+              .from('journal_entry_lines')
+              .update({ account_id: newAccountId })
+              .eq('journal_entry_id', existingJe.id)
+              .eq('account_id', oldAccountId);
+            // Log the account change in JE description
+            const oldDesc = (await supabase.from('journal_entries').select('description').eq('id', existingJe.id).maybeSingle())?.data?.description || '';
+            const ts = new Date().toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
+            await supabase.from('journal_entries').update({
+              description: `${oldDesc} [Acct changed ${ts}: ${oldAccountId.slice(0, 8)} → ${newAccountId.slice(0, 8)}]`.slice(0, 500)
+            }).eq('id', existingJe.id);
+          } else {
+            // Fallback: create adjustment JE if no existing JE found (legacy behavior)
+            const { postPaymentAccountAdjustment } = await import('@/app/services/paymentAdjustmentService');
+            const saleRow = await this.getSaleById(saleId).catch(() => null);
+            const invoiceNo = (saleRow as any)?.invoice_no ?? (saleRow as any)?.invoiceNo ?? saleId?.slice(0, 8) ?? 'N/A';
+            const { data: { user } } = await supabase.auth.getUser();
+            await postPaymentAccountAdjustment({
+              context: 'sale', companyId, branchId, paymentId, referenceId: saleId,
+              oldAccountId, newAccountId, amount: newAmount, invoiceNoOrRef: invoiceNo,
+              entryDate: (updates.paymentDate || paymentDate || (data as any)?.payment_date || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
+              createdBy: (user as any)?.id ?? null,
+            });
+          }
+          // Clear payment sync cache so next sync re-evaluates this payment
+          const { clearSkippedPaymentCache } = await import('@/app/services/paymentAdjustmentService');
+          clearSkippedPaymentCache(paymentId);
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
           }

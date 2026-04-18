@@ -17,6 +17,7 @@ import {
   Scale,
   Search,
   ShieldAlert,
+  Trash2,
   Wrench,
   XCircle,
 } from 'lucide-react';
@@ -173,6 +174,12 @@ export default function DeveloperIntegrityLabPage() {
 
   const [dataRepairLoading, setDataRepairLoading] = useState(false);
   const [dataRepairResult, setDataRepairResult] = useState<string[] | null>(null);
+
+  // M · Void Legacy Adjustments + Rebuild Purchase JE
+  const [legacyAdjCount, setLegacyAdjCount] = useState(0);
+  const [legacyAdjPreview, setLegacyAdjPreview] = useState<any[]>([]);
+  const [rebuildPurId, setRebuildPurId] = useState('');
+  const [rebuildPurLoading, setRebuildPurLoading] = useState(false);
 
   const [postingPreviewLoading, setPostingPreviewLoading] = useState(false);
   const [postingRepairLoading, setPostingRepairLoading] = useState(false);
@@ -693,6 +700,7 @@ export default function DeveloperIntegrityLabPage() {
           <TabsTrigger value="gl-audit">J · GL Audit</TabsTrigger>
           <TabsTrigger value="inv-detail">K · Inventory</TabsTrigger>
           <TabsTrigger value="contact-recon">L · Contact Recon</TabsTrigger>
+          <TabsTrigger value="void-legacy">M · Void Legacy Adj</TabsTrigger>
         </TabsList>
 
         <TabsContent value="trace" className="space-y-4">
@@ -2186,6 +2194,136 @@ export default function DeveloperIntegrityLabPage() {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ───── M · Void Legacy Adjustment JEs ───── */}
+        <TabsContent value="void-legacy" className="space-y-4">
+          <Card className="border-gray-800 bg-gray-900/40">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Trash2 className="h-5 w-5 text-red-400" />
+                Void Legacy Adjustment JEs
+              </CardTitle>
+              <CardDescription>
+                Find and void old sale_adjustment, purchase_adjustment, and payment_adjustment JEs
+                that were created before the in-place edit system. These are superseded by direct JE line updates.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Button
+                  onClick={async () => {
+                    if (!companyId) return;
+                    try {
+                      const { previewLegacyAdjustmentJEs } = await import('@/app/services/liveDataRepairService');
+                      const { entries, error } = await previewLegacyAdjustmentJEs(companyId);
+                      if (error) { toast.error('Preview failed: ' + error); return; }
+                      (window as any).__legacyAdjPreview = entries;
+                      if (entries.length === 0) toast.success('No legacy adjustment JEs found — all clean!');
+                      else toast.info(`Found ${entries.length} legacy adjustment JE(s) to void`);
+                      setLegacyAdjCount(entries.length);
+                      setLegacyAdjPreview(entries.slice(0, 50));
+                    } catch (e: any) { toast.error('Preview failed: ' + e?.message); }
+                  }}
+                  disabled={!companyId}
+                >
+                  <Search className="h-4 w-4 mr-1" />
+                  Preview Legacy Adjustments
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    if (!companyId || !legacyAdjCount) return;
+                    if (!confirm(`Void ${legacyAdjCount} legacy adjustment JE(s)? This sets is_void=true (reversible).`)) return;
+                    try {
+                      const { voidLegacyAdjustmentJEs } = await import('@/app/services/liveDataRepairService');
+                      const { voided, errors } = await voidLegacyAdjustmentJEs(companyId);
+                      toast.success(`Voided ${voided} legacy JEs. Errors: ${errors.length}`);
+                      if (errors.length > 0) console.warn('[VOID LEGACY] Errors:', errors);
+                      setLegacyAdjCount(0);
+                      setLegacyAdjPreview([]);
+                      window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+                    } catch (e: any) { toast.error('Void failed: ' + e?.message); }
+                  }}
+                  disabled={!companyId || !legacyAdjCount}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Void All ({legacyAdjCount || 0})
+                </Button>
+              </div>
+              {legacyAdjPreview.length > 0 && (
+                <div className="rounded-lg border border-gray-800 bg-gray-950/50 overflow-auto max-h-[40vh]">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-gray-900 text-gray-500 uppercase">
+                      <tr>
+                        <th className="text-left p-2">Entry #</th>
+                        <th className="text-left p-2">Type</th>
+                        <th className="text-left p-2">Description</th>
+                        <th className="text-left p-2">Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {legacyAdjPreview.map((je: any, i: number) => (
+                        <tr key={je.id || i} className="border-t border-gray-800/50">
+                          <td className="p-2 font-mono text-amber-300">{je.entry_no || '—'}</td>
+                          <td className="p-2"><Badge className="bg-red-800 text-white text-[10px]">{je.reference_type}</Badge></td>
+                          <td className="p-2 text-gray-400 max-w-[300px] truncate">{je.description || '—'}</td>
+                          <td className="p-2 text-gray-500">{je.created_at ? new Date(je.created_at).toLocaleDateString('en-PK') : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {legacyAdjCount > 50 && <div className="p-2 text-xs text-gray-500 border-t border-gray-800">Showing 50 of {legacyAdjCount}</div>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Rebuild Purchase Document JE */}
+          <Card className="border-gray-800 bg-gray-900/40">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <RefreshCw className="h-5 w-5 text-blue-400" />
+                Rebuild Purchase Document JE
+              </CardTitle>
+              <CardDescription>
+                Fix corrupted purchase JE lines (e.g., duplicate freight/subtotal amounts).
+                Enter the purchase UUID and rebuild its document JE lines from current purchase data.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Purchase UUID (e.g. 610f72e1-fd52-...)"
+                  value={rebuildPurId}
+                  onChange={e => setRebuildPurId(e.target.value.trim())}
+                  className="flex-1 bg-gray-950 border border-gray-700 rounded px-3 py-2 text-sm text-white placeholder:text-gray-600"
+                />
+                <Button
+                  onClick={async () => {
+                    if (!companyId || !rebuildPurId) return;
+                    setRebuildPurLoading(true);
+                    try {
+                      const { rebuildPurchaseDocumentJELines } = await import('@/app/services/liveDataRepairService');
+                      const result = await rebuildPurchaseDocumentJELines(companyId, rebuildPurId);
+                      if (result.success) {
+                        toast.success('Purchase JE rebuilt successfully!');
+                        window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+                      } else {
+                        toast.error('Rebuild failed: ' + (result.error || 'unknown'));
+                      }
+                    } catch (e: any) { toast.error('Rebuild error: ' + e?.message); }
+                    setRebuildPurLoading(false);
+                  }}
+                  disabled={!companyId || !rebuildPurId || rebuildPurLoading}
+                >
+                  {rebuildPurLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                  Rebuild JE Lines
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

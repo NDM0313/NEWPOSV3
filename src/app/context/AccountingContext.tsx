@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilterOptional } from '@/app/context/GlobalFilterContext';
 import { accountService, Account as SupabaseAccount } from '@/app/services/accountService';
@@ -453,6 +453,9 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   const currentUser = user?.email || 'Admin';
   const currentUserId = user?.id;
 
+  // Debounce timer for loadEntries (multiple events fire per action)
+  const loadEntriesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Convert Supabase account format to app format
   const convertFromSupabaseAccount = useCallback((supabaseAccount: any): Account => {
     // CRITICAL FIX: account_type doesn't exist in actual schema, use type instead
@@ -767,6 +770,14 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       
       // Recalculate balances from real entries
       recalculateBalances(convertedEntries);
+
+      // Auto-sync stored account balances to journal truth (debounced via debouncedLoadEntries)
+      try {
+        const { syncAccountsBalanceFromJournal } = await import('@/app/services/liveDataRepairService');
+        await syncAccountsBalanceFromJournal(companyId);
+      } catch (syncBalErr) {
+        if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Balance sync after load:', syncBalErr);
+      }
     } catch (error) {
       console.error('[ACCOUNTING CONTEXT] Error loading journal entries:', error);
       setEntries([]);
@@ -792,11 +803,27 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     setBalances(newBalances);
   }, []);
 
+  // Debounced version of loadEntries — collapses multiple rapid event-driven calls into one
+  const debouncedLoadEntries = useCallback(() => {
+    if (loadEntriesTimerRef.current) clearTimeout(loadEntriesTimerRef.current);
+    loadEntriesTimerRef.current = setTimeout(() => {
+      loadEntriesTimerRef.current = null;
+      loadEntries();
+    }, 300);
+  }, [loadEntries]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (loadEntriesTimerRef.current) clearTimeout(loadEntriesTimerRef.current);
+    };
+  }, []);
+
   // Load accounts and entries on mount and when company/branch/date range changes
   useEffect(() => {
     if (companyId) {
       loadAccounts();
-      loadEntries();
+      loadEntries(); // Direct call on mount — no debounce for initial load
     }
   }, [companyId, branchId, startDateISO, endDateISO, loadAccounts, loadEntries]);
 
@@ -804,29 +831,29 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   useEffect(() => {
     const handlePurchaseDelete = () => {
       console.log('[ACCOUNTING CONTEXT] Purchase deleted, refreshing entries...');
-      loadEntries();
+      debouncedLoadEntries();
     };
-    
+
     const handleSaleDelete = () => {
       console.log('[ACCOUNTING CONTEXT] Sale deleted, refreshing entries...');
-      loadEntries();
+      debouncedLoadEntries();
     };
 
     window.addEventListener('purchaseDeleted', handlePurchaseDelete);
     window.addEventListener('saleDeleted', handleSaleDelete);
-    
+
     return () => {
       window.removeEventListener('purchaseDeleted', handlePurchaseDelete);
       window.removeEventListener('saleDeleted', handleSaleDelete);
     };
-  }, [loadEntries]);
+  }, [debouncedLoadEntries]);
 
   /** Journal / payment flows dispatch `accountingEntriesChanged` — keep context entries + accounts in sync without full reload. */
   useEffect(() => {
     if (!companyId) return;
     const bump = () => {
       void loadAccounts();
-      void loadEntries();
+      void debouncedLoadEntries();
       // Do not dispatch CONTACT_BALANCES_REFRESH here: callers already fire it where needed, and it retriggers
       // listeners (e.g. statement page journalRefreshTick) in the same turn as accountingEntriesChanged/paymentAdded.
     };
@@ -835,7 +862,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       const cid = (ev as CustomEvent<{ companyId?: string }>).detail?.companyId;
       if (cid && cid === companyId) {
         void loadAccounts();
-        void loadEntries();
+        void debouncedLoadEntries();
       }
     };
     window.addEventListener('accountingEntriesChanged', bump);
@@ -848,7 +875,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       window.removeEventListener('ledgerUpdated', bump);
       window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, onContactBalancesRefresh);
     };
-  }, [companyId, loadAccounts, loadEntries]);
+  }, [companyId, loadAccounts, debouncedLoadEntries]);
 
   // ============================================
   // 🎯 REAL DATA LOADING (NO DEMO DATA)

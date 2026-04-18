@@ -53,9 +53,6 @@ import { cn } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSales, Sale, convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { useSettings } from '@/app/context/SettingsContext';
-import { BulkInvoiceWorkflow } from '@/app/wholesale';
-import { QuotationWorkflow } from './QuotationWorkflow';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
@@ -124,12 +121,11 @@ function saleMatchesSearchTerm(sale: Sale, raw: string): boolean {
 // Mock data removed - using SalesContext which loads from Supabase
 
 export const SalesPage = () => {
-  const { openDrawer, setCurrentView, openSaleIdForView, setOpenSaleIdForView } = useNavigation();
+  const { openDrawer, openSaleIdForView, setOpenSaleIdForView } = useNavigation();
   const { canEditSale, canDeleteSale, canCancelSale, canCreateSale } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
   const { sales, deleteSale, updateSale, recordPayment, updateShippingStatus, refreshSales, loading, totalCount, page, pageSize: contextPageSize, setPage } = useSales();
   const { companyId, branchId, user } = useSupabase();
-  const { company } = useSettings();
   const globalFilter = useGlobalFilter();
   const { startDate, endDate, setCurrentModule } = globalFilter;
 
@@ -147,8 +143,6 @@ export const SalesPage = () => {
   
   // Store branch_id mapping for sales (for location resolution when location is empty)
   const [salesBranchIdMap, setSalesBranchIdMap] = useState<Map<string, string>>(new Map());
-  const [showBulkInvoiceWorkflow, setShowBulkInvoiceWorkflow] = useState(false);
-  const [showQuotationWorkflow, setShowQuotationWorkflow] = useState(false);
   
   // Load branches for location display
   useEffect(() => {
@@ -274,8 +268,10 @@ export const SalesPage = () => {
   // State for viewing attachments
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
   
-  // Tab state - All, POS, Regular, Returns, Quotation, Final
-  const [activeTab, setActiveTab] = useState<'all' | 'pos' | 'regular' | 'returns' | 'quotation' | 'final'>('all');
+  // Invoice source sub-filter (only when main list = Sales). Returns list uses activeMainTab === 'returns'.
+  const [activeTab, setActiveTab] = useState<'all' | 'pos' | 'regular' | 'quotation' | 'final'>('all');
+  /** Main list: invoices vs sale returns (same pattern as PurchasesPage). */
+  const [activeMainTab, setActiveMainTab] = useState<'sales' | 'returns'>('sales');
   
   // Return details dialog state
   const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
@@ -477,7 +473,7 @@ export const SalesPage = () => {
       try {
         const full = await saleReturnService.getSaleReturnById(pendingId, companyId);
         if (cancelled || !full) return;
-        setActiveTab('returns');
+        setActiveMainTab('returns');
         setSelectedReturn(full);
         setViewReturnDetailsOpen(true);
         toast.info(`Opened return ${full.return_no || full.id?.slice(0, 8)} — manage void/cancel from here.`);
@@ -979,7 +975,7 @@ export const SalesPage = () => {
 
   useEffect(() => {
     const loadSaleReturns = async () => {
-      if (!companyId || activeTab !== 'returns') return;
+      if (!companyId || activeMainTab !== 'returns') return;
       try {
         setLoadingReturnsList(true);
         const returns = await saleReturnService.getSaleReturns(companyId, branchId === 'all' ? undefined : branchId || undefined);
@@ -992,12 +988,12 @@ export const SalesPage = () => {
       }
     };
     loadSaleReturns();
-  }, [companyId, branchId, activeTab]);
+  }, [companyId, branchId, activeMainTab]);
 
   // Filtered sales - Use real data from context (TASK 1 FIX - "All" means no filter)
   const filteredSales = useMemo(() => {
     // If Returns tab is active, return empty (returns are shown separately)
-    if (activeTab === 'returns') return [];
+    if (activeMainTab === 'returns') return [];
     
     return sales.filter((sale: Sale) => {
       // Tab filter - POS vs Regular vs Quotation vs Final
@@ -1049,7 +1045,21 @@ export const SalesPage = () => {
 
       return true;
     });
-  }, [sales, activeTab, startDate, endDate, searchTerm, dateFilter, customerFilter, paymentStatusFilter, saleStatusFilter, shippingStatusFilter, branchFilter, paymentMethodFilter]);
+  }, [
+    sales,
+    activeTab,
+    activeMainTab,
+    startDate,
+    endDate,
+    searchTerm,
+    dateFilter,
+    customerFilter,
+    paymentStatusFilter,
+    saleStatusFilter,
+    shippingStatusFilter,
+    branchFilter,
+    paymentMethodFilter,
+  ]);
 
   // Sort state: default createdAt descending so newest-created sales appear first
   type SaleSortKey = 'date' | 'createdAt' | 'invoiceNo' | 'customer' | 'location' | 'saleStatus' | 'paymentStatus' | 'total' | 'paid' | 'due' | 'returnDue' | 'return' | 'shipping' | 'items' | 'createdBy';
@@ -1623,37 +1633,7 @@ export const SalesPage = () => {
             <p className="text-sm text-gray-400 mt-0.5">Manage your sales and customer invoices</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentView('sales-list-design-test')}
-              className="h-10 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-white"
-            >
-              Design test
-            </Button>
-            {companyId && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowQuotationWorkflow(true)}
-                  className="h-10 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-white gap-2"
-                >
-                  <FileText size={16} />
-                  Quotation
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowBulkInvoiceWorkflow(true)}
-                  className="h-10 text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-white gap-2"
-                >
-                  <FileText size={16} />
-                  Bulk Invoice
-                </Button>
-              </>
-            )}
-          {canCreateSale && (
+          {canCreateSale && activeMainTab === 'sales' && (
           <Button 
             onClick={() => openDrawer('addSale')}
             className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
@@ -1664,8 +1644,33 @@ export const SalesPage = () => {
           )}
           </div>
         </div>
+        <div className="flex items-center gap-1 mt-4 p-1 bg-gray-950 border border-gray-800 rounded-lg inline-flex">
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('sales')}
+            className={cn(
+              'px-4 py-2 rounded-md text-sm font-medium transition-all',
+              activeMainTab === 'sales' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            )}
+          >
+            Sales
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('returns')}
+            className={cn(
+              'px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2',
+              activeMainTab === 'returns' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            )}
+          >
+            <RotateCcw size={14} />
+            Returns
+          </button>
+        </div>
       </div>
 
+      {activeMainTab === 'sales' && (
+      <>
       {/* Summary Cards - Fixed */}
       <div className="shrink-0 px-6 py-4 bg-[#0F1419] border-b border-gray-800">
         <div className="grid grid-cols-4 gap-4">
@@ -1957,7 +1962,7 @@ export const SalesPage = () => {
         }}
       />
 
-      {/* Source Tabs: All | POS | Regular | Returns | Quotation | Final */}
+      {/* Source: invoice channel / lifecycle (not sale returns — use Sales | Returns above). */}
       <div className="shrink-0 px-6 py-3 border-b border-gray-800 bg-[#0F1419]">
         <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 font-medium">Source</p>
         <div className="flex gap-2 flex-wrap items-center">
@@ -1965,7 +1970,6 @@ export const SalesPage = () => {
             { id: 'all' as const, label: 'All', icon: ShoppingCart },
             { id: 'pos' as const, label: 'POS', icon: Zap },
             { id: 'regular' as const, label: 'Regular', icon: Store },
-            { id: 'returns' as const, label: 'Returns', icon: RotateCcw },
             { id: 'quotation' as const, label: 'Quotation', icon: FileText },
             { id: 'final' as const, label: 'Final', icon: CheckCircle2 },
           ].map(({ id, label, icon: Icon }) => (
@@ -1983,28 +1987,33 @@ export const SalesPage = () => {
               {label}
             </button>
           ))}
-          {activeTab === 'returns' && (
+        </div>
+      </div>
+      </>
+      )}
+
+      {/* Sales invoices table or Sale Returns list */}
+      <div className="flex-1 overflow-auto px-6 py-4">
+        {activeMainTab === 'returns' && (
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white">Sale Returns</h2>
             <Button
               size="sm"
               variant="outline"
-              className="ml-2 border-amber-500/50 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
+              className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
               onClick={() => setStandaloneReturnFormOpen(true)}
             >
               <PackageCheck size={16} className="mr-1.5" />
               Return without invoice
             </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Sales Table - Scrollable */}
-      <div className="flex-1 overflow-auto px-6 py-4">
+          </div>
+        )}
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <div className={activeTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]'}>
+            <div className={activeMainTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]'}>
               {/* Table Header - full-width background (w-max so it spans full table when scrolling) */}
-              <div className={cn('sticky top-0 z-10 w-max bg-gray-900 border-b border-gray-800', activeTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]')}>
-                {activeTab === 'returns' ? (
+              <div className={cn('sticky top-0 z-10 w-max bg-gray-900 border-b border-gray-800', activeMainTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]')}>
+                {activeMainTab === 'returns' ? (
                   // Returns Tab Header - Actions first
                   <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
                     style={{ gridTemplateColumns: '60px 120px 130px 180px 150px 150px 130px 240px 120px 100px 150px' }}
@@ -2084,8 +2093,8 @@ export const SalesPage = () => {
               </div>
 
               {/* Table Body - w-max so row lines span full table width (no short lines on right) */}
-              <div className={cn('w-max', activeTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]')}>
-                {activeTab === 'returns' ? (
+              <div className={cn('w-max', activeMainTab === 'returns' ? 'min-w-[1580px]' : 'min-w-[1400px]')}>
+                {activeMainTab === 'returns' ? (
                   // Returns Tab - Show Sale Returns List
                   loadingReturnsList ? (
                     <div className="py-12 text-center">
@@ -2501,7 +2510,8 @@ export const SalesPage = () => {
         </div>
       </div>
 
-      {/* Pagination Footer - Fixed */}
+      {/* Pagination Footer - Fixed (sales list only) */}
+      {activeMainTab === 'sales' && (
       <Pagination
         currentPage={currentPage}
         totalPages={totalPages}
@@ -2510,6 +2520,7 @@ export const SalesPage = () => {
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
       />
+      )}
 
       {/* 🎯 VIEW PAYMENTS MODAL */}
       {selectedSale && (
@@ -2775,40 +2786,6 @@ export const SalesPage = () => {
             setViewDetailsOpen(false);
             handleSaleAction('receive_payment', selectedSale);
           }}
-        />
-      )}
-
-      {/* Step 6: Quotations + Proforma */}
-      {companyId && (
-        <QuotationWorkflow
-          companyId={companyId}
-          companyName={company?.businessName ?? ''}
-          companyAddress={company?.businessAddress ?? null}
-          isOpen={showQuotationWorkflow}
-          onClose={() => setShowQuotationWorkflow(false)}
-          onConvertToSale={async (saleId) => {
-            setShowQuotationWorkflow(false);
-            await refreshSales();
-            const raw = await saleService.getSaleById(saleId).catch(() => null);
-            if (raw) {
-              const sale = convertFromSupabaseSale(raw);
-              setSelectedSale(sale);
-              setViewDetailsOpen(true);
-            } else {
-              toast.success('Quotation converted to sale. Open it from the sales list.');
-            }
-          }}
-        />
-      )}
-
-      {/* Wholesale: Bulk Invoice (select packing lists → one invoice) */}
-      {companyId && (
-        <BulkInvoiceWorkflow
-          companyId={companyId}
-          companyName={company?.businessName ?? ''}
-          companyAddress={company?.businessAddress ?? null}
-          isOpen={showBulkInvoiceWorkflow}
-          onClose={() => setShowBulkInvoiceWorkflow(false)}
         />
       )}
 

@@ -55,6 +55,7 @@ interface AddExpenseDrawerProps {
     date: string;
     paymentMethod: string;
     payeeName?: string;
+    paidToUserId?: string;
     location?: string;
     status?: string;
     paymentAccountId?: string;
@@ -205,8 +206,12 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
         }
       }
     }
-    // Set paidToUserId from payeeName (reverse lookup for salary expenses)
-    if (expenseToEdit?.payeeName && salaryUsers.length > 0) {
+    // Set paidToUserId: prefer direct ID, fall back to name-based lookup
+    if (expenseToEdit?.paidToUserId) {
+      setPaidToUserId(expenseToEdit.paidToUserId);
+      const userMatch = salaryUsers.find(u => u.id === expenseToEdit.paidToUserId);
+      if (userMatch) setSalaryUserSearch(userMatch.full_name);
+    } else if (expenseToEdit?.payeeName && salaryUsers.length > 0) {
       const userMatch = salaryUsers.find(u =>
         u.full_name === expenseToEdit.payeeName || u.id === expenseToEdit.payeeName
       );
