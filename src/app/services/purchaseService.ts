@@ -1273,30 +1273,48 @@ export const purchaseService = {
             payableAccountId =
               (await resolvePayablePostingAccountId(companyId, String((purchaseRow as any).supplier_id))) || undefined;
           }
-          const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
-          const { data: { user } } = await supabase.auth.getUser();
+          // In-place update: modify existing JE lines directly instead of creating adjustment JE
           tracePaymentEditFlow('purchaseService.updatePayment.post_amount_adjust', {
-            paymentId,
-            purchaseId,
-            oldAmount,
-            newAmount,
+            paymentId, purchaseId, oldAmount, newAmount,
             deltaLiquidityAccountId: oldAccountId || paymentAccountId,
           });
-          await postPaymentAmountAdjustment({
-            context: 'purchase',
-            companyId,
-            branchId,
-            paymentId,
-            referenceId: purchaseId,
-            oldAmount,
-            newAmount,
-            /** PF-14 hotfix: supplier payment delta hits pre-update liquidity; transfer JE moves final amount separately. */
-            paymentAccountId: oldAccountId || paymentAccountId || '',
-            invoiceNoOrRef: poNo,
-            entryDate: (updates.paymentDate || paymentDate || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
-            createdBy: (user as any)?.id ?? null,
-            payableAccountId,
-          });
+          // Find the existing payment JE and update its line amounts
+          const { data: existingJe } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('payment_id', paymentId)
+            .or('is_void.is.null,is_void.eq.false')
+            .not('reference_type', 'eq', 'correction_reversal')
+            .not('reference_type', 'eq', 'payment_adjustment')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          if (existingJe?.id) {
+            // Update all debit lines to new amount
+            await supabase.from('journal_entry_lines').update({ debit: newAmount }).eq('journal_entry_id', existingJe.id).gt('debit', 0);
+            // Update all credit lines to new amount
+            await supabase.from('journal_entry_lines').update({ credit: newAmount }).eq('journal_entry_id', existingJe.id).gt('credit', 0);
+            // Log edit in description
+            const oldDesc = (await supabase.from('journal_entries').select('description').eq('id', existingJe.id).maybeSingle())?.data?.description || '';
+            const ts = new Date().toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
+            await supabase.from('journal_entries').update({
+              description: `${oldDesc} [Edited ${ts}: Rs ${oldAmount.toLocaleString()} → Rs ${newAmount.toLocaleString()}]`.slice(0, 500)
+            }).eq('id', existingJe.id);
+            // Patch to supplier sub-ledger if needed
+            const { patchPaymentJeToSubLedger } = await import('@/app/services/saleAccountingService');
+            await patchPaymentJeToSubLedger(paymentId, existingJe.id);
+          } else {
+            // Fallback: create adjustment JE if no existing JE found
+            const { postPaymentAmountAdjustment } = await import('@/app/services/paymentAdjustmentService');
+            const { data: { user } } = await supabase.auth.getUser();
+            await postPaymentAmountAdjustment({
+              context: 'purchase', companyId, branchId, paymentId, referenceId: purchaseId,
+              oldAmount, newAmount, paymentAccountId: oldAccountId || paymentAccountId || '',
+              invoiceNoOrRef: poNo,
+              entryDate: (updates.paymentDate || paymentDate || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
+              createdBy: (user as any)?.id ?? null, payableAccountId,
+            });
+          }
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
           }
