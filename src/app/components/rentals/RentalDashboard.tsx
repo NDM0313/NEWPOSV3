@@ -14,6 +14,7 @@ import { ReturnModal } from './ReturnModal';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 import { clsx } from 'clsx';
 import { useRentals, type RentalUI } from '@/app/context/RentalContext';
+import { supabase } from '@/lib/supabase';
 
 export const RentalDashboard = () => {
   const { refreshRentals, markAsPickedUp, receiveReturn, getRentalById } = useRentals();
@@ -244,13 +245,26 @@ export const RentalDashboard = () => {
             setPaymentDialogOpen(false);
             setCollectionRental(null);
             if (rentalForPickup) {
-              const updated = getRentalById?.(rentalForPickup.id);
-              if (updated) {
-                setRentalForPickup(updated);
-                setPickupModalOpen(true);
-              } else {
-                setRentalForPickup(null);
+              // Fetch fresh rental data directly from DB (context may still be stale)
+              try {
+                const { data: freshRow } = await supabase
+                  .from('rentals')
+                  .select('id, paid_amount, due_amount, total_amount')
+                  .eq('id', rentalForPickup.id)
+                  .maybeSingle();
+                if (freshRow) {
+                  setRentalForPickup({
+                    ...rentalForPickup,
+                    paidAmount: Number((freshRow as any).paid_amount) || 0,
+                    dueAmount: Number((freshRow as any).due_amount) || 0,
+                    totalAmount: Number((freshRow as any).total_amount) || rentalForPickup.totalAmount,
+                  });
+                }
+              } catch {
+                const updated = getRentalById?.(rentalForPickup.id);
+                if (updated) setRentalForPickup(updated);
               }
+              setPickupModalOpen(true);
             }
           }}
         />
