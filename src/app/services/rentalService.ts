@@ -305,6 +305,32 @@ export const rentalService = {
       });
     }
 
+    // Post rental expense JE if expenses exist (Dr Rental Expense 5300 / Cr Cash 1000)
+    if (expenses && expenses.length > 0) {
+      const totalExpense = expenses.reduce((sum: number, e: { amount: number }) => sum + (Number(e.amount) || 0), 0);
+      if (totalExpense > 0) {
+        try {
+          const { accountingService } = await import('./accountingService');
+          const getAccId = async (code: string) => {
+            const { data } = await supabase.from('accounts').select('id').eq('code', code).eq('company_id', companyId).eq('is_active', true).maybeSingle();
+            return data?.id as string | null;
+          };
+          const expAccId = await getAccId('5300') || await getAccId('6100');
+          const cashAccId = await getAccId('1000');
+          if (expAccId && cashAccId) {
+            const expDesc = expenses.map((e: { description: string; amount: number }) => `${e.description}: Rs ${e.amount}`).join(', ');
+            await accountingService.createEntry(
+              { id: '', company_id: companyId, entry_no: `JE-REXP-${Date.now()}`, entry_date: bookingDate, description: `Rental expense — ${bookingNo} (${expDesc})`, reference_type: 'expense', reference_id: rentalData.id, created_by: createdBy || undefined },
+              [
+                { id: '', journal_entry_id: '', account_id: expAccId, debit: totalExpense, credit: 0, description: `Rental Expense — ${bookingNo}` },
+                { id: '', journal_entry_id: '', account_id: cashAccId, debit: 0, credit: totalExpense, description: `Cash — rental expense ${bookingNo}` },
+              ]
+            );
+          }
+        } catch (expErr) { console.warn('[rentalService] Rental expense JE failed:', expErr); }
+      }
+    }
+
     await activityLogService
       .logActivity({
         companyId,

@@ -241,11 +241,10 @@ export const RentalDashboard = () => {
           referenceNo={(rentalForPickup || collectionRental)!.rentalNo}
           referenceId={(rentalForPickup || collectionRental)!.id}
           onSuccess={async () => {
-            await refreshRentals();
             setPaymentDialogOpen(false);
             setCollectionRental(null);
             if (rentalForPickup) {
-              // Fetch fresh rental data directly from DB (context may still be stale)
+              // Fetch fresh rental data BEFORE re-opening modal (prevents flicker)
               try {
                 const { data: freshRow } = await supabase
                   .from('rentals')
@@ -261,11 +260,12 @@ export const RentalDashboard = () => {
                   });
                 }
               } catch {
-                const updated = getRentalById?.(rentalForPickup.id);
-                if (updated) setRentalForPickup(updated);
+                // Fallback: context data
               }
               setPickupModalOpen(true);
             }
+            // Refresh context AFTER modal is re-opened with fresh data
+            await refreshRentals();
           }}
         />
       )}

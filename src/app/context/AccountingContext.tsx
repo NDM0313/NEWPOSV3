@@ -1894,8 +1894,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     const { bookingId, customerName, customerId, remainingAmount, paymentMethod, paymentAccountId, paymentDate } = params;
 
     const postingDate = paymentDate?.slice(0, 10) || new Date().toISOString().split('T')[0];
-    // Post to Rental Income (code 4200) — NOT Sales Revenue
-    return await createEntry({
+    // Post remaining payment: Dr Cash/Bank / Cr Rental Income (code 4200)
+    const paymentOk = await createEntry({
       source: 'Rental',
       referenceNo: bookingId,
       debitAccount: (paymentAccountId ? 'Cash' : paymentMethod) as AccountType,
@@ -1911,6 +1911,31 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         ...(paymentAccountId ? { debitAccountId: paymentAccountId } : {}),
       },
     });
+
+    // Recognize advance as income: Dr Rental Advance (2020) / Cr Rental Income (4200)
+    // Check if this rental had an advance booking entry
+    if (paymentOk && companyId) {
+      try {
+        const advanceJE = entries.find(e =>
+          e.metadata?.bookingId === bookingId &&
+          e.creditAccount === 'Rental Advance' &&
+          e.source === 'Rental'
+        );
+        if (advanceJE && advanceJE.amount > 0) {
+          await createEntry({
+            source: 'Rental',
+            referenceNo: bookingId,
+            debitAccount: 'Rental Advance',
+            creditAccount: 'Rental Income',
+            amount: advanceJE.amount,
+            description: `Advance recognized as income - ${customerName}`,
+            module: 'Rental',
+            metadata: { customerId, customerName, bookingId, postingDate },
+          });
+        }
+      } catch { /* non-critical */ }
+    }
+    return paymentOk;
   };
 
   /** When delivering on credit: Debit AR, Credit Rental Income (customer owes) */
