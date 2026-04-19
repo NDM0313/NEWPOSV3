@@ -249,7 +249,9 @@ export const rentalService = {
 
     const bookingNo = await settingsService.getNextDocumentNumber(companyId, branchId, 'rental');
 
-    const { data: rentalData, error: rentalError } = await supabase
+    let rentalData: any;
+    let rentalError: any;
+    ({ data: rentalData, error: rentalError } = await supabase
       .from('rentals')
       .insert({
         company_id: companyId,
@@ -268,13 +270,32 @@ export const rentalService = {
         paid_amount: effectivePaid,
         due_amount: dueAmount,
         notes: notes || null,
-        rental_expenses: expenses && expenses.length > 0 ? expenses : null,
         created_by: createdBy || null,
+        ...(expenses && expenses.length > 0 ? { rental_expenses: expenses } : {}),
       })
       .select('id, booking_no')
-      .single();
+      .single());
 
-    if (rentalError) throw rentalError;
+    // If rental_expenses column doesn't exist, retry without it
+    if (rentalError && String(rentalError.message || '').includes('rental_expenses')) {
+      const { data: retryData, error: retryErr } = await supabase
+        .from('rentals')
+        .insert({
+          company_id: companyId, branch_id: branchId, booking_no: bookingNo,
+          booking_date: bookingDate, customer_id: customerId, customer_name: customerName,
+          status: 'booked', pickup_date: pickupDate, return_date: returnDate,
+          duration_days: durationDays, rental_charges: rentalCharges,
+          security_deposit: securityDeposit, total_amount: totalAmount,
+          paid_amount: effectivePaid, due_amount: dueAmount,
+          notes: notes || null, created_by: createdBy || null,
+        })
+        .select('id, booking_no')
+        .single();
+      if (retryErr) throw retryErr;
+      rentalData = retryData;
+    } else if (rentalError) {
+      throw rentalError;
+    }
 
     const itemsPayload = items.map((i) => ({
       rental_id: rentalData.id,

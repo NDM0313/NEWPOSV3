@@ -23,6 +23,7 @@ export interface ReturnConfirmPayload {
   damageNotes?: string;
   penaltyAmount: number;
   penaltyPaid: boolean;
+  penaltyPaymentMethod?: string;
   documentReturned: boolean;
 }
 
@@ -49,6 +50,7 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
   const [damageNotes, setDamageNotes] = useState('');
   const [penaltyAmount, setPenaltyAmount] = useState('');
   const [penaltyPaid, setPenaltyPaid] = useState(false);
+  const [penaltyPaymentMethod, setPenaltyPaymentMethod] = useState('Cash');
   const [documentReturned, setDocumentReturned] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +97,7 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
         damageNotes: hasPenalty ? damageNotes.trim() : undefined,
         penaltyAmount: penalty,
         penaltyPaid: hasPenalty ? penaltyPaid : true,
+        penaltyPaymentMethod: hasPenalty && penaltyPaid ? penaltyPaymentMethod : undefined,
         documentReturned,
       });
       onOpenChange(false);
@@ -220,6 +223,20 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
                   />
                   <span className="text-sm text-gray-300">Confirm penalty received</span>
                 </label>
+                {penaltyPaid && (
+                  <div className="mt-2">
+                    <Label className="text-sm text-gray-400">Payment Method</Label>
+                    <select
+                      className="w-full mt-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                      value={penaltyPaymentMethod}
+                      onChange={(e) => setPenaltyPaymentMethod(e.target.value)}
+                    >
+                      <option value="Cash">Cash</option>
+                      <option value="Bank">Bank Transfer</option>
+                      <option value="Mobile Wallet">Mobile Wallet</option>
+                    </select>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -121,7 +121,7 @@ interface RentalContextType {
   createRental: (rental: Omit<RentalUI, 'id' | 'rentalNo' | 'itemsCount'> & { items: RentalItemUI[] }) => Promise<RentalUI>;
   updateRental: (id: string, updates: Partial<RentalUI>, items: RentalItemUI[] | null) => Promise<void>;
   finalizeRental: (id: string) => Promise<void>;
-  receiveReturn: (id: string, payload: { actualReturnDate: string; notes?: string; conditionType: string; damageNotes?: string; penaltyAmount: number; penaltyPaid: boolean; documentReturned: boolean }) => Promise<void>;
+  receiveReturn: (id: string, payload: { actualReturnDate: string; notes?: string; conditionType: string; damageNotes?: string; penaltyAmount: number; penaltyPaid: boolean; penaltyPaymentMethod?: string; documentReturned: boolean }) => Promise<void>;
   cancelRental: (id: string) => Promise<void>;
   addPayment: (rentalId: string, amount: number, method: string, reference?: string) => Promise<void>;
   deletePayment: (rentalId: string, paymentId: string) => Promise<void>;
@@ -301,7 +301,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     toast.success('Rental finalized – stock out');
   };
 
-  const receiveReturn = async (id: string, payload: { actualReturnDate: string; notes?: string; conditionType: string; damageNotes?: string; penaltyAmount: number; penaltyPaid: boolean; documentReturned: boolean }) => {
+  const receiveReturn = async (id: string, payload: { actualReturnDate: string; notes?: string; conditionType: string; damageNotes?: string; penaltyAmount: number; penaltyPaid: boolean; penaltyPaymentMethod?: string; documentReturned: boolean }) => {
     if (!companyId) return;
     const rental = getRentalById(id) || rentals.find((r) => r.id === id);
     await rentalService.receiveReturn(id, companyId, payload, user?.id);
@@ -312,7 +312,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
         customerId: rental.customerId || '',
         securityDepositAmount: 0,
         damageCharge: payload.penaltyAmount,
-        paymentMethod: 'Cash',
+        paymentMethod: (payload.penaltyPaymentMethod || 'Cash') as any,
       }).catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
     }
     await loadRentals();
