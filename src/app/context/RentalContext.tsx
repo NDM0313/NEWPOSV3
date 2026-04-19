@@ -305,18 +305,30 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     if (!companyId) return;
     const rental = getRentalById(id) || rentals.find((r) => r.id === id);
     await rentalService.receiveReturn(id, companyId, payload, user?.id);
-    if (payload.penaltyAmount > 0 && payload.penaltyPaid && rental) {
-      accounting.recordRentalReturn({
-        bookingId: id,
-        customerName: rental.customerName,
-        customerId: rental.customerId || '',
-        securityDepositAmount: 0,
-        damageCharge: payload.penaltyAmount,
-        paymentMethod: (payload.penaltyPaymentMethod || 'Cash') as any,
-      }).catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
+    if (payload.penaltyAmount > 0 && rental) {
+      if (payload.penaltyPaid) {
+        // Pay now: Dr Cash/Bank, Cr Rental Income
+        accounting.recordRentalReturn({
+          bookingId: id,
+          customerName: rental.customerName,
+          customerId: rental.customerId || '',
+          securityDepositAmount: 0,
+          damageCharge: payload.penaltyAmount,
+          paymentMethod: (payload.penaltyPaymentMethod || 'Cash') as any,
+        }).catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
+      } else {
+        // Credit mode: Dr AR (customer owes), Cr Rental Income
+        accounting.recordRentalCreditDelivery({
+          bookingId: id,
+          customerName: rental.customerName,
+          customerId: rental.customerId || '',
+          remainingAmount: payload.penaltyAmount,
+          paymentMethod: 'Cash',
+        }).catch((err) => console.warn('[RentalContext] Penalty credit posting:', err));
+      }
     }
     await loadRentals();
-    toast.success('Return received – stock in');
+    toast.success(payload.penaltyPaid ? 'Return received – penalty collected' : 'Return received – penalty added to customer credit');
   };
 
   const cancelRental = async (id: string) => {

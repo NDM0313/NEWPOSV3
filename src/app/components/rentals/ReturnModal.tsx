@@ -78,10 +78,7 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
       setError('Penalty amount is required when there is damage');
       return;
     }
-    if (hasPenalty && !penaltyPaid) {
-      setError('Please confirm penalty received');
-      return;
-    }
+    // penaltyPaid=false means "credit" mode — allowed, no block needed
     if (!documentReturned) {
       setError('Please confirm document returned to customer');
       return;
@@ -129,7 +126,7 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
     documentReturned &&
     (conditionType === 'good'
       ? true
-      : penalty > 0 && penaltyPaid && damageNotes.trim().length > 0);
+      : penalty > 0 && damageNotes.trim().length > 0);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -213,30 +210,47 @@ export const ReturnModal = ({ open, onOpenChange, rental, documentInfo, onConfir
                 <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Penalty Settlement</h4>
                 <div className="flex justify-between text-sm mb-3">
                   <span className="text-gray-500">Penalty Amount</span>
-                  <span className="text-red-400 font-semibold">${penalty.toLocaleString()}</span>
+                  <span className="text-red-400 font-semibold">Rs. {penalty.toLocaleString()}</span>
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={penaltyPaid}
-                    onCheckedChange={(v) => setPenaltyPaid(!!v)}
-                    className="border-gray-600 data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
-                  />
-                  <span className="text-sm text-gray-300">Confirm penalty received</span>
-                </label>
-                {penaltyPaid && (
-                  <div className="mt-2">
-                    <Label className="text-sm text-gray-400">Payment Method</Label>
-                    <select
-                      className="w-full mt-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
-                      value={penaltyPaymentMethod}
-                      onChange={(e) => setPenaltyPaymentMethod(e.target.value)}
-                    >
-                      <option value="Cash">Cash</option>
-                      <option value="Bank">Bank Transfer</option>
-                      <option value="Mobile Wallet">Mobile Wallet</option>
-                    </select>
-                  </div>
-                )}
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="penaltySettlement"
+                      checked={penaltyPaid}
+                      onChange={() => { setPenaltyPaid(true); setPenaltyPaymentMethod('Cash'); }}
+                      className="accent-green-500"
+                    />
+                    <span className="text-sm text-gray-300">Receive Payment Now</span>
+                  </label>
+                  {penaltyPaid && (
+                    <div className="ml-6 mt-1">
+                      <Label className="text-sm text-gray-400">Payment Method</Label>
+                      <select
+                        className="w-full mt-1 bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-white"
+                        value={penaltyPaymentMethod}
+                        onChange={(e) => setPenaltyPaymentMethod(e.target.value)}
+                      >
+                        <option value="Cash">Cash</option>
+                        <option value="Bank">Bank Transfer</option>
+                        <option value="Mobile Wallet">Mobile Wallet</option>
+                      </select>
+                    </div>
+                  )}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="penaltySettlement"
+                      checked={!penaltyPaid}
+                      onChange={() => { setPenaltyPaid(false); setPenaltyPaymentMethod('credit'); }}
+                      className="accent-amber-500"
+                    />
+                    <span className="text-sm text-gray-300">Add to Customer Credit (collect later)</span>
+                  </label>
+                  {!penaltyPaid && (
+                    <p className="ml-6 text-xs text-amber-400">Penalty Rs. {penalty.toLocaleString()} will be added to customer&apos;s outstanding balance</p>
+                  )}
+                </div>
               </div>
             )}
           </div>

@@ -166,8 +166,12 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
 
   // Cart State — multi-item support
   const [selectedProduct, setSelectedProduct] = useState<SearchProduct | null>(null);
-  const [cartItems, setCartItems] = useState<Array<{ product: SearchProduct; rentPrice: number }>>([]);
+  const [cartItems, setCartItems] = useState<Array<{ product: SearchProduct; rentPrice: number; variationId?: string; variationName?: string }>>([]);
   const [manualRentPrice, setManualRentPrice] = useState<string>('');
+  // Variation picker
+  const [variationPickerOpen, setVariationPickerOpen] = useState(false);
+  const [variationPickerProduct, setVariationPickerProduct] = useState<SearchProduct | null>(null);
+  const [productVariations, setProductVariations] = useState<Array<{ id: string; sku: string; attributes: any; stock: number; price: number }>>([]);
   const [advancePaid, setAdvancePaid] = useState('');
   // Rental Expenses (maintenance, alteration, dry cleaning etc.)
   const [rentalExpenses, setRentalExpenses] = useState<Array<{ description: string; amount: number }>>([]);
@@ -775,9 +779,30 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                      </div>
                      <div className="flex-1 space-y-1 relative">
                         <Label className="text-xs text-gray-500 uppercase">Product Search</Label>
-                        <RentalProductSearch 
-                          products={productsWithConflicts} 
-                          onSelect={setSelectedProduct} 
+                        <RentalProductSearch
+                          products={productsWithConflicts}
+                          onSelect={async (p) => {
+                            // Check if product has variations
+                            const fullProd = products.find(pp => String(pp.id) === String(p.id));
+                            if ((fullProd as any)?.has_variations) {
+                              // Load variations and show picker
+                              try {
+                                const { supabase } = await import('@/lib/supabase');
+                                const { data: vars } = await supabase
+                                  .from('product_variations')
+                                  .select('id, sku, attributes, stock, price')
+                                  .eq('product_id', String(p.id))
+                                  .eq('is_active', true);
+                                if (vars && vars.length > 0) {
+                                  setProductVariations(vars as any[]);
+                                  setVariationPickerProduct(p);
+                                  setVariationPickerOpen(true);
+                                  return;
+                                }
+                              } catch { /* fallback to no variation */ }
+                            }
+                            setSelectedProduct(p);
+                          }}
                         />
                      </div>
                 </div>
@@ -1093,6 +1118,58 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                 returnDate={returnDate || new Date()}
             />
         )}
+
+      {/* Variation Picker Dialog */}
+      <Dialog open={variationPickerOpen} onOpenChange={setVariationPickerOpen}>
+        <DialogContent className="bg-gray-900 border-gray-700 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-white">Select Variation</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              {variationPickerProduct?.name} — choose a variation
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[300px] overflow-y-auto">
+            {productVariations.map((v) => {
+              const attrs = v.attributes && typeof v.attributes === 'object'
+                ? Object.entries(v.attributes).filter(([k]) => !k.startsWith('__')).map(([k, val]) => `${k}: ${val}`).join(', ')
+                : v.sku;
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  className="w-full text-left px-4 py-3 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-700 transition-colors"
+                  onClick={() => {
+                    if (variationPickerProduct) {
+                      setSelectedProduct({
+                        ...variationPickerProduct,
+                        name: `${variationPickerProduct.name} — ${attrs}`,
+                        sku: v.sku,
+                        rentPrice: v.price || variationPickerProduct.rentPrice,
+                      });
+                      setManualRentPrice(String(v.price || variationPickerProduct.rentPrice || ''));
+                    }
+                    setVariationPickerOpen(false);
+                    setVariationPickerProduct(null);
+                  }}
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium text-white">{attrs || v.sku}</p>
+                      <p className="text-xs text-gray-500">SKU: {v.sku} · Stock: {v.stock}</p>
+                    </div>
+                    <div className="text-right">
+                      {v.price > 0 && <p className="text-sm text-green-400">Rs. {v.price.toLocaleString()}</p>}
+                      <p className={`text-xs ${v.stock > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {v.stock > 0 ? 'Available' : 'Out of stock'}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       </div>
     </div>

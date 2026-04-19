@@ -784,9 +784,7 @@ export const rentalService = {
     }
 
     // Validate penalty and document return
-    if (penaltyAmount > 0 && !penaltyPaid) {
-      throw new Error('Penalty must be paid before return can be completed');
-    }
+    // penaltyPaid=false means "credit" mode — penalty added to customer balance, not blocked
     if (!documentReturned) {
       throw new Error('Please confirm document returned to customer');
     }
@@ -819,6 +817,13 @@ export const rentalService = {
         created_by: performedBy || null,
       });
       if (movErr) throw movErr;
+
+      // Increment rental_count for depreciation tracking
+      try {
+        const { data: prod } = await supabase.from('products').select('rental_count').eq('id', item.product_id).maybeSingle();
+        const currentCount = Number((prod as any)?.rental_count) || 0;
+        await supabase.from('products').update({ rental_count: currentCount + 1 }).eq('id', item.product_id);
+      } catch { /* rental_count column may not exist yet */ }
     }
 
     const securityDeposit = Number(r.security_deposit ?? 0);
