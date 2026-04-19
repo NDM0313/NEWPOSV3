@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -101,8 +101,15 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creditChoiceOpen, setCreditChoiceOpen] = useState(false);
+  // Track paid amount locally so UI refreshes after payment without re-mounting
+  const [localPaidAmount, setLocalPaidAmount] = useState(rental?.paidAmount ?? 0);
 
-  const remainingAmount = (rental?.totalAmount ?? 0) - (rental?.paidAmount ?? 0);
+  // Sync when rental prop changes (e.g. modal reopened)
+  useEffect(() => {
+    setLocalPaidAmount(rental?.paidAmount ?? 0);
+  }, [rental?.paidAmount, rental?.id]);
+
+  const remainingAmount = (rental?.totalAmount ?? 0) - localPaidAmount;
   const hasFullPayment = remainingAmount <= 0;
 
   const doConfirm = async (deliverOnCredit: boolean) => {
@@ -229,7 +236,20 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
                     type="button"
                     size="sm"
                     className="w-full bg-amber-500 hover:bg-amber-600 text-white"
-                    onClick={() => onAddPayment(rental)}
+                    onClick={async () => {
+                      onAddPayment(rental);
+                      // After payment dialog closes, re-fetch rental to get updated paid_amount
+                      setTimeout(async () => {
+                        try {
+                          const { data: updated } = await supabase
+                            .from('rentals')
+                            .select('paid_amount')
+                            .eq('id', rental.id)
+                            .maybeSingle();
+                          if (updated) setLocalPaidAmount(Number((updated as any).paid_amount) || 0);
+                        } catch {}
+                      }, 1500);
+                    }}
                   >
                     <DollarSign size={16} className="mr-2" />
                     Add Payment ({formatCurrency(remainingAmount)})
@@ -432,6 +452,13 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
               onClick={() => {
                 setCreditChoiceOpen(false);
                 onAddPayment?.(rental!);
+                // Re-fetch paid amount after payment dialog
+                setTimeout(async () => {
+                  try {
+                    const { data: updated } = await supabase.from('rentals').select('paid_amount').eq('id', rental!.id).maybeSingle();
+                    if (updated) setLocalPaidAmount(Number((updated as any).paid_amount) || 0);
+                  } catch {}
+                }, 1500);
               }}
             >
               <DollarSign size={16} className="mr-2" />

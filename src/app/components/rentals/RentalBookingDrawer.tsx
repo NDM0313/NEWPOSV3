@@ -164,8 +164,9 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const [products, setProducts] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
-  // Cart State
+  // Cart State — multi-item support
   const [selectedProduct, setSelectedProduct] = useState<SearchProduct | null>(null);
+  const [cartItems, setCartItems] = useState<Array<{ product: SearchProduct; rentPrice: number }>>([]);
   const [manualRentPrice, setManualRentPrice] = useState<string>('');
   const [advancePaid, setAdvancePaid] = useState('');
   
@@ -365,8 +366,8 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
       openDrawer('addContact', undefined, { contactType: 'customer', prefillName: customerSearchTerm || '' });
       return;
     }
-    if (!selectedProduct) {
-      toast.error('Please select a product');
+    if (cartItems.length === 0 && !selectedProduct) {
+      toast.error('Please add at least one product');
       return;
     }
     if (!pickupDate || !returnDate) {
@@ -377,20 +378,31 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
       toast.error('Selected dates conflict with an existing booking');
       return;
     }
-    const rentAmount = parseFloat(manualRentPrice) || 0;
-    if (rentAmount <= 0) {
-      toast.error('Please enter a valid rent amount');
+    // Build items from cart + current selected product (if any)
+    const allCartItems = [...cartItems];
+    if (selectedProduct && currentItemPrice > 0) {
+      if (!allCartItems.some(c => c.product.id === selectedProduct.id)) {
+        allCartItems.push({ product: selectedProduct, rentPrice: currentItemPrice });
+      }
+    }
+    if (allCartItems.length === 0) {
+      toast.error('Please add at least one product to the booking');
+      return;
+    }
+    const totalRent = allCartItems.reduce((s, c) => s + c.rentPrice, 0);
+    if (totalRent <= 0) {
+      toast.error('Please enter valid rent amounts');
       return;
     }
 
-    const items = [{
-      productId: String(selectedProduct.id),
-      productName: selectedProduct.name,
+    const items = allCartItems.map(c => ({
+      productId: String(c.product.id),
+      productName: c.product.name,
       quantity: 1,
-      ratePerDay: selectedProduct.rentPrice ?? rentAmount,
+      ratePerDay: c.rentPrice,
       durationDays: totalDays || 1,
-      total: rentAmount,
-    }];
+      total: c.rentPrice,
+    }));
 
     try {
       setSaving(true);
@@ -400,7 +412,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           customerName: getCustomerName(),
           pickupDate: pickupDate.toISOString().split('T')[0],
           returnDate: returnDate.toISOString().split('T')[0],
-          rentalCharges: rentAmount,
+          rentalCharges: totalRent,
           securityDeposit: 0,
           paidAmount: parseFloat(advancePaid) || 0,
           notes: null,
@@ -418,7 +430,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           bookingDate: bookingDate.toISOString().split('T')[0],
           pickupDate: pickupDate.toISOString().split('T')[0],
           returnDate: returnDate.toISOString().split('T')[0],
-          rentalCharges: rentAmount,
+          rentalCharges: totalRent,
           securityDeposit: 0,
           paidAmount: 0,
           notes: null,
@@ -433,7 +445,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
             customerId: selectedCustomer,
             customerName: getCustomerName(),
             bookingDate: bookingDate.toISOString().split('T')[0],
-            totalRent: rentAmount,
+            totalRent,
           });
           setAdvancePromptOpen(true);
           setSaving(false);
@@ -469,13 +481,34 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
 
   const hasConflict = conflictCheck.hasConflict;
   const isManualRent = selectedProduct && (selectedProduct.rentPrice === null || selectedProduct.rentPrice === 0);
-  const currentRentPrice = parseFloat(manualRentPrice) || 0;
+  const currentItemPrice = parseFloat(manualRentPrice) || 0;
+  // Cart total = sum of all cart items + current unsaved item price
+  const cartTotal = cartItems.reduce((s, c) => s + c.rentPrice, 0);
+  const currentRentPrice = cartTotal + (selectedProduct ? currentItemPrice : 0);
   const advanceIntentNum = parseFloat(advancePaid) || 0;
+
+  // Add current product to cart
+  const addToCart = () => {
+    if (!selectedProduct || currentItemPrice <= 0) return;
+    // Don't add duplicate
+    if (cartItems.some(c => c.product.id === selectedProduct.id)) {
+      toast.error('This product is already in the cart');
+      return;
+    }
+    setCartItems(prev => [...prev, { product: selectedProduct, rentPrice: currentItemPrice }]);
+    setSelectedProduct(null);
+    setManualRentPrice('');
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCartItems(prev => prev.filter(c => c.product.id !== productId));
+  };
 
   const finishAfterNewBooking = async () => {
     await refreshRentals();
     await loadExistingBookings();
     setSelectedProduct(null);
+    setCartItems([]);
     setManualRentPrice('');
     setAdvancePaid('');
     setPendingBooking(null);
@@ -605,9 +638,9 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                         </Popover>
                    </div>
                    <div className="w-32 space-y-1">
-                      <Label className="text-xs text-gray-500 uppercase">Invoice #</Label>
+                      <Label className="text-xs text-gray-500 uppercase">Booking #</Label>
                       <div className="h-9 flex items-center px-3 bg-gray-800/50 border border-gray-800 rounded text-sm text-gray-400 font-mono">
-                        RENT-1001
+                        {editRental?.bookingNo || 'Auto'}
                       </div>
                    </div>
                    <div className="w-36 space-y-1">
@@ -831,22 +864,28 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                               </div>
                               
                               <div className="mt-2">
-                                  <div className="flex flex-col gap-1">
-                                      <Label className="text-xs text-gray-400">
-                                        {isManualRent ? 'Set Rent Amount (Manual)' : 'Rent Amount (Editable)'}
-                                      </Label>
-                                      <Input 
-                                        value={manualRentPrice}
-                                        onChange={(e) => setManualRentPrice(e.target.value)}
-                                        placeholder="Enter Rent Amount"
-                                        className={cn(
-                                            "h-9 font-bold text-white w-48 transition-colors",
-                                            isManualRent 
-                                                ? "border-blue-500 focus:ring-blue-500 bg-blue-900/10" 
-                                                : "border-pink-500/50 focus:border-pink-500 focus:ring-pink-500 bg-gray-900 hover:bg-pink-900/10"
-                                        )}
-                                        autoFocus={!!isManualRent}
-                                      />
+                                  <div className="flex items-end gap-2">
+                                      <div className="flex-1">
+                                        <Label className="text-xs text-gray-400">
+                                          {isManualRent ? 'Set Rent Amount (Manual)' : 'Rent Amount (Editable)'}
+                                        </Label>
+                                        <Input
+                                          value={manualRentPrice}
+                                          onChange={(e) => setManualRentPrice(e.target.value)}
+                                          placeholder="Enter Rent Amount"
+                                          className={cn(
+                                              "h-9 font-bold text-white w-48 transition-colors",
+                                              isManualRent
+                                                  ? "border-blue-500 focus:ring-blue-500 bg-blue-900/10"
+                                                  : "border-pink-500/50 focus:border-pink-500 focus:ring-pink-500 bg-gray-900 hover:bg-pink-900/10"
+                                          )}
+                                          autoFocus={!!isManualRent}
+                                        />
+                                      </div>
+                                      <Button size="sm" onClick={addToCart} disabled={currentItemPrice <= 0}
+                                        className="h-9 bg-pink-600 hover:bg-pink-500 text-white">
+                                        <PlusCircle size={14} className="mr-1" /> Add
+                                      </Button>
                                   </div>
                               </div>
                           </div>
@@ -855,6 +894,25 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                       <div className="border border-dashed border-gray-800 rounded-lg p-8 text-center text-gray-500">
                           Select a dress from the list to proceed
                       </div>
+                  )}
+
+                  {/* Cart Items */}
+                  {cartItems.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-gray-500 uppercase">Cart ({cartItems.length} items)</Label>
+                      {cartItems.map(c => (
+                        <div key={c.product.id} className="flex items-center gap-3 bg-gray-900 border border-gray-800 rounded-lg p-3">
+                          <div className="w-10 h-10 bg-gray-800 rounded overflow-hidden flex items-center justify-center shrink-0">
+                            {c.product.image ? <ProductImage src={c.product.image} alt="" className="w-full h-full object-cover" /> : <Package className="w-5 h-5 text-gray-500" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-white font-medium truncate">{c.product.name}</p>
+                            <p className="text-xs text-pink-400 font-mono">{formatCurrency(c.rentPrice)}</p>
+                          </div>
+                          <button onClick={() => removeFromCart(c.product.id)} className="text-gray-500 hover:text-red-400 text-xs">✕</button>
+                        </div>
+                      ))}
+                    </div>
                   )}
 
                   {/* Notes */}
