@@ -193,6 +193,7 @@ export const rentalService = {
     securityDeposit?: number;
     paidAmount?: number;
     notes?: string | null;
+    expenses?: Array<{ description: string; amount: number }>;
     items: Array<{
       productId: string;
       productName: string;
@@ -215,6 +216,7 @@ export const rentalService = {
       securityDeposit = 0,
       paidAmount: advanceAmount = 0,
       notes = null,
+      expenses = [],
       items,
     } = params;
 
@@ -266,6 +268,7 @@ export const rentalService = {
         paid_amount: effectivePaid,
         due_amount: dueAmount,
         notes: notes || null,
+        rental_expenses: expenses && expenses.length > 0 ? expenses : null,
         created_by: createdBy || null,
       })
       .select('id, booking_no')

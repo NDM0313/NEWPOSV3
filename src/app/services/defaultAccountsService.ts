@@ -53,6 +53,7 @@ const LEAF_ROWS: SeedDef[] = [
   { code: '5100', name: 'Shipping Expense', type: 'expense', parentCode: '6090' },
   { code: '5110', name: 'Sales Commission Expense', type: 'expense', parentCode: '6090' },
   { code: '5200', name: 'Discount Allowed', type: 'expense', parentCode: '6090' },
+  { code: '5300', name: 'Rental Expense', type: 'expense', parentCode: '6090' },
   { code: '2040', name: 'Salesman Payable', type: 'liability', parentCode: '2090' },
   { code: '6100', name: 'General operating expenses', type: 'expense', parentCode: '6090' },
   { code: '6110', name: 'Salary Expense', type: 'expense', parentCode: '6090' },

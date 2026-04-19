@@ -1894,12 +1894,12 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     const { bookingId, customerName, customerId, remainingAmount, paymentMethod, paymentAccountId, paymentDate } = params;
 
     const postingDate = paymentDate?.slice(0, 10) || new Date().toISOString().split('T')[0];
-    // Use Sales Revenue (code 4000) - exists in default accounts; Rental Income falls back to it
+    // Post to Rental Income (code 4200) — NOT Sales Revenue
     return await createEntry({
       source: 'Rental',
       referenceNo: bookingId,
       debitAccount: (paymentAccountId ? 'Cash' : paymentMethod) as AccountType,
-      creditAccount: 'Sales Revenue',
+      creditAccount: 'Rental Income',
       amount: remainingAmount,
       description: `Rental remaining payment - ${customerName}`,
       module: 'Rental',
@@ -1920,7 +1920,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       source: 'Rental',
       referenceNo: bookingId,
       debitAccount: 'Accounts Receivable',
-      creditAccount: 'Sales Revenue',
+      creditAccount: 'Rental Income',
       amount: remainingAmount,
       description: `Rental credit - ${customerName}`,
       module: 'Rental',
@@ -1932,12 +1932,12 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     const { bookingId, customerName, customerId, securityDepositAmount, damageCharge, paymentMethod } = params;
 
     if (damageCharge && damageCharge > 0) {
-      // Damage charge: Debit Cash, Credit Sales Revenue (or Other Income)
+      // Damage charge: Debit Cash, Credit Rental Income
       await createEntry({
         source: 'Rental',
         referenceNo: bookingId,
         debitAccount: (paymentMethod || 'Cash') as AccountType,
-        creditAccount: 'Sales Revenue',
+        creditAccount: 'Rental Income',
         amount: damageCharge,
         description: `Rental damage charge - ${customerName}`,
         module: 'Rental',
