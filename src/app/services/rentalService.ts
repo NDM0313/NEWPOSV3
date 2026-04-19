@@ -11,7 +11,7 @@ import { settingsService } from '@/app/services/settingsService';
 import { checkRentalAvailabilityForItems } from '@/app/services/rentalAvailabilityService';
 import { syncJournalEntryDateByDocumentRefs } from '@/app/services/journalTransactionDateSyncService';
 
-export type RentalStatus = 'draft' | 'booked' | 'rented' | 'returned' | 'overdue' | 'cancelled';
+export type RentalStatus = 'draft' | 'booked' | 'active' | 'rented' | 'picked_up' | 'returned' | 'overdue' | 'cancelled';
 
 export interface Rental {
   id?: string;
@@ -213,7 +213,7 @@ export const rentalService = {
       returnDate,
       rentalCharges,
       securityDeposit = 0,
-      paidAmount: _paidAmountIgnored = 0,
+      paidAmount: advanceAmount = 0,
       notes = null,
       items,
     } = params;
@@ -241,8 +241,8 @@ export const rentalService = {
 
     const durationDays = Math.ceil((ret.getTime() - pickup.getTime()) / (1000 * 60 * 60 * 24)) || 1;
     const totalAmount = rentalCharges + securityDeposit;
-    // Advance is never applied at create — user must confirm receiving account in payment dialog (see RentalBookingDrawer).
-    const effectivePaid = 0;
+    // Capture advance payment if provided (collected at booking time)
+    const effectivePaid = Math.max(0, Number(advanceAmount) || 0);
     const dueAmount = Math.max(0, totalAmount - effectivePaid);
 
     const bookingNo = await settingsService.getNextDocumentNumber(companyId, branchId, 'rental');
@@ -290,6 +290,18 @@ export const rentalService = {
       throw itemsError;
     }
 
+    // Record advance payment if provided
+    if (effectivePaid > 0) {
+      await supabase.from('rental_payments').insert({
+        rental_id: rentalData.id,
+        amount: effectivePaid,
+        method: 'cash',
+        reference: `Advance - ${bookingNo}`,
+        payment_date: bookingDate,
+        created_by: createdBy || null,
+      });
+    }
+
     await activityLogService
       .logActivity({
         companyId,
@@ -297,9 +309,9 @@ export const rentalService = {
         entityId: rentalData.id,
         entityReference: bookingNo,
         action: 'rental_created',
-        newValue: { status: 'booked', totalAmount, itemsCount: items.length },
+        newValue: { status: 'booked', totalAmount, advancePaid: effectivePaid, itemsCount: items.length },
         performedBy: createdBy || undefined,
-        description: `Rental booking ${bookingNo} created`,
+        description: `Rental booking ${bookingNo} created${effectivePaid > 0 ? ` (Advance: Rs ${effectivePaid.toLocaleString()})` : ''}`,
       })
       .catch(() => {});
 
@@ -526,10 +538,10 @@ export const rentalService = {
       if (movErr) throw movErr;
     }
 
-    // DB enum has picked_up/active; use picked_up for "rented"
+    // DB enum: 'booked' | 'active' | 'returned' | 'overdue' | 'cancelled'
     const { error: updateErr } = await supabase
       .from('rentals')
-      .update({ status: 'picked_up' })
+      .update({ status: 'active' })
       .eq('id', id);
 
     if (updateErr) throw updateErr;
@@ -591,6 +603,15 @@ export const rentalService = {
       throw new Error('Pickup date cannot be before the booking start date');
     }
 
+    // Document expiry validation
+    if (documentExpiry) {
+      const expDate = new Date(documentExpiry);
+      const pickDate = new Date(actualPickupDate);
+      if (expDate < pickDate) {
+        throw new Error('Document has expired. Please provide a valid document.');
+      }
+    }
+
     const { data: items, error: itemsErr } = await supabase
       .from('rental_items')
       .select('id, product_id, quantity')
@@ -598,6 +619,17 @@ export const rentalService = {
 
     if (itemsErr) throw itemsErr;
     const itemList = (items || []) as any[];
+
+    // Stock sufficiency check before rental_out
+    for (const item of itemList) {
+      const { data: stockRows } = await supabase
+        .from('stock_movements').select('quantity')
+        .eq('company_id', companyId).eq('product_id', item.product_id);
+      const currentStock = (stockRows || []).reduce((s: number, m: any) => s + (Number(m.quantity) || 0), 0);
+      if (currentStock < Number(item.quantity)) {
+        throw new Error(`Insufficient stock: available ${currentStock}, required ${item.quantity}`);
+      }
+    }
 
     for (const item of itemList) {
       const qty = -Number(item.quantity);
@@ -617,7 +649,7 @@ export const rentalService = {
     }
 
     const updatePayload: Record<string, unknown> = {
-      status: 'picked_up',
+      status: 'active',
       actual_pickup_date: actualPickupDate,
       picked_up_by: performedBy || null,
       document_type: documentType,
@@ -661,7 +693,7 @@ export const rentalService = {
       .from('rentals')
       .select('id, booking_no')
       .eq('company_id', companyId)
-      .eq('status', 'picked_up')
+      .in('status', ['active', 'picked_up'])
       .lt('return_date', today);
 
     if (error || !rows?.length) return 0;
@@ -701,15 +733,17 @@ export const rentalService = {
       throw new Error('Only rented or overdue rentals can be returned');
     }
 
-    // If penalty > 0, penalty must be paid and document returned
+    // Validate penalty and document return
     if (penaltyAmount > 0 && !penaltyPaid) {
       throw new Error('Penalty must be paid before return can be completed');
     }
-    if (penaltyAmount > 0 && !documentReturned) {
-      throw new Error('Document must be returned to customer before completing return with penalty');
-    }
     if (!documentReturned) {
       throw new Error('Please confirm document returned to customer');
+    }
+    // Warn if penalty exceeds security deposit
+    const secDep = Number(r.security_deposit ?? 0);
+    if (penaltyAmount > secDep && penaltyAmount > 0) {
+      console.warn(`[RENTAL] Penalty Rs ${penaltyAmount} exceeds security deposit Rs ${secDep}. Customer owes additional Rs ${penaltyAmount - secDep}`);
     }
 
     const { data: items, error: itemsErr } = await supabase
@@ -795,8 +829,8 @@ export const rentalService = {
 
     if (fetchErr || !rental) throw new Error('Rental not found');
     const r = rental as any;
-    if (r.status !== 'draft') {
-      throw new Error('Only draft rentals can be cancelled');
+    if (!['draft', 'booked'].includes(r.status || '')) {
+      throw new Error('Only draft or booked rentals can be cancelled');
     }
 
     const { error: updateErr } = await supabase.from('rentals').update({ status: 'cancelled' }).eq('id', id);

@@ -54,7 +54,7 @@ export async function checkRentalAvailability(params: {
     .eq('company_id', companyId)
     .in('status', [...BLOCKING_STATUSES])
     .lt('pickup_date', endDate)
-    .gt('return_date', startDate);
+    .gte('return_date', startDate);
 
   if (branchId && branchId !== 'all') {
     query = query.eq('branch_id', branchId);
