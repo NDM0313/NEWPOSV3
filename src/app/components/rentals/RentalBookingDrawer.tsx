@@ -978,7 +978,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                   
                   <Button 
                     className="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold h-12 text-lg shadow-lg shadow-pink-600/20"
-                    disabled={!selectedProduct || !!hasConflict || saving}
+                    disabled={(cartItems.length === 0 && !selectedProduct) || !!hasConflict || saving}
                     onClick={handleBookOrder}
                   >
                       {saving ? "Saving..." : hasConflict ? "Date Conflict" : "Book Order"} <ArrowRight className="ml-2" size={18} />

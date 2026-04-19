@@ -109,6 +109,28 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
     setLocalPaidAmount(rental?.paidAmount ?? 0);
   }, [rental?.paidAmount, rental?.id]);
 
+  // Re-fetch paid amount from DB when payment events fire or modal gains focus
+  const refreshPaidAmount = async () => {
+    if (!rental?.id) return;
+    try {
+      const { data } = await supabase.from('rentals').select('paid_amount').eq('id', rental.id).maybeSingle();
+      if (data) setLocalPaidAmount(Number((data as any).paid_amount) || 0);
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (!open || !rental?.id) return;
+    const handler = () => { refreshPaidAmount(); };
+    window.addEventListener('paymentAdded', handler);
+    window.addEventListener('accountingEntriesChanged', handler);
+    window.addEventListener('ledgerUpdated', handler);
+    return () => {
+      window.removeEventListener('paymentAdded', handler);
+      window.removeEventListener('accountingEntriesChanged', handler);
+      window.removeEventListener('ledgerUpdated', handler);
+    };
+  }, [open, rental?.id]);
+
   const remainingAmount = (rental?.totalAmount ?? 0) - localPaidAmount;
   const hasFullPayment = remainingAmount <= 0;
 
@@ -238,17 +260,10 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
                     className="w-full bg-amber-500 hover:bg-amber-600 text-white"
                     onClick={async () => {
                       onAddPayment(rental);
-                      // After payment dialog closes, re-fetch rental to get updated paid_amount
-                      setTimeout(async () => {
-                        try {
-                          const { data: updated } = await supabase
-                            .from('rentals')
-                            .select('paid_amount')
-                            .eq('id', rental.id)
-                            .maybeSingle();
-                          if (updated) setLocalPaidAmount(Number((updated as any).paid_amount) || 0);
-                        } catch {}
-                      }, 1500);
+                      // Poll for updated paid_amount (payment dialog is async)
+                      for (const delay of [800, 2000, 4000]) {
+                        setTimeout(() => refreshPaidAmount(), delay);
+                      }
                     }}
                   >
                     <DollarSign size={16} className="mr-2" />
@@ -452,13 +467,10 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
               onClick={() => {
                 setCreditChoiceOpen(false);
                 onAddPayment?.(rental!);
-                // Re-fetch paid amount after payment dialog
-                setTimeout(async () => {
-                  try {
-                    const { data: updated } = await supabase.from('rentals').select('paid_amount').eq('id', rental!.id).maybeSingle();
-                    if (updated) setLocalPaidAmount(Number((updated as any).paid_amount) || 0);
-                  } catch {}
-                }, 1500);
+                // Poll for updated paid_amount
+                for (const delay of [800, 2000, 4000]) {
+                  setTimeout(() => refreshPaidAmount(), delay);
+                }
               }}
             >
               <DollarSign size={16} className="mr-2" />
