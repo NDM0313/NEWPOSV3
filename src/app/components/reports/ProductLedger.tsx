@@ -1,20 +1,66 @@
+/**
+ * Product Stock Card / Product Ledger Report
+ * Shows complete A-to-Z history for a single product:
+ * purchases, sales, returns, adjustments, transfers, production — with running balance & profit.
+ */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Search,
-  ArrowUpRight,
   ArrowDownRight,
+  ArrowUpRight,
   CornerUpLeft,
+  CornerDownRight,
   RefreshCw,
   Loader2,
   Package,
+  Filter,
+  Printer,
+  AlertTriangle,
+  TrendingUp,
+  GitBranch,
+  FileText,
 } from 'lucide-react';
-import { Input } from "../ui/input";
-import { CalendarDateRangePicker } from "../ui/CalendarDateRangePicker";
-import { ReportActions } from './ReportActions';
-import { cn } from "../ui/utils";
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
+import { cn } from '../ui/utils';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilterOptional } from '@/app/context/GlobalFilterContext';
 import { supabase } from '@/lib/supabase';
+import { branchService } from '@/app/services/branchService';
+
+// ─── Types ───────────────────────────────────────────────────
+
+type TxnType =
+  | 'Purchase'
+  | 'Purchase Return'
+  | 'Sale'
+  | 'Sale Return'
+  | 'Adjustment'
+  | 'Opening Stock'
+  | 'Production'
+  | 'Transfer';
+
+interface LedgerRow {
+  id: string;
+  date: string;
+  voucherNo: string;
+  type: TxnType;
+  partyName: string;
+  variationId?: string;
+  variationLabel?: string;
+  qtyIn: number;
+  qtyOut: number;
+  purchaseRate: number;
+  saleRate: number;
+  amount: number;
+  discount: number;
+  netAmount: number;
+  runningQty: number;
+  runningValue: number;
+  grossProfit: number;
+  remarks: string;
+}
 
 interface ProductOption {
   id: string;
@@ -24,264 +70,140 @@ interface ProductOption {
   cost_price?: number;
   retail_price?: number;
   has_variations?: boolean;
-  /** Space-separated active variation SKUs — parent `products.sku` is often empty when using variations */
-  variationSkusForSearch?: string;
 }
 
 interface VariationOption {
   id: string;
   sku: string;
-  attributes: any;
   label: string;
 }
 
-interface LedgerRow {
+interface BranchOption {
   id: string;
-  date: string;
-  type: 'Purchase' | 'Sale' | 'Sale Return' | 'Purchase Return' | 'Adjustment' | 'Opening';
-  party: string;
-  qty: number;
-  unitPrice: number;
-  lineTotal: number;
-  profit: number;
-  balance: number;
-  reference: string;
+  name: string;
 }
 
-interface ProductSummary {
-  currentStock: number;
-  avgPurchaseCost: number;
-  avgSalePrice: number;
-  totalPurchaseQty: number;
-  totalPurchaseAmount: number;
-  totalSaleQty: number;
-  totalSaleAmount: number;
-  totalProfit: number;
-}
+const ALL_TXN_TYPES: TxnType[] = [
+  'Purchase', 'Purchase Return', 'Sale', 'Sale Return',
+  'Adjustment', 'Opening Stock', 'Production', 'Transfer',
+];
 
-/** First calendar day in YYYY-MM-DD from ISO or date-only strings (for DB / string compare). */
-function toYyyyMmDd(isoOrDate: string | undefined | null): string {
-  if (!isoOrDate) return '';
-  const m = String(isoOrDate).trim().match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : '';
-}
-
-function isSubsequence(haystack: string, needle: string): boolean {
-  let from = 0;
-  for (const ch of needle) {
-    const idx = haystack.indexOf(ch, from);
-    if (idx === -1) return false;
-    from = idx + 1;
-  }
-  return true;
-}
-
-/** Unify fancy hyphens/spaces so "PRD‑0365" (unicode) still matches typed ASCII. */
-function normalizeSearchText(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/** Match name + parent SKU + variation SKUs; token-AND; fuzzy subsequence as last resort. */
-function productMatchesSearch(
-  name: string,
-  sku: string,
-  variationSkus: string,
-  rawQuery: string
-): boolean {
-  const q = normalizeSearchText(rawQuery);
-  if (!q) return true;
-  const hay = normalizeSearchText(`${name} ${sku} ${variationSkus}`);
-  const tokens = q.split(/\s+/).filter(Boolean);
-  return tokens.every((tok) => hay.includes(tok) || isSubsequence(hay, tok));
-}
-
-/** Higher = better match — used so exact SKUs are not pushed out by .slice(50) on loose subsequence hits. */
-function productSearchRank(p: ProductOption, rawQuery: string): number {
-  const q = normalizeSearchText(rawQuery);
-  if (!q) return 0;
-  const name = normalizeSearchText(p.name || '');
-  const sku = normalizeSearchText(p.sku || '');
-  const vsk = normalizeSearchText(p.variationSkusForSearch || '');
-  const hay = `${name} ${sku} ${vsk}`;
-  const tokens = q.split(/\s+/).filter(Boolean);
-
-  let r = 0;
-  if (sku === q) r = Math.max(r, 10_000);
-  const eachVar = vsk.split(' ').filter(Boolean);
-  if (eachVar.some((s) => s === q)) r = Math.max(r, 9_900);
-  if (sku.startsWith(q)) r = Math.max(r, 8_000 + Math.min(q.length, 20));
-  if (eachVar.some((s) => s.startsWith(q))) r = Math.max(r, 7_900 + Math.min(q.length, 20));
-  if (sku.includes(q)) r = Math.max(r, 7_000);
-  if (vsk.includes(q)) r = Math.max(r, 6_800);
-  if (name.includes(q)) r = Math.max(r, 5_000);
-  if (tokens.every((tok) => hay.includes(tok))) r = Math.max(r, 3_000);
-  if (tokens.every((tok) => hay.includes(tok) || isSubsequence(hay, tok))) r = Math.max(r, 500);
-  return r;
-}
+// ─── Component ───────────────────────────────────────────────
 
 export const ProductLedger = () => {
-  const { companyId } = useSupabase();
+  const { companyId, branchId: contextBranchId } = useSupabase();
   const globalFilter = useGlobalFilterOptional();
 
+  // Filters
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [selectedProductId, setSelectedProductId] = useState('');
   const [variations, setVariations] = useState<VariationOption[]>([]);
   const [selectedVariationId, setSelectedVariationId] = useState('');
+  const [branches, setBranches] = useState<BranchOption[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState('');
+  const [enabledTypes, setEnabledTypes] = useState<Set<TxnType>>(new Set(ALL_TXN_TYPES));
   const [searchQuery, setSearchQuery] = useState('');
-  const [ledgerRows, setLedgerRows] = useState<LedgerRow[]>([]);
-  const [summary, setSummary] = useState<ProductSummary | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [showTypeFilter, setShowTypeFilter] = useState(false);
+
+  // Data
+  const [rows, setRows] = useState<LedgerRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [productsLoading, setProductsLoading] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [standaloneStartYmd, setStandaloneStartYmd] = useState(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 3);
-    return d.toISOString().slice(0, 10);
-  });
-  const [standaloneEndYmd, setStandaloneEndYmd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [activeTab, setActiveTab] = useState<'stock-card' | 'profit-analysis' | 'source-trace'>('stock-card');
+  const [redFlags, setRedFlags] = useState<string[]>([]);
+  const [allProductsSummary, setAllProductsSummary] = useState<{
+    productId: string; name: string; sku: string; category?: string;
+    stock: number; purchaseQty: number; purchaseValue: number; saleQty: number; saleValue: number; stockValue: number;
+    saleReturnQty: number; purchaseReturnQty: number; adjustmentQty: number;
+  }[]>([]);
+  const [allSummaryLoading, setAllSummaryLoading] = useState(false);
 
-  const rangeStartYmd = useMemo(() => {
-    if (globalFilter?.startDate) return toYyyyMmDd(globalFilter.startDate) || standaloneStartYmd;
-    return standaloneStartYmd;
-  }, [globalFilter?.startDate, standaloneStartYmd]);
+  const startDate = globalFilter?.startDate || (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10); })();
+  const endDate = globalFilter?.endDate || new Date().toISOString().slice(0, 10);
 
-  const rangeEndYmd = useMemo(() => {
-    if (globalFilter?.endDate) return toYyyyMmDd(globalFilter.endDate) || standaloneEndYmd;
-    return standaloneEndYmd;
-  }, [globalFilter?.endDate, standaloneEndYmd]);
+  // ─── Load products & branches ──────────────────────────────
 
-  const calendarRangeValue = useMemo(() => {
-    if (globalFilter?.startDateObj && globalFilter?.endDateObj) {
-      return { from: globalFilter.startDateObj, to: globalFilter.endDateObj };
-    }
-    const from = new Date(`${standaloneStartYmd}T12:00:00`);
-    const to = new Date(`${standaloneEndYmd}T12:00:00`);
-    return { from, to };
-  }, [
-    globalFilter?.startDateObj,
-    globalFilter?.endDateObj,
-    standaloneStartYmd,
-    standaloneEndYmd,
-  ]);
-
-  const dateRangeButtonLabel = useMemo(() => {
-    const fmt = (ymd: string) => {
-      const d = new Date(`${ymd}T12:00:00`);
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    };
-    return `${fmt(rangeStartYmd)} — ${fmt(rangeEndYmd)}`;
-  }, [rangeStartYmd, rangeEndYmd]);
-
-  // Load products + variation SKUs (many catalogs store SKU only on product_variations)
   useEffect(() => {
     if (!companyId) return;
-    let cancelled = false;
     setProductsLoading(true);
-
-    (async () => {
-      const selectWithCategory =
-        'id, name, sku, category_id, cost_price, retail_price, has_variations, category:product_categories(name)';
-      const selectMinimal =
-        'id, name, sku, category_id, cost_price, retail_price, has_variations';
-
-      let raw: any[] | null = null;
-      let err = null as { message?: string } | null;
-
-      const q1 = await supabase
-        .from('products')
-        .select(selectWithCategory)
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .order('name');
-
-      if (q1.error) {
-        const q2 = await supabase
-          .from('products')
-          .select(selectMinimal)
-          .eq('company_id', companyId)
-          .eq('is_active', true)
-          .order('name');
-        raw = q2.data as any[] | null;
-        err = q2.error;
-      } else {
-        raw = q1.data as any[] | null;
-      }
-
-      if (cancelled) return;
-      if (err) {
-        console.error('[ProductLedger] products load:', err);
-        setProducts([]);
+    supabase
+      .from('products')
+      .select('id, name, sku, cost_price, retail_price, has_variations, category:product_categories(name)')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .order('name')
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[ProductLedger] products load:', error);
+          setProducts([]);
+        } else {
+          const rows = (data || []).map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            sku: p.sku,
+            category: typeof p.category?.name === 'string' ? p.category.name : undefined,
+            cost_price: p.cost_price,
+            retail_price: p.retail_price,
+            has_variations: p.has_variations,
+          })) as ProductOption[];
+          setProducts(rows);
+        }
         setProductsLoading(false);
-        return;
-      }
-
-      const base: ProductOption[] = (raw || []).map((row: any) => ({
-        id: String(row.id),
-        name: row.name ?? '',
-        sku: row.sku ?? '',
-        category: typeof row.category === 'object' && row.category?.name ? String(row.category.name) : '',
-        cost_price: row.cost_price,
-        retail_price: row.retail_price,
-        has_variations: !!row.has_variations,
-      }));
-      // All product ids: SKUs often live on product_variations even if has_variations is wrong/missing
-      const allProductIds = base.map((p) => p.id);
-      const skuByProduct = new Map<string, string[]>();
-
-      const chunk = 120;
-      for (let i = 0; i < allProductIds.length; i += chunk) {
-        const slice = allProductIds.slice(i, i + chunk);
-        if (slice.length === 0) continue;
-
-        let res = await supabase
-          .from('product_variations')
-          .select('product_id, sku')
-          .in('product_id', slice)
-          .eq('is_active', true);
-
-        if (res.error) {
-          res = await supabase.from('product_variations').select('product_id, sku').in('product_id', slice);
-        }
-
-        if (res.error) {
-          console.warn('[ProductLedger] variation SKUs batch:', res.error);
-          continue;
-        }
-
-        for (const row of res.data || []) {
-          const pid = String((row as any).product_id);
-          const s = String((row as any).sku || '').trim();
-          if (!s) continue;
-          const arr = skuByProduct.get(pid) || [];
-          arr.push(s);
-          skuByProduct.set(pid, arr);
-        }
-      }
-
-      if (cancelled) return;
-
-      const enriched: ProductOption[] = base.map((p) => {
-        const extra = skuByProduct.get(p.id);
-        return {
-          ...p,
-          variationSkusForSearch: extra?.length ? extra.join(' ') : '',
-        };
       });
 
-      setProducts(enriched);
-      setProductsLoading(false);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    branchService.getBranchesCached(companyId).then(b => setBranches((b || []).map((br: any) => ({ id: br.id, name: br.name }))));
   }, [companyId]);
 
-  // Load variations when product selected
+  // Load all-products summary (stock + purchase/sale aggregates from stock_movements)
+  useEffect(() => {
+    if (!companyId || products.length === 0) return;
+    setAllSummaryLoading(true);
+    (async () => {
+      try {
+        const { data: movements } = await supabase
+          .from('stock_movements')
+          .select('product_id, movement_type, quantity, unit_cost, total_cost')
+          .eq('company_id', companyId);
+
+        const agg = new Map<string, { stock: number; purQty: number; purVal: number; saleQty: number; saleVal: number }>();
+        for (const m of (movements || []) as any[]) {
+          const pid = m.product_id;
+          const a = agg.get(pid) || { stock: 0, purQty: 0, purVal: 0, saleQty: 0, saleVal: 0, saleRetQty: 0, purRetQty: 0, adjQty: 0 };
+          const qty = Number(m.quantity) || 0;
+          const cost = Math.abs(Number(m.total_cost) || qty * (Number(m.unit_cost) || 0));
+          const mt = String(m.movement_type || '');
+          a.stock += qty;
+          if (mt === 'purchase' || mt === 'opening_stock') { a.purQty += Math.abs(qty); a.purVal += cost; }
+          if (mt === 'sale') { a.saleQty += Math.abs(qty); a.saleVal += cost; }
+          if (mt === 'sale_return') a.saleRetQty += Math.abs(qty);
+          if (mt === 'purchase_return') a.purRetQty += Math.abs(qty);
+          if (mt === 'adjustment') a.adjQty += qty;
+          agg.set(pid, a);
+        }
+
+        const rows = products.map(p => {
+          const a = agg.get(p.id) || { stock: 0, purQty: 0, purVal: 0, saleQty: 0, saleVal: 0, saleRetQty: 0, purRetQty: 0, adjQty: 0 };
+          const avgCost = a.purQty > 0 ? a.purVal / a.purQty : (p.cost_price || 0);
+          return {
+            productId: p.id, name: p.name, sku: p.sku, category: p.category,
+            stock: Math.round(a.stock * 1000) / 1000,
+            purchaseQty: a.purQty, purchaseValue: Math.round(a.purVal),
+            saleQty: a.saleQty, saleValue: Math.round(a.saleVal),
+            stockValue: Math.round(a.stock * avgCost),
+            saleReturnQty: a.saleRetQty, purchaseReturnQty: a.purRetQty, adjustmentQty: a.adjQty,
+          };
+        }).filter(r => r.stock !== 0 || r.purchaseQty > 0 || r.saleQty > 0)
+          .sort((a, b) => b.saleValue - a.saleValue);
+
+        setAllProductsSummary(rows);
+      } catch (err) {
+        console.error('[ProductLedger] All products summary:', err);
+      }
+      setAllSummaryLoading(false);
+    })();
+  }, [companyId, products]);
+
   useEffect(() => {
     if (!selectedProductId) { setVariations([]); setSelectedVariationId(''); return; }
     const prod = products.find(p => p.id === selectedProductId);
@@ -292,537 +214,998 @@ export const ProductLedger = () => {
       .eq('product_id', selectedProductId)
       .eq('is_active', true)
       .then(({ data }) => {
-        const vars = (data || []).map((v: any) => ({
+        setVariations((data || []).map((v: any) => ({
           id: v.id,
           sku: v.sku || '',
-          attributes: v.attributes,
-          label: v.attributes
-            ? Object.values(v.attributes).join(' / ')
-            : v.sku || v.id.slice(0, 8),
-        }));
-        setVariations(vars);
+          label: v.attributes ? Object.values(v.attributes).join(' / ') : v.sku || v.id.slice(0, 8),
+        })));
       });
   }, [selectedProductId, products]);
 
-  // Load ledger data
+  // ─── Load ledger ───────────────────────────────────────────
+
   const loadLedger = useCallback(async () => {
     if (!companyId || !selectedProductId) return;
     setLoading(true);
-
     try {
-      const rows: LedgerRow[] = [];
+      const allRows: LedgerRow[] = [];
+      const branchFilter = selectedBranchId || (contextBranchId === 'all' ? '' : contextBranchId || '');
 
-      // 1. Fetch purchases for this product
-      const { data: purchaseItems } = await supabase
-        .from('purchase_items')
-        .select('purchase_id, quantity, unit_price, total, variation_id')
-        .eq('product_id', selectedProductId);
-      const purchaseIds = [...new Set((purchaseItems || []).map((pi: any) => pi.purchase_id))];
+      // ── 1. Purchases ──
+      if (enabledTypes.has('Purchase')) {
+        let q = supabase
+          .from('purchase_items')
+          .select('purchase_id, quantity, unit_price, discount_amount, total, variation_id')
+          .eq('product_id', selectedProductId);
+        if (selectedVariationId) q = q.eq('variation_id', selectedVariationId);
+        const { data: pItems } = await q;
+        const pIds = [...new Set((pItems || []).map((r: any) => r.purchase_id))];
+        if (pIds.length > 0) {
+          let pq = supabase.from('purchases').select('id, po_no, po_date, supplier_name, status, branch_id').eq('company_id', companyId).in('id', pIds).in('status', ['final', 'received', 'ordered']);
+          if (branchFilter) pq = pq.eq('branch_id', branchFilter);
+          const { data: purs } = await pq;
+          const purMap = new Map((purs || []).map((p: any) => [p.id, p]));
+          for (const pi of (pItems || []) as any[]) {
+            const pur = purMap.get(pi.purchase_id);
+            if (!pur) continue;
+            const d = (pur.po_date || '').slice(0, 10);
+            if (d < startDate || d > endDate) continue;
+            const qty = Number(pi.quantity) || 0;
+            const rate = Number(pi.unit_price) || 0;
+            const disc = Number(pi.discount_amount) || 0;
+            const total = Number(pi.total) || qty * rate;
+            allRows.push({
+              id: `pur-${pi.purchase_id}-${pi.variation_id || ''}`, date: d,
+              voucherNo: pur.po_no || '', type: 'Purchase', partyName: pur.supplier_name || '',
+              variationId: pi.variation_id || undefined,
+              qtyIn: qty, qtyOut: 0, purchaseRate: rate, saleRate: 0,
+              amount: qty * rate, discount: disc, netAmount: total,
+              runningQty: 0, runningValue: 0, grossProfit: 0, remarks: '',
+            });
+          }
+        }
+      }
 
-      let purchaseMap = new Map<string, any>();
-      if (purchaseIds.length > 0) {
-        const { data: purchases } = await supabase
-          .from('purchases')
-          .select('id, po_no, po_date, supplier_name, status')
+      // ── 2. Purchase Returns ──
+      if (enabledTypes.has('Purchase Return')) {
+        let q = supabase.from('purchase_return_items').select('purchase_return_id, quantity, unit_price, total, variation_id, product_id').eq('product_id', selectedProductId);
+        if (selectedVariationId) q = q.eq('variation_id', selectedVariationId);
+        const { data: prItems } = await q;
+        const prIds = [...new Set((prItems || []).map((r: any) => r.purchase_return_id))];
+        if (prIds.length > 0) {
+          let prq = supabase.from('purchase_returns').select('id, return_no, return_date, supplier_name, status, branch_id').eq('company_id', companyId).in('id', prIds).eq('status', 'final');
+          if (branchFilter) prq = prq.eq('branch_id', branchFilter);
+          const { data: prets } = await prq;
+          const pretMap = new Map((prets || []).map((r: any) => [r.id, r]));
+          for (const ri of (prItems || []) as any[]) {
+            const ret = pretMap.get(ri.purchase_return_id);
+            if (!ret) continue;
+            const d = (ret.return_date || '').slice(0, 10);
+            if (d < startDate || d > endDate) continue;
+            const qty = Number(ri.quantity) || 0;
+            const rate = Number(ri.unit_price) || 0;
+            allRows.push({
+              id: `pret-${ri.purchase_return_id}-${ri.variation_id || ''}`, date: d,
+              voucherNo: ret.return_no || '', type: 'Purchase Return', partyName: ret.supplier_name || '',
+              variationId: ri.variation_id || undefined,
+              qtyIn: 0, qtyOut: qty, purchaseRate: rate, saleRate: 0,
+              amount: qty * rate, discount: 0, netAmount: Number(ri.total) || qty * rate,
+              runningQty: 0, runningValue: 0, grossProfit: 0, remarks: 'Return to supplier',
+            });
+          }
+        }
+      }
+
+      // ── 3. Sales ──
+      if (enabledTypes.has('Sale')) {
+        let q = supabase.from('sales_items').select('sale_id, quantity, unit_price, discount_amount, total, variation_id').eq('product_id', selectedProductId);
+        if (selectedVariationId) q = q.eq('variation_id', selectedVariationId);
+        const { data: sItems, error: sErr } = await q;
+        // Fallback to legacy table
+        let finalSaleItems = sItems;
+        if (sErr?.code === '42P01' || sErr?.message?.includes('does not exist')) {
+          const { data: legacyItems } = await supabase.from('sale_items').select('sale_id, quantity, unit_price, discount_amount, total, variation_id').eq('product_id', selectedProductId);
+          finalSaleItems = legacyItems;
+        }
+        const sIds = [...new Set((finalSaleItems || []).map((r: any) => r.sale_id))];
+        if (sIds.length > 0) {
+          let sq = supabase.from('sales').select('id, invoice_no, invoice_date, customer_name, status, branch_id').eq('company_id', companyId).in('id', sIds).eq('status', 'final');
+          if (branchFilter) sq = sq.eq('branch_id', branchFilter);
+          const { data: sales } = await sq;
+          const saleMap = new Map((sales || []).map((s: any) => [s.id, s]));
+          for (const si of (finalSaleItems || []) as any[]) {
+            const sale = saleMap.get(si.sale_id);
+            if (!sale) continue;
+            const d = (sale.invoice_date || '').slice(0, 10);
+            if (d < startDate || d > endDate) continue;
+            const qty = Number(si.quantity) || 0;
+            const saleRate = Number(si.unit_price) || 0;
+            const disc = Number(si.discount_amount) || 0;
+            const total = Number(si.total) || qty * saleRate;
+            allRows.push({
+              id: `sale-${si.sale_id}-${si.variation_id || ''}`, date: d,
+              voucherNo: sale.invoice_no || '', type: 'Sale', partyName: sale.customer_name || 'Walk-in',
+              variationId: si.variation_id || undefined,
+              qtyIn: 0, qtyOut: qty, purchaseRate: 0, saleRate,
+              amount: qty * saleRate, discount: disc, netAmount: total,
+              runningQty: 0, runningValue: 0, grossProfit: 0, remarks: '',
+            });
+          }
+        }
+      }
+
+      // ── 4. Sale Returns ──
+      if (enabledTypes.has('Sale Return')) {
+        let q = supabase.from('sale_return_items').select('sale_return_id, quantity, unit_price, total, variation_id, product_id').eq('product_id', selectedProductId);
+        if (selectedVariationId) q = q.eq('variation_id', selectedVariationId);
+        const { data: srItems } = await q;
+        const srIds = [...new Set((srItems || []).map((r: any) => r.sale_return_id))];
+        if (srIds.length > 0) {
+          let srq = supabase.from('sale_returns').select('id, return_no, return_date, status, branch_id').eq('company_id', companyId).in('id', srIds).eq('status', 'final');
+          if (branchFilter) srq = srq.eq('branch_id', branchFilter);
+          const { data: srets } = await srq;
+          const sretMap = new Map((srets || []).map((r: any) => [r.id, r]));
+          for (const ri of (srItems || []) as any[]) {
+            const ret = sretMap.get(ri.sale_return_id);
+            if (!ret) continue;
+            const d = (ret.return_date || '').slice(0, 10);
+            if (d < startDate || d > endDate) continue;
+            const qty = Number(ri.quantity) || 0;
+            allRows.push({
+              id: `sret-${ri.sale_return_id}-${ri.variation_id || ''}`, date: d,
+              voucherNo: ret.return_no || '', type: 'Sale Return', partyName: 'Customer Return',
+              variationId: ri.variation_id || undefined,
+              qtyIn: qty, qtyOut: 0, purchaseRate: 0, saleRate: Number(ri.unit_price) || 0,
+              amount: Number(ri.total) || 0, discount: 0, netAmount: Number(ri.total) || 0,
+              runningQty: 0, runningValue: 0, grossProfit: 0, remarks: '',
+            });
+          }
+        }
+      }
+
+      // ── 5. Stock Movements (Adjustment, Opening, Production, Transfer) ──
+      const movTypes: string[] = [];
+      if (enabledTypes.has('Adjustment')) movTypes.push('adjustment');
+      if (enabledTypes.has('Opening Stock')) movTypes.push('opening_stock');
+      if (enabledTypes.has('Production')) movTypes.push('production');
+      if (enabledTypes.has('Transfer')) movTypes.push('transfer', 'transfer_in', 'transfer_out');
+
+      if (movTypes.length > 0) {
+        let mq = supabase
+          .from('stock_movements')
+          .select('id, quantity, unit_cost, total_cost, movement_type, reference_type, reference_id, notes, created_at, branch_id')
           .eq('company_id', companyId)
-          .in('id', purchaseIds)
-          .in('status', ['final', 'received', 'ordered']);
-        for (const p of (purchases || []) as any[]) purchaseMap.set(p.id, p);
-      }
+          .eq('product_id', selectedProductId)
+          .in('movement_type', movTypes);
+        if (selectedVariationId) mq = mq.eq('variation_id', selectedVariationId);
+        if (branchFilter) mq = mq.eq('branch_id', branchFilter);
+        const { data: movs } = await mq;
 
-      for (const pi of (purchaseItems || []) as any[]) {
-        if (selectedVariationId && pi.variation_id !== selectedVariationId) continue;
-        const pur = purchaseMap.get(pi.purchase_id);
-        if (!pur) continue;
-        const purDate = pur.po_date || '';
-        if (purDate < rangeStartYmd || purDate > rangeEndYmd) continue;
-        rows.push({
-          id: `pur-${pi.purchase_id}-${pi.variation_id || 'main'}`,
-          date: purDate,
-          type: 'Purchase',
-          party: pur.supplier_name || 'Supplier',
-          qty: Number(pi.quantity) || 0,
-          unitPrice: Number(pi.unit_price) || 0,
-          lineTotal: Number(pi.total) || (Number(pi.quantity) * Number(pi.unit_price)),
-          profit: 0,
-          balance: 0,
-          reference: pur.po_no || '',
-        });
-      }
+        for (const m of (movs || []) as any[]) {
+          const d = (m.created_at || '').slice(0, 10);
+          if (d < startDate || d > endDate) continue;
+          const qty = Number(m.quantity) || 0;
+          const cost = Number(m.unit_cost) || 0;
 
-      // 2. Fetch sales for this product
-      const { data: saleItems } = await supabase
-        .from('sales_items')
-        .select('sale_id, quantity, unit_price, total, variation_id')
-        .eq('product_id', selectedProductId);
-      const saleIds = [...new Set((saleItems || []).map((si: any) => si.sale_id))];
+          let txnType: TxnType = 'Adjustment';
+          const mt = String(m.movement_type || '');
+          if (mt === 'opening_stock') txnType = 'Opening Stock';
+          else if (mt === 'production') txnType = 'Production';
+          else if (mt.includes('transfer')) txnType = 'Transfer';
 
-      let saleMap = new Map<string, any>();
-      if (saleIds.length > 0) {
-        const { data: sales } = await supabase
-          .from('sales')
-          .select('id, invoice_no, invoice_date, customer_name, status')
-          .eq('company_id', companyId)
-          .in('id', saleIds)
-          .eq('status', 'final');
-        for (const s of (sales || []) as any[]) saleMap.set(s.id, s);
-      }
+          if (!enabledTypes.has(txnType)) continue;
 
-      // Get avg purchase cost for profit calculation
-      let avgCost = 0;
-      const purchaseRows = rows.filter(r => r.type === 'Purchase');
-      if (purchaseRows.length > 0) {
-        const totalPurQty = purchaseRows.reduce((s, r) => s + r.qty, 0);
-        const totalPurAmt = purchaseRows.reduce((s, r) => s + r.lineTotal, 0);
-        avgCost = totalPurQty > 0 ? totalPurAmt / totalPurQty : 0;
-      }
-      // Fallback to product cost_price
-      if (avgCost === 0) {
-        const prod = products.find(p => p.id === selectedProductId);
-        avgCost = prod?.cost_price || 0;
-      }
-
-      for (const si of (saleItems || []) as any[]) {
-        if (selectedVariationId && si.variation_id !== selectedVariationId) continue;
-        const sale = saleMap.get(si.sale_id);
-        if (!sale) continue;
-        const saleDate = sale.invoice_date || '';
-        if (saleDate < rangeStartYmd || saleDate > rangeEndYmd) continue;
-        const qty = Number(si.quantity) || 0;
-        const saleUnitPrice = Number(si.unit_price) || 0;
-        const saleTotal = Number(si.total) || (qty * saleUnitPrice);
-        const costForQty = qty * avgCost;
-        rows.push({
-          id: `sale-${si.sale_id}-${si.variation_id || 'main'}`,
-          date: saleDate,
-          type: 'Sale',
-          party: sale.customer_name || 'Walk-in',
-          qty: -qty,
-          unitPrice: saleUnitPrice,
-          lineTotal: saleTotal,
-          profit: Math.round((saleTotal - costForQty) * 100) / 100,
-          balance: 0,
-          reference: sale.invoice_no || '',
-        });
-      }
-
-      // 3. Fetch sale returns
-      const { data: saleReturnItems } = await supabase
-        .from('sale_return_items')
-        .select('sale_return_id, quantity, unit_price, total, variation_id, product_id')
-        .eq('product_id', selectedProductId);
-      if (saleReturnItems && saleReturnItems.length > 0) {
-        const returnIds = [...new Set(saleReturnItems.map((ri: any) => ri.sale_return_id))];
-        const { data: returns } = await supabase
-          .from('sale_returns')
-          .select('id, return_no, return_date, status, original_sale_id')
-          .in('id', returnIds)
-          .eq('company_id', companyId)
-          .eq('status', 'final');
-        const returnMap = new Map<string, any>();
-        for (const r of (returns || []) as any[]) returnMap.set(r.id, r);
-
-        for (const ri of (saleReturnItems || []) as any[]) {
-          if (selectedVariationId && ri.variation_id !== selectedVariationId) continue;
-          const ret = returnMap.get(ri.sale_return_id);
-          if (!ret) continue;
-          const retDate = ret.return_date || '';
-          if (retDate < rangeStartYmd || retDate > rangeEndYmd) continue;
-          const qty = Number(ri.quantity) || 0;
-          rows.push({
-            id: `sret-${ri.sale_return_id}-${ri.variation_id || 'main'}`,
-            date: retDate,
-            type: 'Sale Return',
-            party: ret.return_no || 'Return',
-            qty: qty,
-            unitPrice: Number(ri.unit_price) || 0,
-            lineTotal: Number(ri.total) || 0,
-            profit: -(qty * avgCost),
-            balance: 0,
-            reference: ret.return_no || '',
+          allRows.push({
+            id: `mov-${m.id}`, date: d,
+            voucherNo: m.reference_id ? `${m.reference_type || ''}-${String(m.reference_id).slice(0, 8)}` : '',
+            type: txnType, partyName: m.notes || mt,
+            qtyIn: qty > 0 ? qty : 0,
+            qtyOut: qty < 0 ? Math.abs(qty) : 0,
+            purchaseRate: cost, saleRate: 0,
+            amount: Math.abs(Number(m.total_cost) || qty * cost),
+            discount: 0, netAmount: Math.abs(Number(m.total_cost) || qty * cost),
+            runningQty: 0, runningValue: 0, grossProfit: 0,
+            remarks: m.notes || '',
           });
         }
       }
 
-      // 4. Fetch stock adjustments (non-sale, non-purchase movements)
-      let movQuery = supabase
-        .from('stock_movements')
-        .select('id, quantity, unit_cost, total_cost, movement_type, reference_type, notes, created_at')
-        .eq('company_id', companyId)
-        .eq('product_id', selectedProductId)
-        .in('movement_type', ['adjustment', 'opening_stock', 'transfer']);
-      if (selectedVariationId) movQuery = movQuery.eq('variation_id', selectedVariationId);
-      const { data: adjMovements } = await movQuery;
+      // ── Sort by date ──
+      allRows.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
 
-      for (const m of (adjMovements || []) as any[]) {
-        const mDate = (m.created_at || '').slice(0, 10);
-        if (mDate < rangeStartYmd || mDate > rangeEndYmd) continue;
-        const mType = m.movement_type === 'opening_stock' ? 'Opening' : 'Adjustment';
-        rows.push({
-          id: `mov-${m.id}`,
-          date: mDate,
-          type: mType as any,
-          party: m.notes || m.movement_type,
-          qty: Number(m.quantity) || 0,
-          unitPrice: Number(m.unit_cost) || 0,
-          lineTotal: Number(m.total_cost) || 0,
-          profit: 0,
-          balance: 0,
-          reference: m.reference_type || '',
-        });
+      // ── Resolve variation labels ──
+      const varIds = [...new Set(allRows.filter(r => r.variationId).map(r => r.variationId!))];
+      if (varIds.length > 0) {
+        const { data: vars } = await supabase.from('product_variations').select('id, sku, attributes').in('id', varIds);
+        const varMap = new Map((vars || []).map((v: any) => [v.id, v.attributes ? Object.values(v.attributes).join(' / ') : v.sku || v.id.slice(0, 8)]));
+        for (const row of allRows) {
+          if (row.variationId) row.variationLabel = varMap.get(row.variationId) || row.variationId.slice(0, 8);
+        }
       }
 
-      // Sort by date
-      rows.sort((a, b) => a.date.localeCompare(b.date));
+      // ── Calculate WAC + running balance ──
+      // Single global WAC across all variations (consistent stock valuation).
+      // Profit uses the actual purchase cost for that specific sale's items where available.
+      let runQty = 0;
+      let runValue = 0;
+      let avgCost = 0;
 
-      // Calculate running balance
-      let runningBalance = 0;
-      for (const row of rows) {
-        runningBalance += row.qty;
-        row.balance = runningBalance;
+      for (const row of allRows) {
+        if (row.qtyIn > 0) {
+          const incomingCost = row.purchaseRate > 0 ? row.purchaseRate : avgCost;
+          const incomingValue = row.qtyIn * incomingCost;
+          runValue += incomingValue;
+          runQty += row.qtyIn;
+          avgCost = runQty > 0 ? runValue / runQty : 0;
+          if (row.purchaseRate === 0) row.purchaseRate = Math.round(incomingCost * 100) / 100;
+        }
+        if (row.qtyOut > 0) {
+          // For profit: use the actual cost rate if this row has one, else WAC
+          const deductCost = avgCost;
+          const deductValue = row.qtyOut * deductCost;
+          runValue -= deductValue;
+          runQty -= row.qtyOut;
+          if (row.purchaseRate === 0) row.purchaseRate = Math.round(deductCost * 100) / 100;
+          if (row.type === 'Sale') {
+            row.grossProfit = Math.round((row.netAmount - row.qtyOut * deductCost) * 100) / 100;
+          }
+        }
+
+        row.runningQty = Math.round(runQty * 1000) / 1000;
+        row.runningValue = Math.round(Math.max(runValue, 0) * 100) / 100;
       }
 
-      // Calculate summary
-      const purchaseTxns = rows.filter(r => r.type === 'Purchase');
-      const saleTxns = rows.filter(r => r.type === 'Sale');
-      const totalPurchaseQty = purchaseTxns.reduce((s, r) => s + r.qty, 0);
-      const totalPurchaseAmount = purchaseTxns.reduce((s, r) => s + r.lineTotal, 0);
-      const totalSaleQty = Math.abs(saleTxns.reduce((s, r) => s + r.qty, 0));
-      const totalSaleAmount = saleTxns.reduce((s, r) => s + r.lineTotal, 0);
-      const totalProfit = saleTxns.reduce((s, r) => s + r.profit, 0);
+      setRows(allRows);
 
-      setSummary({
-        currentStock: runningBalance,
-        avgPurchaseCost: totalPurchaseQty > 0 ? Math.round(totalPurchaseAmount / totalPurchaseQty) : 0,
-        avgSalePrice: totalSaleQty > 0 ? Math.round(totalSaleAmount / totalSaleQty) : 0,
-        totalPurchaseQty,
-        totalPurchaseAmount: Math.round(totalPurchaseAmount),
-        totalSaleQty,
-        totalSaleAmount: Math.round(totalSaleAmount),
-        totalProfit: Math.round(totalProfit),
-      });
-
-      setLedgerRows(rows);
+      // ── Red Flags / Audit Warnings ──
+      const flags: string[] = [];
+      // 1. Negative stock at any point
+      const negRows = allRows.filter(r => r.runningQty < -0.001);
+      if (negRows.length > 0) flags.push(`warn:Negative stock detected at ${negRows.length} point(s). Earliest: ${negRows[0].date} (Balance: ${negRows[0].runningQty})`);
+      // 2. Sale without cost (WAC = 0)
+      const zeroCostSales = allRows.filter(r => r.type === 'Sale' && r.purchaseRate === 0);
+      if (zeroCostSales.length > 0) flags.push(`warn:${zeroCostSales.length} sale(s) have zero cost price — profit calculation unreliable`);
+      // 3. Duplicate stock movements for same reference
+      try {
+        let dmq = supabase.from('stock_movements').select('reference_type, reference_id, quantity, notes').eq('company_id', companyId).eq('product_id', selectedProductId).in('movement_type', ['purchase', 'sale']);
+        if (selectedVariationId) dmq = dmq.eq('variation_id', selectedVariationId);
+        const { data: movCheck } = await dmq;
+        const refCounts = new Map<string, number>();
+        for (const m of (movCheck || []) as any[]) {
+          if (!m.reference_id) continue;
+          const key = `${m.reference_type}:${m.reference_id}`;
+          refCounts.set(key, (refCounts.get(key) || 0) + 1);
+        }
+        const dups = [...refCounts.entries()].filter(([, c]) => c > 3);
+        if (dups.length > 0) flags.push(`warn:${dups.length} document(s) have suspicious duplicate stock movements (>3 entries per document)`);
+      } catch {}
+      setRedFlags(flags);
     } catch (err: any) {
       console.error('[ProductLedger] Load error:', err);
     } finally {
       setLoading(false);
     }
-  }, [companyId, selectedProductId, selectedVariationId, rangeStartYmd, rangeEndYmd, products]);
+  }, [companyId, selectedProductId, selectedVariationId, selectedBranchId, contextBranchId, startDate, endDate, enabledTypes]);
 
-  useEffect(() => {
-    if (selectedProductId) loadLedger();
-  }, [selectedProductId, selectedVariationId, loadLedger]);
+  useEffect(() => { if (selectedProductId) loadLedger(); }, [selectedProductId, loadLedger]);
+
+  // ─── Derived ───────────────────────────────────────────────
 
   const selectedProduct = products.find(p => p.id === selectedProductId);
-  const selectedVariation = variations.find(v => v.id === selectedVariationId);
-
   const filteredProducts = useMemo(() => {
-    if (!searchQuery.trim()) return products.slice(0, 50);
-    const q = searchQuery.trim();
-    const ranked = products
-      .map((p) => ({ p, rank: productSearchRank(p, q) }))
-      .filter(({ rank }) => rank > 0)
-      .sort((a, b) => b.rank - a.rank)
-      .map(({ p }) => p);
-    if (ranked.length > 0) return ranked.slice(0, 80);
-    return products
-      .filter((p) =>
-        productMatchesSearch(p.name, p.sku || '', p.variationSkusForSearch || '', q)
-      )
-      .slice(0, 80);
+    if (!searchQuery) return products.slice(0, 60);
+    const q = searchQuery.toLowerCase();
+    return products.filter(p => p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q)).slice(0, 60);
   }, [products, searchQuery]);
 
-  const clearProductSelection = useCallback(() => {
-    setSelectedProductId('');
-    setSearchQuery('');
-    setLedgerRows([]);
-    setSummary(null);
-    setShowDropdown(true);
-  }, []);
+  // Filter all-products summary table by search query
+  const filteredAllSummary = useMemo(() => {
+    if (!searchQuery) return allProductsSummary;
+    const q = searchQuery.toLowerCase();
+    return allProductsSummary.filter(p => p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q));
+  }, [allProductsSummary, searchQuery]);
 
-  const onDateRangeChange = useCallback(
-    (range: { from?: Date; to?: Date }) => {
-      const from = range.from;
-      const to = range.to;
-      if (!from || !to) return;
-      if (globalFilter) {
-        globalFilter.setCustomDateRange(from, to);
-      } else {
-        setStandaloneStartYmd(toYyyyMmDd(from.toISOString()) || standaloneStartYmd);
-        setStandaloneEndYmd(toYyyyMmDd(to.toISOString()) || standaloneEndYmd);
-      }
-    },
-    [globalFilter, standaloneStartYmd, standaloneEndYmd]
-  );
-
-  const getTypeBadge = (type: string) => {
-    switch (type) {
-      case 'Purchase':
-        return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-green-500/10 text-green-400 border border-green-500/20"><ArrowDownRight size={12} /> Purchase</span>;
-      case 'Sale':
-        return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-red-500/10 text-red-400 border border-red-500/20"><ArrowUpRight size={12} /> Sale</span>;
-      case 'Sale Return':
-        return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-orange-500/10 text-orange-400 border border-orange-500/20"><CornerUpLeft size={12} /> Return</span>;
-      case 'Adjustment':
-      case 'Opening':
-        return <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20"><RefreshCw size={12} /> {type}</span>;
-      default:
-        return <span className="text-gray-400">{type}</span>;
+  /** Grand totals for the All Products summary table (sums visible rows after search filter). */
+  const allProductsGrandTotals = useMemo(() => {
+    const t = {
+      stock: 0, purchaseQty: 0, purchaseValue: 0, saleQty: 0, saleValue: 0, stockValue: 0,
+      saleReturnQty: 0, purchaseReturnQty: 0, adjustmentQty: 0,
+    };
+    for (const p of filteredAllSummary) {
+      t.stock += Number(p.stock) || 0;
+      t.purchaseQty += Number(p.purchaseQty) || 0;
+      t.purchaseValue += Number(p.purchaseValue) || 0;
+      t.saleQty += Number(p.saleQty) || 0;
+      t.saleValue += Number(p.saleValue) || 0;
+      t.stockValue += Number(p.stockValue) || 0;
+      t.saleReturnQty += Number(p.saleReturnQty) || 0;
+      t.purchaseReturnQty += Number(p.purchaseReturnQty) || 0;
+      t.adjustmentQty += Number(p.adjustmentQty) || 0;
     }
+    return t;
+  }, [filteredAllSummary]);
+
+  const totals = useMemo(() => {
+    const t = { qtyIn: 0, qtyOut: 0, amount: 0, discount: 0, netAmount: 0, grossProfit: 0 };
+    for (const r of rows) {
+      t.qtyIn += r.qtyIn; t.qtyOut += r.qtyOut;
+      t.amount += r.amount; t.discount += r.discount;
+      t.netAmount += r.netAmount; t.grossProfit += r.grossProfit;
+    }
+    return t;
+  }, [rows]);
+
+  // ─── 11 Summary Metrics ─────────────────────────────────────
+  const summary = useMemo(() => {
+    const purchases = rows.filter(r => r.type === 'Purchase');
+    const sales = rows.filter(r => r.type === 'Sale');
+    const saleReturns = rows.filter(r => r.type === 'Sale Return');
+    const purchaseReturns = rows.filter(r => r.type === 'Purchase Return');
+    const adjustments = rows.filter(r => r.type === 'Adjustment' || r.type === 'Opening Stock');
+    const lastPurchase = [...purchases].reverse()[0];
+    const lastSale = [...sales].reverse()[0];
+    const closingQty = rows.length > 0 ? rows[rows.length - 1].runningQty : 0;
+    const closingValue = rows.length > 0 ? rows[rows.length - 1].runningValue : 0;
+    return {
+      totalPurchaseQty: purchases.reduce((s, r) => s + r.qtyIn, 0),
+      totalPurchaseValue: Math.round(purchases.reduce((s, r) => s + r.netAmount, 0)),
+      totalSaleQty: sales.reduce((s, r) => s + r.qtyOut, 0),
+      totalSaleValue: Math.round(sales.reduce((s, r) => s + r.netAmount, 0)),
+      totalReturnedQty: saleReturns.reduce((s, r) => s + r.qtyIn, 0) + purchaseReturns.reduce((s, r) => s + r.qtyOut, 0),
+      saleReturnQty: saleReturns.reduce((s, r) => s + r.qtyIn, 0),
+      purchaseReturnQty: purchaseReturns.reduce((s, r) => s + r.qtyOut, 0),
+      adjustmentQty: adjustments.reduce((s, r) => s + r.qtyIn - r.qtyOut, 0),
+      closingStock: closingQty,
+      closingValue,
+      grossProfit: Math.round(sales.reduce((s, r) => s + r.grossProfit, 0)),
+      avgCost: closingQty > 0 ? Math.round(closingValue / closingQty) : 0,
+      lastPurchasePrice: lastPurchase?.purchaseRate || 0,
+      lastSalePrice: lastSale?.saleRate || 0,
+    };
+  }, [rows]);
+
+  // ─── Tab 2: Profit Analysis derived data ───────────────────
+  const profitAnalysis = useMemo(() => {
+    const sales = rows.filter(r => r.type === 'Sale');
+    const totalCost = sales.reduce((s, r) => s + r.qtyOut * r.purchaseRate, 0);
+    const totalRevenue = sales.reduce((s, r) => s + r.netAmount, 0);
+    const totalProfit = sales.reduce((s, r) => s + r.grossProfit, 0);
+    const marginPct = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+
+    // Customer-wise grouping
+    const byCustomer = new Map<string, { qty: number; revenue: number; cost: number; profit: number }>();
+    for (const s of sales) {
+      const c = byCustomer.get(s.partyName) || { qty: 0, revenue: 0, cost: 0, profit: 0 };
+      c.qty += s.qtyOut; c.revenue += s.netAmount; c.cost += s.qtyOut * s.purchaseRate; c.profit += s.grossProfit;
+      byCustomer.set(s.partyName, c);
+    }
+    const customerRows = [...byCustomer.entries()].map(([name, d]) => ({
+      name, ...d, marginPct: d.revenue > 0 ? (d.profit / d.revenue) * 100 : 0,
+    })).sort((a, b) => b.revenue - a.revenue);
+
+    // Month-wise grouping
+    const byMonth = new Map<string, { qty: number; revenue: number; cost: number; profit: number }>();
+    for (const s of sales) {
+      const month = s.date.slice(0, 7);
+      const m = byMonth.get(month) || { qty: 0, revenue: 0, cost: 0, profit: 0 };
+      m.qty += s.qtyOut; m.revenue += s.netAmount; m.cost += s.qtyOut * s.purchaseRate; m.profit += s.grossProfit;
+      byMonth.set(month, m);
+    }
+    const monthRows = [...byMonth.entries()].map(([month, d]) => ({
+      month, ...d, marginPct: d.revenue > 0 ? (d.profit / d.revenue) * 100 : 0,
+    })).sort((a, b) => a.month.localeCompare(b.month));
+
+    return { totalCost: Math.round(totalCost), totalRevenue: Math.round(totalRevenue), totalProfit: Math.round(totalProfit), marginPct, customerRows, monthRows };
+  }, [rows]);
+
+  // ─── Tab 3: Source Trace derived data ──────────────────────
+  const sourceTrace = useMemo(() => {
+    const purchases = rows.filter(r => r.type === 'Purchase');
+    const sales = rows.filter(r => r.type === 'Sale');
+    const returns = rows.filter(r => r.type === 'Sale Return' || r.type === 'Purchase Return');
+
+    // Supplier grouping
+    const bySupplier = new Map<string, { qty: number; amount: number; vouchers: string[] }>();
+    for (const p of purchases) {
+      const s = bySupplier.get(p.partyName) || { qty: 0, amount: 0, vouchers: [] };
+      s.qty += p.qtyIn; s.amount += p.netAmount;
+      if (p.voucherNo && !s.vouchers.includes(p.voucherNo)) s.vouchers.push(p.voucherNo);
+      bySupplier.set(p.partyName, s);
+    }
+    const supplierRows = [...bySupplier.entries()].map(([name, d]) => ({
+      name, ...d, avgRate: d.qty > 0 ? Math.round(d.amount / d.qty) : 0,
+    })).sort((a, b) => b.amount - a.amount);
+
+    // Customer grouping
+    const byCustomer = new Map<string, { qty: number; amount: number; vouchers: string[] }>();
+    for (const s of sales) {
+      const c = byCustomer.get(s.partyName) || { qty: 0, amount: 0, vouchers: [] };
+      c.qty += s.qtyOut; c.amount += s.netAmount;
+      if (s.voucherNo && !c.vouchers.includes(s.voucherNo)) c.vouchers.push(s.voucherNo);
+      byCustomer.set(s.partyName, c);
+    }
+    const customerRows = [...byCustomer.entries()].map(([name, d]) => ({
+      name, ...d, avgRate: d.qty > 0 ? Math.round(d.amount / d.qty) : 0,
+    })).sort((a, b) => b.amount - a.amount);
+
+    return { supplierRows, customerRows, returns };
+  }, [rows]);
+
+  const toggleType = (t: TxnType) => {
+    setEnabledTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t); else next.add(t);
+      return next;
+    });
   };
 
+  // ─── Badge helper ──────────────────────────────────────────
+  const typeBadge = (type: TxnType) => {
+    const map: Record<TxnType, { icon: typeof ArrowDownRight; color: string }> = {
+      'Purchase':        { icon: ArrowDownRight,  color: 'bg-green-500/10 text-green-400 border-green-500/20' },
+      'Purchase Return': { icon: CornerUpLeft,    color: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
+      'Sale':            { icon: ArrowUpRight,    color: 'bg-red-500/10 text-red-400 border-red-500/20' },
+      'Sale Return':     { icon: CornerDownRight, color: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+      'Adjustment':      { icon: RefreshCw,       color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+      'Opening Stock':   { icon: Package,         color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
+      'Production':      { icon: Package,         color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
+      'Transfer':        { icon: RefreshCw,       color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
+    };
+    const cfg = map[type] || map['Adjustment'];
+    const Icon = cfg.icon;
+    return <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap', cfg.color)}><Icon size={10} />{type}</span>;
+  };
+
+  const fmt = (n: number) => n ? n.toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '';
+  const fmtRs = (n: number) => n ? `Rs ${fmt(n)}` : '—';
+
+  // ─── Render ────────────────────────────────────────────────
   return (
-    <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-      <ReportActions title="Product Ledger (Item History)" />
-
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4 bg-gray-900/50 p-4 rounded-xl border border-gray-800">
-        <div className="flex-1 relative">
-          <label className="text-xs text-gray-500 mb-1 block">Select Product</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
-            <Input
-              placeholder={
-                productsLoading
-                  ? 'Loading products...'
-                  : selectedProduct
-                    ? 'Search another product by name or SKU...'
-                    : 'Search product by name or SKU...'
-              }
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                if (selectedProductId) {
-                  setSelectedProductId('');
-                  setLedgerRows([]);
-                  setSummary(null);
-                }
-                setShowDropdown(true);
-              }}
-              onFocus={() => setShowDropdown(true)}
-              className={cn('pl-10 bg-gray-950 border-gray-700 text-white h-10', selectedProductId && 'pr-16')}
-            />
-            {selectedProductId && (
-              <button
-                type="button"
-                onClick={clearProductSelection}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white text-xs"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-          {selectedProduct && !searchQuery.trim() && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-              <span className="text-gray-500">Selected:</span>
-              <span className="text-white font-medium">{selectedProduct.name}</span>
-              <span className="font-mono text-gray-500">{selectedProduct.sku}</span>
-            </div>
-          )}
-          {showDropdown && !selectedProductId && (
-            <div className="absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
-              {filteredProducts.length === 0 ? (
-                <div className="px-4 py-3 text-sm text-gray-500">
-                  {searchQuery.trim() ? 'No products match your search' : 'No products'}
-                </div>
-              ) : (
-                filteredProducts.map((p) => {
-                  const varParts = (p.variationSkusForSearch || '').trim().split(/\s+/).filter(Boolean);
-                  const skuPreview =
-                    (p.sku || '').trim() ||
-                    (varParts.length
-                      ? `${varParts.slice(0, 2).join(' · ')}${varParts.length > 2 ? ' · …' : ''}`
-                      : '—');
-                  return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedProductId(p.id);
-                      setSearchQuery('');
-                      setShowDropdown(false);
-                    }}
-                    className="w-full text-left px-4 py-2.5 hover:bg-gray-800 transition-colors flex items-center gap-3"
-                  >
-                    <Package className="h-4 w-4 text-gray-500 flex-shrink-0" />
-                    <div>
-                      <div className="text-sm text-white">{p.name}</div>
-                      <div className="text-xs text-gray-500 font-mono">
-                        {skuPreview}
-                        {p.category ? ` • ${p.category}` : ''}
-                      </div>
-                    </div>
-                  </button>
-                )})
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Variation filter */}
-        {variations.length > 0 && (
-          <div className="w-full md:w-[220px]">
-            <label className="text-xs text-gray-500 mb-1 block">Variation</label>
-            <select
-              value={selectedVariationId}
-              onChange={e => setSelectedVariationId(e.target.value)}
-              className="w-full h-10 bg-gray-950 border border-gray-700 rounded-md text-white text-sm px-3"
-            >
-              <option value="">All Variations</option>
-              {variations.map(v => (
-                <option key={v.id} value={v.id}>{v.label} ({v.sku})</option>
-              ))}
-            </select>
-          </div>
+    <div className="space-y-4">
+      {/* Title */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-xl font-bold text-white">Product Stock Card</h3>
+        {rows.length > 0 && (
+          <Button variant="outline" size="sm" onClick={() => window.print()} className="border-gray-700 text-gray-300">
+            <Printer className="h-4 w-4 mr-1" /> Print
+          </Button>
         )}
-
-        <div className="w-full md:w-[280px]">
-          <label className="text-xs text-gray-500 mb-1 block">Date Range</label>
-          <CalendarDateRangePicker
-            key={`${rangeStartYmd}-${rangeEndYmd}`}
-            value={calendarRangeValue}
-            onChange={onDateRangeChange}
-            placeholder={dateRangeButtonLabel}
-          />
-        </div>
       </div>
 
-      {!selectedProductId && (
-        <div className="text-center py-16 text-gray-500">
-          <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="text-lg">Product select karein ledger dekhne ke liye</p>
-          <p className="text-sm mt-1">Search box mein product ka naam ya SKU type karein</p>
+      {/* ── Filters ── */}
+      <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4 space-y-3">
+        <div className={cn('grid grid-cols-1 gap-3', branches.length > 1 ? 'md:grid-cols-4' : 'md:grid-cols-3')}>
+          {/* Product */}
+          <div className={cn('relative', branches.length > 1 ? 'md:col-span-2' : 'md:col-span-2')}>
+            <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Product</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+              <Input
+                placeholder={productsLoading ? 'Loading...' : 'All Products — type to search...'}
+                value={selectedProduct ? `${selectedProduct.name} (${selectedProduct.sku})` : searchQuery}
+                onChange={e => { setSearchQuery(e.target.value); if (selectedProductId) { setSelectedProductId(''); setRows([]); setRedFlags([]); } setShowDropdown(false); }}
+                onFocus={() => { if (selectedProductId) setShowDropdown(true); }}
+                onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+                className="pl-10 bg-gray-950 border-gray-700 text-white h-9 text-sm"
+              />
+              {selectedProductId && <button onClick={() => { setSelectedProductId(''); setSearchQuery(''); setRows([]); setRedFlags([]); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white text-xs">×</button>}
+            </div>
+            {showDropdown && !selectedProductId && filteredProducts.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 max-h-56 overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg shadow-xl">
+                {filteredProducts.map(p => (
+                  <button key={p.id} onClick={() => { setSelectedProductId(p.id); setSearchQuery(''); setShowDropdown(false); }} className="w-full text-left px-3 py-2 hover:bg-gray-800 flex items-center gap-2 text-sm">
+                    <Package className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                    <span className="text-white">{p.name}</span>
+                    <span className="text-gray-500 font-mono text-xs ml-auto">{p.sku}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Variation */}
+          <div>
+            <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Variation</label>
+            <select value={selectedVariationId} onChange={e => setSelectedVariationId(e.target.value)} className="w-full h-9 bg-gray-950 border border-gray-700 rounded-md text-white text-sm px-2" disabled={variations.length === 0}>
+              <option value="">{variations.length > 0 ? 'All Variations' : 'N/A'}</option>
+              {variations.map(v => <option key={v.id} value={v.id}>{v.label} ({v.sku})</option>)}
+            </select>
+          </div>
+
+          {/* Branch — only show if multiple branches exist */}
+          {branches.length > 1 && (
+            <div>
+              <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Branch</label>
+              <select value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)} className="w-full h-9 bg-gray-950 border border-gray-700 rounded-md text-white text-sm px-2">
+                <option value="">All Branches</option>
+                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
+
+        {/* Type filter */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setShowTypeFilter(!showTypeFilter)} className="text-xs text-gray-400 hover:text-white flex items-center gap-1">
+            <Filter className="h-3 w-3" /> Transaction Types
+          </button>
+          {showTypeFilter && ALL_TXN_TYPES.map(t => (
+            <button key={t} onClick={() => toggleType(t)} className={cn('px-2 py-0.5 rounded text-[10px] font-medium border transition-colors', enabledTypes.has(t) ? 'bg-blue-600/20 text-blue-300 border-blue-500/30' : 'bg-gray-800 text-gray-500 border-gray-700')}>
+              {t}
+            </button>
+          ))}
+          {showTypeFilter && (
+            <button onClick={() => setEnabledTypes(new Set(ALL_TXN_TYPES))} className="text-[10px] text-gray-500 hover:text-white underline ml-2">All</button>
+          )}
+        </div>
+
+        {/* Date range indicator */}
+        <div className="text-[10px] text-gray-500">Period: {startDate} — {endDate}</div>
+      </div>
+
+      {/* ── All Products Summary (default view) ── */}
+      {!selectedProductId && !loading && (
+        <>
+          {allSummaryLoading && (
+            <div className="text-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-400" />
+              <p className="text-gray-500 text-sm mt-2">Loading all products...</p>
+            </div>
+          )}
+          {!allSummaryLoading && filteredAllSummary.length > 0 && (
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+              {/* Grand totals header with transaction breakdown */}
+              <div className="px-4 py-3 border-b border-gray-800 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <span className="text-sm font-medium text-gray-300">All Products — {filteredAllSummary.length} items{searchQuery ? ` (filtered)` : ''}</span>
+                  <span className="text-[10px] text-gray-600 hidden sm:inline">Click a row for full ledger</span>
+                </div>
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                  <div className="bg-gray-950/60 rounded-lg px-3 py-2">
+                    <p className="text-[8px] text-gray-500 uppercase">Total Stock</p>
+                    <p className="text-sm font-bold text-white font-mono">{fmt(allProductsGrandTotals.stock)}</p>
+                  </div>
+                  <div className="bg-gray-950/60 rounded-lg px-3 py-2">
+                    <p className="text-[8px] text-gray-500 uppercase">Stock Value</p>
+                    <p className="text-sm font-bold text-emerald-400 font-mono">{fmtRs(allProductsGrandTotals.stockValue)}</p>
+                  </div>
+                  <div className="bg-gray-950/60 rounded-lg px-3 py-2">
+                    <p className="text-[8px] text-green-600 uppercase">Purchases</p>
+                    <p className="text-sm font-bold text-green-400 font-mono">{fmt(allProductsGrandTotals.purchaseQty)} <span className="text-[10px] text-gray-500">({fmtRs(allProductsGrandTotals.purchaseValue)})</span></p>
+                  </div>
+                  <div className="bg-gray-950/60 rounded-lg px-3 py-2">
+                    <p className="text-[8px] text-red-600 uppercase">Sales</p>
+                    <p className="text-sm font-bold text-red-400 font-mono">{fmt(allProductsGrandTotals.saleQty)} <span className="text-[10px] text-gray-500">({fmtRs(allProductsGrandTotals.saleValue)})</span></p>
+                  </div>
+                  <div className="bg-gray-950/60 rounded-lg px-3 py-2">
+                    <p className="text-[8px] text-amber-600 uppercase">Returns</p>
+                    <p className="text-xs font-bold text-amber-400 font-mono">
+                      SR: {fmt(allProductsGrandTotals.saleReturnQty)} | PR: {fmt(allProductsGrandTotals.purchaseReturnQty)}
+                    </p>
+                  </div>
+                  <div className="bg-gray-950/60 rounded-lg px-3 py-2">
+                    <p className="text-[8px] text-blue-600 uppercase">Adjustments</p>
+                    <p className="text-sm font-bold text-blue-400 font-mono">{fmt(allProductsGrandTotals.adjustmentQty)}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="overflow-x-auto max-h-[65vh]">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-gray-950/80 text-gray-400 font-medium border-b border-gray-800 sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2.5">Product</th>
+                      <th className="px-3 py-2.5">SKU</th>
+                      <th className="px-3 py-2.5">Category</th>
+                      <th className="px-3 py-2.5 text-right">Current Stock</th>
+                      <th className="px-3 py-2.5 text-right">Purchase Qty</th>
+                      <th className="px-3 py-2.5 text-right">Purchase Value</th>
+                      <th className="px-3 py-2.5 text-right">Sale Qty</th>
+                      <th className="px-3 py-2.5 text-right">Sale Value</th>
+                      <th className="px-3 py-2.5 text-right">Stock Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/50">
+                    {filteredAllSummary.map(p => (
+                      <tr key={p.productId}
+                        onClick={() => { setSelectedProductId(p.productId); setSearchQuery(''); setShowDropdown(false); }}
+                        className="hover:bg-blue-900/20 cursor-pointer transition-colors">
+                        <td className="px-3 py-2 text-white font-medium">{p.name}</td>
+                        <td className="px-3 py-2 font-mono text-gray-400">{p.sku}</td>
+                        <td className="px-3 py-2 text-gray-500">{p.category || '—'}</td>
+                        <td className={cn('px-3 py-2 text-right font-mono font-bold', p.stock < 0 ? 'text-red-400' : 'text-white')}>{fmt(p.stock)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-green-400">{p.purchaseQty > 0 ? fmt(p.purchaseQty) : '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-green-400">{p.purchaseValue > 0 ? fmtRs(p.purchaseValue) : '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-red-400">{p.saleQty > 0 ? fmt(p.saleQty) : '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-red-400">{p.saleValue > 0 ? fmtRs(p.saleValue) : '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-white">{p.stockValue > 0 ? fmtRs(p.stockValue) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-950 border-t-2 border-gray-700 text-xs font-semibold sticky bottom-0">
+                    <tr className="text-gray-300">
+                      <td colSpan={3} className="px-3 py-2.5 text-gray-400 uppercase tracking-wide">
+                        Total ({filteredAllSummary.length} {filteredAllSummary.length === 1 ? 'product' : 'products'})
+                      </td>
+                      <td className={cn('px-3 py-2.5 text-right font-mono text-white', allProductsGrandTotals.stock < 0 && 'text-red-400')}>
+                        {fmt(allProductsGrandTotals.stock)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-green-400">
+                        {allProductsGrandTotals.purchaseQty > 0 ? fmt(allProductsGrandTotals.purchaseQty) : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-green-400">
+                        {allProductsGrandTotals.purchaseValue > 0 ? fmtRs(allProductsGrandTotals.purchaseValue) : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-red-400">
+                        {allProductsGrandTotals.saleQty > 0 ? fmt(allProductsGrandTotals.saleQty) : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-red-400">
+                        {allProductsGrandTotals.saleValue > 0 ? fmtRs(allProductsGrandTotals.saleValue) : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-emerald-300">
+                        {allProductsGrandTotals.stockValue !== 0 ? fmtRs(allProductsGrandTotals.stockValue) : '—'}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+          {!allSummaryLoading && allProductsSummary.length === 0 && products.length > 0 && (
+            <div className="text-center py-16 text-gray-500">
+              <Package className="h-12 w-12 mx-auto mb-3 opacity-20" />
+              <p>No product movements found</p>
+            </div>
+          )}
+        </>
       )}
 
       {loading && (
         <div className="text-center py-16">
           <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-400" />
-          <p className="text-gray-500 mt-2">Loading product ledger...</p>
+          <p className="text-gray-500 text-sm mt-2">Loading stock card...</p>
         </div>
       )}
 
-      {selectedProduct && summary && !loading && (
-        <>
-          {/* Header Card */}
-          <div className="bg-gradient-to-r from-gray-900 to-gray-800 border border-gray-700 p-6 rounded-xl">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-              <div>
-                <h2 className="text-2xl font-bold text-white">{selectedProduct.name}</h2>
-                <p className="text-gray-400 font-mono text-sm mt-1">
-                  {selectedProduct.sku}
-                  {selectedProduct.category ? ` • ${selectedProduct.category}` : ''}
-                  {selectedVariation ? ` • ${selectedVariation.label}` : ''}
-                </p>
-              </div>
-              <div className="flex items-center gap-6 flex-wrap">
-                <div className="text-right">
-                  <p className="text-gray-400 text-xs uppercase tracking-wider">Current Stock</p>
-                  <p className="text-3xl font-bold text-white">{summary.currentStock}</p>
-                </div>
-                <div className="h-10 w-px bg-gray-700 hidden md:block" />
-                <div className="text-right">
-                  <p className="text-gray-400 text-xs uppercase tracking-wider">Avg Cost</p>
-                  <p className="text-xl font-bold text-white">Rs {summary.avgPurchaseCost.toLocaleString()}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-gray-400 text-xs uppercase tracking-wider">Avg Sale</p>
-                  <p className="text-xl font-bold text-green-400">Rs {summary.avgSalePrice.toLocaleString()}</p>
-                </div>
-              </div>
+      {/* ── Summary header — 11 metrics ── */}
+      {selectedProduct && rows.length > 0 && !loading && (
+        <div className="bg-gradient-to-r from-gray-900 to-gray-800 border border-gray-700 p-5 rounded-xl">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-3">
+            <div>
+              <h2 className="text-xl font-bold text-white">{selectedProduct.name}</h2>
+              <p className="text-gray-400 font-mono text-xs">{selectedProduct.sku}{selectedProduct.category ? ` • ${selectedProduct.category}` : ''}</p>
             </div>
-
-            {/* Summary stats */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4 pt-4 border-t border-gray-700">
-              <div className="bg-gray-950/50 rounded-lg p-3">
-                <p className="text-[10px] text-gray-500 uppercase">Purchase Qty</p>
-                <p className="text-lg font-bold text-green-400">{summary.totalPurchaseQty}</p>
+            <div className="flex items-center gap-5">
+              <div className="text-right">
+                <p className="text-gray-500 text-[10px] uppercase">Current Stock</p>
+                <p className="text-2xl font-bold text-white">{fmt(summary.closingStock)}</p>
               </div>
-              <div className="bg-gray-950/50 rounded-lg p-3">
-                <p className="text-[10px] text-gray-500 uppercase">Purchase Amount</p>
-                <p className="text-lg font-bold text-green-400">Rs {summary.totalPurchaseAmount.toLocaleString()}</p>
+              <div className="text-right">
+                <p className="text-gray-500 text-[10px] uppercase">Stock Value</p>
+                <p className="text-lg font-bold text-white">{fmtRs(summary.closingValue)}</p>
               </div>
-              <div className="bg-gray-950/50 rounded-lg p-3">
-                <p className="text-[10px] text-gray-500 uppercase">Sale Qty</p>
-                <p className="text-lg font-bold text-red-400">{summary.totalSaleQty}</p>
-              </div>
-              <div className="bg-gray-950/50 rounded-lg p-3">
-                <p className="text-[10px] text-gray-500 uppercase">Sale Amount</p>
-                <p className="text-lg font-bold text-red-400">Rs {summary.totalSaleAmount.toLocaleString()}</p>
-              </div>
-              <div className="bg-gray-950/50 rounded-lg p-3">
-                <p className="text-[10px] text-gray-500 uppercase">Total Profit</p>
-                <p className={cn("text-lg font-bold", summary.totalProfit >= 0 ? "text-emerald-400" : "text-red-400")}>
-                  Rs {summary.totalProfit.toLocaleString()}
-                </p>
+              <div className="text-right">
+                <p className="text-gray-500 text-[10px] uppercase">Gross Profit</p>
+                <p className={cn('text-lg font-bold', summary.grossProfit >= 0 ? 'text-emerald-400' : 'text-red-400')}>{fmtRs(summary.grossProfit)}</p>
               </div>
             </div>
           </div>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-11 gap-2">
+            {([
+              { label: 'Purchase Qty', value: fmt(summary.totalPurchaseQty), color: 'text-green-400' },
+              { label: 'Purchase Value', value: fmtRs(summary.totalPurchaseValue), color: 'text-green-400' },
+              { label: 'Sale Qty', value: fmt(summary.totalSaleQty), color: 'text-red-400' },
+              { label: 'Sale Value', value: fmtRs(summary.totalSaleValue), color: 'text-red-400' },
+              { label: 'Sale Return', value: fmt(summary.saleReturnQty), color: 'text-orange-400' },
+              { label: 'Purchase Return', value: fmt(summary.purchaseReturnQty), color: 'text-orange-400' },
+              { label: 'Adjustments', value: fmt(summary.adjustmentQty), color: 'text-blue-400' },
+              { label: 'Avg Cost (WAC)', value: fmtRs(summary.avgCost), color: 'text-white' },
+              { label: 'Last Purchase', value: fmtRs(summary.lastPurchasePrice), color: 'text-blue-400' },
+              { label: 'Last Sale', value: fmtRs(summary.lastSalePrice), color: 'text-cyan-400' },
+            ] as { label: string; value: string; color: string }[]).map(s => (
+              <div key={s.label} className="bg-gray-950/50 rounded-lg px-2.5 py-2">
+                <p className="text-[8px] text-gray-500 uppercase leading-tight">{s.label}</p>
+                <p className={cn('text-xs font-bold mt-0.5', s.color)}>{s.value || '—'}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-          {/* Data Table */}
+      {/* ── Tab Navigation ── */}
+      {selectedProduct && rows.length > 0 && !loading && (
+        <div className="flex items-center gap-2 bg-gray-900/60 border border-gray-800 rounded-lg p-1">
+          {([
+            { key: 'stock-card' as const, label: 'Stock Card', icon: FileText },
+            { key: 'profit-analysis' as const, label: 'Profit Analysis', icon: TrendingUp },
+            { key: 'source-trace' as const, label: 'Source Trace', icon: GitBranch },
+          ]).map(tab => (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+              className={cn('px-4 py-2 text-sm font-medium flex items-center gap-1.5 rounded-md transition-colors',
+                activeTab === tab.key
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-gray-400 hover:bg-gray-800 hover:text-white')}>
+              <tab.icon size={14} />{tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── TAB 1: Stock Card ── */}
+      {selectedProduct && rows.length > 0 && !loading && activeTab === 'stock-card' && (
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden print:bg-white print:text-black">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-gray-950/80 text-gray-400 font-medium border-b border-gray-800 sticky top-0">
+                <tr>
+                  <th className="px-2 py-2.5 whitespace-nowrap">Date</th>
+                  <th className="px-2 py-2.5 whitespace-nowrap">Voucher #</th>
+                  <th className="px-2 py-2.5 whitespace-nowrap">Type</th>
+                  {selectedProduct?.has_variations && <th className="px-2 py-2.5 whitespace-nowrap">Variation</th>}
+                  <th className="px-2 py-2.5 whitespace-nowrap">Party Name</th>
+                  <th className="px-2 py-2.5 text-right whitespace-nowrap">Qty In</th>
+                  <th className="px-2 py-2.5 text-right whitespace-nowrap">Qty Out</th>
+                  <th className="px-2 py-2.5 text-right whitespace-nowrap">Cost Rate</th>
+                  <th className="px-2 py-2.5 text-right whitespace-nowrap">Sale Rate</th>
+                  <th className="px-2 py-2.5 text-right whitespace-nowrap">Amount</th>
+                  <th className="px-2 py-2.5 text-right whitespace-nowrap">Discount</th>
+                  <th className="px-2 py-2.5 text-right whitespace-nowrap">Net Amount</th>
+                  <th className="px-2 py-2.5 text-right whitespace-nowrap bg-gray-900/60">Balance Qty</th>
+                  <th className="px-2 py-2.5 text-right whitespace-nowrap bg-gray-900/60">Stock Value</th>
+                  <th className="px-2 py-2.5 text-right whitespace-nowrap">Profit</th>
+                  <th className="px-2 py-2.5 whitespace-nowrap">Remarks</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {rows.map(row => (
+                  <tr key={row.id} className="hover:bg-gray-800/20 transition-colors">
+                    <td className="px-2 py-2 text-gray-300 whitespace-nowrap">{row.date}</td>
+                    <td className="px-2 py-2 text-blue-400 font-mono whitespace-nowrap">{row.voucherNo || '—'}</td>
+                    <td className="px-2 py-2">{typeBadge(row.type)}</td>
+                    {selectedProduct?.has_variations && <td className="px-2 py-2 text-cyan-400 text-[10px] max-w-[100px] truncate">{row.variationLabel || '—'}</td>}
+                    <td className="px-2 py-2 text-white font-medium max-w-[160px] truncate">{row.partyName}</td>
+                    <td className="px-2 py-2 text-right font-mono text-green-400">{row.qtyIn > 0 ? `+${fmt(row.qtyIn)}` : ''}</td>
+                    <td className="px-2 py-2 text-right font-mono text-red-400">{row.qtyOut > 0 ? `-${fmt(row.qtyOut)}` : ''}</td>
+                    <td className="px-2 py-2 text-right font-mono text-gray-400">{row.purchaseRate > 0 ? fmt(row.purchaseRate) : ''}</td>
+                    <td className="px-2 py-2 text-right font-mono text-gray-400">{row.saleRate > 0 ? fmt(row.saleRate) : ''}</td>
+                    <td className={cn('px-2 py-2 text-right font-mono', row.qtyOut > 0 ? 'text-red-400' : 'text-gray-300')}>{row.amount > 0 ? (row.qtyOut > 0 ? `-${fmt(row.amount)}` : fmt(row.amount)) : ''}</td>
+                    <td className="px-2 py-2 text-right font-mono text-amber-400">{row.discount > 0 ? fmt(row.discount) : ''}</td>
+                    <td className={cn('px-2 py-2 text-right font-mono', row.qtyOut > 0 ? 'text-red-400' : 'text-white')}>{row.netAmount > 0 ? (row.qtyOut > 0 ? `-${fmt(row.netAmount)}` : fmt(row.netAmount)) : ''}</td>
+                    <td className={cn('px-2 py-2 text-right font-mono font-bold bg-gray-900/30', row.runningQty < 0 ? 'text-red-400' : 'text-white')}>{fmt(row.runningQty)}</td>
+                    <td className={cn('px-2 py-2 text-right font-mono bg-gray-900/30', row.runningValue < 0 ? 'text-red-400' : 'text-gray-300')}>{fmtRs(row.runningValue)}</td>
+                    <td className="px-2 py-2 text-right font-mono">
+                      {row.grossProfit !== 0
+                        ? <span className={row.grossProfit > 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{row.grossProfit > 0 ? '+' : ''}{fmt(row.grossProfit)}</span>
+                        : ''}
+                    </td>
+                    <td className="px-2 py-2 text-gray-500 max-w-[120px] truncate text-[10px]">{row.remarks}</td>
+                  </tr>
+                ))}
+              </tbody>
+              {/* Totals row */}
+              <tfoot className="bg-gray-950 border-t-2 border-gray-700 font-bold text-xs">
+                <tr>
+                  <td colSpan={selectedProduct?.has_variations ? 5 : 4} className="px-2 py-2.5 text-gray-400 uppercase text-[10px]">Totals</td>
+                  <td className="px-2 py-2.5 text-right font-mono text-green-400">{fmt(totals.qtyIn)}</td>
+                  <td className="px-2 py-2.5 text-right font-mono text-red-400">{fmt(totals.qtyOut)}</td>
+                  <td colSpan={2}></td>
+                  <td className="px-2 py-2.5 text-right font-mono text-gray-300">{fmt(totals.amount)}</td>
+                  <td className="px-2 py-2.5 text-right font-mono text-amber-400">{fmt(totals.discount)}</td>
+                  <td className="px-2 py-2.5 text-right font-mono text-white">{fmt(totals.netAmount)}</td>
+                  <td className="px-2 py-2.5 text-right font-mono text-white bg-gray-900/30">{fmt(rows[rows.length - 1]?.runningQty ?? 0)}</td>
+                  <td className="px-2 py-2.5 text-right font-mono text-gray-300 bg-gray-900/30">{fmtRs(rows[rows.length - 1]?.runningValue ?? 0)}</td>
+                  <td className="px-2 py-2.5 text-right font-mono">
+                    <span className={totals.grossProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}>{fmt(totals.grossProfit)}</span>
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div className="px-3 py-2 border-t border-gray-800 text-[10px] text-gray-500 flex justify-between">
+            <span>{rows.length} transactions</span>
+            <span>Period: {startDate} to {endDate}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 2: Profit Analysis ── */}
+      {selectedProduct && rows.length > 0 && !loading && activeTab === 'profit-analysis' && (
+        <div className="space-y-4">
+          {/* Sale summary cards */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {([
+              { label: 'Total Sale Qty', value: fmt(summary.totalSaleQty), color: 'text-white' },
+              { label: 'Total Sale Amount', value: fmtRs(profitAnalysis.totalRevenue), color: 'text-white' },
+              { label: 'Total Cost', value: fmtRs(profitAnalysis.totalCost), color: 'text-red-400' },
+              { label: 'Gross Profit', value: fmtRs(profitAnalysis.totalProfit), color: profitAnalysis.totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400' },
+              { label: 'Profit Margin', value: `${profitAnalysis.marginPct.toFixed(1)}%`, color: profitAnalysis.marginPct >= 0 ? 'text-emerald-400' : 'text-red-400' },
+            ] as { label: string; value: string; color: string }[]).map(s => (
+              <div key={s.label} className="bg-gray-900/60 border border-gray-800 rounded-lg px-4 py-3">
+                <p className="text-[10px] text-gray-500 uppercase">{s.label}</p>
+                <p className={cn('text-lg font-bold', s.color)}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Customer-wise sale table */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-950/80 text-gray-400 font-medium border-b border-gray-800">
+            <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-gray-300">Customer-wise Sale Breakdown</div>
+            <table className="w-full text-xs text-left">
+              <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+                <tr>
+                  <th className="px-4 py-2">Customer</th>
+                  <th className="px-4 py-2 text-right">Qty Sold</th>
+                  <th className="px-4 py-2 text-right">Sale Amount</th>
+                  <th className="px-4 py-2 text-right">Cost</th>
+                  <th className="px-4 py-2 text-right">Profit</th>
+                  <th className="px-4 py-2 text-right">Margin %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {profitAnalysis.customerRows.map(c => (
+                  <tr key={c.name} className="hover:bg-gray-800/20">
+                    <td className="px-4 py-2 text-white font-medium">{c.name}</td>
+                    <td className="px-4 py-2 text-right font-mono">{fmt(c.qty)}</td>
+                    <td className="px-4 py-2 text-right font-mono">{fmtRs(c.revenue)}</td>
+                    <td className="px-4 py-2 text-right font-mono text-red-400">{fmtRs(Math.round(c.cost))}</td>
+                    <td className="px-4 py-2 text-right font-mono"><span className={c.profit >= 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{fmtRs(Math.round(c.profit))}</span></td>
+                    <td className="px-4 py-2 text-right font-mono text-gray-400">{c.marginPct.toFixed(1)}%</td>
+                  </tr>
+                ))}
+                {profitAnalysis.customerRows.length === 0 && <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">No sales in this period</td></tr>}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Month-wise sale table */}
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-gray-300">Month-wise Sale Breakdown</div>
+            <table className="w-full text-xs text-left">
+              <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+                <tr>
+                  <th className="px-4 py-2">Month</th>
+                  <th className="px-4 py-2 text-right">Qty Sold</th>
+                  <th className="px-4 py-2 text-right">Sale Amount</th>
+                  <th className="px-4 py-2 text-right">Cost</th>
+                  <th className="px-4 py-2 text-right">Profit</th>
+                  <th className="px-4 py-2 text-right">Margin %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {profitAnalysis.monthRows.map(m => (
+                  <tr key={m.month} className="hover:bg-gray-800/20">
+                    <td className="px-4 py-2 text-white font-medium font-mono">{m.month}</td>
+                    <td className="px-4 py-2 text-right font-mono">{fmt(m.qty)}</td>
+                    <td className="px-4 py-2 text-right font-mono">{fmtRs(m.revenue)}</td>
+                    <td className="px-4 py-2 text-right font-mono text-red-400">{fmtRs(Math.round(m.cost))}</td>
+                    <td className="px-4 py-2 text-right font-mono"><span className={m.profit >= 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>{fmtRs(Math.round(m.profit))}</span></td>
+                    <td className="px-4 py-2 text-right font-mono text-gray-400">{m.marginPct.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 3: Source Trace ── */}
+      {selectedProduct && rows.length > 0 && !loading && activeTab === 'source-trace' && (
+        <div className="space-y-4">
+          {/* Supplier-wise purchases */}
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-green-400">Supplier Purchase Trace</div>
+            <table className="w-full text-xs text-left">
+              <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+                <tr>
+                  <th className="px-4 py-2">Supplier</th>
+                  <th className="px-4 py-2 text-right">Qty Purchased</th>
+                  <th className="px-4 py-2 text-right">Total Amount</th>
+                  <th className="px-4 py-2 text-right">Avg Rate</th>
+                  <th className="px-4 py-2">Invoice(s)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {sourceTrace.supplierRows.map(s => (
+                  <tr key={s.name} className="hover:bg-gray-800/20">
+                    <td className="px-4 py-2 text-white font-medium">{s.name}</td>
+                    <td className="px-4 py-2 text-right font-mono text-green-400">+{fmt(s.qty)}</td>
+                    <td className="px-4 py-2 text-right font-mono">{fmtRs(Math.round(s.amount))}</td>
+                    <td className="px-4 py-2 text-right font-mono text-gray-400">{fmtRs(s.avgRate)}</td>
+                    <td className="px-4 py-2 text-blue-400 font-mono text-[10px]">{s.vouchers.join(', ') || '—'}</td>
+                  </tr>
+                ))}
+                {sourceTrace.supplierRows.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500">No purchases in this period</td></tr>}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Customer-wise sales */}
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-red-400">Customer Sale Trace</div>
+            <table className="w-full text-xs text-left">
+              <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+                <tr>
+                  <th className="px-4 py-2">Customer</th>
+                  <th className="px-4 py-2 text-right">Qty Sold</th>
+                  <th className="px-4 py-2 text-right">Total Amount</th>
+                  <th className="px-4 py-2 text-right">Avg Rate</th>
+                  <th className="px-4 py-2">Invoice(s)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/50">
+                {sourceTrace.customerRows.map(c => (
+                  <tr key={c.name} className="hover:bg-gray-800/20">
+                    <td className="px-4 py-2 text-white font-medium">{c.name}</td>
+                    <td className="px-4 py-2 text-right font-mono text-red-400">-{fmt(c.qty)}</td>
+                    <td className="px-4 py-2 text-right font-mono">{fmtRs(Math.round(c.amount))}</td>
+                    <td className="px-4 py-2 text-right font-mono text-gray-400">{fmtRs(c.avgRate)}</td>
+                    <td className="px-4 py-2 text-blue-400 font-mono text-[10px]">{c.vouchers.join(', ') || '—'}</td>
+                  </tr>
+                ))}
+                {sourceTrace.customerRows.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-gray-500">No sales in this period</td></tr>}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Return trace */}
+          {sourceTrace.returns.length > 0 && (
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-amber-400">Return Trace</div>
+              <table className="w-full text-xs text-left">
+                <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
                   <tr>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Party / Reference</th>
-                    <th className="px-4 py-3 text-center">Qty</th>
-                    <th className="px-4 py-3 text-right">Unit Price</th>
-                    <th className="px-4 py-3 text-right">Total</th>
-                    <th className="px-4 py-3 text-right">Profit</th>
-                    <th className="px-4 py-3 text-right">Balance</th>
+                    <th className="px-4 py-2">Date</th>
+                    <th className="px-4 py-2">Type</th>
+                    <th className="px-4 py-2">Party</th>
+                    <th className="px-4 py-2 text-right">Qty</th>
+                    <th className="px-4 py-2 text-right">Amount</th>
+                    <th className="px-4 py-2">Voucher #</th>
+                    <th className="px-4 py-2">Remarks</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800">
-                  {ledgerRows.length === 0 && (
-                    <tr><td colSpan={8} className="text-center py-8 text-gray-500">No transactions found in this date range</td></tr>
-                  )}
-                  {ledgerRows.map((row) => (
-                    <tr key={row.id} className="hover:bg-gray-800/30 transition-colors">
-                      <td className="px-4 py-3 text-gray-300 whitespace-nowrap text-xs">{row.date}</td>
-                      <td className="px-4 py-3">{getTypeBadge(row.type)}</td>
-                      <td className="px-4 py-3">
-                        <div className="text-white font-medium text-sm">{row.party}</div>
-                        {row.reference && <div className="text-[10px] text-gray-500 font-mono">{row.reference}</div>}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={cn("font-mono font-bold", row.qty > 0 ? "text-green-500" : "text-red-500")}>
-                          {row.qty > 0 ? '+' : ''}{row.qty}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-300 font-mono text-xs">
-                        Rs {row.unitPrice.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-right text-white font-mono text-xs">
-                        Rs {row.lineTotal.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-xs">
-                        {row.profit !== 0 ? (
-                          <span className={row.profit > 0 ? "text-green-500 font-bold" : "text-red-400 font-bold"}>
-                            {row.profit > 0 ? '+' : ''}Rs {Math.abs(row.profit).toLocaleString()}
-                          </span>
-                        ) : (
-                          <span className="text-gray-600">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right text-white font-bold font-mono bg-gray-900/30">
-                        {row.balance}
-                      </td>
+                <tbody className="divide-y divide-gray-800/50">
+                  {sourceTrace.returns.map(r => (
+                    <tr key={r.id} className="hover:bg-gray-800/20">
+                      <td className="px-4 py-2 text-gray-300">{r.date}</td>
+                      <td className="px-4 py-2">{typeBadge(r.type)}</td>
+                      <td className="px-4 py-2 text-white">{r.partyName}</td>
+                      <td className="px-4 py-2 text-right font-mono">{r.qtyIn > 0 ? `+${fmt(r.qtyIn)}` : `-${fmt(r.qtyOut)}`}</td>
+                      <td className="px-4 py-2 text-right font-mono">{fmtRs(r.netAmount)}</td>
+                      <td className="px-4 py-2 text-blue-400 font-mono">{r.voucherNo || '—'}</td>
+                      <td className="px-4 py-2 text-gray-500 text-[10px]">{r.remarks}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {ledgerRows.length > 0 && (
-              <div className="px-4 py-2 border-t border-gray-800 text-xs text-gray-500">
-                {ledgerRows.length} transactions • {rangeStartYmd} to {rangeEndYmd}
-              </div>
-            )}
-          </div>
-        </>
+          )}
+        </div>
+      )}
+
+      {/* ── Red Flags / Audit Warnings ── */}
+      {selectedProduct && rows.length > 0 && !loading && redFlags.length > 0 && (
+        <div className="bg-amber-950/20 border border-amber-800/30 rounded-xl p-4">
+          <h4 className="text-sm font-bold text-amber-400 flex items-center gap-1.5 mb-2">
+            <AlertTriangle size={14} /> Audit Warnings ({redFlags.length})
+          </h4>
+          <ul className="space-y-1">
+            {redFlags.map((f, i) => {
+              const isWarn = f.startsWith('warn:');
+              const text = isWarn ? f.slice(5) : f;
+              return (
+                <li key={i} className={cn('text-xs flex items-start gap-2', isWarn ? 'text-amber-300/80' : 'text-gray-400')}>
+                  <span className={cn('mt-0.5', isWarn ? 'text-amber-500' : 'text-gray-500')}>{isWarn ? '⚠' : 'ℹ'}</span> {text}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {selectedProduct && rows.length === 0 && !loading && (
+        <div className="text-center py-12 text-gray-500">
+          <p>Is product ki koi transaction nahi mili is date range mein</p>
+        </div>
       )}
     </div>
   );

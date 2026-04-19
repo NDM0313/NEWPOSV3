@@ -28,7 +28,7 @@ import { useSales } from '@/app/context/SalesContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { useExpenses } from '@/app/context/ExpenseContext';
 import { useAccounting } from '@/app/context/AccountingContext';
-import { BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { ChartContainer } from '@/app/components/ui/chart';
 import { exportToCSV, exportToExcel, exportToPDF } from '@/app/utils/exportUtils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -536,45 +536,39 @@ export const ReportsDashboardEnhanced = () => {
               <Card className="bg-gray-900 border-gray-800 p-6">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><BarChart3 size={20} className="text-blue-400" /> Monthly Performance Trend</h3>
                 <ChartContainer className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={monthlyTrend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="month" stroke="#9CA3AF" />
-                      <YAxis stroke="#9CA3AF" />
-                      <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} labelStyle={{ color: '#F9FAFB' }} />
-                      <Legend />
-                      <Line type="monotone" dataKey="sales" stroke="#3B82F6" name="Sales" strokeWidth={2} />
-                      <Line type="monotone" dataKey="purchases" stroke="#10B981" name="Purchases" strokeWidth={2} />
-                      <Line type="monotone" dataKey="profit" stroke="#F59E0B" name="Net result (operational flow)" strokeWidth={2} />
-                    </LineChart>
-                  </ResponsiveContainer>
+                  <LineChart data={monthlyTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="month" stroke="#9CA3AF" />
+                    <YAxis stroke="#9CA3AF" />
+                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} labelStyle={{ color: '#F9FAFB' }} />
+                    <Legend />
+                    <Line type="monotone" dataKey="sales" stroke="#3B82F6" name="Sales" strokeWidth={2} />
+                    <Line type="monotone" dataKey="purchases" stroke="#10B981" name="Purchases" strokeWidth={2} />
+                    <Line type="monotone" dataKey="profit" stroke="#F59E0B" name="Net result (operational flow)" strokeWidth={2} />
+                  </LineChart>
                 </ChartContainer>
               </Card>
               <Card className="bg-gray-900 border-gray-800 p-6">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><PieChartIcon size={20} className="text-green-400" /> Sales Payment Status</h3>
                 <ChartContainer className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={salesByStatus} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`} outerRadius={80} fill="#8884d8" dataKey="value">
-                        {salesByStatus.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
-                      </Pie>
-                      <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <PieChart>
+                    <Pie data={salesByStatus} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`} outerRadius={80} fill="#8884d8" dataKey="value">
+                      {salesByStatus.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
+                  </PieChart>
                 </ChartContainer>
               </Card>
               <Card className="bg-gray-900 border-gray-800 p-6">
                 <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><DollarSign size={20} className="text-orange-400" /> Expenses by Category</h3>
                 <ChartContainer className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={expensesByCategory}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="name" stroke="#9CA3AF" />
-                      <YAxis stroke="#9CA3AF" />
-                      <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
-                      <Bar dataKey="amount" fill="#F59E0B" radius={[8, 8, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <BarChart data={expensesByCategory}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="name" stroke="#9CA3AF" />
+                    <YAxis stroke="#9CA3AF" />
+                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
+                    <Bar dataKey="amount" fill="#F59E0B" radius={[8, 8, 0, 0]} />
+                  </BarChart>
                 </ChartContainer>
               </Card>
               <Card className="bg-gray-900 border-gray-800 p-6">
@@ -717,28 +711,24 @@ export const ReportsDashboardEnhanced = () => {
               <Card className="bg-gray-900 border-gray-800 p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Sales by Payment Status</h3>
                 <ChartContainer className="h-[260px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={salesByStatus} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: ${value}`} outerRadius={80} dataKey="value">
-                        {salesByStatus.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
-                      </Pie>
-                      <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <PieChart>
+                    <Pie data={salesByStatus} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: ${value}`} outerRadius={80} dataKey="value">
+                      {salesByStatus.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
+                  </PieChart>
                 </ChartContainer>
               </Card>
               <Card className="bg-gray-900 border-gray-800 p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Monthly Sales</h3>
                 <ChartContainer className="h-[260px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={monthlyTrend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="month" stroke="#9CA3AF" />
-                      <YAxis stroke="#9CA3AF" />
-                      <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
-                      <Bar dataKey="sales" fill="#10B981" radius={[8, 8, 0, 0]} name="Sales" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <BarChart data={monthlyTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="month" stroke="#9CA3AF" />
+                    <YAxis stroke="#9CA3AF" />
+                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
+                    <Bar dataKey="sales" fill="#10B981" radius={[8, 8, 0, 0]} name="Sales" />
+                  </BarChart>
                 </ChartContainer>
               </Card>
             </div>
@@ -783,15 +773,13 @@ export const ReportsDashboardEnhanced = () => {
             <Card className="bg-gray-900 border-gray-800 p-6">
               <h3 className="text-lg font-bold text-white mb-4">Monthly Purchases</h3>
               <ChartContainer className="h-[280px] mb-6">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyTrend}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis dataKey="month" stroke="#9CA3AF" />
-                    <YAxis stroke="#9CA3AF" />
-                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
-                    <Bar dataKey="purchases" fill="#3B82F6" radius={[8, 8, 0, 0]} name="Purchases" />
-                  </BarChart>
-                </ResponsiveContainer>
+                <BarChart data={monthlyTrend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis dataKey="month" stroke="#9CA3AF" />
+                  <YAxis stroke="#9CA3AF" />
+                  <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
+                  <Bar dataKey="purchases" fill="#3B82F6" radius={[8, 8, 0, 0]} name="Purchases" />
+                </BarChart>
               </ChartContainer>
               <h3 className="text-lg font-bold text-white mb-4">Purchases List</h3>
               <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
@@ -841,29 +829,25 @@ export const ReportsDashboardEnhanced = () => {
               <Card className="bg-gray-900 border-gray-800 p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Expenses by Category</h3>
                 <ChartContainer className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={expensesByCategory}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="name" stroke="#9CA3AF" />
-                      <YAxis stroke="#9CA3AF" />
-                      <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
-                      <Bar dataKey="amount" fill="#F59E0B" radius={[8, 8, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <BarChart data={expensesByCategory}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="name" stroke="#9CA3AF" />
+                    <YAxis stroke="#9CA3AF" />
+                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
+                    <Bar dataKey="amount" fill="#F59E0B" radius={[8, 8, 0, 0]} />
+                  </BarChart>
                 </ChartContainer>
               </Card>
               <Card className="bg-gray-900 border-gray-800 p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Monthly Expenses</h3>
                 <ChartContainer className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={monthlyTrend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="month" stroke="#9CA3AF" />
-                      <YAxis stroke="#9CA3AF" />
-                      <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
-                      <Bar dataKey="expenses" fill="#F59E0B" radius={[8, 8, 0, 0]} name="Expenses" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <BarChart data={monthlyTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="month" stroke="#9CA3AF" />
+                    <YAxis stroke="#9CA3AF" />
+                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }} />
+                    <Bar dataKey="expenses" fill="#F59E0B" radius={[8, 8, 0, 0]} name="Expenses" />
+                  </BarChart>
                 </ChartContainer>
               </Card>
             </div>

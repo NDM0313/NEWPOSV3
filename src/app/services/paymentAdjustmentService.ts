@@ -539,8 +539,9 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
     if (primaries.length > 1) {
       skippedDuplicates++;
       _skippedPaymentIds.add(paymentId);
+      // Data integrity: more than one “primary” payment JE — cannot pick liquidity safely; sync skipped.
       if (import.meta.env?.DEV) {
-        console.warn('[paymentAdjustmentService] Skip sync: multiple primary JEs for payment', paymentId);
+        console.debug('[paymentAdjustmentService] Skip sync: multiple primary JEs for payment', paymentId);
       }
       continue;
     }
@@ -561,8 +562,9 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
     if (await hasPaymentAccountChangedPf14Journal(companyId, paymentId)) {
       skippedPf14Chain++;
       _skippedPaymentIds.add(paymentId);
+      // PF-14: payments.payment_account_id is authoritative; do not re-post from stale primary JE liquidity.
       if (import.meta.env?.DEV) {
-        console.warn(
+        console.debug(
           '[paymentAdjustmentService] Skip payment_account sync: PF-14 account-change JEs exist (primary JE liquidity stale vs payments row):',
           paymentId
         );
