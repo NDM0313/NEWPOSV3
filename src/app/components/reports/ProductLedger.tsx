@@ -19,6 +19,7 @@ import {
   TrendingUp,
   GitBranch,
   FileText,
+  Home,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -110,7 +111,7 @@ export const ProductLedger = () => {
   const [rows, setRows] = useState<LedgerRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [productsLoading, setProductsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'stock-card' | 'profit-analysis' | 'source-trace'>('stock-card');
+  const [activeTab, setActiveTab] = useState<'stock-card' | 'profit-analysis' | 'source-trace' | 'rental-history'>('stock-card');
   const [redFlags, setRedFlags] = useState<string[]>([]);
   const [allProductsSummary, setAllProductsSummary] = useState<{
     productId: string; name: string; sku: string; category?: string;
@@ -129,7 +130,7 @@ export const ProductLedger = () => {
     setProductsLoading(true);
     supabase
       .from('products')
-      .select('id, name, sku, cost_price, retail_price, has_variations, category:product_categories(name)')
+      .select('id, name, sku, cost_price, retail_price, has_variations, rental_count, depreciation_per_rental, category:product_categories(name)')
       .eq('company_id', companyId)
       .eq('is_active', true)
       .order('name')
@@ -146,6 +147,8 @@ export const ProductLedger = () => {
             cost_price: p.cost_price,
             retail_price: p.retail_price,
             has_variations: p.has_variations,
+            rental_count: p.rental_count,
+            depreciation_per_rental: p.depreciation_per_rental,
           })) as ProductOption[];
           setProducts(rows);
         }
@@ -918,6 +921,7 @@ export const ProductLedger = () => {
             { key: 'stock-card' as const, label: 'Stock Card', icon: FileText },
             { key: 'profit-analysis' as const, label: 'Profit Analysis', icon: TrendingUp },
             { key: 'source-trace' as const, label: 'Source Trace', icon: GitBranch },
+            { key: 'rental-history' as const, label: 'Rental History', icon: Home },
           ]).map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)}
               className={cn('px-4 py-2 text-sm font-medium flex items-center gap-1.5 rounded-md transition-colors',
@@ -1201,6 +1205,98 @@ export const ProductLedger = () => {
           </ul>
         </div>
       )}
+
+      {/* ── TAB 4: Rental History ── */}
+      {selectedProduct && !loading && activeTab === 'rental-history' && (() => {
+        const rentalRows = rows.filter(r =>
+          r.type === 'Rental Out' || r.type === 'Rental In' ||
+          (r.type as string).toLowerCase().includes('rental')
+        );
+        const productData = (selectedProduct as any);
+        const rentalCount = Number(productData?.rental_count) || rentalRows.filter(r => r.type === 'Rental In').length;
+        const depPerRental = Number(productData?.depreciation_per_rental) || 25;
+        const costPrice = Number(productData?.cost_price) || 0;
+        const residualPct = Math.max(0, 100 - (rentalCount * depPerRental));
+        const residualValue = Math.round(costPrice * residualPct / 100);
+        const totalRentalEarnings = rentalRows
+          .filter(r => r.type === 'Rental Out')
+          .reduce((s, r) => s + Math.abs(r.netAmount || 0), 0);
+
+        return (
+          <div className="space-y-4">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              {[
+                { label: 'Times Rented', value: rentalCount, color: 'text-blue-400' },
+                { label: 'Total Earnings', value: `Rs. ${totalRentalEarnings.toLocaleString()}`, color: 'text-green-400' },
+                { label: 'Cost Price', value: `Rs. ${costPrice.toLocaleString()}`, color: 'text-gray-300' },
+                { label: 'Residual Value', value: `Rs. ${residualValue.toLocaleString()} (${residualPct}%)`, color: residualPct > 50 ? 'text-emerald-400' : residualPct > 0 ? 'text-amber-400' : 'text-red-400' },
+                { label: 'Depreciation/Rental', value: `${depPerRental}%`, color: 'text-gray-400' },
+              ].map((c, i) => (
+                <div key={i} className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+                  <p className="text-xs text-gray-500 uppercase">{c.label}</p>
+                  <p className={cn('text-lg font-bold', c.color)}>{c.value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Health indicator */}
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+              <h4 className="text-sm font-semibold text-gray-400 mb-2">Product Health</h4>
+              <div className="w-full bg-gray-700 rounded-full h-3">
+                <div
+                  className={cn('h-3 rounded-full transition-all', residualPct > 50 ? 'bg-emerald-500' : residualPct > 25 ? 'bg-amber-500' : residualPct > 0 ? 'bg-orange-500' : 'bg-red-500')}
+                  style={{ width: `${residualPct}%` }}
+                />
+              </div>
+              <div className="flex justify-between mt-1 text-xs text-gray-500">
+                <span>{residualPct}% value remaining</span>
+                <span>{rentalCount} of {Math.ceil(100 / depPerRental)} max rentals</span>
+              </div>
+              {residualPct <= 0 && (
+                <p className="mt-2 text-sm text-red-400 font-medium">This product has fully depreciated — consider retiring from rental stock</p>
+              )}
+            </div>
+
+            {/* Rental History Table */}
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-900 text-gray-500 uppercase">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Date</th>
+                    <th className="px-3 py-2 text-left">Type</th>
+                    <th className="px-3 py-2 text-left">Voucher</th>
+                    <th className="px-3 py-2 text-left">Customer</th>
+                    <th className="px-3 py-2 text-right">Qty</th>
+                    <th className="px-3 py-2 text-right">Amount</th>
+                    <th className="px-3 py-2 text-left">Remarks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rentalRows.length === 0 && (
+                    <tr><td colSpan={7} className="text-center py-8 text-gray-600">No rental transactions found</td></tr>
+                  )}
+                  {rentalRows.map((r, i) => (
+                    <tr key={i} className="border-t border-gray-800/50">
+                      <td className="px-3 py-2 text-gray-300">{r.date}</td>
+                      <td className="px-3 py-2">
+                        <span className={cn('px-1.5 py-0.5 rounded text-[10px]',
+                          r.type === 'Rental Out' ? 'bg-amber-900/50 text-amber-300' : 'bg-emerald-900/50 text-emerald-300'
+                        )}>{r.type}</span>
+                      </td>
+                      <td className="px-3 py-2 text-blue-400">{r.voucherNo}</td>
+                      <td className="px-3 py-2 text-gray-300">{r.partyName || '—'}</td>
+                      <td className="px-3 py-2 text-right text-gray-300">{r.qtyIn > 0 ? `+${r.qtyIn}` : `-${r.qtyOut}`}</td>
+                      <td className="px-3 py-2 text-right text-gray-300">{r.netAmount > 0 ? `Rs. ${r.netAmount.toLocaleString()}` : '—'}</td>
+                      <td className="px-3 py-2 text-gray-500 max-w-[200px] truncate">{r.remarks || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {selectedProduct && rows.length === 0 && !loading && (
         <div className="text-center py-12 text-gray-500">
