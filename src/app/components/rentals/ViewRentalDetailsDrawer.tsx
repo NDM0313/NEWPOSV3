@@ -17,6 +17,9 @@ import {
   History,
   Loader2,
   Truck,
+  ChevronDown,
+  ChevronRight,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -87,6 +90,7 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
   const [loadingActivityLogs, setLoadingActivityLogs] = useState(false);
   const [viewPaymentsModalOpen, setViewPaymentsModalOpen] = useState(false);
   const [pickupModalOpen, setPickupModalOpen] = useState(false);
+  const [financialBreakdownOpen, setFinancialBreakdownOpen] = useState(false);
 
   const loadPayments = useCallback(async (rentalId: string) => {
     setLoadingPayments(true);
@@ -99,6 +103,7 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
           amount: p.amount,
           method: p.method,
           referenceNo: p.reference || '',
+          paymentType: String(p.payment_type || '').toLowerCase(),
         }))
       );
     } catch {
@@ -135,6 +140,10 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
   }, [companyId]);
 
   useEffect(() => {
+    setFinancialBreakdownOpen(false);
+  }, [isOpen, rental?.id]);
+
+  useEffect(() => {
     if (isOpen && rental?.id) {
       setFullRental(rental);
       setLoading(true);
@@ -163,6 +172,11 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
               paidAmount: Number(data.paid_amount ?? rental.paidAmount),
               dueAmount: Number(data.due_amount ?? rental.dueAmount),
               location: data.branch?.name || data.branch?.code || rental.location || data.branch_id,
+              damageCharges: Number(data.damage_charges ?? rental.damageCharges ?? 0) || 0,
+              conditionType: data.condition_type ?? rental.conditionType ?? null,
+              damageNotes: data.damage_notes ?? rental.damageNotes ?? null,
+              penaltyPaid: data.penalty_paid === true || rental.penaltyPaid === true,
+              refundAmount: Number(data.refund_amount ?? rental.refundAmount ?? 0) || 0,
             } as RentalUI);
           }
           loadPayments(rental.id);
@@ -177,6 +191,22 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
 
   const r = fullRental || rental;
   if (!isOpen) return null;
+
+  const damageCharges = Number(r?.damageCharges ?? 0) || 0;
+  const rentalBookingTotal = Number(r?.totalAmount ?? 0);
+  const combinedRentalPlusDamage = rentalBookingTotal + damageCharges;
+  const refundAmt = Number(r?.refundAmount ?? 0) || 0;
+  const conditionKey = String(r?.conditionType || '').toLowerCase();
+  const conditionLabel =
+    conditionKey === 'minor_damage'
+      ? 'Minor damage'
+      : conditionKey === 'major_damage'
+        ? 'Major damage'
+        : conditionKey === 'good'
+          ? 'Good'
+          : r?.conditionType
+            ? String(r.conditionType).replace(/_/g, ' ')
+            : '';
 
   const getStatusBadge = () => {
     const cls =
@@ -450,23 +480,116 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
                     </div>
                   </div>
 
+                  {(damageCharges > 0 || (conditionKey && conditionKey !== 'good')) && (
+                    <div className="bg-amber-950/20 border border-amber-900/40 rounded-xl p-5">
+                      <h3 className="text-sm font-semibold text-amber-200/90 uppercase tracking-wide mb-3 flex items-center gap-2">
+                        <AlertTriangle size={16} className="text-amber-400" />
+                        Return — damage &amp; penalty
+                      </h3>
+                      <div className="space-y-2 text-sm">
+                        {conditionLabel && (
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-500">Item condition</span>
+                            <span className="text-white font-medium text-right">{conditionLabel}</span>
+                          </div>
+                        )}
+                        {damageCharges > 0 && (
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-500">Penalty / damage charge</span>
+                            <span className="text-amber-300 font-bold tabular-nums">{formatCurrency(damageCharges)}</span>
+                          </div>
+                        )}
+                        {r.damageNotes && (
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">Damage notes</p>
+                            <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">{r.damageNotes}</p>
+                          </div>
+                        )}
+                        {damageCharges > 0 && (
+                          <div className="flex justify-between gap-4 pt-1 border-t border-amber-900/30">
+                            <span className="text-gray-500">Penalty settlement</span>
+                            <span className={r.penaltyPaid ? 'text-green-400 text-sm' : 'text-amber-400 text-sm'}>
+                              {r.penaltyPaid ? 'Received (posted)' : 'On customer account (credit)'}
+                            </span>
+                          </div>
+                        )}
+                        {refundAmt > 0 && (
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-500">Security deposit refund (net)</span>
+                            <span className="text-green-400 font-medium tabular-nums">{formatCurrency(refundAmt)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-5">
                     <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4 flex items-center gap-2">
                       <DollarSign size={16} />
-                      Payment Summary
+                      Payment summary
                     </h3>
+                    <p className="text-xs text-gray-500 mb-3">
+                      <strong className="text-gray-400">Rental charges</strong> = booking line items only. Damage/penalty is separate and shown above when the rental was returned with assessment.
+                    </p>
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">Total</span>
-                        <span className="text-white font-bold">{formatCurrency(r.totalAmount)}</span>
+                        <span className="text-gray-400">Rental booking total</span>
+                        <span className="text-white font-bold tabular-nums">{formatCurrency(rentalBookingTotal)}</span>
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">Paid</span>
-                        <span className="text-green-400 font-medium">{formatCurrency(r.paidAmount)}</span>
+                      {damageCharges > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-400">+ Damage / penalty</span>
+                          <span className="text-amber-400 font-semibold tabular-nums">{formatCurrency(damageCharges)}</span>
+                        </div>
+                      )}
+                      {damageCharges > 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setFinancialBreakdownOpen((v) => !v)}
+                            className="w-full flex items-center justify-between gap-2 pt-2 mt-1 border-t border-gray-800 text-left rounded-lg px-2 py-2 -mx-2 hover:bg-gray-800/50 transition-colors"
+                          >
+                            <span className="text-sm text-gray-300 flex items-center gap-2">
+                              {financialBreakdownOpen ? (
+                                <ChevronDown size={16} className="text-gray-500 shrink-0" />
+                              ) : (
+                                <ChevronRight size={16} className="text-gray-500 shrink-0" />
+                              )}
+                              <span>
+                                Rental fee + damage <span className="text-gray-500 font-normal">(tap for breakdown)</span>
+                              </span>
+                            </span>
+                            <span className="text-white font-bold tabular-nums text-sm">{formatCurrency(combinedRentalPlusDamage)}</span>
+                          </button>
+                          {financialBreakdownOpen && (
+                            <div className="rounded-lg border border-gray-700 bg-gray-950/60 p-3 text-xs text-gray-400 space-y-2">
+                              <p>
+                                <span className="text-gray-300 font-medium">Rental contract:</span>{' '}
+                                {formatCurrency(rentalBookingTotal)} — agreed rent from items/rates.
+                              </p>
+                              <p>
+                                <span className="text-amber-300 font-medium">Damage / penalty:</span>{' '}
+                                {formatCurrency(damageCharges)}
+                                {conditionLabel ? ` — condition recorded as “${conditionLabel}”.` : '.'}
+                              </p>
+                              {r.damageNotes && (
+                                <p className="text-gray-500 italic border-l-2 border-amber-700/50 pl-2">{r.damageNotes}</p>
+                              )}
+                              <p className="text-gray-500 pt-1 border-t border-gray-800">
+                                Sum <span className="text-white font-semibold">{formatCurrency(combinedRentalPlusDamage)}</span> is for your reference;
+                                rental <strong className="text-gray-300">Paid / Due</strong> below still follow the booking invoice only.
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <div className="flex justify-between text-sm pt-2 border-t border-gray-800">
+                        <span className="text-gray-400">Paid (on booking)</span>
+                        <span className="text-green-400 font-medium tabular-nums">{formatCurrency(r.paidAmount)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-400 font-medium">Due</span>
-                        <span className={cn('font-bold', r.dueAmount > 0 ? 'text-red-400' : 'text-gray-500')}>
+                        <span className="text-gray-400 font-medium">Due (on booking)</span>
+                        <span className={cn('font-bold tabular-nums', r.dueAmount > 0 ? 'text-red-400' : 'text-gray-500')}>
                           {formatCurrency(r.dueAmount)}
                         </span>
                       </div>
@@ -498,12 +621,28 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
                   ) : payments.length > 0 ? (
                     <div className="space-y-3">
                       {payments.map((p) => (
-                        <div key={p.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex justify-between items-center">
-                          <div>
-                            <p className="text-white font-semibold">{formatCurrency(Number(p.amount || 0))}</p>
+                        <div key={p.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex justify-between items-center gap-3">
+                          <div className="min-w-0">
+                            <p className="text-white font-semibold tabular-nums">{formatCurrency(Number(p.amount || 0))}</p>
                             <p className="text-sm text-gray-400">{p.date ? new Date(p.date).toLocaleDateString() : '—'}</p>
+                            {p.referenceNo && (
+                              <p className="text-xs text-gray-500 mt-1 truncate" title={p.referenceNo}>
+                                {p.referenceNo}
+                              </p>
+                            )}
                           </div>
-                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30 capitalize">{p.method || 'Cash'}</Badge>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            {p.paymentType === 'penalty' && (
+                              <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px]">Damage / penalty</Badge>
+                            )}
+                            {p.paymentType === 'advance' && (
+                              <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/40 text-[10px]">Advance</Badge>
+                            )}
+                            {p.paymentType === 'remaining' && (
+                              <Badge className="bg-blue-500/15 text-blue-300 border-blue-500/30 text-[10px]">Balance</Badge>
+                            )}
+                            <Badge className="bg-green-500/20 text-green-400 border-green-500/30 capitalize">{p.method || 'Cash'}</Badge>
+                          </div>
                         </div>
                       ))}
                     </div>

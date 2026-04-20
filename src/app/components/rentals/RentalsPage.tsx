@@ -1,6 +1,6 @@
 /**
  * Rentals Page – Full ERP listing (Sale/Purchase standard)
- * Columns: Rental No, Customer, Product/Item, Branch, Start Date, Expected Return, Actual Return, Status, Total, Paid, Due, Actions
+ * Columns: Rental No, Customer, Product, Item (SKU / qty / boxes), Branch, dates, Status, totals, Actions
  * Actions: View, Edit (draft), Receive Return (rented/overdue), Add Payment, Print, Delete (draft)
  */
 
@@ -101,6 +101,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
     rentalNo: true,
     customer: true,
     product: true,
+    item: true,
     branch: true,
     startDate: true,
     expectedReturn: true,
@@ -113,13 +114,14 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   });
 
   const [columnOrder, setColumnOrder] = useState([
-    'rentalNo', 'customer', 'product', 'branch', 'startDate', 'expectedReturn', 'actualReturn', 'status', 'action', 'total', 'paid', 'due',
+    'rentalNo', 'customer', 'product', 'item', 'branch', 'startDate', 'expectedReturn', 'actualReturn', 'status', 'action', 'total', 'paid', 'due',
   ]);
 
   const columnLabels: Record<string, string> = {
     rentalNo: 'Rental No',
     customer: 'Customer',
-    product: 'Product / Item',
+    product: 'Product',
+    item: 'Item',
     branch: 'Branch',
     startDate: 'Start Date',
     expectedReturn: 'Expected Return',
@@ -155,7 +157,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
 
   const getColumnWidth = (key: string): string => {
     const w: Record<string, string> = {
-      rentalNo: '110px', customer: '160px', product: '140px', branch: '120px',
+      rentalNo: '110px', customer: '160px', product: '170px', item: '150px', branch: '120px',
       startDate: '100px', expectedReturn: '110px', actualReturn: '100px', status: '100px',
       action: '120px',
       total: '100px', paid: '90px', due: '90px',
@@ -187,11 +189,16 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
       if (!filterByDate(r.startDate)) return false;
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
+        const itemTextMatch = (r.items ?? []).some(
+          (it) =>
+            (it.productName || '').toLowerCase().includes(q) ||
+            (it.sku || '').toLowerCase().includes(q)
+        );
         if (
           !r.rentalNo.toLowerCase().includes(q) &&
           !r.customerName.toLowerCase().includes(q) &&
           !r.location.toLowerCase().includes(q) &&
-          !(r.items?.[0]?.productName || '').toLowerCase().includes(q)
+          !itemTextMatch
         )
           return false;
       }
@@ -307,7 +314,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         search={{
           value: searchTerm,
           onChange: setSearchTerm,
-          placeholder: 'Search by rental no, customer, branch…',
+          placeholder: 'Search rental no, customer, branch, product, SKU…',
         }}
         rowsSelector={{
           value: pageSize,
@@ -370,8 +377,8 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
       <div className="flex-1 overflow-auto px-6 py-4">
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <div className="min-w-[1200px]">
-              <div className="sticky top-0 z-10 min-w-[1200px] w-max bg-gray-900 border-b border-gray-800">
+            <div className="min-w-[1320px]">
+              <div className="sticky top-0 z-10 min-w-[1320px] w-max bg-gray-900 border-b border-gray-800">
                 <div
                   className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
                   style={{ gridTemplateColumns: gridTemplateColumns }}
@@ -390,7 +397,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                 </div>
               </div>
 
-              <div className="min-w-[1200px] w-max">
+              <div className="min-w-[1320px] w-max">
                 {loading ? (
                   <div className="py-12 text-center">
                     <Loader2 size={48} className="mx-auto text-pink-500 mb-3 animate-spin" />
@@ -407,7 +414,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                       key={r.id}
                       onMouseEnter={() => setHoveredRow(r.id)}
                       onMouseLeave={() => setHoveredRow(null)}
-                      className="grid gap-3 px-4 h-14 min-w-[1200px] w-max hover:bg-gray-800/30 items-center border-b border-gray-800 last:border-b-0"
+                      className="grid gap-3 px-4 h-14 min-w-[1320px] w-max hover:bg-gray-800/30 items-center border-b border-gray-800 last:border-b-0"
                       style={{ gridTemplateColumns: gridTemplateColumns }}
                     >
                       {columnOrder.map((key) => {
@@ -422,11 +429,39 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             break;
                           case 'product':
                             cell = (
-                              <span className="text-sm text-gray-300 truncate">
+                              <span className="text-sm text-gray-300 truncate" title={r.items?.[0]?.productName || ''}>
                                 {r.items?.[0]?.productName || '—'}
                               </span>
                             );
                             break;
+                          case 'item': {
+                            const lines = r.items ?? [];
+                            const it = lines[0];
+                            if (!it) {
+                              cell = <span className="text-xs text-gray-500">—</span>;
+                              break;
+                            }
+                            const sku = (it.sku || '').trim();
+                            const qtyPart =
+                              it.quantity != null && it.quantity !== 0
+                                ? `${it.quantity}${it.unit ? ` ${it.unit}` : ''}`
+                                : '';
+                            const boxPiece: string[] = [];
+                            if (it.boxes != null && Number(it.boxes) > 0) boxPiece.push(`${it.boxes} box`);
+                            if (it.pieces != null && Number(it.pieces) > 0) boxPiece.push(`${it.pieces} pc`);
+                            const detail = [sku || null, qtyPart || null, boxPiece.length ? boxPiece.join(', ') : null]
+                              .filter(Boolean)
+                              .join(' · ');
+                            const extra = lines.length > 1 ? ` +${lines.length - 1}` : '';
+                            const full = (detail || '—') + extra;
+                            cell = (
+                              <span className="text-xs text-gray-400 truncate block" title={full}>
+                                {detail || '—'}
+                                {extra ? <span className="text-pink-400/90">{extra}</span> : null}
+                              </span>
+                            );
+                            break;
+                          }
                           case 'branch':
                             cell = <span className="text-xs text-gray-400 truncate">{r.location || '—'}</span>;
                             break;
@@ -489,12 +524,25 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                               </div>
                             );
                             break;
-                          case 'total':
-                            cell = <span className="text-sm font-semibold text-white tabular-nums">{formatCurrency(r.totalAmount)}</span>;
+                          case 'total': {
+                            const dmg = Number(r.damageCharges ?? 0) || 0;
+                            const displayTotal = r.totalAmount + dmg;
+                            cell = (
+                              <span
+                                className="text-sm font-semibold text-white tabular-nums"
+                                title={dmg > 0 ? `Booking ${formatCurrency(r.totalAmount)} + damage/penalty ${formatCurrency(dmg)}` : undefined}
+                              >
+                                {formatCurrency(displayTotal)}
+                              </span>
+                            );
                             break;
+                          }
                           case 'paid': {
                             const canAddPayment = r.status === 'rented' || r.status === 'overdue';
                             const openPayment = () => { if (canAddPayment) { setSelectedRental(r); setPaymentDialogOpen(true); } };
+                            const dmg = Number(r.damageCharges ?? 0) || 0;
+                            const penaltyReceived = r.penaltyPaid === true && dmg > 0;
+                            const displayPaid = r.paidAmount + (penaltyReceived ? dmg : 0);
                             cell = (
                               <div
                                 role={canAddPayment ? 'button' : undefined}
@@ -505,8 +553,9 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                   'text-sm text-gray-300 tabular-nums w-full text-right',
                                   canAddPayment && 'cursor-pointer hover:text-white hover:underline'
                                 )}
+                                title={penaltyReceived ? `Booking paid ${formatCurrency(r.paidAmount)} + penalty received ${formatCurrency(dmg)}` : undefined}
                               >
-                                {formatCurrency(r.paidAmount)}
+                                {formatCurrency(displayPaid)}
                               </div>
                             );
                             break;
@@ -515,7 +564,12 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                             const canAddPayment = r.status === 'rented' || r.status === 'overdue';
                             const openPayment = () => { if (canAddPayment) { setSelectedRental(r); setPaymentDialogOpen(true); } };
                             const openPaymentHistory = () => { setSelectedRental(r); setViewPaymentsOpen(true); };
-                            const paymentStatus = r.dueAmount <= 0 ? 'paid' : r.paidAmount > 0 ? 'partial' : 'due';
+                            const dmgDue = Number(r.damageCharges ?? 0) || 0;
+                            const penaltyStillOwed =
+                              dmgDue > 0 && r.penaltyPaid !== true && (r.status === 'returned' || r.status === 'overdue' || r.status === 'rented');
+                            const displayDue = r.dueAmount + (penaltyStillOwed ? dmgDue : 0);
+                            const paymentStatus =
+                              displayDue <= 0 ? 'paid' : r.paidAmount > 0 || (r.penaltyPaid === true && dmgDue > 0) ? 'partial' : 'due';
                             cell = (
                               <div
                                 role="button"
@@ -523,6 +577,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                 onClick={openPaymentHistory}
                                 onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPaymentHistory())}
                                 className="w-full text-right cursor-pointer hover:opacity-90"
+                                title={penaltyStillOwed ? `Booking due ${formatCurrency(r.dueAmount)} + penalty on account ${formatCurrency(dmgDue)}` : undefined}
                               >
                                 {paymentStatus === 'paid' ? (
                                   <Badge className="text-[10px] bg-green-500/20 text-green-400 border-green-500/30 gap-1 inline-flex">
@@ -538,8 +593,8 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                                     Due
                                   </Badge>
                                 )}
-                                {r.dueAmount > 0 && (
-                                  <span className="ml-1 text-xs text-gray-400">{formatCurrency(r.dueAmount)}</span>
+                                {displayDue > 0 && (
+                                  <span className="ml-1 text-xs text-gray-400 tabular-nums">{formatCurrency(displayDue)}</span>
                                 )}
                               </div>
                             );

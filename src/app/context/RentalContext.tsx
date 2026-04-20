@@ -44,6 +44,13 @@ export interface RentalUI {
   notes?: string | null;
   documentType?: string;
   documentNumber?: string;
+  /** Assessed at return (damage / penalty) — not part of rental line items total */
+  damageCharges?: number;
+  conditionType?: string | null;
+  damageNotes?: string | null;
+  penaltyPaid?: boolean;
+  /** Security deposit minus penalty (when returned) */
+  refundAmount?: number;
 }
 
 // Map DB status (booked, picked_up, returned, closed, cancelled, overdue) to UI status
@@ -110,6 +117,11 @@ function convertFromSupabaseRental(row: any): RentalUI {
     notes: row.notes,
     documentType: row.document_type,
     documentNumber: row.document_number,
+    damageCharges: Number(row.damage_charges ?? 0) || 0,
+    conditionType: row.condition_type ?? null,
+    damageNotes: row.damage_notes ?? null,
+    penaltyPaid: row.penalty_paid === true,
+    refundAmount: Number(row.refund_amount ?? 0) || 0,
   };
 }
 
@@ -121,7 +133,7 @@ interface RentalContextType {
   createRental: (rental: Omit<RentalUI, 'id' | 'rentalNo' | 'itemsCount'> & { items: RentalItemUI[] }) => Promise<RentalUI>;
   updateRental: (id: string, updates: Partial<RentalUI>, items: RentalItemUI[] | null) => Promise<void>;
   finalizeRental: (id: string) => Promise<void>;
-  receiveReturn: (id: string, payload: { actualReturnDate: string; notes?: string; conditionType: string; damageNotes?: string; penaltyAmount: number; penaltyPaid: boolean; penaltyPaymentMethod?: string; documentReturned: boolean }) => Promise<void>;
+  receiveReturn: (id: string, payload: { actualReturnDate: string; notes?: string; conditionType: string; damageNotes?: string; penaltyAmount: number; penaltyPaid: boolean; penaltyPaymentMethod?: string; documentReturned: boolean; penaltyPaymentPreRecorded?: boolean }) => Promise<void>;
   cancelRental: (id: string) => Promise<void>;
   addPayment: (rentalId: string, amount: number, method: string, reference?: string) => Promise<void>;
   deletePayment: (rentalId: string, paymentId: string) => Promise<void>;
@@ -301,21 +313,23 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     toast.success('Rental finalized – stock out');
   };
 
-  const receiveReturn = async (id: string, payload: { actualReturnDate: string; notes?: string; conditionType: string; damageNotes?: string; penaltyAmount: number; penaltyPaid: boolean; penaltyPaymentMethod?: string; documentReturned: boolean }) => {
+  const receiveReturn = async (id: string, payload: { actualReturnDate: string; notes?: string; conditionType: string; damageNotes?: string; penaltyAmount: number; penaltyPaid: boolean; penaltyPaymentMethod?: string; documentReturned: boolean; penaltyPaymentPreRecorded?: boolean }) => {
     if (!companyId) return;
     const rental = getRentalById(id) || rentals.find((r) => r.id === id);
     await rentalService.receiveReturn(id, companyId, payload, user?.id);
     if (payload.penaltyAmount > 0 && rental) {
       if (payload.penaltyPaid) {
-        // Pay now: Dr Cash/Bank, Cr Rental Income
-        accounting.recordRentalReturn({
-          bookingId: id,
-          customerName: rental.customerName,
-          customerId: rental.customerId || '',
-          securityDepositAmount: 0,
-          damageCharge: payload.penaltyAmount,
-          paymentMethod: (payload.penaltyPaymentMethod || 'Cash') as any,
-        }).catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
+        // Pay now: Dr Cash/Bank, Cr Rental Income (skip if UnifiedPaymentDialog already posted payment + JE)
+        if (!payload.penaltyPaymentPreRecorded) {
+          accounting.recordRentalReturn({
+            bookingId: id,
+            customerName: rental.customerName,
+            customerId: rental.customerId || '',
+            securityDepositAmount: 0,
+            damageCharge: payload.penaltyAmount,
+            paymentMethod: (payload.penaltyPaymentMethod || 'Cash') as any,
+          }).catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
+        }
       } else {
         // Credit mode: Dr AR (customer owes), Cr Rental Income
         accounting.recordRentalCreditDelivery({

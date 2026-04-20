@@ -29,8 +29,41 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilterOptional } from '@/app/context/GlobalFilterContext';
 import { supabase } from '@/lib/supabase';
 import { branchService } from '@/app/services/branchService';
+import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 
 // ─── Types ───────────────────────────────────────────────────
+
+/** One stock event (pickup / return) for this product on a rental */
+interface ProductRentalHistoryRow {
+  id: string;
+  rentalId: string;
+  rentalNo: string;
+  customerName: string;
+  eventDate: string;
+  movementType: 'rental_out' | 'rental_in';
+  qty: number;
+  itemLineTotal: number;
+  rentalBookingTotal: number;
+  pickupOrStart: string | null;
+  expectedReturn: string | null;
+  actualReturn: string | null;
+  rentalStatus: string;
+  damageCharges: number;
+  penaltyPaid: boolean;
+  damageNotes: string | null;
+  conditionType: string | null;
+  branchLabel: string;
+}
+
+/** All-time rental pipeline for this SKU (same branch filter as movements when applied). */
+interface RentalLifecycleStats {
+  totalBookings: number;
+  completedFullCycles: number;
+  withCustomerPendingReturn: number;
+  awaitingPickupNotOut: number;
+  cancelled: number;
+  other: number;
+}
 
 type TxnType =
   | 'Purchase'
@@ -89,11 +122,40 @@ const ALL_TXN_TYPES: TxnType[] = [
   'Adjustment', 'Opening Stock', 'Production', 'Transfer',
 ];
 
+/** Local calendar YYYY-MM-DD from an ISO timestamp (matches global filter local midnight range). */
+function localCalendarDayFromIso(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** SQL DATE / date string → local noon timestamp for range checks. */
+function parseSqlDateOnlyToLocalNoon(dateStr: string | null | undefined): number | null {
+  if (!dateStr) return null;
+  const day = String(dateStr).slice(0, 10);
+  const parts = day.split('-').map(Number);
+  if (parts.length < 3 || !parts[0]) return null;
+  const [y, mo, da] = parts;
+  return new Date(y, mo - 1, da, 12, 0, 0, 0).getTime();
+}
+
+function localCalendarDayFromTs(ts: number): string {
+  const d = new Date(ts);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // ─── Component ───────────────────────────────────────────────
 
 export const ProductLedger = () => {
   const { companyId, branchId: contextBranchId } = useSupabase();
   const globalFilter = useGlobalFilterOptional();
+  const { formatCurrency } = useFormatCurrency();
 
   // Filters
   const [products, setProducts] = useState<ProductOption[]>([]);
@@ -119,9 +181,33 @@ export const ProductLedger = () => {
     saleReturnQty: number; purchaseReturnQty: number; adjustmentQty: number;
   }[]>([]);
   const [allSummaryLoading, setAllSummaryLoading] = useState(false);
+  const [rentalHistoryRows, setRentalHistoryRows] = useState<ProductRentalHistoryRow[]>([]);
+  const [rentalHistoryLoading, setRentalHistoryLoading] = useState(false);
+  const [rentalLifecycleStats, setRentalLifecycleStats] = useState<RentalLifecycleStats | null>(null);
 
   const startDate = globalFilter?.startDate || (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10); })();
   const endDate = globalFilter?.endDate || new Date().toISOString().slice(0, 10);
+
+  /** Inclusive filter window for rental movement timestamps (fixes ISO string vs YYYY-MM-DD lexicographic bugs). */
+  const rentalTimeRange = useMemo(() => {
+    if (globalFilter?.startDateObj && globalFilter?.endDateObj) {
+      return { start: globalFilter.startDateObj, end: globalFilter.endDateObj };
+    }
+    const sd = startDate.slice(0, 10);
+    const ed = endDate.slice(0, 10);
+    const [ys, ms, ds] = sd.split('-').map(Number);
+    const [ye, me, de] = ed.split('-').map(Number);
+    return {
+      start: new Date(ys, ms - 1, ds, 0, 0, 0, 0),
+      end: new Date(ye, me - 1, de, 23, 59, 59, 999),
+    };
+  }, [globalFilter?.startDateObj?.getTime(), globalFilter?.endDateObj?.getTime(), startDate, endDate]);
+
+  const rentalRangeLabel = useMemo(() => {
+    const a = rentalTimeRange.start.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const b = rentalTimeRange.end.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    return `${a} → ${b}`;
+  }, [rentalTimeRange.start.getTime(), rentalTimeRange.end.getTime()]);
 
   // ─── Load products & branches ──────────────────────────────
 
@@ -169,7 +255,8 @@ export const ProductLedger = () => {
           .select('product_id, movement_type, quantity, unit_cost, total_cost')
           .eq('company_id', companyId);
 
-        const agg = new Map<string, { stock: number; purQty: number; purVal: number; saleQty: number; saleVal: number }>();
+        type AggRow = { stock: number; purQty: number; purVal: number; saleQty: number; saleVal: number; saleRetQty: number; purRetQty: number; adjQty: number };
+        const agg = new Map<string, AggRow>();
         for (const m of (movements || []) as any[]) {
           const pid = m.product_id;
           const a = agg.get(pid) || { stock: 0, purQty: 0, purVal: 0, saleQty: 0, saleVal: 0, saleRetQty: 0, purRetQty: 0, adjQty: 0 };
@@ -491,6 +578,191 @@ export const ProductLedger = () => {
   }, [companyId, selectedProductId, selectedVariationId, selectedBranchId, contextBranchId, startDate, endDate, enabledTypes]);
 
   useEffect(() => { if (selectedProductId) loadLedger(); }, [selectedProductId, loadLedger]);
+
+  const loadRentalHistory = useCallback(async () => {
+    if (!companyId || !selectedProductId) {
+      setRentalHistoryRows([]);
+      setRentalLifecycleStats(null);
+      return;
+    }
+    setRentalHistoryLoading(true);
+    try {
+      const branchFilter = selectedBranchId || (contextBranchId === 'all' ? '' : contextBranchId || '');
+      const rangeStartMs = rentalTimeRange.start.getTime();
+      const rangeEndMs = rentalTimeRange.end.getTime();
+      const inRangeTs = (t: number) => t >= rangeStartMs && t <= rangeEndMs;
+
+      const { data: ri, error: riErr } = await supabase
+        .from('rental_items')
+        .select('rental_id, quantity, rate, total')
+        .eq('product_id', selectedProductId);
+      if (riErr) throw riErr;
+      const rentalIds = [...new Set((ri || []).map((x: any) => x.rental_id).filter(Boolean))] as string[];
+      const itemByRental = new Map((ri || []).map((x: any) => [x.rental_id, x]));
+
+      if (rentalIds.length === 0) {
+        setRentalHistoryRows([]);
+        setRentalLifecycleStats({
+          totalBookings: 0,
+          completedFullCycles: 0,
+          withCustomerPendingReturn: 0,
+          awaitingPickupNotOut: 0,
+          cancelled: 0,
+          other: 0,
+        });
+        return;
+      }
+
+      let rq = supabase
+        .from('rentals')
+        .select(
+          'id, rental_no, booking_no, customer_name, start_date, expected_return_date, actual_return_date, status, total_amount, damage_charges, penalty_paid, damage_notes, condition_type, branch_id'
+        )
+        .eq('company_id', companyId)
+        .in('id', rentalIds);
+      if (branchFilter) rq = rq.eq('branch_id', branchFilter);
+      const { data: rents, error: rErr } = await rq;
+      if (rErr) throw rErr;
+      const rentMap = new Map((rents || []).map((r: any) => [r.id, r]));
+
+      let mq = supabase
+        .from('stock_movements')
+        .select('id, reference_id, quantity, movement_type, created_at, branch_id, notes')
+        .eq('company_id', companyId)
+        .eq('product_id', selectedProductId)
+        .eq('reference_type', 'rental')
+        .in('movement_type', ['rental_out', 'rental_in']);
+      if (branchFilter) mq = mq.eq('branch_id', branchFilter);
+      const { data: movs, error: mErr } = await mq;
+      if (mErr) throw mErr;
+      const movList = (movs || []) as any[];
+
+      const flagsByRental = new Map<string, { out: boolean; in: boolean }>();
+      for (const m of movList) {
+        const rid = m.reference_id as string;
+        if (!rid) continue;
+        const cur = flagsByRental.get(rid) || { out: false, in: false };
+        if (m.movement_type === 'rental_out') cur.out = true;
+        if (m.movement_type === 'rental_in') cur.in = true;
+        flagsByRental.set(rid, cur);
+      }
+
+      let completedFullCycles = 0;
+      let withCustomerPendingReturn = 0;
+      let awaitingPickupNotOut = 0;
+      let cancelled = 0;
+      let other = 0;
+
+      const visibleRentalIds = rentalIds.filter(id => rentMap.has(id));
+
+      for (const rid of visibleRentalIds) {
+        const rental = rentMap.get(rid)!;
+        const f = flagsByRental.get(rid) || { out: false, in: false };
+        const st = String(rental.status || '').toLowerCase();
+        if (st === 'cancelled') {
+          cancelled++;
+          continue;
+        }
+        if (f.out && f.in) {
+          completedFullCycles++;
+        } else if (f.out && !f.in && ['returned', 'closed'].includes(st)) {
+          completedFullCycles++;
+        } else if (f.out && !f.in && ['active', 'rented', 'picked_up', 'overdue'].includes(st)) {
+          withCustomerPendingReturn++;
+        } else if (!f.out && ['draft', 'booked'].includes(st)) {
+          awaitingPickupNotOut++;
+        } else {
+          other++;
+        }
+      }
+
+      setRentalLifecycleStats({
+        totalBookings: visibleRentalIds.length,
+        completedFullCycles,
+        withCustomerPendingReturn,
+        awaitingPickupNotOut,
+        cancelled,
+        other,
+      });
+
+      const rows: ProductRentalHistoryRow[] = [];
+      const pushRow = (
+        id: string,
+        rid: string,
+        rental: any,
+        item: any,
+        eventDate: string,
+        movementType: 'rental_out' | 'rental_in',
+        qty: number
+      ) => {
+        const branchLabel = branches.find(b => b.id === rental.branch_id)?.name || rental.branch_id || '—';
+        rows.push({
+          id,
+          rentalId: rid,
+          rentalNo: String(rental.rental_no || rental.booking_no || rid.slice(0, 8)),
+          customerName: String(rental.customer_name || '—'),
+          eventDate,
+          movementType,
+          qty,
+          itemLineTotal: Number(item?.total ?? 0) || (Number(item?.quantity) || 0) * (Number(item?.rate) || 0),
+          rentalBookingTotal: Number(rental.total_amount ?? 0) || 0,
+          pickupOrStart: rental.start_date || null,
+          expectedReturn: rental.expected_return_date || null,
+          actualReturn: rental.actual_return_date ?? null,
+          rentalStatus: String(rental.status || ''),
+          damageCharges: Number(rental.damage_charges ?? 0) || 0,
+          penaltyPaid: rental.penalty_paid === true,
+          damageNotes: rental.damage_notes ?? null,
+          conditionType: rental.condition_type ?? null,
+          branchLabel,
+        });
+      };
+
+      for (const m of movList) {
+        const rid = m.reference_id as string;
+        const rental = rentMap.get(rid);
+        if (!rental) continue;
+        const t = new Date(m.created_at).getTime();
+        if (!inRangeTs(t)) continue;
+        const item = itemByRental.get(rid);
+        const qty = Math.abs(Number(m.quantity) || 0);
+        const mt = m.movement_type === 'rental_in' ? 'rental_in' : 'rental_out';
+        const day = localCalendarDayFromIso(m.created_at);
+        pushRow(String(m.id), rid, rental, item, day, mt, qty);
+      }
+
+      // Purane bookings jahan stock_movements record na hon
+      if (rows.length === 0 && movList.length === 0) {
+        for (const rid of rentalIds) {
+          const rental = rentMap.get(rid);
+          if (!rental) continue;
+          const item = itemByRental.get(rid);
+          const startMs = parseSqlDateOnlyToLocalNoon(rental.start_date);
+          const retMs = parseSqlDateOnlyToLocalNoon(rental.actual_return_date);
+          const qty = Math.abs(Number(item?.quantity) || 0);
+          if (startMs != null && inRangeTs(startMs)) {
+            pushRow(`fb-out-${rid}`, rid, rental, item, localCalendarDayFromTs(startMs), 'rental_out', qty);
+          }
+          if (retMs != null && inRangeTs(retMs)) {
+            pushRow(`fb-in-${rid}`, rid, rental, item, localCalendarDayFromTs(retMs), 'rental_in', qty);
+          }
+        }
+      }
+
+      rows.sort((a, b) => a.eventDate.localeCompare(b.eventDate) || a.rentalNo.localeCompare(b.rentalNo));
+      setRentalHistoryRows(rows);
+    } catch (e) {
+      console.error('[ProductLedger] rental history:', e);
+      setRentalHistoryRows([]);
+      setRentalLifecycleStats(null);
+    } finally {
+      setRentalHistoryLoading(false);
+    }
+  }, [companyId, selectedProductId, selectedBranchId, contextBranchId, branches, rentalTimeRange.start.getTime(), rentalTimeRange.end.getTime()]);
+
+  useEffect(() => {
+    if (selectedProductId && activeTab === 'rental-history') loadRentalHistory();
+  }, [selectedProductId, activeTab, loadRentalHistory]);
 
   // ─── Derived ───────────────────────────────────────────────
 
@@ -915,7 +1187,7 @@ export const ProductLedger = () => {
       )}
 
       {/* ── Tab Navigation ── */}
-      {selectedProduct && rows.length > 0 && !loading && (
+      {selectedProduct && !loading && (
         <div className="flex items-center gap-2 bg-gray-900/60 border border-gray-800 rounded-lg p-1">
           {([
             { key: 'stock-card' as const, label: 'Stock Card', icon: FileText },
@@ -935,7 +1207,11 @@ export const ProductLedger = () => {
       )}
 
       {/* ── TAB 1: Stock Card ── */}
-      {selectedProduct && rows.length > 0 && !loading && activeTab === 'stock-card' && (
+      {selectedProduct && !loading && activeTab === 'stock-card' && (rows.length === 0 ? (
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-sm">
+          Is date range mein is product ki koi stock movement nahi mili. Agar sirf rental history dekhni hai to &quot;Rental History&quot; tab use karein.
+        </div>
+      ) : (
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden print:bg-white print:text-black">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -1010,10 +1286,14 @@ export const ProductLedger = () => {
             <span>Period: {startDate} to {endDate}</span>
           </div>
         </div>
-      )}
+      ))}
 
       {/* ── TAB 2: Profit Analysis ── */}
-      {selectedProduct && rows.length > 0 && !loading && activeTab === 'profit-analysis' && (
+      {selectedProduct && !loading && activeTab === 'profit-analysis' && (rows.length === 0 ? (
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-sm">
+          Profit analysis ke liye is range mein kam az kam ek stock movement honi chahiye.
+        </div>
+      ) : (
         <div className="space-y-4">
           {/* Sale summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -1090,10 +1370,14 @@ export const ProductLedger = () => {
             </table>
           </div>
         </div>
-      )}
+      ))}
 
       {/* ── TAB 3: Source Trace ── */}
-      {selectedProduct && rows.length > 0 && !loading && activeTab === 'source-trace' && (
+      {selectedProduct && !loading && activeTab === 'source-trace' && (rows.length === 0 ? (
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 text-center text-gray-500 text-sm">
+          Source trace ke liye is range mein purchase / sale movements honi chahiye.
+        </div>
+      ) : (
         <div className="space-y-4">
           {/* Supplier-wise purchases */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
@@ -1184,7 +1468,7 @@ export const ProductLedger = () => {
             </div>
           )}
         </div>
-      )}
+      ))}
 
       {/* ── Red Flags / Audit Warnings ── */}
       {selectedProduct && rows.length > 0 && !loading && redFlags.length > 0 && (
@@ -1206,99 +1490,184 @@ export const ProductLedger = () => {
         </div>
       )}
 
-      {/* ── TAB 4: Rental History ── */}
+      {/* ── TAB 4: Rental History (stock_movements rental_out / rental_in + rentals) ── */}
       {selectedProduct && !loading && activeTab === 'rental-history' && (() => {
-        const rentalRows = rows.filter(r =>
-          r.type === 'Rental Out' || r.type === 'Rental In' ||
-          (r.type as string).toLowerCase().includes('rental')
-        );
         const productData = (selectedProduct as any);
-        const rentalCount = Number(productData?.rental_count) || rentalRows.filter(r => r.type === 'Rental In').length;
+        const rentalCountLife = Number(productData?.rental_count) || 0;
         const depPerRental = Number(productData?.depreciation_per_rental) || 25;
         const costPrice = Number(productData?.cost_price) || 0;
-        const residualPct = Math.max(0, 100 - (rentalCount * depPerRental));
+        const residualPct = Math.max(0, 100 - (rentalCountLife * depPerRental));
         const residualValue = Math.round(costPrice * residualPct / 100);
-        const totalRentalEarnings = rentalRows
-          .filter(r => r.type === 'Rental Out')
-          .reduce((s, r) => s + Math.abs(r.netAmount || 0), 0);
+        const pickupsInPeriod = rentalHistoryRows.filter(r => r.movementType === 'rental_out').length;
+        const returnsInPeriod = rentalHistoryRows.filter(r => r.movementType === 'rental_in').length;
+        const uniqRentals = new Set(rentalHistoryRows.map(r => r.rentalId)).size;
+        const lineOnReturns = rentalHistoryRows
+          .filter(r => r.movementType === 'rental_in')
+          .reduce((s, r) => s + r.itemLineTotal, 0);
+        const damageByRental = new Map<string, number>();
+        for (const r of rentalHistoryRows) {
+          if (r.movementType === 'rental_in' && r.damageCharges > 0) damageByRental.set(r.rentalId, r.damageCharges);
+        }
+        const totalDamage = [...damageByRental.values()].reduce((a, b) => a + b, 0);
+        const penaltyReturns = rentalHistoryRows.filter(r => r.movementType === 'rental_in' && r.penaltyPaid).length;
+
+        const life = rentalLifecycleStats;
 
         return (
           <div className="space-y-4">
-            {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="rounded-lg border border-gray-800 bg-gray-950/40 px-3 py-2 text-xs text-gray-400 space-y-1">
+              <p>
+                <span className="text-gray-300 font-medium">Filter window: </span>
+                {rentalRangeLabel}
+                {globalFilter?.getDateRangeLabel ? (
+                  <span className="text-gray-500"> ({globalFilter.getDateRangeLabel()})</span>
+                ) : null}
+              </p>
+              <p className="text-[11px] leading-relaxed text-gray-500">
+                Neeche wali table sirf is window ke andar <strong className="text-gray-400">pickup / return timestamps</strong> par filter hai.
+                Upar wale boxes poori rental pipeline dikhate hain (book → pickup → return), branch filter ke mutabiq.
+              </p>
+            </div>
+
+            {life && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold text-gray-300">Rental pipeline (poori history — is product par kitni dafa kya hua)</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {[
+                    { label: 'کل بکنگز / Total bookings', sub: 'Is SKU par alag rental orders', value: String(life.totalBookings), color: 'text-blue-300' },
+                    { label: 'مکمل واپسی / Full cycles', sub: 'Stock out + stock wapas (return)', value: String(life.completedFullCycles), color: 'text-emerald-300' },
+                    { label: 'کسٹمر کے پاس / Out', sub: 'Pickup ho chuka, return abhi pending', value: String(life.withCustomerPendingReturn), color: 'text-amber-300' },
+                    { label: 'بک، پک اپ بقیہ / Booked', sub: 'Abhi stock out nahi hua', value: String(life.awaitingPickupNotOut), color: 'text-cyan-300' },
+                    { label: 'Cancelled', sub: 'Manzookh', value: String(life.cancelled), color: 'text-gray-500' },
+                    { label: 'Other', sub: 'Unknown / mixed state', value: String(life.other), color: 'text-gray-500' },
+                  ].map((c, i) => (
+                    <div key={i} className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+                      <p className="text-[10px] text-gray-400 uppercase leading-tight">{c.label}</p>
+                      <p className="text-[9px] text-gray-600 mt-0.5 leading-tight">{c.sub}</p>
+                      <p className={cn('text-xl font-bold mt-1', c.color)}>{c.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {[
-                { label: 'Times Rented', value: rentalCount, color: 'text-blue-400' },
-                { label: 'Total Earnings', value: `Rs. ${totalRentalEarnings.toLocaleString()}`, color: 'text-green-400' },
-                { label: 'Cost Price', value: `Rs. ${costPrice.toLocaleString()}`, color: 'text-gray-300' },
-                { label: 'Residual Value', value: `Rs. ${residualValue.toLocaleString()} (${residualPct}%)`, color: residualPct > 50 ? 'text-emerald-400' : residualPct > 0 ? 'text-amber-400' : 'text-red-400' },
-                { label: 'Depreciation/Rental', value: `${depPerRental}%`, color: 'text-gray-400' },
+                { label: 'Product rental_count (DB)', value: String(rentalCountLife), color: 'text-blue-400' },
+                { label: 'Pickups (is window)', value: String(pickupsInPeriod), color: 'text-amber-300' },
+                { label: 'Returns (is window)', value: String(returnsInPeriod), color: 'text-emerald-300' },
+                { label: 'Rentals touched (window)', value: String(uniqRentals), color: 'text-white' },
+                { label: 'Line total (returns in window)', value: formatCurrency(lineOnReturns), color: 'text-green-400' },
+                { label: 'Damage (returns in window)', value: formatCurrency(totalDamage), color: totalDamage > 0 ? 'text-red-400' : 'text-gray-400' },
               ].map((c, i) => (
                 <div key={i} className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
-                  <p className="text-xs text-gray-500 uppercase">{c.label}</p>
-                  <p className={cn('text-lg font-bold', c.color)}>{c.value}</p>
+                  <p className="text-[10px] text-gray-500 uppercase leading-tight">{c.label}</p>
+                  <p className={cn('text-base font-bold mt-0.5', c.color)}>{c.value}</p>
                 </div>
               ))}
             </div>
+            {penaltyReturns > 0 && (
+              <p className="text-xs text-amber-400/90">
+                {penaltyReturns} return event(s) par penalty mark paid / recorded.
+              </p>
+            )}
 
-            {/* Health indicator */}
             <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
-              <h4 className="text-sm font-semibold text-gray-400 mb-2">Product Health</h4>
+              <h4 className="text-sm font-semibold text-gray-400 mb-2">Product Health (depreciation)</h4>
               <div className="w-full bg-gray-700 rounded-full h-3">
                 <div
                   className={cn('h-3 rounded-full transition-all', residualPct > 50 ? 'bg-emerald-500' : residualPct > 25 ? 'bg-amber-500' : residualPct > 0 ? 'bg-orange-500' : 'bg-red-500')}
-                  style={{ width: `${residualPct}%` }}
+                  style={{ width: `${Math.min(100, residualPct)}%` }}
                 />
               </div>
               <div className="flex justify-between mt-1 text-xs text-gray-500">
                 <span>{residualPct}% value remaining</span>
-                <span>{rentalCount} of {Math.ceil(100 / depPerRental)} max rentals</span>
+                <span>{rentalCountLife} rentals logged · {depPerRental}% / rental</span>
               </div>
-              {residualPct <= 0 && (
+              {residualPct <= 0 && rentalCountLife > 0 && (
                 <p className="mt-2 text-sm text-red-400 font-medium">This product has fully depreciated — consider retiring from rental stock</p>
               )}
             </div>
 
-            {/* Rental History Table */}
             <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-900 text-gray-500 uppercase">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Date</th>
-                    <th className="px-3 py-2 text-left">Type</th>
-                    <th className="px-3 py-2 text-left">Voucher</th>
-                    <th className="px-3 py-2 text-left">Customer</th>
-                    <th className="px-3 py-2 text-right">Qty</th>
-                    <th className="px-3 py-2 text-right">Amount</th>
-                    <th className="px-3 py-2 text-left">Remarks</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rentalRows.length === 0 && (
-                    <tr><td colSpan={7} className="text-center py-8 text-gray-600">No rental transactions found</td></tr>
-                  )}
-                  {rentalRows.map((r, i) => (
-                    <tr key={i} className="border-t border-gray-800/50">
-                      <td className="px-3 py-2 text-gray-300">{r.date}</td>
-                      <td className="px-3 py-2">
-                        <span className={cn('px-1.5 py-0.5 rounded text-[10px]',
-                          r.type === 'Rental Out' ? 'bg-amber-900/50 text-amber-300' : 'bg-emerald-900/50 text-emerald-300'
-                        )}>{r.type}</span>
-                      </td>
-                      <td className="px-3 py-2 text-blue-400">{r.voucherNo}</td>
-                      <td className="px-3 py-2 text-gray-300">{r.partyName || '—'}</td>
-                      <td className="px-3 py-2 text-right text-gray-300">{r.qtyIn > 0 ? `+${r.qtyIn}` : `-${r.qtyOut}`}</td>
-                      <td className="px-3 py-2 text-right text-gray-300">{r.netAmount > 0 ? `Rs. ${r.netAmount.toLocaleString()}` : '—'}</td>
-                      <td className="px-3 py-2 text-gray-500 max-w-[200px] truncate">{r.remarks || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {rentalHistoryLoading ? (
+                <div className="flex items-center justify-center gap-2 py-12 text-gray-400 text-sm">
+                  <Loader2 className="animate-spin" size={18} /> Rental history load ho rahi hai…
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs min-w-[960px]">
+                    <thead className="bg-gray-950/80 text-gray-500 uppercase border-b border-gray-800">
+                      <tr>
+                        <th className="px-3 py-2 whitespace-nowrap">Event date</th>
+                        <th className="px-3 py-2 whitespace-nowrap">Event</th>
+                        <th className="px-3 py-2 whitespace-nowrap">Rental #</th>
+                        <th className="px-3 py-2 whitespace-nowrap">Customer</th>
+                        <th className="px-3 py-2 whitespace-nowrap">Branch</th>
+                        <th className="px-3 py-2 text-right whitespace-nowrap">Qty</th>
+                        <th className="px-3 py-2 text-right whitespace-nowrap">Line</th>
+                        <th className="px-3 py-2 text-right whitespace-nowrap">Booking total</th>
+                        <th className="px-3 py-2 whitespace-nowrap">Start</th>
+                        <th className="px-3 py-2 whitespace-nowrap">Due return</th>
+                        <th className="px-3 py-2 whitespace-nowrap">Actual return</th>
+                        <th className="px-3 py-2 whitespace-nowrap">Status</th>
+                        <th className="px-3 py-2 text-right whitespace-nowrap">Damage</th>
+                        <th className="px-3 py-2 whitespace-nowrap">Penalty</th>
+                        <th className="px-3 py-2 whitespace-nowrap">Condition</th>
+                        <th className="px-3 py-2 min-w-[140px]">Remarks</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800/50">
+                      {rentalHistoryRows.length === 0 && (
+                        <tr>
+                          <td colSpan={16} className="text-center text-gray-500">
+                            <div className="space-y-2 py-10 px-4">
+                              <p className="font-medium text-gray-400">Is time window mein koi pickup/return movement match nahi hui.</p>
+                              <p className="text-[11px] max-w-lg mx-auto leading-relaxed">
+                                Upar Rental pipeline wale boxes poori history se aate hain — agar wahan complete cycles dikhen lekin yahan table khali ho to filter window chhoti hai; header se date range barha kar dubara check karein.
+                                Agar purane data par stock movements hi na hon to fallback sirf tab chalti hai jab DB mein koi rental movement record na ho.
+                              </p>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      {rentalHistoryRows.map(r => (
+                        <tr key={r.id} className="hover:bg-gray-800/20">
+                          <td className="px-3 py-2 text-gray-300 whitespace-nowrap font-mono">{r.eventDate}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className={cn(
+                              'px-1.5 py-0.5 rounded text-[10px] font-medium',
+                              r.movementType === 'rental_out' ? 'bg-amber-900/50 text-amber-200' : 'bg-emerald-900/50 text-emerald-200'
+                            )}>
+                              {r.movementType === 'rental_out' ? 'Stock out (pickup)' : 'Stock in (return)'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-blue-400 font-mono whitespace-nowrap">{r.rentalNo}</td>
+                          <td className="px-3 py-2 text-white max-w-[140px] truncate">{r.customerName}</td>
+                          <td className="px-3 py-2 text-gray-400 max-w-[100px] truncate">{r.branchLabel}</td>
+                          <td className="px-3 py-2 text-right font-mono text-gray-200">{r.movementType === 'rental_out' ? `-${fmt(r.qty)}` : `+${fmt(r.qty)}`}</td>
+                          <td className="px-3 py-2 text-right font-mono text-gray-300">{formatCurrency(r.itemLineTotal)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-gray-400">{formatCurrency(r.rentalBookingTotal)}</td>
+                          <td className="px-3 py-2 text-gray-400 whitespace-nowrap font-mono text-[10px]">{r.pickupOrStart || '—'}</td>
+                          <td className="px-3 py-2 text-gray-400 whitespace-nowrap font-mono text-[10px]">{r.expectedReturn || '—'}</td>
+                          <td className="px-3 py-2 text-gray-400 whitespace-nowrap font-mono text-[10px]">{r.actualReturn || '—'}</td>
+                          <td className="px-3 py-2 text-gray-500 capitalize">{r.rentalStatus || '—'}</td>
+                          <td className="px-3 py-2 text-right font-mono text-red-400/90">{r.damageCharges > 0 ? formatCurrency(r.damageCharges) : '—'}</td>
+                          <td className="px-3 py-2 text-gray-400">{r.penaltyPaid ? 'Paid / yes' : '—'}</td>
+                          <td className="px-3 py-2 text-gray-500 max-w-[100px] truncate text-[10px]">{r.conditionType || '—'}</td>
+                          <td className="px-3 py-2 text-gray-500 text-[10px] max-w-[200px]">{r.damageNotes || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         );
       })()}
 
-      {selectedProduct && rows.length === 0 && !loading && (
+      {selectedProduct && rows.length === 0 && !loading && activeTab !== 'rental-history' && (
         <div className="text-center py-12 text-gray-500">
           <p>Is product ki koi transaction nahi mili is date range mein</p>
         </div>

@@ -97,16 +97,34 @@ export const RentalPrintLayout: React.FC<RentalPrintLayoutProps> = ({ rental, on
           <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Summary</p>
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
-              <span>Total:</span>
+              <span>Rental booking total:</span>
               <span className="font-bold">{formatCurrency(rental.totalAmount)}</span>
             </div>
-            <div className="flex justify-between">
-              <span>Paid:</span>
+            {Number(rental.damageCharges ?? 0) > 0 && (
+              <>
+                <div className="flex justify-between">
+                  <span>Damage / penalty (return):</span>
+                  <span className="font-bold text-amber-800">{formatCurrency(Number(rental.damageCharges))}</span>
+                </div>
+                <div className="flex justify-between border-t border-gray-200 pt-1 mt-1">
+                  <span>Rental + damage (reference):</span>
+                  <span className="font-bold">{formatCurrency(rental.totalAmount + Number(rental.damageCharges))}</span>
+                </div>
+              </>
+            )}
+            {rental.conditionType && String(rental.conditionType).toLowerCase() !== 'good' && (
+              <p className="text-xs text-gray-600 mt-2">
+                Condition: {String(rental.conditionType).replace(/_/g, ' ')}
+                {rental.damageNotes ? ` — ${rental.damageNotes}` : ''}
+              </p>
+            )}
+            <div className="flex justify-between pt-2 border-t border-gray-200">
+              <span>Paid (booking):</span>
               <span className="text-green-600">{formatCurrency(rental.paidAmount)}</span>
             </div>
             {rental.dueAmount > 0 && (
               <div className="flex justify-between">
-                <span>Due:</span>
+                <span>Due (booking):</span>
                 <span className="font-bold text-red-600">{formatCurrency(rental.dueAmount)}</span>
               </div>
             )}

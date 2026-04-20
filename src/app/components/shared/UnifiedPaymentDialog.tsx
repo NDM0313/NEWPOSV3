@@ -44,8 +44,8 @@ export interface PaymentDialogProps {
   previousPayments?: PreviousPayment[]; // Payment history for this invoice
   referenceNo?: string; // Invoice number (string) for display
   referenceId?: string; // UUID of sale/purchase/rental (for journal entry reference_id)
-  /** Rental: booking advance vs balance — drives JE (Rental Advance vs revenue) and rental_payments.payment_type */
-  rentalPaymentKind?: 'advance' | 'remaining';
+  /** Rental: advance / balance vs return penalty (damage) — drives rental_payments.payment_type and JE */
+  rentalPaymentKind?: 'advance' | 'remaining' | 'penalty';
   /** Pre-fill notes when dialog opens (e.g. rental advance explanation) */
   defaultPaymentNotes?: string;
   /** When context=worker and paying for specific stage (Pay Now), pass stageId so ledger uses markStageLedgerPaid */
@@ -449,6 +449,16 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             actionButton: 'Receive payment',
             successMessage: 'Rental advance recorded',
             badge: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+            icon: '🏠'
+          };
+        }
+        if (rentalPaymentKind === 'penalty') {
+          return {
+            title: 'Receive damage / penalty payment',
+            entityLabel: 'Rental return',
+            actionButton: 'Record payment',
+            successMessage: 'Penalty payment recorded',
+            badge: 'bg-amber-500/10 text-amber-400 border-amber-500/25',
             icon: '🏠'
           };
         }
@@ -1129,55 +1139,93 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               notes?.trim() ||
               (rentalPaymentKind === 'advance' && referenceNo
                 ? `Advance received for rental booking ${referenceNo}`
-                : undefined);
+                : rentalPaymentKind === 'penalty' && referenceNo
+                  ? `Return penalty — rental ${referenceNo}`
+                  : undefined);
             const journalSince = new Date(Date.now() - 8_000).toISOString();
-            const rp = await rentalService.addPayment(
-              referenceId,
-              companyId,
-              amount,
-              paymentMethod,
-              noteText,
-              user?.id ?? undefined,
-              {
-                paymentType: rentalPaymentKind === 'advance' ? 'advance' : 'remaining',
-                paymentDate: payDay,
-                paymentAccountId: selectedAccount,
-              }
-            );
-            if (rentalPaymentKind === 'advance') {
+
+            if (rentalPaymentKind === 'penalty') {
+              const rp = await rentalService.addPayment(
+                referenceId,
+                companyId,
+                amount,
+                paymentMethod,
+                noteText || `Rental return penalty${referenceNo ? ` (${referenceNo})` : ''}`,
+                user?.id ?? undefined,
+                {
+                  paymentType: 'penalty',
+                  paymentDate: payDay,
+                  paymentAccountId: selectedAccount,
+                  penaltyReferenceNote: noteText || undefined,
+                }
+              );
               await accounting
-                .recordRentalBooking({
+                .recordRentalReturn({
                   bookingId: referenceId,
                   customerName: entityName,
                   customerId: entityId || '',
-                  advanceAmount: amount,
                   securityDepositAmount: 0,
-                  securityDepositType: 'Document',
+                  damageCharge: amount,
                   paymentMethod,
                   paymentAccountId: selectedAccount,
                   paymentDate: payDay,
                 })
                 .catch((err) => {
-                  console.warn('[UnifiedPaymentDialog] Rental advance JE failed (payment recorded):', err);
+                  console.warn('[UnifiedPaymentDialog] Penalty JE failed (payment row recorded):', err);
                 });
+              const jeId = await rentalService.findLatestJournalEntryForRental(companyId, referenceId, journalSince);
+              if (rp?.id && jeId) {
+                await rentalService.linkJournalEntryToRentalPayment(rp.id, jeId);
+              }
             } else {
-              await accounting
-                .recordRentalDelivery({
-                  bookingId: referenceId,
-                  customerName: entityName,
-                  customerId: entityId || '',
-                  remainingAmount: amount,
-                  paymentMethod,
-                  paymentAccountId: selectedAccount,
+              const rp = await rentalService.addPayment(
+                referenceId,
+                companyId,
+                amount,
+                paymentMethod,
+                noteText,
+                user?.id ?? undefined,
+                {
+                  paymentType: rentalPaymentKind === 'advance' ? 'advance' : 'remaining',
                   paymentDate: payDay,
-                })
-                .catch((err) => {
-                  console.warn('[UnifiedPaymentDialog] Ledger posting failed (payment recorded):', err);
-                });
-            }
-            const jeId = await rentalService.findLatestJournalEntryForRental(companyId, referenceId, journalSince);
-            if (rp?.id && jeId) {
-              await rentalService.linkJournalEntryToRentalPayment(rp.id, jeId);
+                  paymentAccountId: selectedAccount,
+                }
+              );
+              if (rentalPaymentKind === 'advance') {
+                await accounting
+                  .recordRentalBooking({
+                    bookingId: referenceId,
+                    customerName: entityName,
+                    customerId: entityId || '',
+                    advanceAmount: amount,
+                    securityDepositAmount: 0,
+                    securityDepositType: 'Document',
+                    paymentMethod,
+                    paymentAccountId: selectedAccount,
+                    paymentDate: payDay,
+                  })
+                  .catch((err) => {
+                    console.warn('[UnifiedPaymentDialog] Rental advance JE failed (payment recorded):', err);
+                  });
+              } else {
+                await accounting
+                  .recordRentalDelivery({
+                    bookingId: referenceId,
+                    customerName: entityName,
+                    customerId: entityId || '',
+                    remainingAmount: amount,
+                    paymentMethod,
+                    paymentAccountId: selectedAccount,
+                    paymentDate: payDay,
+                  })
+                  .catch((err) => {
+                    console.warn('[UnifiedPaymentDialog] Ledger posting failed (payment recorded):', err);
+                  });
+              }
+              const jeId = await rentalService.findLatestJournalEntryForRental(companyId, referenceId, journalSince);
+              if (rp?.id && jeId) {
+                await rentalService.linkJournalEntryToRentalPayment(rp.id, jeId);
+              }
             }
             if (typeof window !== 'undefined') {
               window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
@@ -1230,13 +1278,13 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     <>
       {/* Backdrop — match AddEntryV2 (click-outside + aria) */}
       <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-md z-[100] animate-in fade-in duration-200"
+        className="fixed inset-0 bg-black/70 backdrop-blur-md z-[130] animate-in fade-in duration-200"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Dialog shell — same tokens as AddEntryV2 */}
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 pointer-events-none overflow-y-auto">
+      {/* Dialog shell — z above ui/dialog (z-110) so this can open on top of ReturnModal etc. */}
+      <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 pointer-events-none overflow-y-auto">
         <div
           className="bg-gray-900 border border-gray-700/80 rounded-2xl shadow-2xl shadow-black/40 w-full max-w-4xl pointer-events-auto animate-in zoom-in-95 duration-200 my-6 max-h-[92vh] overflow-y-auto ring-1 ring-white/5"
           onClick={(e) => e.stopPropagation()}

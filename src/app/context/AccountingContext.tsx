@@ -290,6 +290,8 @@ export interface RentalReturnParams {
   securityDepositAmount: number;
   damageCharge?: number;
   paymentMethod?: PaymentMethod;
+  paymentAccountId?: string;
+  paymentDate?: string;
 }
 
 export interface StudioSaleParams {
@@ -1954,19 +1956,26 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   };
 
   const recordRentalReturn = async (params: RentalReturnParams): Promise<boolean> => {
-    const { bookingId, customerName, customerId, securityDepositAmount, damageCharge, paymentMethod } = params;
+    const { bookingId, customerName, customerId, securityDepositAmount, damageCharge, paymentMethod, paymentAccountId, paymentDate } = params;
+    const postingDate = paymentDate?.slice(0, 10) || new Date().toISOString().split('T')[0];
 
     if (damageCharge && damageCharge > 0) {
-      // Damage charge: Debit Cash, Credit Rental Income
+      // Damage charge: Dr payment account (Cash/Bank per CoA), Cr Rental Income
       await createEntry({
         source: 'Rental',
         referenceNo: bookingId,
-        debitAccount: (paymentMethod || 'Cash') as AccountType,
+        debitAccount: (paymentAccountId ? 'Cash' : paymentMethod || 'Cash') as AccountType,
         creditAccount: 'Rental Income',
         amount: damageCharge,
-        description: `Rental damage charge - ${customerName}`,
+        description: `Rental damage / penalty - ${customerName}`,
         module: 'Rental',
-        metadata: { customerId, customerName, bookingId }
+        metadata: {
+          customerId,
+          customerName,
+          bookingId,
+          postingDate,
+          ...(paymentAccountId ? { debitAccountId: paymentAccountId } : {}),
+        },
       });
     }
 

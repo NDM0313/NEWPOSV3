@@ -61,6 +61,8 @@ export interface RentalPayment {
   journal_entry_id?: string | null;
   voided_at?: string | null;
   payment_account_id?: string | null;
+  /** advance | remaining | penalty — when present */
+  payment_type?: string | null;
 }
 
 function normalizePaymentMethod(method: string): string {
@@ -72,17 +74,23 @@ function normalizePaymentMethod(method: string): string {
   return map[m] || 'cash';
 }
 
-/** Sum non-voided rental_payments and update rentals.paid_amount / due_amount */
+function rentalPaymentCountsTowardInvoicePaid(paymentType: string | null | undefined): boolean {
+  return String(paymentType || '').toLowerCase() !== 'penalty';
+}
+
+/** Sum non-voided rental_payments (excluding penalty/damage lines) and update rentals.paid_amount / due_amount */
 async function recomputeRentalPaidDueFromActivePayments(rentalId: string): Promise<void> {
   const { data: active, error } = await supabase
     .from('rental_payments')
-    .select('amount')
+    .select('amount, payment_type')
     .eq('rental_id', rentalId)
     .is('voided_at', null);
   if (error) {
-    const { data: fallback } = await supabase.from('rental_payments').select('amount').eq('rental_id', rentalId);
+    const { data: fallback } = await supabase.from('rental_payments').select('amount, payment_type').eq('rental_id', rentalId);
     if (!fallback) return;
-    const sum = (fallback as { amount?: number }[]).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const sum = (fallback as { amount?: number; payment_type?: string | null }[])
+      .filter((r) => rentalPaymentCountsTowardInvoicePaid(r.payment_type))
+      .reduce((s, r) => s + (Number(r.amount) || 0), 0);
     const { data: r } = await supabase.from('rentals').select('total_amount').eq('id', rentalId).maybeSingle();
     const total = Number((r as { total_amount?: number })?.total_amount ?? 0) || 0;
     const newDue = Math.max(0, total - sum);
@@ -93,7 +101,9 @@ async function recomputeRentalPaidDueFromActivePayments(rentalId: string): Promi
     }
     return;
   }
-  const sum = (active || []).reduce((s, r: { amount?: number }) => s + (Number(r.amount) || 0), 0);
+  const sum = (active || [])
+    .filter((r: { payment_type?: string | null }) => rentalPaymentCountsTowardInvoicePaid(r.payment_type))
+    .reduce((s, r: { amount?: number }) => s + (Number(r.amount) || 0), 0);
   const { data: r } = await supabase.from('rentals').select('total_amount').eq('id', rentalId).maybeSingle();
   const total = Number((r as { total_amount?: number })?.total_amount ?? 0) || 0;
   const newDue = Math.max(0, total - sum);
@@ -765,10 +775,12 @@ export const rentalService = {
       penaltyAmount: number;
       penaltyPaid: boolean;
       documentReturned: boolean;
+      /** When true, penalty was already recorded via UnifiedPaymentDialog (rental_payments + JE); skip duplicate insert */
+      penaltyPaymentPreRecorded?: boolean;
     },
     performedBy?: string | null
   ): Promise<void> {
-    const { actualReturnDate, notes, conditionType, damageNotes, penaltyAmount, penaltyPaid, documentReturned } = params;
+    const { actualReturnDate, notes, conditionType, damageNotes, penaltyAmount, penaltyPaid, documentReturned, penaltyPaymentPreRecorded } = params;
 
     const { data: rental, error: fetchErr } = await supabase
       .from('rentals')
@@ -849,8 +861,8 @@ export const rentalService = {
 
     if (updateErr) throw updateErr;
 
-    // Record penalty payment in rental_payments when penalty paid
-    if (penaltyAmount > 0 && penaltyPaid) {
+    // Record penalty payment in rental_payments when penalty paid (unless Unified dialog already did)
+    if (penaltyAmount > 0 && penaltyPaid && !penaltyPaymentPreRecorded) {
       await supabase.from('rental_payments').insert({
         rental_id: id,
         amount: penaltyAmount,
@@ -911,7 +923,13 @@ export const rentalService = {
     method: string,
     reference?: string,
     performedBy?: string | null,
-    options?: { paymentType?: 'advance' | 'remaining'; paymentDate?: string; paymentAccountId?: string }
+    options?: {
+      paymentType?: 'advance' | 'remaining' | 'penalty';
+      paymentDate?: string;
+      paymentAccountId?: string;
+      /** Shown on rental_payments.reference for penalty lines */
+      penaltyReferenceNote?: string;
+    }
   ): Promise<RentalPayment> {
     // Schema variants: some DBs have booking_no only (no rental_no); due_amount may be missing (derive from total − paid).
     const { data: rental, error: fetchErr } = await supabase
@@ -930,12 +948,13 @@ export const rentalService = {
 
     const payType = options?.paymentType ?? 'remaining';
     const payDay = (options?.paymentDate || new Date().toISOString()).split('T')[0];
+    const isPenalty = payType === 'penalty';
 
     const insertPayload: Record<string, unknown> = {
       rental_id: rentalId,
       amount,
       method: normalizePaymentMethod(method),
-      reference: reference || null,
+      reference: reference || (isPenalty ? options?.penaltyReferenceNote || 'Rental penalty / damage' : null),
       payment_date: payDay,
       created_by: performedBy || null,
     };
@@ -963,19 +982,22 @@ export const rentalService = {
     }
     if (payErr) throw payErr;
 
-    const newPaid = (r.paid_amount ?? 0) + amount;
-    const totalAmt = Number(r.total_amount ?? 0);
-    const newDue = Math.max(0, totalAmt - newPaid);
+    // Penalty / damage charges are not part of rental invoice paid_amount (avoids distorting due vs rental total)
+    if (!isPenalty) {
+      const newPaid = (r.paid_amount ?? 0) + amount;
+      const totalAmt = Number(r.total_amount ?? 0);
+      const newDue = Math.max(0, totalAmt - newPaid);
 
-    const { error: updErr } = await supabase
-      .from('rentals')
-      .update({ paid_amount: newPaid, due_amount: newDue })
-      .eq('id', rentalId);
+      const { error: updErr } = await supabase
+        .from('rentals')
+        .update({ paid_amount: newPaid, due_amount: newDue })
+        .eq('id', rentalId);
 
-    if (updErr && (String(updErr.message || '').includes('due_amount') || String(updErr.code || '') === 'PGRST204')) {
-      await supabase.from('rentals').update({ paid_amount: newPaid }).eq('id', rentalId);
-    } else if (updErr) {
-      throw updErr;
+      if (updErr && (String(updErr.message || '').includes('due_amount') || String(updErr.code || '') === 'PGRST204')) {
+        await supabase.from('rentals').update({ paid_amount: newPaid }).eq('id', rentalId);
+      } else if (updErr) {
+        throw updErr;
+      }
     }
 
     await activityLogService.logActivity({
@@ -987,7 +1009,9 @@ export const rentalService = {
       amount,
       paymentMethod: method,
       performedBy: performedBy || undefined,
-      description: `Payment ${amount} added to rental ${r.rental_no || r.booking_no || rentalId}`,
+      description: isPenalty
+        ? `Penalty / damage ${amount} recorded for rental ${r.rental_no || r.booking_no || rentalId}`
+        : `Payment ${amount} added to rental ${r.rental_no || r.booking_no || rentalId}`,
     }).catch(() => {});
 
     return payment as RentalPayment;
