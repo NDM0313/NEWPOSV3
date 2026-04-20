@@ -732,20 +732,36 @@ export const ProductLedger = () => {
       }
 
       // Fallback: bookings with no stock_movements OR movements filtered out by date range
-      if (rows.length === 0) {
-        for (const rid of rentalIds) {
-          const rental = rentMap.get(rid);
-          if (!rental) continue;
-          const item = itemByRental.get(rid);
-          const startMs = parseSqlDateOnlyToLocalNoon(rental.pickup_date || rental.start_date || rental.booking_date);
-          const retMs = parseSqlDateOnlyToLocalNoon(rental.actual_return_date);
-          const qty = Math.abs(Number(item?.quantity) || 0);
-          if (startMs != null && inRangeTs(startMs)) {
-            pushRow(`fb-out-${rid}`, rid, rental, item, localCalendarDayFromTs(startMs), 'rental_out', qty);
-          }
-          if (retMs != null && inRangeTs(retMs)) {
-            pushRow(`fb-in-${rid}`, rid, rental, item, localCalendarDayFromTs(retMs), 'rental_in', qty);
-          }
+      // Always add fallback rows for rentals that have no movement-based rows
+      const rentalsWithMovRows = new Set(rows.map(r => r.rentalId));
+      for (const rid of rentalIds) {
+        if (rentalsWithMovRows.has(rid)) continue; // already has movement-based rows
+        const rental = rentMap.get(rid);
+        if (!rental) continue;
+        const item = itemByRental.get(rid);
+        // Try all possible date columns
+        const pickupStr = rental.pickup_date || rental.start_date || rental.booking_date;
+        const returnStr = rental.actual_return_date || rental.expected_return_date || rental.return_date;
+        const startMs = parseSqlDateOnlyToLocalNoon(pickupStr);
+        const retMs = parseSqlDateOnlyToLocalNoon(returnStr);
+        const qty = Math.abs(Number(item?.quantity) || 0) || 1;
+        const st = String(rental.status || '').toLowerCase();
+
+        // For pickup row: use date if available, else always show for active/returned rentals
+        if (startMs != null && inRangeTs(startMs)) {
+          pushRow(`fb-out-${rid}`, rid, rental, item, localCalendarDayFromTs(startMs), 'rental_out', qty);
+        } else if (['active', 'picked_up', 'returned', 'overdue', 'closed'].includes(st)) {
+          // No date parseable but rental was picked up — show with booking_date or today
+          const fallbackDate = pickupStr?.slice(0, 10) || rental.booking_date?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+          pushRow(`fb-out-${rid}`, rid, rental, item, fallbackDate, 'rental_out', qty);
+        }
+
+        // For return row: show if returned
+        if (retMs != null && inRangeTs(retMs)) {
+          pushRow(`fb-in-${rid}`, rid, rental, item, localCalendarDayFromTs(retMs), 'rental_in', qty);
+        } else if (['returned', 'closed'].includes(st)) {
+          const fallbackRetDate = returnStr?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+          pushRow(`fb-in-${rid}`, rid, rental, item, fallbackRetDate, 'rental_in', qty);
         }
       }
 
