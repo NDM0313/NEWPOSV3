@@ -616,7 +616,7 @@ export const ProductLedger = () => {
       let rq = supabase
         .from('rentals')
         .select(
-          'id, rental_no, booking_no, customer_name, start_date, expected_return_date, actual_return_date, status, total_amount, damage_charges, penalty_paid, damage_notes, condition_type, branch_id'
+          'id, rental_no, booking_no, customer_name, start_date, pickup_date, expected_return_date, return_date, actual_return_date, status, total_amount, damage_charges, penalty_paid, damage_notes, condition_type, branch_id, booking_date'
         )
         .eq('company_id', companyId)
         .in('id', rentalIds);
@@ -706,8 +706,8 @@ export const ProductLedger = () => {
           qty,
           itemLineTotal: Number(item?.total ?? 0) || (Number(item?.quantity) || 0) * (Number(item?.rate) || 0),
           rentalBookingTotal: Number(rental.total_amount ?? 0) || 0,
-          pickupOrStart: rental.start_date || null,
-          expectedReturn: rental.expected_return_date || null,
+          pickupOrStart: rental.pickup_date || rental.start_date || rental.booking_date || null,
+          expectedReturn: rental.expected_return_date || rental.return_date || null,
           actualReturn: rental.actual_return_date ?? null,
           rentalStatus: String(rental.status || ''),
           damageCharges: Number(rental.damage_charges ?? 0) || 0,
@@ -731,13 +731,13 @@ export const ProductLedger = () => {
         pushRow(String(m.id), rid, rental, item, day, mt, qty);
       }
 
-      // Purane bookings jahan stock_movements record na hon
-      if (rows.length === 0 && movList.length === 0) {
+      // Fallback: bookings with no stock_movements OR movements filtered out by date range
+      if (rows.length === 0) {
         for (const rid of rentalIds) {
           const rental = rentMap.get(rid);
           if (!rental) continue;
           const item = itemByRental.get(rid);
-          const startMs = parseSqlDateOnlyToLocalNoon(rental.start_date);
+          const startMs = parseSqlDateOnlyToLocalNoon(rental.pickup_date || rental.start_date || rental.booking_date);
           const retMs = parseSqlDateOnlyToLocalNoon(rental.actual_return_date);
           const qty = Math.abs(Number(item?.quantity) || 0);
           if (startMs != null && inRangeTs(startMs)) {
