@@ -592,13 +592,24 @@ export const ProductLedger = () => {
       const rangeEndMs = rentalTimeRange.end.getTime();
       const inRangeTs = (t: number) => t >= rangeStartMs && t <= rangeEndMs;
 
-      const { data: ri, error: riErr } = await supabase
+      // Query rental_items — try rate_per_day first (new schema), fallback to rate (old schema)
+      let riList: any[] = [];
+      const { data: riData, error: riErr } = await supabase
         .from('rental_items')
-        .select('rental_id, quantity, rate, total')
+        .select('rental_id, quantity, rate_per_day, total')
         .eq('product_id', selectedProductId);
-      if (riErr) throw riErr;
-      const rentalIds = [...new Set((ri || []).map((x: any) => x.rental_id).filter(Boolean))] as string[];
-      const itemByRental = new Map((ri || []).map((x: any) => [x.rental_id, x]));
+      if (riErr) {
+        // Fallback: old schema with 'rate' column
+        const { data: riFallback } = await supabase
+          .from('rental_items')
+          .select('rental_id, quantity, rate, total')
+          .eq('product_id', selectedProductId);
+        riList = (riFallback || []).map((x: any) => ({ ...x, rate_per_day: x.rate }));
+      } else {
+        riList = riData || [];
+      }
+      const rentalIds = [...new Set(riList.map((x: any) => x.rental_id).filter(Boolean))] as string[];
+      const itemByRental = new Map(riList.map((x: any) => [x.rental_id, x]));
 
       if (rentalIds.length === 0) {
         setRentalHistoryRows([]);
@@ -704,7 +715,7 @@ export const ProductLedger = () => {
           eventDate,
           movementType,
           qty,
-          itemLineTotal: Number(item?.total ?? 0) || (Number(item?.quantity) || 0) * (Number(item?.rate) || 0),
+          itemLineTotal: Number(item?.total ?? 0) || (Number(item?.quantity) || 0) * (Number(item?.rate_per_day || item?.rate) || 0),
           rentalBookingTotal: Number(rental.total_amount ?? 0) || 0,
           pickupOrStart: rental.pickup_date || rental.start_date || rental.booking_date || null,
           expectedReturn: rental.expected_return_date || rental.return_date || null,
