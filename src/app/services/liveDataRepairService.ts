@@ -407,4 +407,64 @@ export const liveDataRepairService = {
   previewLegacyAdjustmentJEs,
   voidLegacyAdjustmentJEs,
   rebuildPurchaseDocumentJELines,
+  auditDocumentSequences,
+  resetDocumentSequence,
 };
+
+/**
+ * Audit document_sequences_global for a company.
+ * Compares current_number with actual document counts from relevant tables.
+ */
+export async function auditDocumentSequences(companyId: string): Promise<{
+  sequences: Array<{ type: string; currentNumber: number; actualCount: number; needsReset: boolean }>;
+}> {
+  const { data: seqs } = await supabase
+    .from('document_sequences_global')
+    .select('document_type, current_number')
+    .eq('company_id', companyId);
+
+  const sequences: Array<{ type: string; currentNumber: number; actualCount: number; needsReset: boolean }> = [];
+
+  for (const seq of (seqs || []) as any[]) {
+    const docType = String(seq.document_type || '');
+    const currentNum = Number(seq.current_number) || 0;
+    let actualCount = 0;
+
+    // Count actual documents per type
+    if (docType === 'SL' || docType === 'PS') {
+      const { count } = await supabase.from('sales').select('*', { count: 'exact', head: true }).eq('company_id', companyId);
+      actualCount = count || 0;
+    } else if (docType === 'PUR') {
+      const { count } = await supabase.from('purchases').select('*', { count: 'exact', head: true }).eq('company_id', companyId);
+      actualCount = count || 0;
+    } else if (docType === 'RNT') {
+      const { count } = await supabase.from('rentals').select('*', { count: 'exact', head: true }).eq('company_id', companyId);
+      actualCount = count || 0;
+    } else if (docType === 'PAY') {
+      const { count } = await supabase.from('payments').select('*', { count: 'exact', head: true }).eq('company_id', companyId);
+      actualCount = count || 0;
+    }
+
+    sequences.push({
+      type: docType,
+      currentNumber: currentNum,
+      actualCount,
+      needsReset: currentNum > actualCount + 10, // suspicious if way ahead
+    });
+  }
+
+  return { sequences };
+}
+
+/**
+ * Reset a document sequence to match actual document count.
+ */
+export async function resetDocumentSequence(companyId: string, docType: string, newNumber: number): Promise<{ success: boolean; error?: string }> {
+  const { error } = await supabase
+    .from('document_sequences_global')
+    .update({ current_number: newNumber, updated_at: new Date().toISOString() })
+    .eq('company_id', companyId)
+    .eq('document_type', docType);
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}

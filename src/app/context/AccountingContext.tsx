@@ -1915,25 +1915,56 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     });
 
     // Recognize advance as income: Dr Rental Advance (2020) / Cr Rental Income (4200)
-    // Check if this rental had an advance booking entry
+    // Search DB for advance JEs (not just loaded entries — those may be date-filtered)
     if (paymentOk && companyId) {
       try {
-        const advanceJE = entries.find(e =>
-          e.metadata?.bookingId === bookingId &&
-          e.creditAccount === 'Rental Advance' &&
-          e.source === 'Rental'
-        );
-        if (advanceJE && advanceJE.amount > 0) {
-          await createEntry({
-            source: 'Rental',
-            referenceNo: bookingId,
-            debitAccount: 'Rental Advance',
-            creditAccount: 'Rental Income',
-            amount: advanceJE.amount,
-            description: `Advance recognized as income - ${customerName}`,
-            module: 'Rental',
-            metadata: { customerId, customerName, bookingId, postingDate },
-          });
+        // Find the Rental Advance account
+        const { data: advAcct } = await supabase
+          .from('accounts')
+          .select('id')
+          .eq('company_id', companyId)
+          .eq('code', '2020')
+          .eq('is_active', true)
+          .maybeSingle();
+        if (advAcct?.id) {
+          // Find advance JE lines (credit to Rental Advance for this booking)
+          const { data: advJEs } = await supabase
+            .from('journal_entries')
+            .select('id')
+            .eq('company_id', companyId)
+            .eq('reference_id', bookingId)
+            .or('is_void.is.null,is_void.eq.false');
+          const jeIds = (advJEs || []).map((j: any) => j.id);
+          if (jeIds.length > 0) {
+            const { data: advLines } = await supabase
+              .from('journal_entry_lines')
+              .select('credit')
+              .in('journal_entry_id', jeIds)
+              .eq('account_id', advAcct.id)
+              .gt('credit', 0);
+            const advanceTotal = (advLines || []).reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0);
+            // Check if already recognized (debit side of Rental Advance for same booking)
+            const { data: recognizedLines } = await supabase
+              .from('journal_entry_lines')
+              .select('debit')
+              .in('journal_entry_id', jeIds)
+              .eq('account_id', advAcct.id)
+              .gt('debit', 0);
+            const alreadyRecognized = (recognizedLines || []).reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0);
+            const toRecognize = Math.round((advanceTotal - alreadyRecognized) * 100) / 100;
+            if (toRecognize > 0) {
+              await createEntry({
+                source: 'Rental',
+                referenceNo: bookingId,
+                debitAccount: 'Rental Advance',
+                creditAccount: 'Rental Income',
+                amount: toRecognize,
+                description: `Advance recognized as income - ${customerName}`,
+                module: 'Rental',
+                metadata: { customerId, customerName, bookingId, postingDate },
+              });
+            }
+          }
         }
       } catch { /* non-critical */ }
     }

@@ -104,10 +104,18 @@ export const PickupModal = ({ open, onOpenChange, rental, onConfirm, onAddPaymen
   // Track paid amount locally so UI refreshes after payment without re-mounting
   const [localPaidAmount, setLocalPaidAmount] = useState(rental?.paidAmount ?? 0);
 
-  // Sync when rental prop changes (e.g. modal reopened)
+  // Sync when rental prop changes — only accept HIGHER values (prevent stale data flicker)
   useEffect(() => {
-    setLocalPaidAmount(rental?.paidAmount ?? 0);
+    const propPaid = rental?.paidAmount ?? 0;
+    setLocalPaidAmount(prev => Math.max(prev, propPaid));
   }, [rental?.paidAmount, rental?.id]);
+
+  // Reset when modal opens with a different rental
+  useEffect(() => {
+    if (open && rental?.id) {
+      setLocalPaidAmount(rental.paidAmount ?? 0);
+    }
+  }, [open, rental?.id]);
 
   // Re-fetch paid amount from DB when payment events fire or modal gains focus
   const refreshPaidAmount = async () => {

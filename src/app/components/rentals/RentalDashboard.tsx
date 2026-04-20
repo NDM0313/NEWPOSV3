@@ -8,6 +8,7 @@ import { RentalCalendar } from './RentalCalendar';
 import { PickupTodayTab } from './PickupTodayTab';
 import { ReturnTodayTab } from './ReturnTodayTab';
 import { RentalCollectionsTab } from './RentalCollectionsTab';
+import { RentalReportsTab } from './RentalReportsTab';
 import { ViewRentalDetailsDrawer } from './ViewRentalDetailsDrawer';
 import { PickupModal } from './PickupModal';
 import { ReturnModal } from './ReturnModal';
@@ -27,7 +28,7 @@ export const RentalDashboard = () => {
   const [rentalForReturn, setRentalForReturn] = useState<RentalUI | null>(null);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [collectionRental, setCollectionRental] = useState<RentalUI | null>(null);
-  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'pickupToday' | 'returnToday' | 'collections'>('list');
+  const [activeTab, setActiveTab] = useState<'list' | 'calendar' | 'pickupToday' | 'returnToday' | 'collections' | 'reports'>('list');
 
   const handleAddRental = () => {
     setEditRental(null);
@@ -130,6 +131,17 @@ export const RentalDashboard = () => {
                 <DollarSign size={16} className="mr-1.5 inline" />
                 Collections
               </button>
+              <button
+                onClick={() => setActiveTab('reports')}
+                className={clsx(
+                  'px-3 py-2 rounded-md text-sm font-medium transition-all',
+                  activeTab === 'reports' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-400 hover:text-white'
+                )}
+                title="Rental Reports"
+              >
+                <LayoutList size={16} className="mr-1.5 inline" />
+                Reports
+              </button>
             </div>
             <Button
               onClick={handleAddRental}
@@ -173,6 +185,9 @@ export const RentalDashboard = () => {
               setPaymentDialogOpen(true);
             }}
           />
+        )}
+        {activeTab === 'reports' && (
+          <RentalReportsTab />
         )}
       </div>
 
