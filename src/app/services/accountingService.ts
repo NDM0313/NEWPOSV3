@@ -190,7 +190,7 @@ function arJournalLineMatchesCustomer(
     return customerSaleReturnIds.has(String(entry.reference_id));
   }
 
-  if ((entry.reference_type === 'sale' || entry.reference_type === 'sale_adjustment') && entry.reference_id) {
+  if ((entry.reference_type === 'sale' || entry.reference_type === 'sale_adjustment' || entry.reference_type === 'sale_reversal') && entry.reference_id) {
     const sale = salesMap.get(entry.reference_id);
     if (sale && sale.customer_id === customerId) return true;
   }
@@ -2267,6 +2267,20 @@ export const accountingService = {
       customerSales.forEach((sale: any) => {
         salesMap.set(sale.id, { id: sale.id, invoice_no: sale.invoice_no, customer_id: customerId });
       });
+      // Also include cancelled sales in salesMap (for sale_reversal JE matching only — no synthetic rows)
+      const { data: cancelledSales } = await supabase
+        .from('sales')
+        .select('id, invoice_no')
+        .eq('company_id', companyId)
+        .eq('customer_id', customerId)
+        .eq('status', 'cancelled');
+      if (cancelledSales?.length) {
+        for (const cs of cancelledSales) {
+          if (!salesMap.has(cs.id)) {
+            salesMap.set(cs.id, { id: cs.id, invoice_no: cs.invoice_no, customer_id: customerId });
+          }
+        }
+      }
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - Sales map size:', salesMap.size);
 
       const customerSaleReturnIds = await buildCustomerSaleReturnIdSet(companyId, customerId, salesMap);

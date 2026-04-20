@@ -39,6 +39,9 @@ export interface WorkerLedgerEntry {
   createdAt: string;
 }
 
+/** How the production row links to inventory: studio-manufactured SKU vs catalog line on the sale. */
+export type ProductionProductSourceKind = 'studio_created' | 'sale_line' | 'none';
+
 export interface ProductionCostSummary {
   productionId: string;
   productionNo: string;
@@ -46,6 +49,8 @@ export interface ProductionCostSummary {
   saleInvoice: string | null;
   customerName: string | null;
   productName: string | null;
+  /** From `products.product_type`: production = STD-PROD / studio flow; else catalog line on invoice. */
+  productSourceKind: ProductionProductSourceKind;
   status: string;
   totalStageCost: number;
   actualCost: number;
@@ -510,10 +515,22 @@ export const studioCostsService = {
 
     // Batch fetch product names by product_id (avoids ambiguous product embed).
     const productIds = [...new Set((prodList as any[]).map((p) => p.product_id).filter(Boolean))] as string[];
-    const productNameById = new Map<string, string>();
+    const productMetaById = new Map<string, { name: string; product_type: string | null }>();
     if (productIds.length > 0) {
-      const { data: products } = await supabase.from('products').select('id, name').in('id', productIds);
-      (products || []).forEach((p: any) => productNameById.set(p.id, p.name || ''));
+      const r1 = await supabase.from('products').select('id, name, product_type').in('id', productIds);
+      if (r1.error) {
+        const r2 = await supabase.from('products').select('id, name').in('id', productIds);
+        (r2.data || []).forEach((p: any) =>
+          productMetaById.set(p.id, { name: p.name || '', product_type: null })
+        );
+      } else {
+        (r1.data || []).forEach((p: any) =>
+          productMetaById.set(p.id, {
+            name: p.name || '',
+            product_type: (p.product_type as string | null) ?? null,
+          })
+        );
+      }
     }
 
     const prodIds = prodList.map((p) => p.id);
@@ -587,13 +604,20 @@ export const studioCostsService = {
       });
       const totalStageCost = stagesDetail.reduce((sum, s) => sum + s.cost, 0);
       const sale = p.sale as { invoice_no?: string } | null;
+      const meta = p.product_id ? productMetaById.get(p.product_id) : undefined;
+      const productSourceKind: ProductionProductSourceKind = !p.product_id
+        ? 'none'
+        : (meta?.product_type || '').toLowerCase() === 'production'
+          ? 'studio_created'
+          : 'sale_line';
       return {
         productionId: p.id,
         productionNo: p.production_no || '',
         saleId: p.sale_id || null,
         saleInvoice: sale?.invoice_no || null,
         customerName: null,
-        productName: (p.product_id ? productNameById.get(p.product_id) : null) || null,
+        productName: meta?.name || null,
+        productSourceKind,
         status: p.status || 'draft',
         totalStageCost,
         actualCost: Number(p.actual_cost) || 0,

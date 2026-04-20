@@ -47,6 +47,9 @@ export interface Contact {
   payment_terms?: number;
   tax_number?: string;
   notes?: string;
+  /** Worker contacts: default Rs amount for Studio "Worker Cost" when assigning (optional). */
+  worker_default_rate?: number;
+  worker_role?: string;
   is_active?: boolean;
   is_system_generated?: boolean;
   system_type?: string;
@@ -256,7 +259,7 @@ export const contactService = {
     // Columns that may not exist until migration is run
     const optionalColumns = [
       'country', 'contact_person', 'group_id', 'business_name', 'code',
-      'payable_account_id', 'supplier_opening_balance', 'worker_role',
+      'payable_account_id', 'supplier_opening_balance', 'worker_role', 'worker_default_rate',
       'branch_id', 'current_balance', 'is_default', 'is_system_generated', 'system_type'
     ];
     const toStrip = optionalColumns.filter(

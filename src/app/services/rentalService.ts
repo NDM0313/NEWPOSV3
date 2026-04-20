@@ -204,6 +204,10 @@ export const rentalService = {
     paidAmount?: number;
     notes?: string | null;
     expenses?: Array<{ description: string; amount: number }>;
+    salesmanId?: string | null;
+    commissionAmount?: number;
+    commissionPercent?: number | null;
+    commissionEligibleAmount?: number | null;
     items: Array<{
       productId: string;
       productName: string;
@@ -227,6 +231,10 @@ export const rentalService = {
       paidAmount: advanceAmount = 0,
       notes = null,
       expenses = [],
+      salesmanId = null,
+      commissionAmount = 0,
+      commissionPercent = null,
+      commissionEligibleAmount = null,
       items,
     } = params;
 
@@ -259,6 +267,8 @@ export const rentalService = {
 
     const bookingNo = await settingsService.getNextDocumentNumber(companyId, branchId, 'rental');
 
+    console.log('[rentalService] createBooking commission data:', { salesmanId, commissionAmount, commissionPercent, commissionEligibleAmount });
+
     let rentalData: any;
     let rentalError: any;
     ({ data: rentalData, error: rentalError } = await supabase
@@ -282,12 +292,23 @@ export const rentalService = {
         notes: notes || null,
         created_by: createdBy || null,
         ...(expenses && expenses.length > 0 ? { rental_expenses: expenses } : {}),
+        ...(salesmanId ? {
+          salesman_id: salesmanId,
+          commission_amount: commissionAmount || 0,
+          commission_percent: commissionPercent,
+          commission_eligible_amount: commissionEligibleAmount ?? rentalCharges,
+          commission_status: commissionAmount > 0 ? 'pending' : null,
+        } : {}),
       })
       .select('id, booking_no')
       .single());
 
-    // If rental_expenses column doesn't exist, retry without it
-    if (rentalError && String(rentalError.message || '').includes('rental_expenses')) {
+    // If rental_expenses or commission columns don't exist, retry without them
+    if (rentalError) {
+      console.warn('[rentalService] createBooking insert error:', rentalError.message);
+    }
+    if (rentalError && (String(rentalError.message || '').includes('rental_expenses') || String(rentalError.message || '').includes('commission') || String(rentalError.message || '').includes('salesman_id'))) {
+      console.warn('[rentalService] Retrying without commission/expense columns');
       const { data: retryData, error: retryErr } = await supabase
         .from('rentals')
         .insert({

@@ -110,6 +110,8 @@ interface Worker {
   department: string;
   phone: string;
   isActive: boolean;
+  /** From contacts.worker_default_rate — prefills Worker Cost when assigning */
+  defaultRate: number;
 }
 
 interface AssignedWorker {
@@ -705,11 +707,12 @@ export const StudioSaleDetailNew = () => {
                 const items = (sale.items || []) as any[];
                 const firstItem = items[0];
                 if (firstItem?.product_id) {
+                  const prodNo = await documentNumberService.getNextProductionNumber(companyId).catch(() => `PRD-${(sale.invoice_no || sale.id?.slice(0, 8) || '')}`);
                   const production = await studioProductionService.createProductionJob({
                     company_id: companyId,
                     branch_id: effectiveBranchId,
                     sale_id: sale.id,
-                    production_no: `PRD-${(sale.invoice_no || sale.id?.slice(0, 8) || '')}`,
+                    production_no: prodNo,
                     production_date: sale.invoice_date || new Date().toISOString().split('T')[0],
                     product_id: firstItem.product_id,
                     quantity: Number(firstItem.quantity) || 1,
@@ -827,7 +830,8 @@ export const StudioSaleDetailNew = () => {
         name: c.name || '',
         department: c.worker_role || 'General',
         phone: c.phone || c.mobile || '',
-        isActive: c.is_active !== false
+        isActive: c.is_active !== false,
+        defaultRate: Math.max(0, Number(c.worker_default_rate) || 0),
       }));
       setWorkers(converted);
     } catch (error) {
@@ -840,6 +844,25 @@ export const StudioSaleDetailNew = () => {
     loadStudioOrder();
     loadWorkers();
   }, [loadStudioOrder, loadWorkers]);
+
+  /** Fresh worker list + default rates after Add Worker from drawer or contact edit */
+  useEffect(() => {
+    if (showWorkerEditModal) void loadWorkers();
+  }, [showWorkerEditModal, loadWorkers]);
+
+  /** After catalog loads, fill missing costs from contacts.worker_default_rate (open modal before fetch finished) */
+  useEffect(() => {
+    if (!showWorkerEditModal || workers.length === 0) return;
+    setEditingWorkerData((prev) => ({
+      ...prev,
+      workers: prev.workers.map((row) => {
+        const n = Number(row.cost);
+        if (!row.workerId || (Number.isFinite(n) && n > 0)) return row;
+        const def = workers.find((cw) => cw.id === row.workerId)?.defaultRate ?? 0;
+        return def > 0 ? { ...row, cost: def } : row;
+      }),
+    }));
+  }, [workers, showWorkerEditModal]);
 
   /** Reload production steps from DB. Returns the loaded steps (with real server ids) for next-step auto-apply. */
   const reloadProductionSteps = useCallback(async (): Promise<ProductionStep[] | undefined> => {
@@ -1179,11 +1202,12 @@ export const StudioSaleDetailNew = () => {
       const items = (sale.items || []) as any[];
       const firstItem = items[0];
       if (!firstItem?.product_id) return { productionId: null, error: 'NO_ITEMS' };
+      const prodNo = await documentNumberService.getNextProductionNumber(companyId).catch(() => `PRD-${(sale.invoice_no || sale.id?.slice(0, 8) || '')}`);
       const production = await studioProductionService.createProductionJob({
         company_id: companyId,
         branch_id: effectiveBranchId,
         sale_id: sale.id,
-        production_no: `PRD-${(sale.invoice_no || sale.id?.slice(0, 8) || '')}`,
+        production_no: prodNo,
         production_date: sale.invoice_date || new Date().toISOString().split('T')[0],
         product_id: firstItem.product_id,
         quantity: Number(firstItem.quantity) || 1,
@@ -1822,23 +1846,38 @@ export const StudioSaleDetailNew = () => {
         })
         .catch(() => {});
     }
-    // Load existing workers or create from legacy data
-    const workers = step.assignedWorkers && step.assignedWorkers.length > 0
-      ? step.assignedWorkers
-      : step.assignedWorker
-        ? [{
-            id: 'W' + Date.now(),
-            workerId: step.workerId || '',
-            workerName: step.assignedWorker,
-            role: 'Main',
-            cost: step.workerCost
-          }]
-        : [];
-    
+    // Local rows from step (do not name this `workers` — shadows worker catalog state)
+    const initialRows =
+      step.assignedWorkers && step.assignedWorkers.length > 0
+        ? step.assignedWorkers
+        : step.assignedWorker
+          ? [
+              {
+                id: 'W' + Date.now(),
+                workerId: step.workerId || '',
+                workerName: step.assignedWorker,
+                role: 'Main',
+                cost: step.workerCost,
+              },
+            ]
+          : [];
+
+    const applyDefaultCost = (
+      row: { id: string; workerId: string; workerName: string; role: string; cost: number }
+    ) => {
+      const n = Number(row.cost);
+      const hasPositiveCost = Number.isFinite(n) && n > 0;
+      if (hasPositiveCost) return row;
+      const catalog = workers.find((cw) => cw.id === row.workerId);
+      const def = catalog?.defaultRate ?? 0;
+      if (def > 0) return { ...row, cost: def };
+      return { ...row, cost: Number.isFinite(n) ? n : 0 };
+    };
+
     setEditingWorkerData({
-      workers: workers,
+      workers: initialRows.map(applyDefaultCost),
       expectedCompletionDate: step.expectedCompletionDate,
-      notes: step.notes || ''
+      notes: step.notes || '',
     });
     setShowWorkerEditModal(stepId);
   };
@@ -4479,9 +4518,26 @@ export const StudioSaleDetailNew = () => {
                                 <select
                                   value={worker.workerId}
                                   onChange={(e) => {
-                                    const selectedWorker = workerList.find(w => w.id === e.target.value);
-                                    handleUpdateWorker(worker.id, 'workerId', e.target.value);
-                                    handleUpdateWorker(worker.id, 'workerName', selectedWorker?.name || '');
+                                    const wid = e.target.value;
+                                    const picked = workerList.find(w => w.id === wid);
+                                    setEditingWorkerData((prev) => ({
+                                      ...prev,
+                                      workers: prev.workers.map((w) => {
+                                        if (w.id !== worker.id) return w;
+                                        const keepCost = Number(w.cost) > 0;
+                                        const nextCost = !wid
+                                          ? 0
+                                          : keepCost
+                                            ? w.cost
+                                            : picked?.defaultRate ?? 0;
+                                        return {
+                                          ...w,
+                                          workerId: wid,
+                                          workerName: picked?.name || '',
+                                          cost: nextCost,
+                                        };
+                                      }),
+                                    }));
                                   }}
                                   className="w-full bg-gray-900 border border-gray-700 rounded-lg text-white text-sm h-9 px-2"
                                 >
@@ -4512,8 +4568,11 @@ export const StudioSaleDetailNew = () => {
                                 ) : (
                                   <Input
                                     type="number"
-                                    value={worker.cost || ''}
-                                    onChange={(e) => handleUpdateWorker(worker.id, 'cost', Number(e.target.value))}
+                                    value={Number.isFinite(Number(worker.cost)) ? Number(worker.cost) : ''}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      handleUpdateWorker(worker.id, 'cost', raw === '' ? 0 : Number(raw));
+                                    }}
                                     placeholder="0"
                                     className="bg-gray-900 border-gray-700 text-sm h-9"
                                   />

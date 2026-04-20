@@ -52,6 +52,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     role: 'staff' as 'owner' | 'admin' | 'manager' | 'staff' | 'salesman' | 'cashier' | 'inventory',
     basic_salary: 0,
     commission_rate: 0,
+    rental_commission_rate: 0 as number,
     is_active: true,
     can_be_assigned_as_salesman: false,
     passwordOption: 'temp' as 'temp' | 'invite',
@@ -91,6 +92,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           role: (editingUser.role as any) || 'staff',
           basic_salary: 0,
           commission_rate: 0,
+          rental_commission_rate: Number((editingUser as any).rental_commission_percent) || 0,
           is_active: editingUser.is_active ?? true,
           can_be_assigned_as_salesman: editingUser.can_be_assigned_as_salesman ?? false,
           permissions: {
@@ -118,6 +120,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           role: 'staff',
           basic_salary: 0,
           commission_rate: 0,
+          rental_commission_rate: 0,
           is_active: true,
           can_be_assigned_as_salesman: false,
           passwordOption: 'temp',
@@ -379,7 +382,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
             }
           }
           // Keep users.default_commission_percent in sync so SaleForm auto-fills commission when this user is selected as salesman
-          await userService.updateUser(savedUserId, { default_commission_percent: formData.commission_rate });
+          await userService.updateUser(savedUserId, {
+            default_commission_percent: formData.commission_rate,
+            rental_commission_percent: formData.rental_commission_rate ?? null,
+          });
         } catch (empErr) {
           console.error('[AddUserModal] Employee sync failed (silent):', empErr);
         }
@@ -620,7 +626,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="commission_rate" className="text-gray-200">Commission Rate (%)</Label>
+                  <Label htmlFor="commission_rate" className="text-gray-200">Sale Commission (%)</Label>
                   <div className="relative">
                     <TrendingUp className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
                     <Input
@@ -630,6 +636,21 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                       className="pl-9 bg-gray-900 border-gray-700 text-white"
                       value={formData.commission_rate}
                       onChange={(e) => setFormData({ ...formData, commission_rate: Number(e.target.value) })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rental_commission_rate" className="text-gray-200">Rental Commission (%)</Label>
+                  <div className="relative">
+                    <TrendingUp className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+                    <Input
+                      id="rental_commission_rate"
+                      type="number"
+                      step="0.1"
+                      className="pl-9 bg-gray-900 border-gray-700 text-white"
+                      value={formData.rental_commission_rate ?? ''}
+                      onChange={(e) => setFormData({ ...formData, rental_commission_rate: Number(e.target.value) || 0 })}
+                      placeholder="e.g. 5"
                     />
                   </div>
                 </div>

@@ -114,22 +114,22 @@ export const TrialBalancePage: React.FC<{
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 text-xs text-emerald-100/95">
+      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2 text-sm text-emerald-100/95">
         <strong className="font-semibold">Basis: GL (journal)</strong> — Canonical trial balance from posted lines. Not operational
         document totals. Compare to Contacts/Sales only via explicit reconciliation (different basis).
       </div>
       {creditHeavyAssetRows.length > 0 && (
-        <div className="rounded-xl border border-amber-500/35 bg-amber-500/[0.08] p-4 text-sm text-amber-100/95 flex gap-3">
+        <div className="rounded-xl border border-amber-500/35 bg-amber-500/[0.08] p-4 text-base text-amber-100/95 flex gap-3">
           <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
           <div>
             <p className="font-semibold text-amber-100">Credit-heavy asset account(s)</p>
-            <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+            <p className="text-gray-400 text-sm mt-1 leading-relaxed">
               Trial Balance uses <strong className="text-gray-300">Balance = Debits − Credits</strong> per account. For receivables/cash/bank,
               a <strong className="text-gray-300">negative</strong> balance means total credits posted to that account exceed debits (e.g. reversed entries,
               receipts mis-posted, or journals not tied to sales). This does <strong className="text-gray-300">not</strong> match the Contacts “receivables” column,
               which is built from <strong className="text-gray-300">open invoice dues</strong> only. Use <strong className="text-gray-300">Ledger</strong> on the row to trace lines.
             </p>
-            <ul className="mt-2 text-xs font-mono text-amber-200/90 space-y-0.5">
+            <ul className="mt-2 text-sm font-mono text-amber-200/90 space-y-0.5">
               {creditHeavyAssetRows.map((r) => (
                 <li key={r.account_id}>
                   {r.account_code} {r.account_name} → {formatCurrency(r.balance)}
@@ -141,7 +141,7 @@ export const TrialBalancePage: React.FC<{
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3">
-          <label className="text-xs text-gray-500 flex items-center gap-2">
+          <label className="text-sm text-gray-500 flex items-center gap-2">
             AR / AP view
             <select
               value={arApMode}
@@ -175,7 +175,7 @@ export const TrialBalancePage: React.FC<{
         </div>
       </div>
       <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50">
-        <table className="w-full text-sm">
+        <table className="w-full text-base leading-snug">
           <thead className="border-b border-gray-800 bg-gray-800/50">
             <tr>
               <th className="p-3 text-left font-medium text-gray-300">Code</th>

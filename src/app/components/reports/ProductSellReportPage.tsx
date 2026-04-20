@@ -436,7 +436,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
 
       <div className="overflow-x-auto rounded-xl border border-gray-800 bg-gray-900/40 print:bg-white print:text-black">
         {view === 'detailed' && (
-          <table className="w-full text-left text-xs min-w-[1100px]">
+          <table className="w-full text-left text-base min-w-[1100px] leading-snug">
             <thead className="bg-gray-950/90 text-gray-400 uppercase tracking-wide border-b border-gray-800">
               <tr>
                 <th className="px-2 py-2 whitespace-nowrap">Date</th>
@@ -513,7 +513,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
         )}
 
         {view === 'detailed_with_purchase' && (
-          <table className="w-full text-left text-xs min-w-[1280px]">
+          <table className="w-full text-left text-base min-w-[1280px] leading-snug">
             <thead className="bg-gray-950/90 text-gray-400 uppercase tracking-wide border-b border-gray-800">
               <tr>
                 <th className="px-2 py-2 whitespace-nowrap">Date</th>
@@ -598,7 +598,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
         )}
 
         {view === 'by_date' && (
-          <table className="w-full text-left text-sm min-w-[640px]">
+          <table className="w-full text-left text-base min-w-[640px] leading-snug">
             <thead className="bg-gray-950/90 text-gray-400 border-b border-gray-800">
               <tr>
                 <th className="px-3 py-2">Date</th>
@@ -635,7 +635,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
         )}
 
         {view === 'by_category' && (
-          <table className="w-full text-left text-sm min-w-[640px]">
+          <table className="w-full text-left text-base min-w-[640px] leading-snug">
             <thead className="bg-gray-950/90 text-gray-400 border-b border-gray-800">
               <tr>
                 <th className="px-3 py-2">Category</th>
@@ -677,7 +677,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
         )}
 
         {view === 'by_brand' && (
-          <table className="w-full text-left text-sm min-w-[640px]">
+          <table className="w-full text-left text-base min-w-[640px] leading-snug">
             <thead className="bg-gray-950/90 text-gray-400 border-b border-gray-800">
               <tr>
                 <th className="px-3 py-2">Brand</th>

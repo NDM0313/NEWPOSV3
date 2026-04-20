@@ -268,7 +268,11 @@ export const userService = {
       default_commission_percent:
         u.default_commission_percent != null
           ? Number(u.default_commission_percent)
-          : (commissionByUserId.get(u.id) ?? null)
+          : (commissionByUserId.get(u.id) ?? null),
+      rental_commission_percent:
+        u.rental_commission_percent != null
+          ? Number(u.rental_commission_percent)
+          : null,
     }));
   },
 

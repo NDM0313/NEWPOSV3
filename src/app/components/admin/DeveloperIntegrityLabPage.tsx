@@ -196,6 +196,15 @@ export default function DeveloperIntegrityLabPage() {
   const [contactDiagLoading, setContactDiagLoading] = useState(false);
   const [contactFixingId, setContactFixingId] = useState<string | null>(null);
 
+  // N · Studio Sale Repair
+  const [studioRepairLoading, setStudioRepairLoading] = useState(false);
+  const [studioRepairData, setStudioRepairData] = useState<any[] | null>(null);
+  const [studioFixingId, setStudioFixingId] = useState<string | null>(null);
+  // O · Worker Ledger Repair
+  const [workerRepairLoading, setWorkerRepairLoading] = useState(false);
+  const [workerRepairData, setWorkerRepairData] = useState<any[] | null>(null);
+  const [workerFixingId, setWorkerFixingId] = useState<string | null>(null);
+
   const effBranch = filterBranch !== 'all' ? filterBranch : null;
 
   const loadBranches = useCallback(async () => {
@@ -701,6 +710,8 @@ export default function DeveloperIntegrityLabPage() {
           <TabsTrigger value="inv-detail">K · Inventory</TabsTrigger>
           <TabsTrigger value="contact-recon">L · Contact Recon</TabsTrigger>
           <TabsTrigger value="void-legacy">M · Void Legacy Adj</TabsTrigger>
+          <TabsTrigger value="studio-repair">N · Studio Repair</TabsTrigger>
+          <TabsTrigger value="worker-repair">O · Worker Repair</TabsTrigger>
         </TabsList>
 
         <TabsContent value="trace" className="space-y-4">
@@ -2324,6 +2335,285 @@ export default function DeveloperIntegrityLabPage() {
                   Rebuild JE Lines
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* N · Studio Sale Repair — detect & fix missing JEs for finalized studio sales */}
+        <TabsContent value="studio-repair" className="space-y-4">
+          <Card className="border-gray-800 bg-gray-900/40">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Wrench className="h-5 w-5 text-pink-400" />
+                Studio Sale Repair
+              </CardTitle>
+              <CardDescription>
+                Detect studio sales that are <strong>final</strong> but have <strong>no journal entry</strong> (missing Dr AR / Cr Revenue).
+                Also detects studio sales with <strong>NULL invoice_no</strong> that won&apos;t appear in customer ledger.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Button
+                  onClick={async () => {
+                    if (!companyId) return;
+                    setStudioRepairLoading(true);
+                    try {
+                      // Find studio sales: final but no JE, or NULL invoice_no
+                      const { data: studioSales } = await supabase
+                        .from('sales')
+                        .select('id, invoice_no, order_no, status, total, paid_amount, due_amount, customer_name, is_studio, studio_charges, created_at')
+                        .eq('company_id', companyId)
+                        .eq('is_studio', true)
+                        .order('created_at', { ascending: false });
+
+                      const issues: any[] = [];
+                      for (const s of (studioSales || [])) {
+                        const row: any = { ...s, issues: [] };
+                        // Check NULL invoice_no
+                        if (!s.invoice_no && (s as any).order_no) {
+                          row.issues.push('invoice_no is NULL (won\'t show in customer ledger)');
+                        }
+                        // Check missing JE for final sales
+                        if (s.status === 'final') {
+                          const { data: jes } = await supabase
+                            .from('journal_entries')
+                            .select('id')
+                            .eq('reference_type', 'sale')
+                            .eq('reference_id', s.id)
+                            .eq('is_void', false)
+                            .limit(1);
+                          if (!jes?.length) {
+                            row.issues.push('No journal entry (Dr AR / Cr Revenue missing)');
+                          }
+                        }
+                        // Check double-counted due_amount
+                        if ((s as any).studio_charges > 0 && s.status === 'final') {
+                          const correctDue = Math.max(0, (Number(s.total) || 0) - (Number(s.paid_amount) || 0));
+                          if (Math.abs((Number(s.due_amount) || 0) - correctDue) > 1) {
+                            row.issues.push(`due_amount wrong: ${s.due_amount} should be ${correctDue} (double-counted studio_charges)`);
+                          }
+                        }
+                        if (row.issues.length > 0) issues.push(row);
+                      }
+                      setStudioRepairData(issues);
+                      if (issues.length === 0) toast.success('All studio sales are clean — no issues found!');
+                      else toast.info(`Found ${issues.length} studio sale(s) with issues`);
+                    } catch (e: any) { toast.error('Scan failed: ' + e?.message); }
+                    finally { setStudioRepairLoading(false); }
+                  }}
+                  disabled={!companyId || studioRepairLoading}
+                >
+                  {studioRepairLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+                  Scan Studio Sales
+                </Button>
+              </div>
+
+              {studioRepairData && studioRepairData.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-400">{studioRepairData.length} issue(s) found</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Invoice</th>
+                          <th className="px-3 py-2 text-left">Customer</th>
+                          <th className="px-3 py-2 text-left">Status</th>
+                          <th className="px-3 py-2 text-right">Total</th>
+                          <th className="px-3 py-2 text-left">Issues</th>
+                          <th className="px-3 py-2">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800/50">
+                        {studioRepairData.map((row: any) => (
+                          <tr key={row.id} className="hover:bg-gray-800/20">
+                            <td className="px-3 py-2 text-blue-400 font-mono">{row.invoice_no || row.order_no || row.id?.slice(0, 8)}</td>
+                            <td className="px-3 py-2 text-gray-300">{row.customer_name}</td>
+                            <td className="px-3 py-2 text-gray-400">{row.status}</td>
+                            <td className="px-3 py-2 text-right text-gray-300">{Number(row.total || 0).toLocaleString()}</td>
+                            <td className="px-3 py-2">
+                              {row.issues.map((iss: string, i: number) => (
+                                <p key={i} className="text-amber-400 text-[10px]">{iss}</p>
+                              ))}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs border-green-700 text-green-400"
+                                disabled={studioFixingId === row.id}
+                                onClick={async () => {
+                                  setStudioFixingId(row.id);
+                                  try {
+                                    const fixes: string[] = [];
+                                    // Fix 1: Set invoice_no from order_no
+                                    if (!row.invoice_no && row.order_no) {
+                                      await supabase.from('sales').update({ invoice_no: row.order_no }).eq('id', row.id);
+                                      fixes.push('invoice_no set');
+                                    }
+                                    // Fix 2: Correct due_amount (remove double-counted studio_charges)
+                                    const correctDue = Math.max(0, (Number(row.total) || 0) - (Number(row.paid_amount) || 0));
+                                    if (Math.abs((Number(row.due_amount) || 0) - correctDue) > 1) {
+                                      await supabase.from('sales').update({ due_amount: correctDue }).eq('id', row.id);
+                                      fixes.push('due_amount fixed');
+                                    }
+                                    // Fix 3: Create missing JE
+                                    if (row.status === 'final') {
+                                      const { data: jes } = await supabase
+                                        .from('journal_entries').select('id')
+                                        .eq('reference_type', 'sale').eq('reference_id', row.id).eq('is_void', false).limit(1);
+                                      if (!jes?.length) {
+                                        const { postSaleDocumentAccounting } = await import('@/app/services/documentPostingEngine');
+                                        const jeId = await postSaleDocumentAccounting(row.id);
+                                        if (jeId) fixes.push('JE created: ' + jeId);
+                                        else fixes.push('JE creation returned null (check invoice_no / total)');
+                                      }
+                                    }
+                                    toast.success(fixes.length > 0 ? `Fixed: ${fixes.join(', ')}` : 'No fixes needed');
+                                    // Re-scan
+                                    setStudioRepairData(prev => prev?.filter(r => r.id !== row.id) || []);
+                                  } catch (e: any) { toast.error('Fix failed: ' + e?.message); }
+                                  finally { setStudioFixingId(null); }
+                                }}
+                              >
+                                {studioFixingId === row.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Fix'}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* O · Worker Ledger Repair — detect missing worker_ledger_entries for completed stages */}
+        <TabsContent value="worker-repair" className="space-y-4">
+          <Card className="border-gray-800 bg-gray-900/40">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Wrench className="h-5 w-5 text-cyan-400" />
+                Worker Ledger Repair
+              </CardTitle>
+              <CardDescription>
+                Detect completed production stages that are <strong>missing worker_ledger_entries</strong>.
+                Workers won&apos;t see payable amounts until ledger entries exist.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Button
+                  onClick={async () => {
+                    if (!companyId) return;
+                    setWorkerRepairLoading(true);
+                    try {
+                      // Find completed stages without worker_ledger_entries
+                      const { data: stages } = await supabase
+                        .from('studio_production_stages')
+                        .select(`
+                          id, stage_type, cost, status, assigned_worker_id,
+                          production:studio_productions!production_id(id, production_no, sale_id, company_id, status)
+                        `)
+                        .eq('status', 'completed')
+                        .gt('cost', 0)
+                        .not('assigned_worker_id', 'is', null);
+
+                      const issues: any[] = [];
+                      for (const stage of (stages || [])) {
+                        const prod = (stage as any).production;
+                        if (!prod || prod.company_id !== companyId) continue;
+                        // Check if worker_ledger_entry exists
+                        const { data: existing } = await supabase
+                          .from('worker_ledger_entries')
+                          .select('id')
+                          .eq('reference_type', 'studio_production_stage')
+                          .eq('reference_id', stage.id)
+                          .limit(1);
+                        if (!existing?.length) {
+                          // Get worker name
+                          const { data: worker } = await supabase.from('contacts').select('name').eq('id', stage.assigned_worker_id).maybeSingle();
+                          issues.push({
+                            stageId: stage.id,
+                            stageType: stage.stage_type,
+                            cost: stage.cost,
+                            workerId: stage.assigned_worker_id,
+                            workerName: (worker as any)?.name || stage.assigned_worker_id?.slice(0, 8),
+                            productionNo: prod.production_no,
+                            companyId: prod.company_id,
+                          });
+                        }
+                      }
+                      setWorkerRepairData(issues);
+                      if (issues.length === 0) toast.success('All worker ledger entries are in order — no issues!');
+                      else toast.info(`Found ${issues.length} missing worker ledger entries`);
+                    } catch (e: any) { toast.error('Scan failed: ' + e?.message); }
+                    finally { setWorkerRepairLoading(false); }
+                  }}
+                  disabled={!companyId || workerRepairLoading}
+                >
+                  {workerRepairLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+                  Scan Worker Ledger
+                </Button>
+              </div>
+
+              {workerRepairData && workerRepairData.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-400">{workerRepairData.length} missing entries</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Production</th>
+                          <th className="px-3 py-2 text-left">Stage</th>
+                          <th className="px-3 py-2 text-left">Worker</th>
+                          <th className="px-3 py-2 text-right">Cost</th>
+                          <th className="px-3 py-2">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800/50">
+                        {workerRepairData.map((row: any) => (
+                          <tr key={row.stageId} className="hover:bg-gray-800/20">
+                            <td className="px-3 py-2 text-blue-400 font-mono">{row.productionNo}</td>
+                            <td className="px-3 py-2 text-gray-300 capitalize">{row.stageType}</td>
+                            <td className="px-3 py-2 text-gray-300">{row.workerName}</td>
+                            <td className="px-3 py-2 text-right text-gray-300">{Number(row.cost).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-center">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs border-green-700 text-green-400"
+                                disabled={workerFixingId === row.stageId}
+                                onClick={async () => {
+                                  setWorkerFixingId(row.stageId);
+                                  try {
+                                    const { error } = await supabase.from('worker_ledger_entries').insert({
+                                      company_id: row.companyId,
+                                      worker_id: row.workerId,
+                                      amount: row.cost,
+                                      reference_type: 'studio_production_stage',
+                                      reference_id: row.stageId,
+                                      notes: `Studio production ${row.productionNo} – ${row.stageType} (auto-repaired)`,
+                                    });
+                                    if (error) throw error;
+                                    toast.success(`Worker ledger entry created for ${row.workerName} — Rs ${Number(row.cost).toLocaleString()}`);
+                                    setWorkerRepairData(prev => prev?.filter(r => r.stageId !== row.stageId) || []);
+                                  } catch (e: any) { toast.error('Fix failed: ' + e?.message); }
+                                  finally { setWorkerFixingId(null); }
+                                }}
+                              >
+                                {workerFixingId === row.stageId ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Fix'}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -390,22 +390,22 @@ export const StockReportPage = () => {
       <div className="flex-1 min-h-0 flex flex-col px-6 py-4">
         <div className="flex-1 min-h-0 bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
           <div className="flex-1 min-h-0 overflow-auto">
-            <table className="w-full min-w-[1200px]">
+            <table className="w-full min-w-[1200px] text-base leading-snug">
               <thead className="bg-gray-950/50 border-b border-gray-800 sticky top-0 z-10">
                 <tr>
-                  {visibleCols.includes('sku') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-left min-w-[120px]">SKU</th>}
-                  {visibleCols.includes('product') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-left min-w-[180px]">Product</th>}
-                  {visibleCols.includes('variation') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-left min-w-[140px]">Variation</th>}
-                  {visibleCols.includes('category') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-left">Category</th>}
-                  {visibleCols.includes('unit') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-center">Unit</th>}
-                  {visibleCols.includes('purchasePrice') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-right">Purchase Price</th>}
-                  {visibleCols.includes('sellingPrice') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-right">Selling Price</th>}
-                  {visibleCols.includes('currentStock') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-center">Current Stock</th>}
-                  {visibleCols.includes('stockValueCost') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-right">Value (Cost)</th>}
-                  {visibleCols.includes('stockValueRetail') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-right">Value (Retail)</th>}
-                  {visibleCols.includes('totalSold') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-center">Total Sold</th>}
-                  {visibleCols.includes('totalTransferred') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-center">Total Transferred</th>}
-                  {visibleCols.includes('totalAdjusted') && <th className="px-4 py-3 text-xs font-medium text-gray-400 uppercase text-center">Total Adjusted</th>}
+                  {visibleCols.includes('sku') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-left min-w-[120px]">SKU</th>}
+                  {visibleCols.includes('product') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-left min-w-[180px]">Product</th>}
+                  {visibleCols.includes('variation') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-left min-w-[140px]">Variation</th>}
+                  {visibleCols.includes('category') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-left">Category</th>}
+                  {visibleCols.includes('unit') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-center">Unit</th>}
+                  {visibleCols.includes('purchasePrice') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-right">Purchase Price</th>}
+                  {visibleCols.includes('sellingPrice') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-right">Selling Price</th>}
+                  {visibleCols.includes('currentStock') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-center">Current Stock</th>}
+                  {visibleCols.includes('stockValueCost') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-right">Value (Cost)</th>}
+                  {visibleCols.includes('stockValueRetail') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-right">Value (Retail)</th>}
+                  {visibleCols.includes('totalSold') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-center">Total Sold</th>}
+                  {visibleCols.includes('totalTransferred') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-center">Total Transferred</th>}
+                  {visibleCols.includes('totalAdjusted') && <th className="px-4 py-3 text-base font-medium text-gray-400 uppercase text-center">Total Adjusted</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
@@ -427,11 +427,11 @@ export const StockReportPage = () => {
                   displayedRows.map((row, idx) => (
                     <tr key={`${row.productId}-${row.variationId || 'base'}-${idx}`} className="hover:bg-gray-800/30 transition-colors">
                       {visibleCols.includes('sku') && (
-                        <td className="px-4 py-3 text-gray-400 font-mono text-sm whitespace-nowrap">{row.sku}</td>
+                        <td className="px-4 py-3 text-gray-400 font-mono text-base whitespace-nowrap">{row.sku}</td>
                       )}
                       {visibleCols.includes('product') && (
                         <td className="px-4 py-3">
-                          <div className="font-medium text-white text-sm leading-tight">{row.productName}</div>
+                          <div className="font-medium text-white text-base leading-tight">{row.productName}</div>
                         </td>
                       )}
                       {visibleCols.includes('variation') && (
@@ -449,43 +449,43 @@ export const StockReportPage = () => {
                         </td>
                       )}
                       {visibleCols.includes('unit') && (
-                        <td className="px-4 py-3 text-center text-gray-400 text-sm">{row.unit}</td>
+                        <td className="px-4 py-3 text-center text-gray-400 text-base">{row.unit}</td>
                       )}
                       {visibleCols.includes('purchasePrice') && (
-                        <td className={cn('px-4 py-3 text-right text-sm font-medium tabular-nums', row.purchasePrice < 0 ? 'text-red-400' : 'text-green-400')}>
+                        <td className={cn('px-4 py-3 text-right text-base font-medium tabular-nums', row.purchasePrice < 0 ? 'text-red-400' : 'text-green-400')}>
                           {formatCurrency(row.purchasePrice)}
                         </td>
                       )}
                       {visibleCols.includes('sellingPrice') && (
-                        <td className={cn('px-4 py-3 text-right text-sm font-medium tabular-nums', row.sellingPrice < 0 ? 'text-red-400' : 'text-green-400')}>
+                        <td className={cn('px-4 py-3 text-right text-base font-medium tabular-nums', row.sellingPrice < 0 ? 'text-red-400' : 'text-green-400')}>
                           {formatCurrency(row.sellingPrice)}
                         </td>
                       )}
                       {visibleCols.includes('currentStock') && (
                         <td className="px-4 py-3 text-center">
-                          <span className={cn('font-semibold tabular-nums text-sm', row.currentStock <= 0 ? 'text-red-400' : 'text-white')}>
+                          <span className={cn('font-semibold tabular-nums text-base', row.currentStock <= 0 ? 'text-red-400' : 'text-white')}>
                             {fmtNum(row.currentStock)}
                           </span>
                         </td>
                       )}
                       {visibleCols.includes('stockValueCost') && (
-                        <td className={cn('px-4 py-3 text-right text-sm font-medium tabular-nums', row.stockValueAtCost < 0 ? 'text-red-400' : 'text-green-400')}>
+                        <td className={cn('px-4 py-3 text-right text-base font-medium tabular-nums', row.stockValueAtCost < 0 ? 'text-red-400' : 'text-green-400')}>
                           {formatCurrency(row.stockValueAtCost)}
                         </td>
                       )}
                       {visibleCols.includes('stockValueRetail') && (
-                        <td className={cn('px-4 py-3 text-right text-sm font-medium tabular-nums', row.stockValueAtRetail < 0 ? 'text-red-400' : 'text-green-400')}>
+                        <td className={cn('px-4 py-3 text-right text-base font-medium tabular-nums', row.stockValueAtRetail < 0 ? 'text-red-400' : 'text-green-400')}>
                           {formatCurrency(row.stockValueAtRetail)}
                         </td>
                       )}
                       {visibleCols.includes('totalSold') && (
-                        <td className="px-4 py-3 text-center text-sm tabular-nums text-gray-300">{fmtNum(row.totalSold)}</td>
+                        <td className="px-4 py-3 text-center text-base tabular-nums text-gray-300">{fmtNum(row.totalSold)}</td>
                       )}
                       {visibleCols.includes('totalTransferred') && (
-                        <td className="px-4 py-3 text-center text-sm tabular-nums text-gray-300">{fmtNum(row.totalTransferred)}</td>
+                        <td className="px-4 py-3 text-center text-base tabular-nums text-gray-300">{fmtNum(row.totalTransferred)}</td>
                       )}
                       {visibleCols.includes('totalAdjusted') && (
-                        <td className="px-4 py-3 text-center text-sm tabular-nums text-gray-300">
+                        <td className="px-4 py-3 text-center text-base tabular-nums text-gray-300">
                           <span className={row.totalAdjusted < 0 ? 'text-red-400' : row.totalAdjusted > 0 ? 'text-green-400' : ''}>
                             {fmtNum(row.totalAdjusted)}
                           </span>
@@ -498,7 +498,7 @@ export const StockReportPage = () => {
               {/* Table Footer Totals */}
               {!loading && displayedRows.length > 0 && (
                 <tfoot className="bg-gray-950/70 border-t-2 border-gray-700">
-                  <tr className="font-semibold text-sm">
+                  <tr className="font-semibold text-base">
                     {visibleCols.includes('sku') && <td className="px-4 py-3 text-gray-300">Totals</td>}
                     {visibleCols.includes('product') && <td className="px-4 py-3 text-gray-400">{filteredRows.length} rows</td>}
                     {visibleCols.includes('variation') && <td className="px-4 py-3" />}

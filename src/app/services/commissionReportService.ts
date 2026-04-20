@@ -20,6 +20,7 @@ export interface CommissionSaleRow {
   customer_name: string;
   branch_id: string | null;
   branch_name: string | null;
+  source: 'sale' | 'rental';
 }
 
 export interface CommissionSummaryRow {
@@ -48,6 +49,7 @@ export interface CommissionReportResult {
 }
 
 export type CommissionStatusFilter = 'pending' | 'posted' | 'all';
+export type CommissionSourceFilter = 'all' | 'sale' | 'rental';
 
 /** Fully Paid Only = only sales with due_amount = 0; Include Due = all sales with commission */
 export type PaymentEligibilityFilter = 'fully_paid_only' | 'include_due';
@@ -65,6 +67,8 @@ export interface GetCommissionReportOptions {
   status?: CommissionStatusFilter;
   /** When 'fully_paid_only', only sales with due_amount = 0 (or null) are included. Default: include_due so report shows all commission sales. */
   paymentEligibility?: PaymentEligibilityFilter;
+  /** Filter by source: 'all' (default), 'sale', or 'rental' */
+  sourceFilter?: CommissionSourceFilter;
 }
 
 /**
@@ -84,68 +88,143 @@ export async function getCommissionReport(
   const branchId = options?.branchId && options.branchId !== 'all' ? options.branchId : undefined;
   const salesmanIdFilter = options?.salesmanId && options.salesmanId !== 'all' ? options.salesmanId : undefined;
   const paymentEligibility = options?.paymentEligibility ?? 'include_due';
+  const sourceFilter = options?.sourceFilter ?? 'all';
 
-  let query = supabase
-    .from('sales')
-    .select(`
-      id,
-      invoice_no,
-      invoice_date,
-      salesman_id,
-      commission_amount,
-      commission_eligible_amount,
-      commission_percent,
-      commission_status,
-      commission_batch_id,
-      total,
-      customer_name,
-      branch_id,
-      branch:branches(id, name)
-    `)
-    .eq('company_id', companyId)
-    .eq('status', 'final')
-    .gte('invoice_date', start)
-    .lt('invoice_date', endExclusive)
-    .order('invoice_date', { ascending: true });
+  let allRows: CommissionSaleRow[] = [];
 
-  if (branchId) query = query.eq('branch_id', branchId);
-  if (salesmanIdFilter) query = query.eq('salesman_id', salesmanIdFilter);
-  if (statusFilter === 'pending') query = query.or('commission_status.is.null,commission_status.eq.pending');
-  if (statusFilter === 'posted') query = query.eq('commission_status', 'posted');
-  if (paymentEligibility === 'fully_paid_only') query = query.or('due_amount.lte.0,due_amount.is.null');
+  // ── Sales rows ──
+  if (sourceFilter === 'all' || sourceFilter === 'sale') {
+    let query = supabase
+      .from('sales')
+      .select(`
+        id,
+        invoice_no,
+        invoice_date,
+        salesman_id,
+        commission_amount,
+        commission_eligible_amount,
+        commission_percent,
+        commission_status,
+        commission_batch_id,
+        total,
+        customer_name,
+        branch_id,
+        branch:branches(id, name)
+      `)
+      .eq('company_id', companyId)
+      .eq('status', 'final')
+      .gte('invoice_date', start)
+      .lt('invoice_date', endExclusive)
+      .order('invoice_date', { ascending: true });
 
-  const { data: sales, error } = await query;
+    if (branchId) query = query.eq('branch_id', branchId);
+    if (salesmanIdFilter) query = query.eq('salesman_id', salesmanIdFilter);
+    if (statusFilter === 'pending') query = query.or('commission_status.is.null,commission_status.eq.pending');
+    if (statusFilter === 'posted') query = query.eq('commission_status', 'posted');
+    if (paymentEligibility === 'fully_paid_only') query = query.or('due_amount.lte.0,due_amount.is.null');
 
-  if (error) throw error;
+    const { data: sales, error } = await query;
+    if (error) throw error;
 
-  if (import.meta.env?.DEV && (sales?.length ?? 0) === 0) {
-    console.debug('[CommissionReport] No rows from DB', {
-      companyId,
-      start: startDate.slice(0, 10),
-      end: endDate.slice(0, 10),
-      branchId: options?.branchId ?? null,
-      salesmanId: options?.salesmanId ?? null,
-      statusFilter,
-      paymentEligibility,
-      hint: paymentEligibility === 'fully_paid_only' ? 'Try "Include due sales" if sales have balance due.' : undefined,
-    });
+    const saleRows = (sales || []).map((s: any) => ({
+      id: s.id,
+      invoice_no: s.invoice_no,
+      invoice_date: s.invoice_date ?? '',
+      salesman_id: s.salesman_id,
+      commission_amount: Number(s.commission_amount) || 0,
+      commission_eligible_amount: s.commission_eligible_amount != null ? Number(s.commission_eligible_amount) : null,
+      commission_percent: s.commission_percent != null ? Number(s.commission_percent) : null,
+      commission_status: s.commission_status ?? 'pending',
+      commission_batch_id: s.commission_batch_id ?? null,
+      total: Number(s.total) || 0,
+      customer_name: s.customer_name || '',
+      branch_id: s.branch_id ?? null,
+      branch_name: s.branch?.name ?? null,
+      source: 'sale' as const,
+    }));
+    allRows.push(...saleRows);
   }
 
-  const allRows = (sales || []).map((s: any) => ({
-    id: s.id,
-    invoice_no: s.invoice_no,
-    invoice_date: s.invoice_date ?? '',
-    salesman_id: s.salesman_id,
-    commission_amount: Number(s.commission_amount) || 0,
-    commission_eligible_amount: s.commission_eligible_amount != null ? Number(s.commission_eligible_amount) : null,
-    commission_percent: s.commission_percent != null ? Number(s.commission_percent) : null,
-    commission_status: s.commission_status ?? 'pending',
-    commission_batch_id: s.commission_batch_id ?? null,
-    total: Number(s.total) || 0,
-    customer_name: s.customer_name || '',
-    branch_id: s.branch_id ?? null,
-    branch_name: s.branch?.name ?? null,
-  })) as CommissionSaleRow[];
+  // ── Rental rows ──
+  if (sourceFilter === 'all' || sourceFilter === 'rental') {
+    // Try full query with commission columns first; fallback to basic if columns don't exist
+    let rentals: any[] | null = null;
+    let rErr: any = null;
+
+    // Attempt 1: full query with all commission columns
+    {
+      let rQuery = supabase
+        .from('rentals')
+        .select(`
+          id, booking_no, booking_date, salesman_id,
+          commission_amount, commission_eligible_amount, commission_percent,
+          commission_status, commission_batch_id,
+          rental_charges, customer_name, branch_id, status,
+          branch:branches(id, name)
+        `)
+        .eq('company_id', companyId)
+        .neq('status', 'cancelled')
+        .gte('booking_date', start)
+        .lt('booking_date', endExclusive)
+        .not('salesman_id', 'is', null)
+        .order('booking_date', { ascending: true });
+
+      if (branchId) rQuery = rQuery.eq('branch_id', branchId);
+      if (salesmanIdFilter) rQuery = rQuery.eq('salesman_id', salesmanIdFilter);
+      if (statusFilter === 'pending') rQuery = rQuery.or('commission_status.is.null,commission_status.eq.pending');
+      if (statusFilter === 'posted') rQuery = rQuery.eq('commission_status', 'posted');
+
+      const result = await rQuery;
+      rentals = result.data;
+      rErr = result.error;
+    }
+
+    // Attempt 2: fallback without commission columns (migration not applied yet)
+    if (rErr) {
+      console.warn('[CommissionReport] Rental full query failed:', rErr.message, '— trying basic query...');
+      let fbQuery = supabase
+        .from('rentals')
+        .select('id, booking_no, booking_date, customer_name, branch_id, status, rental_charges, salesman_id, branch:branches(id, name)')
+        .eq('company_id', companyId)
+        .neq('status', 'cancelled')
+        .gte('booking_date', start)
+        .lt('booking_date', endExclusive)
+        .not('salesman_id', 'is', null)
+        .order('booking_date', { ascending: true });
+
+      if (branchId) fbQuery = fbQuery.eq('branch_id', branchId);
+      if (salesmanIdFilter) fbQuery = fbQuery.eq('salesman_id', salesmanIdFilter);
+
+      const { data: fbData, error: fbErr } = await fbQuery;
+      if (fbErr) {
+        console.warn('[CommissionReport] Rental basic query also failed:', fbErr.message);
+      } else {
+        rentals = fbData;
+        rErr = null;
+      }
+    }
+
+    console.log('[CommissionReport] Rental query result:', { rErr: rErr?.message, rentalCount: rentals?.length, firstRental: rentals?.[0] ? { id: rentals[0].id, salesman_id: rentals[0].salesman_id, commission_amount: rentals[0].commission_amount } : null });
+    if (!rErr && rentals) {
+      const rentalRows = rentals.map((r: any) => ({
+        id: r.id,
+        invoice_no: r.booking_no || r.id?.slice(0, 8),
+        invoice_date: r.booking_date ?? '',
+        salesman_id: r.salesman_id,
+        commission_amount: Number(r.commission_amount) || 0,
+        commission_eligible_amount: r.commission_eligible_amount != null ? Number(r.commission_eligible_amount) : null,
+        commission_percent: r.commission_percent != null ? Number(r.commission_percent) : null,
+        commission_status: r.commission_status ?? 'pending',
+        commission_batch_id: r.commission_batch_id ?? null,
+        total: Number(r.rental_charges) || 0,
+        customer_name: r.customer_name || '',
+        branch_id: r.branch_id ?? null,
+        branch_name: (r as any).branch?.name ?? null,
+        source: 'rental' as const,
+      }));
+      allRows.push(...rentalRows);
+    }
+  }
 
   const rows = allRows.filter((r) => (Number(r.commission_amount) || 0) > 0 || r.salesman_id != null);
   const salesmanIds = [...new Set(rows.map((r) => r.salesman_id).filter(Boolean))] as string[];
@@ -253,6 +332,8 @@ export interface PostCommissionBatchParams {
   createdBy?: string | null;
   /** Same as report: only post sales that are fully paid when 'fully_paid_only'. Default: fully_paid_only */
   paymentEligibility?: PaymentEligibilityFilter;
+  /** Filter by source: 'all' (default), 'sale', or 'rental' */
+  sourceFilter?: CommissionSourceFilter;
 }
 
 export interface PostCommissionBatchResult {
@@ -268,34 +349,66 @@ export interface PostCommissionBatchResult {
  * Creates commission_batches row, one JE (Dr 5100 Cr 2040), marks sales as posted.
  */
 export async function postCommissionBatch(params: PostCommissionBatchParams): Promise<PostCommissionBatchResult> {
-  const { companyId, branchId, salesmanId, startDate, endDate, createdBy, paymentEligibility = 'fully_paid_only' } = params;
+  const { companyId, branchId, salesmanId, startDate, endDate, createdBy, paymentEligibility = 'fully_paid_only', sourceFilter = 'all' } = params;
   const start = startDate.slice(0, 10);
   const end = endDate.slice(0, 10);
-  const endExclusive = getNextDay(end); // full end day included (timestamp-safe)
+  const endExclusive = getNextDay(end);
 
-  let query = supabase
-    .from('sales')
-    .select('id, commission_amount, branch_id, salesman_id, commission_status')
-    .eq('company_id', companyId)
-    .eq('status', 'final')
-    .gte('invoice_date', start)
-    .lt('invoice_date', endExclusive)
-    .or('commission_status.is.null,commission_status.eq.pending')
-    .gt('commission_amount', 0);
+  let saleIds: string[] = [];
+  let rentalIds: string[] = [];
+  const allPending: { salesman_id: string | null; commission_amount: number; branch_id: string | null }[] = [];
 
-  if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
-  if (salesmanId && salesmanId !== 'all') query = query.eq('salesman_id', salesmanId);
-  if (paymentEligibility === 'fully_paid_only') query = query.or('due_amount.lte.0,due_amount.is.null');
+  // ── Pending sales ──
+  if (sourceFilter === 'all' || sourceFilter === 'sale') {
+    let query = supabase
+      .from('sales')
+      .select('id, commission_amount, branch_id, salesman_id, commission_status')
+      .eq('company_id', companyId)
+      .eq('status', 'final')
+      .gte('invoice_date', start)
+      .lt('invoice_date', endExclusive)
+      .or('commission_status.is.null,commission_status.eq.pending')
+      .gt('commission_amount', 0);
 
-  const { data: pendingSales, error: fetchError } = await query;
+    if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
+    if (salesmanId && salesmanId !== 'all') query = query.eq('salesman_id', salesmanId);
+    if (paymentEligibility === 'fully_paid_only') query = query.or('due_amount.lte.0,due_amount.is.null');
 
-  if (fetchError) throw fetchError;
-  if (!pendingSales || pendingSales.length === 0) {
-    throw new Error('No pending commission found for the selected filters. Only sales with commission_status = pending are posted.');
+    const { data: pendingSales, error: fetchError } = await query;
+    if (fetchError) throw fetchError;
+    if (pendingSales?.length) {
+      saleIds = pendingSales.map((s: any) => s.id);
+      allPending.push(...pendingSales.map((s: any) => ({ salesman_id: s.salesman_id, commission_amount: Number(s.commission_amount) || 0, branch_id: s.branch_id })));
+    }
   }
 
-  const saleIds = pendingSales.map((s: any) => s.id);
-  const totalCommission = pendingSales.reduce((sum: number, s: any) => sum + (Number(s.commission_amount) || 0), 0);
+  // ── Pending rentals ──
+  if (sourceFilter === 'all' || sourceFilter === 'rental') {
+    let rQuery = supabase
+      .from('rentals')
+      .select('id, commission_amount, branch_id, salesman_id, commission_status')
+      .eq('company_id', companyId)
+      .neq('status', 'cancelled')
+      .gte('booking_date', start)
+      .lt('booking_date', endExclusive)
+      .or('commission_status.is.null,commission_status.eq.pending')
+      .gt('commission_amount', 0);
+
+    if (branchId && branchId !== 'all') rQuery = rQuery.eq('branch_id', branchId);
+    if (salesmanId && salesmanId !== 'all') rQuery = rQuery.eq('salesman_id', salesmanId);
+
+    const { data: pendingRentals, error: rErr } = await rQuery;
+    if (!rErr && pendingRentals?.length) {
+      rentalIds = pendingRentals.map((r: any) => r.id);
+      allPending.push(...pendingRentals.map((r: any) => ({ salesman_id: r.salesman_id, commission_amount: Number(r.commission_amount) || 0, branch_id: r.branch_id })));
+    }
+  }
+
+  if (allPending.length === 0) {
+    throw new Error('No pending commission found for the selected filters.');
+  }
+
+  const totalCommission = allPending.reduce((sum, s) => sum + s.commission_amount, 0);
   if (totalCommission <= 0) throw new Error('Total commission is zero. Nothing to post.');
 
   const { expenseAccountId, payableAccountId } = await ensureCommissionAccounts(companyId);
@@ -311,8 +424,12 @@ export async function postCommissionBatch(params: PostCommissionBatchParams): Pr
     ? (parseInt((existing[0] as any).batch_no?.replace(/^COMM-\d{4}-\d{2}-\d{2}-/, '') || '0', 10) + 1)
     : 1;
   const batchNo = `COMM-${start}-${String(nextSeq).padStart(3, '0')}`;
-  const effectiveBranchId = branchId && branchId !== 'all' ? branchId : pendingSales[0]?.branch_id ?? null;
-  const firstSalesmanId = pendingSales[0]?.salesman_id ?? null;
+  const effectiveBranchId = branchId && branchId !== 'all' ? branchId : allPending[0]?.branch_id ?? null;
+  const firstSalesmanId = allPending[0]?.salesman_id ?? null;
+
+  const txLabel = saleIds.length > 0 && rentalIds.length > 0
+    ? `${saleIds.length} sale(s), ${rentalIds.length} rental(s)`
+    : saleIds.length > 0 ? `${saleIds.length} sale(s)` : `${rentalIds.length} rental(s)`;
 
   const { data: batch, error: batchError } = await supabase
     .from('commission_batches')
@@ -323,7 +440,7 @@ export async function postCommissionBatch(params: PostCommissionBatchParams): Pr
       entry_date: end,
       salesman_id: firstSalesmanId,
       total_commission: totalCommission,
-      sale_count: pendingSales.length,
+      sale_count: allPending.length,
       created_by: createdBy ?? null,
     })
     .select('id')
@@ -333,21 +450,19 @@ export async function postCommissionBatch(params: PostCommissionBatchParams): Pr
   if (!batch?.id) throw new Error('Failed to create commission batch');
 
   const entryNo = `JE-COMM-${batch.id.slice(0, 8)}`;
-  const entryDate = end;
-
   const journalEntry = {
     company_id: companyId,
     branch_id: effectiveBranchId || undefined,
     entry_no: entryNo,
-    entry_date: entryDate,
-    description: `Commission batch ${batchNo} (${pendingSales.length} sale(s))`,
+    entry_date: end,
+    description: `Commission batch ${batchNo} (${txLabel})`,
     reference_type: 'commission_batch',
     reference_id: batch.id,
     created_by: createdBy ?? undefined,
   };
 
   const lines = [
-    { account_id: expenseAccountId, debit: totalCommission, credit: 0, description: `Sales commission batch ${batchNo}` },
+    { account_id: expenseAccountId, debit: totalCommission, credit: 0, description: `Commission batch ${batchNo}` },
     { account_id: payableAccountId, debit: 0, credit: totalCommission, description: `Salesman payable batch ${batchNo}` },
   ];
 
@@ -356,26 +471,33 @@ export async function postCommissionBatch(params: PostCommissionBatchParams): Pr
 
   await supabase.from('commission_batches').update({ journal_entry_id: created.id }).eq('id', batch.id);
 
-  const { error: updateError } = await supabase
-    .from('sales')
-    .update({ commission_status: 'posted', commission_batch_id: batch.id })
-    .in('id', saleIds)
-    .or('commission_status.is.null,commission_status.eq.pending');
-
-  if (updateError) throw updateError;
-
-  // Create worker_ledger_entries per salesman so commission appears in their worker ledger / balance.
-  // Group sales by salesman_id and sum commission per person.
-  const commissionBySalesman = new Map<string, number>();
-  for (const s of pendingSales as { salesman_id: string | null; commission_amount: number }[]) {
-    if (!s.salesman_id) continue;
-    commissionBySalesman.set(s.salesman_id, (commissionBySalesman.get(s.salesman_id) ?? 0) + (Number(s.commission_amount) || 0));
+  // Mark sales as posted
+  if (saleIds.length > 0) {
+    await supabase
+      .from('sales')
+      .update({ commission_status: 'posted', commission_batch_id: batch.id })
+      .in('id', saleIds)
+      .or('commission_status.is.null,commission_status.eq.pending');
   }
-  // Look up contact_id for each salesman (workers are linked to contacts)
+
+  // Mark rentals as posted
+  if (rentalIds.length > 0) {
+    await supabase
+      .from('rentals')
+      .update({ commission_status: 'posted', commission_batch_id: batch.id })
+      .in('id', rentalIds)
+      .or('commission_status.is.null,commission_status.eq.pending');
+  }
+
+  // Create worker_ledger_entries per salesman
+  const commissionBySalesman = new Map<string, number>();
+  for (const s of allPending) {
+    if (!s.salesman_id) continue;
+    commissionBySalesman.set(s.salesman_id, (commissionBySalesman.get(s.salesman_id) ?? 0) + s.commission_amount);
+  }
   for (const [salesmanUserId, amount] of commissionBySalesman.entries()) {
     if (amount <= 0) continue;
     try {
-      // Find worker contact_id from users table (salesman_id is a users.id)
       const { data: userRow } = await supabase.from('users').select('id, contact_id').eq('id', salesmanUserId).maybeSingle();
       const workerId = (userRow as any)?.contact_id ?? salesmanUserId;
       const { error: ledgerErr } = await supabase.from('worker_ledger_entries').insert({
@@ -384,7 +506,7 @@ export async function postCommissionBatch(params: PostCommissionBatchParams): Pr
         amount,
         reference_type: 'commission_batch',
         reference_id: batch.id,
-        notes: `Sales commission batch ${batchNo}`,
+        notes: `Commission batch ${batchNo}`,
         document_no: batchNo,
         status: 'unpaid',
       });
@@ -396,7 +518,7 @@ export async function postCommissionBatch(params: PostCommissionBatchParams): Pr
 
   if (typeof window !== 'undefined') {
     const uids = new Set<string>();
-    for (const s of pendingSales as { salesman_id: string | null }[]) {
+    for (const s of allPending) {
       if (s.salesman_id) uids.add(s.salesman_id);
     }
     if (uids.size === 0 && firstSalesmanId) uids.add(firstSalesmanId);
@@ -409,7 +531,7 @@ export async function postCommissionBatch(params: PostCommissionBatchParams): Pr
     batchId: batch.id,
     batchNo,
     journalEntryId: created.id,
-    saleCount: pendingSales.length,
+    saleCount: allPending.length,
     totalCommission,
   };
 }
@@ -438,6 +560,9 @@ export async function recalculatePendingCommissions(
   const end = endDate.slice(0, 10);
   const endExclusive = getNextDay(end);
 
+  let updatedCount = 0;
+
+  // ── Sales recalculation ──
   let query = supabase
     .from('sales')
     .select('id, salesman_id, total, commission_eligible_amount, commission_percent, commission_amount, commission_status, commission_batch_id')
@@ -453,35 +578,81 @@ export async function recalculatePendingCommissions(
 
   const { data: sales, error: fetchError } = await query;
   if (fetchError) throw fetchError;
-  if (!sales || sales.length === 0) {
+
+  // Collect all salesman IDs across both sales and rentals
+  const allSalesmanIds = new Set<string>();
+  (sales || []).forEach((s: any) => { if (s.salesman_id) allSalesmanIds.add(s.salesman_id); });
+
+  // ── Rental recalculation ──
+  let rentalRows: any[] = [];
+  try {
+    let rQuery = supabase
+      .from('rentals')
+      .select('id, salesman_id, rental_charges, commission_eligible_amount, commission_percent, commission_amount, commission_status, commission_batch_id')
+      .eq('company_id', companyId)
+      .neq('status', 'cancelled')
+      .gte('booking_date', start)
+      .lt('booking_date', endExclusive)
+      .or('commission_status.is.null,commission_status.eq.pending')
+      .is('commission_batch_id', null)
+      .not('salesman_id', 'is', null);
+
+    if (branchId && branchId !== 'all') rQuery = rQuery.eq('branch_id', branchId);
+    if (salesmanId && salesmanId !== 'all') rQuery = rQuery.eq('salesman_id', salesmanId);
+
+    const { data: rentals, error: rErr } = await rQuery;
+    if (!rErr && rentals) {
+      rentalRows = rentals;
+      rentalRows.forEach((r: any) => { if (r.salesman_id) allSalesmanIds.add(r.salesman_id); });
+    }
+  } catch { /* columns may not exist yet */ }
+
+  if ((sales?.length || 0) === 0 && rentalRows.length === 0) {
     return { updatedCount: 0 };
   }
 
-  const salesmanIds = [...new Set((sales as any[]).map((s) => s.salesman_id).filter(Boolean))] as string[];
+  // Fetch commission rates for all salesmen
+  const salesmanIdArr = [...allSalesmanIds];
   const { data: users } = await supabase
     .from('users')
-    .select('id, default_commission_percent')
-    .in('id', salesmanIds);
-  const pctByUserId: Record<string, number> = {};
+    .select('id, default_commission_percent, rental_commission_percent')
+    .in('id', salesmanIdArr);
+  const salePctByUser: Record<string, number> = {};
+  const rentalPctByUser: Record<string, number> = {};
   (users || []).forEach((u: any) => {
-    const pct = u.default_commission_percent != null ? Number(u.default_commission_percent) : null;
-    if (pct != null && pct >= 0) pctByUserId[u.id] = pct;
+    const salePct = u.default_commission_percent != null ? Number(u.default_commission_percent) : null;
+    if (salePct != null && salePct >= 0) salePctByUser[u.id] = salePct;
+    const rentalPct = u.rental_commission_percent != null ? Number(u.rental_commission_percent) : (salePct != null ? salePct : null);
+    if (rentalPct != null && rentalPct >= 0) rentalPctByUser[u.id] = rentalPct;
   });
 
-  let updatedCount = 0;
-  for (const sale of sales as any[]) {
+  // Recalculate sales
+  for (const sale of (sales || []) as any[]) {
     const sid = sale.salesman_id;
-    const pct = sid ? pctByUserId[sid] : null;
+    const pct = sid ? salePctByUser[sid] : null;
     if (pct == null) continue;
     const base = Number(sale.commission_eligible_amount) || Number(sale.total) || 0;
     const newAmount = (base * pct) / 100;
     const { error: updateErr } = await supabase
       .from('sales')
-      .update({
-        commission_percent: pct,
-        commission_amount: newAmount,
-      })
+      .update({ commission_percent: pct, commission_amount: newAmount })
       .eq('id', sale.id)
+      .is('commission_batch_id', null)
+      .or('commission_status.is.null,commission_status.eq.pending');
+    if (!updateErr) updatedCount += 1;
+  }
+
+  // Recalculate rentals
+  for (const rental of rentalRows) {
+    const sid = rental.salesman_id;
+    const pct = sid ? rentalPctByUser[sid] : null;
+    if (pct == null) continue;
+    const base = Number(rental.commission_eligible_amount) || Number(rental.rental_charges) || 0;
+    const newAmount = (base * pct) / 100;
+    const { error: updateErr } = await supabase
+      .from('rentals')
+      .update({ commission_percent: pct, commission_amount: newAmount })
+      .eq('id', rental.id)
       .is('commission_batch_id', null)
       .or('commission_status.is.null,commission_status.eq.pending');
     if (!updateErr) updatedCount += 1;

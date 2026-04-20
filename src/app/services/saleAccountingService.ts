@@ -680,11 +680,12 @@ export const saleAccountingService = {
 
     if (!saleId || !companyId || total <= 0) return null;
 
-    // Only reverse if a non-void canonical document JE exists (ignore payment-linked rows)
+    // Check if a non-void canonical document JE exists (ignore payment-linked rows).
+    // If not found, still proceed — the sale was final so the reversal is needed
+    // (original JE may have failed to post silently, e.g. studio sales via try-catch).
     const originalDocId = await findActiveCanonicalSaleDocumentJournalEntryId(saleId);
     if (!originalDocId) {
-      console.log(`[saleAccountingService] No canonical sale document JE for sale ${invoiceNo}, skipping reversal`);
-      return null;
+      console.warn(`[saleAccountingService] No canonical sale document JE for sale ${invoiceNo} — creating reversal anyway (sale was final)`);
     }
 
     const arAccount = await resolveArLineAccountForSale(companyId, saleId);

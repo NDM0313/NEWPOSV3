@@ -372,6 +372,36 @@ export function AddEntryV2({
     }
   }, [entryType, glBalancesOk]);
 
+  /** Prefill remarks when opening payment flows — only overwrites empty or prior auto-lines. */
+  useEffect(() => {
+    const isAutoOrEmpty = (d: string) => {
+      const t = d.trim();
+      if (!t) return true;
+      return (
+        t.startsWith('Worker payment to') ||
+        t.startsWith('Customer receipt from') ||
+        t.startsWith('Supplier payment to') ||
+        t.startsWith('Courier payment to')
+      );
+    };
+    setDescription((prev) => {
+      if (!isAutoOrEmpty(prev)) return prev;
+      if (entryType === 'worker_payment' && workerName.trim()) {
+        return `Worker payment to ${workerName.trim()}.`;
+      }
+      if (entryType === 'customer_receipt' && customerName.trim()) {
+        return `Customer receipt from ${customerName.trim()}.`;
+      }
+      if (entryType === 'supplier_payment' && supplierName.trim()) {
+        return `Supplier payment to ${supplierName.trim()}.`;
+      }
+      if (entryType === 'courier_payment' && courierName.trim()) {
+        return `Courier payment to ${courierName.trim()}.`;
+      }
+      return prev;
+    });
+  }, [entryType, workerName, customerName, supplierName, courierName]);
+
   const preview = useMemo(() => {
     const touchesPayment = ['customer_receipt', 'supplier_payment', 'worker_payment', 'expense_payment', 'courier_payment'].includes(entryType);
     const ledgerSync =

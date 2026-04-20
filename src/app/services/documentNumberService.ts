@@ -182,8 +182,36 @@ export const documentNumberService = {
     const prefix = 'STD-PROD-';
     const maxNum = await this.getMaxDocumentNumber(companyId, 'production', prefix);
     const nextNum = maxNum + 1;
-    const padded = String(nextNum).padStart(5, '0');
+    const padded = String(nextNum).padStart(4, '0');
     return `${prefix}${padded}`;
+  },
+
+  /**
+   * Get next production number: PRD-0001, PRD-0002, ...
+   * Scans studio_productions.production_no for the max sequential number.
+   * Only counts exact PRD-NNNN format (ignores legacy PRD-STD-xxxx or PRD-uuid formats).
+   */
+  async getNextProductionNumber(companyId: string): Promise<string> {
+    const prefix = 'PRD-';
+    const { data, error } = await supabase
+      .from('studio_productions')
+      .select('production_no')
+      .eq('company_id', companyId)
+      .not('production_no', 'is', null);
+
+    let maxNum = 0;
+    if (!error && data?.length) {
+      for (const row of data) {
+        const no = (row as any).production_no;
+        if (!no) continue;
+        const match = no.match(/^PRD-(\d+)$/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > maxNum) maxNum = num;
+        }
+      }
+    }
+    return `${prefix}${String(maxNum + 1).padStart(4, '0')}`;
   },
 
   /**

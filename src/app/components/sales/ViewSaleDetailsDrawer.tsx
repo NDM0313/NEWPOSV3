@@ -192,8 +192,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
   const handleShareWhatsApp = useCallback(() => {
     if (!sale) return;
-    const studioCost = Number(sale.studioCharges ?? 0);
-    const total = (sale.total ?? 0) + studioCost;
+    // Use sale.total directly — studio product line is already included in total
+    const total = (sale.total ?? 0) + (Number(sale.shippingCharges ?? sale.expenses ?? (sale as any).shipment_charges) || 0);
     const paid = payments.length > 0 ? payments.reduce((s, p) => s + (Number(p.amount) || 0), 0) : (sale.paid ?? 0);
     const due = Math.max(0, total - paid);
     const baseUrl = typeof window !== 'undefined' ? window.location.origin + (import.meta.env?.BASE_URL || '') : '';

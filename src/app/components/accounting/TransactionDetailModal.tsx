@@ -237,12 +237,6 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     paymentToEdit: NonNullable<PaymentDialogProps['paymentToEdit']>;
   } | null>(null);
   const autoLaunchConsumedRef = useRef(false);
-  const hasChildEditorOpen =
-    journalQuickEditOpen ||
-    manualReceiptEditorOpen ||
-    supplierManualEditorOpen ||
-    rentalPaymentEditorOpen ||
-    !!genericPaymentEditor;
 
   const [paymentTraceOpen, setPaymentTraceOpen] = useState(false);
   const [paymentTrace, setPaymentTrace] = useState<PaymentDeepTrace | null>(null);
@@ -308,6 +302,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       setGenericPaymentEditor(null);
       setRentalForPaymentDialog(null);
       setTxnHasActiveCorrectionReversal(false);
+      setJournalQuickEditOpen(false);
     }
   }, [isOpen]);
 
@@ -787,7 +782,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
   return (
     <>
-    <Dialog open={isOpen && !hasChildEditorOpen} onOpenChange={onClose}>
+    {/* Keep parent open while nested editors (e.g. journal quick edit) are open — closing parent here unmounted the child Dialog and caused flicker. */}
+    <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="!w-[800px] !max-w-[800px] sm:!max-w-[800px] max-h-[95vh] overflow-auto bg-gray-900 border-gray-800">
         <DialogHeader>
           <DialogTitle className="text-white flex items-center justify-between">

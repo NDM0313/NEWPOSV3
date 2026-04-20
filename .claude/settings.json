@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/ndm31/dev/Corusr/NEW POSV3/src/app/context/**)",
+      "Read(//c/Users/ndm31/dev/Corusr/NEW POSV3/src/app/services/**)"
+    ]
+  }
+}

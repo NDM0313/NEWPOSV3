@@ -132,7 +132,7 @@ export const ItemLifecycleReport = () => {
 
       {/* 3. The "Movement" Table */}
       <div className="border border-gray-800 rounded-xl overflow-hidden bg-gray-900/30 shadow-sm">
-        <Table>
+        <Table className="text-base leading-snug">
           <TableHeader className="bg-gray-950">
             <TableRow className="border-gray-800 hover:bg-gray-950">
               <TableHead className="text-gray-400 h-12">Date</TableHead>
@@ -154,10 +154,10 @@ export const ItemLifecycleReport = () => {
                   'hover:bg-gray-800/30'
                 )}
               >
-                <TableCell className="text-gray-300 font-mono text-xs py-4">{row.date}</TableCell>
+                <TableCell className="text-gray-300 font-mono text-sm py-4">{row.date}</TableCell>
                 <TableCell className="py-4">
                   <span className={cn(
-                    "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border",
+                    "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm font-bold border",
                     row.type === 'Sale' ? "bg-red-500/10 text-red-400 border-red-500/20" :
                     row.type === 'Purchase' ? "bg-green-500/10 text-green-400 border-green-500/20" :
                     "bg-gray-700/50 text-gray-300 border-gray-600"
@@ -168,14 +168,14 @@ export const ItemLifecycleReport = () => {
                   </span>
                 </TableCell>
                 <TableCell className="py-4">
-                  <span className="text-blue-400 hover:text-blue-300 hover:underline cursor-pointer text-sm font-medium">
+                  <span className="text-blue-400 hover:text-blue-300 hover:underline cursor-pointer text-base font-medium">
                     {row.ref}
                   </span>
                 </TableCell>
                 <TableCell className="text-gray-300 font-medium py-4">{row.party}</TableCell>
                 <TableCell className="text-center py-4">
                   <span className={cn(
-                    "font-mono font-bold text-sm",
+                    "font-mono font-bold text-base",
                     row.change > 0 ? "text-green-500" : "text-red-500"
                   )}>
                     {row.change > 0 ? '+' : ''}{row.change}

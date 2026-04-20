@@ -5,7 +5,8 @@
       "Bash(ssh dincouture-vps 'docker exec -i supabase-db psql -U postgres -d postgres -c \":*)",
       "Bash(xargs grep:*)",
       "Bash(ls -d \"/c/Users/ndm31/dev/Corusr/NEW POSV3\"/*/)",
-      "Bash(grep -i -E \"\\\\.\\(ts|tsx|js\\)$\")"
+      "Bash(grep -i -E \"\\\\.\\(ts|tsx|js\\)$\")",
+      "Bash(./node_modules/.bin/tsc --noEmit --pretty)"
     ]
   }
 }

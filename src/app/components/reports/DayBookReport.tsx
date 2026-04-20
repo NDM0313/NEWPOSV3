@@ -456,7 +456,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         <>
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-base leading-snug">
                 <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
                   <tr>
                     {([
@@ -596,7 +596,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                             {e.paymentId ? 'Edit payment' : 'Edit'}
                           </Button>
                         ) : (
-                          <span className="text-gray-600 text-xs tabular-nums">—</span>
+                          <span className="text-gray-600 text-sm tabular-nums">—</span>
                         )}
                       </td>
                     )}

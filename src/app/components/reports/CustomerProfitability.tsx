@@ -58,7 +58,7 @@ export const CustomerProfitabilityReport = () => {
       {/* Data Table */}
       <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-base leading-snug">
             <thead className="bg-gray-950/80 text-gray-400 font-medium border-b border-gray-800">
               <tr>
                 <th className="px-6 py-4">Customer Name</th>

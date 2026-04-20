@@ -39,15 +39,15 @@ interface ProductRentalHistoryRow {
   rentalId: string;
   rentalNo: string;
   customerName: string;
-  eventDate: string;
-  movementType: 'rental_out' | 'rental_in';
+  pickupDate: string | null;
+  returnDate: string | null;
   qty: number;
   itemLineTotal: number;
   rentalBookingTotal: number;
-  pickupOrStart: string | null;
   expectedReturn: string | null;
   actualReturn: string | null;
   rentalStatus: string;
+  displayStatus: 'Returned' | 'Pending' | 'Booked' | 'Cancelled' | 'Unknown';
   damageCharges: number;
   penaltyPaid: boolean;
   damageNotes: string | null;
@@ -644,6 +644,7 @@ export const ProductLedger = () => {
         .eq('reference_type', 'rental')
         .in('movement_type', ['rental_out', 'rental_in']);
       if (branchFilter) mq = mq.eq('branch_id', branchFilter);
+      if (selectedVariationId) mq = mq.eq('variation_id', selectedVariationId);
       const { data: movs, error: mErr } = await mq;
       if (mErr) throw mErr;
       const movList = (movs || []) as any[];
@@ -696,61 +697,35 @@ export const ProductLedger = () => {
         other,
       });
 
-      const rows: ProductRentalHistoryRow[] = [];
-      const pushRow = (
-        id: string,
-        rid: string,
-        rental: any,
-        item: any,
-        eventDate: string,
-        movementType: 'rental_out' | 'rental_in',
-        qty: number
-      ) => {
-        const branchLabel = branches.find(b => b.id === rental.branch_id)?.name || rental.branch_id || '—';
-        rows.push({
-          id,
-          rentalId: rid,
-          rentalNo: String(rental.booking_no || rid.slice(0, 8)),
-          customerName: String(rental.customer_name || '—'),
-          eventDate,
-          movementType,
-          qty,
-          itemLineTotal: Number(item?.total ?? 0) || (Number(item?.quantity) || 0) * (Number(item?.rate_per_day || item?.rate) || 0),
-          rentalBookingTotal: Number(rental.total_amount ?? 0) || 0,
-          pickupOrStart: rental.pickup_date || rental.booking_date || null,
-          expectedReturn: rental.return_date || null,
-          actualReturn: rental.actual_return_date ?? null,
-          rentalStatus: String(rental.status || ''),
-          damageCharges: Number(rental.damage_charges ?? 0) || 0,
-          penaltyPaid: rental.penalty_paid === true,
-          damageNotes: rental.damage_notes ?? null,
-          conditionType: rental.condition_type ?? null,
-          branchLabel,
-        });
-      };
+      // ── Build ONE row per rental (merged pickup + return) ──
+      // Track pickup/return dates per rental from movements
+      const pickupDateByRental = new Map<string, string>();
+      const returnDateByRental = new Map<string, string>();
+      const qtyByRental = new Map<string, number>();
 
       for (const m of movList) {
         const rid = m.reference_id as string;
-        const rental = rentMap.get(rid);
-        if (!rental) continue;
+        if (!rid || !rentMap.has(rid)) continue;
         const t = new Date(m.created_at).getTime();
         if (!inRangeTs(t)) continue;
-        const item = itemByRental.get(rid);
-        const qty = Math.abs(Number(m.quantity) || 0);
-        const mt = m.movement_type === 'rental_in' ? 'rental_in' : 'rental_out';
         const day = localCalendarDayFromIso(m.created_at);
-        pushRow(String(m.id), rid, rental, item, day, mt, qty);
+        const qty = Math.abs(Number(m.quantity) || 0);
+        if (m.movement_type === 'rental_out') {
+          pickupDateByRental.set(rid, day);
+          qtyByRental.set(rid, qty);
+        } else if (m.movement_type === 'rental_in') {
+          returnDateByRental.set(rid, day);
+          if (!qtyByRental.has(rid)) qtyByRental.set(rid, qty);
+        }
       }
 
-      // Fallback: bookings with no stock_movements OR movements filtered out by date range
-      // Always add fallback rows for rentals that have no movement-based rows
-      const rentalsWithMovRows = new Set(rows.map(r => r.rentalId));
+      // Fallback: rentals that had no movement-based data in this range
+      const rentalsWithMov = new Set([...pickupDateByRental.keys(), ...returnDateByRental.keys()]);
       for (const rid of rentalIds) {
-        if (rentalsWithMovRows.has(rid)) continue; // already has movement-based rows
+        if (rentalsWithMov.has(rid)) continue;
         const rental = rentMap.get(rid);
         if (!rental) continue;
         const item = itemByRental.get(rid);
-        // Try all possible date columns
         const pickupStr = rental.pickup_date || rental.booking_date;
         const returnStr = rental.actual_return_date || rental.return_date;
         const startMs = parseSqlDateOnlyToLocalNoon(pickupStr);
@@ -758,25 +733,63 @@ export const ProductLedger = () => {
         const qty = Math.abs(Number(item?.quantity) || 0) || 1;
         const st = String(rental.status || '').toLowerCase();
 
-        // For pickup row: use date if available, else always show for active/returned rentals
+        let pickupDay: string | null = null;
         if (startMs != null && inRangeTs(startMs)) {
-          pushRow(`fb-out-${rid}`, rid, rental, item, localCalendarDayFromTs(startMs), 'rental_out', qty);
+          pickupDay = localCalendarDayFromTs(startMs);
         } else if (['active', 'picked_up', 'returned', 'overdue', 'closed'].includes(st)) {
-          // No date parseable but rental was picked up — show with booking_date or today
-          const fallbackDate = pickupStr?.slice(0, 10) || rental.booking_date?.slice(0, 10) || new Date().toISOString().slice(0, 10);
-          pushRow(`fb-out-${rid}`, rid, rental, item, fallbackDate, 'rental_out', qty);
+          pickupDay = pickupStr?.slice(0, 10) || rental.booking_date?.slice(0, 10) || new Date().toISOString().slice(0, 10);
         }
+        if (pickupDay) { pickupDateByRental.set(rid, pickupDay); qtyByRental.set(rid, qty); }
 
-        // For return row: show if returned
+        let returnDay: string | null = null;
         if (retMs != null && inRangeTs(retMs)) {
-          pushRow(`fb-in-${rid}`, rid, rental, item, localCalendarDayFromTs(retMs), 'rental_in', qty);
+          returnDay = localCalendarDayFromTs(retMs);
         } else if (['returned', 'closed'].includes(st)) {
-          const fallbackRetDate = returnStr?.slice(0, 10) || new Date().toISOString().slice(0, 10);
-          pushRow(`fb-in-${rid}`, rid, rental, item, fallbackRetDate, 'rental_in', qty);
+          returnDay = returnStr?.slice(0, 10) || new Date().toISOString().slice(0, 10);
         }
+        if (returnDay) { returnDateByRental.set(rid, returnDay); }
       }
 
-      rows.sort((a, b) => a.eventDate.localeCompare(b.eventDate) || a.rentalNo.localeCompare(b.rentalNo));
+      // Merge into one row per rental
+      const allTouchedRentals = new Set([...pickupDateByRental.keys(), ...returnDateByRental.keys()]);
+      const rows: ProductRentalHistoryRow[] = [];
+      for (const rid of allTouchedRentals) {
+        const rental = rentMap.get(rid);
+        if (!rental) continue;
+        const item = itemByRental.get(rid);
+        const st = String(rental.status || '').toLowerCase();
+        const f = flagsByRental.get(rid) || { out: false, in: false };
+
+        let displayStatus: ProductRentalHistoryRow['displayStatus'] = 'Unknown';
+        if (st === 'cancelled') displayStatus = 'Cancelled';
+        else if ((f.out && f.in) || ['returned', 'closed'].includes(st)) displayStatus = 'Returned';
+        else if (f.out && !f.in && ['active', 'rented', 'picked_up', 'overdue'].includes(st)) displayStatus = 'Pending';
+        else if (!f.out && ['draft', 'booked'].includes(st)) displayStatus = 'Booked';
+
+        const branchLabel = branches.find(b => b.id === rental.branch_id)?.name || rental.branch_id || '—';
+        rows.push({
+          id: rid,
+          rentalId: rid,
+          rentalNo: String(rental.booking_no || rid.slice(0, 8)),
+          customerName: String(rental.customer_name || '—'),
+          pickupDate: pickupDateByRental.get(rid) || rental.pickup_date || rental.booking_date || null,
+          returnDate: returnDateByRental.get(rid) || rental.actual_return_date || null,
+          qty: qtyByRental.get(rid) || Math.abs(Number(item?.quantity) || 0) || 1,
+          itemLineTotal: Number(item?.total ?? 0) || (Number(item?.quantity) || 0) * (Number(item?.rate_per_day || item?.rate) || 0),
+          rentalBookingTotal: Number(rental.total_amount ?? 0) || 0,
+          expectedReturn: rental.return_date || null,
+          actualReturn: rental.actual_return_date ?? null,
+          rentalStatus: String(rental.status || ''),
+          displayStatus,
+          damageCharges: Number(rental.damage_charges ?? 0) || 0,
+          penaltyPaid: rental.penalty_paid === true,
+          damageNotes: rental.damage_notes ?? null,
+          conditionType: rental.condition_type ?? null,
+          branchLabel,
+        });
+      }
+
+      rows.sort((a, b) => (a.pickupDate || '').localeCompare(b.pickupDate || '') || a.rentalNo.localeCompare(b.rentalNo));
       setRentalHistoryRows(rows);
     } catch (e) {
       console.error('[ProductLedger] rental history:', e);
@@ -785,7 +798,7 @@ export const ProductLedger = () => {
     } finally {
       setRentalHistoryLoading(false);
     }
-  }, [companyId, selectedProductId, selectedBranchId, contextBranchId, branches, rentalTimeRange.start.getTime(), rentalTimeRange.end.getTime()]);
+  }, [companyId, selectedProductId, selectedVariationId, selectedBranchId, contextBranchId, branches, rentalTimeRange.start.getTime(), rentalTimeRange.end.getTime()]);
 
   useEffect(() => {
     if (selectedProductId && activeTab === 'rental-history') loadRentalHistory();
@@ -1092,7 +1105,7 @@ export const ProductLedger = () => {
                 </div>
               </div>
               <div className="overflow-x-auto max-h-[65vh]">
-                <table className="w-full text-xs text-left">
+                <table className="w-full text-base text-left leading-snug">
                   <thead className="bg-gray-950/80 text-gray-400 font-medium border-b border-gray-800 sticky top-0">
                     <tr>
                       <th className="px-3 py-2.5">Product</th>
@@ -1123,7 +1136,7 @@ export const ProductLedger = () => {
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-gray-950 border-t-2 border-gray-700 text-xs font-semibold sticky bottom-0">
+                  <tfoot className="bg-gray-950 border-t-2 border-gray-700 text-base font-semibold sticky bottom-0">
                     <tr className="text-gray-300">
                       <td colSpan={3} className="px-3 py-2.5 text-gray-400 uppercase tracking-wide">
                         Total ({filteredAllSummary.length} {filteredAllSummary.length === 1 ? 'product' : 'products'})
@@ -1241,7 +1254,7 @@ export const ProductLedger = () => {
       ) : (
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden print:bg-white print:text-black">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-base leading-snug">
               <thead className="bg-gray-950/80 text-gray-400 font-medium border-b border-gray-800 sticky top-0">
                 <tr>
                   <th className="px-2 py-2.5 whitespace-nowrap">Date</th>
@@ -1289,7 +1302,7 @@ export const ProductLedger = () => {
                 ))}
               </tbody>
               {/* Totals row */}
-              <tfoot className="bg-gray-950 border-t-2 border-gray-700 font-bold text-xs">
+              <tfoot className="bg-gray-950 border-t-2 border-gray-700 font-bold text-base">
                 <tr>
                   <td colSpan={selectedProduct?.has_variations ? 5 : 4} className="px-2 py-2.5 text-gray-400 uppercase text-[10px]">Totals</td>
                   <td className="px-2 py-2.5 text-right font-mono text-green-400">{fmt(totals.qtyIn)}</td>
@@ -1341,7 +1354,7 @@ export const ProductLedger = () => {
           {/* Customer-wise sale table */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
             <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-gray-300">Customer-wise Sale Breakdown</div>
-            <table className="w-full text-xs text-left">
+            <table className="w-full text-base text-left leading-snug">
               <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
                 <tr>
                   <th className="px-4 py-2">Customer</th>
@@ -1371,7 +1384,7 @@ export const ProductLedger = () => {
           {/* Month-wise sale table */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
             <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-gray-300">Month-wise Sale Breakdown</div>
-            <table className="w-full text-xs text-left">
+            <table className="w-full text-base text-left leading-snug">
               <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
                 <tr>
                   <th className="px-4 py-2">Month</th>
@@ -1409,7 +1422,7 @@ export const ProductLedger = () => {
           {/* Supplier-wise purchases */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
             <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-green-400">Supplier Purchase Trace</div>
-            <table className="w-full text-xs text-left">
+            <table className="w-full text-base text-left leading-snug">
               <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
                 <tr>
                   <th className="px-4 py-2">Supplier</th>
@@ -1437,7 +1450,7 @@ export const ProductLedger = () => {
           {/* Customer-wise sales */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
             <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-red-400">Customer Sale Trace</div>
-            <table className="w-full text-xs text-left">
+            <table className="w-full text-base text-left leading-snug">
               <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
                 <tr>
                   <th className="px-4 py-2">Customer</th>
@@ -1466,7 +1479,7 @@ export const ProductLedger = () => {
           {sourceTrace.returns.length > 0 && (
             <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
               <div className="px-4 py-2.5 border-b border-gray-800 text-sm font-medium text-amber-400">Return Trace</div>
-              <table className="w-full text-xs text-left">
+              <table className="w-full text-base text-left leading-snug">
                 <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
                   <tr>
                     <th className="px-4 py-2">Date</th>
@@ -1525,18 +1538,14 @@ export const ProductLedger = () => {
         const costPrice = Number(productData?.cost_price) || 0;
         const residualPct = Math.max(0, 100 - (rentalCountLife * depPerRental));
         const residualValue = Math.round(costPrice * residualPct / 100);
-        const pickupsInPeriod = rentalHistoryRows.filter(r => r.movementType === 'rental_out').length;
-        const returnsInPeriod = rentalHistoryRows.filter(r => r.movementType === 'rental_in').length;
-        const uniqRentals = new Set(rentalHistoryRows.map(r => r.rentalId)).size;
+        const pickupsInPeriod = rentalHistoryRows.filter(r => r.pickupDate).length;
+        const returnsInPeriod = rentalHistoryRows.filter(r => r.displayStatus === 'Returned').length;
+        const uniqRentals = rentalHistoryRows.length;
         const lineOnReturns = rentalHistoryRows
-          .filter(r => r.movementType === 'rental_in')
+          .filter(r => r.displayStatus === 'Returned')
           .reduce((s, r) => s + r.itemLineTotal, 0);
-        const damageByRental = new Map<string, number>();
-        for (const r of rentalHistoryRows) {
-          if (r.movementType === 'rental_in' && r.damageCharges > 0) damageByRental.set(r.rentalId, r.damageCharges);
-        }
-        const totalDamage = [...damageByRental.values()].reduce((a, b) => a + b, 0);
-        const penaltyReturns = rentalHistoryRows.filter(r => r.movementType === 'rental_in' && r.penaltyPaid).length;
+        const totalDamage = rentalHistoryRows.reduce((s, r) => s + r.damageCharges, 0);
+        const penaltyReturns = rentalHistoryRows.filter(r => r.penaltyPaid).length;
 
         const life = rentalLifecycleStats;
 
@@ -1623,20 +1632,18 @@ export const ProductLedger = () => {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs min-w-[960px]">
+                  <table className="w-full text-left text-base min-w-[960px] leading-snug">
                     <thead className="bg-gray-950/80 text-gray-500 uppercase border-b border-gray-800">
                       <tr>
-                        <th className="px-3 py-2 whitespace-nowrap">Event date</th>
-                        <th className="px-3 py-2 whitespace-nowrap">Event</th>
                         <th className="px-3 py-2 whitespace-nowrap">Rental #</th>
                         <th className="px-3 py-2 whitespace-nowrap">Customer</th>
                         <th className="px-3 py-2 whitespace-nowrap">Branch</th>
                         <th className="px-3 py-2 text-right whitespace-nowrap">Qty</th>
                         <th className="px-3 py-2 text-right whitespace-nowrap">Line</th>
                         <th className="px-3 py-2 text-right whitespace-nowrap">Booking total</th>
-                        <th className="px-3 py-2 whitespace-nowrap">Start</th>
+                        <th className="px-3 py-2 whitespace-nowrap">Pickup date</th>
                         <th className="px-3 py-2 whitespace-nowrap">Due return</th>
-                        <th className="px-3 py-2 whitespace-nowrap">Actual return</th>
+                        <th className="px-3 py-2 whitespace-nowrap">Return date</th>
                         <th className="px-3 py-2 whitespace-nowrap">Status</th>
                         <th className="px-3 py-2 text-right whitespace-nowrap">Damage</th>
                         <th className="px-3 py-2 whitespace-nowrap">Penalty</th>
@@ -1647,12 +1654,11 @@ export const ProductLedger = () => {
                     <tbody className="divide-y divide-gray-800/50">
                       {rentalHistoryRows.length === 0 && (
                         <tr>
-                          <td colSpan={16} className="text-center text-gray-500">
+                          <td colSpan={14} className="text-center text-gray-500">
                             <div className="space-y-2 py-10 px-4">
-                              <p className="font-medium text-gray-400">Is time window mein koi pickup/return movement match nahi hui.</p>
+                              <p className="font-medium text-gray-400">Is time window mein koi rental match nahi hui.</p>
                               <p className="text-[11px] max-w-lg mx-auto leading-relaxed">
                                 Upar Rental pipeline wale boxes poori history se aate hain — agar wahan complete cycles dikhen lekin yahan table khali ho to filter window chhoti hai; header se date range barha kar dubara check karein.
-                                Agar purane data par stock movements hi na hon to fallback sirf tab chalti hai jab DB mein koi rental movement record na ho.
                               </p>
                             </div>
                           </td>
@@ -1660,25 +1666,27 @@ export const ProductLedger = () => {
                       )}
                       {rentalHistoryRows.map(r => (
                         <tr key={r.id} className="hover:bg-gray-800/20">
-                          <td className="px-3 py-2 text-gray-300 whitespace-nowrap font-mono">{r.eventDate}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            <span className={cn(
-                              'px-1.5 py-0.5 rounded text-[10px] font-medium',
-                              r.movementType === 'rental_out' ? 'bg-amber-900/50 text-amber-200' : 'bg-emerald-900/50 text-emerald-200'
-                            )}>
-                              {r.movementType === 'rental_out' ? 'Stock out (pickup)' : 'Stock in (return)'}
-                            </span>
-                          </td>
                           <td className="px-3 py-2 text-blue-400 font-mono whitespace-nowrap">{r.rentalNo}</td>
                           <td className="px-3 py-2 text-white max-w-[140px] truncate">{r.customerName}</td>
                           <td className="px-3 py-2 text-gray-400 max-w-[100px] truncate">{r.branchLabel}</td>
-                          <td className="px-3 py-2 text-right font-mono text-gray-200">{r.movementType === 'rental_out' ? `-${fmt(r.qty)}` : `+${fmt(r.qty)}`}</td>
+                          <td className="px-3 py-2 text-right font-mono text-gray-200">{fmt(r.qty)}</td>
                           <td className="px-3 py-2 text-right font-mono text-gray-300">{formatCurrency(r.itemLineTotal)}</td>
                           <td className="px-3 py-2 text-right font-mono text-gray-400">{formatCurrency(r.rentalBookingTotal)}</td>
-                          <td className="px-3 py-2 text-gray-400 whitespace-nowrap font-mono text-[10px]">{r.pickupOrStart || '—'}</td>
+                          <td className="px-3 py-2 text-gray-400 whitespace-nowrap font-mono text-[10px]">{r.pickupDate || '—'}</td>
                           <td className="px-3 py-2 text-gray-400 whitespace-nowrap font-mono text-[10px]">{r.expectedReturn || '—'}</td>
-                          <td className="px-3 py-2 text-gray-400 whitespace-nowrap font-mono text-[10px]">{r.actualReturn || '—'}</td>
-                          <td className="px-3 py-2 text-gray-500 capitalize">{r.rentalStatus || '—'}</td>
+                          <td className="px-3 py-2 text-gray-400 whitespace-nowrap font-mono text-[10px]">{r.returnDate || r.actualReturn || '—'}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <span className={cn(
+                              'px-1.5 py-0.5 rounded text-[10px] font-medium',
+                              r.displayStatus === 'Returned' ? 'bg-emerald-900/50 text-emerald-200' :
+                              r.displayStatus === 'Pending' ? 'bg-amber-900/50 text-amber-200' :
+                              r.displayStatus === 'Booked' ? 'bg-cyan-900/50 text-cyan-200' :
+                              r.displayStatus === 'Cancelled' ? 'bg-red-900/50 text-red-200' :
+                              'bg-gray-800/50 text-gray-400'
+                            )}>
+                              {r.displayStatus}
+                            </span>
+                          </td>
                           <td className="px-3 py-2 text-right font-mono text-red-400/90">{r.damageCharges > 0 ? formatCurrency(r.damageCharges) : '—'}</td>
                           <td className="px-3 py-2 text-gray-400">{r.penaltyPaid ? 'Paid / yes' : '—'}</td>
                           <td className="px-3 py-2 text-gray-500 max-w-[100px] truncate text-[10px]">{r.conditionType || '—'}</td>

@@ -1421,7 +1421,7 @@ export const AccountLedgerReportPage: React.FC<{
             <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-base leading-snug">
             <thead className="border-b border-gray-800 bg-gray-800/50">
               <tr>
                 <th className="p-3 text-left font-medium text-gray-300">Date</th>

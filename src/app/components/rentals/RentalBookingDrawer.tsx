@@ -5,6 +5,7 @@ import { useNavigation } from '@/app/context/NavigationContext';
 import { rentalService } from '@/app/services/rentalService';
 import { productService } from '@/app/services/productService';
 import { contactService } from '@/app/services/contactService';
+import { userService } from '@/app/services/userService';
 import { 
   Calendar as CalendarIcon, 
   Search, 
@@ -177,6 +178,13 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const [rentalExpenses, setRentalExpenses] = useState<Array<{ description: string; amount: number }>>([]);
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseAmt, setExpenseAmt] = useState('');
+
+  // Salesman & Commission
+  const [salesmen, setSalesmen] = useState<any[]>([]);
+  const [salesmanId, setSalesmanId] = useState<string>('');
+  const [salesmanDropdownOpen, setSalesmanDropdownOpen] = useState(false);
+  const [commissionType, setCommissionType] = useState<'percentage' | 'fixed'>('percentage');
+  const [commissionValue, setCommissionValue] = useState<number>(0);
   
   // Return Modal State
   const [showReturnModal, setShowReturnModal] = useState(false);
@@ -273,8 +281,32 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   useEffect(() => {
     if (isOpen && companyId) {
       loadData();
+      // Load salesmen for commission
+      userService.getSalesmen(companyId).then(list => {
+        console.log('[RentalBookingDrawer] Salesmen loaded:', list?.length, list?.map((s: any) => s.full_name || s.name));
+        setSalesmen(list || []);
+      }).catch((err) => { console.warn('[RentalBookingDrawer] getSalesmen failed:', err); setSalesmen([]); });
     }
   }, [isOpen, companyId, loadData]);
+
+  // Auto-fill commission when salesman is selected
+  const handleSalesmanSelect = (id: string) => {
+    console.log('[RentalBookingDrawer] Salesman selected:', id);
+    setSalesmanId(id);
+    setSalesmanDropdownOpen(false);
+    if (id) {
+      const sm = salesmen.find((s: any) => s.id === id);
+      if (sm) {
+        const rentalRate = sm.rental_commission_percent ?? sm.default_commission_percent;
+        if (rentalRate != null) {
+          setCommissionType('percentage');
+          setCommissionValue(Number(rentalRate));
+        }
+      }
+    } else {
+      setCommissionValue(0);
+    }
+  };
 
   // --- DATA MAPPING LOGIC ---
   const mappedProducts: SearchProduct[] = products.map(p => {
@@ -429,6 +461,11 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
         toast.success('Booking updated successfully');
       } else {
         const advanceIntent = parseFloat(advancePaid) || 0;
+        console.log('[RentalBookingDrawer] handleBookOrder state:', { salesmanId, commissionType, commissionValue, salesmenCount: salesmen.length });
+        const commissionBase = totalRent - (rentalExpenses.reduce((s, e) => s + e.amount, 0));
+        const calcCommission = commissionType === 'percentage'
+          ? (commissionBase * commissionValue) / 100
+          : commissionValue;
         const result = await rentalService.createBooking({
           companyId,
           branchId,
@@ -443,6 +480,10 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           paidAmount: 0,
           notes: null,
           expenses: rentalExpenses.length > 0 ? rentalExpenses : undefined,
+          salesmanId: salesmanId || null,
+          commissionAmount: salesmanId ? calcCommission : 0,
+          commissionPercent: salesmanId && commissionType === 'percentage' ? commissionValue : null,
+          commissionEligibleAmount: commissionBase,
           items,
         });
         toast.success(`Booking ${result.booking_no} saved.`);
@@ -673,6 +714,74 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                         showTime={true}
                       />
                    </div>
+                </div>
+
+                {/* Row 1b: Salesman & Commission */}
+                <div className="flex items-end gap-4">
+                   <div className="flex-1 space-y-1">
+                      <Label className="text-xs text-gray-500 uppercase">Salesman</Label>
+                      <Popover open={salesmanDropdownOpen} onOpenChange={setSalesmanDropdownOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" role="combobox" className="w-full justify-between bg-gray-900 border-gray-700 text-white hover:bg-gray-800 hover:text-white h-9">
+                            {salesmanId ? (salesmen.find((s: any) => s.id === salesmanId)?.full_name || salesmen.find((s: any) => s.id === salesmanId)?.name || 'Select') : 'No salesman'}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[260px] p-0 bg-gray-900 border-gray-800 text-white">
+                          <Command className="bg-gray-900 text-white">
+                            <CommandInput placeholder="Search salesman..." className="h-9 border-none focus:ring-0 text-white" />
+                            <CommandList>
+                              <CommandEmpty>No salesman found</CommandEmpty>
+                              <CommandGroup>
+                                <CommandItem value="__none__" onSelect={() => handleSalesmanSelect('')} className="text-gray-400 hover:bg-gray-800 cursor-pointer">
+                                  <Check className={cn("mr-2 h-4 w-4", !salesmanId ? "opacity-100" : "opacity-0")} />
+                                  None
+                                </CommandItem>
+                                {salesmen.map((s: any) => (
+                                  <CommandItem key={s.id} value={s.full_name || s.name || s.id} onSelect={() => handleSalesmanSelect(s.id)} className="text-white hover:bg-gray-800 cursor-pointer">
+                                    <Check className={cn("mr-2 h-4 w-4", salesmanId === s.id ? "opacity-100" : "opacity-0")} />
+                                    {s.full_name || s.name}
+                                    {s.rental_commission_percent != null && <span className="ml-auto text-xs text-gray-500">{s.rental_commission_percent}%</span>}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                   </div>
+                   {salesmanId && (
+                     <>
+                       <div className="w-28 space-y-1">
+                         <Label className="text-xs text-gray-500 uppercase">Comm. Type</Label>
+                         <Select value={commissionType} onValueChange={(v: any) => setCommissionType(v)}>
+                           <SelectTrigger className="h-9 bg-gray-900 border-gray-700 text-white text-sm">
+                             <SelectValue />
+                           </SelectTrigger>
+                           <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                             <SelectItem value="percentage">%</SelectItem>
+                             <SelectItem value="fixed">Fixed</SelectItem>
+                           </SelectContent>
+                         </Select>
+                       </div>
+                       <div className="w-24 space-y-1">
+                         <Label className="text-xs text-gray-500 uppercase">{commissionType === 'percentage' ? 'Rate %' : 'Amount'}</Label>
+                         <Input
+                           type="number"
+                           value={commissionValue || ''}
+                           onChange={e => setCommissionValue(parseFloat(e.target.value) || 0)}
+                           className="h-9 bg-gray-900 border-gray-700 text-white text-right text-sm"
+                           placeholder="0"
+                         />
+                       </div>
+                       <div className="w-28 space-y-1">
+                         <Label className="text-xs text-gray-500 uppercase">Commission</Label>
+                         <div className="h-9 flex items-center px-3 bg-gray-800/50 border border-gray-800 rounded text-sm text-amber-400 font-mono">
+                           {formatCurrency(commissionType === 'percentage' ? ((currentRentPrice - totalExpenses) * commissionValue) / 100 : commissionValue)}
+                         </div>
+                       </div>
+                     </>
+                   )}
                 </div>
 
                 {/* Row 2: Rental Timeline (High Emphasis) */}
@@ -1013,6 +1122,12 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                           <span>Total Rent</span>
                           <span className="text-white font-medium">{formatCurrency(currentRentPrice)}</span>
                       </div>
+                      {salesmanId && commissionValue > 0 && (
+                        <div className="flex justify-between text-sm text-gray-400">
+                          <span>Commission ({commissionType === 'percentage' ? `${commissionValue}%` : 'Fixed'})</span>
+                          <span className="text-amber-400 font-mono">{formatCurrency(commissionType === 'percentage' ? ((currentRentPrice - totalExpenses) * commissionValue) / 100 : commissionValue)}</span>
+                        </div>
+                      )}
                       {totalExpenses > 0 && (
                         <div className="flex justify-between text-sm text-gray-400">
                           <span>Expenses</span>

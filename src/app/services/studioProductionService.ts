@@ -398,7 +398,8 @@ export async function ensureStudioProductionsForCompany(companyId: string): Prom
     for (const sale of missing) {
       const first = firstItemBySale.get(sale.id);
       if (!first?.product_id) continue;
-      const productionNo = `PRD-${sale.invoice_no || sale.id}`;
+      const { documentNumberService } = await import('@/app/services/documentNumberService');
+      const productionNo = await documentNumberService.getNextProductionNumber(sale.company_id).catch(() => `PRD-${sale.invoice_no || sale.id}`);
       const productionDate = sale.invoice_date ? new Date(sale.invoice_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
       const { data: inserted, error: insErr } = await supabase
         .from('studio_productions')
@@ -573,6 +574,17 @@ export const studioProductionService = {
     if (!existing || (existing as any).status !== 'completed') return;
     const qty = Number(existing.quantity) || 0;
     if (qty <= 0) return;
+    // Idempotency: skip if PRODUCTION_IN already exists for this production + product
+    const { data: existingMov } = await supabase
+      .from('stock_movements')
+      .select('id')
+      .eq('reference_type', 'studio_production')
+      .eq('reference_id', productionId)
+      .eq('movement_type', 'PRODUCTION_IN')
+      .eq('product_id', generatedProductId)
+      .limit(1)
+      .maybeSingle();
+    if (existingMov) return; // already posted, skip
     const fabricProductId = existing.product_id;
     const movementType = 'PRODUCTION_IN';
     const insertPayload: Record<string, unknown> = {
@@ -842,7 +854,7 @@ export const studioProductionService = {
 
       const { data: saleRow, error: saleFetchErr } = await supabase
         .from('sales')
-        .select('id, total, paid_amount, company_id')
+        .select('id, total, paid_amount, company_id, order_no, invoice_no')
         .eq('id', saleId)
         .single();
       if (saleFetchErr || !saleRow) throw new Error('Linked sale not found. Cannot complete production.');
@@ -888,41 +900,80 @@ export const studioProductionService = {
       }
 
       // 2. Inventory – post to generated product (STD-PROD) so Stock Ledger shows history; fallback to product_id
+      //    Idempotency: skip if PRODUCTION_IN already exists (guards against race conditions / duplicate calls)
       const qty = Number(existing.quantity) || 0;
       if (qty > 0) {
         const productIdForStock = (existing as any).generated_product_id || existing.product_id;
-        const movementType = 'PRODUCTION_IN';
-        const insertPayload: Record<string, unknown> = {
-          company_id: existing.company_id,
-          branch_id: existing.branch_id,
-          product_id: productIdForStock,
-          movement_type: movementType,
-          quantity: qty,
-          unit_cost: existing.actual_cost ? Number(existing.actual_cost) / qty : 0,
-          total_cost: existing.actual_cost ?? 0,
-          reference_type: 'studio_production',
-          reference_id: id,
-          notes: `Production ${existing.production_no} completed`,
-          created_by: performedBy ?? null,
-        };
-        const { error: movErr } = await supabase.from('stock_movements').insert(insertPayload);
-        if (movErr) throw new Error(`Inventory update failed: ${movErr.message}`);
-        // Stock is updated by trigger_update_stock_from_movement; do not update products.current_stock here.
+        const { data: existingMovement } = await supabase
+          .from('stock_movements')
+          .select('id')
+          .eq('reference_type', 'studio_production')
+          .eq('reference_id', id)
+          .eq('movement_type', 'PRODUCTION_IN')
+          .limit(1)
+          .maybeSingle();
+        if (!existingMovement) {
+          const movementType = 'PRODUCTION_IN';
+          const insertPayload: Record<string, unknown> = {
+            company_id: existing.company_id,
+            branch_id: existing.branch_id,
+            product_id: productIdForStock,
+            movement_type: movementType,
+            quantity: qty,
+            unit_cost: existing.actual_cost ? Number(existing.actual_cost) / qty : 0,
+            total_cost: existing.actual_cost ?? 0,
+            reference_type: 'studio_production',
+            reference_id: id,
+            notes: `Production ${existing.production_no} completed`,
+            created_by: performedBy ?? null,
+          };
+          const { error: movErr } = await supabase.from('stock_movements').insert(insertPayload);
+          if (movErr) throw new Error(`Inventory update failed: ${movErr.message}`);
+          // Stock is updated by trigger_update_stock_from_movement; do not update products.current_stock here.
+        }
       }
 
-      // 3. Sale: studio_charges and due_amount (do NOT merge into total; balance_due = total + studio_charges - paid_amount)
+      // 3. Sale: studio_charges (metadata) and due_amount
+      // If generated invoice item exists, studio product line is already in sales.total — don't add studioCharges again
+      const hasGeneratedItem = !!(existing as any).generated_invoice_item_id;
       const currentTotal = Number(saleRow.total) || 0;
       const paidAmount = Number((saleRow as any).paid_amount) || 0;
-      const dueAmount = Math.max(0, currentTotal + studioCharges - paidAmount);
+      const dueAmount = hasGeneratedItem
+        ? Math.max(0, currentTotal - paidAmount) // studio line already in total
+        : Math.max(0, currentTotal + studioCharges - paidAmount); // legacy: no studio line in items
+      const saleUpdatePayload: Record<string, unknown> = {
+        studio_charges: studioCharges, // metadata only (production cost for reports)
+        due_amount: dueAmount,
+        status: 'final',
+      };
+      // Studio sales store their number in order_no — copy to invoice_no for customer ledger visibility
+      if (!(saleRow as any).invoice_no) {
+        const orderNo = (saleRow as any).order_no;
+        if (orderNo) saleUpdatePayload.invoice_no = orderNo;
+      }
       const { error: saleUpdateErr } = await supabase
         .from('sales')
-        .update({
-          studio_charges: studioCharges,
-          due_amount: dueAmount,
-          status: 'final',
-        })
+        .update(saleUpdatePayload)
         .eq('id', saleId);
       if (saleUpdateErr) throw new Error(`Failed to update sale with studio charges: ${saleUpdateErr.message}`);
+
+      // Update generated product cost_price for COGS calculation
+      if ((existing as any).generated_product_id && studioCharges > 0) {
+        await supabase
+          .from('products')
+          .update({ cost_price: studioCharges })
+          .eq('id', (existing as any).generated_product_id);
+      }
+
+      // 4. Create sale accounting JE (Dr AR / Cr Revenue / Dr COGS / Cr Inventory)
+      // Studio sales become 'final' here but SalesContext never triggers JE for this path
+      try {
+        const { postSaleDocumentAccounting } = await import('./documentPostingEngine');
+        const jeId = await postSaleDocumentAccounting(saleId);
+        if (jeId) console.log('[studioProductionService] Sale JE created:', jeId);
+      } catch (jeErr: any) {
+        console.warn('[studioProductionService] Sale JE creation failed (non-fatal):', jeErr?.message);
+      }
     }
     // cancelled: no inventory impact
 

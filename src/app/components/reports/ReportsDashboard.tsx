@@ -525,7 +525,7 @@ export const ReportsDashboard = () => {
                       <p className="text-sm text-gray-400">Outstanding payments by customer</p>
                    </div>
                    <div className="flex-1 overflow-auto">
-                      <table className="w-full text-left text-sm">
+                      <table className="w-full text-left text-base leading-snug">
                          <thead className="bg-gray-950/50 text-gray-500 font-medium border-b border-gray-800">
                             <tr>
                                <th className="px-4 py-3">Customer</th>
@@ -611,7 +611,7 @@ export const ReportsDashboard = () => {
                       <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white">Order Stock</Button>
                    </div>
                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm">
+                      <table className="w-full text-left text-base leading-snug">
                          <thead className="bg-gray-950/50 text-gray-500 border-b border-gray-800">
                             <tr>
                                <th className="px-6 py-3 font-medium">Item Name</th>

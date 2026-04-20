@@ -166,6 +166,9 @@ export const PackingListWorkflow: React.FC<PackingListWorkflowProps> = ({
       {printDoc && (
         <Dialog open={!!printDoc} onOpenChange={(open) => !open && setPrintDoc(null)}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto print:max-w-none">
+            <DialogHeader className="sr-only">
+              <DialogTitle>Print packing list</DialogTitle>
+            </DialogHeader>
             <UnifiedPackingListView
               document={printDoc}
               companyId={companyId}

@@ -16,6 +16,11 @@ import {
   reversePurchaseDocumentJournalEntry,
 } from './purchaseAccountingService';
 
+// Expose for console repair: window.__postSaleAccounting('sale-uuid')
+if (typeof window !== 'undefined') {
+  (window as any).__postSaleAccounting = (saleId: string) => postSaleDocumentAccounting(saleId);
+}
+
 /** Post canonical sale document JE (idempotent). Loads sale row from DB. */
 export async function postSaleDocumentAccounting(saleId: string): Promise<string | null> {
   if (!saleId) return null;

@@ -635,6 +635,9 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         if (payableAccount) contactData.payable_account_id = payableAccount;
       }
       if (contactRoles.worker && workerType) contactData.worker_role = workerType;
+      if (contactRoles.worker) {
+        contactData.worker_default_rate = parseMoney(formData.get('worker-rate'));
+      }
 
       // Remove undefined so API doesn't receive invalid payload
       Object.keys(contactData).forEach((k) => {
@@ -731,6 +734,10 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
   const defaultContactPerson = ec?.contact_person ?? '';
   const defaultSupplierNtn = ec?.ntn ?? '';
   const defaultSupplierOpeningBalance = ec?.supplier_opening_balance != null ? String(ec.supplier_opening_balance) : '';
+  const defaultWorkerRate =
+    ec?.worker_default_rate != null && ec.worker_default_rate !== ''
+      ? String(Number(ec.worker_default_rate))
+      : '';
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -1016,11 +1023,16 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
             {/* Worker Rate */}
             <div className="space-y-2">
               <Label htmlFor="worker-rate" className="text-gray-200">Rate / Payment</Label>
-              <Input 
-                id="worker-rate" 
+              <Input
+                id="worker-rate"
+                name="worker-rate"
                 type="number"
-                placeholder="e.g. 500 per piece / day" 
-                className="bg-gray-900 border-gray-700 text-white" 
+                min={0}
+                step="0.01"
+                key={`worker-rate-${drawerData?.contact?.uuid ?? 'new'}-${drawerData?.contact?.uuid ? (loadingEdit ? 'loading' : 'ready') : 'new'}`}
+                defaultValue={defaultWorkerRate}
+                placeholder="e.g. 500 per piece / day"
+                className="bg-gray-900 border-gray-700 text-white"
               />
               <p className="text-xs text-gray-500">Standard payment rate for this worker</p>
             </div>

@@ -505,7 +505,7 @@ export const StudioCostsTab: React.FC = () => {
                     <th className="px-4 py-3 text-left w-8"></th>
                     <th className="px-4 py-3 text-left">Production</th>
                     <th className="px-4 py-3 text-left">Sale / Customer</th>
-                    <th className="px-4 py-3 text-left">Product</th>
+                    <th className="px-4 py-3 text-left">Product / source</th>
                     <th className="px-4 py-3 text-right">Stages</th>
                     <th className="px-4 py-3 text-right">Total Cost</th>
                     <th className="px-4 py-3 text-left">Status</th>
@@ -540,7 +540,25 @@ export const StudioCostsTab: React.FC = () => {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-300">{p.productName || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-300">
+                          <div className="font-medium text-gray-200">{p.productName || '—'}</div>
+                          {p.productSourceKind === 'studio_created' && (
+                            <Badge
+                              variant="outline"
+                              className="mt-1.5 text-[10px] font-normal border-violet-500/40 text-violet-200 bg-violet-500/10"
+                            >
+                              Studio-created item
+                            </Badge>
+                          )}
+                          {p.productSourceKind === 'sale_line' && (
+                            <Badge
+                              variant="outline"
+                              className="mt-1.5 text-[10px] font-normal border-slate-600 text-gray-400 bg-gray-800/50"
+                            >
+                              From sale (catalog)
+                            </Badge>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right text-sm text-gray-300">{p.stages.length}</td>
                         <td className="px-4 py-3 text-right text-sm font-semibold text-white">
                           {formatCurrency(p.totalStageCost)}

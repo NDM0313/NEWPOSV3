@@ -156,7 +156,12 @@ export async function syncInvoiceWithProductionPricing(
       return result;
     }
 
+    // Update generated product cost_price for COGS calculation
     const studioItemProductId = studioItem.product_id;
+    if (studioItemProductId && productionCost > 0) {
+      await supabase.from('products').update({ cost_price: productionCost }).eq('id', studioItemProductId);
+    }
+
     const needsBackfill =
       !production.generated_invoice_item_id ||
       production.generated_invoice_item_id !== studioItemId ||

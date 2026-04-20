@@ -47,6 +47,22 @@ async function getOutgoingPaymentRef(companyId: string, branchId: string | null)
   }
 }
 
+/** Worker/courier payments must NOT reuse supplier_payment numbers — same sequence caused payments_reference_number_unique collisions with supplier rows. */
+async function getWorkerOrCourierPaymentRef(companyId: string, branchId: string | null): Promise<string> {
+  try {
+    return await documentNumberService.getNextDocumentNumber(companyId, branchId, 'payment');
+  } catch {
+    return generatePaymentReference(null);
+  }
+}
+
+function isPaymentReferenceDuplicateError(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false;
+  if (err.code === '23505') return true;
+  const m = String(err.message || '').toLowerCase();
+  return m.includes('duplicate') || m.includes('payments_reference_number_unique');
+}
+
 async function getApAccountId(companyId: string): Promise<string> {
   const { data } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('code.eq.2000,name.ilike.%Accounts Payable%').limit(1);
   const id = (data?.[0] as { id: string })?.id;
@@ -313,29 +329,44 @@ export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams
   const { companyId, branchId, workerId, workerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, stageId, attachments } = params;
   if (!companyId || !workerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid worker payment params');
   const branch = validBranchId(branchId);
-  const refNo = await getOutgoingPaymentRef(companyId, branch);
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
+  const contactIdForPay = await validPaymentsContactId(companyId, workerId);
 
-  const workerPayPayload: Record<string, unknown> = {
-    company_id: companyId,
-    branch_id: branch,
-    payment_type: 'paid',
-    reference_type: 'worker_payment',
-    reference_id: workerId,
-    amount,
-    payment_method: normalizePaymentMethod(paymentMethod),
-    payment_account_id: paymentAccountId,
-    payment_date: paymentDate,
-    reference_number: refNo,
-    notes: notes || undefined,
-    received_by: uid,
-    created_by: uid,
-  };
-  if (attachments && attachments.length > 0) workerPayPayload.attachments = attachments;
-  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(workerPayPayload).select('id').single();
-  if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
-  const paymentId = (paymentRow as { id: string }).id;
+  let refNo = await getWorkerOrCourierPaymentRef(companyId, branch);
+  let paymentId = '';
+  let payErr: { code?: string; message?: string } | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const workerPayPayload: Record<string, unknown> = {
+      company_id: companyId,
+      branch_id: branch,
+      payment_type: 'paid',
+      reference_type: 'worker_payment',
+      reference_id: workerId,
+      amount,
+      payment_method: normalizePaymentMethod(paymentMethod),
+      payment_account_id: paymentAccountId,
+      payment_date: paymentDate,
+      reference_number: refNo,
+      notes: notes || undefined,
+      received_by: uid,
+      created_by: uid,
+    };
+    if (contactIdForPay) workerPayPayload.contact_id = contactIdForPay;
+    if (attachments && attachments.length > 0) workerPayPayload.attachments = attachments;
+    const { data: paymentRow, error } = await supabase.from('payments').insert(workerPayPayload).select('id').single();
+    payErr = error;
+    if (!error && paymentRow) {
+      paymentId = (paymentRow as { id: string }).id;
+      break;
+    }
+    if (isPaymentReferenceDuplicateError(error) && attempt < 4) {
+      refNo = generatePaymentReference(null);
+      continue;
+    }
+    throw new Error(`Payment row failed: ${error?.message || 'unknown'}`);
+  }
+  if (!paymentId) throw new Error(`Payment row failed: ${payErr?.message || 'unknown'}`);
 
   const payToPayable = await shouldDebitWorkerPayableForPayment(companyId, workerId, stageId ?? null, branch);
   const wpId = await getWorkerPayableAccountId(companyId);
@@ -497,7 +528,6 @@ export async function createCourierPaymentEntry(params: CreateCourierPaymentPara
   const { companyId, branchId, courierId, courierName, courierContactId, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments } = params;
   if (!companyId || !courierId || amount <= 0 || !paymentAccountId) throw new Error('Invalid courier payment params');
   const branch = validBranchId(branchId);
-  const refNo = await getOutgoingPaymentRef(companyId, branch);
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
 
@@ -512,29 +542,42 @@ export async function createCourierPaymentEntry(params: CreateCourierPaymentPara
     });
   }
 
-  const paymentPayload: Record<string, unknown> = {
-    company_id: companyId,
-    branch_id: branch,
-    payment_type: 'paid',
-    reference_type: 'courier_payment',
-    reference_id: courierId,
-    amount,
-    payment_method: normalizePaymentMethod(paymentMethod),
-    payment_account_id: paymentAccountId,
-    payment_date: paymentDate,
-    reference_number: refNo,
-    notes: notes || undefined,
-    received_by: uid,
-    created_by: uid,
-  };
-  if (attachments && attachments.length > 0) paymentPayload.attachments = attachments;
-  if (contactIdForPayments != null) {
-    paymentPayload.contact_id = contactIdForPayments;
+  let refNo = await getWorkerOrCourierPaymentRef(companyId, branch);
+  let paymentId = '';
+  let payErr: { code?: string; message?: string } | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const paymentPayload: Record<string, unknown> = {
+      company_id: companyId,
+      branch_id: branch,
+      payment_type: 'paid',
+      reference_type: 'courier_payment',
+      reference_id: courierId,
+      amount,
+      payment_method: normalizePaymentMethod(paymentMethod),
+      payment_account_id: paymentAccountId,
+      payment_date: paymentDate,
+      reference_number: refNo,
+      notes: notes || undefined,
+      received_by: uid,
+      created_by: uid,
+    };
+    if (attachments && attachments.length > 0) paymentPayload.attachments = attachments;
+    if (contactIdForPayments != null) {
+      paymentPayload.contact_id = contactIdForPayments;
+    }
+    const { data: paymentRow, error } = await supabase.from('payments').insert(paymentPayload).select('id').single();
+    payErr = error;
+    if (!error && paymentRow) {
+      paymentId = (paymentRow as { id: string }).id;
+      break;
+    }
+    if (isPaymentReferenceDuplicateError(error) && attempt < 4) {
+      refNo = generatePaymentReference(null);
+      continue;
+    }
+    throw new Error(`Payment row failed: ${error?.message || 'unknown'}`);
   }
-
-  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(paymentPayload).select('id').single();
-  if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
-  const paymentId = (paymentRow as { id: string }).id;
+  if (!paymentId) throw new Error(`Payment row failed: ${payErr?.message || 'unknown'}`);
 
   if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
     console.log('[AddEntryV2] createCourierPaymentEntry – payments row created:', { paymentId, contact_id: contactIdForPayments ?? null });

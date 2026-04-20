@@ -524,7 +524,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
               Roznamcha Table
             </h3>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-base leading-snug">
                 <thead className="bg-gray-900/80 text-gray-400 border-b border-gray-800">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium w-40">Date & Time</th>

@@ -306,6 +306,11 @@ export async function generateSalesInvoiceFromProductionV3(params: {
 
   await supabase.from('sales').update({ show_studio_breakdown: showProductionDetail }).eq('id', created.id);
 
+  // Update product cost_price for COGS calculation (matches V1/V2 pattern)
+  if (saleInfo.productId && costSummary.productionCost > 0) {
+    await supabase.from('products').update({ cost_price: costSummary.productionCost }).eq('id', saleInfo.productId);
+  }
+
   const profitPercent = costSummary.productionCost > 0
     ? (profitAmount / costSummary.productionCost) * 100
     : null;

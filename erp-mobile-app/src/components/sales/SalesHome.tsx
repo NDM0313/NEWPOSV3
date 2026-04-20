@@ -96,7 +96,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
           const balanceDue = Number(s.balance_due ?? 0);
           const creditBalance = Number(s.credit_balance ?? 0);
           const studioCharges = Number(s.studio_charges ?? 0);
-          const grandTotal = Number(s.grand_total ?? totalAmount + studioCharges);
+          const grandTotal = Number(s.grand_total ?? totalAmount);
           return {
             raw: s,
             id: (s.invoice_no as string) || (s.id as string) || '—',
@@ -212,7 +212,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
         const balanceDue = Number(s.balance_due ?? 0);
         const creditBalance = Number(s.credit_balance ?? 0);
         const studioCharges = Number(s.studio_charges ?? 0);
-        const grandTotal = Number(s.grand_total ?? totalAmount + studioCharges);
+        const grandTotal = Number(s.grand_total ?? totalAmount);
         return {
           raw: s,
           id: (s.invoice_no as string) || (s.id as string) || '—',
@@ -270,7 +270,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
   const handleShareWhatsApp = (sale: SaleRecord) => {
     setMenuSale(null);
     const due = sale.balance_due ?? 0;
-    const total = sale.grand_total ?? sale.amount + (sale.studio_charges ?? 0);
+    const total = sale.grand_total ?? sale.amount;
     const link = `${baseUrl}/sales?invoice=${encodeURIComponent(saleIdRaw(sale))}`;
     const text = [`Invoice: ${sale.id}`, `Customer: ${sale.customer}`, `Total: Rs. ${total.toLocaleString()}`, `Balance Due: Rs. ${due.toLocaleString()}`, `View: ${link}`].join('\n');
     salesApi.logShare(saleIdRaw(sale), 'whatsapp', userId).catch(() => {});
@@ -680,7 +680,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <h3 className="font-medium text-white truncate">{sale.id}</h3>
                     <span className="text-sm font-semibold text-[#10B981] shrink-0">
-                      Rs. {(sale.grand_total ?? sale.amount + (sale.studio_charges ?? 0)).toLocaleString()}
+                      Rs. {(sale.grand_total ?? sale.amount).toLocaleString()}
                     </span>
                   </div>
                   <p className="text-sm text-[#D1D5DB] truncate">{sale.customer}</p>

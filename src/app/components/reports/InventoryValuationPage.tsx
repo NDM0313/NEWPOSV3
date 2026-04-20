@@ -85,7 +85,7 @@ export const InventoryValuationPage: React.FC<{
         </div>
       </div>
       <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50">
-        <table className="w-full text-sm">
+        <table className="w-full text-base leading-snug">
           <thead className="border-b border-gray-800 bg-gray-800/50">
             <tr>
               <th className="p-3 text-left font-medium text-gray-300">Product</th>

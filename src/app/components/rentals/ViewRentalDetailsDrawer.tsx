@@ -177,6 +177,10 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
               damageNotes: data.damage_notes ?? rental.damageNotes ?? null,
               penaltyPaid: data.penalty_paid === true || rental.penaltyPaid === true,
               refundAmount: Number(data.refund_amount ?? rental.refundAmount ?? 0) || 0,
+              salesmanId: data.salesman_id ?? null,
+              commissionAmount: Number(data.commission_amount ?? 0) || 0,
+              commissionPercent: data.commission_percent != null ? Number(data.commission_percent) : null,
+              commissionStatus: data.commission_status ?? null,
             } as RentalUI);
           }
           loadPayments(rental.id);
@@ -582,6 +586,23 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
                             </div>
                           )}
                         </>
+                      )}
+                      {(r as any).commissionAmount > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-400">
+                            Salesman Commission
+                            {(r as any).commissionPercent != null && <span className="text-gray-500 ml-1">({(r as any).commissionPercent}%)</span>}
+                          </span>
+                          <span className="text-amber-400 font-medium tabular-nums">{formatCurrency((r as any).commissionAmount)}</span>
+                        </div>
+                      )}
+                      {(r as any).commissionStatus && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-400">Commission Status</span>
+                          <span className={(r as any).commissionStatus === 'posted' ? 'text-blue-400 text-xs font-medium' : 'text-amber-400 text-xs font-medium'}>
+                            {(r as any).commissionStatus === 'posted' ? 'Posted' : 'Pending'}
+                          </span>
+                        </div>
                       )}
                       <div className="flex justify-between text-sm pt-2 border-t border-gray-800">
                         <span className="text-gray-400">Paid (on booking)</span>

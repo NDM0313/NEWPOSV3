@@ -183,6 +183,9 @@ function BulkInvoicePrintDialog({
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto print:max-w-none">
+        <DialogHeader className="sr-only">
+          <DialogTitle>Bulk invoice</DialogTitle>
+        </DialogHeader>
         {!doc ? (
           <div className="flex items-center justify-center p-8 text-gray-500">Loading invoice…</div>
         ) : (

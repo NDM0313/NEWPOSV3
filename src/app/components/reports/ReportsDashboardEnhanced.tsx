@@ -735,8 +735,8 @@ export const ReportsDashboardEnhanced = () => {
             <Card className="bg-gray-900 border-gray-800 p-6">
               <h3 className="text-lg font-bold text-white mb-4">Sales List</h3>
               <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-gray-500 uppercase border-b border-gray-800 sticky top-0 bg-gray-900">
+                <table className="w-full text-base text-left leading-snug">
+                  <thead className="text-gray-500 uppercase border-b border-gray-800 sticky top-0 bg-gray-900 text-sm">
                     <tr><th className="py-2 pr-4">Date</th><th className="py-2 pr-4">Invoice #</th><th className="py-2 pr-4">Customer</th><th className="py-2 pr-4">Total</th><th className="py-2 pr-4">Paid</th><th className="py-2 pr-4">Due</th><th className="py-2 pr-4">Status</th></tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
@@ -751,7 +751,7 @@ export const ReportsDashboardEnhanced = () => {
                           <td className="py-2 pr-4">{formatCurrency(s.total ?? 0)}</td>
                           <td className="py-2 pr-4">{formatCurrency(s.paid ?? 0)}</td>
                           <td className="py-2 pr-4">{formatCurrency(s.due ?? 0)}</td>
-                          <td className="py-2 pr-4"><Badge variant="outline" className="text-xs">{s.paymentStatus || '—'}</Badge></td>
+                          <td className="py-2 pr-4"><Badge variant="outline" className="text-sm">{s.paymentStatus || '—'}</Badge></td>
                         </tr>
                       ))
                     )}
@@ -783,8 +783,8 @@ export const ReportsDashboardEnhanced = () => {
               </ChartContainer>
               <h3 className="text-lg font-bold text-white mb-4">Purchases List</h3>
               <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-gray-500 uppercase border-b border-gray-800 sticky top-0 bg-gray-900">
+                <table className="w-full text-base text-left leading-snug">
+                  <thead className="text-gray-500 uppercase border-b border-gray-800 sticky top-0 bg-gray-900 text-sm">
                     <tr><th className="py-2 pr-4">Date</th><th className="py-2 pr-4">PO #</th><th className="py-2 pr-4">Supplier</th><th className="py-2 pr-4">Total</th><th className="py-2 pr-4">Paid</th><th className="py-2 pr-4">Due</th></tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
@@ -854,8 +854,8 @@ export const ReportsDashboardEnhanced = () => {
             <Card className="bg-gray-900 border-gray-800 p-6">
               <h3 className="text-lg font-bold text-white mb-4">Expenses List</h3>
               <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-gray-500 uppercase border-b border-gray-800 sticky top-0 bg-gray-900">
+                <table className="w-full text-base text-left leading-snug">
+                  <thead className="text-gray-500 uppercase border-b border-gray-800 sticky top-0 bg-gray-900 text-sm">
                     <tr><th className="py-2 pr-4">Date</th><th className="py-2 pr-4">Ref #</th><th className="py-2 pr-4">Category</th><th className="py-2 pr-4">Description</th><th className="py-2 pr-4">Amount</th><th className="py-2 pr-4">Payment</th><th className="py-2 pr-4">Status</th></tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
@@ -870,7 +870,7 @@ export const ReportsDashboardEnhanced = () => {
                           <td className="py-2 pr-4">{e.description || '—'}</td>
                           <td className="py-2 pr-4 text-red-400">{formatCurrency(e.amount ?? 0)}</td>
                           <td className="py-2 pr-4">{e.paymentMethod || '—'}</td>
-                          <td className="py-2 pr-4"><Badge variant="outline" className="text-xs">{e.status || '—'}</Badge></td>
+                          <td className="py-2 pr-4"><Badge variant="outline" className="text-sm">{e.status || '—'}</Badge></td>
                         </tr>
                       ))
                     )}

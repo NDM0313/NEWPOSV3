@@ -273,6 +273,18 @@ export async function getUserLedgerData(
     .eq('salesman_id', userId)
     .eq('commission_status', 'posted');
 
+  // Rental commission (same pattern as sales)
+  let commRentals: any[] = [];
+  try {
+    const { data: rData } = await supabase
+      .from('rentals')
+      .select('id, booking_no, booking_date, commission_amount, created_at')
+      .eq('company_id', companyId)
+      .eq('salesman_id', userId)
+      .eq('commission_status', 'posted');
+    commRentals = rData || [];
+  } catch { /* columns may not exist */ }
+
   type Ev = {
     ts: number;
     date: string;
@@ -331,6 +343,26 @@ export async function getUserLedgerData(
       desc: `Commission earned — ${ref}`,
       docType: 'Expense',
       id: s.id,
+    });
+  });
+
+  // Rental commission entries (same as sale commission — credit = owed to salesman)
+  commRentals.forEach((r: any) => {
+    const amt = Number(r.commission_amount) || 0;
+    if (amt <= 0) return;
+    const d = effectiveYmdFromDoc({ invoice_date: r.booking_date, created_at: r.created_at });
+    if (!d) return;
+    const ref = r.booking_no || `REN-${String(r.id).slice(0, 8)}`;
+    events.push({
+      ts: new Date(d + 'T12:00:00').getTime(),
+      date: d,
+      ord: 1,
+      debit: 0,
+      credit: amt,
+      ref,
+      desc: `Commission earned — ${ref}`,
+      docType: 'Expense',
+      id: r.id,
     });
   });
 

@@ -587,8 +587,7 @@ export const saleService = {
             retryData.forEach((sale: any) => {
               const cost = studioBySale.get(sale.id);
               if (cost != null && cost > 0) {
-                sale.studio_charges = cost;
-                sale.due_amount = Math.max(0, (Number(sale.total) || 0) + cost - (Number(sale.paid_amount) || 0));
+                sale.studio_charges = cost; // metadata only — don't recalculate due_amount (studio line already in total)
               }
             });
           }
@@ -633,8 +632,7 @@ export const saleService = {
           data.forEach((sale: any) => {
             const cost = studioBySale.get(sale.id);
             if (cost != null && cost > 0) {
-              sale.studio_charges = cost;
-              sale.due_amount = Math.max(0, (Number(sale.total) || 0) + cost - (Number(sale.paid_amount) || 0));
+              sale.studio_charges = cost; // metadata only — don't recalculate due_amount (studio line already in total)
             }
           });
         }
@@ -898,6 +896,11 @@ export const saleService = {
         reverseSaleDocumentAccounting(id).catch((err: any) =>
           console.warn('[saleService] Document accounting reversal failed (non-critical):', err?.message)
         );
+      }
+
+      // Refresh customer balance so cancelled sale reflects in customer ledger immediately
+      if ((saleRow as any).company_id) {
+        dispatchContactBalancesRefresh((saleRow as any).company_id);
       }
 
       return data;

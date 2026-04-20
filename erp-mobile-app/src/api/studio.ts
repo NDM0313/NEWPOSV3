@@ -143,7 +143,19 @@ export async function ensureStudioProductionsForCompany(companyId: string): Prom
     for (const sale of missing) {
       const first = firstItemBySale.get(sale.id);
       if (!first?.product_id) continue;
-      const productionNo = `PRD-${sale.invoice_no || sale.id}`;
+      // Sequential production number: PRD-0001, PRD-0002, ...
+      let productionNo = `PRD-${sale.invoice_no || sale.id}`;
+      try {
+        const { data: prods } = await supabase.from('studio_productions').select('production_no').eq('company_id', sale.company_id).not('production_no', 'is', null);
+        let maxNum = 0;
+        if (prods?.length) {
+          for (const row of prods) {
+            const match = ((row as any).production_no || '').match(/^PRD-(\d+)$/i);
+            if (match) { const n = parseInt(match[1], 10); if (n > maxNum) maxNum = n; }
+          }
+        }
+        productionNo = `PRD-${String(maxNum + 1).padStart(4, '0')}`;
+      } catch { /* fallback to old format */ }
       const productionDate = sale.invoice_date ? new Date(sale.invoice_date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
       const { error: insErr } = await supabase
         .from('studio_productions')

@@ -71,6 +71,38 @@ export interface PaymentDialogProps {
   };
 }
 
+/** One-line context so payment notes are never empty when the dialog opens (audit / recall). */
+function buildAutoPaymentContextNotes(args: {
+  context: PaymentContextType;
+  entityName: string;
+  referenceNo?: string;
+  workerStageId?: string;
+  rentalPaymentKind?: 'advance' | 'remaining' | 'penalty';
+  linkedJournalEntryNo?: string;
+}): string {
+  const party = (args.entityName || '').trim() || 'Party';
+  const ref = (args.referenceNo || '').trim();
+  const je = (args.linkedJournalEntryNo || '').trim();
+  const jePart = je ? ` Linked journal: ${je}.` : '';
+
+  if (args.context === 'worker') {
+    const refPart = ref ? ` Reference/bill: ${ref}.` : '';
+    const stagePart = args.workerStageId ? ' Studio production stage.' : '';
+    return `Worker payment to ${party}.${refPart}${stagePart}${jePart}`.replace(/\s{2,}/g, ' ').trim();
+  }
+  if (args.context === 'customer') {
+    const refPart = ref ? ` Invoice/ref: ${ref}.` : '';
+    return `Customer receipt from ${party}.${refPart}${jePart}`.replace(/\s{2,}/g, ' ').trim();
+  }
+  if (args.context === 'supplier') {
+    const refPart = ref ? ` Bill/ref: ${ref}.` : '';
+    return `Supplier payment to ${party}.${refPart}${jePart}`.replace(/\s{2,}/g, ' ').trim();
+  }
+  const kind = args.rentalPaymentKind || 'remaining';
+  const refPart = ref ? ` Rental ref: ${ref}.` : '';
+  return `Rental payment (${kind}) — ${party}.${refPart}${jePart}`.replace(/\s{2,}/g, ' ').trim();
+}
+
 // Resolve URL and show image for existing attachment (medium size)
 function ExistingAttachmentImage({ att }: { att: { url: string; name: string } }) {
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
@@ -204,17 +236,28 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       } else {
         // Pay Now (workerStageId): do not pre-fill job amount so we never record job amount as payment by mistake
         setAmount(workerStageId ? 0 : Math.max(0, effectiveOutstanding));
-        setPaymentMethod('Cash');
-        setSelectedAccount('');
-        setNotes(defaultPaymentNotes || '');
-        setExistingAttachments([]);
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        setPaymentDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+        if (justOpened) {
+          setPaymentMethod('Cash');
+          setSelectedAccount('');
+          const auto = buildAutoPaymentContextNotes({
+            context,
+            entityName,
+            referenceNo,
+            workerStageId,
+            rentalPaymentKind,
+            linkedJournalEntryNo,
+          });
+          const extra = (defaultPaymentNotes || '').trim();
+          setNotes(extra ? `${auto}\n\n${extra}` : auto);
+          setExistingAttachments([]);
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
+          const hours = String(now.getHours()).padStart(2, '0');
+          const minutes = String(now.getMinutes()).padStart(2, '0');
+          setPaymentDateTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+        }
       }
       if (justOpened) {
         setAttachments(initialAttachmentFiles?.length ? [...initialAttachmentFiles] : []);
@@ -222,7 +265,20 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     } else {
       prevOpenRef.current = false;
     }
-  }, [isOpen, editMode, paymentToEdit, initialAttachmentFiles, effectiveOutstanding, workerStageId, defaultPaymentNotes]);
+  }, [
+    isOpen,
+    editMode,
+    paymentToEdit,
+    initialAttachmentFiles,
+    effectiveOutstanding,
+    workerStageId,
+    defaultPaymentNotes,
+    context,
+    entityName,
+    referenceNo,
+    rentalPaymentKind,
+    linkedJournalEntryNo,
+  ]);
 
   React.useEffect(() => {
     if (!isOpen) userPickedPaymentMethodRef.current = false;

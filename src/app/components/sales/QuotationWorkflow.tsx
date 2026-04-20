@@ -254,6 +254,9 @@ export const QuotationWorkflow: React.FC<QuotationWorkflowProps> = ({
       {printQuotation && (
         <Dialog open={!!printQuotation} onOpenChange={(open) => !open && setPrintQuotation(null)}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto print:max-w-none">
+            <DialogHeader className="sr-only">
+              <DialogTitle>Print quotation</DialogTitle>
+            </DialogHeader>
             <UnifiedQuotationView
               document={quotationToQuotationDocument(printQuotation, companyName, companyAddress)}
               companyId={companyId}
@@ -268,6 +271,9 @@ export const QuotationWorkflow: React.FC<QuotationWorkflowProps> = ({
       {printProforma && (
         <Dialog open={!!printProforma} onOpenChange={(open) => !open && setPrintProforma(null)}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto print:max-w-none">
+            <DialogHeader className="sr-only">
+              <DialogTitle>Print proforma invoice</DialogTitle>
+            </DialogHeader>
             <UnifiedProformaInvoiceView
               document={quotationToProformaDocument(printProforma, { id: companyId, name: companyName, address: companyAddress ?? null })}
               companyId={companyId}

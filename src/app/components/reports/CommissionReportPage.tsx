@@ -16,6 +16,7 @@ import {
   type CommissionSummaryRow,
   type CommissionStatusFilter,
   type PaymentEligibilityFilter,
+  type CommissionSourceFilter,
 } from '@/app/services/commissionReportService';
 import { Loader2, Users, FileText, Send, RefreshCw } from 'lucide-react';
 import { Card } from '@/app/components/ui/card';
@@ -57,6 +58,7 @@ export const CommissionReportPage: React.FC<CommissionReportPageProps> = ({
   const [branchFilterId, setBranchFilterId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<CommissionStatusFilter>('all');
   const [paymentEligibility, setPaymentEligibility] = useState<PaymentEligibilityFilter>('include_due');
+  const [sourceFilter, setSourceFilter] = useState<CommissionSourceFilter>('all');
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
   const [salesmenList, setSalesmenList] = useState<{ id: string; name: string }[]>([]);
   const [listPageSize, setListPageSize] = useState<number | 'all'>(25);
@@ -93,6 +95,7 @@ export const CommissionReportPage: React.FC<CommissionReportPageProps> = ({
       salesmanId: salesmanFilterId ?? undefined,
       status: statusFilter,
       paymentEligibility,
+      sourceFilter,
     })
       .then(setData)
       .catch((e) => {
@@ -100,7 +103,7 @@ export const CommissionReportPage: React.FC<CommissionReportPageProps> = ({
         setData(null);
       })
       .finally(() => setLoading(false));
-  }, [companyId, startDate, endDate, effectiveBranchId, salesmanFilterId, statusFilter, paymentEligibility]);
+  }, [companyId, startDate, endDate, effectiveBranchId, salesmanFilterId, statusFilter, paymentEligibility, sourceFilter]);
 
   const filteredSummary = useMemo((): CommissionSummaryRow[] => {
     if (!data?.summary) return [];
@@ -135,14 +138,16 @@ export const CommissionReportPage: React.FC<CommissionReportPageProps> = ({
         endDate,
         createdBy: (user as any)?.id ?? (user as any)?.auth_user_id ?? null,
         paymentEligibility,
+        sourceFilter,
       });
-      toast.success(`Posted commission batch ${result.batchNo}: ${formatCurrency(result.totalCommission)} (${result.saleCount} sale(s))`);
+      toast.success(`Posted commission batch ${result.batchNo}: ${formatCurrency(result.totalCommission)} (${result.saleCount} transaction(s))`);
       setStatusFilter('all');
       const next = await getCommissionReport(companyId, startDate, endDate, {
         branchId: effectiveBranchId && effectiveBranchId !== 'all' ? effectiveBranchId : undefined,
         salesmanId: salesmanFilterId ?? undefined,
         status: 'all',
         paymentEligibility,
+        sourceFilter,
       });
       setData(next);
     } catch (e: any) {
@@ -163,12 +168,13 @@ export const CommissionReportPage: React.FC<CommissionReportPageProps> = ({
         branchId: effectiveBranchId && effectiveBranchId !== 'all' ? effectiveBranchId : undefined,
         salesmanId: salesmanFilterId ?? undefined,
       });
-      toast.success(updatedCount > 0 ? `Updated commission for ${updatedCount} pending sale(s).` : 'No pending sales to update.');
+      toast.success(updatedCount > 0 ? `Updated commission for ${updatedCount} pending transaction(s).` : 'No pending transactions to update.');
       const next = await getCommissionReport(companyId, startDate, endDate, {
         branchId: effectiveBranchId && effectiveBranchId !== 'all' ? effectiveBranchId : undefined,
         salesmanId: salesmanFilterId ?? undefined,
         status: statusFilter,
         paymentEligibility,
+        sourceFilter,
       });
       setData(next);
     } catch (e: any) {
@@ -245,6 +251,17 @@ export const CommissionReportPage: React.FC<CommissionReportPageProps> = ({
             <SelectItem value="all" className="focus:bg-gray-800">All</SelectItem>
             <SelectItem value="pending" className="focus:bg-gray-800">Pending</SelectItem>
             <SelectItem value="posted" className="focus:bg-gray-800">Posted</SelectItem>
+          </SelectContent>
+        </Select>
+        <Label className="text-sm font-medium text-gray-400 whitespace-nowrap">Source</Label>
+        <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as CommissionSourceFilter)}>
+          <SelectTrigger className="w-[140px] bg-gray-950 border-gray-700 text-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-gray-900 border-gray-700 text-white">
+            <SelectItem value="all" className="focus:bg-gray-800">All</SelectItem>
+            <SelectItem value="sale" className="focus:bg-gray-800">Sales only</SelectItem>
+            <SelectItem value="rental" className="focus:bg-gray-800">Rentals only</SelectItem>
           </SelectContent>
         </Select>
         <Label className="text-sm font-medium text-gray-400 whitespace-nowrap">Payment eligibility</Label>
@@ -383,11 +400,12 @@ export const CommissionReportPage: React.FC<CommissionReportPageProps> = ({
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-base leading-snug">
             <thead className="bg-gray-950/80 text-gray-400 border-b border-gray-800">
               <tr>
                 <th className="px-4 py-3 text-left font-medium">Salesperson</th>
-                <th className="px-4 py-3 text-left font-medium">Invoice</th>
+                <th className="px-4 py-3 text-left font-medium">Source</th>
+                <th className="px-4 py-3 text-left font-medium">Ref #</th>
                 <th className="px-4 py-3 text-left font-medium">Date</th>
                 <th className="px-4 py-3 text-left font-medium">Customer</th>
                 <th className="px-4 py-3 text-left font-medium">Branch</th>
@@ -403,6 +421,11 @@ export const CommissionReportPage: React.FC<CommissionReportPageProps> = ({
               {displayedRows.map(({ sale, salesman_name }) => (
                 <tr key={sale.id} className="hover:bg-gray-800/30">
                   <td className="px-4 py-3 text-gray-300">{salesman_name}</td>
+                  <td className="px-4 py-3">
+                    <span className={sale.source === 'rental' ? 'text-pink-400 text-xs font-medium' : 'text-blue-400 text-xs font-medium'}>
+                      {sale.source === 'rental' ? 'Rental' : 'Sale'}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 font-mono text-gray-300">{sale.invoice_no}</td>
                   <td className="px-4 py-3 text-gray-400">
                     <DateTimeDisplay date={sale.invoice_date} dateOnly />
