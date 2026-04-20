@@ -627,7 +627,7 @@ export const ProductLedger = () => {
       let rq = supabase
         .from('rentals')
         .select(
-          'id, rental_no, booking_no, customer_name, start_date, pickup_date, expected_return_date, return_date, actual_return_date, status, total_amount, damage_charges, penalty_paid, damage_notes, condition_type, branch_id, booking_date'
+          'id, booking_no, customer_name, start_date, pickup_date, expected_return_date, return_date, actual_return_date, status, total_amount, damage_charges, penalty_paid, damage_notes, condition_type, branch_id, booking_date'
         )
         .eq('company_id', companyId)
         .in('id', rentalIds);
@@ -710,7 +710,7 @@ export const ProductLedger = () => {
         rows.push({
           id,
           rentalId: rid,
-          rentalNo: String(rental.rental_no || rental.booking_no || rid.slice(0, 8)),
+          rentalNo: String(rental.booking_no || rid.slice(0, 8)),
           customerName: String(rental.customer_name || '—'),
           eventDate,
           movementType,
