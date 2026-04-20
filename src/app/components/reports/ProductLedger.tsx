@@ -627,7 +627,7 @@ export const ProductLedger = () => {
       let rq = supabase
         .from('rentals')
         .select(
-          'id, booking_no, customer_name, start_date, pickup_date, expected_return_date, return_date, actual_return_date, status, total_amount, damage_charges, penalty_paid, damage_notes, condition_type, branch_id, booking_date'
+          'id, booking_no, customer_name, pickup_date, return_date, actual_return_date, status, total_amount, damage_charges, penalty_paid, damage_notes, condition_type, branch_id, booking_date'
         )
         .eq('company_id', companyId)
         .in('id', rentalIds);
@@ -717,8 +717,8 @@ export const ProductLedger = () => {
           qty,
           itemLineTotal: Number(item?.total ?? 0) || (Number(item?.quantity) || 0) * (Number(item?.rate_per_day || item?.rate) || 0),
           rentalBookingTotal: Number(rental.total_amount ?? 0) || 0,
-          pickupOrStart: rental.pickup_date || rental.start_date || rental.booking_date || null,
-          expectedReturn: rental.expected_return_date || rental.return_date || null,
+          pickupOrStart: rental.pickup_date || rental.booking_date || null,
+          expectedReturn: rental.return_date || null,
           actualReturn: rental.actual_return_date ?? null,
           rentalStatus: String(rental.status || ''),
           damageCharges: Number(rental.damage_charges ?? 0) || 0,
@@ -751,8 +751,8 @@ export const ProductLedger = () => {
         if (!rental) continue;
         const item = itemByRental.get(rid);
         // Try all possible date columns
-        const pickupStr = rental.pickup_date || rental.start_date || rental.booking_date;
-        const returnStr = rental.actual_return_date || rental.expected_return_date || rental.return_date;
+        const pickupStr = rental.pickup_date || rental.booking_date;
+        const returnStr = rental.actual_return_date || rental.return_date;
         const startMs = parseSqlDateOnlyToLocalNoon(pickupStr);
         const retMs = parseSqlDateOnlyToLocalNoon(returnStr);
         const qty = Math.abs(Number(item?.quantity) || 0) || 1;
