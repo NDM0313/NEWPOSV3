@@ -283,32 +283,38 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                 {overrideGlobalDates && (
                   <>
                     <DateRangePicker value={dateRange} onChange={setDateRange} placeholder="Start & end (or one day)" />
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 border-gray-700 text-gray-200"
-                        onClick={() => {
-                          const t = new Date();
-                          setDateRange({ from: t, to: t });
-                        }}
-                      >
-                        Today
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 border-gray-700 text-gray-200"
-                        onClick={() => {
-                          const t = new Date();
-                          t.setDate(t.getDate() - 1);
-                          setDateRange({ from: t, to: t });
-                        }}
-                      >
-                        Yesterday
-                      </Button>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: 'Today', days: 0, single: true },
+                        { label: 'Yesterday', days: 1, single: true },
+                        { label: 'Last 5 days', days: 4, single: false },
+                        { label: 'Last 7 days', days: 6, single: false },
+                        { label: 'Last 30 days', days: 29, single: false },
+                        { label: 'This month', days: -1, single: false },
+                      ].map(({ label, days, single }) => (
+                        <Button
+                          key={label}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs border-gray-700 text-gray-300 hover:bg-gray-800"
+                          onClick={() => {
+                            const t = new Date(); t.setHours(0,0,0,0);
+                            if (days === -1) {
+                              const from = new Date(t.getFullYear(), t.getMonth(), 1);
+                              setDateRange({ from, to: t });
+                            } else if (single) {
+                              const d = new Date(t); d.setDate(d.getDate() - days);
+                              setDateRange({ from: d, to: d });
+                            } else {
+                              const from = new Date(t); from.setDate(from.getDate() - days);
+                              setDateRange({ from, to: t });
+                            }
+                          }}
+                        >
+                          {label}
+                        </Button>
+                      ))}
                     </div>
                   </>
                 )}
@@ -316,32 +322,38 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
             ) : (
               <>
                 <DateRangePicker value={dateRange} onChange={setDateRange} placeholder="Start & end (same day = single date)" />
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 border-gray-700 text-gray-200"
-                    onClick={() => {
-                      const t = new Date();
-                      setDateRange({ from: t, to: t });
-                    }}
-                  >
-                    Today
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 border-gray-700 text-gray-200"
-                    onClick={() => {
-                      const t = new Date();
-                      t.setDate(t.getDate() - 1);
-                      setDateRange({ from: t, to: t });
-                    }}
-                  >
-                    Yesterday
-                  </Button>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: 'Today', days: 0, single: true },
+                    { label: 'Yesterday', days: 1, single: true },
+                    { label: 'Last 5 days', days: 4, single: false },
+                    { label: 'Last 7 days', days: 6, single: false },
+                    { label: 'Last 30 days', days: 29, single: false },
+                    { label: 'This month', days: -1, single: false },
+                  ].map(({ label, days, single }) => (
+                    <Button
+                      key={label}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs border-gray-700 text-gray-300 hover:bg-gray-800"
+                      onClick={() => {
+                        const t = new Date(); t.setHours(0,0,0,0);
+                        if (days === -1) {
+                          const from = new Date(t.getFullYear(), t.getMonth(), 1);
+                          setDateRange({ from, to: t });
+                        } else if (single) {
+                          const d = new Date(t); d.setDate(d.getDate() - days);
+                          setDateRange({ from: d, to: d });
+                        } else {
+                          const from = new Date(t); from.setDate(from.getDate() - days);
+                          setDateRange({ from, to: t });
+                        }
+                      }}
+                    >
+                      {label}
+                    </Button>
+                  ))}
                 </div>
               </>
             )}

@@ -517,6 +517,126 @@ async function fetchPaymentRows(
     }
   });
 
+  // ── Rental payments (customer collections stored in rental_payments, not payments) ──
+  const rentalPayRows = await fetchRentalPaymentRows(
+    companyId,
+    branchId,
+    dateFrom,
+    dateTo,
+    accountFilter,
+    paymentLedgerAccountId,
+    accountById
+  );
+  rows.push(...rentalPayRows);
+
+  // Re-sort merged rows by date then created_at
+  rows.sort((a, b) => {
+    if (a.date < b.date) return -1;
+    if (a.date > b.date) return 1;
+    if (a.time < b.time) return -1;
+    if (a.time > b.time) return 1;
+    return 0;
+  });
+
+  return rows;
+}
+
+/** Fetch rental_payments rows (customer cash-IN) and map to RoznamchaRow. */
+async function fetchRentalPaymentRows(
+  companyId: string,
+  branchId: string | null,
+  dateFrom: string,
+  dateTo: string,
+  accountFilter: AccountFilter,
+  paymentLedgerAccountId: string | null,
+  accountById: Map<string, { name: string; type: string; code: string | null }>
+): Promise<RoznamchaRow[]> {
+  // PostgREST inner join: only rental_payments whose rental.company_id matches
+  // Note: live DB uses booking_no (not rental_no) on the rentals table
+  let q = supabase
+    .from('rental_payments')
+    .select('id, amount, method, payment_date, created_at, reference, payment_account_id, created_by, rentals!inner(id, booking_no, company_id, branch_id)')
+    .eq('rentals.company_id', companyId)
+    .gte('payment_date', dateFrom)
+    .lte('payment_date', dateTo)
+    .order('payment_date', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (branchId) q = (q as any).eq('rentals.branch_id', branchId);
+
+  const { data, error } = await q;
+  if (error || !data) return [];
+
+  // Collect any account ids that are not yet in the shared map and resolve them
+  const missingAccountIds = [
+    ...new Set(
+      (data as any[])
+        .map((rp: any) => rp.payment_account_id)
+        .filter((id: any) => id && !accountById.has(id))
+    ),
+  ] as string[];
+  if (missingAccountIds.length > 0) {
+    const { data: extraAccounts } = await supabase
+      .from('accounts')
+      .select('id, name, type, code')
+      .in('id', missingAccountIds);
+    (extraAccounts || []).forEach((a: any) => {
+      if (a?.id) {
+        accountById.set(a.id, {
+          name: (a.name || '').trim(),
+          type: String(a.type || ''),
+          code: a.code != null ? String(a.code).trim() : null,
+        });
+      }
+    });
+  }
+
+  const rows: RoznamchaRow[] = [];
+  for (const rp of data as any[]) {
+    const rental = (rp.rentals && !Array.isArray(rp.rentals)) ? rp.rentals : (Array.isArray(rp.rentals) ? rp.rentals[0] : null);
+    if (!rental) continue;
+
+    const aid = rp.payment_account_id as string | null | undefined;
+    const meta = aid ? accountById.get(aid) : undefined;
+    const methodRaw = String(rp.method || '');
+    const { liquidity, shortLabel } = classifyRoznamchaLiquidity(methodRaw, meta?.type, meta?.name, meta?.code);
+
+    if (accountFilter !== 'all') {
+      if (accountFilter === 'cash' && liquidity !== 'cash') continue;
+      if (accountFilter === 'bank' && liquidity !== 'bank') continue;
+      if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
+    }
+    if (paymentLedgerAccountId && aid !== paymentLedgerAccountId) continue;
+
+    const amount = Number(rp.amount) || 0;
+    const dateStr = rp.payment_date || '';
+    const createdAt = rp.created_at ? new Date(rp.created_at) : new Date();
+    const timeStr = createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+    // live DB uses booking_no; rental_no may exist in newer schema variants
+    const rentalNo: string = rental.booking_no || (rental as any).rental_no || rental.id || '';
+    const refDisplay = String(rp.reference || rentalNo || '').trim();
+
+    rows.push({
+      id: `rp-${rp.id}`,
+      date: dateStr,
+      time: timeStr,
+      ref: rentalNo || refDisplay || `rental-${String(rp.id).slice(0, 8)}`,
+      details: 'Rental Payment',
+      referenceDisplay: refDisplay,
+      partyLine: rentalNo ? `Rental: ${rentalNo}` : null,
+      journalEntryNo: null,
+      createdBy: null,
+      cashIn: amount,
+      cashOut: 0,
+      direction: 'IN',
+      amount,
+      accountType: liquidity,
+      accountLabel: shortLabel,
+      accountName: meta?.name || null,
+      branchId: rental.branch_id ?? null,
+      type: 'Rental Payment',
+    });
+  }
   return rows;
 }
 
@@ -576,6 +696,56 @@ export async function getOpeningBalance(
     const dir = getDirection((p as any).payment_type);
     total += dir === 'IN' ? amount : -amount;
   }
+
+  // Add rental_payments (cash-IN from customers) to opening balance
+  // Note: live DB uses booking_no (not rental_no) on rentals table
+  let rpQ = supabase
+    .from('rental_payments')
+    .select('amount, method, payment_account_id, rentals!inner(company_id, branch_id)')
+    .eq('rentals.company_id', companyId)
+    .lt('payment_date', beforeDate);
+  if (branchId) rpQ = (rpQ as any).eq('rentals.branch_id', branchId);
+  if (paymentLedgerAccountId) rpQ = rpQ.eq('payment_account_id', paymentLedgerAccountId);
+
+  const { data: rpData } = await rpQ;
+  if (rpData && rpData.length > 0) {
+    // Resolve any account ids not yet in obAccountById
+    const rpMissingIds = [
+      ...new Set(
+        (rpData as any[])
+          .map((rp: any) => rp.payment_account_id)
+          .filter((id: any) => id && !obAccountById.has(id))
+      ),
+    ] as string[];
+    if (rpMissingIds.length > 0) {
+      const { data: rpAccounts } = await supabase
+        .from('accounts')
+        .select('id, name, type, code')
+        .in('id', rpMissingIds);
+      (rpAccounts || []).forEach((a: any) => {
+        if (a?.id) {
+          obAccountById.set(a.id, {
+            name: (a.name || '').trim(),
+            type: String(a.type || ''),
+            code: a.code != null ? String(a.code).trim() : null,
+          });
+        }
+      });
+    }
+
+    for (const rp of rpData as any[]) {
+      const aid = rp.payment_account_id as string | null | undefined;
+      const meta = aid ? obAccountById.get(aid) : undefined;
+      const { liquidity } = classifyRoznamchaLiquidity(String(rp.method || ''), meta?.type, meta?.name, meta?.code);
+      if (accountFilter !== 'all') {
+        if (accountFilter === 'cash' && liquidity !== 'cash') continue;
+        if (accountFilter === 'bank' && liquidity !== 'bank') continue;
+        if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
+      }
+      total += Number(rp.amount) || 0; // rental payments are always cash-IN
+    }
+  }
+
   return total;
 }
 

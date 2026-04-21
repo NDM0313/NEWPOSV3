@@ -216,6 +216,8 @@ interface AccountingContextType {
   recordRentalDelivery: (params: RentalDeliveryParams) => Promise<boolean>;
   recordRentalCreditDelivery: (params: RentalDeliveryParams) => Promise<boolean>;
   recordRentalReturn: (params: RentalReturnParams) => Promise<boolean>;
+  /** Recognize any unreleased Rental Advance (2020) as income. Safe to call on return/pickup even when remaining = 0. */
+  recognizeRentalAdvance: (params: { bookingId: string; customerName: string; customerId?: string; postingDate?: string }) => Promise<void>;
   recordStudioSale: (params: StudioSaleParams) => Promise<boolean>;
   recordWorkerJobCompletion: (params: WorkerJobParams) => Promise<boolean>;
   recordWorkerPayment: (params: WorkerPaymentParams) => Promise<boolean | { referenceNumber: string }>;
@@ -1914,61 +1916,61 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       },
     });
 
-    // Recognize advance as income: Dr Rental Advance (2020) / Cr Rental Income (4200)
-    // Search DB for advance JEs (not just loaded entries — those may be date-filtered)
-    if (paymentOk && companyId) {
-      try {
-        // Find the Rental Advance account
-        const { data: advAcct } = await supabase
-          .from('accounts')
-          .select('id')
-          .eq('company_id', companyId)
-          .eq('code', '2020')
-          .eq('is_active', true)
-          .maybeSingle();
-        if (advAcct?.id) {
-          // Find advance JE lines (credit to Rental Advance for this booking)
-          const { data: advJEs } = await supabase
-            .from('journal_entries')
-            .select('id')
-            .eq('company_id', companyId)
-            .eq('reference_id', bookingId)
-            .or('is_void.is.null,is_void.eq.false');
-          const jeIds = (advJEs || []).map((j: any) => j.id);
-          if (jeIds.length > 0) {
-            const { data: advLines } = await supabase
-              .from('journal_entry_lines')
-              .select('credit')
-              .in('journal_entry_id', jeIds)
-              .eq('account_id', advAcct.id)
-              .gt('credit', 0);
-            const advanceTotal = (advLines || []).reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0);
-            // Check if already recognized (debit side of Rental Advance for same booking)
-            const { data: recognizedLines } = await supabase
-              .from('journal_entry_lines')
-              .select('debit')
-              .in('journal_entry_id', jeIds)
-              .eq('account_id', advAcct.id)
-              .gt('debit', 0);
-            const alreadyRecognized = (recognizedLines || []).reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0);
-            const toRecognize = Math.round((advanceTotal - alreadyRecognized) * 100) / 100;
-            if (toRecognize > 0) {
-              await createEntry({
-                source: 'Rental',
-                referenceNo: bookingId,
-                debitAccount: 'Rental Advance',
-                creditAccount: 'Rental Income',
-                amount: toRecognize,
-                description: `Advance recognized as income - ${customerName}`,
-                module: 'Rental',
-                metadata: { customerId, customerName, bookingId, postingDate },
-              });
-            }
-          }
-        }
-      } catch { /* non-critical */ }
-    }
+    // Always try to recognize any unreleased advance — even when remainingAmount = 0 (fully advance-paid rentals)
+    await recognizeRentalAdvance({ bookingId, customerName, customerId, postingDate });
     return paymentOk;
+  };
+
+  /**
+   * Recognize unreleased Rental Advance (2020) as Rental Income (4200).
+   * Safe to call from delivery, return, or pickup regardless of remaining payment amount.
+   */
+  const recognizeRentalAdvance = async (params: { bookingId: string; customerName: string; customerId?: string; postingDate?: string }): Promise<void> => {
+    const { bookingId, customerName, customerId, postingDate } = params;
+    if (!companyId || !bookingId) return;
+    try {
+      // Find Rental Advance account (name match preferred; code 2020 fallback)
+      const { data: advAccts } = await supabase
+        .from('accounts')
+        .select('id, name, code')
+        .eq('company_id', companyId)
+        .eq('code', '2020');
+      // Prefer the account actually named "Rental Advance" over any code-2020 duplicates
+      const advAcct = (advAccts || []).find((a: any) =>
+        String(a.name || '').toLowerCase().includes('rental') && String(a.name || '').toLowerCase().includes('advance')
+      ) || (advAccts || [])[0];
+      if (!advAcct?.id) return;
+
+      // All non-voided JEs for this booking
+      const { data: advJEs } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('reference_id', bookingId)
+        .or('is_void.is.null,is_void.eq.false');
+      const jeIds = (advJEs || []).map((j: any) => j.id as string);
+      if (!jeIds.length) return;
+
+      const [{ data: creditLines }, { data: debitLines }] = await Promise.all([
+        supabase.from('journal_entry_lines').select('credit').in('journal_entry_id', jeIds).eq('account_id', advAcct.id).gt('credit', 0),
+        supabase.from('journal_entry_lines').select('debit').in('journal_entry_id', jeIds).eq('account_id', advAcct.id).gt('debit', 0),
+      ]);
+      const advanceTotal = (creditLines || []).reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0);
+      const alreadyRecognized = (debitLines || []).reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0);
+      const toRecognize = Math.round((advanceTotal - alreadyRecognized) * 100) / 100;
+      if (toRecognize > 0) {
+        await createEntry({
+          source: 'Rental',
+          referenceNo: bookingId,
+          debitAccount: 'Rental Advance',
+          creditAccount: 'Rental Income',
+          amount: toRecognize,
+          description: `Advance recognized as income - ${customerName}`,
+          module: 'Rental',
+          metadata: { customerId, customerName, bookingId, postingDate: postingDate || new Date().toISOString().split('T')[0] },
+        });
+      }
+    } catch { /* non-critical — advance recognition is best-effort */ }
   };
 
   /** When delivering on credit: Debit AR, Credit Rental Income (customer owes) */
@@ -2009,6 +2011,9 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         },
       });
     }
+
+    // Recognize any unreleased advance as income (handles fully advance-paid rentals on return)
+    await recognizeRentalAdvance({ bookingId, customerName, customerId, postingDate });
 
     // Release security deposit
     if (securityDepositAmount > 0) {
@@ -2569,6 +2574,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     recordRentalDelivery,
     recordRentalCreditDelivery,
     recordRentalReturn,
+    recognizeRentalAdvance,
     recordStudioSale,
     recordWorkerJobCompletion,
     recordWorkerPayment,
@@ -2587,7 +2593,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     getAccountBalance, getEntriesBySupplier, getEntriesByCustomer, getEntriesByWorker,
     getSupplierBalance, getCustomerBalance, getWorkerBalance,
     recordSale, recordSalePayment, recordRentalBooking, recordRentalDelivery,
-    recordRentalCreditDelivery, recordRentalReturn, recordStudioSale,
+    recordRentalCreditDelivery, recordRentalReturn, recognizeRentalAdvance, recordStudioSale,
     recordWorkerJobCompletion, recordWorkerPayment, recordExpense, recordPurchase,
     recordPurchaseReturn, recordSaleReturn, recordSupplierPayment, recordOnAccountCustomerPayment, getAccountsByType, getAccountById,
   ]);

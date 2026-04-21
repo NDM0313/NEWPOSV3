@@ -341,6 +341,14 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
         }).catch((err) => console.warn('[RentalContext] Penalty credit posting:', err));
       }
     }
+    // Always recognize any unreleased advance as income on return (handles fully advance-paid rentals)
+    if (rental) {
+      accounting.recognizeRentalAdvance({
+        bookingId: id,
+        customerName: rental.customerName,
+        customerId: rental.customerId || '',
+      }).catch((err) => console.warn('[RentalContext] Advance recognition on return:', err));
+    }
     await loadRentals();
     toast.success(payload.penaltyPaid ? 'Return received – penalty collected' : 'Return received – penalty added to customer credit');
   };
@@ -405,6 +413,14 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
       }
     }
     await rentalService.markAsPickedUp(rentalId, companyId, payload, user?.id);
+    // When NOT delivering on credit: recognize any unreleased advance as income at pickup
+    if (!payload.deliverOnCredit && rental) {
+      accounting.recognizeRentalAdvance({
+        bookingId: rentalId,
+        customerName: rental.customerName,
+        customerId: rental.customerId || '',
+      }).catch((err) => console.warn('[RentalContext] Advance recognition on pickup:', err));
+    }
     await loadRentals();
     toast.success(payload.deliverOnCredit ? 'Rental delivered on credit' : 'Rental marked as picked up');
   };
