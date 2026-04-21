@@ -3,7 +3,7 @@ import { ArrowLeft, ShoppingBag, Plus, Search, Package, Calendar, Loader2, MapPi
 import type { User } from '../../types';
 import * as purchasesApi from '../../api/purchases';
 import * as branchesApi from '../../api/branches';
-import { supabase } from '../../lib/supabase';
+import { supabase, erpMobileCanUseRealtime } from '../../lib/supabase';
 import { CreatePurchaseFlow } from './CreatePurchaseFlow';
 import { MobilePaySupplier } from './MobilePaySupplier';
 import { AttachmentPreviewModal } from '../sales/AttachmentPreviewModal';
@@ -74,7 +74,7 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
   }, [companyId, effectiveBranchId, loadOrders]);
 
   useEffect(() => {
-    if (!companyId || import.meta.env.VITE_DISABLE_REALTIME === 'true') return;
+    if (!companyId || !erpMobileCanUseRealtime) return;
     const channel = supabase
       .channel('purchases-list')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases' }, () => {

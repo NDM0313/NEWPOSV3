@@ -1,4 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { RealtimeClient } from '@supabase/realtime-js';
 import { clearSecure } from './secureStorage';
 
 let supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
@@ -42,10 +43,66 @@ if (!hasConfig) {
   );
 }
 
+/** Public tutorial JWT (iss supabase-demo) — will not work against self-hosted / real projects. */
+function isDemoSupabaseAnonKey(key: string): boolean {
+  const parts = key.split('.');
+  if (parts.length < 2) return false;
+  try {
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+    const payload = JSON.parse(atob(b64 + pad)) as { iss?: string };
+    return payload?.iss === 'supabase-demo';
+  } catch {
+    return false;
+  }
+}
+
+if (typeof window !== 'undefined' && hasConfig && isDemoSupabaseAnonKey(supabaseAnonKey)) {
+  console.warn(
+    '[ERP Mobile] VITE_SUPABASE_ANON_KEY is the public Supabase demo JWT (iss supabase-demo). Copy the real anon key from your VPS / web .env.production. Realtime is disabled until fixed.'
+  );
+}
+
 const url = hasConfig ? supabaseUrl : 'https://placeholder.supabase.co';
 const key = hasConfig ? supabaseAnonKey : 'placeholder-key';
 
 export const isSupabaseConfigured = hasConfig;
+
+/** Use postgres_changes / Realtime only when config is valid and not the demo anon key. */
+export const erpMobileCanUseRealtime =
+  hasConfig && import.meta.env.VITE_DISABLE_REALTIME !== 'true' && !isDemoSupabaseAnonKey(supabaseAnonKey);
+
+/**
+ * REST/Auth stay same-origin in dev (Vite proxy). Realtime WebSockets through that proxy are
+ * fragile; use a direct wss:// URL to VITE_SUPABASE_HOST when in dev on localhost/LAN.
+ */
+function attachDirectRealtimeInLocalDev(client: SupabaseClient): void {
+  if (typeof window === 'undefined' || !import.meta.env.DEV) return;
+  if (!isViteDevLocal && !isViteDevLan) return;
+  if (!hasConfig || isDemoSupabaseAnonKey(supabaseAnonKey)) return;
+
+  const configured = (import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/$/, '');
+  if (!configured.startsWith('https://') || configured.includes('localhost')) return;
+
+  const realtimeHref = `${configured.replace(/^https/i, 'wss')}/realtime/v1`;
+  try {
+    client.realtime.disconnect();
+  } catch {
+    /* ignore */
+  }
+  const rc = new RealtimeClient(realtimeHref, {
+    params: { apikey: supabaseAnonKey },
+    accessToken: async () => {
+      const { data } = await client.auth.getSession();
+      return data.session?.access_token ?? supabaseAnonKey;
+    },
+  });
+  (client as unknown as { realtime: RealtimeClient }).realtime = rc;
+  void client.auth.getSession().then(({ data }) => {
+    const t = data.session?.access_token ?? supabaseAnonKey;
+    void rc.setAuth(t);
+  });
+}
 
 export const supabase = createClient(url, key, {
   auth: {
@@ -54,6 +111,8 @@ export const supabase = createClient(url, key, {
     detectSessionInUrl: true,
   },
 });
+
+attachDirectRealtimeInLocalDev(supabase);
 
 /** Auto-fix: when session is lost (refresh failed, CORS, etc.), clear PIN vault and notify app */
 if (hasConfig) {
