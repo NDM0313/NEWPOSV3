@@ -21,17 +21,18 @@ export default defineConfig({
     open: true,
     hmr: true, // Explicitly enable Hot Module Replacement
     // Same-origin Supabase in dev (see src/lib/supabase.ts): avoids Kong CORS (erp.dincouture.pk only)
+    // Prefix `/auth` (not only `/auth/v1`) so all auth routes are proxied.
     proxy: {
-      '/auth/v1': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
-      '/rest/v1': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
-      '/storage/v1': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
-      '/realtime/v1': {
+      '/auth': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
+      '/rest': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
+      '/storage': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
+      '/realtime': {
         target: 'https://supabase.dincouture.pk',
         changeOrigin: true,
         secure: true,
         ws: true,
       },
-      '/functions/v1': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
+      '/functions': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
     },
   },
   build: { 

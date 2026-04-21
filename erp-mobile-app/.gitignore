@@ -1,0 +1,8 @@
+# Stale compiled Vite config shadows vite.config.ts and breaks dev proxy (404 on /auth)
+vite.config.js
+
+node_modules
+dist
+.env
+.env.local
+.env.*.local
