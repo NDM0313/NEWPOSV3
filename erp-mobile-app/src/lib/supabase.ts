@@ -2,8 +2,27 @@ import { createClient } from '@supabase/supabase-js';
 import { clearSecure } from './secureStorage';
 
 let supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
-// Production: when app is served from erp.dincouture.pk/m, always use Supabase API at supabase.dincouture.pk (fixes localhost works / production fails)
 const origin = typeof window !== 'undefined' ? window.location.origin : '';
+
+/**
+ * Local Vite dev (localhost / LAN IP): Kong CORS only allows erp.dincouture.pk, so direct
+ * calls to supabase.dincouture.pk fail. Use same-origin URL — vite.config.ts proxies
+ * /auth/v1, /rest/v1, etc. to https://supabase.dincouture.pk.
+ */
+const isViteDevLocal =
+  import.meta.env.DEV &&
+  origin &&
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+const isViteDevLan =
+  import.meta.env.DEV &&
+  origin &&
+  /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(origin);
+
+if (isViteDevLocal || isViteDevLan) {
+  supabaseUrl = origin;
+}
+
+// Production: when app is served from erp.dincouture.pk/m, always use Supabase API at supabase.dincouture.pk (fixes localhost works / production fails)
 if (origin.includes('erp.dincouture.pk')) {
   supabaseUrl = 'https://supabase.dincouture.pk';
 }

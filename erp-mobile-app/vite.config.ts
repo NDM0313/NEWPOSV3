@@ -19,7 +19,20 @@ export default defineConfig({
     port: 5174,
     host: '0.0.0.0', // Network access for mobile devices (http://YOUR_IP:5174)
     open: true,
-    hmr: true,      // Explicitly enable Hot Module Replacement
+    hmr: true, // Explicitly enable Hot Module Replacement
+    // Same-origin Supabase in dev (see src/lib/supabase.ts): avoids Kong CORS (erp.dincouture.pk only)
+    proxy: {
+      '/auth/v1': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
+      '/rest/v1': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
+      '/storage/v1': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
+      '/realtime/v1': {
+        target: 'https://supabase.dincouture.pk',
+        changeOrigin: true,
+        secure: true,
+        ws: true,
+      },
+      '/functions/v1': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
+    },
   },
   build: { 
     outDir: 'dist',
