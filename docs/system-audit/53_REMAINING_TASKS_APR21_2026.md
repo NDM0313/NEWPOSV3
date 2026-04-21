@@ -6,7 +6,7 @@ Short follow-ups after mobile ERP + Supabase VPS work. Push this file with the r
 
 | Task | Action |
 |------|--------|
-| Local Supabase keys | Copy real `VITE_SUPABASE_ANON_KEY` and `VITE_SUPABASE_URL` from root [`.env.local`](../.env.local) / [`.env.production`](../.env.production) into [`erp-mobile-app/.env`](../../erp-mobile-app/.env). Do **not** use the public `supabase-demo` JWT. Restart `npm run dev` after edits. |
+| Local Supabase keys | Copy real `VITE_SUPABASE_ANON_KEY` and `VITE_SUPABASE_URL` from repo root [`.env.local`](../../.env.local) / [`.env.production`](../../.env.production) into [`erp-mobile-app/.env`](../../erp-mobile-app/.env). Do **not** use the public `supabase-demo` JWT. Restart `npm run dev` after edits. |
 | Typecheck | From `erp-mobile-app`: `npm run typecheck` (not `npx tsc -b in ...` — extra words are parsed as project paths). |
 
 ## Supabase / VPS
