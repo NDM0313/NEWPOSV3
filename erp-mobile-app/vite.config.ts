@@ -5,6 +5,35 @@ import path from 'path';
 const base = process.env.VITE_BASE || '/';
 const useMlKitStub = process.env.VITE_TARGET !== 'capacitor';
 
+/** Kong may reject WS/API when forwarded Origin is localhost; set on the Node→Kong leg only. */
+const supabaseProxyOrigin = process.env.VITE_SUPABASE_PROXY_ORIGIN || 'https://erp.dincouture.pk';
+
+type ProxyWithEvents = {
+  on: (event: string, fn: (...args: unknown[]) => void) => void;
+};
+
+function attachSupabaseProxyOrigin(proxy: ProxyWithEvents) {
+  const setOrigin = (proxyReq: { setHeader: (n: string, v: string) => void }) => {
+    proxyReq.setHeader('Origin', supabaseProxyOrigin);
+  };
+  proxy.on('proxyReq', (...args: unknown[]) => {
+    const proxyReq = args[0] as { setHeader: (n: string, v: string) => void };
+    setOrigin(proxyReq);
+  });
+  proxy.on('proxyReqWs', (...args: unknown[]) => {
+    const proxyReq = args[0] as { setHeader: (n: string, v: string) => void };
+    setOrigin(proxyReq);
+  });
+}
+
+const supabaseProxy = (extra: { ws?: boolean } = {}) => ({
+  target: 'https://supabase.dincouture.pk',
+  changeOrigin: true,
+  secure: false,
+  ws: extra.ws === true,
+  configure: (proxy: ProxyWithEvents) => attachSupabaseProxyOrigin(proxy),
+});
+
 export default defineConfig({
   base,
   resolve: {
@@ -23,16 +52,11 @@ export default defineConfig({
     // Same-origin Supabase in dev (see src/lib/supabase.ts): avoids Kong CORS (erp.dincouture.pk only)
     // Prefix `/auth` (not only `/auth/v1`) so all auth routes are proxied.
     proxy: {
-      '/auth': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
-      '/rest': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
-      '/storage': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
-      '/realtime': {
-        target: 'https://supabase.dincouture.pk',
-        changeOrigin: true,
-        secure: true,
-        ws: true,
-      },
-      '/functions': { target: 'https://supabase.dincouture.pk', changeOrigin: true, secure: true },
+      '/auth': supabaseProxy(),
+      '/rest': supabaseProxy(),
+      '/storage': supabaseProxy(),
+      '/realtime': supabaseProxy({ ws: true }),
+      '/functions': supabaseProxy(),
     },
   },
   build: { 
