@@ -15,8 +15,12 @@ fi
 
 echo "[migrate] Running migrations in $CONTAINER..."
 
+# Supabase DB image: `postgres` is not superuser; objects are owned by supabase_admin.
+# Use supabase_admin so CREATE OR REPLACE on existing functions succeeds (override with SUPABASE_DB_MIGRATE_USER).
+PSQL_USER="${SUPABASE_DB_MIGRATE_USER:-supabase_admin}"
+
 # Create schema_migrations table
-docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<'EOSQL'
+docker exec -i "$CONTAINER" psql -U "$PSQL_USER" -d postgres -v ON_ERROR_STOP=1 <<'EOSQL'
 CREATE TABLE IF NOT EXISTS schema_migrations (
   id SERIAL PRIMARY KEY,
   name VARCHAR(255) NOT NULL UNIQUE,
@@ -26,17 +30,17 @@ EOSQL
 
 # Bootstrap: if DB was set up before migrations, mark 02-18 as applied (don't re-run)
 BOOTSTRAP="02_clean_erp_schema.sql 03_frontend_driven_schema.sql 04_create_default_accounts.sql 05_inventory_movement_engine.sql 06_purchase_transaction_with_accounting.sql 07_sale_transaction_with_accounting.sql 08_payment_engine.sql 09_contact_groups.sql 09_expense_transaction.sql 10_ledger_calculations.sql 11_returns_cancellation.sql 12_accounting_reports.sql 13_create_demo_company.sql 16_chart_of_accounts.sql 17_accounts_description.sql 18_branches_default_accounts.sql"
-COUNT=$(docker exec "$CONTAINER" psql -U postgres -d postgres -t -A -c "SELECT COUNT(*) FROM schema_migrations" 2>/dev/null | tr -d ' ')
+COUNT=$(docker exec "$CONTAINER" psql -U "$PSQL_USER" -d postgres -t -A -c "SELECT COUNT(*) FROM schema_migrations" 2>/dev/null | tr -d ' ')
 if [ -z "$COUNT" ] || [ "$COUNT" -lt 5 ]; then
   echo "[migrate] Bootstrap: marking pre-existing migrations (02-18) as applied..."
   for b in $BOOTSTRAP; do
-    docker exec "$CONTAINER" psql -U postgres -d postgres -c "INSERT INTO schema_migrations (name) VALUES ('$b') ON CONFLICT (name) DO NOTHING" 2>/dev/null || true
+    docker exec "$CONTAINER" psql -U "$PSQL_USER" -d postgres -c "INSERT INTO schema_migrations (name) VALUES ('$b') ON CONFLICT (name) DO NOTHING" 2>/dev/null || true
   done
   echo "[migrate] Bootstrap done."
 fi
 
 # Get applied migrations
-APPLIED=$(docker exec "$CONTAINER" psql -U postgres -d postgres -t -A -c "SELECT name FROM schema_migrations" 2>/dev/null | tr '\n' '|')
+APPLIED=$(docker exec "$CONTAINER" psql -U "$PSQL_USER" -d postgres -t -A -c "SELECT name FROM schema_migrations" 2>/dev/null | tr '\n' '|')
 APPLIED="|${APPLIED}|"
 
 run_one() {
@@ -49,8 +53,8 @@ run_one() {
     return 0
   fi
   echo "[RUN] $file"
-  if docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < "$path" 2>&1; then
-    docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (name) VALUES ('$file') ON CONFLICT (name) DO NOTHING" 2>/dev/null || true
+  if docker exec -i "$CONTAINER" psql -U "$PSQL_USER" -d postgres -v ON_ERROR_STOP=1 < "$path" 2>&1; then
+    docker exec -i "$CONTAINER" psql -U "$PSQL_USER" -d postgres -v ON_ERROR_STOP=1 -c "INSERT INTO schema_migrations (name) VALUES ('$file') ON CONFLICT (name) DO NOTHING" 2>/dev/null || true
     echo "[OK] $file"
     APPLIED="$APPLIED|$file|"
     return 0
@@ -81,8 +85,8 @@ if [ -f "$ROOT/$REPLICA_PATH" ]; then
     echo "[SKIP] $REPLICA_NAME (already applied)"
   else
     echo "[RUN] $REPLICA_NAME"
-    if docker exec -i "$CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < "$ROOT/$REPLICA_PATH" 2>&1; then
-      docker exec "$CONTAINER" psql -U postgres -d postgres -c "INSERT INTO schema_migrations (name) VALUES ('$REPLICA_NAME') ON CONFLICT (name) DO NOTHING" 2>/dev/null || true
+    if docker exec -i "$CONTAINER" psql -U "$PSQL_USER" -d postgres -v ON_ERROR_STOP=1 < "$ROOT/$REPLICA_PATH" 2>&1; then
+      docker exec "$CONTAINER" psql -U "$PSQL_USER" -d postgres -c "INSERT INTO schema_migrations (name) VALUES ('$REPLICA_NAME') ON CONFLICT (name) DO NOTHING" 2>/dev/null || true
       echo "[OK] $REPLICA_NAME"
     else
       echo "[FAIL] $REPLICA_NAME"
