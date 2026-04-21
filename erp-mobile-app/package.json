@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "typecheck": "tsc -b",
     "dev": "vite --host",
     "build": "tsc -b && vite build",
     "build:mobile": "vite build",

@@ -3,6 +3,16 @@
 -- Party GL RPCs used COALESCE(je.description, jel.description) so line detail was dropped.
 -- This helper mirrors accountingService.mergeLedgerEntryDescriptionForStatement; RPC je_lines use it for descr.
 
+-- Self-hosted Supabase: helper may exist under another role; CREATE OR REPLACE requires ownership.
+-- Superuser (postgres in db container) can take ownership so this migration applies via run-migrations-vps.sh.
+DO $owner$
+BEGIN
+  ALTER FUNCTION public._gl_ledger_line_display_description(text, text, text) OWNER TO postgres;
+EXCEPTION
+  WHEN undefined_function THEN
+    NULL;
+END $owner$;
+
 CREATE OR REPLACE FUNCTION public._gl_ledger_line_display_description(
   p_reference_type text,
   p_entry_description text,
