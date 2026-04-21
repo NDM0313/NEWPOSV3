@@ -68,6 +68,9 @@ const key = hasConfig ? supabaseAnonKey : 'placeholder-key';
 
 export const isSupabaseConfigured = hasConfig;
 
+/** True when VITE_SUPABASE_ANON_KEY is the public tutorial JWT (iss supabase-demo). Fix: copy real anon key from web .env.production. */
+export const erpMobileUsingDemoSupabaseAnonKey = hasConfig && isDemoSupabaseAnonKey(supabaseAnonKey);
+
 /** Use postgres_changes / Realtime only when config is valid and not the demo anon key. */
 export const erpMobileCanUseRealtime =
   hasConfig && import.meta.env.VITE_DISABLE_REALTIME !== 'true' && !isDemoSupabaseAnonKey(supabaseAnonKey);

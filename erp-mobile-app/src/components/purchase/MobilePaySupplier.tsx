@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Banknote, Building2, Wallet, Upload, FileText } from 'lucide-react';
+import { X, Banknote, Building2, Wallet, Upload, FileText, AlertTriangle } from 'lucide-react';
+import { erpMobileUsingDemoSupabaseAnonKey } from '../../lib/supabase';
 import { getPaymentAccounts, recordSupplierPayment } from '../../api/accounts';
 import { uploadPaymentAttachments, updatePaymentAttachments, MAX_FILE_SIZE_BYTES, ACCEPT_TYPES } from '../../api/paymentAttachments';
 
@@ -144,6 +145,20 @@ export function MobilePaySupplier({
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col bg-[#111827]">
+      {erpMobileUsingDemoSupabaseAnonKey && (
+        <div
+          role="alert"
+          className="shrink-0 border-b border-amber-500/50 bg-amber-950/95 px-3 py-2.5 text-xs text-amber-100"
+        >
+          <span className="inline-flex items-start gap-1.5">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+            <span>
+              Demo Supabase anon key in <span className="font-mono">.env</span> — payments will fail. Copy{' '}
+              <span className="font-mono">VITE_SUPABASE_ANON_KEY</span> from web <span className="font-mono">.env.production</span> and restart dev.
+            </span>
+          </span>
+        </div>
+      )}
       <div className="flex items-center justify-between p-4 border-b border-[#374151] bg-[#1F2937] shrink-0">
         <div className="flex items-center gap-2">
           <Banknote className="w-6 h-6 text-[#10B981]" />

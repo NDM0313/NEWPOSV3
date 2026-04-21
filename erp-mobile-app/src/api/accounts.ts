@@ -502,10 +502,26 @@ export async function recordSupplierPayment(params: {
     p_notes: params.notes ?? null,
     p_created_by: params.userId ?? null,
   });
-  if (error) return { data: null, error: error.message };
+  if (error) {
+    let msg = error.message;
+    if (msg.includes('payment_status') && msg.includes('text')) {
+      msg +=
+        ' Apply migration migrations/20260449_record_payment_with_accounting_payment_status_cast.sql on Postgres (then NOTIFY pgrst reload if self-hosted).';
+    }
+    return { data: null, error: msg };
+  }
   const res = data as { success?: boolean; payment_id?: string; error?: string };
   if (res?.success && res.payment_id) return { data: { payment_id: res.payment_id }, error: null };
-  return { data: null, error: res?.error ?? 'Payment failed.' };
+  let rpcErr = res?.error ?? 'Payment failed.';
+  if (
+    typeof rpcErr === 'string' &&
+    rpcErr.includes('payment_status') &&
+    (rpcErr.includes('text') || rpcErr.includes('type payment_status'))
+  ) {
+    rpcErr +=
+      ' Apply migration migrations/20260449_record_payment_with_accounting_payment_status_cast.sql on Postgres.';
+  }
+  return { data: null, error: rpcErr };
 }
 
 export interface WorkerWithPayable {

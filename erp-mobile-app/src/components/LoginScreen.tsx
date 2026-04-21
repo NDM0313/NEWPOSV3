@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Lock, Mail, Zap, Loader2, KeyRound } from 'lucide-react';
+import { Lock, Mail, Zap, Loader2, KeyRound, AlertTriangle } from 'lucide-react';
+import { erpMobileUsingDemoSupabaseAnonKey } from '../lib/supabase';
 import type { User } from '../types';
 import * as authApi from '../api/auth';
 
@@ -206,9 +207,30 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
   };
 
   // --- Set PIN modal (after first email/password login) ---
+  const demoKeyBanner = erpMobileUsingDemoSupabaseAnonKey ? (
+    <div
+      role="alert"
+      className="mb-4 w-full max-w-sm rounded-lg border border-amber-500/50 bg-amber-950/80 px-3 py-3 text-left text-sm text-amber-100"
+    >
+      <div className="flex gap-2">
+        <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
+        <div>
+          <p className="font-semibold text-amber-50">Wrong Supabase anon key (demo JWT)</p>
+          <p className="mt-1 text-amber-100/90 leading-snug">
+            Copy <span className="font-mono text-xs">VITE_SUPABASE_ANON_KEY</span> from the main ERP{' '}
+            <span className="font-mono text-xs">.env.production</span> into <span className="font-mono text-xs">erp-mobile-app/.env</span>, keep{' '}
+            <span className="font-mono text-xs">VITE_SUPABASE_URL=https://supabase.dincouture.pk</span>, then restart{' '}
+            <span className="font-mono text-xs">npm run dev</span>.
+          </p>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   if (showSetPin && userForSetPin) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        {demoKeyBanner}
         <div className="w-full max-w-sm">
           <div className="mb-6 text-center">
             <KeyRound className="w-12 h-12 mx-auto mb-2 text-[#3B82F6]" />
@@ -271,6 +293,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
   if (isPinMode) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        {demoKeyBanner}
         <div className="mb-8 text-center">
           <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-[#3B82F6] to-[#8B5CF6] rounded-2xl flex items-center justify-center">
             <span className="text-3xl font-bold text-white">DC</span>
@@ -337,6 +360,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
   // --- Email / password login ---
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4">
+      {demoKeyBanner}
       <div className="mb-8 text-center">
         <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-[#3B82F6] to-[#8B5CF6] rounded-2xl flex items-center justify-center">
           <span className="text-3xl font-bold text-white">DC</span>
