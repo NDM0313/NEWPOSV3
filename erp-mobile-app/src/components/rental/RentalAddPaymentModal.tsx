@@ -1,9 +1,4 @@
-import { addRentalPayment } from '../../api/rentals';
-import {
-  MobilePaymentSheet,
-  type MobilePaymentSheetSubmitPayload,
-  type MobilePaymentSheetSubmitResult,
-} from '../shared/MobilePaymentSheet';
+import { UnifiedPaymentSheet } from '../shared/UnifiedPaymentSheet';
 
 export interface RentalAddPaymentModalProps {
   rentalId: string;
@@ -12,65 +7,39 @@ export interface RentalAddPaymentModalProps {
   userId?: string | null;
   bookingNo?: string | null;
   customerName?: string | null;
+  customerId?: string | null;
   totalAmount?: number;
   paidAmount?: number;
   dueAmount: number;
+  /** When opened from the Return flow with an outstanding penalty. */
+  damageDeduction?: number | null;
   onClose: () => void;
   onSuccess: () => void;
   onViewLedger?: (info: { paymentId: string | null; partyName: string | null }) => void;
 }
 
-export function RentalAddPaymentModal({
-  rentalId,
-  companyId,
-  branchId,
-  userId,
-  bookingNo,
-  customerName,
-  totalAmount,
-  paidAmount,
-  dueAmount,
-  onClose,
-  onSuccess,
-  onViewLedger,
-}: RentalAddPaymentModalProps) {
-  const handleSubmit = async (payload: MobilePaymentSheetSubmitPayload): Promise<MobilePaymentSheetSubmitResult> => {
-    const { error, paymentId, referenceNumber } = await addRentalPayment({
-      rentalId,
-      companyId,
-      branchId,
-      amount: payload.amount,
-      method: payload.method,
-      paymentAccountId: payload.accountId,
-      paymentDate: payload.paymentDate,
-      reference: payload.reference || undefined,
-      notes: payload.notes || undefined,
-      userId: userId ?? null,
-    });
-    return {
-      success: !error,
-      error: error ?? null,
-      paymentId: paymentId ?? null,
-      referenceNumber: referenceNumber ?? null,
-      partyAccountName: customerName ? `Receivable — ${customerName}` : null,
-    };
-  };
-
+/**
+ * Thin compatibility wrapper around UnifiedPaymentSheet (kind='rental').
+ * Preserved so existing callers do not need to change their import path.
+ */
+export function RentalAddPaymentModal(props: RentalAddPaymentModalProps) {
   return (
-    <MobilePaymentSheet
-      mode="rental"
-      companyId={companyId}
-      branchId={branchId}
-      userId={userId}
-      partyName={customerName ?? null}
-      referenceNo={bookingNo ?? null}
-      totalAmount={totalAmount ?? null}
-      alreadyPaid={paidAmount ?? null}
-      outstandingAmount={dueAmount}
-      onClose={onClose}
-      onSuccess={onSuccess}
-      onSubmit={handleSubmit}
-      onViewLedger={onViewLedger}
+    <UnifiedPaymentSheet
+      kind="rental"
+      referenceId={props.rentalId}
+      referenceNo={props.bookingNo ?? null}
+      companyId={props.companyId}
+      branchId={props.branchId}
+      userId={props.userId}
+      partyName={props.customerName ?? null}
+      partyId={props.customerId ?? null}
+      totalAmount={props.totalAmount ?? null}
+      alreadyPaid={props.paidAmount ?? null}
+      outstandingAmount={props.dueAmount}
+      damageDeduction={props.damageDeduction ?? null}
+      onClose={props.onClose}
+      onSuccess={props.onSuccess}
+      onViewLedger={props.onViewLedger}
     />
   );
 }

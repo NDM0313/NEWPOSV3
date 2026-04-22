@@ -220,8 +220,8 @@ export function ReportsHub({ onBack, onOpenReport, companyId, branchId }: Report
               onClick={() => onOpenReport('wallet-summary')}
             />
             <ReportTile
-              title="Day Book"
-              description="Daily journal entries"
+              title="Day Book / Roznamcha"
+              description="Daily cash-in / cash-out"
               gradient="from-[#3B82F6] to-[#2563EB]"
               icon={<CalendarClock className="w-5 h-5 text-white" />}
               onClick={() => onOpenReport('daybook')}

@@ -10,6 +10,8 @@ import { formatAmount, formatDate, dateRangeLabel } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
+import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
+import type { TransactionReferenceType } from '../../../api/transactionDetail';
 
 interface AccountLedgerReportProps {
   onBack: () => void;
@@ -30,6 +32,7 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
   const [lines, setLines] = useState<LedgerLine[]>([]);
   const [opening, setOpening] = useState(0);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedLine, setSelectedLine] = useState<LedgerLine | null>(null);
   const preview = usePdfPreview(companyId);
 
   useEffect(() => {
@@ -81,6 +84,58 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
     const closing = lines.length ? lines[lines.length - 1].runningBalance : opening;
     return { debit, credit, closing };
   }, [lines, opening]);
+
+  type Granularity = 'none' | 'week' | 'month';
+  const granularity: Granularity = useMemo(() => {
+    if (!range.from || !range.to) return lines.length > 30 ? 'week' : 'none';
+    const from = new Date(range.from);
+    const to = new Date(range.to);
+    const days = Math.round((to.getTime() - from.getTime()) / 86400000);
+    if (days > 60) return 'month';
+    if (days > 7) return 'week';
+    return 'none';
+  }, [range.from, range.to, lines.length]);
+
+  const groupedLines = useMemo(() => {
+    if (granularity === 'none' || lines.length === 0) {
+      return [{ key: 'all', label: '', lines, closingBalance: totals.closing }];
+    }
+    const groups = new Map<string, { key: string; label: string; lines: LedgerLine[]; closingBalance: number }>();
+    const labelForKey = (key: string) => {
+      if (granularity === 'month') {
+        const [y, m] = key.split('-').map((n) => parseInt(n, 10));
+        const d = new Date(y, m - 1, 1);
+        return d.toLocaleDateString('en-PK', { month: 'long', year: 'numeric' });
+      }
+      const [y, w] = key.split('-W');
+      return `Week ${w}, ${y}`;
+    };
+
+    const weekKey = (dateStr: string): string => {
+      const d = new Date(dateStr + 'T00:00:00Z');
+      const yr = d.getUTCFullYear();
+      const jan1 = new Date(Date.UTC(yr, 0, 1));
+      const dayOfYear = Math.floor((d.getTime() - jan1.getTime()) / 86400000) + 1;
+      const week = Math.ceil((dayOfYear + ((jan1.getUTCDay() + 6) % 7)) / 7);
+      return `${yr}-W${String(week).padStart(2, '0')}`;
+    };
+
+    const monthKey = (dateStr: string): string => {
+      return dateStr.slice(0, 7);
+    };
+
+    for (const line of lines) {
+      const key = granularity === 'month' ? monthKey(line.date) : weekKey(line.date);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.lines.push(line);
+        existing.closingBalance = line.runningBalance;
+      } else {
+        groups.set(key, { key, label: labelForKey(key), lines: [line], closingBalance: line.runningBalance });
+      }
+    }
+    return Array.from(groups.values());
+  }, [lines, granularity, totals.closing]);
 
   const filteredAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -175,35 +230,61 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
             right={`${lines.length} entries`}
           />
           <ul className="divide-y divide-[#374151]">
-            {lines.map((l) => {
-              const isDebit = l.debit > 0;
-              const amount = isDebit ? l.debit : l.credit;
-              return (
-                <li key={l.id} className="px-4 py-3">
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                        isDebit ? 'bg-[#F59E0B]/15 text-[#F59E0B]' : 'bg-[#10B981]/15 text-[#10B981]'
-                      }`}
-                    >
-                      {isDebit ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownLeft className="w-4 h-4" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{l.description || '—'}</p>
-                      <p className="text-[11px] text-[#9CA3AF] truncate">
-                        {formatDate(l.date)} · {l.entryNo} · {l.referenceType || '—'}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className={`text-sm font-bold ${isDebit ? 'text-[#F59E0B]' : 'text-[#10B981]'}`}>
-                        {isDebit ? '+' : '−'} Rs. {formatAmount(amount, 0)}
-                      </p>
-                      <p className="text-[10px] text-[#9CA3AF]">Bal Rs. {formatAmount(l.runningBalance, 0)}</p>
-                    </div>
+            {groupedLines.map((group) => (
+              <li key={group.key}>
+                {group.label && (
+                  <div className="px-4 py-2 bg-[#111827]/60 border-b border-[#374151]">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{group.label}</p>
                   </div>
-                </li>
-              );
-            })}
+                )}
+                <ul className="divide-y divide-[#374151]">
+                  {group.lines.map((l) => {
+                    const isDebit = l.debit > 0;
+                    const amount = isDebit ? l.debit : l.credit;
+                    const time = l.createdAt ? new Date(l.createdAt).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' }) : '';
+                    return (
+                      <li key={l.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLine(l)}
+                          className="w-full text-left px-4 py-3 hover:bg-[#111827]/60 transition-colors"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div
+                              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+                                isDebit ? 'bg-[#F59E0B]/15 text-[#F59E0B]' : 'bg-[#10B981]/15 text-[#10B981]'
+                              }`}
+                            >
+                              {isDebit ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownLeft className="w-4 h-4" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-white truncate">{l.description || '—'}</p>
+                              <p className="text-[11px] text-[#9CA3AF] truncate">
+                                {formatDate(l.date)}{time ? ` · ${time}` : ''} · {l.entryNo} · {l.referenceType || '—'}
+                              </p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className={`text-sm font-bold ${isDebit ? 'text-[#F59E0B]' : 'text-[#10B981]'}`}>
+                                {isDebit ? '+' : '−'} Rs. {formatAmount(amount, 0)}
+                              </p>
+                              <p className="text-[10px] text-[#9CA3AF]">Bal Rs. {formatAmount(l.runningBalance, 0)}</p>
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {granularity !== 'none' && (
+                  <div className="flex items-center justify-between px-4 py-2 bg-[#0F172A] border-t border-[#374151]">
+                    <span className="text-[11px] uppercase tracking-wide text-[#9CA3AF]">Closing balance</span>
+                    <span className={`text-sm font-bold ${group.closingBalance >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                      Rs. {formatAmount(group.closingBalance, 0)}
+                    </span>
+                  </div>
+                )}
+              </li>
+            ))}
           </ul>
         </ReportCard>
       </ReportShell>
@@ -238,6 +319,31 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
           />
         </PdfPreviewModal>
       )}
+
+      {selectedLine && (() => {
+        const knownTypes: TransactionReferenceType[] = [
+          'sale', 'purchase', 'payment', 'expense', 'expense_payment',
+          'rental', 'journal', 'on_account', 'worker_payment', 'studio',
+        ];
+        const refType: TransactionReferenceType = (
+          knownTypes.includes(selectedLine.referenceType as TransactionReferenceType)
+            ? (selectedLine.referenceType as TransactionReferenceType)
+            : 'journal'
+        );
+        const refId = refType === 'journal'
+          ? selectedLine.journalEntryId
+          : (selectedLine.sourceReferenceId ?? selectedLine.journalEntryId);
+        return (
+          <TransactionDetailSheet
+            open
+            onClose={() => setSelectedLine(null)}
+            companyId={companyId}
+            referenceType={refType}
+            referenceId={refId}
+            fallbackTitle={`${selectedLine.entryNo} · ${selectedLine.referenceType}`}
+          />
+        );
+      })()}
     </div>
   );
 }

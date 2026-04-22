@@ -1,5 +1,4 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { getNextDocumentNumber } from './documentNumber';
 
 /** UI status: map DB status (picked_up, active, closed) to web-like labels */
 export function mapRentalStatus(dbStatus: string): string {
@@ -88,6 +87,13 @@ export interface CreateBookingInput {
   /** Account ID from chart (accounts table). Validated; method derived from account type. Overrides advancePaymentMethod when set. */
   advancePaymentAccountId?: string | null;
   notes?: string | null;
+  /** Optional salesman + commission (mirrors sales commission). Persisted on rentals.salesman_id / commission_*. */
+  salesmanId?: string | null;
+  commissionPercent?: number | null;
+  /** Optional security document (NSC) captured at booking. Mirrors web ERP. */
+  securityDocumentType?: string | null;
+  securityDocumentNumber?: string | null;
+  securityDocumentImageUrl?: string | null;
   items: Array<{
     productId: string;
     productName: string;
@@ -95,6 +101,10 @@ export interface CreateBookingInput {
     ratePerDay: number;
     durationDays: number;
     total: number;
+    /** When the product has variations, the specific variation picked. */
+    variationId?: string | null;
+    /** Optional human-readable variation label (e.g. "Red / Large") — stored in notes for display. */
+    variationLabel?: string | null;
   }>;
 }
 
@@ -115,6 +125,11 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     advancePaymentMethod = 'cash',
     advancePaymentAccountId,
     notes = null,
+    salesmanId = null,
+    commissionPercent = null,
+    securityDocumentType = null,
+    securityDocumentNumber = null,
+    securityDocumentImageUrl = null,
     items,
   } = input;
 
@@ -130,43 +145,74 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
   const totalAmount = rentalCharges + securityDeposit;
   const dueAmount = Math.max(0, totalAmount - paidAmount);
 
+  const commissionPct = commissionPercent != null && Number.isFinite(commissionPercent) ? Number(commissionPercent) : null;
+  const commissionAmount = commissionPct != null && commissionPct > 0 ? Math.round(rentalCharges * (commissionPct / 100) * 100) / 100 : 0;
+
+  const rentalInsert: Record<string, unknown> = {
+    company_id: companyId,
+    branch_id: branchId,
+    booking_no: null,
+    booking_date: bookingDate,
+    customer_id: customerId,
+    customer_name: customerName,
+    status: 'booked',
+    pickup_date: pickupDate,
+    return_date: returnDate,
+    duration_days: durationDays,
+    rental_charges: rentalCharges,
+    security_deposit: securityDeposit,
+    total_amount: totalAmount,
+    paid_amount: paidAmount,
+    due_amount: dueAmount,
+    notes,
+    created_by: userId,
+  };
+  if (salesmanId) rentalInsert.salesman_id = salesmanId;
+  if (commissionPct != null) {
+    rentalInsert.commission_percent = commissionPct;
+    rentalInsert.commission_amount = commissionAmount;
+    rentalInsert.commission_eligible_amount = rentalCharges;
+    rentalInsert.commission_status = 'pending';
+  }
+  if (securityDocumentType) rentalInsert.security_document_type = securityDocumentType;
+  if (securityDocumentNumber) rentalInsert.security_document_number = securityDocumentNumber.trim() || null;
+  if (securityDocumentImageUrl) rentalInsert.security_document_image_url = securityDocumentImageUrl;
+  if (securityDocumentType || securityDocumentNumber || securityDocumentImageUrl) {
+    rentalInsert.security_status = 'collected';
+  }
+
   const { data: rentalData, error: rentalError } = await supabase
     .from('rentals')
-    .insert({
-      company_id: companyId,
-      branch_id: branchId,
-      booking_no: null,
-      booking_date: bookingDate,
-      customer_id: customerId,
-      customer_name: customerName,
-      status: 'booked',
-      pickup_date: pickupDate,
-      return_date: returnDate,
-      duration_days: durationDays,
-      rental_charges: rentalCharges,
-      security_deposit: securityDeposit,
-      total_amount: totalAmount,
-      paid_amount: paidAmount,
-      due_amount: dueAmount,
-      notes,
-      created_by: userId,
-    })
+    .insert(rentalInsert)
     .select('id, booking_no')
     .single();
 
   if (rentalError) return { data: null, error: rentalError.message };
 
-  const itemsPayload = items.map((i) => ({
-    rental_id: rentalData.id,
-    product_id: i.productId,
-    product_name: i.productName,
-    quantity: i.quantity,
-    rate_per_day: i.ratePerDay,
-    duration_days: i.durationDays,
-    total: i.total,
-  }));
+  const itemsPayload = items.map((i) => {
+    const row: Record<string, unknown> = {
+      rental_id: rentalData.id,
+      product_id: i.productId,
+      product_name: i.variationLabel ? `${i.productName} — ${i.variationLabel}` : i.productName,
+      quantity: i.quantity,
+      rate_per_day: i.ratePerDay,
+      duration_days: i.durationDays,
+      total: i.total,
+    };
+    if (i.variationId) row.variation_id = i.variationId;
+    return row;
+  });
 
-  const { error: itemsError } = await supabase.from('rental_items').insert(itemsPayload);
+  let { error: itemsError } = await supabase.from('rental_items').insert(itemsPayload);
+  if (itemsError && /variation_id|column/i.test(itemsError.message ?? '')) {
+    const stripped = itemsPayload.map((row) => {
+      const clone: Record<string, unknown> = { ...row };
+      delete clone.variation_id;
+      return clone;
+    });
+    const retry = await supabase.from('rental_items').insert(stripped);
+    itemsError = retry.error ?? null;
+  }
   if (itemsError) {
     await supabase.from('rentals').delete().eq('id', rentalData.id);
     return { data: null, error: itemsError.message };
@@ -478,13 +524,9 @@ export async function addRentalPayment(
   let referenceNumber: string | null = null;
 
   if (params.paymentAccountId && params.companyId && branchId) {
-    let refNum: string | null = null;
-    try {
-      refNum = await getNextDocumentNumber(params.companyId, branchId, 'payment');
-    } catch {
-      refNum = null;
-    }
-
+    // Pass reference_number as null so the DB trigger assigns a unique value atomically.
+    // This avoids the "payments_reference_number_unique" race that occurred when two
+    // quick payments independently fetched the same next-number from the client side.
     const { data: rpcData, error: rpcErr } = await supabase.rpc('record_payment_with_accounting', {
       p_company_id: params.companyId,
       p_branch_id: branchId,
@@ -495,16 +537,27 @@ export async function addRentalPayment(
       p_payment_method: normalizedMethod === 'wallet' ? 'other' : normalizedMethod,
       p_payment_date: paymentDate,
       p_payment_account_id: params.paymentAccountId,
-      p_reference_number: refNum ?? null,
+      p_reference_number: null,
       p_notes: params.notes ?? params.reference ?? null,
       p_created_by: params.userId ?? null,
     });
 
     if (rpcErr) return { error: rpcErr.message };
-    const rpcRes = rpcData as { success?: boolean; payment_id?: string; error?: string };
+    const rpcRes = rpcData as { success?: boolean; payment_id?: string; reference_number?: string; error?: string };
     if (!rpcRes?.success) return { error: rpcRes?.error ?? 'Payment failed.' };
     paymentId = rpcRes.payment_id ?? null;
-    referenceNumber = refNum;
+    referenceNumber = rpcRes.reference_number ?? null;
+
+    if (!referenceNumber && paymentId) {
+      try {
+        const { data: row } = await supabase.from('payments').select('reference_number').eq('id', paymentId).maybeSingle();
+        if (row && (row as { reference_number?: string }).reference_number) {
+          referenceNumber = String((row as { reference_number?: string }).reference_number);
+        }
+      } catch {
+        // best-effort only
+      }
+    }
 
     try {
       await supabase.from('rental_payments').insert({

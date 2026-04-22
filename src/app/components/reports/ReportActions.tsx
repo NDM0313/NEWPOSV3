@@ -2,6 +2,8 @@ import React from 'react';
 import { Button } from "../ui/button";
 import { Printer, FileText, FileSpreadsheet, MessageCircle, Share2 } from 'lucide-react';
 import { cn } from "../ui/utils";
+import { DocumentPreviewButton } from '@/app/components/shared/DocumentPreviewButton';
+import type { DocumentType } from '@/app/services/pdfExportService';
 
 interface ReportActionsProps {
   title?: string;
@@ -11,6 +13,10 @@ interface ReportActionsProps {
   onCsv?: () => void;
   onWhatsapp?: () => void;
   className?: string;
+  /** When set with previewContentRef, shows WYSIWYG PDF preview before print. */
+  previewContentRef?: React.RefObject<HTMLElement | null>;
+  previewDocumentType?: DocumentType;
+  previewReference?: string;
 }
 
 export const ReportActions = ({ 
@@ -20,8 +26,12 @@ export const ReportActions = ({
   onExcel, 
   onCsv,
   onWhatsapp,
-  className 
+  className,
+  previewContentRef,
+  previewDocumentType = 'ledger',
+  previewReference,
 }: ReportActionsProps) => {
+  const showPreview = Boolean(previewContentRef && previewDocumentType);
   return (
     <div className={cn("sticky top-0 z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 p-4 mb-6 gap-4", className)}>
       {title && (
@@ -32,6 +42,15 @@ export const ReportActions = ({
       )}
       
       <div className="flex flex-wrap items-center gap-2">
+        {showPreview && previewContentRef && (
+          <DocumentPreviewButton
+            contentRef={previewContentRef}
+            documentType={previewDocumentType}
+            reference={previewReference}
+            label="Preview"
+            className="border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 gap-2"
+          />
+        )}
         <Button 
           variant="outline" 
           size="sm" 

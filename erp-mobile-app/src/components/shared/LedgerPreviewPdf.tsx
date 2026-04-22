@@ -66,7 +66,7 @@ export function LedgerPreviewPdf({
       <table>
         <thead>
           <tr>
-            <th style={{ width: 70 }}>Date</th>
+            <th style={{ width: 80 }}>Date</th>
             <th style={{ width: 90 }}>Reference</th>
             <th>Description</th>
             <th style={{ width: 70, textAlign: 'right' }}>Debit</th>
@@ -90,8 +90,8 @@ export function LedgerPreviewPdf({
           ) : (
             rows.map((r, i) => (
               <tr key={i}>
-                <td>{r.date}</td>
-                <td>{r.reference}</td>
+                <td style={{ width: 80 }}>{r.date}</td>
+                <td style={{ width: 90 }}>{r.reference}</td>
                 <td>{r.description}</td>
                 <td style={{ textAlign: 'right' }}>{r.debit ? fmt(r.debit) : '—'}</td>
                 <td style={{ textAlign: 'right' }}>{r.credit ? fmt(r.credit) : '—'}</td>

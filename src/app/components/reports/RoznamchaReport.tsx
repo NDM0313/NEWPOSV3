@@ -4,7 +4,7 @@
  * Structure: Filters → Summary Cards → Cash Split → Roznamcha Table.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { ReportActions } from './ReportActions';
 import { DateRangePicker } from '../ui/DateRangePicker';
@@ -77,6 +77,7 @@ export interface RoznamchaReportProps {
 }
 
 export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaReportProps = {}) => {
+  const rozPrintRef = useRef<HTMLDivElement>(null);
   const { companyId, branchId: contextBranchId } = useSupabase();
   const { formatDate, formatDateTime } = useFormatDate();
   const today = new Date();
@@ -256,7 +257,12 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         onPdf={() => exportToPDF(exportData, 'Roznamcha')}
         onExcel={() => exportToExcel(exportData, 'Roznamcha')}
         onWhatsapp={() => {}}
+        previewContentRef={rozPrintRef}
+        previewDocumentType="ledger"
+        previewReference={dateFrom && dateTo ? `Roznamcha-${dateFrom}-${dateTo}` : 'Roznamcha'}
       />
+
+      <div ref={rozPrintRef} className="space-y-6">
 
       {/* 1. FILTERS */}
       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
@@ -685,6 +691,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           <p className="text-sm text-gray-500 mt-1">Roznamcha shows Cash In / Cash Out only (not journal entries).</p>
         </div>
       )}
+      </div>
     </div>
   );
 };

@@ -5,6 +5,7 @@ import * as rentalsApi from '../../api/rentals';
 import type { RentalListItem } from '../../api/rentals';
 import { CreateRentalFlow } from './CreateRentalFlow';
 import { ViewRentalDetails } from './ViewRentalDetails';
+import { formatDate } from '../accounts/reports/_shared/format';
 
 type RentalTab = 'list' | 'pickupToday' | 'returnToday' | 'collections';
 
@@ -155,7 +156,7 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
           <p className="text-sm text-[#9CA3AF]">{r.customer}</p>
           <p className="text-xs text-[#6B7280] mt-0.5">
             <Calendar className="w-3.5 h-3.5 inline mr-1" />
-            {r.pickup} → {r.return}
+            {formatDate(r.pickup)} → {formatDate(r.return)}
           </p>
           {extra}
           <span

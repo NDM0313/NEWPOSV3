@@ -1395,6 +1395,11 @@ export const saleService = {
 
     const paymentRow = result.data as { id?: string } | null;
     if (paymentRow?.id) {
+      auditLogService.logPaymentCreated(companyId, paymentRow.id, {
+        reference_type: 'sale',
+        reference_id: saleId,
+        amount,
+      });
       const { ensureSalePaymentJournalAfterInsert } = await import('@/app/services/saleAccountingService');
       const { assertActiveJournalForPaymentId } = await import('@/app/lib/paymentPostingInvariant');
       const jeId = await ensureSalePaymentJournalAfterInsert(paymentRow.id);
@@ -1472,6 +1477,11 @@ export const saleService = {
     }
     if (result.error) throw result.error;
     const row = result.data as { id: string; reference_number: string };
+    auditLogService.logPaymentCreated(companyId, row.id, {
+      reference_type: 'on_account',
+      contact_id: contactId,
+      amount,
+    });
     if (row?.id) {
       const { ensureOnAccountCustomerJournalIfMissing } = await import('@/app/services/saleAccountingService');
       const { assertActiveJournalForPaymentId } = await import('@/app/lib/paymentPostingInvariant');

@@ -191,6 +191,60 @@ export async function getProductStockMovements(
   return { data: list, error: null };
 }
 
+export interface CreateStockAdjustmentInput {
+  companyId: string;
+  branchId?: string | null;
+  productId: string;
+  variationId?: string | null;
+  quantityDelta: number;
+  notes?: string | null;
+  /** Prefer `users.id` (profile); falls back when missing. */
+  createdBy?: string | null;
+}
+
+/** Insert adjustment movement (same semantics as web `productService.createStockMovement` / inventory dashboard). */
+export async function createStockAdjustment(input: CreateStockAdjustmentInput): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const {
+    companyId,
+    productId,
+    variationId,
+    quantityDelta,
+    notes,
+    createdBy,
+    branchId: branchIdIn,
+  } = input;
+
+  if (!companyId || !productId || !quantityDelta || quantityDelta === 0) {
+    return { error: !quantityDelta ? 'Quantity cannot be zero.' : 'Missing company or product.' };
+  }
+
+  let branch_id =
+    branchIdIn && branchIdIn !== 'all' && branchIdIn !== 'default' ? branchIdIn : null;
+  if (!branch_id) {
+    const { data: br } = await supabase.from('branches').select('id').eq('company_id', companyId).limit(1).maybeSingle();
+    branch_id = br?.id ?? null;
+  }
+
+  const payload: Record<string, unknown> = {
+    company_id: companyId,
+    branch_id,
+    product_id: productId,
+    variation_id: variationId ?? null,
+    movement_type: 'adjustment',
+    quantity: quantityDelta,
+    unit_cost: 0,
+    total_cost: 0,
+    reference_type: 'adjustment',
+    reference_id: null,
+    notes: notes ?? null,
+    created_by: createdBy ?? null,
+  };
+
+  const { error } = await supabase.from('stock_movements').insert(payload);
+  return { error: error?.message ?? null };
+}
+
 async function fetchSaleRefs(
   ids: Set<string>
 ): Promise<Record<string, { invoiceNo: string; partyName: string | null }>> {

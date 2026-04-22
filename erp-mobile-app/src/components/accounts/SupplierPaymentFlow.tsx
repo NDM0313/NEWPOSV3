@@ -4,14 +4,9 @@ import type { User } from '../../types';
 import {
   getSuppliersWithPayable,
   getPurchasesBySupplier,
-  recordSupplierPayment,
   type SupplierWithPayable,
 } from '../../api/accounts';
-import {
-  MobilePaymentSheet,
-  type MobilePaymentSheetSubmitPayload,
-  type MobilePaymentSheetSubmitResult,
-} from '../shared/MobilePaymentSheet';
+import { UnifiedPaymentSheet } from '../shared/UnifiedPaymentSheet';
 
 interface SupplierPaymentFlowProps {
   onBack: () => void;
@@ -38,55 +33,39 @@ export function SupplierPaymentFlow({ onBack, onComplete, user, companyId, branc
     (s) => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.phone.includes(searchQuery),
   );
 
-  const handleSubmit = async (payload: MobilePaymentSheetSubmitPayload): Promise<MobilePaymentSheetSubmitResult> => {
-    if (!companyId || !branchId || !selectedSupplier) {
-      return { success: false, error: 'Company and branch required.' };
-    }
-    const { data: purchases } = await getPurchasesBySupplier(companyId, selectedSupplier.id);
-    const purchase = purchases?.[0];
-    if (!purchase) {
-      return { success: false, error: 'No outstanding purchase found for this supplier.' };
-    }
-    const amount = Math.min(payload.amount, purchase.due_amount);
-    const methodForRpc =
-      payload.method === 'wallet' ? 'other' : payload.method === 'card' ? 'card' : payload.method;
-
-    const { data, error } = await recordSupplierPayment({
-      companyId,
-      branchId,
-      purchaseId: purchase.id,
-      amount,
-      paymentDate: payload.paymentDate,
-      paymentAccountId: payload.accountId,
-      paymentMethod: methodForRpc,
-      reference: payload.reference || undefined,
-      notes: payload.notes || undefined,
-      userId: user.id,
+  const [resolvedPurchaseId, setResolvedPurchaseId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!companyId || !selectedSupplier) { setResolvedPurchaseId(null); return; }
+    let cancelled = false;
+    getPurchasesBySupplier(companyId, selectedSupplier.id).then(({ data }) => {
+      if (cancelled) return;
+      setResolvedPurchaseId(data?.[0]?.id ?? null);
     });
-
-    return {
-      success: !!data,
-      error: error ?? null,
-      paymentId: data?.payment_id ?? null,
-      referenceNumber: data?.reference_number ?? null,
-      partyAccountName: `Payable — ${selectedSupplier.name}`,
-    };
-  };
+    return () => { cancelled = true; };
+  }, [companyId, selectedSupplier]);
 
   if (selectedSupplier && companyId && branchId) {
+    if (!resolvedPurchaseId) {
+      return (
+        <div className="min-h-screen bg-[#111827] flex items-center justify-center">
+          <p className="text-[#9CA3AF] text-sm">Loading outstanding purchase…</p>
+        </div>
+      );
+    }
     return (
-      <MobilePaymentSheet
-        mode="pay-supplier"
+      <UnifiedPaymentSheet
+        kind="purchase"
+        referenceId={resolvedPurchaseId}
+        referenceNo={selectedSupplier.phone || null}
         companyId={companyId}
         branchId={branchId}
         userId={user.id}
         partyName={selectedSupplier.name}
-        referenceNo={selectedSupplier.phone || undefined}
+        partyId={selectedSupplier.id}
+        totalAmount={selectedSupplier.totalPayable}
         outstandingAmount={selectedSupplier.totalPayable}
-        initialAmount={selectedSupplier.totalPayable}
         onClose={() => setSelectedSupplier(null)}
         onSuccess={onComplete}
-        onSubmit={handleSubmit}
         onViewLedger={onViewLedger}
       />
     );

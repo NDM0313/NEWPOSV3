@@ -15,6 +15,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/core": "^8.1.0",
     "@capacitor-mlkit/barcode-scanning": "^8.0.1",
     "@supabase/realtime-js": "^2.95.3",
     "@supabase/supabase-js": "^2.95.3",
@@ -28,7 +29,6 @@
   "devDependencies": {
     "@capacitor/android": "^8.1.0",
     "@capacitor/cli": "^8.1.0",
-    "@capacitor/core": "^8.1.0",
     "@capacitor/ios": "^8.1.0",
     "@types/crypto-js": "^4.2.2",
     "@types/react": "^18.3.12",

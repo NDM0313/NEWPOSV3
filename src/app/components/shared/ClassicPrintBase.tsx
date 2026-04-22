@@ -20,6 +20,8 @@
 import React from 'react';
 import { Printer, X } from 'lucide-react';
 import { Button } from '../ui/button';
+import { DocumentPreviewButton } from './DocumentPreviewButton';
+import type { DocumentType } from '@/app/services/pdfExportService';
 
 export type PrinterMode = 'thermal' | 'a4';
 export type PaperSize = '58mm' | '80mm';
@@ -41,6 +43,8 @@ export interface ClassicPrintBaseProps {
   paperSize?: PaperSize;
   /** Optional ref for the root printable element (e.g. for PDF export). */
   contentRef?: React.RefObject<HTMLDivElement | null>;
+  /** When set, shows Preview (PDF modal) alongside Print using the printable root ref. */
+  documentPreview?: { type: DocumentType; reference?: string };
 }
 
 export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
@@ -56,7 +60,10 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
   printerMode = 'a4',
   paperSize = '80mm',
   contentRef,
+  documentPreview,
 }) => {
+  const fallbackRef = React.useRef<HTMLDivElement>(null);
+  const printableRef = contentRef ?? fallbackRef;
   const thermalWidth = paperSize === '58mm' ? '58mm' : '80mm';
   const handlePrint = () => {
     window.print();
@@ -65,7 +72,7 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
 
   return (
     <div
-      ref={contentRef}
+      ref={printableRef}
       className={`classic-print-base ${printerMode === 'thermal' ? 'classic-print-thermal' : ''}`}
       style={printerMode === 'thermal' ? { ['--thermal-width' as string]: thermalWidth } : undefined}
     >
@@ -330,6 +337,14 @@ export const ClassicPrintBase: React.FC<ClassicPrintBaseProps> = ({
           <div className="classic-print-actions">
             {actionChildren ?? (
               <>
+                {documentPreview && (
+                  <DocumentPreviewButton
+                    contentRef={printableRef}
+                    documentType={documentPreview.type}
+                    reference={documentPreview.reference}
+                    format={printerMode === 'thermal' ? 'thermal' : 'a4'}
+                  />
+                )}
                 {onPrint && (
                   <Button
                     onClick={handlePrint}

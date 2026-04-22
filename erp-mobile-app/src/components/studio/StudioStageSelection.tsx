@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Check } from 'lucide-react';
 import type { UiStageType } from '../../api/studio';
 
@@ -11,14 +11,42 @@ const STAGE_OPTIONS: { id: UiStageType; name: string; icon: string }[] = [
   { id: 'quality-check', name: 'Quality Check', icon: '✓' },
 ];
 
+const DRAFT_KEY_PREFIX = 'studio:stageDraft:';
+
 interface StudioStageSelectionProps {
   onBack: () => void;
   onSave: (stageTypes: UiStageType[]) => void;
   existingStageTypes?: UiStageType[];
+  /** When set, the current selection is persisted in localStorage keyed by this id so back-nav preserves the draft. */
+  orderId?: string;
 }
 
-export function StudioStageSelection({ onBack, onSave, existingStageTypes = [] }: StudioStageSelectionProps) {
-  const [selected, setSelected] = useState<UiStageType[]>([]);
+export function StudioStageSelection({ onBack, onSave, existingStageTypes = [], orderId }: StudioStageSelectionProps) {
+  const draftKey = orderId ? `${DRAFT_KEY_PREFIX}${orderId}` : null;
+  const [selected, setSelected] = useState<UiStageType[]>(() => {
+    if (!draftKey) return [];
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as UiStageType[];
+      if (Array.isArray(parsed)) {
+        return parsed.filter((s) => !existingStageTypes.includes(s));
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (!draftKey) return;
+    try {
+      if (selected.length > 0) localStorage.setItem(draftKey, JSON.stringify(selected));
+      else localStorage.removeItem(draftKey);
+    } catch {
+      /* ignore */
+    }
+  }, [draftKey, selected]);
 
   const toggle = (id: UiStageType) => {
     setSelected((prev) =>
@@ -28,6 +56,13 @@ export function StudioStageSelection({ onBack, onSave, existingStageTypes = [] }
 
   const handleSave = () => {
     if (selected.length === 0) return;
+    if (draftKey) {
+      try {
+        localStorage.removeItem(draftKey);
+      } catch {
+        /* ignore */
+      }
+    }
     onSave(selected);
   };
 

@@ -21,12 +21,32 @@ The following was implemented and is reflected on `main` (see commit message on 
 
 ---
 
+## Recently completed (April 2026 — Mobile sprint: polish + reports + studio + rental + PIN)
+
+The following shipped in this sprint (mobile-first; some web touchpoints for audit/print). Commit on GitHub documents the full diff.
+
+| Area | What shipped |
+|------|----------------|
+| **Polish** | Ledger PDF date column width; day book row in/out colours; general entry bottom button layout when nav hidden. |
+| **PIN** | Permanent lock on resume/relaunch via `pinLock`; settings flow with `SetPinModal`; dev bypass removed from `LoginScreen`. |
+| **Reports** | `TransactionDetailSheet` + `transactionDetail` / `users` APIs; tap row on Sales / Purchase / Expense / Account & Party ledger / Day book → detail sheet. |
+| **Ledger / day book** | Sort by date+time; weekly/monthly grouping with closing-balance subtotal rows; Roznamcha-style cash-only filter + hub tile label. |
+| **Hub reports** | `StudioReport`, `RentalReport`, `InventoryReport` wired to real data (studio orders/steps/workers; rental items/payments/returns; product/variation picker + movement drill-down). |
+| **Studio** | After studio sale → focus studio module; stage draft persistence on back; worker list filtered by specialization; default rate prefill; customer charge = worker cost × (1 + profit %). |
+| **Rental** | List/detail dates fixed; `CreateRentalFlow` parity (multi-line qty + variation, salesman + commission, advance, NSC docs); `rentals` API extensions; DB: `migrations/20260423_rental_items_variation_id.sql` (`rental_items.variation_id`). |
+| **Payments** | `UnifiedPaymentSheet` for sale / purchase / rental receive paths; duplicate `reference_number` avoided (nullable `p_reference_number` so DB can generate). |
+| **Web (small)** | `ReportActions` / `RoznamchaReport` / `ClassicPrintBase` / invoice & PO print layouts; audit hooks on payments, purchases, production orders (`saleService`, `supplierPaymentService`, `purchaseService`, `productionOrderService`, `addEntryV2Service`, `AccountingContext`, `auditLogService`). |
+
+**Build:** `cd erp-mobile-app && npm run build` passes (TypeScript); ship with `npm run build:mobile && npx cap sync` for store builds.
+
+---
+
 ## System Status Summary
 
 | Area | Status | Notes |
 |------|--------|--------|
 | **Web ERP** | Production ready | PDF preview + export, document share, audit logs, PWA, performance indexes; unified docs can open preview before print/PDF. |
-| **Mobile app** | Barcode + POS + offline + accounts/reports refresh | `erp-mobile-app/` — Scan, cart, payment, sync; reports hub with preview; inventory history drill-down. |
+| **Mobile app** | Barcode + POS + offline + accounts/reports + studio/rental depth | `erp-mobile-app/` — PIN lock, unified payment sheet, report drill-down, ledger grouping / Roznamcha filter, studio & rental flows aligned closer to web. |
 | **Inventory engine** | Complete | Single source of truth = `stock_movements`; see `docs/ERP_INVENTORY_FINAL_REPORT.md`, `npm run inventory-validate` |
 | **Migrations** | Auto-apply in place | `npm run migrate` or `npm run migrate -- --allow-fail` |
 | **feature_flags** | Fixed & applied | Migration now resilient (skips if not table owner) |
@@ -55,25 +75,27 @@ npm run migrate -- --allow-fail
 
 **Currently known:** `financial_dashboard_metrics_rpc.sql` may fail with "must be owner of function". Use `--allow-fail` or run that file as postgres and insert its name into `schema_migrations` so it is not re-run.
 
-**New in repo (apply when ready):** `20260422_party_subledger_rpcs_and_payment_routing.sql`, `20260423_document_posting_rpcs.sql`, `20260424_fix_purchase_received_stock_trigger.sql` — follow the same apply process; use `supabase_admin` / owner role if a function is owned by Supabase internal roles.
+**New in repo (apply when ready):** `20260422_party_subledger_rpcs_and_payment_routing.sql`, `20260423_document_posting_rpcs.sql`, `20260423_rental_items_variation_id.sql` (rental line `variation_id`), `20260424_fix_purchase_received_stock_trigger.sql` — follow the same apply process; use `supabase_admin` / owner role if a function is owned by Supabase internal roles.
 
 ---
 
 ## 2. Web ERP — Optional follow-ups
 
-- **Document share:** Preview + Download PDF + WhatsApp + Email are on `DocumentShareActions` and extended to unified ledger/receipt/quotation/proforma/packing/courier/purchase views. Any other screen that still calls raw `window.print()` only can adopt `DocumentPreviewButton` the same way.
-- **Audit log:** `audit_logs` table and `auditLogService` exist; sale create is logged; payments/purchases/production can be wired the same way where needed.
+- **Document share / preview:** `DocumentPreviewButton` + `ClassicPrintBase.documentPreview`, invoice/purchase print layouts, and `ReportActions` (with preview ref) extend preview-first UX; some legacy screens (expenses, settings print tests, studio, etc.) may still use raw print only — adopt the same pattern when touching those files.
+- **Audit log:** Shipped: `auditLogService.logPaymentCreated` / purchase / manufacturing `production_orders` audits on create/update/delete/cancel/restore paths (`saleService`, `supplierPaymentService`, `addEntryV2Service`, `AccountingContext`, `purchaseService`, `productionOrderService`). Studio `studio_productions` tables are not in `audit_logs` entity list yet (optional follow-up).
 - **PWA:** Installed; build and deploy as usual.
 
 ---
 
 ## 3. Mobile App — Remaining (Office)
 
-| Task | Priority | How to complete |
-|------|----------|------------------|
-| **Thermal printer (hardware)** | Optional | Settings → Printer already has mode/paper size. For actual device printing, add a Capacitor plugin (e.g. Bluetooth thermal printer) and wire to receipt flow. |
-| **Inventory scan (adjustment flow)** | Later | New flow: scan product → stock adjustment / recount. Reuse `features/barcode` and product API; history view already exists for read-only drill-down. |
+| Task | Priority | Notes |
+|------|----------|--------|
+| **On-device QA** | High before store | Exercise PIN cold start + background, all report drill-downs, studio sale → studio tab, rental create + payment + return, unified payment on real hardware; confirm migration `20260423_rental_items_variation_id.sql` applied on production DB. |
+| **Thermal Bluetooth (hardware)** | Optional | **Done in repo (abstraction):** `erp-mobile-app/src/services/thermalPrint.ts` (ESC/POS encode + `window.ThermalPrinter.write` bridge), **Thermal print (Bluetooth)** on sale success modal when Settings → printer mode is thermal; shows hint until a native plugin exposes the bridge or Sunmi SDK. |
+| **Inventory scan → adjust** | Done (code) | Inventory header **Scan** → barcode → `StockAdjustmentSheet` (add/subtract/set); **Adjust** on product history; API `createStockAdjustment` in `erp-mobile-app/src/api/inventory.ts`. |
 | **Device-specific UI (e.g. Sunmi V2 Pro)** | Later | Optimise layout for that device (camera, receipt, POS speed). See `docs/MOBILE_APP_ARCHITECTURE.md`. |
+| **Legacy screens → PDF preview** | Optional | Match web pattern (`DocumentPreviewButton` / print base) on any mobile screens still opening raw print only when you touch them. |
 
 ---
 
@@ -114,4 +136,4 @@ npx cap open android   # or ios
 
 ---
 
-**Last updated:** April 2026 — GitHub push with Mobile Fixes Bundle 2, web PDF preview wiring, inventory redesign + product history, `docs/COMPLETED_WORK_BUNDLE2.md`, and migration files `20260422`–`20260424` in repo.
+**Last updated:** 23 April 2026 — Mobile sprint (PIN, `TransactionDetailSheet`, ledger grouping + Roznamcha filter, studio/rental/inventory reports, `CreateRentalFlow` + `variation_id` migration, `UnifiedPaymentSheet`, studio workers/profit %) documented above; push to GitHub after local commit.

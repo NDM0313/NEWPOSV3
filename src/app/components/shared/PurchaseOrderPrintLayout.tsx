@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Purchase } from '@/app/context/PurchaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -7,6 +7,7 @@ import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { formatBoxesPieces } from '../ui/utils';
+import { DocumentPreviewButton } from './DocumentPreviewButton';
 
 interface PurchaseOrderPrintLayoutProps {
   purchase: Purchase;
@@ -14,6 +15,7 @@ interface PurchaseOrderPrintLayoutProps {
 }
 
 export const PurchaseOrderPrintLayout: React.FC<PurchaseOrderPrintLayoutProps> = ({ purchase, onClose }) => {
+  const printRootRef = useRef<HTMLDivElement>(null);
   const { inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const { config: printerConfig } = usePrinterConfig();
@@ -81,12 +83,24 @@ export const PurchaseOrderPrintLayout: React.FC<PurchaseOrderPrintLayoutProps> =
       documentTitle="PURCHASE ORDER"
       companyName="Din Collection"
       headerMeta={headerMeta}
+      contentRef={printRootRef}
+      documentPreview={
+        enablePacking
+          ? undefined
+          : { type: 'purchase_invoice', reference: purchase.purchaseNo || undefined }
+      }
       onPrint={() => window.print()}
       onClose={onClose}
       printerMode={printerConfig.mode}
       actionChildren={
         enablePacking ? (
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <DocumentPreviewButton
+              contentRef={printRootRef}
+              documentType="purchase_invoice"
+              reference={purchase.purchaseNo || undefined}
+              format={printerConfig.mode === 'thermal' ? 'thermal' : 'a4'}
+            />
             <div className="flex items-center gap-2">
               <Checkbox
                 id="show-detailed-packing-po"
@@ -102,6 +116,7 @@ export const PurchaseOrderPrintLayout: React.FC<PurchaseOrderPrintLayoutProps> =
               </Label>
             </div>
             <button
+              type="button"
               onClick={() => window.print()}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
             >

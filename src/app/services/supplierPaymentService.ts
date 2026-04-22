@@ -11,6 +11,7 @@ import type { JournalEntry, JournalEntryLine } from '@/app/services/accountingSe
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 import { resolvePayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
+import { logPaymentCreated } from '@/app/services/auditLogService';
 
 export type SupplierPaymentReferenceType = 'purchase' | 'on_account';
 
@@ -129,6 +130,12 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
 
   if (paymentErr) throw new Error(`Supplier payment (payments row) failed: ${paymentErr.message}`);
   const paymentId = (paymentRow as { id: string }).id;
+
+  logPaymentCreated(companyId, paymentId, {
+    reference_type: referenceType,
+    reference_id: isOnAccount ? contactId ?? null : purchaseId ?? null,
+    amount,
+  });
 
   // 3) Accounts Payable account (2000)
   const { data: apAccounts } = await supabase

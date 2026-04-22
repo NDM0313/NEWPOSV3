@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, User } from 'lucide-react';
 import * as studioApi from '../../api/studio';
 import type { StudioOrder, StudioStage } from './StudioDashboard';
 
@@ -19,7 +19,9 @@ export function StudioUpdateStatusView({
   onComplete,
 }: StudioUpdateStatusViewProps) {
   const [loading, setLoading] = useState(false);
-  const [workers, setWorkers] = useState<{ id: string; name: string }[]>([]);
+  const [workers, setWorkers] = useState<studioApi.WorkerRow[]>([]);
+  const [workersLoading, setWorkersLoading] = useState(false);
+  const [showAllWorkers, setShowAllWorkers] = useState(false);
   const [workerId, setWorkerId] = useState<string>(selectedStage.workerId ?? '');
   const [expectedDate, setExpectedDate] = useState(selectedStage.expectedDate || '');
   const [expectedCost, setExpectedCost] = useState(selectedStage.internalCost?.toString() ?? '');
@@ -120,11 +122,23 @@ export function StudioUpdateStatusView({
     if (!isPending) return;
     let cancelled = false;
     (async () => {
-      const { data } = await studioApi.getWorkers(companyId);
-      if (!cancelled && data) setWorkers(data);
+      setWorkersLoading(true);
+      const stageType = showAllWorkers ? undefined : (selectedStage.type as studioApi.UiStageType);
+      const { data } = await studioApi.getWorkers(companyId, { stageType });
+      if (!cancelled) {
+        setWorkers(data || []);
+        setWorkersLoading(false);
+      }
     })();
     return () => { cancelled = true; };
-  }, [companyId, isPending]);
+  }, [companyId, isPending, selectedStage.type, showAllWorkers]);
+
+  const handlePickWorker = (w: studioApi.WorkerRow) => {
+    setWorkerId(w.id);
+    if ((!expectedCost || parseFloat(expectedCost) <= 0) && w.rate && w.rate > 0) {
+      setExpectedCost(String(w.rate));
+    }
+  };
 
   const statusLabel = isPending ? 'Pending' : isAssigned ? 'Assigned' : isSentToWorker ? 'In Progress' : isReceived ? 'Received' : 'Completed';
   const title = isPending ? 'Assign Worker' : isAssigned ? 'Send To Worker' : isSentToWorker ? 'Receive Work' : isReceived ? 'Confirm Payment' : 'Reopen Stage';
@@ -172,17 +186,62 @@ export function StudioUpdateStatusView({
         {isPending && (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-[#9CA3AF] mb-2">Worker</label>
-              <select
-                value={workerId}
-                onChange={(e) => setWorkerId(e.target.value)}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
-              >
-                <option value="">Select worker</option>
-                {workers.map((w) => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm text-[#9CA3AF]">
+                  Worker
+                  {!showAllWorkers && (
+                    <span className="ml-2 text-xs text-[#6B7280] capitalize">· {selectedStage.type.replace('-', ' ')} specialists</span>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowAllWorkers((v) => !v)}
+                  className="px-3 py-1 rounded-full text-xs font-medium bg-[#1F2937] border border-[#374151] text-white hover:bg-[#374151] transition-colors"
+                >
+                  {showAllWorkers ? 'Match stage' : 'Show all'}
+                </button>
+              </div>
+              {workersLoading ? (
+                <div className="flex items-center py-4 text-[#9CA3AF] text-sm">
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Loading workers…
+                </div>
+              ) : workers.length === 0 ? (
+                <div className="bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-sm text-[#9CA3AF]">
+                  No workers match this stage. Tap "Show all" to see everyone.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-72 overflow-y-auto">
+                  {workers.map((w) => (
+                    <button
+                      key={w.id}
+                      type="button"
+                      onClick={() => handlePickWorker(w)}
+                      className={`w-full p-3 rounded-lg border text-left transition-all flex items-center gap-3 ${
+                        workerId === w.id
+                          ? 'border-[#8B5CF6] bg-[#8B5CF6]/10'
+                          : 'border-[#374151] bg-[#1F2937] hover:border-[#8B5CF6]/50'
+                      }`}
+                    >
+                      <div className="w-9 h-9 bg-[#374151] rounded-full flex items-center justify-center shrink-0">
+                        <User size={16} className="text-[#9CA3AF]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{w.name}</p>
+                        <p className="text-xs text-[#9CA3AF] truncate">
+                          {w.workerType ? <span className="capitalize">{String(w.workerType)}</span> : 'Worker'}
+                          {w.rate && w.rate > 0 ? <span className="ml-2 text-[#10B981]">· Rs. {w.rate.toLocaleString()}</span> : null}
+                        </p>
+                      </div>
+                      {workerId === w.id && (
+                        <div className="w-4 h-4 bg-[#8B5CF6] rounded-full flex items-center justify-center shrink-0">
+                          <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm text-[#9CA3AF] mb-2">Expected Return Date</label>

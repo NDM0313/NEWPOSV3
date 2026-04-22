@@ -16,6 +16,7 @@ import {
   shouldDebitWorkerPayableForPayment,
 } from '@/app/services/workerAdvanceService';
 import { resolvePayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
+import { logPaymentCreated } from '@/app/services/auditLogService';
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {
   cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
@@ -179,6 +180,7 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
   const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(receiptPayload).select('id').single();
   if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
   const paymentId = (paymentRow as { id: string }).id;
+  logPaymentCreated(companyId, paymentId, { reference_type: 'manual_receipt', amount, contact_id: customerId });
 
   const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
   const desc = notes || `Receipt from ${customerName}`;
@@ -268,6 +270,7 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
   const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(supplierPayPayload).select('id').single();
   if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
   const paymentId = (paymentRow as { id: string }).id;
+  logPaymentCreated(companyId, paymentId, { reference_type: 'manual_payment', amount, contact_id: supplierContactId });
 
   const apId =
     (await resolvePayablePostingAccountId(companyId, supplierContactId)) || (await getApAccountId(companyId));
@@ -367,6 +370,7 @@ export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams
     throw new Error(`Payment row failed: ${error?.message || 'unknown'}`);
   }
   if (!paymentId) throw new Error(`Payment row failed: ${payErr?.message || 'unknown'}`);
+  logPaymentCreated(companyId, paymentId, { reference_type: 'worker_payment', amount, reference_id: workerId });
 
   const payToPayable = await shouldDebitWorkerPayableForPayment(companyId, workerId, stageId ?? null, branch);
   const wpId = await getWorkerPayableAccountId(companyId);
@@ -450,6 +454,7 @@ export async function createExpensePaymentEntry(params: CreateExpensePaymentPara
   }).select('id').single();
   if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
   const paymentId = (paymentRow as { id: string }).id;
+  logPaymentCreated(companyId, paymentId, { reference_type: 'expense', amount });
 
   const desc = notes || 'Expense payment';
   const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
@@ -578,6 +583,7 @@ export async function createCourierPaymentEntry(params: CreateCourierPaymentPara
     throw new Error(`Payment row failed: ${error?.message || 'unknown'}`);
   }
   if (!paymentId) throw new Error(`Payment row failed: ${payErr?.message || 'unknown'}`);
+  logPaymentCreated(companyId, paymentId, { reference_type: 'courier_payment', amount, reference_id: courierId });
 
   if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
     console.log('[AddEntryV2] createCourierPaymentEntry – payments row created:', { paymentId, contact_id: contactIdForPayments ?? null });

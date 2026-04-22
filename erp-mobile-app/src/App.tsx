@@ -35,6 +35,7 @@ import { PackingListModule } from './components/packing/PackingListModule';
 import { SyncStatusBar } from './components/SyncStatusBar';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { runSync, getUnsyncedCount } from './lib/syncEngine';
+import { markUnlocked, clearUnlockMark, shouldRelock } from './lib/pinLock';
 
 const MODULE_TITLES: Record<Screen, string> = {
   login: 'Login',
@@ -71,6 +72,8 @@ export default function App() {
   const [activeBottomTab, setActiveBottomTab] = useState<BottomNavTab>('home');
   const [showModuleGrid, setShowModuleGrid] = useState(false);
   const [salesInitialType, setSalesInitialType] = useState<'regular' | 'studio' | null>(null);
+  const [studioFocusSaleId, setStudioFocusSaleId] = useState<string | null>(null);
+  const [isPinLocked, setIsPinLocked] = useState(false);
 
   useEffect(() => {
     const cleanup = initInputKeyboard();
@@ -84,10 +87,38 @@ export default function App() {
       setSelectedBranch(null);
       setIsBranchResolving(false);
       setCurrentScreen('login');
+      setIsPinLocked(false);
+      clearUnlockMark();
     };
     window.addEventListener('erp-auth-signed-out', onSignedOut);
     return () => window.removeEventListener('erp-auth-signed-out', onSignedOut);
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    const checkLock = async () => {
+      if (cancelled) return;
+      if (document.visibilityState !== 'visible') return;
+      if (isPinLocked) return;
+      const pinSet = await authApi.hasPinSet();
+      if (cancelled || !pinSet) return;
+      if (shouldRelock()) setIsPinLocked(true);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void checkLock();
+      }
+    };
+    const onFocus = () => { void checkLock(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [user?.id, isPinLocked]);
 
   useEffect(() => {
     if (!online || !user) return;
@@ -231,6 +262,8 @@ export default function App() {
     setUser(u);
     setCompanyId(cid);
     setIsBranchResolving(true);
+    setIsPinLocked(false);
+    markUnlocked();
     if (u.branchLocked && u.branchId && cid) {
       try {
         const { data: branches } = await getBranches(cid);
@@ -300,10 +333,12 @@ export default function App() {
   const handleLogout = async () => {
     await authApi.signOut();
     try { localStorage.removeItem(BRANCH_STORAGE_KEY); } catch { /* ignore */ }
+    clearUnlockMark();
     setUser(null);
     setCompanyId(null);
     setSelectedBranch(null);
     setIsBranchResolving(false);
+    setIsPinLocked(false);
     setCurrentScreen('login');
   };
 
@@ -353,6 +388,22 @@ export default function App() {
     );
   }
 
+  if (isPinLocked && user) {
+    return (
+      <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
+        <LoginScreen
+          onLogin={handleLogin}
+          pinUnlockUser={user}
+          pinUnlockCompanyId={companyId}
+          onUnlock={() => {
+            markUnlocked();
+            setIsPinLocked(false);
+          }}
+        />
+      </div>
+    );
+  }
+
   if (currentScreen === 'branch-selection' && user) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
@@ -389,6 +440,11 @@ export default function App() {
                   companyId={companyId}
                   branchId={selectedBranch.id}
                   initialSaleType={salesInitialType ?? undefined}
+                  onOpenStudio={(saleId) => {
+                    setSalesInitialType(null);
+                    setStudioFocusSaleId(saleId);
+                    setCurrentScreen('studio');
+                  }}
                 />
       )}
       {currentScreen === 'pos' && user && (
@@ -447,6 +503,8 @@ export default function App() {
               companyId={companyId}
               branch={selectedBranch}
               onNewStudioSale={() => navigateToModule('sales', { studioSale: true })}
+              focusSaleId={studioFocusSaleId}
+              onFocusHandled={() => setStudioFocusSaleId(null)}
             />
       )}
       {currentScreen === 'accounts' && user && (

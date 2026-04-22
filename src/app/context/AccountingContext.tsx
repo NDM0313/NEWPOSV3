@@ -26,6 +26,7 @@ import {
   isPaymentChainHistoricalErrorMessage,
   stripPaymentChainHistoricalPrefix,
 } from '@/app/services/paymentChainMutationGuard';
+import { logPaymentCreated } from '@/app/services/auditLogService';
 
 /** Leading numeric segment of account code (e.g. "1021-NDM" → "1021"). */
 function accountCodeDigits(acc: { code?: string } | null): string {
@@ -1279,7 +1280,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
           };
           if (manualCustomerId) manualReceiptPayload.contact_id = manualCustomerId;
           const { data: row, error } = await supabase.from('payments').insert(manualReceiptPayload).select('id').single();
-          if (!error && row) { manualPaymentId = (row as { id: string }).id; manualRefType = 'manual_receipt'; }
+          if (!error && row) {
+            manualPaymentId = (row as { id: string }).id;
+            manualRefType = 'manual_receipt';
+            logPaymentCreated(companyId, manualPaymentId, {
+              reference_type: 'manual_receipt',
+              amount: entry.amount,
+              contact_id: manualCustomerId,
+            });
+          }
         } else if (!debitIsPayment && creditIsPayment) {
           const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'supplier_payment').catch(() => generatePaymentReference(null));
           const { data: { user } } = await supabase.auth.getUser();
@@ -1304,7 +1313,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
             console.debug('[SUPPLIER_LEDGER] Manual payment payload', { contact_id: manualSupplierContactId ?? null, reference_type: 'manual_payment', amount: manualPaymentPayload.amount });
           }
           const { data: row, error } = await supabase.from('payments').insert(manualPaymentPayload).select('id').single();
-          if (!error && row) { manualPaymentId = (row as { id: string }).id; manualRefType = 'manual_payment'; }
+          if (!error && row) {
+            manualPaymentId = (row as { id: string }).id;
+            manualRefType = 'manual_payment';
+            logPaymentCreated(companyId, manualPaymentId, {
+              reference_type: 'manual_payment',
+              amount: entry.amount,
+              contact_id: manualSupplierContactId,
+            });
+          }
         }
       }
 
@@ -1327,7 +1344,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
           received_by: (user as any)?.id ?? null,
           created_by: currentUserId ?? null,
         }).select('id').single();
-        if (!error && row) { manualPaymentId = (row as { id: string }).id; manualRefType = 'expense'; }
+        if (!error && row) {
+          manualPaymentId = (row as { id: string }).id;
+          manualRefType = 'expense';
+          logPaymentCreated(companyId, manualPaymentId, {
+            reference_type: 'expense',
+            amount: entry.amount,
+            reference_id: expenseId,
+          });
+        }
       }
 
       // Primary reference is always auto (entry_no). Optional user reference saved in description.

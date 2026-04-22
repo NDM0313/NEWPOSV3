@@ -9,6 +9,7 @@ import { formatAmount, formatDate, dateRangeLabel } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
+import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
 
 interface PurchaseReportProps {
   onBack: () => void;
@@ -27,6 +28,7 @@ export function PurchaseReport({ onBack, companyId, branchId, user }: PurchaseRe
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
   const [rows, setRows] = useState<PurchaseReportRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedRow, setSelectedRow] = useState<PurchaseReportRow | null>(null);
   const preview = usePdfPreview(companyId);
 
   useEffect(() => {
@@ -81,25 +83,31 @@ export function PurchaseReport({ onBack, companyId, branchId, user }: PurchaseRe
             {rows.map((r) => {
               const color = STATUS_COLOR[r.paymentStatus] ?? 'text-[#9CA3AF] bg-[#374151]/30 border-[#374151]';
               return (
-                <li key={r.id} className="px-4 py-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-[#111827] border border-[#374151] flex items-center justify-center shrink-0">
-                      <ShoppingCart className="w-4 h-4 text-[#9CA3AF]" />
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRow(r)}
+                    className="w-full text-left px-4 py-3 hover:bg-[#111827]/60 transition-colors"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-[#111827] border border-[#374151] flex items-center justify-center shrink-0">
+                        <ShoppingCart className="w-4 h-4 text-[#9CA3AF]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">
+                          {r.poNo} · {r.supplierName}
+                        </p>
+                        <p className="text-[11px] text-[#9CA3AF] truncate">{formatDate(r.date)}</p>
+                        <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-wide ${color}`}>
+                          {r.paymentStatus}
+                        </span>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-bold text-white">Rs. {formatAmount(r.total, 0)}</p>
+                        {r.due > 0 && <p className="text-[11px] text-[#FCA5A5]">Due Rs. {formatAmount(r.due, 0)}</p>}
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">
-                        {r.poNo} · {r.supplierName}
-                      </p>
-                      <p className="text-[11px] text-[#9CA3AF] truncate">{formatDate(r.date)}</p>
-                      <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full border uppercase tracking-wide ${color}`}>
-                        {r.paymentStatus}
-                      </span>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-bold text-white">Rs. {formatAmount(r.total, 0)}</p>
-                      {r.due > 0 && <p className="text-[11px] text-[#FCA5A5]">Due Rs. {formatAmount(r.due, 0)}</p>}
-                    </div>
-                  </div>
+                  </button>
                 </li>
               );
             })}
@@ -136,6 +144,15 @@ export function PurchaseReport({ onBack, companyId, branchId, user }: PurchaseRe
           />
         </PdfPreviewModal>
       )}
+
+      <TransactionDetailSheet
+        open={!!selectedRow}
+        onClose={() => setSelectedRow(null)}
+        companyId={companyId}
+        referenceType="purchase"
+        referenceId={selectedRow?.id ?? null}
+        fallbackTitle={selectedRow ? `Purchase · ${selectedRow.poNo}` : undefined}
+      />
     </div>
   );
 }

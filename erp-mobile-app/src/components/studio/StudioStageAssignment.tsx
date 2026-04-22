@@ -8,6 +8,8 @@ interface StudioStageAssignmentProps {
   onBack: () => void;
   onComplete: (stageData: Partial<StudioStage>) => void;
   existingStage?: StudioStage;
+  /** If provided, skips the stage-type picker (step 1) and uses this as the fixed stage type. */
+  fixedStageType?: StudioStage['type'];
 }
 
 const STAGE_TYPES = [
@@ -19,27 +21,35 @@ const STAGE_TYPES = [
   { id: 'quality-check', name: 'Quality Check', icon: '✓', description: 'Inspection & QA' },
 ] as const;
 
-export function StudioStageAssignment({ companyId, onBack, onComplete, existingStage }: StudioStageAssignmentProps) {
-  const [step, setStep] = useState(1);
-  const [stageType, setStageType] = useState<(typeof STAGE_TYPES)[number]['id'] | ''>(existingStage?.type || '');
-  const [stageName, setStageName] = useState(existingStage?.name || '');
+export function StudioStageAssignment({ companyId, onBack, onComplete, existingStage, fixedStageType }: StudioStageAssignmentProps) {
+  const initialStageType = (fixedStageType ?? existingStage?.type ?? '') as (typeof STAGE_TYPES)[number]['id'] | '';
+  const skipStageStep = !!(fixedStageType || existingStage);
+  const [step, setStep] = useState(skipStageStep ? 2 : 1);
+  const [stageType, setStageType] = useState<(typeof STAGE_TYPES)[number]['id'] | ''>(initialStageType);
+  const [stageName, setStageName] = useState(() => {
+    if (existingStage?.name) return existingStage.name;
+    if (initialStageType) return STAGE_TYPES.find((t) => t.id === initialStageType)?.name ?? '';
+    return '';
+  });
   const [assignedTo, setAssignedTo] = useState(existingStage?.assignedTo || '');
   const [workerId, setWorkerId] = useState<string | null>(existingStage?.workerId ?? null);
-  const [workers, setWorkers] = useState<{ id: string; name: string }[]>([]);
+  const [workers, setWorkers] = useState<studioApi.WorkerRow[]>([]);
   const [workersLoading, setWorkersLoading] = useState(true);
+  const [showAllWorkers, setShowAllWorkers] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setWorkersLoading(true);
-      const { data } = await studioApi.getWorkers(companyId);
+      const filterStage = showAllWorkers ? undefined : (stageType || undefined);
+      const { data } = await studioApi.getWorkers(companyId, { stageType: filterStage as studioApi.UiStageType | undefined });
       if (!cancelled) {
         setWorkers(data || []);
         setWorkersLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [companyId]);
+  }, [companyId, stageType, showAllWorkers]);
   const [internalCost, setInternalCost] = useState(
     existingStage?.internalCost != null && existingStage.internalCost !== 0 ? String(existingStage.internalCost) : ''
   );
@@ -62,6 +72,12 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
 
   const handleNext = () => {
     if (step < 5) setStep(step + 1);
+  };
+
+  const handleBackStep = () => {
+    const minStep = skipStageStep ? 2 : 1;
+    if (step > minStep) setStep(step - 1);
+    else onBack();
   };
 
   const handleComplete = () => {
@@ -93,11 +109,13 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
           </button>
           <div className="flex-1">
             <h1 className="font-semibold text-white">{existingStage ? 'Edit Stage' : 'Add Production Stage'}</h1>
-            <p className="text-xs text-white/80">Step {step} of 5</p>
+            <p className="text-xs text-white/80">
+              Step {skipStageStep ? step - 1 : step} of {skipStageStep ? 4 : 5}
+            </p>
           </div>
         </div>
         <div className="flex gap-1">
-          {[1, 2, 3, 4, 5].map((s) => (
+          {(skipStageStep ? [2, 3, 4, 5] : [1, 2, 3, 4, 5]).map((s) => (
             <div
               key={s}
               className={`h-1 flex-1 rounded-full transition-colors ${s <= step ? 'bg-white' : 'bg-white/30'}`}
@@ -174,15 +192,33 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
 
         {step === 3 && (
           <div>
-            <h2 className="text-lg font-semibold text-white mb-2">Assign to Worker</h2>
-            <p className="text-sm text-[#9CA3AF] mb-6">Select who will handle this stage</p>
+            <div className="flex items-start justify-between mb-2 gap-3">
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-white">Assign to Worker</h2>
+                <p className="text-sm text-[#9CA3AF]">
+                  {showAllWorkers
+                    ? 'Showing all workers'
+                    : stageType
+                      ? `Filtered by ${selectedType?.name ?? stageType} specialization`
+                      : 'Select who will handle this stage'}
+                </p>
+              </div>
+              {stageType && (
+                <button
+                  onClick={() => setShowAllWorkers((v) => !v)}
+                  className="shrink-0 px-3 py-1.5 rounded-full text-xs font-medium bg-[#1F2937] border border-[#374151] text-white hover:bg-[#374151] transition-colors"
+                >
+                  {showAllWorkers ? 'Match stage' : 'Show all'}
+                </button>
+              )}
+            </div>
             {workersLoading ? (
               <div className="flex items-center justify-center py-8 text-[#9CA3AF]">
                 <Loader2 className="w-8 h-8 animate-spin mr-2" />
                 Loading workers…
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 mt-4">
                 <button
                   onClick={() => {
                     setWorkerId(null);
@@ -209,12 +245,20 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
                     )}
                   </div>
                 </button>
+                {workers.length === 0 && (
+                  <div className="text-center text-sm text-[#9CA3AF] py-4">
+                    No workers match this stage. Tap "Show all" above to see everyone.
+                  </div>
+                )}
                 {workers.map((w) => (
                   <button
                     key={w.id}
                     onClick={() => {
                       setWorkerId(w.id);
                       setAssignedTo(w.name);
+                      if ((!internalCost || parseFloat(internalCost) <= 0) && w.rate && w.rate > 0) {
+                        setInternalCost(String(w.rate));
+                      }
                     }}
                     className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
                       workerId === w.id
@@ -226,8 +270,12 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
                       <div className="w-10 h-10 bg-[#374151] rounded-full flex items-center justify-center">
                         <User size={20} className="text-[#9CA3AF]" />
                       </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-white">{w.name}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-white truncate">{w.name}</p>
+                        <p className="text-xs text-[#9CA3AF] truncate">
+                          {w.workerType ? <span className="capitalize">{String(w.workerType)}</span> : 'Worker'}
+                          {w.rate && w.rate > 0 ? <span className="ml-2 text-[#10B981]">· Rs. {w.rate.toLocaleString()}</span> : null}
+                        </p>
                       </div>
                       {workerId === w.id && (
                         <div className="w-5 h-5 bg-[#8B5CF6] rounded-full flex items-center justify-center">
@@ -437,9 +485,9 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
 
         <div className="fixed bottom-20 left-0 right-0 p-4 bg-[#111827] border-t border-[#374151] z-20">
           <div className="flex gap-3">
-            {step > 1 && (
+            {step > (skipStageStep ? 2 : 1) && (
               <button
-                onClick={() => setStep(step - 1)}
+                onClick={handleBackStep}
                 className="flex-1 py-3 bg-[#374151] hover:bg-[#4B5563] rounded-xl font-semibold transition-colors text-white"
               >
                 Back

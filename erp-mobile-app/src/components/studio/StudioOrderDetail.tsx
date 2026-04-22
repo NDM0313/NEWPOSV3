@@ -1,6 +1,8 @@
-import { useState } from 'react';
-import { ArrowLeft, Plus, Edit2, Trash2, CheckCircle, Clock, Package, Banknote, Building2, Wallet } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, Plus, Edit2, Trash2, CheckCircle, Clock, Package, Banknote, Building2, Wallet, Percent } from 'lucide-react';
 import type { StudioOrder, StudioStage } from './StudioDashboard';
+
+const PROFIT_PCT_KEY_PREFIX = 'studio:profitPct:';
 
 interface StudioOrderDetailProps {
   order: StudioOrder;
@@ -70,8 +72,32 @@ export function StudioOrderDetail({
   };
 
   const totalInternalCost = order.stages.reduce((sum, stage) => sum + stage.internalCost, 0);
-  const totalCustomerCharge = order.stages.reduce((sum, stage) => sum + stage.customerCharge, 0);
-  const profitMargin = totalCustomerCharge - totalInternalCost;
+  const totalStageCustomerCharge = order.stages.reduce((sum, stage) => sum + stage.customerCharge, 0);
+
+  const profitKey = `${PROFIT_PCT_KEY_PREFIX}${order.id}`;
+  const [profitPctStr, setProfitPctStr] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(profitKey);
+      if (saved !== null) return saved;
+    } catch { /* ignore */ }
+    return '25';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(profitKey, profitPctStr);
+    } catch { /* ignore */ }
+  }, [profitKey, profitPctStr]);
+
+  const profitPct = useMemo(() => {
+    const n = parseFloat(profitPctStr);
+    return Number.isFinite(n) ? n : 0;
+  }, [profitPctStr]);
+
+  const suggestedCustomerCharge = Math.round(totalInternalCost * (1 + profitPct / 100));
+  const effectiveCustomerCharge = totalStageCustomerCharge > 0 ? totalStageCustomerCharge : suggestedCustomerCharge;
+  const profitMargin = effectiveCustomerCharge - totalInternalCost;
+  const effectiveMarginPct = totalInternalCost > 0 ? (profitMargin / totalInternalCost) * 100 : 0;
 
   const allStagesCompleted = order.stages.length > 0 && order.stages.every((s) => s.status === 'completed');
   const canGenerateInvoice = allStagesCompleted && order.status !== 'completed' && order.status !== 'shipped';
@@ -135,21 +161,52 @@ export function StudioOrderDetail({
           <h2 className="text-sm font-semibold text-[#8B5CF6] mb-3">Cost Summary</h2>
           <div className="space-y-2">
             <div className="flex justify-between">
-              <p className="text-sm text-[#9CA3AF]">Internal Cost</p>
+              <p className="text-sm text-[#9CA3AF]">Production Cost</p>
               <p className="text-sm font-semibold text-[#EF4444]">Rs. {totalInternalCost.toLocaleString()}</p>
             </div>
-            <div className="flex justify-between">
-              <p className="text-sm text-[#9CA3AF]">Customer Charge</p>
-              <p className="text-sm font-semibold text-[#10B981]">Rs. {totalCustomerCharge.toLocaleString()}</p>
-            </div>
-            <div className="pt-2 border-t border-[#374151] flex justify-between">
-              <p className="text-sm font-semibold text-white">Profit Margin</p>
-              <p
-                className={`text-sm font-bold ${profitMargin >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}
-              >
-                Rs. {profitMargin.toLocaleString()}
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <p className="text-sm text-[#9CA3AF] flex items-center gap-1">
+                <Percent className="w-3.5 h-3.5" />
+                Profit %
               </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={profitPctStr}
+                  onChange={(e) => setProfitPctStr(e.target.value)}
+                  placeholder="25"
+                  className="w-20 text-right bg-[#111827] border border-[#374151] rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-[#8B5CF6]"
+                />
+                <span className="text-sm text-[#9CA3AF]">%</span>
+              </div>
             </div>
+            <div className="flex justify-between pt-1">
+              <p className="text-sm text-[#9CA3AF]">Suggested Customer Charge</p>
+              <p className="text-sm font-semibold text-[#10B981]">Rs. {suggestedCustomerCharge.toLocaleString()}</p>
+            </div>
+            {totalStageCustomerCharge > 0 && totalStageCustomerCharge !== suggestedCustomerCharge && (
+              <div className="flex justify-between">
+                <p className="text-xs text-[#6B7280]">Stage charges sum</p>
+                <p className="text-xs text-[#9CA3AF]">Rs. {totalStageCustomerCharge.toLocaleString()}</p>
+              </div>
+            )}
+            <div className="pt-2 border-t border-[#374151] flex justify-between items-center">
+              <p className="text-sm font-semibold text-white">Profit Margin</p>
+              <div className="text-right">
+                <p className={`text-sm font-bold ${profitMargin >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                  Rs. {profitMargin.toLocaleString()}
+                </p>
+                {totalInternalCost > 0 && (
+                  <p className={`text-xs ${profitMargin >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    {effectiveMarginPct.toFixed(1)}%
+                  </p>
+                )}
+              </div>
+            </div>
+            <p className="text-[10px] text-[#6B7280] pt-1">
+              Customer Charge = Production Cost × (1 + Profit% / 100). Stage-level charges override when present.
+            </p>
           </div>
         </div>
 

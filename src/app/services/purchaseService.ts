@@ -11,6 +11,8 @@ import {
   syncJournalEntryDateByDocumentRefs,
   syncJournalEntryDateByPaymentId,
 } from '@/app/services/journalTransactionDateSyncService';
+import type { AuditAction } from '@/app/services/auditLogService';
+import { logPurchaseAuditNonBlocking } from '@/app/services/auditLogService';
 
 function purchaseRowNeedsPostedPoAllocation(row: Record<string, unknown>): boolean {
   const po = String(row.po_no ?? '').trim();
@@ -301,6 +303,14 @@ export const purchaseService = {
 
     if ((purchaseData as any)?.company_id) {
       dispatchContactBalancesRefresh(String((purchaseData as any).company_id));
+    }
+
+    const pd = purchaseData as { id?: string; company_id?: string; po_no?: unknown; status?: unknown };
+    if (pd?.id && pd.company_id) {
+      logPurchaseAuditNonBlocking(String(pd.company_id), pd.id, 'created', {
+        po_no: pd.po_no,
+        status: pd.status,
+      });
     }
 
     return purchaseData;
@@ -630,6 +640,21 @@ export const purchaseService = {
 
   // Update purchase status (when 'cancelled': create PURCHASE_CANCELLED stock reversals, then update status)
   async updatePurchaseStatus(id: string, status: Purchase['status']) {
+    const auditPurchaseRow = (
+      row: Record<string, unknown> | null | undefined,
+      previousStatus: string | undefined,
+      auditAction: AuditAction
+    ) => {
+      const cid = row?.company_id as string | undefined;
+      const pid = row?.id as string | undefined;
+      if (!cid || !pid) return;
+      logPurchaseAuditNonBlocking(cid, pid, auditAction, {
+        status: row?.status,
+        po_no: row?.po_no,
+        previousStatus,
+      });
+    };
+
     if (status === 'cancelled') {
       const { data: purchaseRow } = await supabase.from('purchases').select('id, po_no, branch_id, company_id, status').eq('id', id).single();
       if (!purchaseRow) throw new Error('Purchase not found');
@@ -645,6 +670,7 @@ export const purchaseService = {
           .select(PURCHASE_HEADER_COLUMNS)
           .single();
         if (error) throw error;
+        auditPurchaseRow(data as Record<string, unknown>, (purchaseRow as any).status, 'cancelled');
         return data;
       }
 
@@ -666,6 +692,7 @@ export const purchaseService = {
         reversePurchaseDocumentAccounting(id).catch((err: any) =>
           console.warn('[purchaseService] Document accounting reversal failed (non-critical):', err?.message)
         );
+        auditPurchaseRow(data as Record<string, unknown>, (purchaseRow as any).status, 'cancelled');
         return data;
       }
 
@@ -708,6 +735,7 @@ export const purchaseService = {
       reversePurchaseDocumentAccounting(id).catch((err: any) =>
         console.warn('[purchaseService] Document accounting reversal failed (non-critical):', err?.message)
       );
+      auditPurchaseRow(data as Record<string, unknown>, (purchaseRow as any).status, 'cancelled');
       return data;
     }
 
@@ -756,6 +784,7 @@ export const purchaseService = {
               console.warn('[purchaseService] Document posting engine failed (non-critical):', err?.message)
             );
           }
+          auditPurchaseRow(retryData as Record<string, unknown>, prevStatus, 'updated');
           return retryData;
         }
       }
@@ -777,6 +806,7 @@ export const purchaseService = {
         console.warn('[purchaseService] Document posting engine failed (non-critical):', err?.message)
       );
     }
+    auditPurchaseRow(data as Record<string, unknown>, prevStatus, 'updated');
     return data;
   },
 
@@ -824,6 +854,7 @@ export const purchaseService = {
 
     const { error } = await supabase.from('purchases').update(patch).eq('id', id).eq('status', 'cancelled');
     if (error) throw error;
+    logPurchaseAuditNonBlocking(companyId, id, 'restored', { target, previousStatus: 'cancelled' });
   },
 
   // Update purchase. Only DB columns (discount_amount, no discount_percentage). Map app 'discount' → discount_amount.
@@ -869,6 +900,14 @@ export const purchaseService = {
       }
     }
 
+    const d = data as { company_id?: string; po_no?: unknown; status?: unknown } | null;
+    if (d?.company_id) {
+      logPurchaseAuditNonBlocking(String(d.company_id), id, 'updated', {
+        keys: Object.keys(sanitized),
+        po_no: d.po_no,
+        status: d.status,
+      });
+    }
     return data;
   },
 
@@ -877,9 +916,17 @@ export const purchaseService = {
   // Order: Payments → Journal Entries → Stock Movements → Ledger Entries → Activity Logs → Purchase Items → Purchase
   async deletePurchase(id: string) {
     // 🔒 CANCELLED: No delete allowed on cancelled purchases
-    const { data: existingPurchase } = await supabase.from('purchases').select('status').eq('id', id).single();
+    const { data: existingPurchase } = await supabase
+      .from('purchases')
+      .select('status, company_id, po_no')
+      .eq('id', id)
+      .single();
     if (existingPurchase && (existingPurchase as any).status === 'cancelled') {
       throw new Error('Cannot delete a cancelled purchase order.');
+    }
+    const ep = existingPurchase as { company_id?: string; po_no?: unknown } | null;
+    if (ep?.company_id) {
+      logPurchaseAuditNonBlocking(ep.company_id, id, 'deleted', { po_no: ep.po_no });
     }
     console.log('[PURCHASE SERVICE] Starting cascade delete for purchase:', id);
     

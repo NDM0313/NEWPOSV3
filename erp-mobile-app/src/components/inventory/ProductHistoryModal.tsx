@@ -20,6 +20,8 @@ interface ProductHistoryModalProps {
   branchId?: string | null;
   userName: string;
   onClose: () => void;
+  /** Opens parent stock adjustment flow for this product */
+  onAdjustStock?: () => void;
 }
 
 type TypeFilter = 'all' | 'in' | 'out' | 'adjustment';
@@ -71,6 +73,7 @@ export function ProductHistoryModal({
   branchId,
   userName,
   onClose,
+  onAdjustStock,
 }: ProductHistoryModalProps) {
   const [entries, setEntries] = useState<StockMovementEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,6 +146,16 @@ export function ProductHistoryModal({
             <p className="text-[11px] text-[#9CA3AF] font-mono truncate">{product.sku}</p>
           </div>
         </div>
+        <div className="flex items-center gap-1">
+          {onAdjustStock && (
+            <button
+              type="button"
+              onClick={onAdjustStock}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 hover:bg-[#10B981]/30"
+            >
+              Adjust
+            </button>
+          )}
         <button
           onClick={preview.openPreview}
           disabled={preview.loading}
@@ -155,6 +168,7 @@ export function ProductHistoryModal({
             <Share2 className="w-5 h-5" />
           )}
         </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto bg-[#111827] pb-6">

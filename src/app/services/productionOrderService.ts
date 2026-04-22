@@ -2,6 +2,7 @@
  * Manufacturing: Production Orders. Company, product, quantity, status, dates.
  */
 import { supabase } from '@/lib/supabase';
+import { logProductionOrderAuditNonBlocking } from '@/app/services/auditLogService';
 
 export interface ProductionOrderRow {
   id: string;
@@ -90,7 +91,12 @@ export const productionOrderService = {
       .select()
       .single();
     if (error) throw error;
-    return data as ProductionOrderRow;
+    const row = data as ProductionOrderRow;
+    logProductionOrderAuditNonBlocking(row.company_id, row.id, 'created', {
+      order_number: row.order_number,
+      status: row.status,
+    });
+    return row;
   },
 
   async update(
@@ -109,11 +115,29 @@ export const productionOrderService = {
       .select()
       .single();
     if (error) throw error;
-    return data as ProductionOrderRow;
+    const row = data as ProductionOrderRow;
+    logProductionOrderAuditNonBlocking(row.company_id, row.id, 'updated', {
+      order_number: row.order_number,
+      status: row.status,
+    });
+    return row;
   },
 
   async delete(id: string): Promise<void> {
+    const { data: prior } = await supabase
+      .from('production_orders')
+      .select('company_id, order_number')
+      .eq('id', id)
+      .maybeSingle();
     const { error } = await supabase.from('production_orders').delete().eq('id', id);
     if (error) throw error;
+    if (prior && (prior as { company_id?: string }).company_id) {
+      logProductionOrderAuditNonBlocking(
+        String((prior as { company_id: string }).company_id),
+        id,
+        'deleted',
+        { order_number: (prior as { order_number?: string | null }).order_number }
+      );
+    }
   },
 };

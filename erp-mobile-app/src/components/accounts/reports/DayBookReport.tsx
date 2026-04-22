@@ -9,6 +9,7 @@ import { formatAmount, formatDate, dateRangeLabel } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { TimelinePreviewPdf } from '../../shared/TimelinePreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
+import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
 
 interface DayBookReportProps {
   onBack: () => void;
@@ -22,6 +23,8 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
   const [entries, setEntries] = useState<DayBookJournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedEntry, setSelectedEntry] = useState<DayBookJournalEntry | null>(null);
+  const [mode, setMode] = useState<'all' | 'cash'>('cash');
   const preview = usePdfPreview(companyId);
 
   useEffect(() => {
@@ -34,7 +37,7 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
     setError(null);
     const from = range.from || '1970-01-01';
     const to = range.to || new Date().toISOString().slice(0, 10);
-    getDayBook(companyId, from, to, branchId ?? null).then(({ data, error }) => {
+    getDayBook(companyId, from, to, branchId ?? null, mode).then(({ data, error }) => {
       if (cancelled) return;
       setEntries(data);
       setError(error);
@@ -43,7 +46,7 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId, range.from, range.to]);
+  }, [companyId, branchId, range.from, range.to, mode]);
 
   const groups = useMemo(() => {
     const map = new Map<string, DayBookJournalEntry[]>();
@@ -89,13 +92,33 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
     <div className="min-h-screen bg-[#111827] pb-24">
       <ReportHeader
         onBack={onBack}
-        title="Day Book"
-        subtitle="All journal entries, chronological"
+        title={mode === 'cash' ? 'Roznamcha' : 'Day Book'}
+        subtitle={mode === 'cash' ? 'Cash-in / cash-out only' : 'All journal entries, chronological'}
         stats={stats}
         onShare={preview.openPreview}
         sharing={preview.loading}
       >
         <DateRangeBar value={range} onChange={setRange} />
+        <div className="flex gap-1.5 mt-2">
+          <button
+            type="button"
+            onClick={() => setMode('cash')}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              mode === 'cash' ? 'bg-white text-[#3B82F6]' : 'bg-white/10 text-white hover:bg-white/20'
+            }`}
+          >
+            Cash (Roznamcha)
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('all')}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              mode === 'all' ? 'bg-white text-[#3B82F6]' : 'bg-white/10 text-white hover:bg-white/20'
+            }`}
+          >
+            All entries
+          </button>
+        </div>
       </ReportHeader>
 
       <ReportShell loading={loading} error={error} empty={!loading && entries.length === 0} emptyLabel="No journal entries in this range.">
@@ -109,7 +132,12 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
               <ReportCard>
                 <ul className="divide-y divide-[#374151]">
                   {rows.map((e) => (
-                    <li key={e.id} className="px-4 py-3">
+                    <li key={e.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedEntry(e)}
+                        className="w-full text-left px-4 py-3 hover:bg-[#111827]/60 transition-colors"
+                      >
                       <div className="flex items-start gap-3">
                         <div className="w-9 h-9 rounded-lg bg-[#111827] border border-[#374151] flex items-center justify-center shrink-0">
                           <FileText className="w-4 h-4 text-[#9CA3AF]" />
@@ -121,14 +149,17 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
                           </p>
                           <div className="mt-1 grid grid-cols-1 gap-0.5">
                             {e.lines.slice(0, 4).map((l, i) => (
-                              <p key={i} className="text-[11px] text-[#6B7280] truncate">
+                              <p
+                                key={i}
+                                className={`text-[11px] truncate ${l.debit > 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}
+                              >
                                 {l.debit > 0 ? (
                                   <span>
-                                    <span className="text-[#F59E0B]">Dr</span> {l.accountName}
+                                    <span className="font-semibold">Dr</span> {l.accountName}
                                   </span>
                                 ) : (
                                   <span>
-                                    <span className="text-[#10B981] ml-3">Cr</span> {l.accountName}
+                                    <span className="font-semibold ml-3">Cr</span> {l.accountName}
                                   </span>
                                 )}{' '}
                                 · Rs. {formatAmount(Math.max(l.debit, l.credit), 0)}
@@ -146,6 +177,7 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
                           </p>
                         </div>
                       </div>
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -174,6 +206,15 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
           />
         </PdfPreviewModal>
       )}
+
+      <TransactionDetailSheet
+        open={!!selectedEntry}
+        onClose={() => setSelectedEntry(null)}
+        companyId={companyId}
+        referenceType="journal"
+        referenceId={selectedEntry?.id ?? null}
+        fallbackTitle={selectedEntry ? `${selectedEntry.entryNo} · ${selectedEntry.referenceType || 'Journal'}` : undefined}
+      />
     </div>
   );
 }

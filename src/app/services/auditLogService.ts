@@ -137,10 +137,49 @@ export async function logProductionOrderAction(
   });
 }
 
+/** Non-blocking: payment row created (use after successful insert). */
+export function logPaymentCreated(
+  companyId: string,
+  paymentId: string,
+  metadata?: Record<string, unknown> | null
+): void {
+  void logPaymentAction(companyId, paymentId, 'created', metadata).catch((err) =>
+    console.warn('[auditLogService] logPaymentCreated:', err)
+  );
+}
+
+/** Non-blocking: purchase lifecycle audit. */
+export function logPurchaseAuditNonBlocking(
+  companyId: string,
+  purchaseId: string,
+  action: AuditAction,
+  metadata?: Record<string, unknown> | null,
+  oldData?: Record<string, unknown> | null
+): void {
+  void logPurchaseAction(companyId, purchaseId, action, metadata, oldData).catch((err) =>
+    console.warn('[auditLogService] logPurchaseAudit:', err)
+  );
+}
+
+/** Non-blocking: manufacturing production_orders lifecycle. */
+export function logProductionOrderAuditNonBlocking(
+  companyId: string,
+  orderId: string,
+  action: AuditAction,
+  metadata?: Record<string, unknown> | null
+): void {
+  void logProductionOrderAction(companyId, orderId, action, metadata).catch((err) =>
+    console.warn('[auditLogService] logProductionOrderAudit:', err)
+  );
+}
+
 export const auditLogService = {
   logAudit,
   logSaleAction,
   logPaymentAction,
   logPurchaseAction,
   logProductionOrderAction,
+  logPaymentCreated,
+  logPurchaseAuditNonBlocking,
+  logProductionOrderAuditNonBlocking,
 };

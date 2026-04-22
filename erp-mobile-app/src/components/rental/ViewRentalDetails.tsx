@@ -22,6 +22,7 @@ import * as rentalsApi from '../../api/rentals';
 import { RentalReturnModal } from './RentalReturnModal';
 import { RentalAddPaymentModal } from './RentalAddPaymentModal';
 import { RentalPickupModal } from './RentalPickupModal';
+import { formatDate } from '../accounts/reports/_shared/format';
 
 interface ViewRentalDetailsProps {
   rentalId: string;
@@ -193,7 +194,7 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
           <div className="flex gap-4 mt-3 text-sm text-[#9CA3AF]">
             <span className="flex items-center gap-1">
               <Calendar className="w-4 h-4" />
-              {rental.pickupDate} → {rental.returnDate}
+              {formatDate(rental.pickupDate)} → {formatDate(rental.returnDate)}
             </span>
           </div>
           {rental.branchName && (

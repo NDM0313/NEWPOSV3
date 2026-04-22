@@ -487,7 +487,9 @@ export async function recordSupplierPayment(params: {
   userId?: string;
 }): Promise<{ data: { payment_id: string; reference_number?: string | null } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
-  const refNum = params.reference ?? await getNextDocumentNumber(params.companyId, params.branchId, 'payment');
+  // Let the DB trigger assign a unique reference when the caller did not
+  // supply one. Avoids the payments_reference_number_unique race condition.
+  const refNum: string | null = params.reference && params.reference.trim() ? params.reference.trim() : null;
   const { data, error } = await supabase.rpc('record_payment_with_accounting', {
     p_company_id: params.companyId,
     p_branch_id: params.branchId,

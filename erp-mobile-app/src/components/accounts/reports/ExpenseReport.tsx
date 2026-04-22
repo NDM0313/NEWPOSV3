@@ -9,6 +9,7 @@ import { formatAmount, formatDate, dateRangeLabel } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
+import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
 
 interface ExpenseReportProps {
   onBack: () => void;
@@ -22,6 +23,7 @@ export function ExpenseReport({ onBack, companyId, branchId, user }: ExpenseRepo
   const [rows, setRows] = useState<ExpenseReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState<string>('all');
+  const [selectedRow, setSelectedRow] = useState<ExpenseReportRow | null>(null);
   const preview = usePdfPreview(companyId);
 
   useEffect(() => {
@@ -125,24 +127,30 @@ export function ExpenseReport({ onBack, companyId, branchId, user }: ExpenseRepo
           <ReportSectionTitle title="Expenses" right={`${filteredRows.length}`} />
           <ul className="divide-y divide-[#374151]">
             {filteredRows.map((r) => (
-              <li key={r.id} className="px-4 py-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-[#111827] border border-[#374151] flex items-center justify-center shrink-0">
-                    <TrendingDown className="w-4 h-4 text-[#FCA5A5]" />
+              <li key={r.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRow(r)}
+                  className="w-full text-left px-4 py-3 hover:bg-[#111827]/60 transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-[#111827] border border-[#374151] flex items-center justify-center shrink-0">
+                      <TrendingDown className="w-4 h-4 text-[#FCA5A5]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">
+                        {r.expenseNo} · {r.category}
+                      </p>
+                      <p className="text-[11px] text-[#9CA3AF] truncate">
+                        {formatDate(r.date)} · {r.method || 'cash'}
+                      </p>
+                      {r.description && <p className="text-[11px] text-[#6B7280] truncate mt-0.5">{r.description}</p>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-bold text-[#FCA5A5]">− Rs. {formatAmount(r.amount, 0)}</p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">
-                      {r.expenseNo} · {r.category}
-                    </p>
-                    <p className="text-[11px] text-[#9CA3AF] truncate">
-                      {formatDate(r.date)} · {r.method || 'cash'}
-                    </p>
-                    {r.description && <p className="text-[11px] text-[#6B7280] truncate mt-0.5">{r.description}</p>}
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-bold text-[#FCA5A5]">− Rs. {formatAmount(r.amount, 0)}</p>
-                  </div>
-                </div>
+                </button>
               </li>
             ))}
           </ul>
@@ -179,6 +187,15 @@ export function ExpenseReport({ onBack, companyId, branchId, user }: ExpenseRepo
           />
         </PdfPreviewModal>
       )}
+
+      <TransactionDetailSheet
+        open={!!selectedRow}
+        onClose={() => setSelectedRow(null)}
+        companyId={companyId}
+        referenceType="expense"
+        referenceId={selectedRow?.id ?? null}
+        fallbackTitle={selectedRow ? `Expense · ${selectedRow.expenseNo}` : undefined}
+      />
     </div>
   );
 }

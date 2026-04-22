@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import type { User } from '../../types';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
 import { useResponsive } from '../../hooks/useResponsive';
@@ -14,6 +14,8 @@ import { PaymentDialog } from './PaymentDialog';
 import { SaleConfirmation } from './SaleConfirmation';
 import { StudioDetailsStep, type StudioDetailsData } from './StudioDetailsStep';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
+import { getMobilePrinterSettings } from '../../api/settings';
+import { formatPlainReceiptLines, printThermalReceiptLines } from '../../services/thermalPrint';
 
 export type SalesStep = 'home' | 'customer' | 'products' | 'studioDetails' | 'summary' | 'payment' | 'confirmation';
 
@@ -61,15 +63,17 @@ interface SalesModuleProps {
   /** From App branch context only; do not compute inside Payment. */
   branchId: string | null;
   initialSaleType?: 'regular' | 'studio';
+  /** If provided, completing a studio sale navigates to the Studio module with the new sale focused. */
+  onOpenStudio?: (saleId: string) => void;
 }
 
-export function SalesModule({ onBack, user, companyId, branchId, initialSaleType }: SalesModuleProps) {
+export function SalesModule({ onBack, user, companyId, branchId, initialSaleType, onOpenStudio }: SalesModuleProps) {
   const responsive = useResponsive();
   const [step, setStep] = useState<SalesStep>(initialSaleType === 'studio' ? 'customer' : 'home');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [createdInvoiceNo, setCreatedInvoiceNo] = useState<string | null>(null);
-  const [, setCreatedSaleId] = useState<string | null>(null);
+  const [createdSaleId, setCreatedSaleId] = useState<string | null>(null);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
   const todayStr = () => new Date().toISOString().split('T')[0];
   const todayPlus7Str = () => {
@@ -264,7 +268,29 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
     onBack();
   };
 
+  const handleThermalPrint = useCallback(async () => {
+    const data = confirmationData;
+    if (!companyId || !data) return;
+    const { data: settings } = await getMobilePrinterSettings(companyId);
+    if (settings.mode !== 'thermal') {
+      window.alert('Set printer mode to Thermal in Settings → Printer, or use Share slip.');
+      return;
+    }
+    const lines = formatPlainReceiptLines({
+      title: 'SALE RECEIPT',
+      transactionNo: data.transactionNo,
+      partyName: data.partyName,
+      amount: data.amount ?? null,
+      date: data.date,
+      branch: data.branch,
+    });
+    const res = await printThermalReceiptLines(lines);
+    if (!res.ok && res.hint) window.alert(res.hint);
+  }, [companyId, confirmationData]);
+
   const closeSuccessModal = () => {
+    const wasStudio = saleData.saleType === 'studio';
+    const studioSaleId = createdSaleId;
     setConfirmationData(null);
     setCreatedSaleId(null);
     setCreatedInvoiceNo(null);
@@ -282,6 +308,10 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       deadlineDate: todayPlus7Str(),
       productionNotes: '',
     });
+    if (wasStudio && studioSaleId && onOpenStudio) {
+      onOpenStudio(studioSaleId);
+      return;
+    }
     setStep('home');
   };
 
@@ -383,6 +413,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
         onClose={closeSuccessModal}
         onShareSlip={closeSuccessModal}
         onViewInvoice={closeSuccessModal}
+        onThermalPrint={handleThermalPrint}
         onNewSale={handleSuccessNewSale}
         onHome={handleBackToHome}
       />

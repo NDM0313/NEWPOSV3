@@ -3,17 +3,25 @@ import { Lock, Mail, Zap, Loader2, KeyRound, AlertTriangle } from 'lucide-react'
 import { erpMobileUsingDemoSupabaseAnonKey } from '../lib/supabase';
 import type { User } from '../types';
 import * as authApi from '../api/auth';
+import { markUnlocked } from '../lib/pinLock';
 
 interface LoginScreenProps {
   onLogin: (user: User, companyId: string | null) => void;
   /** When set, show PIN unlock instead of email/password (session already exists) */
   pinUnlockUser?: User | null;
   pinUnlockCompanyId?: string | null;
+  /**
+   * Optional: when the user is already logged-in and this screen is rendered
+   * purely to re-lock after a period of inactivity, this is called on
+   * successful PIN unlock instead of `onLogin`. This keeps the current
+   * screen/state intact rather than re-running the full login flow.
+   */
+  onUnlock?: () => void;
 }
 
 const PIN_LENGTH = 6;
 
-export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUnlockCompanyId }: LoginScreenProps) {
+export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUnlockCompanyId, onUnlock }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
@@ -91,6 +99,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         branchId: branchIdForSetPin,
         email: userForSetPin.email,
       });
+      markUnlocked();
       onLogin(userForSetPin, companyIdForSetPin);
       setShowSetPin(false);
       setUserForSetPin(null);
@@ -132,6 +141,11 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
             setError(refreshed.error || 'Could not restore session.');
             return;
           }
+        }
+        markUnlocked();
+        if (onUnlock) {
+          onUnlock();
+          return;
         }
         const profile = await authApi.getProfile(payload.userId);
         if (!profile) {

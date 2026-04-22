@@ -621,14 +621,11 @@ export async function recordSalePayment(params: {
     wallet: 'other',
   };
   const enumMethod = methodMap[normalized] || 'cash';
-  let refNum: string;
-  try {
-    refNum =
-      referenceNumber ||
-      (await getNextDocumentNumber(companyId, branchId, 'payment'));
-  } catch {
-    refNum = `PMT-${Date.now()}`;
-  }
+  // When the caller did not pass a reference, let the DB trigger assign a unique
+  // value atomically. This avoids the payments_reference_number_unique race
+  // condition we saw when two client-side document-number lookups landed the
+  // same next value.
+  const refNum: string | null = referenceNumber && referenceNumber.trim() ? referenceNumber.trim() : null;
   const dateVal = paymentDate || new Date().toISOString().split('T')[0];
   const { data, error } = await supabase.rpc('record_payment_with_accounting', {
     p_company_id: companyId,

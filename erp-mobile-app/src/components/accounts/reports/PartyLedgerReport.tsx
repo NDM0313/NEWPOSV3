@@ -133,6 +133,8 @@ export function PartyLedgerReport({ onBack, kind, companyId, user }: PartyLedger
               description: r.notes || r.reference_type,
               reference: r.reference_id || '',
               referenceType: r.reference_type,
+              journalEntryId: '',
+              sourceReferenceId: r.reference_id ?? null,
               debit,
               credit,
               runningBalance: running,

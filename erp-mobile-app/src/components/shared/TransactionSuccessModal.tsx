@@ -26,6 +26,8 @@ interface TransactionSuccessModalProps {
   onViewInvoice?: () => void;
   onNewSale?: () => void;
   onHome?: () => void;
+  /** Optional: Bluetooth / thermal print (native + plugin). */
+  onThermalPrint?: () => void;
   /** Payment: Share Receipt, View Ledger, Back */
   onShareReceipt?: () => void;
   onViewLedger?: () => void;
@@ -49,6 +51,7 @@ export function TransactionSuccessModal({
   onViewInvoice,
   onNewSale,
   onHome,
+  onThermalPrint,
   onShareReceipt,
   onViewLedger,
   onBack,
@@ -154,6 +157,16 @@ export function TransactionSuccessModal({
                   >
                     <FileText className="w-5 h-5" />
                     View Invoice
+                  </button>
+                )}
+                {onThermalPrint && (
+                  <button
+                    type="button"
+                    onClick={() => handleAction(onThermalPrint)}
+                    className="w-full h-12 bg-[#111827] border border-[#10B981]/50 text-[#10B981] hover:bg-[#10B981]/10 rounded-xl font-medium flex items-center justify-center gap-2"
+                  >
+                    <Printer className="w-5 h-5" />
+                    Thermal print (Bluetooth)
                   </button>
                 )}
                 {onNewSale && (

@@ -58,6 +58,10 @@ export async function getCompanyBrand(companyId: string | null): Promise<Company
 /** One line in a ledger report (date, voucher, description, Dr, Cr, running balance). */
 export interface LedgerLine {
   id: string;
+  /** journal_entries.id ù source journal entry for this line (used for drill-down). */
+  journalEntryId: string;
+  /** journal_entries.reference_id ù source record (sale, purchase, payment, ...). */
+  sourceReferenceId: string | null;
   date: string;
   createdAt: string;
   entryNo: string;
@@ -113,7 +117,9 @@ export async function getAccountLedgerLines(
     .eq('journal_entry.company_id', companyId);
   if (fromIso) q = q.gte('journal_entry.entry_date', from!);
   if (toIso) q = q.lte('journal_entry.entry_date', to!);
-  const { data, error } = await q.order('created_at', { ascending: true, foreignTable: 'journal_entries' });
+  const { data, error } = await q
+    .order('entry_date', { ascending: true, foreignTable: 'journal_entries' })
+    .order('created_at', { ascending: true, foreignTable: 'journal_entries' });
   if (error) return { openingBalance: opening, lines: [], error: error.message };
 
   const rows = (data || []) as Array<{
@@ -134,6 +140,8 @@ export async function getAccountLedgerLines(
     running += debit - credit;
     lines.push({
       id: String(r.id ?? ''),
+      journalEntryId: String(je.id ?? ''),
+      sourceReferenceId: je.reference_id ? String(je.reference_id) : null,
       date: je.entry_date ? String(je.entry_date).slice(0, 10) : '',
       createdAt: String(je.created_at ?? ''),
       entryNo: String(je.entry_no ?? ''),
@@ -173,7 +181,7 @@ export async function getContactsByType(
   return {
     data: (data || []).map((r: Record<string, unknown>) => ({
       id: String(r.id),
-      name: String(r.name ?? '‚??'),
+      name: String(r.name ?? 'ù??'),
       code: (r.customer_code ?? r.supplier_code) ? String(r.customer_code ?? r.supplier_code) : null,
       phone: r.phone ? String(r.phone) : null,
       email: r.email ? String(r.email) : null,
@@ -344,14 +352,18 @@ export interface DayBookJournalEntry {
   referenceType: string;
   debit: number;
   credit: number;
-  lines: { accountCode: string; accountName: string; debit: number; credit: number; description: string }[];
+  /** True if at least one line touches a cash / bank / mobile_wallet account. */
+  isCash: boolean;
+  lines: { accountCode: string; accountName: string; accountType: string; debit: number; credit: number; description: string }[];
 }
 
+/** `mode='cash'` limits to Roznamcha-style entries (any line touching cash/bank/wallet). */
 export async function getDayBook(
   companyId: string,
   from: string,
   to: string,
   branchId?: string | null,
+  mode: 'all' | 'cash' = 'all',
 ): Promise<{ data: DayBookJournalEntry[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   let q = supabase
@@ -362,7 +374,7 @@ export async function getDayBook(
       total_debit, total_credit,
       lines:journal_entry_lines(
         debit, credit, description,
-        account:accounts(code, name)
+        account:accounts(code, name, type)
       )
     `,
     )
@@ -377,25 +389,31 @@ export async function getDayBook(
   if (error) return { data: [], error: error.message };
   const rows = (data || []) as Record<string, unknown>[];
   const out: DayBookJournalEntry[] = [];
+  const CASH_TYPES = new Set(['cash', 'bank', 'mobile_wallet']);
   for (const e of rows) {
     if (e.is_void === true) continue;
     const linesRaw = (e.lines as Record<string, unknown>[]) || [];
     let debit = 0;
     let credit = 0;
+    let isCash = false;
     const lines = linesRaw.map((l) => {
       const acc = (l.account as Record<string, unknown>) || {};
       const d = Number(l.debit || 0);
       const c = Number(l.credit || 0);
+      const accountType = String(acc.type ?? '').toLowerCase();
+      if (CASH_TYPES.has(accountType)) isCash = true;
       debit += d;
       credit += c;
       return {
         accountCode: String(acc.code ?? ''),
         accountName: String(acc.name ?? ''),
+        accountType,
         debit: d,
         credit: c,
         description: String(l.description || ''),
       };
     });
+    if (mode === 'cash' && !isCash) continue;
     out.push({
       id: String(e.id),
       entryNo: String(e.entry_no ?? ''),
@@ -405,6 +423,7 @@ export async function getDayBook(
       referenceType: String(e.reference_type ?? ''),
       debit: Number(e.total_debit ?? debit),
       credit: Number(e.total_credit ?? credit),
+      isCash,
       lines,
     });
   }
@@ -455,7 +474,7 @@ export async function getSalesInRange(
   return {
     data: (data || []).map((r: Record<string, unknown>) => ({
       id: String(r.id),
-      invoiceNo: String(r.invoice_no ?? '‚??'),
+      invoiceNo: String(r.invoice_no ?? 'ù??'),
       customerName: String(r.customer_name ?? 'Walk-in'),
       customerId: r.customer_id ? String(r.customer_id) : null,
       total: Number(r.total) || 0,
@@ -507,7 +526,7 @@ export async function getPurchasesInRange(
   return {
     data: (data || []).map((r: Record<string, unknown>) => ({
       id: String(r.id),
-      poNo: String(r.po_no ?? '‚??'),
+      poNo: String(r.po_no ?? 'ù??'),
       supplierName: String(r.supplier_name ?? 'Unknown'),
       supplierId: r.supplier_id ? String(r.supplier_id) : null,
       total: Number(r.total) || 0,
@@ -555,8 +574,8 @@ export async function getExpensesInRange(
   return {
     data: (data || []).map((r: Record<string, unknown>) => ({
       id: String(r.id),
-      expenseNo: String(r.expense_no ?? '‚??'),
-      category: String(r.category ?? '‚??'),
+      expenseNo: String(r.expense_no ?? 'ù??'),
+      category: String(r.category ?? 'ù??'),
       description: String(r.description ?? ''),
       amount: Number(r.amount) || 0,
       method: String(r.payment_method ?? ''),
@@ -578,6 +597,12 @@ export interface StudioProductionRow {
   saleId: string | null;
   invoiceNo: string | null;
   customerName: string | null;
+  saleTotal: number;
+  stageCount: number;
+  stagesCompleted: number;
+  workerCost: number;
+  customerCharge: number;
+  profit: number;
 }
 
 export async function getStudioProductions(
@@ -591,7 +616,8 @@ export async function getStudioProductions(
     .select(
       `id, production_no, quantity, status, production_date, sale_id,
        product:products(name),
-       sale:sales(invoice_no, customer_name)`,
+       sale:sales(invoice_no, customer_name, total),
+       stages:studio_production_stages(id, status, cost)`,
     )
     .eq('company_id', companyId)
     .order('production_date', { ascending: false })
@@ -604,16 +630,27 @@ export async function getStudioProductions(
     data: (data || []).map((r: Record<string, unknown>) => {
       const prod = (r.product as Record<string, unknown>) || {};
       const sale = (r.sale as Record<string, unknown>) || {};
+      const stages = (r.stages as Array<{ status: string; cost: number }>) || [];
+      const workerCost = stages.reduce((s, st) => s + (Number(st.cost) || 0), 0);
+      const stagesCompleted = stages.filter((s) => s.status === 'completed').length;
+      const saleTotal = Number(sale.total) || 0;
+      const customerCharge = saleTotal;
       return {
         id: String(r.id),
-        productionNo: String(r.production_no ?? '‚??'),
-        productName: String(prod.name ?? '‚??'),
+        productionNo: String(r.production_no ?? 'ù??'),
+        productName: String(prod.name ?? 'ù??'),
         quantity: Number(r.quantity) || 0,
         status: String(r.status ?? ''),
         date: r.production_date ? String(r.production_date).slice(0, 10) : '',
         saleId: r.sale_id ? String(r.sale_id) : null,
         invoiceNo: sale.invoice_no ? String(sale.invoice_no) : null,
         customerName: sale.customer_name ? String(sale.customer_name) : null,
+        saleTotal,
+        stageCount: stages.length,
+        stagesCompleted,
+        workerCost,
+        customerCharge,
+        profit: customerCharge - workerCost,
       };
     }),
     error: null,
@@ -629,6 +666,13 @@ export interface RentalReportRow {
   due: number;
   status: string;
   date: string;
+  pickupDate: string | null;
+  returnDate: string | null;
+  actualReturnDate: string | null;
+  itemCount: number;
+  itemsSummary: string;
+  penaltyAmount: number;
+  damageAmount: number;
 }
 
 export async function getRentalsInRange(
@@ -639,25 +683,44 @@ export async function getRentalsInRange(
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   let q = supabase
     .from('rentals')
-    .select('id, booking_no, customer_name, total, paid_amount, due_amount, status, rental_date, created_at')
+    .select(
+      `id, booking_no, customer_name, total_amount, paid_amount, due_amount, status,
+       booking_date, pickup_date, return_date, actual_return_date,
+       penalty_amount, damage_amount,
+       items:rental_items(id, product_name, quantity)`,
+    )
     .eq('company_id', companyId)
-    .order('created_at', { ascending: false })
+    .order('booking_date', { ascending: false })
     .limit(500);
-  if (from) q = q.gte('rental_date', from);
-  if (to) q = q.lte('rental_date', to);
+  if (from) q = q.gte('booking_date', from);
+  if (to) q = q.lte('booking_date', to);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   return {
-    data: (data || []).map((r: Record<string, unknown>) => ({
-      id: String(r.id),
-      bookingNo: String(r.booking_no ?? '‚??'),
-      customerName: String(r.customer_name ?? '‚??'),
-      total: Number(r.total) || 0,
-      paid: Number(r.paid_amount) || 0,
-      due: Number(r.due_amount) || 0,
-      status: String(r.status ?? ''),
-      date: r.rental_date ? String(r.rental_date).slice(0, 10) : r.created_at ? String(r.created_at).slice(0, 10) : '',
-    })),
+    data: (data || []).map((r: Record<string, unknown>) => {
+      const items = (r.items as Array<{ product_name: string; quantity: number }>) || [];
+      const itemsSummary = items
+        .map((it) => `${it.product_name}${it.quantity > 1 ? ` ù${it.quantity}` : ''}`)
+        .slice(0, 3)
+        .join(', ') + (items.length > 3 ? `, +${items.length - 3}` : '');
+      return {
+        id: String(r.id),
+        bookingNo: String(r.booking_no ?? 'ù'),
+        customerName: String(r.customer_name ?? 'ù'),
+        total: Number(r.total_amount) || 0,
+        paid: Number(r.paid_amount) || 0,
+        due: Number(r.due_amount) || 0,
+        status: String(r.status ?? ''),
+        date: r.booking_date ? String(r.booking_date).slice(0, 10) : '',
+        pickupDate: r.pickup_date ? String(r.pickup_date).slice(0, 10) : null,
+        returnDate: r.return_date ? String(r.return_date).slice(0, 10) : null,
+        actualReturnDate: r.actual_return_date ? String(r.actual_return_date).slice(0, 10) : null,
+        itemCount: items.length,
+        itemsSummary,
+        penaltyAmount: Number(r.penalty_amount) || 0,
+        damageAmount: Number(r.damage_amount) || 0,
+      };
+    }),
     error: null,
   };
 }
@@ -665,14 +728,18 @@ export async function getRentalsInRange(
 export interface StockMovementRow {
   id: string;
   date: string;
+  createdAt: string;
   productId: string;
   productName: string;
+  variationId: string | null;
+  variationLabel: string | null;
   movementType: string;
   quantity: number;
   unitCost: number;
   totalCost: number;
   referenceType: string;
   referenceId: string | null;
+  notes: string | null;
 }
 
 export async function getStockMovements(
@@ -680,13 +747,16 @@ export async function getStockMovements(
   from?: string,
   to?: string,
   productId?: string | null,
+  variationId?: string | null,
 ): Promise<{ data: StockMovementRow[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   let q = supabase
     .from('stock_movements')
     .select(
-      `id, created_at, product_id, movement_type, quantity, unit_cost, total_cost,
-       reference_type, reference_id, product:products(name)`,
+      `id, created_at, product_id, variation_id, movement_type, quantity, unit_cost, total_cost,
+       reference_type, reference_id, notes,
+       product:products(name),
+       variation:product_variations(id, sku, attributes)`,
     )
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
@@ -694,22 +764,34 @@ export async function getStockMovements(
   if (from) q = q.gte('created_at', from);
   if (to) q = q.lte('created_at', to + 'T23:59:59.999');
   if (productId) q = q.eq('product_id', productId);
+  if (variationId) q = q.eq('variation_id', variationId);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   return {
     data: (data || []).map((r: Record<string, unknown>) => {
       const prod = (r.product as Record<string, unknown>) || {};
+      const variation = r.variation as { id?: string; sku?: string; attributes?: Record<string, string> } | null;
+      let variationLabel: string | null = null;
+      if (variation) {
+        const attrs = variation.attributes ?? {};
+        const parts = Object.values(attrs).filter(Boolean);
+        variationLabel = parts.length > 0 ? parts.join(' ∑ ') : variation.sku ?? null;
+      }
       return {
         id: String(r.id),
         date: r.created_at ? String(r.created_at).slice(0, 10) : '',
+        createdAt: String(r.created_at ?? ''),
         productId: String(r.product_id ?? ''),
-        productName: String(prod.name ?? '‚??'),
+        productName: String(prod.name ?? 'ó'),
+        variationId: r.variation_id ? String(r.variation_id) : null,
+        variationLabel,
         movementType: String(r.movement_type ?? ''),
         quantity: Number(r.quantity) || 0,
         unitCost: Number(r.unit_cost) || 0,
         totalCost: Number(r.total_cost) || 0,
         referenceType: String(r.reference_type ?? ''),
         referenceId: r.reference_id ? String(r.reference_id) : null,
+        notes: r.notes ? String(r.notes) : null,
       };
     }),
     error: null,
@@ -732,7 +814,7 @@ export async function getSalesSummary(
   const fromDate = new Date();
   fromDate.setDate(fromDate.getDate() - days);
   const fromStr = fromDate.toISOString();
-  // All final invoices in range (include unpaid/partial) G«ˆ same basis as web dashboard total sales
+  // All final invoices in range (include unpaid/partial) Gùù same basis as web dashboard total sales
   let query = supabase
     .from('sales')
     .select('total, invoice_date')
@@ -800,16 +882,16 @@ export async function getPurchasesForReport(
     data: (data || []).map((r: Record<string, unknown>) => ({
       id: String(r.id ?? ''),
       poNo: String(r.po_no ?? `PUR-${String(r.id ?? '').slice(0, 8)}`),
-      supplier: String(r.supplier_name ?? 'G«ˆ'),
+      supplier: String(r.supplier_name ?? 'Gùù'),
       total: Number(r.total) || 0,
-      date: r.po_date ? new Date(r.po_date as string).toISOString().slice(0, 10) : 'G«ˆ',
+      date: r.po_date ? new Date(r.po_date as string).toISOString().slice(0, 10) : 'Gùù',
       paymentStatus: String(r.payment_status ?? 'unpaid'),
     })),
     error: null,
   };
 }
 
-/** Day Book (Roznamcha) G«Ù flattened journal entries for date range, chronological order */
+/** Day Book (Roznamcha) Gùù flattened journal entries for date range, chronological order */
 export interface DayBookEntry {
   id: string;
   date: string;
@@ -896,7 +978,7 @@ function rpcBranchId(branchId: string | null | undefined): string | null {
   return branchId;
 }
 
-/** Total receivables G«ˆ same operational basis as web Contacts (`get_contact_balances_summary`). */
+/** Total receivables Gùù same operational basis as web Contacts (`get_contact_balances_summary`). */
 export async function getReceivables(
   companyId: string,
   branchId: string | null | undefined
@@ -923,7 +1005,7 @@ export interface ReceivableItem {
 }
 
 /**
- * Outstanding invoices G«ˆ uses same payment/studio enrichment as mobile Sales list (not stale sales.due_amount).
+ * Outstanding invoices Gùù uses same payment/studio enrichment as mobile Sales list (not stale sales.due_amount).
  */
 export async function getReceivablesList(
   companyId: string,
@@ -943,9 +1025,9 @@ export async function getReceivablesList(
       const cust = r.customer as { name?: string } | null;
       return {
         id: String(r.id ?? ''),
-        invoice_no: String(r.invoice_no ?? 'G«ˆ'),
-        customer_name: String(cust?.name ?? r.customer_name ?? 'G«ˆ'),
-        invoice_date: r.invoice_date ? new Date(String(r.invoice_date)).toISOString().slice(0, 10) : 'G«ˆ',
+        invoice_no: String(r.invoice_no ?? 'Gùù'),
+        customer_name: String(cust?.name ?? r.customer_name ?? 'Gùù'),
+        invoice_date: r.invoice_date ? new Date(String(r.invoice_date)).toISOString().slice(0, 10) : 'Gùù',
         total: Number(r.grand_total ?? r.total ?? 0) || 0,
         due_amount: Number(r.balance_due ?? 0) || 0,
         payment_status:

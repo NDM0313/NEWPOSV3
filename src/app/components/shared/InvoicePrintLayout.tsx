@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Sale } from '@/app/context/SalesContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -7,6 +7,7 @@ import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
 import { formatBoxesPieces } from '../ui/utils';
+import { DocumentPreviewButton } from './DocumentPreviewButton';
 
 interface InvoicePrintLayoutProps {
   sale: Sale;
@@ -14,6 +15,7 @@ interface InvoicePrintLayoutProps {
 }
 
 export const InvoicePrintLayout: React.FC<InvoicePrintLayoutProps> = ({ sale, onClose }) => {
+  const printRootRef = useRef<HTMLDivElement>(null);
   const { inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const { config: printerConfig } = usePrinterConfig();
@@ -81,12 +83,24 @@ export const InvoicePrintLayout: React.FC<InvoicePrintLayoutProps> = ({ sale, on
       documentTitle="INVOICE"
       companyName="Din Collection"
       headerMeta={headerMeta}
+      contentRef={printRootRef}
+      documentPreview={
+        enablePacking
+          ? undefined
+          : { type: 'sales_invoice', reference: sale.invoiceNo || undefined }
+      }
       onPrint={() => window.print()}
       onClose={onClose}
       printerMode={printerConfig.mode}
       actionChildren={
         enablePacking ? (
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <DocumentPreviewButton
+              contentRef={printRootRef}
+              documentType="sales_invoice"
+              reference={sale.invoiceNo || undefined}
+              format={printerConfig.mode === 'thermal' ? 'thermal' : 'a4'}
+            />
             <div className="flex items-center gap-2">
               <Checkbox
                 id="show-detailed-packing"
@@ -102,6 +116,7 @@ export const InvoicePrintLayout: React.FC<InvoicePrintLayoutProps> = ({ sale, on
               </Label>
             </div>
             <button
+              type="button"
               onClick={() => window.print()}
               className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
             >

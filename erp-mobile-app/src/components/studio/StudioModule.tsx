@@ -15,6 +15,10 @@ interface StudioModuleProps {
   companyId: string | null;
   branch: Branch | null;
   onNewStudioSale?: () => void;
+  /** When set on mount, the module auto-selects the matching production and opens stage-selection. */
+  focusSaleId?: string | null;
+  /** Called after the module handles focusSaleId so the caller can clear it. */
+  onFocusHandled?: () => void;
 }
 
 type View =
@@ -112,15 +116,15 @@ function mapProductionToOrder(
   };
 }
 
-export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSale }: StudioModuleProps) {
+export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSale, focusSaleId, onFocusHandled }: StudioModuleProps) {
   const [view, setView] = useState<View>('dashboard');
   const [selectedOrder, setSelectedOrder] = useState<StudioOrder | null>(null);
   const [selectedStage, setSelectedStage] = useState<StudioStage | null>(null);
   const [orders, setOrders] = useState<StudioOrder[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [error, setError] = useState<string | null>(null);
+  const [productionsRaw, setProductionsRaw] = useState<studioApi.StudioProductionRow[]>([]);
 
-  // Load all company studio productions so user sees their studio sales regardless of selected branch
   const loadOrders = useCallback(async () => {
     if (!companyId) {
       setLoading(false);
@@ -133,6 +137,7 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
     if (prodErr) {
       setError(prodErr);
       setOrders([]);
+      setProductionsRaw([]);
       setLoading(false);
       return;
     }
@@ -142,12 +147,24 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
       ordersList.push(mapProductionToOrder(p, stages || []));
     }
     setOrders(ordersList);
+    setProductionsRaw((prods || []) as studioApi.StudioProductionRow[]);
     setLoading(false);
   }, [companyId]);
 
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
+
+  useEffect(() => {
+    if (!focusSaleId || loading || orders.length === 0) return;
+    const prod = productionsRaw.find((p) => p.sale_id === focusSaleId);
+    if (!prod) return;
+    const order = orders.find((o) => o.id === prod.id);
+    if (!order) return;
+    setSelectedOrder(order);
+    setView(order.stages.length === 0 ? 'select-stages' : 'order-detail');
+    onFocusHandled?.();
+  }, [focusSaleId, loading, orders, productionsRaw, onFocusHandled]);
 
   if (view === 'dashboard') {
     return (
@@ -306,6 +323,7 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
     return (
       <StudioStageSelection
         onBack={() => setView('order-detail')}
+        orderId={selectedOrder.id}
         existingStageTypes={selectedOrder.stages.map((s) => s.type) as UiStageType[]}
         onSave={async (stageTypes) => {
           const { error: err } = await studioApi.addStudioStagesBatch(selectedOrder.id, stageTypes);
@@ -408,6 +426,7 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
           setView('order-detail');
         }}
         existingStage={selectedStage || undefined}
+        fixedStageType={view === 'edit-stage' ? selectedStage?.type : undefined}
       />
     );
   }

@@ -78,15 +78,29 @@ input[type="number"] {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
-/* Fixed bottom action bars (Next, Save) – sit above BottomNav on mobile */
+/* Fixed bottom action bars (Next, Save).
+   Default: flush with the viewport bottom (plus safe-area). Flow screens (sales,
+   purchase, rental, studio, expense, contacts, general entry) do NOT render the
+   BottomNav, so the action bar should sit at the very bottom — exactly where
+   the hidden nav would have been.
+   Add the `--with-nav` modifier on any screen that does still render BottomNav. */
 .action-bar-above-nav,
 .fixed-bottom-above-nav {
+  bottom: 0;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+}
+.action-bar-above-nav--with-nav,
+.fixed-bottom-above-nav--with-nav {
   bottom: 80px;
+  padding-bottom: 0;
 }
 @media (min-width: 768px) {
   .action-bar-above-nav,
-  .fixed-bottom-above-nav {
+  .fixed-bottom-above-nav,
+  .action-bar-above-nav--with-nav,
+  .fixed-bottom-above-nav--with-nav {
     bottom: 0;
+    padding-bottom: 0;
   }
 }
 

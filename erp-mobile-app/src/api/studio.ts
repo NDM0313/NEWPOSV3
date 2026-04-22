@@ -57,6 +57,31 @@ export interface StudioStageRow {
 export interface WorkerRow {
   id: string;
   name: string;
+  /** Default rate Rs. per job (workers.rate / contacts.worker_default_rate). */
+  rate?: number;
+  /** Raw specialization value: 'dyer' | 'stitcher' | 'master' | 'handwork' | 'other' | 'General' (or free text). */
+  workerType?: string | null;
+}
+
+/**
+ * Accepted worker specializations for each UI stage type.
+ * 'master' is accepted for every stage since a master can handle any.
+ * Free-text or 'other' / 'General' is also accepted as fallback so nothing gets hidden unexpectedly.
+ */
+const STAGE_WORKER_TYPES: Record<UiStageType, string[]> = {
+  dyeing: ['dyer', 'master'],
+  stitching: ['stitcher', 'master'],
+  handwork: ['handwork', 'master'],
+  embroidery: ['handwork', 'master'],
+  finishing: ['master'],
+  'quality-check': ['master'],
+};
+
+/** True if a worker's specialization is compatible with the given UI stage (or either side is empty). */
+export function workerMatchesStage(workerType: string | null | undefined, stage: UiStageType): boolean {
+  const wt = String(workerType ?? '').trim().toLowerCase();
+  if (!wt || wt === 'other' || wt === 'general') return true;
+  return STAGE_WORKER_TYPES[stage].map((s) => s.toLowerCase()).includes(wt);
 }
 
 export async function getStudioSales(companyId: string, branchId?: string | null) {
@@ -492,28 +517,53 @@ export async function getStudioStagesBySaleId(saleId: string): Promise<{
   }
 }
 
-/** Fetch workers for company (for stage assignment). Uses workers table; fallback to contacts (type=worker) so dropdown shows when workers table is empty or not synced. */
-export async function getWorkers(companyId: string): Promise<{ data: WorkerRow[]; error: string | null }> {
+/**
+ * Fetch workers for company (for stage assignment).
+ * Uses workers table; fallback to contacts (type=worker) so dropdown shows when workers table is empty or not synced.
+ * Returns rate + workerType (specialization) so the UI can prefill cost and filter by stage.
+ * Filtering by stage is done client-side to keep the fallback path simple – callers should pass `stageType`
+ * to pre-filter, and a UI toggle can show all when desired.
+ */
+export async function getWorkers(
+  companyId: string,
+  opts: { stageType?: UiStageType } = {},
+): Promise<{ data: WorkerRow[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   try {
     const { data: workersData, error: workersErr } = await supabase
       .from('workers')
-      .select('id, name')
+      .select('id, name, worker_type, rate')
       .eq('company_id', companyId)
       .eq('is_active', true)
       .order('name');
+    let list: WorkerRow[] = [];
     if (!workersErr && workersData?.length) {
-      return { data: workersData as WorkerRow[], error: null };
+      list = (workersData as Array<{ id: string; name: string; worker_type?: string | null; rate?: number | null }>).map((r) => ({
+        id: r.id,
+        name: r.name || 'Worker',
+        rate: Number(r.rate) || 0,
+        workerType: r.worker_type ?? null,
+      }));
+    } else {
+      const { data: contactsData, error: contactsErr } = await supabase
+        .from('contacts')
+        .select('id, name, worker_role, worker_default_rate')
+        .eq('company_id', companyId)
+        .eq('type', 'worker')
+        .order('name');
+      if (contactsErr) return { data: [], error: contactsErr.message };
+      list = (contactsData || []).map(
+        (r: { id: string; name: string; worker_role?: string | null; worker_default_rate?: number | null }) => ({
+          id: r.id,
+          name: r.name || 'Worker',
+          rate: Number(r.worker_default_rate) || 0,
+          workerType: r.worker_role ?? null,
+        }),
+      );
     }
-    // Fallback: workers table empty or RLS/no sync – load from contacts (type=worker). Same id used by studio_production_stages.assigned_worker_id.
-    const { data: contactsData, error: contactsErr } = await supabase
-      .from('contacts')
-      .select('id, name')
-      .eq('company_id', companyId)
-      .eq('type', 'worker')
-      .order('name');
-    if (contactsErr) return { data: [], error: contactsErr.message };
-    const list = (contactsData || []).map((r: { id: string; name: string }) => ({ id: r.id, name: r.name || 'Worker' }));
+    if (opts.stageType) {
+      list = list.filter((w) => workerMatchesStage(w.workerType, opts.stageType as UiStageType));
+    }
     return { data: list, error: null };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';

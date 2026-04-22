@@ -264,12 +264,28 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
   return { data: list, error: null };
 }
 
+export interface RentalProductVariation {
+  id: string;
+  sku: string;
+  attributes: Record<string, string>;
+  /** Human-readable label built from attributes (e.g. "Red / Large"). */
+  label: string;
+}
+
 export interface RentalProduct {
   id: string;
   name: string;
   sku: string;
   rentPricePerDay: number;
   isRentable: boolean;
+  hasVariations: boolean;
+  variations: RentalProductVariation[];
+}
+
+function variationLabel(attrs: Record<string, string> | null | undefined, fallback: string): string {
+  if (!attrs || typeof attrs !== 'object') return fallback;
+  const parts = Object.values(attrs).filter((v) => v != null && String(v).trim().length > 0);
+  return parts.length > 0 ? parts.join(' / ') : fallback;
 }
 
 export async function getRentalProducts(companyId: string): Promise<{ data: RentalProduct[]; error: string | null }> {
@@ -277,7 +293,7 @@ export async function getRentalProducts(companyId: string): Promise<{ data: Rent
 
   const { data, error } = await supabase
     .from('products')
-    .select('id, name, sku, rental_price_daily, is_rentable, retail_price')
+    .select('id, name, sku, rental_price_daily, is_rentable, retail_price, has_variations')
     .eq('company_id', companyId)
     .eq('is_active', true)
     .order('name');
@@ -287,37 +303,53 @@ export async function getRentalProducts(companyId: string): Promise<{ data: Rent
   }
 
   const rows = (data || []) as Array<Record<string, unknown>>;
-  const mapped: RentalProduct[] = rows
-    .map((r) => ({
-      id: String(r.id ?? ''),
+
+  const varProductIds = rows
+    .filter((r) => r.has_variations === true)
+    .map((r) => String(r.id ?? ''))
+    .filter(Boolean);
+  const varsByProduct: Record<string, RentalProductVariation[]> = {};
+  if (varProductIds.length > 0) {
+    const { data: varData } = await supabase
+      .from('product_variations')
+      .select('id, product_id, sku, attributes')
+      .in('product_id', varProductIds)
+      .eq('is_active', true);
+    for (const v of (varData || []) as Array<Record<string, unknown>>) {
+      const pid = String(v.product_id ?? '');
+      if (!pid) continue;
+      const attrs = (v.attributes as Record<string, string> | null) ?? {};
+      const sku = String(v.sku ?? '');
+      if (!varsByProduct[pid]) varsByProduct[pid] = [];
+      varsByProduct[pid].push({
+        id: String(v.id ?? ''),
+        sku,
+        attributes: attrs,
+        label: variationLabel(attrs, sku || '—'),
+      });
+    }
+  }
+
+  const toRentalProduct = (r: Record<string, unknown>): RentalProduct => {
+    const id = String(r.id ?? '');
+    return {
+      id,
       name: String(r.name ?? '—'),
       sku: String(r.sku ?? '—'),
       rentPricePerDay: Number(r.rental_price_daily) || 0,
       isRentable: r.is_rentable === true || (Number(r.rental_price_daily) || 0) > 0,
-    }))
-    .filter((p) => p.isRentable || (p.rentPricePerDay > 0));
+      hasVariations: r.has_variations === true,
+      variations: varsByProduct[id] ?? [],
+    };
+  };
+
+  const mapped = rows.map(toRentalProduct).filter((p) => p.isRentable || p.rentPricePerDay > 0);
 
   if (mapped.length === 0 && rows.length > 0) {
-    const retailAsRent = rows.map((r) => ({
-      id: String(r.id ?? ''),
-      name: String(r.name ?? '—'),
-      sku: String(r.sku ?? '—'),
-      rentPricePerDay: Number(r.rental_price_daily) || Number(r.retail_price) / 5 || 0,
-      isRentable: true,
-    }));
-    return { data: retailAsRent, error: null };
+    return { data: rows.map((r) => ({ ...toRentalProduct(r), isRentable: true })), error: null };
   }
 
-  return {
-    data: mapped.length > 0 ? mapped : rows.map((r) => ({
-      id: String(r.id ?? ''),
-      name: String(r.name ?? '—'),
-      sku: String(r.sku ?? '—'),
-      rentPricePerDay: Number(r.rental_price_daily) || Number(r.retail_price) / 5 || 0,
-      isRentable: true,
-    })),
-    error: null,
-  };
+  return { data: mapped, error: null };
 }
 
 export interface CreateProductInput {

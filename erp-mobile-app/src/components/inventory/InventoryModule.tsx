@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { TextInput } from '../common';
 import {
   ArrowLeft,
@@ -10,10 +10,14 @@ import {
   TrendingDown,
   XCircle,
   Warehouse,
+  ScanLine,
 } from 'lucide-react';
 import type { User, Branch } from '../../types';
 import * as inventoryApi from '../../api/inventory';
+import { getProductByBarcodeOrSku, type Product } from '../../api/products';
 import { ProductHistoryModal } from './ProductHistoryModal';
+import { StockAdjustmentSheet } from './StockAdjustmentSheet';
+import { useBarcodeScanner } from '../../features/barcode/useBarcodeScanner';
 
 interface InventoryModuleProps {
   onBack: () => void;
@@ -27,6 +31,23 @@ type StockFilter = 'all' | 'low' | 'out' | 'healthy';
 const fmtMoney = (n: number): string =>
   n.toLocaleString('en-PK', { maximumFractionDigits: 0 });
 
+function productToInventoryItem(p: Product): inventoryApi.InventoryItem {
+  const min = p.minStock ?? 0;
+  const stock = p.stock;
+  return {
+    id: p.id,
+    sku: p.sku,
+    name: p.name,
+    stock,
+    minStock: min,
+    isLowStock: min > 0 && stock <= min,
+    retailPrice: p.retailPrice,
+    costPrice: p.costPrice,
+    category: p.category,
+    imageUrl: p.imageUrls?.[0] ?? null,
+  };
+}
+
 export function InventoryModule({ onBack, user, companyId, branch }: InventoryModuleProps) {
   const [list, setList] = useState<inventoryApi.InventoryItem[]>([]);
   const [loading, setLoading] = useState(!!companyId);
@@ -34,6 +55,15 @@ export function InventoryModule({ onBack, user, companyId, branch }: InventoryMo
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
   const [category, setCategory] = useState<string>('all');
   const [selected, setSelected] = useState<inventoryApi.InventoryItem | null>(null);
+  const [adjustTarget, setAdjustTarget] = useState<inventoryApi.InventoryItem | null>(null);
+  const barcode = useBarcodeScanner();
+
+  const reloadList = useCallback(() => {
+    if (!companyId) return;
+    inventoryApi.getInventory(companyId, branch?.id ?? null).then(({ data, error }) => {
+      if (!error && data) setList(data);
+    });
+  }, [companyId, branch?.id]);
 
   useEffect(() => {
     if (!companyId) {
@@ -51,6 +81,27 @@ export function InventoryModule({ onBack, user, companyId, branch }: InventoryMo
       c = true;
     };
   }, [companyId, branch?.id]);
+
+  useEffect(() => {
+    void barcode.checkStatus();
+  }, []);
+
+  const handleScanAdjust = async () => {
+    if (!companyId) return;
+    if (barcode.permissionGranted === false) {
+      await barcode.requestPermission();
+    }
+    await barcode.startScan(async (code) => {
+      const { data: p, error } = await getProductByBarcodeOrSku(companyId, code, {
+        branchId: branch?.id ?? null,
+      });
+      if (error || !p) {
+        window.alert(error || 'No product found for this code.');
+        return;
+      }
+      setAdjustTarget(productToInventoryItem(p));
+    });
+  };
 
   const summary = useMemo(() => {
     let value = 0;
@@ -109,6 +160,21 @@ export function InventoryModule({ onBack, user, companyId, branch }: InventoryMo
               )}
             </div>
           </div>
+          {companyId && (
+            <button
+              type="button"
+              onClick={handleScanAdjust}
+              disabled={barcode.loading}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#374151] hover:bg-[#4B5563] text-white text-xs font-medium disabled:opacity-50"
+            >
+              {barcode.loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <ScanLine className="w-4 h-4" />
+              )}
+              Scan
+            </button>
+          )}
         </div>
         <div className="px-4 pb-3">
           <TextInput
@@ -280,6 +346,23 @@ export function InventoryModule({ onBack, user, companyId, branch }: InventoryMo
           branchId={branch?.id ?? null}
           userName={user.name || user.email || 'User'}
           onClose={() => setSelected(null)}
+          onAdjustStock={() => {
+            const p = selected;
+            setSelected(null);
+            setAdjustTarget(p);
+          }}
+        />
+      )}
+
+      {adjustTarget && companyId && (
+        <StockAdjustmentSheet
+          open
+          onClose={() => setAdjustTarget(null)}
+          companyId={companyId}
+          branchId={branch?.id ?? null}
+          product={adjustTarget}
+          user={user}
+          onSaved={reloadList}
         />
       )}
     </div>
