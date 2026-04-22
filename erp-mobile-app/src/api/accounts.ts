@@ -485,7 +485,7 @@ export async function recordSupplierPayment(params: {
   reference?: string;
   notes?: string;
   userId?: string;
-}): Promise<{ data: { payment_id: string } | null; error: string | null }> {
+}): Promise<{ data: { payment_id: string; reference_number?: string | null } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const refNum = params.reference ?? await getNextDocumentNumber(params.companyId, params.branchId, 'payment');
   const { data, error } = await supabase.rpc('record_payment_with_accounting', {
@@ -511,7 +511,7 @@ export async function recordSupplierPayment(params: {
     return { data: null, error: msg };
   }
   const res = data as { success?: boolean; payment_id?: string; error?: string };
-  if (res?.success && res.payment_id) return { data: { payment_id: res.payment_id }, error: null };
+  if (res?.success && res.payment_id) return { data: { payment_id: res.payment_id, reference_number: refNum }, error: null };
   let rpcErr = res?.error ?? 'Payment failed.';
   if (
     typeof rpcErr === 'string' &&

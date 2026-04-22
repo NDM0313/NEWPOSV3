@@ -2,8 +2,9 @@
  * Unified document engine: Proforma Invoice (Step 6).
  * Quotation in invoice format. Uses same InvoiceDocument + A4InvoiceTemplate with title "PROFORMA INVOICE".
  */
-import React from 'react';
+import React, { useRef } from 'react';
 import type { InvoiceDocument } from '@/app/types/invoiceDocument';
+import { DocumentPreviewButton } from '@/app/components/shared/DocumentPreviewButton';
 import { useUnifiedDocumentSettings } from './useUnifiedDocumentSettings';
 import { resolveInvoiceTemplateFromSettings } from './resolveOptions';
 import { A4InvoiceTemplate } from '@/app/components/shared/invoice/A4InvoiceTemplate';
@@ -48,6 +49,7 @@ export const UnifiedProformaInvoiceView: React.FC<UnifiedProformaInvoiceViewProp
   const resolved = settings ? resolveInvoiceTemplateFromSettings(settings, 'proforma_invoice') : null;
   const template = companyId && resolved ? toTemplate(resolved, companyId) : null;
 
+  const contentRef = useRef<HTMLDivElement>(null);
   const handlePrint = () => window.print();
 
   if (loading) {
@@ -75,7 +77,8 @@ export const UnifiedProformaInvoiceView: React.FC<UnifiedProformaInvoiceViewProp
   }
 
   const actionChildren = showPrintAction ? (
-    <div className="flex gap-2">
+    <div className="flex gap-2 no-print">
+      <DocumentPreviewButton contentRef={contentRef} documentType="proforma" reference={doc.meta.invoice_no} />
       <Button onClick={handlePrint} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2">
         <Printer size={16} />
         Print
@@ -90,14 +93,16 @@ export const UnifiedProformaInvoiceView: React.FC<UnifiedProformaInvoiceViewProp
   ) : undefined;
 
   return (
-    <A4InvoiceTemplate
-      document={{ ...doc, meta: { ...doc.meta, type: 'proforma' } }}
-      template={template}
-      formatCurrency={formatCurrency}
-      onPrint={handlePrint}
-      onClose={onClose}
-      actionChildren={actionChildren}
-      documentTitle="PROFORMA INVOICE"
-    />
+    <div ref={contentRef}>
+      <A4InvoiceTemplate
+        document={{ ...doc, meta: { ...doc.meta, type: 'proforma' } }}
+        template={template}
+        formatCurrency={formatCurrency}
+        onPrint={handlePrint}
+        onClose={onClose}
+        actionChildren={actionChildren}
+        documentTitle="PROFORMA INVOICE"
+      />
+    </div>
   );
 };

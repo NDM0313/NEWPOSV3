@@ -2,7 +2,7 @@
  * Unified document engine: Quotation (Step 6).
  * Renders QuotationTemplate with document and options from printing_settings.
  */
-import React from 'react';
+import React, { useRef } from 'react';
 import { useUnifiedDocumentSettings } from './useUnifiedDocumentSettings';
 import { resolveDocumentOptions } from './resolveOptions';
 import { QuotationTemplate } from './templates/QuotationTemplate';
@@ -12,6 +12,7 @@ import { Printer, X } from 'lucide-react';
 import { LoadingSpinner } from '@/app/components/shared/LoadingSpinner';
 import { ErrorMessage } from '@/app/components/shared/ErrorMessage';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { DocumentPreviewButton } from '@/app/components/shared/DocumentPreviewButton';
 
 export interface UnifiedQuotationViewProps {
   document: QuotationDocument | null;
@@ -38,6 +39,7 @@ export const UnifiedQuotationView: React.FC<UnifiedQuotationViewProps> = ({
     footerNote: resolved.quotation.footerNote,
   } : null;
 
+  const contentRef = useRef<HTMLDivElement>(null);
   const handlePrint = () => window.print();
 
   if (loading) {
@@ -65,7 +67,8 @@ export const UnifiedQuotationView: React.FC<UnifiedQuotationViewProps> = ({
   }
 
   const actionChildren = showPrintAction ? (
-    <div className="flex gap-2">
+    <div className="flex gap-2 no-print">
+      <DocumentPreviewButton contentRef={contentRef} documentType="quotation" reference={doc.quotation_no} />
       <Button onClick={handlePrint} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2">
         <Printer size={16} />
         Print
@@ -80,13 +83,15 @@ export const UnifiedQuotationView: React.FC<UnifiedQuotationViewProps> = ({
   ) : undefined;
 
   return (
-    <QuotationTemplate
-      document={doc}
-      options={options}
-      formatCurrency={formatCurrency}
-      onPrint={handlePrint}
-      onClose={onClose}
-      actionChildren={actionChildren}
-    />
+    <div ref={contentRef}>
+      <QuotationTemplate
+        document={doc}
+        options={options}
+        formatCurrency={formatCurrency}
+        onPrint={handlePrint}
+        onClose={onClose}
+        actionChildren={actionChildren}
+      />
+    </div>
   );
 };

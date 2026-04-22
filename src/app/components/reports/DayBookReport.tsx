@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { DocumentPreviewButton } from '@/app/components/shared/DocumentPreviewButton';
 import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
@@ -393,15 +394,25 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
     title: `Journal Day Book ${dateFrom} to ${dateTo} – ${branchScopeLabel}`,
   };
 
+  const previewRef = useRef<HTMLDivElement>(null);
+
   return (
-    <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-      <ReportActions
-        title="Journal Day Book"
-        onPrint={() => window.print()}
-        onPdf={() => exportToPDF(exportData, 'DayBook')}
-        onExcel={() => exportToExcel(exportData, 'DayBook')}
-        onWhatsapp={() => {}}
-      />
+    <div ref={previewRef} className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+      <div className="flex items-center justify-between gap-2 no-print">
+        <ReportActions
+          title="Journal Day Book"
+          onPrint={() => window.print()}
+          onPdf={() => exportToPDF(exportData, 'DayBook')}
+          onExcel={() => exportToExcel(exportData, 'DayBook')}
+          onWhatsapp={() => {}}
+        />
+        <DocumentPreviewButton
+          contentRef={previewRef}
+          documentType="ledger"
+          reference={`daybook-${dateFrom}-${dateTo}`}
+          label="Preview & Share"
+        />
+      </div>
 
       {!useGlobalRange && (
         <div className="flex flex-wrap items-center gap-4">

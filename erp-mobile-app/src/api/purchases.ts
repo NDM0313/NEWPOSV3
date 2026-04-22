@@ -141,8 +141,24 @@ export async function createPurchase(
     return { data: null, error: `Failed to save items: ${itemsError.message}` };
   }
 
-  // Record payment when status is final and paid > 0
-  if (status === 'final' && paid > 0 && paymentAccountId) {
+  // Accounting: post journal entry for the purchase (Dr Inventory/Tax,
+  // Cr AP supplier sub-account). Idempotent RPC; soft-warn on error.
+  try {
+    const { data: postData, error: postErr } = await supabase.rpc(
+      'record_purchase_with_accounting',
+      { p_purchase_id: purchaseId },
+    );
+    if (postErr) {
+      console.warn('[PURCHASES API] record_purchase_with_accounting failed:', postErr);
+    } else if (postData && typeof postData === 'object' && (postData as { success?: boolean }).success === false) {
+      console.warn('[PURCHASES API] record_purchase_with_accounting returned error:', postData);
+    }
+  } catch (err) {
+    console.warn('[PURCHASES API] record_purchase_with_accounting threw:', err);
+  }
+
+  // Record payment when goods are in hand (received/final) and paid > 0.
+  if ((status === 'final' || status === 'received') && paid > 0 && paymentAccountId) {
     const { recordSupplierPayment } = await import('./accounts');
     const payRes = await recordSupplierPayment({
       companyId,

@@ -85,15 +85,7 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
     onRefresh();
   };
 
-  const handleAddPayment = async (amount: number, method: string, reference?: string) => {
-    if (!companyId) return;
-    setActionLoading(true);
-    const { error: err } = await rentalsApi.addRentalPayment(rentalId, companyId, amount, method, reference, userId);
-    setActionLoading(false);
-    if (err) {
-      alert(err);
-      return;
-    }
+  const handlePaymentSuccess = () => {
     setPaymentOpen(false);
     load();
     onRefresh();
@@ -316,12 +308,19 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
           loading={actionLoading}
         />
       )}
-      {paymentOpen && (
+      {paymentOpen && companyId && (
         <RentalAddPaymentModal
+          rentalId={rentalId}
+          companyId={companyId}
+          branchId={rental.branchId ?? null}
+          userId={userId}
+          bookingNo={rental.bookingNo}
+          customerName={rental.customerName}
+          totalAmount={rental.totalAmount}
+          paidAmount={rental.paidAmount}
           dueAmount={rental.dueAmount}
           onClose={() => setPaymentOpen(false)}
-          onConfirm={handleAddPayment}
-          loading={actionLoading}
+          onSuccess={handlePaymentSuccess}
         />
       )}
       {pickupOpen && (

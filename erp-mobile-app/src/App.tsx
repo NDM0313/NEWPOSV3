@@ -5,6 +5,7 @@ import * as authApi from './api/auth';
 import { getBranches } from './api/branches';
 import { getUserBranchIds } from './api/permissions';
 import { usePermissions } from './context/PermissionContext';
+import { useSettings } from './context/SettingsContext';
 import { FEATURE_MOBILE_PERMISSION_V2 } from './config/featureFlags';
 import { getPermissionModuleForScreen } from './utils/permissionModules';
 import { AccessDenied } from './components/AccessDenied';
@@ -24,7 +25,6 @@ import { ContactsModule } from './components/contacts/ContactsModule';
 import { SettingsModule } from './components/settings/SettingsModule';
 import { ProductsModule } from './components/products/ProductsModule';
 import { PurchaseModule } from './components/purchase/PurchaseModule';
-import { ReportsModule } from './components/reports/ReportsModule';
 import { RentalModule } from './components/rental/RentalModule';
 import { StudioModule } from './components/studio/StudioModule';
 import { AccountsModule } from './components/accounts/AccountsModule';
@@ -32,7 +32,6 @@ import { ExpenseModule } from './components/expense/ExpenseModule';
 import { InventoryModule } from './components/inventory/InventoryModule';
 import { DashboardModule } from './components/dashboard/DashboardModule';
 import { PackingListModule } from './components/packing/PackingListModule';
-import { LedgerModule } from './components/ledger/LedgerModule';
 import { SyncStatusBar } from './components/SyncStatusBar';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { runSync, getUnsyncedCount } from './lib/syncEngine';
@@ -62,6 +61,7 @@ export default function App() {
   const responsive = useResponsive();
   const { online, status, setStatus } = useNetworkStatus();
   const { hasPermission, hasBranchAccess, isModuleEnabled, reload, isPermissionLoaded } = usePermissions();
+  const { reload: reloadSettings } = useSettings();
   const [authLoading, setAuthLoading] = useState(true);
   const [isBranchResolving, setIsBranchResolving] = useState(true);
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
@@ -111,6 +111,10 @@ export default function App() {
   useEffect(() => {
     if (user?.id && user?.role) reload(user.id, user.role, user.profileId, companyId ?? undefined);
   }, [user?.id, user?.role, user?.profileId, companyId, reload]);
+
+  useEffect(() => {
+    void reloadSettings(companyId);
+  }, [companyId, reloadSettings]);
 
   useEffect(() => {
     let cancelled = false;
@@ -427,7 +431,7 @@ export default function App() {
       {currentScreen === 'reports' && user && (
         !canAccessScreen('reports', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
-          : <ReportsModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
+          : <AccountsModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} initialView="reports" />
       )}
       {currentScreen === 'rental' && user && (
         !canAccessScreen('rental', selectedBranch?.id)
@@ -468,7 +472,7 @@ export default function App() {
       {currentScreen === 'ledger' && user && (
         !canAccessScreen('accounts', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
-          : <LedgerModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
+          : <AccountsModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} initialView="reports" />
       )}
       {currentScreen === 'dashboard' && user && (
         !canAccessScreen('dashboard', selectedBranch?.id)

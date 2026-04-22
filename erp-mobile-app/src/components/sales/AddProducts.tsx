@@ -5,6 +5,7 @@ import type { PackingDetails } from '../transactions/PackingEntryModal';
 import { PackingEntryModal } from '../transactions/PackingEntryModal';
 import * as productsApi from '../../api/products';
 import * as settingsApi from '../../api/settings';
+import { useSettings } from '../../context/SettingsContext';
 import type { ProductVariationRow } from '../../api/products';
 import { BarcodeCameraModal } from './BarcodeCameraModal';
 import { MobileActionBar } from '../shared/MobileActionBar';
@@ -29,6 +30,7 @@ type AvailableProduct = {
   hasVariations?: boolean;
   variations?: ProductVariationRow[];
   unitAllowDecimal?: boolean;
+  imageUrl?: string;
 };
 
 /** Resolve barcode/sku to a single product (base or first variation match). */
@@ -58,6 +60,7 @@ function mapApiProductToAvailable(p: productsApi.Product): AvailableProduct {
     hasVariations: p.hasVariations ?? false,
     variations: p.variations,
     unitAllowDecimal: p.unitAllowDecimal ?? false,
+    imageUrl: p.imageUrls?.[0],
   };
 }
 
@@ -437,8 +440,20 @@ export function AddProducts({
                 onClick={() => openAddModal(item)}
                 className="bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#3B82F6] transition-all text-left"
               >
-                <div className="w-full h-20 bg-[#111827] rounded-lg mb-2 flex items-center justify-center">
-                  <Package className="w-8 h-8 text-[#6B7280]" />
+                <div className="w-full h-20 bg-[#111827] rounded-lg mb-2 flex items-center justify-center overflow-hidden">
+                  {item.imageUrl ? (
+                    <img
+                      src={item.imageUrl}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <Package className="w-8 h-8 text-[#6B7280]" />
+                  )}
                 </div>
                 <h3 className="font-medium text-sm text-[#F9FAFB] line-clamp-1 mb-1">{item.name}</h3>
                 <p className="text-xs text-[#9CA3AF] mb-2">{item.unit}</p>
@@ -511,7 +526,8 @@ function AddToCartModal({
   onClose,
   onSave,
 }: AddToCartModalProps) {
-  const existingQty = existingProduct?.quantity ?? 1;
+  const { enablePacking } = useSettings();
+  const existingQty = existingProduct?.quantity || 1;
   const existingPacking = existingProduct?.packingDetails;
   const hasPackingMeters = (existingPacking?.total_meters ?? 0) > 0;
   const [quantity, setQuantity] = useState(
@@ -604,28 +620,30 @@ function AddToCartModal({
               </div>
             )}
 
-            {/* Packing Entry - Figma style */}
-            <div className="bg-[#111827] border border-[#3B82F6]/30 rounded-xl p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Package size={18} className="text-[#3B82F6]" />
-                  <span className="text-sm font-medium text-[#F9FAFB]">Packing Entry</span>
+            {/* Packing Entry - Figma style. Gated by company setting enable_packing. */}
+            {enablePacking && (
+              <div className="bg-[#111827] border border-[#3B82F6]/30 rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Package size={18} className="text-[#3B82F6]" />
+                    <span className="text-sm font-medium text-[#F9FAFB]">Packing Entry</span>
+                  </div>
+                  <button
+                    onClick={() => setShowPacking(true)}
+                    className="px-3 py-1.5 bg-[#3B82F6] hover:bg-[#2563EB] text-[#F9FAFB] text-xs rounded-lg font-medium"
+                  >
+                    {packingDetails && (packingDetails.total_meters ?? 0) > 0
+                      ? 'Edit Packing'
+                      : 'Add Packing'}
+                  </button>
                 </div>
-                <button
-                  onClick={() => setShowPacking(true)}
-                  className="px-3 py-1.5 bg-[#3B82F6] hover:bg-[#2563EB] text-[#F9FAFB] text-xs rounded-lg font-medium"
-                >
-                  {packingDetails && (packingDetails.total_meters ?? 0) > 0
-                    ? 'Edit Packing'
-                    : 'Add Packing'}
-                </button>
+                {packingDetails && (packingDetails.total_meters ?? 0) > 0 && (
+                  <p className="text-xs text-[#9CA3AF] mt-2">
+                    {packingDetails.total_boxes ?? 0} Box • {packingDetails.total_pieces ?? 0} Pc • {(packingDetails.total_meters ?? 0).toFixed(1)} M
+                  </p>
+                )}
               </div>
-              {packingDetails && (packingDetails.total_meters ?? 0) > 0 && (
-                <p className="text-xs text-[#9CA3AF] mt-2">
-                  {packingDetails.total_boxes ?? 0} Box • {packingDetails.total_pieces ?? 0} Pc • {(packingDetails.total_meters ?? 0).toFixed(1)} M
-                </p>
-              )}
-            </div>
+            )}
 
             {/* Quantity - shows total_meters when packing used, disabled when packing present */}
             <div>
@@ -650,12 +668,17 @@ function AddToCartModal({
                   pattern={allowDecimal ? '[0-9.]*' : '[0-9]*'}
                   min={allowDecimal ? 0 : 1}
                   step={packingDetails && (packingDetails.total_meters ?? 0) > 0 ? 0.1 : allowDecimal ? 0.01 : 1}
-                  value={quantity}
+                  value={quantity === 0 ? '' : quantity}
                   onChange={(e) => {
                     if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;
                     handleQtyChange(e.target.value);
                   }}
+                  onBlur={(e) => {
+                    if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;
+                    if (!e.target.value.trim()) setQuantity(0);
+                  }}
                   readOnly={!!(packingDetails && (packingDetails.total_meters ?? 0) > 0)}
+                  placeholder="0"
                   className="flex-1 h-12 bg-[#111827] border border-[#374151] rounded-lg text-center text-lg font-semibold text-[#F9FAFB] focus:outline-none focus:border-[#3B82F6] disabled:opacity-70 disabled:cursor-not-allowed"
                 />
                 <button
@@ -682,8 +705,9 @@ function AddToCartModal({
                   inputMode="decimal"
                   pattern="[0-9.]*"
                   min="0"
-                  value={price}
+                  value={price === 0 ? '' : price}
                   onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
+                  placeholder="0"
                   className="w-full h-14 bg-[#111827] border-2 border-[#374151] rounded-lg pl-14 pr-4 text-lg font-semibold text-[#F9FAFB] focus:outline-none focus:border-[#3B82F6]"
                 />
               </div>

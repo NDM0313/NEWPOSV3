@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { DocumentPreviewButton } from '@/app/components/shared/DocumentPreviewButton';
 import { 
   X, Download, Calendar, Search, FileText, Printer, FileSpreadsheet,
   ArrowLeft, Building2, Edit
@@ -172,6 +173,8 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
     toast.info('Excel export feature coming soon');
   };
 
+  const printRef = useRef<HTMLDivElement>(null);
+
   const handlePrint = () => {
     window.print();
   };
@@ -182,7 +185,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0B0F17] text-white flex flex-col">
+    <div ref={printRef} className="fixed inset-0 z-50 bg-[#0B0F17] text-white flex flex-col">
       {/* Header */}
       <div className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-4">
@@ -330,7 +333,14 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 no-print">
+          <DocumentPreviewButton
+            contentRef={printRef}
+            documentType="ledger"
+            reference={accountCode || 'account'}
+            label="Preview"
+            size="sm"
+          />
           <Button
             variant="outline"
             size="sm"

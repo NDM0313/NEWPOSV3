@@ -3,6 +3,720 @@ import { getAllSales } from './sales';
 import { normalizeCompanyId } from './contactBalancesUtils';
 import { fetchContactBalancesSummary } from './contactBalancesRpc';
 
+export async function getCompanyName(companyId: string | null): Promise<string> {
+  if (!isSupabaseConfigured || !companyId) return 'Company';
+  const { data } = await supabase.from('companies').select('name').eq('id', companyId).maybeSingle();
+  return (data?.name as string | undefined) || 'Company';
+}
+
+/** Company identity for branded PDF/print headers (logo, address, phone, email, tax no). */
+export interface CompanyBrand {
+  name: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  taxNumber: string | null;
+  logoUrl: string | null;
+  city: string | null;
+  country: string | null;
+}
+
+export async function getCompanyBrand(companyId: string | null): Promise<CompanyBrand> {
+  const fallback: CompanyBrand = {
+    name: 'Company',
+    address: null,
+    phone: null,
+    email: null,
+    website: null,
+    taxNumber: null,
+    logoUrl: null,
+    city: null,
+    country: null,
+  };
+  if (!isSupabaseConfigured || !companyId) return fallback;
+  const { data } = await supabase
+    .from('companies')
+    .select('name, address, phone, email, website, tax_number, logo_url, city, country')
+    .eq('id', companyId)
+    .maybeSingle();
+  if (!data) return fallback;
+  const row = data as Record<string, unknown>;
+  return {
+    name: (row.name as string) || 'Company',
+    address: (row.address as string) ?? null,
+    phone: (row.phone as string) ?? null,
+    email: (row.email as string) ?? null,
+    website: (row.website as string) ?? null,
+    taxNumber: (row.tax_number as string) ?? null,
+    logoUrl: (row.logo_url as string) ?? null,
+    city: (row.city as string) ?? null,
+    country: (row.country as string) ?? null,
+  };
+}
+
+/** One line in a ledger report (date, voucher, description, Dr, Cr, running balance). */
+export interface LedgerLine {
+  id: string;
+  date: string;
+  createdAt: string;
+  entryNo: string;
+  description: string;
+  reference: string;
+  referenceType: string;
+  debit: number;
+  credit: number;
+  runningBalance: number;
+}
+
+/** Fetch ledger lines for any account with optional date range. */
+export async function getAccountLedgerLines(
+  companyId: string,
+  accountId: string,
+  from?: string,
+  to?: string,
+): Promise<{ openingBalance: number; lines: LedgerLine[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { openingBalance: 0, lines: [], error: 'App not configured.' };
+
+  const fromIso = from ? new Date(from).toISOString() : undefined;
+  const toIso = to ? new Date(to + 'T23:59:59.999Z').toISOString() : undefined;
+
+  // Opening balance: sum all entries strictly before `from`.
+  let opening = 0;
+  if (fromIso) {
+    const { data: before } = await supabase
+      .from('journal_entry_lines')
+      .select('debit, credit, journal_entry:journal_entries!inner(company_id, is_void, entry_date)')
+      .eq('account_id', accountId)
+      .eq('journal_entry.company_id', companyId)
+      .lt('journal_entry.entry_date', from!)
+      .limit(5000);
+    opening = (before || []).reduce((s, r: Record<string, unknown>) => {
+      const je = (r as Record<string, unknown>).journal_entry as Record<string, unknown> | null;
+      if (je && (je.is_void as boolean)) return s;
+      return s + Number(r.debit || 0) - Number(r.credit || 0);
+    }, 0);
+  }
+
+  // In-range rows
+  let q = supabase
+    .from('journal_entry_lines')
+    .select(
+      `
+      id, debit, credit, description,
+      journal_entry:journal_entries!inner(
+        id, entry_no, entry_date, description, reference_type, reference_id, is_void, created_at, company_id
+      )
+    `,
+    )
+    .eq('account_id', accountId)
+    .eq('journal_entry.company_id', companyId);
+  if (fromIso) q = q.gte('journal_entry.entry_date', from!);
+  if (toIso) q = q.lte('journal_entry.entry_date', to!);
+  const { data, error } = await q.order('created_at', { ascending: true, foreignTable: 'journal_entries' });
+  if (error) return { openingBalance: opening, lines: [], error: error.message };
+
+  const rows = (data || []) as Array<{
+    id: string;
+    debit: number;
+    credit: number;
+    description: string | null;
+    journal_entry: Record<string, unknown> | Record<string, unknown>[] | null;
+  }>;
+
+  let running = opening;
+  const lines: LedgerLine[] = [];
+  for (const r of rows) {
+    const je = Array.isArray(r.journal_entry) ? r.journal_entry[0] : r.journal_entry;
+    if (!je || je.is_void === true) continue;
+    const debit = Number(r.debit || 0);
+    const credit = Number(r.credit || 0);
+    running += debit - credit;
+    lines.push({
+      id: String(r.id ?? ''),
+      date: je.entry_date ? String(je.entry_date).slice(0, 10) : '',
+      createdAt: String(je.created_at ?? ''),
+      entryNo: String(je.entry_no ?? ''),
+      description: String(r.description || je.description || ''),
+      reference: String(je.entry_no ?? ''),
+      referenceType: String(je.reference_type ?? ''),
+      debit,
+      credit,
+      runningBalance: running,
+    });
+  }
+  return { openingBalance: opening, lines, error: null };
+}
+
+/** Contacts of a specific type (customer/supplier) with optional outstanding balance. */
+export interface PartyRow {
+  id: string;
+  name: string;
+  code?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  balance: number;
+}
+
+export async function getContactsByType(
+  companyId: string,
+  type: 'customer' | 'supplier',
+): Promise<{ data: PartyRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('id, name, customer_code, supplier_code, phone, email, balance')
+    .eq('company_id', companyId)
+    .eq('type', type)
+    .order('name');
+  if (error) return { data: [], error: error.message };
+  return {
+    data: (data || []).map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      name: String(r.name ?? 'â??'),
+      code: (r.customer_code ?? r.supplier_code) ? String(r.customer_code ?? r.supplier_code) : null,
+      phone: r.phone ? String(r.phone) : null,
+      email: r.email ? String(r.email) : null,
+      balance: Number(r.balance) || 0,
+    })),
+    error: null,
+  };
+}
+
+/** Resolve a contact's AR/AP sub-account id (created by party sub-ledger migration). */
+export async function getContactSubAccountId(
+  companyId: string,
+  contactId: string,
+): Promise<string | null> {
+  if (!isSupabaseConfigured) return null;
+  const { data } = await supabase
+    .from('accounts')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('linked_contact_id', contactId)
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle();
+  return data?.id ? String(data.id) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Aging (payables / receivables)
+// ---------------------------------------------------------------------------
+
+export interface AgingRow {
+  partyId: string;
+  partyName: string;
+  meta?: string;
+  buckets: number[];
+  total: number;
+}
+
+export interface AgingReport {
+  labels: string[];
+  totals: { amount: number; count: number }[];
+  grandTotal: number;
+  parties: AgingRow[];
+}
+
+const AGING_LABELS = ['0-30', '31-60', '61-90', '91-180', '180+'] as const;
+const AGING_BOUNDARIES = [30, 60, 90, 180] as const;
+
+function bucketIndexForAge(days: number): number {
+  for (let i = 0; i < AGING_BOUNDARIES.length; i++) {
+    if (days <= AGING_BOUNDARIES[i]) return i;
+  }
+  return AGING_LABELS.length - 1;
+}
+
+export async function getReceivablesAging(companyId: string, branchId?: string | null): Promise<AgingReport> {
+  const labels = [...AGING_LABELS];
+  const emptyTotals = labels.map(() => ({ amount: 0, count: 0 }));
+  if (!isSupabaseConfigured) return { labels, totals: emptyTotals, grandTotal: 0, parties: [] };
+
+  let q = supabase
+    .from('sales')
+    .select('id, customer_id, customer_name, total, paid_amount, due_amount, invoice_date, payment_status, branch_id')
+    .eq('company_id', companyId)
+    .in('payment_status', ['unpaid', 'partial']);
+  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
+  const { data } = await q;
+  if (!data) return { labels, totals: emptyTotals, grandTotal: 0, parties: [] };
+
+  const now = Date.now();
+  const parties = new Map<string, AgingRow>();
+  const totals = labels.map(() => ({ amount: 0, count: 0 }));
+  let grand = 0;
+
+  for (const s of data as Record<string, unknown>[]) {
+    const due = Math.max(0, Number(s.due_amount ?? 0));
+    if (due <= 0.001) continue;
+    const dt = s.invoice_date ? new Date(String(s.invoice_date)) : new Date(String(s.created_at ?? Date.now()));
+    const days = Math.max(0, Math.floor((now - dt.getTime()) / 86400000));
+    const idx = bucketIndexForAge(days);
+    const pid = String(s.customer_id ?? `walkin:${s.customer_name ?? 'walkin'}`);
+    const pname = String(s.customer_name ?? 'Walk-in');
+    let row = parties.get(pid);
+    if (!row) {
+      row = {
+        partyId: pid,
+        partyName: pname,
+        buckets: labels.map(() => 0),
+        total: 0,
+      };
+      parties.set(pid, row);
+    }
+    row.buckets[idx] += due;
+    row.total += due;
+    totals[idx].amount += due;
+    totals[idx].count += 1;
+    grand += due;
+  }
+
+  return {
+    labels,
+    totals,
+    grandTotal: grand,
+    parties: Array.from(parties.values()).sort((a, b) => b.total - a.total),
+  };
+}
+
+export async function getPayablesAging(companyId: string): Promise<AgingReport> {
+  const labels = [...AGING_LABELS];
+  const emptyTotals = labels.map(() => ({ amount: 0, count: 0 }));
+  if (!isSupabaseConfigured) return { labels, totals: emptyTotals, grandTotal: 0, parties: [] };
+
+  const { data } = await supabase
+    .from('purchases')
+    .select('id, supplier_id, supplier_name, total, paid_amount, due_amount, po_date, payment_status')
+    .eq('company_id', companyId)
+    .in('payment_status', ['unpaid', 'partial']);
+  if (!data) return { labels, totals: emptyTotals, grandTotal: 0, parties: [] };
+
+  const now = Date.now();
+  const parties = new Map<string, AgingRow>();
+  const totals = labels.map(() => ({ amount: 0, count: 0 }));
+  let grand = 0;
+
+  for (const s of data as Record<string, unknown>[]) {
+    const due = Math.max(0, Number(s.due_amount ?? 0));
+    if (due <= 0.001) continue;
+    const dt = s.po_date ? new Date(String(s.po_date)) : new Date();
+    const days = Math.max(0, Math.floor((now - dt.getTime()) / 86400000));
+    const idx = bucketIndexForAge(days);
+    const pid = String(s.supplier_id ?? `unknown:${s.supplier_name ?? 'unknown'}`);
+    const pname = String(s.supplier_name ?? 'Unknown');
+    let row = parties.get(pid);
+    if (!row) {
+      row = {
+        partyId: pid,
+        partyName: pname,
+        buckets: labels.map(() => 0),
+        total: 0,
+      };
+      parties.set(pid, row);
+    }
+    row.buckets[idx] += due;
+    row.total += due;
+    totals[idx].amount += due;
+    totals[idx].count += 1;
+    grand += due;
+  }
+
+  return {
+    labels,
+    totals,
+    grandTotal: grand,
+    parties: Array.from(parties.values()).sort((a, b) => b.total - a.total),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Day book (all journal entries in a date range)
+// ---------------------------------------------------------------------------
+
+export interface DayBookJournalEntry {
+  id: string;
+  entryNo: string;
+  date: string;
+  createdAt: string;
+  description: string;
+  referenceType: string;
+  debit: number;
+  credit: number;
+  lines: { accountCode: string; accountName: string; debit: number; credit: number; description: string }[];
+}
+
+export async function getDayBook(
+  companyId: string,
+  from: string,
+  to: string,
+  branchId?: string | null,
+): Promise<{ data: DayBookJournalEntry[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  let q = supabase
+    .from('journal_entries')
+    .select(
+      `
+      id, entry_no, entry_date, description, reference_type, created_at, is_void,
+      total_debit, total_credit,
+      lines:journal_entry_lines(
+        debit, credit, description,
+        account:accounts(code, name)
+      )
+    `,
+    )
+    .eq('company_id', companyId)
+    .gte('entry_date', from)
+    .lte('entry_date', to)
+    .order('entry_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1000);
+  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
+  const { data, error } = await q;
+  if (error) return { data: [], error: error.message };
+  const rows = (data || []) as Record<string, unknown>[];
+  const out: DayBookJournalEntry[] = [];
+  for (const e of rows) {
+    if (e.is_void === true) continue;
+    const linesRaw = (e.lines as Record<string, unknown>[]) || [];
+    let debit = 0;
+    let credit = 0;
+    const lines = linesRaw.map((l) => {
+      const acc = (l.account as Record<string, unknown>) || {};
+      const d = Number(l.debit || 0);
+      const c = Number(l.credit || 0);
+      debit += d;
+      credit += c;
+      return {
+        accountCode: String(acc.code ?? ''),
+        accountName: String(acc.name ?? ''),
+        debit: d,
+        credit: c,
+        description: String(l.description || ''),
+      };
+    });
+    out.push({
+      id: String(e.id),
+      entryNo: String(e.entry_no ?? ''),
+      date: e.entry_date ? String(e.entry_date).slice(0, 10) : '',
+      createdAt: String(e.created_at ?? ''),
+      description: String(e.description ?? ''),
+      referenceType: String(e.reference_type ?? ''),
+      debit: Number(e.total_debit ?? debit),
+      credit: Number(e.total_credit ?? credit),
+      lines,
+    });
+  }
+  return { data: out, error: null };
+}
+
+// ---------------------------------------------------------------------------
+// Sales / Purchases / Expenses lists (for operational reports)
+// ---------------------------------------------------------------------------
+
+export interface SalesReportRow {
+  id: string;
+  invoiceNo: string;
+  customerName: string;
+  customerId: string | null;
+  total: number;
+  paid: number;
+  due: number;
+  status: string;
+  paymentStatus: string;
+  date: string;
+  createdAt: string;
+  branchId: string | null;
+  isStudio: boolean;
+}
+
+export async function getSalesInRange(
+  companyId: string,
+  from?: string,
+  to?: string,
+  branchId?: string | null,
+  isStudio?: boolean,
+): Promise<{ data: SalesReportRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  let q = supabase
+    .from('sales')
+    .select('id, invoice_no, customer_id, customer_name, total, paid_amount, due_amount, status, payment_status, invoice_date, created_at, branch_id, is_studio')
+    .eq('company_id', companyId)
+    .order('invoice_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if (from) q = q.gte('invoice_date', from);
+  if (to) q = q.lte('invoice_date', to);
+  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
+  if (typeof isStudio === 'boolean') q = q.eq('is_studio', isStudio);
+  const { data, error } = await q;
+  if (error) return { data: [], error: error.message };
+  return {
+    data: (data || []).map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      invoiceNo: String(r.invoice_no ?? 'â??'),
+      customerName: String(r.customer_name ?? 'Walk-in'),
+      customerId: r.customer_id ? String(r.customer_id) : null,
+      total: Number(r.total) || 0,
+      paid: Number(r.paid_amount) || 0,
+      due: Number(r.due_amount) || 0,
+      status: String(r.status ?? ''),
+      paymentStatus: String(r.payment_status ?? ''),
+      date: r.invoice_date ? String(r.invoice_date).slice(0, 10) : '',
+      createdAt: String(r.created_at ?? ''),
+      branchId: r.branch_id ? String(r.branch_id) : null,
+      isStudio: !!r.is_studio,
+    })),
+    error: null,
+  };
+}
+
+export interface PurchaseReportRow {
+  id: string;
+  poNo: string;
+  supplierName: string;
+  supplierId: string | null;
+  total: number;
+  paid: number;
+  due: number;
+  status: string;
+  paymentStatus: string;
+  date: string;
+  branchId: string | null;
+}
+
+export async function getPurchasesInRange(
+  companyId: string,
+  from?: string,
+  to?: string,
+  branchId?: string | null,
+): Promise<{ data: PurchaseReportRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  let q = supabase
+    .from('purchases')
+    .select('id, po_no, supplier_id, supplier_name, total, paid_amount, due_amount, status, payment_status, po_date, branch_id')
+    .eq('company_id', companyId)
+    .order('po_date', { ascending: false })
+    .limit(500);
+  if (from) q = q.gte('po_date', from);
+  if (to) q = q.lte('po_date', to);
+  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
+  const { data, error } = await q;
+  if (error) return { data: [], error: error.message };
+  return {
+    data: (data || []).map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      poNo: String(r.po_no ?? 'â??'),
+      supplierName: String(r.supplier_name ?? 'Unknown'),
+      supplierId: r.supplier_id ? String(r.supplier_id) : null,
+      total: Number(r.total) || 0,
+      paid: Number(r.paid_amount) || 0,
+      due: Number(r.due_amount) || 0,
+      status: String(r.status ?? ''),
+      paymentStatus: String(r.payment_status ?? ''),
+      date: r.po_date ? String(r.po_date).slice(0, 10) : '',
+      branchId: r.branch_id ? String(r.branch_id) : null,
+    })),
+    error: null,
+  };
+}
+
+export interface ExpenseReportRow {
+  id: string;
+  expenseNo: string;
+  category: string;
+  description: string;
+  amount: number;
+  method: string;
+  date: string;
+  branchId: string | null;
+  status: string;
+}
+
+export async function getExpensesInRange(
+  companyId: string,
+  from?: string,
+  to?: string,
+  branchId?: string | null,
+): Promise<{ data: ExpenseReportRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  let q = supabase
+    .from('expenses')
+    .select('id, expense_no, category, description, amount, payment_method, expense_date, branch_id, status')
+    .eq('company_id', companyId)
+    .order('expense_date', { ascending: false })
+    .limit(500);
+  if (from) q = q.gte('expense_date', from);
+  if (to) q = q.lte('expense_date', to);
+  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
+  const { data, error } = await q;
+  if (error) return { data: [], error: error.message };
+  return {
+    data: (data || []).map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      expenseNo: String(r.expense_no ?? 'â??'),
+      category: String(r.category ?? 'â??'),
+      description: String(r.description ?? ''),
+      amount: Number(r.amount) || 0,
+      method: String(r.payment_method ?? ''),
+      date: r.expense_date ? String(r.expense_date).slice(0, 10) : '',
+      branchId: r.branch_id ? String(r.branch_id) : null,
+      status: String(r.status ?? ''),
+    })),
+    error: null,
+  };
+}
+
+export interface StudioProductionRow {
+  id: string;
+  productionNo: string;
+  productName: string;
+  quantity: number;
+  status: string;
+  date: string;
+  saleId: string | null;
+  invoiceNo: string | null;
+  customerName: string | null;
+}
+
+export async function getStudioProductions(
+  companyId: string,
+  from?: string,
+  to?: string,
+): Promise<{ data: StudioProductionRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  let q = supabase
+    .from('studio_productions')
+    .select(
+      `id, production_no, quantity, status, production_date, sale_id,
+       product:products(name),
+       sale:sales(invoice_no, customer_name)`,
+    )
+    .eq('company_id', companyId)
+    .order('production_date', { ascending: false })
+    .limit(500);
+  if (from) q = q.gte('production_date', from);
+  if (to) q = q.lte('production_date', to);
+  const { data, error } = await q;
+  if (error) return { data: [], error: error.message };
+  return {
+    data: (data || []).map((r: Record<string, unknown>) => {
+      const prod = (r.product as Record<string, unknown>) || {};
+      const sale = (r.sale as Record<string, unknown>) || {};
+      return {
+        id: String(r.id),
+        productionNo: String(r.production_no ?? 'â??'),
+        productName: String(prod.name ?? 'â??'),
+        quantity: Number(r.quantity) || 0,
+        status: String(r.status ?? ''),
+        date: r.production_date ? String(r.production_date).slice(0, 10) : '',
+        saleId: r.sale_id ? String(r.sale_id) : null,
+        invoiceNo: sale.invoice_no ? String(sale.invoice_no) : null,
+        customerName: sale.customer_name ? String(sale.customer_name) : null,
+      };
+    }),
+    error: null,
+  };
+}
+
+export interface RentalReportRow {
+  id: string;
+  bookingNo: string;
+  customerName: string;
+  total: number;
+  paid: number;
+  due: number;
+  status: string;
+  date: string;
+}
+
+export async function getRentalsInRange(
+  companyId: string,
+  from?: string,
+  to?: string,
+): Promise<{ data: RentalReportRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  let q = supabase
+    .from('rentals')
+    .select('id, booking_no, customer_name, total, paid_amount, due_amount, status, rental_date, created_at')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if (from) q = q.gte('rental_date', from);
+  if (to) q = q.lte('rental_date', to);
+  const { data, error } = await q;
+  if (error) return { data: [], error: error.message };
+  return {
+    data: (data || []).map((r: Record<string, unknown>) => ({
+      id: String(r.id),
+      bookingNo: String(r.booking_no ?? 'â??'),
+      customerName: String(r.customer_name ?? 'â??'),
+      total: Number(r.total) || 0,
+      paid: Number(r.paid_amount) || 0,
+      due: Number(r.due_amount) || 0,
+      status: String(r.status ?? ''),
+      date: r.rental_date ? String(r.rental_date).slice(0, 10) : r.created_at ? String(r.created_at).slice(0, 10) : '',
+    })),
+    error: null,
+  };
+}
+
+export interface StockMovementRow {
+  id: string;
+  date: string;
+  productId: string;
+  productName: string;
+  movementType: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  referenceType: string;
+  referenceId: string | null;
+}
+
+export async function getStockMovements(
+  companyId: string,
+  from?: string,
+  to?: string,
+  productId?: string | null,
+): Promise<{ data: StockMovementRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  let q = supabase
+    .from('stock_movements')
+    .select(
+      `id, created_at, product_id, movement_type, quantity, unit_cost, total_cost,
+       reference_type, reference_id, product:products(name)`,
+    )
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(1000);
+  if (from) q = q.gte('created_at', from);
+  if (to) q = q.lte('created_at', to + 'T23:59:59.999');
+  if (productId) q = q.eq('product_id', productId);
+  const { data, error } = await q;
+  if (error) return { data: [], error: error.message };
+  return {
+    data: (data || []).map((r: Record<string, unknown>) => {
+      const prod = (r.product as Record<string, unknown>) || {};
+      return {
+        id: String(r.id),
+        date: r.created_at ? String(r.created_at).slice(0, 10) : '',
+        productId: String(r.product_id ?? ''),
+        productName: String(prod.name ?? 'â??'),
+        movementType: String(r.movement_type ?? ''),
+        quantity: Number(r.quantity) || 0,
+        unitCost: Number(r.unit_cost) || 0,
+        totalCost: Number(r.total_cost) || 0,
+        referenceType: String(r.reference_type ?? ''),
+        referenceId: r.reference_id ? String(r.reference_id) : null,
+      };
+    }),
+    error: null,
+  };
+}
+
+// ==== Legacy exports (used by other modules) ====
 export interface SalesSummary {
   totalSales: number;
   count: number;
@@ -18,7 +732,7 @@ export async function getSalesSummary(
   const fromDate = new Date();
   fromDate.setDate(fromDate.getDate() - days);
   const fromStr = fromDate.toISOString();
-  // All final invoices in range (include unpaid/partial) â€” same basis as web dashboard total sales
+  // All final invoices in range (include unpaid/partial) GÇö same basis as web dashboard total sales
   let query = supabase
     .from('sales')
     .select('total, invoice_date')
@@ -86,16 +800,16 @@ export async function getPurchasesForReport(
     data: (data || []).map((r: Record<string, unknown>) => ({
       id: String(r.id ?? ''),
       poNo: String(r.po_no ?? `PUR-${String(r.id ?? '').slice(0, 8)}`),
-      supplier: String(r.supplier_name ?? 'â€”'),
+      supplier: String(r.supplier_name ?? 'GÇö'),
       total: Number(r.total) || 0,
-      date: r.po_date ? new Date(r.po_date as string).toISOString().slice(0, 10) : 'â€”',
+      date: r.po_date ? new Date(r.po_date as string).toISOString().slice(0, 10) : 'GÇö',
       paymentStatus: String(r.payment_status ?? 'unpaid'),
     })),
     error: null,
   };
 }
 
-/** Day Book (Roznamcha) â€“ flattened journal entries for date range, chronological order */
+/** Day Book (Roznamcha) GÇô flattened journal entries for date range, chronological order */
 export interface DayBookEntry {
   id: string;
   date: string;
@@ -182,7 +896,7 @@ function rpcBranchId(branchId: string | null | undefined): string | null {
   return branchId;
 }
 
-/** Total receivables â€” same operational basis as web Contacts (`get_contact_balances_summary`). */
+/** Total receivables GÇö same operational basis as web Contacts (`get_contact_balances_summary`). */
 export async function getReceivables(
   companyId: string,
   branchId: string | null | undefined
@@ -209,7 +923,7 @@ export interface ReceivableItem {
 }
 
 /**
- * Outstanding invoices â€” uses same payment/studio enrichment as mobile Sales list (not stale sales.due_amount).
+ * Outstanding invoices GÇö uses same payment/studio enrichment as mobile Sales list (not stale sales.due_amount).
  */
 export async function getReceivablesList(
   companyId: string,
@@ -229,9 +943,9 @@ export async function getReceivablesList(
       const cust = r.customer as { name?: string } | null;
       return {
         id: String(r.id ?? ''),
-        invoice_no: String(r.invoice_no ?? 'â€”'),
-        customer_name: String(cust?.name ?? r.customer_name ?? 'â€”'),
-        invoice_date: r.invoice_date ? new Date(String(r.invoice_date)).toISOString().slice(0, 10) : 'â€”',
+        invoice_no: String(r.invoice_no ?? 'GÇö'),
+        customer_name: String(cust?.name ?? r.customer_name ?? 'GÇö'),
+        invoice_date: r.invoice_date ? new Date(String(r.invoice_date)).toISOString().slice(0, 10) : 'GÇö',
         total: Number(r.grand_total ?? r.total ?? 0) || 0,
         due_amount: Number(r.balance_due ?? 0) || 0,
         payment_status:
@@ -244,3 +958,4 @@ export async function getReceivablesList(
     });
   return { data: out, error: null };
 }
+

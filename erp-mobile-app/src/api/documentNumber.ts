@@ -1,7 +1,13 @@
 /**
- * Central document number generation – same engine as Web ERP (Settings → Numbering Rules).
- * Uses RPC generate_document_number (erp_document_sequences). Single source of truth.
- * All mobile modules (sales, purchases, expenses, payments, etc.) use this.
+ * Central document number generation – PER-COMPANY GLOBAL sequence.
+ *
+ * Uses the web ERP's `get_next_document_number_global` RPC which stores
+ * counters in `document_sequences_global (company_id, document_type)`.
+ * Numbers never regress and are shared across mobile, web, and POS.
+ *
+ * On the very first call for a (company, type) pair we also run
+ * `_bootstrap_company_doc_sequence` so that if web documents already exist
+ * we pick up from MAX(existing) instead of starting from 1.
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
@@ -21,66 +27,93 @@ export type DocumentType =
   | 'worker'
   | 'job';
 
+/** Short code used as `document_sequences_global.document_type`. */
+const SHORT_CODE: Record<DocumentType, string> = {
+  sale: 'SL',
+  purchase: 'PUR',
+  expense: 'EXP',
+  rental: 'RNT',
+  studio: 'STD',
+  journal: 'JE',
+  payment: 'PAY',
+  receipt: 'RCP',
+  product: 'PRD',
+  pos: 'PS',
+  customer: 'CUS',
+  supplier: 'SUP',
+  worker: 'WRK',
+  job: 'JOB',
+};
+
 const FALLBACK_PREFIX: Record<DocumentType, string> = {
   sale: 'SL-',
   purchase: 'PUR-',
   expense: 'EXP-',
-  rental: 'REN-',
+  rental: 'RNT-',
   studio: 'STD-',
   journal: 'JE-',
   payment: 'PAY-',
   receipt: 'RCP-',
   product: 'PRD-',
-  pos: 'POS-',
+  pos: 'PS-',
   customer: 'CUS-',
   supplier: 'SUP-',
   worker: 'WRK-',
   job: 'JOB-',
 };
 
-async function getFirstBranchId(companyId: string): Promise<string | null> {
-  const { data } = await supabase
-    .from('branches')
-    .select('id')
-    .eq('company_id', companyId)
-    .limit(1)
-    .maybeSingle();
-  return data?.id ?? null;
+const bootstrapped = new Set<string>();
+
+async function ensureBootstrap(companyId: string, shortCode: string): Promise<void> {
+  const key = `${companyId}:${shortCode}`;
+  if (bootstrapped.has(key)) return;
+  try {
+    await supabase.rpc('_bootstrap_company_doc_sequence', {
+      p_company_id: companyId,
+      p_type: shortCode,
+    });
+  } catch (err) {
+    // Non-fatal: if bootstrap RPC is missing the global RPC will still start
+    // from 1, which is acceptable for fresh companies.
+    console.warn('[DOCUMENT NUMBER] bootstrap skipped:', err);
+  }
+  bootstrapped.add(key);
 }
 
 /**
- * Get next document number from server – ATOMIC, same as Web (Settings → Numbering Rules).
- * Uses generate_document_number RPC (erp_document_sequences). No duplicates across Web/Mobile/POS.
- * When branchId is null, uses first branch of company (or company-level sequence per engine).
+ * Get next document number from the per-company global sequence.
+ *
+ * NOTE: `branchId` is ignored (kept in the signature for backward compatibility
+ * with earlier mobile callers). Numbers are per-company, not per-branch.
+ * `includeYear` is not honored by `get_next_document_number_global`; if year
+ * prefixing is needed it should be added to the RPC.
  */
 export async function getNextDocumentNumber(
   companyId: string,
-  branchId: string | null,
+  _branchId: string | null,
   documentType: DocumentType,
-  includeYear?: boolean
+  _includeYear?: boolean
 ): Promise<string> {
+  const shortCode = SHORT_CODE[documentType];
   if (!isSupabaseConfigured) {
-    const prefix = FALLBACK_PREFIX[documentType];
-    return `${prefix}${String(Date.now()).slice(-4)}`;
+    return `${FALLBACK_PREFIX[documentType]}${String(Date.now()).slice(-4)}`;
   }
-  let effectiveBranchId = branchId;
-  if (!effectiveBranchId) {
-    effectiveBranchId = await getFirstBranchId(companyId);
-  }
-  if (!effectiveBranchId) {
-    const prefix = FALLBACK_PREFIX[documentType];
-    return `${prefix}${String(Date.now()).slice(-4)}`;
-  }
-  const { data, error } = await supabase.rpc('generate_document_number', {
+
+  await ensureBootstrap(companyId, shortCode);
+
+  const { data, error } = await supabase.rpc('get_next_document_number_global', {
     p_company_id: companyId,
-    p_branch_id: effectiveBranchId,
-    p_document_type: documentType,
-    p_include_year: includeYear ?? false,
+    p_type: shortCode,
   });
+
   if (error) {
-    console.error(`[DOCUMENT NUMBER] generate_document_number failed (${documentType}):`, error);
-    const prefix = FALLBACK_PREFIX[documentType];
-    return `${prefix}${String(Date.now()).slice(-4)}`;
+    console.error(
+      `[DOCUMENT NUMBER] get_next_document_number_global failed (${documentType}/${shortCode}):`,
+      error,
+    );
+    return `${FALLBACK_PREFIX[documentType]}${String(Date.now()).slice(-4)}`;
   }
-  return typeof data === 'string' ? data : `${FALLBACK_PREFIX[documentType]}${String(Date.now()).slice(-4)}`;
+
+  if (typeof data === 'string' && data) return data;
+  return `${FALLBACK_PREFIX[documentType]}${String(Date.now()).slice(-4)}`;
 }

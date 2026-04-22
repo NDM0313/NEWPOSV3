@@ -9,7 +9,7 @@ export async function getNextProductSKU(companyId: string, branchId: string | nu
 
 /** Products table select: omit current_stock so query works when column is missing. Stock from variations or 0. */
 const PRODUCTS_SELECT =
-  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, product_categories(name), units(name, allow_decimal)';
+  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, image_urls, product_categories(name), units(name, allow_decimal)';
 
 export interface ProductRow {
   id: string;
@@ -46,6 +46,7 @@ export interface Product {
   wholesalePrice?: number;
   hasVariations?: boolean;
   variations?: ProductVariationRow[];
+  imageUrls?: string[];
 }
 
 export interface ProductVariationRow {
@@ -97,6 +98,7 @@ export async function getProductByBarcodeOrSku(
       description?: string;
       barcode?: string;
       brand_id?: string;
+      image_urls?: string[] | null;
       product_categories?: { name: string } | { name: string }[];
       units?: { name?: string; allow_decimal?: boolean };
     };
@@ -123,6 +125,7 @@ export async function getProductByBarcodeOrSku(
       minStock: row.min_stock ?? 0,
       wholesalePrice: row.wholesale_price != null ? Number(row.wholesale_price) : undefined,
       hasVariations: row.has_variations ?? false,
+      imageUrls: Array.isArray(row.image_urls) ? row.image_urls : [],
     };
     return { data: product, error: null };
   }
@@ -142,6 +145,7 @@ export async function getProductByBarcodeOrSku(
     description?: string;
     barcode?: string;
     brand_id?: string;
+    image_urls?: string[] | null;
     product_categories?: { name: string } | { name: string }[];
     units?: { name?: string; allow_decimal?: boolean };
   };
@@ -168,6 +172,7 @@ export async function getProductByBarcodeOrSku(
     minStock: row.min_stock ?? 0,
     wholesalePrice: row.wholesale_price != null ? Number(row.wholesale_price) : undefined,
     hasVariations: row.has_variations ?? false,
+    imageUrls: Array.isArray(row.image_urls) ? row.image_urls : [],
   };
   return { data: product, error: null };
 }
@@ -227,7 +232,7 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
   }
 
   const list: Product[] = [];
-  for (const row of rows as (ProductRow & { has_variations?: boolean; min_stock?: number; description?: string; barcode?: string; brand_id?: string; id: string })[]) {
+  for (const row of rows as (ProductRow & { has_variations?: boolean; min_stock?: number; description?: string; barcode?: string; brand_id?: string; image_urls?: string[] | null; id: string })[]) {
     const variations = row.has_variations ? varMap[row.id] : undefined;
     const r = row as { product_categories?: { name: string }; unit_id?: string; units?: { name?: string; allow_decimal?: boolean } | null };
     const unitName = r.units?.name || 'Piece';
@@ -253,6 +258,7 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
       wholesalePrice: row.wholesale_price != null ? Number(row.wholesale_price) : undefined,
       hasVariations: row.has_variations ?? false,
       variations,
+      imageUrls: Array.isArray(row.image_urls) ? row.image_urls : [],
     });
   }
   return { data: list, error: null };

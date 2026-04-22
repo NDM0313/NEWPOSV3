@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getNextDocumentNumber } from './documentNumber';
 
 /** UI status: map DB status (picked_up, active, closed) to web-like labels */
 export function mapRentalStatus(dbStatus: string): string {
@@ -406,19 +407,62 @@ function normalizePaymentMethod(m: string): string {
   return 'cash';
 }
 
+export interface AddRentalPaymentParams {
+  rentalId: string;
+  companyId: string;
+  branchId?: string | null;
+  amount: number;
+  /** 'cash' | 'bank' | 'card' | 'wallet' | 'other' */
+  method: string;
+  reference?: string;
+  notes?: string;
+  /** Cash/Bank/Wallet account UUID (accounts table) selected by user. */
+  paymentAccountId?: string | null;
+  paymentDate?: string;
+  userId?: string | null;
+}
+
+export interface AddRentalPaymentResult {
+  error: string | null;
+  paymentId?: string | null;
+  referenceNumber?: string | null;
+}
+
+/**
+ * Record a rental payment with full accounting:
+ *   1. Call record_payment_with_accounting (reference_type = 'rental')
+ *        -> Dr selected cash/bank, Cr rental customer AR sub-account
+ *        -> updates rentals.paid_amount / due_amount
+ *   2. Insert a row into rental_payments for rental-module display parity.
+ *
+ * Backward compatible: when paymentAccountId is null, falls back to the
+ * legacy path (rental_payments insert only) so existing callers keep working.
+ */
 export async function addRentalPayment(
-  rentalId: string,
-  _companyId: string,
-  amount: number,
-  method: string,
-  reference?: string,
-  userId?: string | null
-): Promise<{ error: string | null }> {
+  paramsOrId: AddRentalPaymentParams | string,
+  legacyCompanyId?: string,
+  legacyAmount?: number,
+  legacyMethod?: string,
+  legacyReference?: string,
+  legacyUserId?: string | null,
+): Promise<AddRentalPaymentResult> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
+
+  const params: AddRentalPaymentParams = typeof paramsOrId === 'string'
+    ? {
+        rentalId: paramsOrId,
+        companyId: legacyCompanyId ?? '',
+        amount: legacyAmount ?? 0,
+        method: legacyMethod ?? 'cash',
+        reference: legacyReference,
+        userId: legacyUserId,
+      }
+    : paramsOrId;
+
   const { data: rental, error: fetchErr } = await supabase
     .from('rentals')
-    .select('id, status, paid_amount, due_amount, booking_no')
-    .eq('id', rentalId)
+    .select('id, status, paid_amount, due_amount, booking_no, branch_id, customer_id')
+    .eq('id', params.rentalId)
     .single();
   if (fetchErr || !rental) return { error: fetchErr?.message ?? 'Rental not found.' };
   const r = rental as Record<string, unknown>;
@@ -427,19 +471,71 @@ export async function addRentalPayment(
     return { error: 'Payment not allowed for this status.' };
   }
 
+  const normalizedMethod = normalizePaymentMethod(params.method);
+  const paymentDate = params.paymentDate ?? new Date().toISOString().split('T')[0];
+  const branchId = params.branchId ?? (r.branch_id as string | null) ?? null;
+  let paymentId: string | null = null;
+  let referenceNumber: string | null = null;
+
+  if (params.paymentAccountId && params.companyId && branchId) {
+    let refNum: string | null = null;
+    try {
+      refNum = await getNextDocumentNumber(params.companyId, branchId, 'payment');
+    } catch {
+      refNum = null;
+    }
+
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('record_payment_with_accounting', {
+      p_company_id: params.companyId,
+      p_branch_id: branchId,
+      p_payment_type: 'received',
+      p_reference_type: 'rental',
+      p_reference_id: params.rentalId,
+      p_amount: params.amount,
+      p_payment_method: normalizedMethod === 'wallet' ? 'other' : normalizedMethod,
+      p_payment_date: paymentDate,
+      p_payment_account_id: params.paymentAccountId,
+      p_reference_number: refNum ?? null,
+      p_notes: params.notes ?? params.reference ?? null,
+      p_created_by: params.userId ?? null,
+    });
+
+    if (rpcErr) return { error: rpcErr.message };
+    const rpcRes = rpcData as { success?: boolean; payment_id?: string; error?: string };
+    if (!rpcRes?.success) return { error: rpcRes?.error ?? 'Payment failed.' };
+    paymentId = rpcRes.payment_id ?? null;
+    referenceNumber = refNum;
+
+    try {
+      await supabase.from('rental_payments').insert({
+        rental_id: params.rentalId,
+        amount: params.amount,
+        method: normalizedMethod,
+        reference: params.reference ?? null,
+        payment_date: paymentDate,
+        payment_type: 'remaining',
+        created_by: params.userId ?? null,
+      });
+    } catch {
+      // rental_payments insert is informational; RPC already updated rentals totals.
+    }
+
+    return { error: null, paymentId, referenceNumber };
+  }
+
   await supabase.from('rental_payments').insert({
-    rental_id: rentalId,
-    amount,
-    method: normalizePaymentMethod(method),
-    reference: reference ?? null,
-    payment_date: new Date().toISOString().split('T')[0],
+    rental_id: params.rentalId,
+    amount: params.amount,
+    method: normalizedMethod,
+    reference: params.reference ?? null,
+    payment_date: paymentDate,
     payment_type: 'remaining',
-    created_by: userId ?? null,
+    created_by: params.userId ?? null,
   });
 
-  const newPaid = (Number(r.paid_amount) ?? 0) + amount;
-  const newDue = Math.max(0, (Number(r.due_amount) ?? 0) - amount);
-  await supabase.from('rentals').update({ paid_amount: newPaid, due_amount: newDue }).eq('id', rentalId);
+  const newPaid = (Number(r.paid_amount) ?? 0) + params.amount;
+  const newDue = Math.max(0, (Number(r.due_amount) ?? 0) - params.amount);
+  await supabase.from('rentals').update({ paid_amount: newPaid, due_amount: newDue }).eq('id', params.rentalId);
   return { error: null };
 }
 

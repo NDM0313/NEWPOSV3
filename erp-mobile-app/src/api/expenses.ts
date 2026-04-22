@@ -116,6 +116,26 @@ export async function createExpense(input: {
     }
   }
   if (result.error) return { data: null, error: result.error.message };
+
+  // Accounting: post journal entry (Dr mapped expense account, Cr payment
+  // account). Soft-warn on failure.
+  try {
+    const expenseId = (result.data as { id?: string } | null)?.id;
+    if (expenseId) {
+      const { data: postData, error: postErr } = await supabase.rpc(
+        'record_expense_with_accounting',
+        { p_expense_id: expenseId },
+      );
+      if (postErr) {
+        console.warn('[EXPENSES API] record_expense_with_accounting failed:', postErr);
+      } else if (postData && typeof postData === 'object' && (postData as { success?: boolean }).success === false) {
+        console.warn('[EXPENSES API] record_expense_with_accounting returned error:', postData);
+      }
+    }
+  } catch (err) {
+    console.warn('[EXPENSES API] record_expense_with_accounting threw:', err);
+  }
+
   return { data: result.data, error: null };
 }
 

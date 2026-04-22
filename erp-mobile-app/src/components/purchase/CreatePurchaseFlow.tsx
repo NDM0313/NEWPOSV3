@@ -14,6 +14,7 @@ import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/
 import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
 import { MobileActionBar } from '../shared/MobileActionBar';
 import { createPortal } from 'react-dom';
+import { useSettings } from '../../context/SettingsContext';
 
 interface PurchaseItem {
   id: string;
@@ -64,11 +65,14 @@ function paymentLabelToMethod(label: string): 'cash' | 'bank' | 'card' | 'other'
 
 export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone }: CreatePurchaseFlowProps) {
   const responsive = useResponsive();
+  const { enablePacking } = useSettings();
   const [step, setStep] = useState<'vendor' | 'items' | 'summary' | 'payment'>('vendor');
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [items, setItems] = useState<PurchaseItem[]>([]);
   const [discount, setDiscount] = useState(0);
   const [notes, setNotes] = useState('');
+  /** User-chosen purchase status at creation time. 'ordered' = stock not posted yet (just a PO/order). 'received' = goods in hand; posts stock + accounting. */
+  const [creationStatus, setCreationStatus] = useState<'ordered' | 'received'>('received');
   const [search, setSearch] = useState('');
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [products, setProducts] = useState<ProductForPurchase[]>([]);
@@ -200,14 +204,22 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
     setSaving(true);
     setError('');
     const paid = result.paidAmount ?? 0;
-    const status = paid > 0 ? 'final' : 'ordered';
+    // If user picked "Order" -> 'ordered' (ignore paid). Else: fully paid -> 'final'; partial/none -> 'received'.
+    let status: 'ordered' | 'received' | 'final';
+    if (creationStatus === 'ordered') {
+      status = 'ordered';
+    } else if (paid > 0 && paid >= total - 0.005) {
+      status = 'final';
+    } else {
+      status = 'received';
+    }
     const { data: createResult, error: err } = await purchasesApi.createPurchase({
       companyId,
       branchId,
       supplierId: vendor.id,
       supplierName: vendor.name,
       contactNumber: vendor.phone,
-      status: status as 'ordered' | 'final',
+      status,
       paidAmount: paid,
       paymentMethod: paid > 0 ? paymentLabelToMethod(result.paymentMethod ?? '') : undefined,
       paymentAccountId: paid > 0 ? (result.accountId ?? undefined) : undefined,
@@ -407,15 +419,17 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
                   </button>
                 </div>
               </div>
-              <div className="pt-3 border-t border-[#374151] w-full">
-                <p className="text-xs text-[#9CA3AF] mb-2">Packing (optional)</p>
-                <PackingInputButton
-                  packingDetails={i.packingDetails}
-                  onPackingChange={(d) => updatePacking(i.productId, d, i.variationId)}
-                  productName={i.name}
-                  className="w-full justify-center sm:justify-start"
-                />
-              </div>
+              {enablePacking && (
+                <div className="pt-3 border-t border-[#374151] w-full">
+                  <p className="text-xs text-[#9CA3AF] mb-2">Packing (optional)</p>
+                  <PackingInputButton
+                    packingDetails={i.packingDetails}
+                    onPackingChange={(d) => updatePacking(i.productId, d, i.variationId)}
+                    productName={i.name}
+                    className="w-full justify-center sm:justify-start"
+                  />
+                </div>
+              )}
             </div>
           );})}
               </div>
@@ -565,6 +579,36 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
           </div>
 
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Purchase Type</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setCreationStatus('ordered')}
+                className={`py-3 px-3 rounded-lg border text-sm font-medium transition-all ${
+                  creationStatus === 'ordered'
+                    ? 'border-[#F59E0B] bg-[#F59E0B]/10 text-[#F59E0B]'
+                    : 'border-[#374151] bg-[#111827] text-[#9CA3AF] hover:border-[#4B5563]'
+                }`}
+              >
+                Order
+                <span className="block text-[10px] mt-0.5 opacity-80 font-normal">PO only · no stock yet</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreationStatus('received')}
+                className={`py-3 px-3 rounded-lg border text-sm font-medium transition-all ${
+                  creationStatus === 'received'
+                    ? 'border-[#10B981] bg-[#10B981]/10 text-[#10B981]'
+                    : 'border-[#374151] bg-[#111827] text-[#9CA3AF] hover:border-[#4B5563]'
+                }`}
+              >
+                Received / Final
+                <span className="block text-[10px] mt-0.5 opacity-80 font-normal">Goods in hand · updates stock</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Notes (Optional)</label>
             <textarea
               value={notes}
@@ -577,10 +621,14 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
         </div>
         {error && <p className="text-sm text-red-400 px-4">{error}</p>}
         <MobileActionBar
-          buttonLabel="Proceed to Payment →"
+          buttonLabel={creationStatus === 'ordered' ? (saving ? 'Saving…' : 'Save Order') : 'Proceed to Payment →'}
           onButtonClick={() => {
             setError('');
-            setStep('payment');
+            if (creationStatus === 'ordered') {
+              void handleSaveWithPayment({ paidAmount: 0, paymentMethod: '', accountId: null });
+            } else {
+              setStep('payment');
+            }
           }}
           variant="success"
         />
@@ -624,6 +672,7 @@ interface AddToPurchaseModalProps {
 }
 
 function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps) {
+  const { enablePacking } = useSettings();
   const allowDecimal = product.unitAllowDecimal === true;
   const [quantity, setQuantity] = useState<number>(1);
   const [unitPrice, setUnitPrice] = useState(product.costPrice);
@@ -705,20 +754,22 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
             </div>
           )}
 
-          {/* Packing (optional): single button opens PackingEntryModal → Boxes / Pieces / Meters; quantity = meters */}
-          <div className="bg-[#111827] border border-[#374151] rounded-xl p-4">
-            <p className="text-sm font-medium text-[#9CA3AF] mb-3">Packing (optional)</p>
-            <button
-              type="button"
-              onClick={() => setShowPacking(true)}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg border border-[#10B981]/50 bg-[#10B981]/10 text-[#10B981] font-medium hover:bg-[#10B981]/20 transition-colors"
-            >
-              <Package className="w-4 h-4" />
-              {packingDetails && (packingDetails.total_meters ?? 0) > 0
-                ? `${packingDetails.total_boxes ?? 0} Box / ${packingDetails.total_pieces ?? 0} Pc / ${(packingDetails.total_meters ?? 0).toFixed(1)} M — Edit`
-                : 'Add Packing'}
-            </button>
-          </div>
+          {/* Packing (optional): single button opens PackingEntryModal → Boxes / Pieces / Meters; quantity = meters. Gated by company enable_packing setting. */}
+          {enablePacking && (
+            <div className="bg-[#111827] border border-[#374151] rounded-xl p-4">
+              <p className="text-sm font-medium text-[#9CA3AF] mb-3">Packing (optional)</p>
+              <button
+                type="button"
+                onClick={() => setShowPacking(true)}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-lg border border-[#10B981]/50 bg-[#10B981]/10 text-[#10B981] font-medium hover:bg-[#10B981]/20 transition-colors"
+              >
+                <Package className="w-4 h-4" />
+                {packingDetails && (packingDetails.total_meters ?? 0) > 0
+                  ? `${packingDetails.total_boxes ?? 0} Box / ${packingDetails.total_pieces ?? 0} Pc / ${(packingDetails.total_meters ?? 0).toFixed(1)} M — Edit`
+                  : 'Add Packing'}
+              </button>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-[#9CA3AF] mb-3">

@@ -2,7 +2,8 @@
  * Unified document engine: Purchase Invoice / Purchase Order.
  * Reads layout/fields from company printing_settings. Same flow as Sales.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { DocumentPreviewButton } from '@/app/components/shared/DocumentPreviewButton';
 import { purchaseService } from '@/app/services/purchaseService';
 import { convertFromSupabasePurchase } from '@/app/context/PurchaseContext';
 import { useUnifiedDocumentSettings } from './useUnifiedDocumentSettings';
@@ -91,6 +92,7 @@ export const UnifiedPurchaseInvoiceView: React.FC<UnifiedPurchaseInvoiceViewProp
   const companyInfo = { id: companyId || '', name: company.businessName || 'Company', address: company.businessAddress || null };
   const document = purchase && companyId ? purchaseToInvoiceDocument(purchase, companyInfo) : null;
 
+  const contentRef = useRef<HTMLDivElement>(null);
   const handlePrint = () => window.print();
 
   if (loadingCombined) {
@@ -118,7 +120,13 @@ export const UnifiedPurchaseInvoiceView: React.FC<UnifiedPurchaseInvoiceViewProp
   }
 
   const actionChildren = showPrintAction ? (
-    <div className="flex gap-2">
+    <div className="flex gap-2 no-print">
+      <DocumentPreviewButton
+        contentRef={contentRef}
+        documentType="purchase_invoice"
+        reference={document.meta.invoice_no}
+        format={templateType === 'Thermal' ? 'thermal' : 'a4'}
+      />
       <Button onClick={handlePrint} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2">
         <Printer size={16} />
         Print
@@ -133,15 +141,17 @@ export const UnifiedPurchaseInvoiceView: React.FC<UnifiedPurchaseInvoiceViewProp
   ) : undefined;
 
   return (
-    <PurchaseInvoiceTemplate
-      document={document}
-      template={template}
-      formatCurrency={formatCurrency}
-      onPrint={handlePrint}
-      onClose={onClose}
-      actionChildren={actionChildren}
-      printerMode={templateType === 'Thermal' ? 'thermal' : 'a4'}
-      paperSize={thermalPaperSize}
-    />
+    <div ref={contentRef}>
+      <PurchaseInvoiceTemplate
+        document={document}
+        template={template}
+        formatCurrency={formatCurrency}
+        onPrint={handlePrint}
+        onClose={onClose}
+        actionChildren={actionChildren}
+        printerMode={templateType === 'Thermal' ? 'thermal' : 'a4'}
+        paperSize={thermalPaperSize}
+      />
+    </div>
   );
 };

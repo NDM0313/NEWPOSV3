@@ -257,6 +257,23 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     }
   }
 
+  // Accounting: post journal entry for the sale (Dr AR customer sub-account,
+  // Cr Revenue/Tax/Discount, Dr COGS, Cr Inventory). Soft-warn on failure so
+  // a transient accounting glitch does not destroy the sale document.
+  try {
+    const { data: postData, error: postErr } = await supabase.rpc(
+      'record_sale_with_accounting',
+      { p_sale_id: saleId },
+    );
+    if (postErr) {
+      console.warn('[SALES API] record_sale_with_accounting failed:', postErr);
+    } else if (postData && typeof postData === 'object' && (postData as { success?: boolean }).success === false) {
+      console.warn('[SALES API] record_sale_with_accounting returned error:', postData);
+    }
+  } catch (err) {
+    console.warn('[SALES API] record_sale_with_accounting threw:', err);
+  }
+
   const insertedInvoiceNo = (saleRow.invoice_no as string) ?? invoiceNo;
   return {
     data: { id: saleId, invoiceNo: insertedInvoiceNo },

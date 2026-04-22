@@ -1,11 +1,13 @@
 /**
- * Document Share: Print, Download PDF, WhatsApp, Email.
+ * Document Share: Preview → Print / Download PDF / WhatsApp / Email.
  * Use with unified document views; pass contentRef pointing to the printable root (e.g. ClassicPrintBase).
+ * Clicking "Preview" or "Download PDF" opens `PdfPreviewModal` so the user always sees the
+ * rendered document before anything is shared or printed.
  */
 
 import React, { useState } from 'react';
 import { Button } from '@/app/components/ui/button';
-import { Printer, Download, MessageCircle, Mail, X, ChevronDown } from 'lucide-react';
+import { Printer, Download, MessageCircle, Mail, X, ChevronDown, Eye } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,6 +16,7 @@ import {
 } from '@/app/components/ui/dropdown-menu';
 import { documentShareService } from '@/app/services/documentShareService';
 import type { DocumentType } from '@/app/services/pdfExportService';
+import { PdfPreviewModal } from './PdfPreviewModal';
 
 export interface DocumentShareActionsProps {
   /** Ref to the printable DOM element (e.g. ClassicPrintBase root). */
@@ -42,6 +45,7 @@ export const DocumentShareActions: React.FC<DocumentShareActionsProps> = ({
   showClose = true,
 }) => {
   const [downloading, setDownloading] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const handleDownloadPdf = async () => {
     if (!contentRef?.current) return;
@@ -75,6 +79,14 @@ export const DocumentShareActions: React.FC<DocumentShareActionsProps> = ({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <Button
+        onClick={() => setPreviewOpen(true)}
+        variant="outline"
+        className="flex items-center gap-2"
+      >
+        <Eye size={16} />
+        Preview
+      </Button>
       {showPrint && (
         <Button
           onClick={onPrint}
@@ -117,6 +129,17 @@ export const DocumentShareActions: React.FC<DocumentShareActionsProps> = ({
           Close
         </Button>
       )}
+
+      <PdfPreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title={reference ? `${documentType} ${reference}` : documentType}
+        documentType={documentType}
+        reference={reference}
+        format={format}
+        sharePhone={sharePhone}
+        cloneFromRef={contentRef}
+      />
     </div>
   );
 };

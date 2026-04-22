@@ -13,3 +13,95 @@ input[type="number"]::-webkit-inner-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
 }
+
+/*
+ * PdfPreviewModal document sheet + print B&W rules.
+ * The `.pdf-document` wrapper mimics an A4 page for visual preview and for
+ * html2canvas capture. `@media print` forces a B&W aesthetic and hides every
+ * on-screen chrome that isn't part of the printable content.
+ */
+.pdf-document {
+  width: 210mm;
+  min-height: 297mm;
+  padding: 18mm 16mm;
+  background: #ffffff;
+  color: #111827;
+  font-family: 'Helvetica', 'Arial', sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+
+.pdf-document table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.pdf-document th,
+.pdf-document td {
+  border: 1px solid #d1d5db;
+  padding: 6px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.pdf-document thead th {
+  background: #f3f4f6;
+  font-weight: 700;
+}
+
+.pdf-document tfoot td {
+  background: #f9fafb;
+  font-weight: 700;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .pdf-print-root,
+  .pdf-print-root * {
+    visibility: visible !important;
+  }
+
+  .pdf-print-root {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .pdf-document {
+    width: 100% !important;
+    min-height: auto !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    color: #000 !important;
+    background: #fff !important;
+  }
+
+  .pdf-document,
+  .pdf-document * {
+    color: #000 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  .pdf-document img {
+    filter: grayscale(100%) contrast(110%);
+  }
+
+  .pdf-document th,
+  .pdf-document td {
+    border-color: #000 !important;
+  }
+}

@@ -9,18 +9,27 @@ import { WorkerPaymentFlow } from './WorkerPaymentFlow';
 import { ExpenseEntryFlow } from './ExpenseEntryFlow';
 import { ChartOfAccountsView } from './ChartOfAccountsView';
 import { AddAccountForm } from './AddAccountForm';
-import { AccountLedgerReport } from './AccountLedgerReport';
-import { DayBookReport } from '../reports/DayBookReport';
-import { CashSummaryReport } from './CashSummaryReport';
-import { BankSummaryReport } from './BankSummaryReport';
-import { PayablesReport } from './PayablesReport';
-import { ReceivablesReport } from './ReceivablesReport';
+import { ReportsHub, type LegacyReportKey } from './reports/ReportsHub';
+import { AccountLedgerReport } from './reports/AccountLedgerReport';
+import { PartyLedgerReport } from './reports/PartyLedgerReport';
+import { DayBookReport } from './reports/DayBookReport';
+import { AccountSummaryReport } from './reports/AccountSummaryReport';
+import { AgingReport } from './reports/AgingReport';
+import { SalesReport } from './reports/SalesReport';
+import { PurchaseReport } from './reports/PurchaseReport';
+import { ExpenseReport } from './reports/ExpenseReport';
+import { StudioReport } from './reports/StudioReport';
+import { RentalReport } from './reports/RentalReport';
+import { InventoryReport } from './reports/InventoryReport';
 
 interface AccountsModuleProps {
   onBack: () => void;
   user: User;
   companyId?: string | null;
   branch?: { id: string; name: string; location: string } | null;
+  /** If true, the module opens directly on the reports hub (used when navigating from the legacy
+   * Reports / Ledger tiles on the home screen). */
+  initialView?: 'dashboard' | 'reports';
 }
 
 type View =
@@ -35,17 +44,46 @@ type View =
   | 'add-account'
   | 'entry-detail'
   | 'account-ledger'
+  | 'customer-ledger'
+  | 'supplier-ledger'
+  | 'worker-ledger'
   | 'daybook'
   | 'cash-summary'
   | 'bank-summary'
+  | 'wallet-summary'
   | 'payables'
-  | 'receivables';
+  | 'receivables'
+  | 'sales-report'
+  | 'studio-sales'
+  | 'purchase-report'
+  | 'expense-report'
+  | 'studio-report'
+  | 'rental-report'
+  | 'inventory-report';
 
-export function AccountsModule({ onBack, user, companyId, branch }: AccountsModuleProps) {
-  const [view, setView] = useState<View>('dashboard');
+export function AccountsModule({ onBack, user, companyId, branch, initialView }: AccountsModuleProps) {
+  const [view, setView] = useState<View>(initialView === 'reports' ? 'reports' : 'dashboard');
   const [selectedEntry, setSelectedEntry] = useState<AccountEntry | null>(null);
+  const [ledgerInitialAccountId, setLedgerInitialAccountId] = useState<string | null>(null);
 
-  // Dashboard View
+  const backToReports = () => setView('reports');
+  const backFromReportsHub = () => {
+    if (initialView === 'reports') {
+      onBack();
+    } else {
+      setView('dashboard');
+    }
+  };
+
+  const openReport = (
+    key: LegacyReportKey,
+    opts?: { accountId?: string | null; partyId?: string | null; partyName?: string | null },
+  ) => {
+    if (opts?.accountId) setLedgerInitialAccountId(opts.accountId);
+    else setLedgerInitialAccountId(null);
+    setView(key as View);
+  };
+
   if (view === 'dashboard') {
     return (
       <div className="min-h-screen pb-24 bg-[#111827]">
@@ -85,169 +123,131 @@ export function AccountsModule({ onBack, user, companyId, branch }: AccountsModu
 
   if (view === 'general-entry') {
     return (
-      <GeneralEntryFlow
-        onBack={() => setView('dashboard')}
-        onComplete={() => setView('dashboard')}
-        user={user}
-        companyId={companyId}
-        branchId={branch?.id}
-      />
+      <GeneralEntryFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
     );
   }
-
   if (view === 'account-transfer') {
     return (
-      <AccountTransferFlow
-        onBack={() => setView('dashboard')}
-        onComplete={() => setView('dashboard')}
-        user={user}
-        companyId={companyId}
-        branchId={branch?.id}
-      />
+      <AccountTransferFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
     );
   }
-
   if (view === 'supplier-payment') {
     return (
-      <SupplierPaymentFlow
-        onBack={() => setView('dashboard')}
-        onComplete={() => setView('dashboard')}
-        user={user}
-        companyId={companyId}
-        branchId={branch?.id}
-      />
+      <SupplierPaymentFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
     );
   }
-
   if (view === 'worker-payment') {
     return (
-      <WorkerPaymentFlow
-        onBack={() => setView('dashboard')}
-        onComplete={() => setView('dashboard')}
-        user={user}
-        companyId={companyId}
-        branchId={branch?.id ?? null}
-      />
+      <WorkerPaymentFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id ?? null} />
     );
   }
-
   if (view === 'expense-entry') {
     return (
-      <ExpenseEntryFlow
-        onBack={() => setView('dashboard')}
-        onComplete={() => setView('dashboard')}
-        user={user}
-        companyId={companyId}
-        branchId={branch?.id}
-      />
+      <ExpenseEntryFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
     );
   }
-
   if (view === 'chart') {
-    return (
-      <ChartOfAccountsView
-        onBack={() => setView('dashboard')}
-        onAddAccount={() => setView('add-account')}
-        companyId={companyId ?? null}
-      />
-    );
+    return <ChartOfAccountsView onBack={() => setView('dashboard')} onAddAccount={() => setView('add-account')} companyId={companyId ?? null} />;
   }
-
   if (view === 'add-account') {
-    return (
-      <AddAccountForm
-        companyId={companyId ?? null}
-        onBack={() => setView('chart')}
-        onSuccess={() => setView('chart')}
-      />
-    );
+    return <AddAccountForm companyId={companyId ?? null} onBack={() => setView('chart')} onSuccess={() => setView('chart')} />;
   }
 
   if (view === 'reports') {
     return (
-      <div className="min-h-screen pb-24 bg-[#111827]">
-        <div className="bg-gradient-to-br from-[#6366F1] to-[#4F46E5] p-4 sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setView('dashboard')} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex-1">
-              <h1 className="font-semibold text-white">Account Reports</h1>
-              <p className="text-xs text-white/80">View financial reports</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-4">
-          <div className="grid grid-cols-2 gap-3">
-            <ReportCard title="Account Ledger" description="View account-wise ledger" icon="📚" onClick={() => setView('account-ledger')} />
-            <ReportCard title="Day Book" description="Daily transaction log" icon="📅" onClick={() => setView('daybook')} />
-            <ReportCard title="Cash Summary" description="Cash account summary" icon="💵" onClick={() => setView('cash-summary')} />
-            <ReportCard title="Bank Summary" description="Bank accounts summary" icon="🏦" onClick={() => setView('bank-summary')} />
-            <ReportCard title="Payables" description="Outstanding payables" icon="📤" onClick={() => setView('payables')} />
-            <ReportCard title="Receivables" description="Outstanding receivables" icon="📥" onClick={() => setView('receivables')} />
-          </div>
-        </div>
-      </div>
+      <ReportsHub
+        onBack={backFromReportsHub}
+        onOpenReport={openReport}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+      />
     );
   }
 
   if (view === 'account-ledger') {
     return (
       <AccountLedgerReport
-        onBack={() => setView('reports')}
+        onBack={() => {
+          setLedgerInitialAccountId(null);
+          backToReports();
+        }}
         companyId={companyId ?? null}
-        branchId={branch?.id ?? null}
-      />
-    );
-  }
-
-  if (view === 'daybook') {
-    return (
-      <DayBookReport
-        onBack={() => setView('reports')}
         user={user}
-        companyId={companyId ?? null}
-        branchId={branch?.id ?? null}
+        initialAccountId={ledgerInitialAccountId}
       />
     );
   }
-
+  if (view === 'customer-ledger') {
+    return <PartyLedgerReport onBack={backToReports} kind="customer" companyId={companyId ?? null} user={user} />;
+  }
+  if (view === 'supplier-ledger') {
+    return <PartyLedgerReport onBack={backToReports} kind="supplier" companyId={companyId ?? null} user={user} />;
+  }
+  if (view === 'worker-ledger') {
+    return <PartyLedgerReport onBack={backToReports} kind="worker" companyId={companyId ?? null} user={user} />;
+  }
+  if (view === 'daybook') {
+    return <DayBookReport onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+  }
   if (view === 'cash-summary') {
     return (
-      <CashSummaryReport
-        onBack={() => setView('reports')}
+      <AccountSummaryReport
+        onBack={backToReports}
         companyId={companyId ?? null}
+        user={user}
+        kind="cash"
+        onViewLedger={(accountId) => openReport('account-ledger', { accountId })}
       />
     );
   }
-
   if (view === 'bank-summary') {
     return (
-      <BankSummaryReport
-        onBack={() => setView('reports')}
+      <AccountSummaryReport
+        onBack={backToReports}
         companyId={companyId ?? null}
+        user={user}
+        kind="bank"
+        onViewLedger={(accountId) => openReport('account-ledger', { accountId })}
       />
     );
   }
-
+  if (view === 'wallet-summary') {
+    return (
+      <AccountSummaryReport
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        user={user}
+        kind="wallet"
+        onViewLedger={(accountId) => openReport('account-ledger', { accountId })}
+      />
+    );
+  }
   if (view === 'payables') {
-    return (
-      <PayablesReport
-        onBack={() => setView('reports')}
-        companyId={companyId ?? null}
-      />
-    );
+    return <AgingReport onBack={backToReports} kind="payables" companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
   }
-
   if (view === 'receivables') {
-    return (
-      <ReceivablesReport
-        onBack={() => setView('reports')}
-        companyId={companyId ?? null}
-        branchId={branch?.id ?? null}
-      />
-    );
+    return <AgingReport onBack={backToReports} kind="receivables" companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+  }
+  if (view === 'sales-report') {
+    return <SalesReport onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+  }
+  if (view === 'studio-sales') {
+    return <SalesReport onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} isStudio />;
+  }
+  if (view === 'purchase-report') {
+    return <PurchaseReport onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+  }
+  if (view === 'expense-report') {
+    return <ExpenseReport onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+  }
+  if (view === 'studio-report') {
+    return <StudioReport onBack={backToReports} companyId={companyId ?? null} user={user} />;
+  }
+  if (view === 'rental-report') {
+    return <RentalReport onBack={backToReports} companyId={companyId ?? null} user={user} />;
+  }
+  if (view === 'inventory-report') {
+    return <InventoryReport onBack={backToReports} companyId={companyId ?? null} user={user} />;
   }
 
   if (view === 'entry-detail' && selectedEntry) {
@@ -356,21 +356,4 @@ export function AccountsModule({ onBack, user, companyId, branch }: AccountsModu
   }
 
   return null;
-}
-
-interface ReportCardProps {
-  title: string;
-  description: string;
-  icon: string;
-  onClick: () => void;
-}
-
-function ReportCard({ title, description, icon, onClick }: ReportCardProps) {
-  return (
-    <button onClick={onClick} className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#6366F1] transition-all text-left">
-      <span className="text-3xl block mb-2">{icon}</span>
-      <h3 className="text-sm font-semibold text-white mb-1">{title}</h3>
-      <p className="text-xs text-[#9CA3AF]">{description}</p>
-    </button>
-  );
 }

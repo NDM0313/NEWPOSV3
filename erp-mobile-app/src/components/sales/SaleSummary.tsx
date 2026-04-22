@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, FileText } from 'lucide-react';
 import type { SaleData } from './SalesModule';
@@ -12,15 +12,23 @@ interface SaleSummaryProps {
 
 export function SaleSummary({ onBack, saleData, onUpdate, onProceedToPayment }: SaleSummaryProps) {
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
-  const [discountValue, setDiscountValue] = useState(saleData.discount.toString());
-  const [shipping, setShipping] = useState(saleData.shipping.toString());
-  const [notes, setNotes] = useState(saleData.notes);
+  const [discountValue, setDiscountValue] = useState(
+    saleData.discount ? String(saleData.discount) : ''
+  );
+  const [notes, setNotes] = useState(saleData.notes || '');
+
+  useEffect(() => {
+    setDiscountValue(saleData.discount ? String(saleData.discount) : '');
+  }, [saleData.discount]);
+
+  useEffect(() => {
+    setNotes(saleData.notes || '');
+  }, [saleData.notes]);
 
   const applyDiscount = () => {
     const d = discountType === 'amount' ? parseFloat(discountValue) || 0 : (saleData.subtotal * (parseFloat(discountValue) || 0)) / 100;
     onUpdate({ discount: d });
   };
-  const applyShipping = () => onUpdate({ shipping: parseFloat(shipping) || 0 });
   const applyNotes = () => onUpdate({ notes });
 
   return (
@@ -102,20 +110,6 @@ export function SaleSummary({ onBack, saleData, onUpdate, onProceedToPayment }: 
         </div>
 
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-          <h3 className="text-sm font-medium text-[#9CA3AF] mb-2">Shipping</h3>
-          <input
-            type="number"
-            inputMode="decimal"
-            pattern="[0-9.]*"
-            value={shipping}
-            onChange={(e) => setShipping(e.target.value)}
-            onBlur={applyShipping}
-            placeholder="0"
-            className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white focus:outline-none focus:border-[#3B82F6]"
-          />
-        </div>
-
-        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <h3 className="text-sm font-medium text-[#9CA3AF] mb-2">Notes</h3>
           <textarea
             value={notes}
@@ -137,12 +131,6 @@ export function SaleSummary({ onBack, saleData, onUpdate, onProceedToPayment }: 
               <div className="flex justify-between">
                 <span className="text-[#9CA3AF]">Discount</span>
                 <span className="text-[#EF4444]">- Rs. {saleData.discount.toLocaleString()}</span>
-              </div>
-            )}
-            {saleData.shipping > 0 && (
-              <div className="flex justify-between">
-                <span className="text-[#9CA3AF]">Shipping</span>
-                <span className="text-white">Rs. {saleData.shipping.toLocaleString()}</span>
               </div>
             )}
           </div>

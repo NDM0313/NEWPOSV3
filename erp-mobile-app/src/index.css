@@ -103,3 +103,75 @@ input[type="number"] {
 .animate-slide-up {
   animation: 0.3s ease-out slide-up;
 }
+
+/* ----- PDF / Print preview ----- */
+/* The captured document is rendered inside an A4-sized white container so the preview and the PDF look identical. */
+.pdf-document {
+  background: #ffffff;
+  color: #000000;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 14mm 14mm;
+  box-sizing: border-box;
+  font-family: 'Helvetica', 'Arial', sans-serif;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.pdf-document * {
+  color: inherit;
+  box-sizing: border-box;
+}
+.pdf-document table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.pdf-document th,
+.pdf-document td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  vertical-align: top;
+}
+.pdf-document th {
+  background: #f3f4f6;
+  font-weight: 600;
+  border-bottom: 1px solid #9ca3af;
+}
+.pdf-document tfoot td {
+  border-top: 1px solid #9ca3af;
+  font-weight: 600;
+}
+
+/* Print — force B&W as requested */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .pdf-print-root,
+  .pdf-print-root * {
+    visibility: visible;
+  }
+  .pdf-print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  .pdf-print-root,
+  .pdf-print-root * {
+    color: #000 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  .pdf-print-root img {
+    filter: grayscale(100%);
+  }
+  .no-print {
+    display: none !important;
+  }
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+}

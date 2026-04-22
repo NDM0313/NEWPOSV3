@@ -2,7 +2,7 @@
  * Unified document engine: Packing List (Wholesale workflow).
  * Renders PackingListTemplate with document data and options from printing_settings.
  */
-import React from 'react';
+import React, { useRef } from 'react';
 import { useUnifiedDocumentSettings } from './useUnifiedDocumentSettings';
 import { resolveDocumentOptions } from './resolveOptions';
 import { PackingListTemplate } from './templates/PackingListTemplate';
@@ -11,6 +11,7 @@ import { Button } from '@/app/components/ui/button';
 import { Printer, X } from 'lucide-react';
 import { LoadingSpinner } from '@/app/components/shared/LoadingSpinner';
 import { ErrorMessage } from '@/app/components/shared/ErrorMessage';
+import { DocumentPreviewButton } from '@/app/components/shared/DocumentPreviewButton';
 
 export interface UnifiedPackingListViewProps {
   document: PackingListDocument | null;
@@ -35,6 +36,7 @@ export const UnifiedPackingListView: React.FC<UnifiedPackingListViewProps> = ({
     logoUrl: resolved.packingList.logoUrl,
   } : null;
 
+  const contentRef = useRef<HTMLDivElement>(null);
   const handlePrint = () => window.print();
 
   if (loading) {
@@ -62,7 +64,8 @@ export const UnifiedPackingListView: React.FC<UnifiedPackingListViewProps> = ({
   }
 
   const actionChildren = showPrintAction ? (
-    <div className="flex gap-2">
+    <div className="flex gap-2 no-print">
+      <DocumentPreviewButton contentRef={contentRef} documentType="packing_list" reference={doc.orderNo} />
       <Button onClick={handlePrint} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2">
         <Printer size={16} />
         Print
@@ -77,12 +80,14 @@ export const UnifiedPackingListView: React.FC<UnifiedPackingListViewProps> = ({
   ) : undefined;
 
   return (
-    <PackingListTemplate
-      document={doc}
-      options={options}
-      onPrint={handlePrint}
-      onClose={onClose}
-      actionChildren={actionChildren}
-    />
+    <div ref={contentRef}>
+      <PackingListTemplate
+        document={doc}
+        options={options}
+        onPrint={handlePrint}
+        onClose={onClose}
+        actionChildren={actionChildren}
+      />
+    </div>
   );
 };

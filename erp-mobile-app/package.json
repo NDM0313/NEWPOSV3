@@ -19,6 +19,7 @@
     "@supabase/realtime-js": "^2.95.3",
     "@supabase/supabase-js": "^2.95.3",
     "crypto-js": "^4.2.0",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.0",
     "lucide-react": "^0.487.0",
     "react": "^18.3.1",

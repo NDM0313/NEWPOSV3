@@ -4,13 +4,30 @@
 
 ---
 
+## Recently completed (April 2026 — Mobile Fixes Bundle 2)
+
+The following was implemented and is reflected on `main` (see commit message on GitHub):
+
+| Area | What shipped |
+|------|----------------|
+| **Mobile — sales & cart** | Product tile images; packing gated by `enable_packing`; quantity/summary state fixes; shipping card removed from summary. |
+| **Mobile — purchases** | Order vs Received picker; DB trigger fix for `received`/`final` stock (`20260424_fix_purchase_received_stock_trigger.sql`). |
+| **Mobile — PDF** | Preview modal before share/download/print for reports and payment receipts (`html2canvas` + branded header). |
+| **Mobile — inventory** | Redesigned inventory screen; tap product → **Product history** with movements, running balance, PDF preview. |
+| **Web — PDF** | Shared `PdfPreviewModal`, `DocumentPreviewButton`, preview on `DocumentShareActions` and unified document views + day book / account ledger entry points. |
+| **RPCs / accounting (repo)** | Party subledger + document posting migrations present in `migrations/` — apply with your usual Supabase/VPS process. |
+
+**Detail:** `docs/COMPLETED_WORK_BUNDLE2.md`
+
+---
+
 ## System Status Summary
 
 | Area | Status | Notes |
 |------|--------|--------|
-| **Web ERP** | Production ready | PDF export, document share, audit logs, PWA, performance indexes |
-| **Mobile app** | Barcode + POS + offline done | `erp-mobile-app/` — Scan, cart, payment, sync |
-| **Inventory engine** | Complete | Single source of truth = stock_movements; see `docs/ERP_INVENTORY_FINAL_REPORT.md`, `npm run inventory-validate` |
+| **Web ERP** | Production ready | PDF preview + export, document share, audit logs, PWA, performance indexes; unified docs can open preview before print/PDF. |
+| **Mobile app** | Barcode + POS + offline + accounts/reports refresh | `erp-mobile-app/` — Scan, cart, payment, sync; reports hub with preview; inventory history drill-down. |
+| **Inventory engine** | Complete | Single source of truth = `stock_movements`; see `docs/ERP_INVENTORY_FINAL_REPORT.md`, `npm run inventory-validate` |
 | **Migrations** | Auto-apply in place | `npm run migrate` or `npm run migrate -- --allow-fail` |
 | **feature_flags** | Fixed & applied | Migration now resilient (skips if not table owner) |
 | **final_web_erp_performance_indexes** | Applied | sales_items, sales, production_orders (if table exists) |
@@ -23,7 +40,7 @@
 ```bash
 npm run migrate
 # or if one migration may fail (e.g. ownership):
-289876
+npm run migrate -- --allow-fail
 ```
 
 **Env:** Set in `.env.local`:
@@ -38,11 +55,13 @@ npm run migrate
 
 **Currently known:** `financial_dashboard_metrics_rpc.sql` may fail with "must be owner of function". Use `--allow-fail` or run that file as postgres and insert its name into `schema_migrations` so it is not re-run.
 
+**New in repo (apply when ready):** `20260422_party_subledger_rpcs_and_payment_routing.sql`, `20260423_document_posting_rpcs.sql`, `20260424_fix_purchase_received_stock_trigger.sql` — follow the same apply process; use `supabase_admin` / owner role if a function is owned by Supabase internal roles.
+
 ---
 
-## 2. Web ERP — Nothing Critical Left
+## 2. Web ERP — Optional follow-ups
 
-- **Document share:** Download PDF, WhatsApp, Email — done in `UnifiedSalesInvoiceView`; can reuse `DocumentShareActions` on other document views (Purchase Invoice, Quotation, Ledger, Receipt, Packing List) if needed.
+- **Document share:** Preview + Download PDF + WhatsApp + Email are on `DocumentShareActions` and extended to unified ledger/receipt/quotation/proforma/packing/courier/purchase views. Any other screen that still calls raw `window.print()` only can adopt `DocumentPreviewButton` the same way.
 - **Audit log:** `audit_logs` table and `auditLogService` exist; sale create is logged; payments/purchases/production can be wired the same way where needed.
 - **PWA:** Installed; build and deploy as usual.
 
@@ -53,14 +72,14 @@ npm run migrate
 | Task | Priority | How to complete |
 |------|----------|------------------|
 | **Thermal printer (hardware)** | Optional | Settings → Printer already has mode/paper size. For actual device printing, add a Capacitor plugin (e.g. Bluetooth thermal printer) and wire to receipt flow. |
-| **Inventory scan** | Later | New flow: scan product → update stock / stock adjustment. Reuse `features/barcode` and product API. |
+| **Inventory scan (adjustment flow)** | Later | New flow: scan product → stock adjustment / recount. Reuse `features/barcode` and product API; history view already exists for read-only drill-down. |
 | **Device-specific UI (e.g. Sunmi V2 Pro)** | Later | Optimise layout for that device (camera, receipt, POS speed). See `docs/MOBILE_APP_ARCHITECTURE.md`. |
 
 ---
 
 ## 4. Repo and Deploy
 
-- **Git:** All changes committed and pushed (see commit message for scope).
+- **Git:** Push `main` to GitHub after local commit; see `docs/COMPLETED_WORK_BUNDLE2.md` for this bundle’s scope.
 - **Deploy web:** Build with `npm run build`; deploy `dist/` to your host. Ensure env (e.g. Supabase URL/keys) is set on server.
 - **Deploy mobile:** In `erp-mobile-app/`, run `npm run build:mobile && npx cap sync`, then open Android/iOS project and build/store as usual.
 
@@ -74,6 +93,7 @@ npm run migrate
 | `docs/ERP_INVENTORY_FINAL_REPORT.md` | Inventory engine status, schema, triggers, health, web/mobile sync |
 | `docs/MOBILE_APP_ARCHITECTURE.md` | Mobile structure, barcode, POS, offline, printer |
 | `docs/REMAINING_TASKS.md` | This file — what’s left for office |
+| `docs/COMPLETED_WORK_BUNDLE2.md` | What was completed in Mobile Fixes Bundle 2 + related web/migrations |
 
 ---
 
@@ -94,4 +114,4 @@ npx cap open android   # or ios
 
 ---
 
-**Last updated:** After feature_flags migration fix, migration run (feature_flags + final_web_erp_performance_indexes applied), and prep for GitHub push.
+**Last updated:** April 2026 — GitHub push with Mobile Fixes Bundle 2, web PDF preview wiring, inventory redesign + product history, `docs/COMPLETED_WORK_BUNDLE2.md`, and migration files `20260422`–`20260424` in repo.

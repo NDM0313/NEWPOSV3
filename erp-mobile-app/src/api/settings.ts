@@ -204,6 +204,20 @@ const DEFAULT_MODULE_TOGGLES: ModuleToggles = {
   posModuleEnabled: true,
 };
 
+// --- Enable Packing (per-company toggle). Mirrors web: settings[key='enable_packing'].value === true ---
+
+export async function getEnablePacking(companyId: string | null): Promise<boolean> {
+  if (!isSupabaseConfigured || !companyId) return false;
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('company_id', companyId)
+    .eq('key', 'enable_packing')
+    .maybeSingle();
+  if (error) return false;
+  return data?.value === true;
+}
+
 export async function getModuleConfigs(
   companyId: string | null
 ): Promise<{ data: ModuleToggles; error: string | null }> {
