@@ -41,6 +41,9 @@ Thumbs.db
 # Migration backups (pg_dump; do not commit)
 backups/
 
+# Local DB probe / scratch SQL (do not commit)
+migrations/_tmp*.sql
+
 # Temporary files
 *.tmp
 *.temp
