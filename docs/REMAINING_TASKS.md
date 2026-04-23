@@ -4,6 +4,13 @@
 
 ---
 
+## Round 3 Execution Plan (Home/Office)
+
+- Canonical file: `docs/MOBILE_ERP_ROUND3_COMPLETION_PLAN.md`
+- Focus: Round 3 user-reported blockers + reports data flow + Sales/Purchase 3-dot UX completion.
+
+---
+
 ## Recently completed (April 2026 — Mobile Fixes Bundle 2)
 
 The following was implemented and is reflected on `main` (see commit message on GitHub):
