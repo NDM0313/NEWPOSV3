@@ -39,6 +39,13 @@ const KIND_LABELS: Record<PartyLedgerKind, { title: string; plural: string; grad
   worker: { title: 'Worker Ledger', plural: 'workers', gradient: 'emerald' },
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const displayEntryNo = (value: string, fallbackType?: string) => {
+  const v = (value || '').trim();
+  if (!v || UUID_RE.test(v)) return (fallbackType || 'entry').replace('_', ' ').toUpperCase();
+  return v;
+};
+
 export function PartyLedgerReport({ onBack, kind, companyId, user }: PartyLedgerReportProps) {
   const cfg = KIND_LABELS[kind];
   const [parties, setParties] = useState<LocalParty[]>([]);
@@ -313,7 +320,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, user }: PartyLedger
                         <p className="text-sm font-semibold text-white truncate">{l.description || '—'}</p>
                       </div>
                       <p className="text-[11px] text-[#9CA3AF] truncate">
-                        {formatDate(l.date)} · {l.entryNo}
+                        {formatDate(l.date)} · {displayEntryNo(l.entryNo, l.referenceType)}
                       </p>
                     </div>
                     <div className="text-right shrink-0">
@@ -349,7 +356,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, user }: PartyLedger
             totals={{ debit: totals.debit, credit: totals.credit }}
             rows={lines.map((l) => ({
               date: l.date,
-              reference: l.entryNo,
+              reference: displayEntryNo(l.entryNo, l.referenceType),
               description: l.description,
               debit: l.debit,
               credit: l.credit,

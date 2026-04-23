@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { ArrowLeft, Loader2, Plus, Search, Calendar, Truck, CornerDownLeft, DollarSign, LayoutList, Package } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus, Search, Calendar, Truck, CornerDownLeft, DollarSign, LayoutList, Package, MoreVertical, Share2, Clock3 } from 'lucide-react';
 import type { User, Branch } from '../../types';
 import * as rentalsApi from '../../api/rentals';
 import type { RentalListItem } from '../../api/rentals';
@@ -31,6 +31,7 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
   const [loading, setLoading] = useState(!!companyId);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [menuRental, setMenuRental] = useState<RentalListItem | null>(null);
   const [activeTab, setActiveTab] = useState<RentalTab>('list');
   const wasInChildView = useRef(false);
 
@@ -115,6 +116,7 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
         companyId={companyId}
         branchId={branch?.id ?? null}
         userId={user?.id ?? null}
+        userRole={user?.role}
         onBack={() => setShowCreate(false)}
         onSuccess={() => {
           setShowCreate(false);
@@ -143,38 +145,92 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
     { id: 'collections', label: 'Collections', icon: <DollarSign className="w-4 h-4" /> },
   ];
 
-  const renderRentalCard = (r: RentalListItem, extra?: React.ReactNode) => (
-    <button
-      key={r.id}
-      type="button"
-      onClick={() => setSelectedId(r.id)}
-      className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/50 transition-colors"
-    >
-      <div className="flex justify-between items-start">
-        <div>
-          <p className="font-medium text-white">{r.no}</p>
-          <p className="text-sm text-[#9CA3AF]">{r.customer}</p>
-          <p className="text-xs text-[#6B7280] mt-0.5">
-            <Calendar className="w-3.5 h-3.5 inline mr-1" />
-            {formatDate(r.pickup)} → {formatDate(r.return)}
-          </p>
-          {extra}
-          <span
-            className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-medium capitalize ${STATUS_CLASS[r.status] ?? 'bg-[#374151] text-[#9CA3AF]'}`}
-          >
-            {r.status}
-          </span>
-        </div>
-        <div className="text-right">
-          <p className="text-[#8B5CF6] font-semibold">Rs. {r.total.toLocaleString()}</p>
-          <p className="text-xs text-[#9CA3AF]">Paid: Rs. {r.paid.toLocaleString()}</p>
-          {r.due > 0 && (
-            <p className="text-xs text-[#F59E0B]">Due: Rs. {r.due.toLocaleString()}</p>
-          )}
-        </div>
+  const handleShareWhatsApp = (r: RentalListItem) => {
+    setMenuRental(null);
+    const text = [
+      `Rental: ${r.no}`,
+      `Customer: ${r.customer}`,
+      `Pickup: ${formatDate(r.pickup)}`,
+      `Return: ${formatDate(r.return)}`,
+      `Total: Rs. ${r.total.toLocaleString()}`,
+      `Due: Rs. ${r.due.toLocaleString()}`,
+    ].join('\n');
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  };
+
+  const renderRentalCard = (r: RentalListItem, extra?: React.ReactNode) => {
+    const isOverdue = (r.status === 'rented' || r.status === 'overdue') && r.return < today;
+    return (
+      <div
+        key={r.id}
+        className={`relative w-full text-left bg-[#1F2937] border rounded-xl p-4 hover:border-[#8B5CF6]/50 transition-colors ${isOverdue ? 'border-[#EF4444]/50' : 'border-[#374151]'}`}
+      >
+        <button type="button" onClick={() => setSelectedId(r.id)} className="w-full text-left pr-10">
+          <div className="flex justify-between items-start gap-3">
+            <div>
+              <p className="font-medium text-white">{r.no}</p>
+              <p className="text-sm text-[#9CA3AF]">{r.customer}</p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-[#374151] text-[#D1D5DB]">
+                  <Calendar className="w-3.5 h-3.5" /> Pickup: {formatDate(r.pickup)}
+                </span>
+                <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded ${isOverdue ? 'bg-[#EF4444]/20 text-[#FCA5A5]' : 'bg-[#374151] text-[#D1D5DB]'}`}>
+                  <Clock3 className="w-3.5 h-3.5" /> Return: {formatDate(r.return)}
+                </span>
+              </div>
+              {extra}
+              <span
+                className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-medium capitalize ${STATUS_CLASS[r.status] ?? 'bg-[#374151] text-[#9CA3AF]'}`}
+              >
+                {isOverdue ? 'overdue' : r.status}
+              </span>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-[#8B5CF6] font-semibold">Rs. {r.total.toLocaleString()}</p>
+              <p className="text-xs text-[#9CA3AF]">Paid: Rs. {r.paid.toLocaleString()}</p>
+              {r.due > 0 && (
+                <p className="text-xs text-[#F59E0B]">Due: Rs. {r.due.toLocaleString()}</p>
+              )}
+            </div>
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMenuRental(menuRental?.id === r.id ? null : r)}
+          className="absolute top-3 right-3 p-2 hover:bg-[#374151] rounded-lg text-[#9CA3AF]"
+          aria-label="More options"
+        >
+          <MoreVertical className="w-5 h-5" />
+        </button>
+        {menuRental?.id === r.id && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setMenuRental(null)}>
+            <div className="bg-[#1F2937] border border-[#374151] rounded-2xl shadow-xl overflow-hidden w-full max-w-[280px]" onClick={(e) => e.stopPropagation()}>
+              <div className="px-4 py-3 border-b border-[#374151]">
+                <p className="text-sm font-medium text-[#9CA3AF]">{r.no}</p>
+                <p className="text-xs text-[#D1D5DB]">{r.customer}</p>
+              </div>
+              <div className="py-2">
+                <button onClick={() => { setMenuRental(null); setSelectedId(r.id); }} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+                  <LayoutList className="w-5 h-5 text-[#3B82F6]" /> View Details
+                </button>
+                {r.due > 0 && (
+                  <button onClick={() => { setMenuRental(null); setSelectedId(r.id); }} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+                    <DollarSign className="w-5 h-5 text-[#10B981]" /> Add Payment
+                  </button>
+                )}
+                <button onClick={() => handleShareWhatsApp(r)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+                  <Share2 className="w-5 h-5 text-[#10B981]" /> Share via WhatsApp
+                </button>
+              </div>
+              <button onClick={() => setMenuRental(null)} className="w-full py-3 text-sm text-[#9CA3AF] border-t border-[#374151] hover:bg-[#374151]">
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-    </button>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">

@@ -197,6 +197,20 @@ export async function updatePurchaseStatus(
   return { error: error?.message ?? null };
 }
 
+export async function cancelPurchase(companyId: string, purchaseId: string): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { error } = await supabase
+    .from('purchases')
+    .update({
+      status: 'cancelled',
+      cancelled_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('company_id', companyId)
+    .eq('id', purchaseId);
+  return { error: error?.message ?? null };
+}
+
 export interface PurchaseListItem {
   id: string;
   poNo: string;

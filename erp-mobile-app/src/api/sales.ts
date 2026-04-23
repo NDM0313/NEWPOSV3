@@ -809,3 +809,168 @@ export async function logPrint(saleId: string, printType: 'A4' | 'Thermal' | 'th
     // RPC may not exist
   }
 }
+
+export type SaleReturnCandidateItem = {
+  saleItemId: string | null;
+  productId: string;
+  variationId: string | null;
+  productName: string;
+  sku: string;
+  soldQty: number;
+  unitPrice: number;
+  lineTotal: number;
+};
+
+export async function getSaleReturnCandidateItems(saleId: string): Promise<{
+  data: SaleReturnCandidateItem[];
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!saleId) return { data: [], error: 'Sale id is required.' };
+
+  const mapRows = (rows: Record<string, unknown>[]) =>
+    rows
+      .map((r) => ({
+        saleItemId: r.id ? String(r.id) : null,
+        productId: String(r.product_id ?? ''),
+        variationId: r.variation_id ? String(r.variation_id) : null,
+        productName: String(r.product_name ?? 'Item'),
+        sku: String(r.sku ?? '—'),
+        soldQty: Number(r.quantity ?? 0),
+        unitPrice: Number(r.unit_price ?? 0),
+        lineTotal: Number(r.total ?? 0),
+      }))
+      .filter((r) => r.productId && r.soldQty > 0);
+
+  const { data, error } = await supabase
+    .from('sales_items')
+    .select('id, product_id, variation_id, product_name, sku, quantity, unit_price, total')
+    .eq('sale_id', saleId)
+    .order('created_at', { ascending: true });
+  if (!error) return { data: mapRows((data || []) as Record<string, unknown>[]), error: null };
+
+  if (error.code === '42P01' || String(error.message).toLowerCase().includes('does not exist')) {
+    const fallback = await supabase
+      .from('sale_items')
+      .select('id, product_id, variation_id, product_name, sku, quantity, unit_price, total')
+      .eq('sale_id', saleId)
+      .order('created_at', { ascending: true });
+    if (fallback.error) return { data: [], error: fallback.error.message };
+    return { data: mapRows((fallback.data || []) as Record<string, unknown>[]), error: null };
+  }
+
+  return { data: [], error: error.message };
+}
+
+export type CreateSaleReturnPayload = {
+  companyId: string;
+  branchId: string;
+  saleId: string;
+  customerId?: string | null;
+  customerName?: string | null;
+  userId?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+  items: Array<{
+    saleItemId?: string | null;
+    productId: string;
+    variationId?: string | null;
+    productName: string;
+    sku?: string | null;
+    quantity: number;
+    unitPrice: number;
+  }>;
+};
+
+export async function createAndFinalizeSaleReturn(payload: CreateSaleReturnPayload): Promise<{
+  data: { returnId: string; returnNo: string } | null;
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  if (!payload.companyId || !payload.branchId || !payload.saleId) {
+    return { data: null, error: 'Company, branch and sale are required.' };
+  }
+
+  const items = payload.items
+    .map((i) => ({ ...i, quantity: Number(i.quantity) || 0, unitPrice: Number(i.unitPrice) || 0 }))
+    .filter((i) => i.productId && i.quantity > 0);
+  if (items.length === 0) return { data: null, error: 'Select at least one return item.' };
+
+  let returnNo = '';
+  try {
+    const { data: numData, error: numErr } = await supabase.rpc('generate_document_number', {
+      p_company_id: payload.companyId,
+      p_branch_id: payload.branchId,
+      p_document_type: 'sale_return',
+      p_include_year: false,
+    });
+    if (numErr || !numData) throw new Error(numErr?.message || 'Numbering failed');
+    returnNo = String(numData);
+  } catch {
+    returnNo = `SRET-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(Math.random() * 9000) + 1000}`;
+  }
+
+  const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+  const normalizedDate = new Date().toISOString().slice(0, 10);
+
+  const { data: saleReturn, error: headerErr } = await supabase
+    .from('sale_returns')
+    .insert({
+      company_id: payload.companyId,
+      branch_id: payload.branchId,
+      original_sale_id: payload.saleId,
+      return_no: returnNo,
+      return_date: normalizedDate,
+      customer_id: payload.customerId ?? null,
+      customer_name: payload.customerName || 'Walk-in',
+      status: 'draft',
+      subtotal,
+      discount_amount: 0,
+      tax_amount: 0,
+      total: subtotal,
+      reason: payload.reason ?? null,
+      notes: payload.notes ?? null,
+      created_by: payload.userId ?? null,
+    })
+    .select('id, return_no')
+    .single();
+  if (headerErr || !saleReturn) return { data: null, error: headerErr?.message ?? 'Failed to create sale return.' };
+
+  const returnItems = items.map((i) => ({
+    sale_return_id: saleReturn.id,
+    sale_item_id: i.saleItemId ?? null,
+    product_id: i.productId,
+    variation_id: i.variationId ?? null,
+    product_name: i.productName,
+    sku: i.sku || '—',
+    quantity: i.quantity,
+    unit: 'piece',
+    unit_price: i.unitPrice,
+    total: i.quantity * i.unitPrice,
+  }));
+
+  const { error: itemsErr } = await supabase.from('sale_return_items').insert(returnItems);
+  if (itemsErr) return { data: null, error: itemsErr.message };
+
+  const { data: finalizeData, error: finalizeErr } = await supabase.rpc('finalize_sale_return', {
+    p_sale_return_id: saleReturn.id,
+    p_company_id: payload.companyId,
+    p_created_by: payload.userId ?? null,
+  });
+
+  if (finalizeErr) {
+    const msg = finalizeErr.message || 'Failed to finalize sale return.';
+    if (msg.includes('Could not find the function')) {
+      return {
+        data: null,
+        error: `${msg} Apply sale return finalization migration on Postgres and retry.`,
+      };
+    }
+    return { data: null, error: msg };
+  }
+
+  const finalizeRes = (finalizeData || {}) as { success?: boolean; error?: string };
+  if (finalizeRes.success === false) return { data: null, error: finalizeRes.error || 'Failed to finalize sale return.' };
+
+  return { data: { returnId: String(saleReturn.id), returnNo: String(saleReturn.return_no || returnNo) }, error: null };
+}

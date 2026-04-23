@@ -13,6 +13,7 @@ import * as reportsApi from '../../api/reports';
 import * as inventoryApi from '../../api/inventory';
 import { getJournalEntries } from '../../api/accounts';
 import { getFinancialDashboardMetrics, sumTrendTail } from '../../api/financialDashboard';
+import { supabase } from '../../lib/supabase';
 
 interface DashboardModuleProps {
   onBack: () => void;
@@ -75,6 +76,8 @@ export function DashboardModule({ onBack, user: _user, companyId, branchId, onNe
   const [receivable, setReceivable] = useState(0);
   const [payable, setPayable] = useState(0);
   const [orders, setOrders] = useState(0);
+  const [paymentsIn, setPaymentsIn] = useState(0);
+  const [paymentsOut, setPaymentsOut] = useState(0);
   const [lowStock, setLowStock] = useState<{ name: string; current: number; min: number }[]>([]);
   const [pendingOrders, setPendingOrders] = useState<{ id: string; customer: string; amount: number; status: string }[]>([]);
 
@@ -84,6 +87,10 @@ export function DashboardModule({ onBack, user: _user, companyId, branchId, onNe
     if (!companyId) return;
     setIsRefreshing(true);
     const invBranch = branchId && branchId !== 'all' && branchId !== 'default' ? branchId : null;
+    const rangeStart = new Date();
+    rangeStart.setDate(rangeStart.getDate() - Math.max(1, days) + 1);
+    const fromDate = rangeStart.toISOString().slice(0, 10);
+    const toDate = new Date().toISOString().slice(0, 10);
     const [salesRes, invRes, finRes] = await Promise.all([
       reportsApi.getSalesSummary(companyId, branchId, days),
       inventoryApi.getInventory(companyId, invBranch),
@@ -93,6 +100,29 @@ export function DashboardModule({ onBack, user: _user, companyId, branchId, onNe
     const lowStockItems = (invRes.data || []).filter((p) => p.isLowStock).slice(0, 5);
     setLowStock(lowStockItems.map((p) => ({ name: p.name, current: p.stock, min: p.minStock })));
     setPendingOrders([]);
+    try {
+      let payQuery = supabase
+        .from('payments')
+        .select('payment_type, amount, branch_id, payment_date')
+        .eq('company_id', companyId)
+        .gte('payment_date', fromDate)
+        .lte('payment_date', toDate)
+        .is('voided_at', null);
+      if (invBranch) payQuery = payQuery.eq('branch_id', invBranch);
+      const { data: payRows } = await payQuery;
+      let incoming = 0;
+      let outgoing = 0;
+      (payRows || []).forEach((r: Record<string, unknown>) => {
+        const amount = Number(r.amount ?? 0) || 0;
+        if (String(r.payment_type || '').toLowerCase() === 'received') incoming += amount;
+        else outgoing += amount;
+      });
+      setPaymentsIn(incoming);
+      setPaymentsOut(outgoing);
+    } catch {
+      setPaymentsIn(0);
+      setPaymentsOut(0);
+    }
 
     const m = finRes.data;
     const rpcOk = Boolean(m && !finRes.error && !m.error);
@@ -209,6 +239,8 @@ export function DashboardModule({ onBack, user: _user, companyId, branchId, onNe
           <StatCard title="Net profit" value={profit} icon={<TrendingUp size={20} />} color="purple" />
           <StatCard title="Receivables (sales due)" value={receivable} icon={<Package size={20} />} color="blue" />
           <StatCard title="Payables (purchase due)" value={payable} icon={<Package size={20} />} color="green" />
+          <StatCard title="Payments received" value={paymentsIn} icon={<TrendingUp size={20} />} color="blue" />
+          <StatCard title="Payments made" value={paymentsOut} icon={<TrendingDown size={20} />} color="green" />
           <StatCard title="Total Orders" value={orders} icon={<Package size={20} />} color="blue" />
         </div>
 

@@ -30,6 +30,7 @@ export function StudioReport({ onBack, companyId, user }: StudioReportProps) {
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
   const [rows, setRows] = useState<StudioProductionRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedRow, setSelectedRow] = useState<StudioProductionRow | null>(null);
   const preview = usePdfPreview(companyId);
 
@@ -40,9 +41,11 @@ export function StudioReport({ onBack, companyId, user }: StudioReportProps) {
     }
     let cancelled = false;
     setLoading(true);
-    getStudioProductions(companyId, range.from || undefined, range.to || undefined).then(({ data }) => {
+    setError(null);
+    getStudioProductions(companyId, range.from || undefined, range.to || undefined).then(({ data, error }) => {
       if (cancelled) return;
       setRows(data);
+      setError(error);
       setLoading(false);
     });
     return () => {
@@ -79,7 +82,12 @@ export function StudioReport({ onBack, companyId, user }: StudioReportProps) {
         <DateRangeBar value={range} onChange={setRange} />
       </ReportHeader>
 
-      <ReportShell loading={loading} empty={!loading && rows.length === 0} emptyLabel="No studio productions in this range.">
+      <ReportShell
+        loading={loading}
+        error={error}
+        empty={!loading && !error && rows.length === 0}
+        emptyLabel="No studio productions in this range."
+      >
         <ReportCard>
           <ReportSectionTitle title="Productions" right={`${rows.length}`} />
           <ul className="divide-y divide-[#374151]">

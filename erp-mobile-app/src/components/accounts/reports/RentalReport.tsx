@@ -32,6 +32,7 @@ export function RentalReport({ onBack, companyId, user }: RentalReportProps) {
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
   const [rows, setRows] = useState<RentalReportRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedRow, setSelectedRow] = useState<RentalReportRow | null>(null);
   const preview = usePdfPreview(companyId);
 
@@ -42,9 +43,11 @@ export function RentalReport({ onBack, companyId, user }: RentalReportProps) {
     }
     let cancelled = false;
     setLoading(true);
-    getRentalsInRange(companyId, range.from || undefined, range.to || undefined).then(({ data }) => {
+    setError(null);
+    getRentalsInRange(companyId, range.from || undefined, range.to || undefined).then(({ data, error }) => {
       if (cancelled) return;
       setRows(data);
+      setError(error);
       setLoading(false);
     });
     return () => {
@@ -81,7 +84,12 @@ export function RentalReport({ onBack, companyId, user }: RentalReportProps) {
         <DateRangeBar value={range} onChange={setRange} />
       </ReportHeader>
 
-      <ReportShell loading={loading} empty={!loading && rows.length === 0} emptyLabel="No rental bookings in this range.">
+      <ReportShell
+        loading={loading}
+        error={error}
+        empty={!loading && !error && rows.length === 0}
+        emptyLabel="No rental bookings in this range."
+      >
         <ReportCard>
           <ReportSectionTitle title="Bookings" right={`${rows.length}`} />
           <ul className="divide-y divide-[#374151]">

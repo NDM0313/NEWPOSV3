@@ -8,6 +8,7 @@
 import { supabase } from '@/lib/supabase';
 import { accountHelperService } from '@/app/services/accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from '@/app/services/accountingService';
+import { resolveWorkerPayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
 
 const EPS = 0.005;
 
@@ -163,8 +164,8 @@ export async function applyWorkerAdvanceAgainstNewBill(params: {
   if (applyAmount <= EPS) return null;
 
   const advanceId = await getWorkerAdvanceAccountId(companyId);
-  const payableAcc = await accountHelperService.getAccountByCode('2010', companyId);
-  if (!advanceId || !payableAcc?.id) {
+  const payableAccountId = await resolveWorkerPayablePostingAccountId(companyId, workerId);
+  if (!advanceId || !payableAccountId) {
     console.warn('[workerAdvanceService] Missing Worker Advance (1180) or Worker Payable (2010); skip auto-apply');
     return null;
   }
@@ -190,7 +191,7 @@ export async function applyWorkerAdvanceAgainstNewBill(params: {
     {
       id: '',
       journal_entry_id: '',
-      account_id: payableAcc.id,
+      account_id: payableAccountId,
       debit: applyAmount,
       credit: 0,
       description: 'Reduce worker payable (advance applied)',

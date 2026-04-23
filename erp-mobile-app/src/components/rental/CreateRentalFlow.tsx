@@ -14,6 +14,7 @@ interface CreateRentalFlowProps {
   companyId: string | null;
   branchId: string | null;
   userId: string | null;
+  userRole?: 'admin' | 'manager' | 'staff' | 'viewer';
   onBack: () => void;
   onSuccess: () => void;
 }
@@ -31,7 +32,7 @@ interface SelectedRentalItem {
 
 const SECURITY_DOC_TYPES = ['CNIC', 'Passport', 'Driver License', 'Other'] as const;
 
-export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSuccess }: CreateRentalFlowProps) {
+export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack, onSuccess }: CreateRentalFlowProps) {
   const responsive = useResponsive();
   const [step, setStep] = useState<Step>('customer');
   const [customers, setCustomers] = useState<{ id: string; name: string; phone: string }[]>([]);
@@ -40,7 +41,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
   const [variationPickerProduct, setVariationPickerProduct] = useState<productsApi.RentalProduct | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<{ id: string; name: string; phone: string } | null>(null);
   const [selectedItems, setSelectedItems] = useState<SelectedRentalItem[]>([]);
-  const [manualRentAmount, setManualRentAmount] = useState('');
+  const [lineRateMap, setLineRateMap] = useState<Record<string, string>>({});
+  const [extraExpenseAmount, setExtraExpenseAmount] = useState('');
   const [pickupDate, setPickupDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
   const [advancePaid, setAdvancePaid] = useState('');
@@ -105,7 +107,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
   }, [companyId, step]);
 
   useEffect(() => {
-    if (!companyId || (step !== 'payment_confirm' && step !== 'confirm')) return;
+    if (!companyId || (step !== 'advance' && step !== 'payment_confirm' && step !== 'confirm')) return;
     let c = false;
     accountsApi.getPaymentAccounts(companyId).then(({ data }) => {
       if (c) return;
@@ -113,7 +115,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
       if (data?.length === 1 && !advancePaymentAccountId) setAdvancePaymentAccountId(data[0].id);
     });
     return () => { c = true; };
-  }, [companyId, step]);
+  }, [companyId, step, advancePaymentAccountId]);
 
   useEffect(() => {
     if (!companyId || step !== 'salesman' || salesmen.length > 0) return;
@@ -124,6 +126,17 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
     });
     return () => { c = true; };
   }, [companyId, step, salesmen.length]);
+
+  useEffect(() => {
+    if (step !== 'salesman') return;
+    if (salesmanId) return;
+    if (!userId || userRole === 'admin') return;
+    const me = salesmen.find((s) => s.id === userId);
+    if (!me) return;
+    setSalesmanId(me.id);
+    const defPct = me.rentalCommissionPercent ?? me.defaultCommissionPercent ?? null;
+    if (defPct != null) setCommissionPct(String(defPct));
+  }, [step, salesmanId, userId, userRole, salesmen]);
 
   const itemKey = (productId: string, variationId?: string | null) =>
     variationId ? `${productId}:${variationId}` : productId;
@@ -164,10 +177,30 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
     });
   };
 
+  useEffect(() => {
+    setLineRateMap((prev) => {
+      const next = { ...prev };
+      selectedItems.forEach((item) => {
+        if (next[item.key] == null) {
+          next[item.key] = String(Number(item.product.rentPricePerDay || 0));
+        }
+      });
+      Object.keys(next).forEach((k) => {
+        if (!selectedItems.some((item) => item.key === k)) delete next[k];
+      });
+      return next;
+    });
+  }, [selectedItems]);
+
   const pickup = pickupDate ? new Date(pickupDate) : null;
   const ret = returnDate ? new Date(returnDate) : null;
   const durationDays = pickup && ret && ret >= pickup ? Math.ceil((ret.getTime() - pickup.getTime()) / (1000 * 60 * 60 * 24)) || 1 : 0;
-  const rentAmount = parseFloat(manualRentAmount) || 0;
+  const itemsRentAmount = selectedItems.reduce((sum, item) => {
+    const lineRate = Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0;
+    return sum + lineRate * item.quantity;
+  }, 0);
+  const extraExpense = parseFloat(extraExpenseAmount) || 0;
+  const rentAmount = Math.max(0, itemsRentAmount + extraExpense);
   const paidAmount = parseFloat(advancePaid) || 0;
   const balanceDue = Math.max(0, rentAmount - paidAmount);
 
@@ -203,16 +236,15 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
 
     setSaving(true);
     setError('');
-    const n = selectedItems.length;
-    const base = n === 1 ? rentAmount : Math.floor((rentAmount / n) * 100) / 100;
-    const remainder = n === 1 ? 0 : Math.round((rentAmount - base * (n - 1)) * 100) / 100;
     const items = selectedItems.map((item, i) => ({
       productId: item.product.id,
       productName: item.product.name,
       quantity: item.quantity,
-      ratePerDay: 0,
+      ratePerDay: Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0,
       durationDays,
-      total: i === n - 1 ? remainder : base,
+      total:
+        ((Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0) * item.quantity) +
+        (i === selectedItems.length - 1 ? extraExpense : 0),
       variationId: item.variationId,
       variationLabel: item.variationLabel,
     }));
@@ -231,7 +263,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
       rentalCharges: rentAmount,
       paidAmount,
       advancePaymentAccountId: paidAmount > 0 ? advancePaymentAccountId ?? undefined : undefined,
-      notes: notes.trim() || null,
+      notes: [notes.trim(), extraExpense > 0 ? `Extra expenses: Rs. ${extraExpense.toLocaleString()}` : ''].filter(Boolean).join(' | ') || null,
       salesmanId: salesmanId || null,
       commissionPercent: Number.isFinite(commissionPctNum) ? commissionPctNum : null,
       securityDocumentType: securityDocType || null,
@@ -263,8 +295,11 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
   };
 
   const goNextFromAdvance = () => {
-    if (paidAmount > 0) setStep('payment_confirm');
-    else setStep('documents');
+    if (paidAmount > 0 && !advancePaymentAccountId) {
+      setError('Select payment account (Receive Advance Into).');
+      return;
+    }
+    setStep('documents');
   };
 
   const closeRentalSuccessModal = () => {
@@ -618,20 +653,62 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
             <p className="font-medium text-white">{pickupDate} → {returnDate}</p>
             <p className="text-xs text-[#6B7280]">{durationDays} days (for reservation only)</p>
           </div>
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-[#9CA3AF]">Set rent per selected dress *</label>
+            {selectedItems.map((item) => (
+              <div key={item.key} className="bg-[#1F2937] border border-[#374151] rounded-xl p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-white truncate">
+                      {item.product.name}
+                      {item.variationLabel ? ` (${item.variationLabel})` : ''}
+                    </p>
+                    <p className="text-xs text-[#9CA3AF]">Qty: {item.quantity}</p>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={lineRateMap[item.key] ?? String(item.product.rentPricePerDay || 0)}
+                    onChange={(e) => setLineRateMap((prev) => ({ ...prev, [item.key]: e.target.value }))}
+                    className="w-28 h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white text-sm"
+                  />
+                </div>
+                <div className="flex justify-between text-xs mt-2">
+                  <span className="text-[#6B7280]">Line total</span>
+                  <span className="text-[#D1D5DB]">
+                    Rs. {((Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0) * item.quantity).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
           <div>
-            <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Enter Rent Amount (Rs.) *</label>
+            <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Extra Expenses (Rs.)</label>
             <input
               type="number"
               inputMode="decimal"
-              pattern="[0-9.]*"
               min="0"
               step="1"
-              value={manualRentAmount}
-              onChange={(e) => setManualRentAmount(e.target.value)}
-              placeholder="Amount decided for this rental"
+              value={extraExpenseAmount}
+              onChange={(e) => setExtraExpenseAmount(e.target.value)}
+              placeholder="Optional: ironing, transport, misc."
               className="w-full max-w-full min-w-0 h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white font-medium box-border"
             />
-            <p className="text-xs text-[#6B7280] mt-1">Manager decides rent. No auto calculation from days.</p>
+          </div>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-[#9CA3AF]">Items rent</span>
+              <span className="text-white">Rs. {itemsRentAmount.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-[#9CA3AF]">Extra expenses</span>
+              <span className="text-white">Rs. {extraExpense.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-sm pt-2 border-t border-[#374151]">
+              <span className="text-[#9CA3AF]">Total rent</span>
+              <span className="text-[#10B981] font-semibold">Rs. {rentAmount.toLocaleString()}</span>
+            </div>
           </div>
         </div>
         {canNext && (
@@ -781,6 +858,24 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
               className="w-full max-w-full min-w-0 h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white box-border"
             />
           </div>
+          {paidAmount > 0 && (
+            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+              <label className="block text-sm text-[#9CA3AF] mb-2">Receive Advance Into *</label>
+              <select
+                value={advancePaymentAccountId ?? ''}
+                onChange={(e) => setAdvancePaymentAccountId(e.target.value || null)}
+                className="w-full max-w-full min-w-0 h-12 bg-[#111827] border border-[#374151] rounded-xl px-4 text-white box-border"
+              >
+                <option value="">Select account</option>
+                {paymentAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name} ({acc.code})
+                  </option>
+                ))}
+              </select>
+              {paymentAccounts.length === 0 && <p className="text-xs text-[#F59E0B] mt-1">No payment accounts. Add Cash/Bank in Accounts.</p>}
+            </div>
+          )}
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <div className="flex justify-between pt-2 border-t border-[#374151]">
               <span className="text-[#9CA3AF]">Balance due</span>
@@ -793,7 +888,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
             onClick={goNextFromAdvance}
             className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
           >
-            {paidAmount > 0 ? 'Next: Payment →' : 'Next: Documents →'}
+            Next: Documents →
           </button>
         </div>
       </div>
@@ -807,7 +902,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, onBack, onSucces
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => (paidAmount > 0 ? setStep('payment_confirm') : setStep('advance'))} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
+              <button onClick={() => setStep('advance')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">

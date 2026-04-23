@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen } from 'lucide-react';
 import * as salesApi from '../../api/sales';
 import * as studioApi from '../../api/studio';
 import * as reportsApi from '../../api/reports';
 import { MobileReceivePayment } from './MobileReceivePayment';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
+import { SaleReturnModal } from './SaleReturnModal';
 
 type SaleRecord = {
   raw: Record<string, unknown>;
@@ -184,7 +185,20 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
 
   const [cancelling, setCancelling] = useState(false);
   const [addPaymentSale, setAddPaymentSale] = useState<SaleRecord | null>(null);
+  const [cancelConfirmSale, setCancelConfirmSale] = useState<SaleRecord | null>(null);
+  const [returnSale, setReturnSale] = useState<SaleRecord | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const baseUrl = import.meta.env.VITE_APP_URL || '';
+
+  const openExternalInSameTab = (relativeOrAbsoluteUrl: string): boolean => {
+    const resolved = relativeOrAbsoluteUrl.startsWith('http')
+      ? relativeOrAbsoluteUrl
+      : `${baseUrl}${relativeOrAbsoluteUrl}`;
+    if (!resolved || !/^https?:\/\//i.test(resolved)) return false;
+    window.location.assign(resolved);
+    return true;
+  };
 
   const refetchSales = useCallback(async (): Promise<SaleRecord[]> => {
     if (!companyId) return [];
@@ -260,12 +274,16 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
   const handlePrintA4 = (sale: SaleRecord) => {
     setMenuSale(null);
     salesApi.logPrint(saleIdRaw(sale), 'A4', userId).catch(() => {});
-    window.open(`${baseUrl}/sales?print=${saleIdRaw(sale)}`, '_blank', 'noopener');
+    if (!openExternalInSameTab(`/sales?print=${encodeURIComponent(saleIdRaw(sale))}`)) {
+      setActionError('Print URL is not configured. Set VITE_APP_URL and retry.');
+    }
   };
   const handlePrintThermal = (sale: SaleRecord) => {
     setMenuSale(null);
     salesApi.logPrint(saleIdRaw(sale), 'Thermal', userId).catch(() => {});
-    window.open(`${baseUrl}/sales?print=${saleIdRaw(sale)}&thermal=1`, '_blank', 'noopener');
+    if (!openExternalInSameTab(`/sales?print=${encodeURIComponent(saleIdRaw(sale))}&thermal=1`)) {
+      setActionError('Thermal print URL is not configured. Set VITE_APP_URL and retry.');
+    }
   };
   const handleShareWhatsApp = (sale: SaleRecord) => {
     setMenuSale(null);
@@ -273,38 +291,69 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     const total = sale.grand_total ?? sale.amount;
     const link = `${baseUrl}/sales?invoice=${encodeURIComponent(saleIdRaw(sale))}`;
     const text = [`Invoice: ${sale.id}`, `Customer: ${sale.customer}`, `Total: Rs. ${total.toLocaleString()}`, `Balance Due: Rs. ${due.toLocaleString()}`, `View: ${link}`].join('\n');
+    const rawPhone = String(
+      ((sale.raw.customer as { phone?: string } | null)?.phone as string) ||
+      (sale.raw.contact_number as string) ||
+      (sale.raw.contact_phone as string) ||
+      '',
+    );
+    const cleanPhone = rawPhone.replace(/[^\d+]/g, '').replace(/^0/, '92');
     salesApi.logShare(saleIdRaw(sale), 'whatsapp', userId).catch(() => {});
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    const waUrl = cleanPhone
+      ? `https://wa.me/${encodeURIComponent(cleanPhone)}?text=${encodeURIComponent(text)}`
+      : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.location.assign(waUrl);
   };
   const handleSharePdf = (sale: SaleRecord) => {
     setMenuSale(null);
     salesApi.logShare(saleIdRaw(sale), 'pdf', userId).catch(() => {});
-    window.open(`${baseUrl}/sales?print=${saleIdRaw(sale)}`, '_blank', 'noopener');
+    if (!openExternalInSameTab(`/sales?print=${encodeURIComponent(saleIdRaw(sale))}`)) {
+      setActionError('PDF URL is not configured. Set VITE_APP_URL and retry.');
+    }
   };
   const handleDownloadPdf = (sale: SaleRecord) => {
     setMenuSale(null);
     salesApi.logPrint(saleIdRaw(sale), 'A4', userId).catch(() => {});
-    window.open(`${baseUrl}/sales?print=${saleIdRaw(sale)}`, '_blank', 'noopener');
+    if (!openExternalInSameTab(`/sales?print=${encodeURIComponent(saleIdRaw(sale))}&download=1`)) {
+      setActionError('Download URL is not configured. Set VITE_APP_URL and retry.');
+    }
   };
-  const handlePrint = handlePrintA4;
+  const handleEdit = (sale: SaleRecord) => {
+    setMenuSale(null);
+    if (!openExternalInSameTab(`/sales?edit=${encodeURIComponent(saleIdRaw(sale))}`)) {
+      setActionError('Edit URL is not configured. Set VITE_APP_URL and retry.');
+    }
+  };
   const handlePaymentHistory = (sale: SaleRecord) => {
     setMenuSale(null);
     setSelectedSale(sale);
   };
   const handleReturn = (sale: SaleRecord) => {
     setMenuSale(null);
-    window.open(`${baseUrl}/sales/returns?original=${(sale.raw.id as string) || sale.id}`, '_blank', 'noopener');
+    const targetBranch = String((sale.raw.branch_id as string) || (branchId && branchId !== 'all' ? branchId : '') || '').trim();
+    if (!targetBranch) {
+      setActionError('Branch is required to create sale return. Please switch to a specific branch.');
+      return;
+    }
+    setReturnSale(sale);
   };
-  const handleCancel = async (sale: SaleRecord) => {
+  const handleCancel = (sale: SaleRecord) => {
     setMenuSale(null);
+    setCancelConfirmSale(sale);
+  };
+  const confirmCancel = async () => {
+    if (!cancelConfirmSale) return;
     setCancelling(true);
+    setActionError(null);
     try {
-      const { error } = await salesApi.cancelSale(sale.raw.id as string);
+      const { error } = await salesApi.cancelSale(cancelConfirmSale.raw.id as string);
       if (error) {
-        alert(error);
+        setActionError(error);
       } else {
-        setRecentSales((prev) => prev.filter((s) => s.id !== sale.id));
+        setRecentSales((prev) => prev.filter((s) => s.id !== cancelConfirmSale.id));
         setSelectedSale(null);
+        setActionSuccess(`Invoice ${cancelConfirmSale.id} cancelled successfully.`);
+        setCancelConfirmSale(null);
       }
     } finally {
       setCancelling(false);
@@ -317,6 +366,51 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
   };
 
   const closeAddPayment = () => setAddPaymentSale(null);
+
+  useEffect(() => {
+    if (!actionSuccess) return;
+    const t = setTimeout(() => setActionSuccess(null), 3000);
+    return () => clearTimeout(t);
+  }, [actionSuccess]);
+
+  useEffect(() => {
+    if (!actionError || cancelConfirmSale) return;
+    const t = setTimeout(() => setActionError(null), 4000);
+    return () => clearTimeout(t);
+  }, [actionError, cancelConfirmSale]);
+
+  const renderSaleMenuActions = (sale: SaleRecord) => (
+    <>
+      <button onClick={() => handlePaymentHistory(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <History className="w-5 h-5 text-[#3B82F6]" /> Payment History
+      </button>
+      <button onClick={() => handleShareWhatsApp(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <Share2 className="w-5 h-5 text-[#10B981]" /> Share via WhatsApp
+      </button>
+      <button onClick={() => handleSharePdf(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <Share2 className="w-5 h-5 text-[#3B82F6]" /> Share PDF
+      </button>
+      <button onClick={() => handlePrintA4(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <Printer className="w-5 h-5 text-[#3B82F6]" /> Print A4
+      </button>
+      <button onClick={() => handlePrintThermal(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <FileText className="w-5 h-5 text-[#9CA3AF]" /> Print Thermal
+      </button>
+      <button onClick={() => handleDownloadPdf(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <Download className="w-5 h-5 text-[#3B82F6]" /> Download PDF
+      </button>
+      <div className="border-t border-[#374151]" />
+      <button onClick={() => handleEdit(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <SquarePen className="w-5 h-5 text-[#3B82F6]" /> Edit Invoice
+      </button>
+      <button onClick={() => handleReturn(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <RotateCcw className="w-5 h-5 text-[#3B82F6]" /> Create Sale Return
+      </button>
+      <button onClick={() => handleCancel(sale)} disabled={cancelling} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151] disabled:opacity-50">
+        <Ban className="w-5 h-5 text-[#EF4444]" /> {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
+      </button>
+    </>
+  );
 
   const getPaymentStatusColor = (status: string) => {
     switch (status) {
@@ -383,28 +477,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setMenuSale(null)} aria-hidden="true" />
                     <div className="absolute right-0 top-full mt-1 bg-[#1F2937] border border-[#374151] rounded-xl shadow-xl overflow-hidden min-w-[200px] z-50 max-h-[70vh] overflow-y-auto">
-                      <button onClick={() => { handleShareWhatsApp(selectedSale); }} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
-                        <Share2 className="w-5 h-5 text-[#10B981]" /> Share via WhatsApp
-                      </button>
-                      <button onClick={() => { handleSharePdf(selectedSale); }} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
-                        <Share2 className="w-5 h-5 text-[#3B82F6]" /> Share PDF
-                      </button>
-                      <button onClick={() => { handlePrintA4(selectedSale); }} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
-                        <Printer className="w-5 h-5 text-[#3B82F6]" /> Print A4
-                      </button>
-                      <button onClick={() => { handlePrintThermal(selectedSale); }} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
-                        <FileText className="w-5 h-5 text-[#9CA3AF]" /> Print Thermal
-                      </button>
-                      <button onClick={() => { handleDownloadPdf(selectedSale); }} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
-                        <Download className="w-5 h-5 text-[#3B82F6]" /> Download PDF
-                      </button>
-                      <div className="border-t border-[#374151]" />
-                      <button onClick={() => { handleReturn(selectedSale); }} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
-                        <RotateCcw className="w-5 h-5 text-[#3B82F6]" /> Create Sale Return
-                      </button>
-                      <button onClick={() => handleCancel(selectedSale)} disabled={cancelling} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151] disabled:opacity-50">
-                        <Ban className="w-5 h-5 text-[#EF4444]" /> {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
-                      </button>
+                      {renderSaleMenuActions(selectedSale)}
                     </div>
                   </>
                 )}
@@ -785,18 +858,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                         <p className="text-lg font-semibold text-white">Rs. {sale.amount.toLocaleString()}</p>
                       </div>
                       <div className="py-2">
-                        <button onClick={() => handlePaymentHistory(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
-                          <History className="w-5 h-5 text-[#3B82F6]" /> Payment History
-                        </button>
-                        <button onClick={() => handlePrint(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
-                          <Printer className="w-5 h-5 text-[#3B82F6]" /> Print
-                        </button>
-                        <button onClick={() => handleReturn(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
-                          <RotateCcw className="w-5 h-5 text-[#3B82F6]" /> Return
-                        </button>
-                        <button onClick={() => handleCancel(sale)} disabled={cancelling} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151] disabled:opacity-50">
-                          <Ban className="w-5 h-5 text-[#EF4444]" /> {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
-                        </button>
+                        {renderSaleMenuActions(sale)}
                       </div>
                       <button onClick={() => setMenuSale(null)} className="w-full py-3 text-sm text-[#9CA3AF] border-t border-[#374151] hover:bg-[#374151]">
                         Close
@@ -832,7 +894,63 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
               outstandingAmount={addPaymentSale.balance_due}
             />
           )}
+
+          {actionSuccess && (
+            <div className="fixed left-4 right-4 bottom-24 z-[75] py-3 px-4 rounded-lg text-sm font-medium text-center shadow-lg bg-[#10B981] text-white">
+              {actionSuccess}
+            </div>
+          )}
+          {!cancelConfirmSale && actionError && (
+            <div className="fixed left-4 right-4 bottom-24 z-[75] py-3 px-4 rounded-lg text-sm font-medium text-center shadow-lg bg-[#EF4444] text-white">
+              {actionError}
+            </div>
+          )}
         </>
+      )}
+
+      {cancelConfirmSale && (
+        <div className="fixed inset-0 z-[85] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={() => setCancelConfirmSale(null)}>
+          <div className="w-full max-w-sm bg-[#1F2937] border border-[#374151] rounded-2xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-[#EF4444]/20 text-[#EF4444]">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold">Cancel invoice?</h3>
+                <p className="text-sm text-[#9CA3AF] mt-1">
+                  {cancelConfirmSale.id} will be cancelled and hidden from active sales.
+                </p>
+              </div>
+            </div>
+            {actionError && <p className="mt-3 text-sm text-[#FCA5A5]">{actionError}</p>}
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              <button type="button" onClick={() => setCancelConfirmSale(null)} className="h-10 rounded-lg border border-[#374151] text-[#D1D5DB]">
+                Keep
+              </button>
+              <button type="button" onClick={confirmCancel} disabled={cancelling} className="h-10 rounded-lg bg-[#EF4444] hover:bg-[#DC2626] disabled:opacity-60 text-white font-medium">
+                {cancelling ? 'Cancelling...' : 'Cancel Invoice'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {returnSale && companyId && (
+        <SaleReturnModal
+          isOpen={true}
+          companyId={companyId}
+          branchId={String((returnSale.raw.branch_id as string) || (branchId && branchId !== 'all' ? branchId : '') || '')}
+          saleId={String(returnSale.raw.id || '')}
+          saleNo={returnSale.id}
+          customerId={((returnSale.raw.customer as { id?: string } | null)?.id as string) || (returnSale.raw.customer_id as string) || null}
+          customerName={returnSale.customer}
+          userId={userId ?? null}
+          onClose={() => setReturnSale(null)}
+          onSuccess={({ returnNo }) => {
+            setReturnSale(null);
+            setActionSuccess(`Sale return ${returnNo} created successfully.`);
+          }}
+        />
       )}
     </div>
   );

@@ -14,6 +14,7 @@ import {
   getWorkerAdvanceAccountId,
   shouldDebitWorkerPayableForPayment,
 } from '@/app/services/workerAdvanceService';
+import { resolveWorkerPayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 
 export interface CreateWorkerPaymentParams {
@@ -110,13 +111,7 @@ export async function createWorkerPayment(params: CreateWorkerPaymentParams): Pr
 
   // 3) Debit Worker Payable (2010) if a stage bill exists; else Worker Advance (1180)
   const payToPayable = await shouldDebitWorkerPayableForPayment(companyId, workerId, stageId ?? null, validBranchId);
-  const { data: wpAccounts } = await supabase
-    .from('accounts')
-    .select('id')
-    .eq('company_id', companyId)
-    .or('code.eq.2010,name.ilike.%Worker Payable%')
-    .limit(1);
-  const workerPayableAccountId = (wpAccounts?.[0] as { id: string } | undefined)?.id;
+  const workerPayableAccountId = await resolveWorkerPayablePostingAccountId(companyId, workerId);
   if (!workerPayableAccountId) throw new Error('Worker Payable account (2010) not found');
 
   let debitAccountId = workerPayableAccountId;

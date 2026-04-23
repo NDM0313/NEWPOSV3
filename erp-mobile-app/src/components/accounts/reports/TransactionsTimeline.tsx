@@ -40,6 +40,13 @@ const METHOD_LABEL: Record<string, string> = {
   other: 'Other',
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function displayReference(tx: TransactionRow): string {
+  const ref = (tx.referenceNumber || tx.entryNo || '').trim();
+  if (!ref || UUID_RE.test(ref)) return tx.referenceType ? tx.referenceType.replace('_', ' ').toUpperCase() : 'TX';
+  return ref;
+}
+
 function formatDate(dateStr: string): { date: string; time: string } {
   if (!dateStr) return { date: '', time: '' };
   const d = new Date(dateStr);
@@ -311,7 +318,7 @@ export function TransactionsTimeline({
                 return {
                   time,
                   party: t.partyName || t.partyAccountName || t.referenceType,
-                  reference: `${t.referenceNumber ?? t.entryNo ?? ''} ${t.referenceType ? '· ' + t.referenceType.replace('_', ' ') : ''}`.trim(),
+                  reference: `${displayReference(t)} ${t.referenceType ? '· ' + t.referenceType.replace('_', ' ') : ''}`.trim(),
                   fromAccount: isReceived ? t.paymentAccountName ?? undefined : (t.partyAccountName ?? t.partyName) ?? undefined,
                   toAccount: isReceived ? (t.partyAccountName ?? t.partyName) ?? undefined : t.paymentAccountName ?? undefined,
                   amount: t.amount,
@@ -324,6 +331,16 @@ export function TransactionsTimeline({
             generatedAt={new Date().toLocaleString('en-PK')}
           />
         </PdfPreviewModal>
+      )}
+      {!loading && !error && rows.length > 0 && (
+        <div className="fixed left-4 right-4 bottom-24 z-20">
+          <div className="rounded-xl border border-[#374151] bg-[#111827]/95 backdrop-blur px-4 py-2 flex items-center justify-between">
+            <span className="text-xs text-[#9CA3AF]">Floating balance</span>
+            <span className={`text-sm font-bold ${stats.net >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+              Rs. {Math.abs(stats.net).toLocaleString('en-PK', { maximumFractionDigits: 0 })} {stats.net >= 0 ? 'IN' : 'OUT'}
+            </span>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -367,7 +384,7 @@ function TransactionRowCard({ tx, onClick }: { tx: TransactionRow; onClick: () =
                   {tx.partyName || tx.partyAccountName || tx.referenceType}
                 </p>
                 <p className="text-xs text-[#9CA3AF] truncate">
-                  {tx.referenceNumber ?? tx.entryNo ?? ''}
+                  {displayReference(tx)}
                   {tx.referenceType ? <span className="ml-1 capitalize">· {tx.referenceType.replace('_', ' ')}</span> : null}
                 </p>
               </div>

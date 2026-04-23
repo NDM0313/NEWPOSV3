@@ -15,7 +15,10 @@ import {
   getWorkerAdvanceAccountId,
   shouldDebitWorkerPayableForPayment,
 } from '@/app/services/workerAdvanceService';
-import { resolvePayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
+import {
+  resolvePayablePostingAccountId,
+  resolveWorkerPayablePostingAccountId,
+} from '@/app/services/partySubledgerAccountService';
 import { logPaymentCreated } from '@/app/services/auditLogService';
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {
@@ -68,13 +71,6 @@ async function getApAccountId(companyId: string): Promise<string> {
   const { data } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('code.eq.2000,name.ilike.%Accounts Payable%').limit(1);
   const id = (data?.[0] as { id: string })?.id;
   if (!id) throw new Error('Accounts Payable account (2000) not found');
-  return id;
-}
-
-async function getWorkerPayableAccountId(companyId: string): Promise<string> {
-  const { data } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('code.eq.2010,name.ilike.%Worker Payable%').limit(1);
-  const id = (data?.[0] as { id: string })?.id;
-  if (!id) throw new Error('Worker Payable account (2010) not found');
   return id;
 }
 
@@ -373,7 +369,8 @@ export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams
   logPaymentCreated(companyId, paymentId, { reference_type: 'worker_payment', amount, reference_id: workerId });
 
   const payToPayable = await shouldDebitWorkerPayableForPayment(companyId, workerId, stageId ?? null, branch);
-  const wpId = await getWorkerPayableAccountId(companyId);
+  const wpId = await resolveWorkerPayablePostingAccountId(companyId, workerId);
+  if (!wpId) throw new Error('Worker Payable account (2010) not found');
   const advId = payToPayable ? null : await getWorkerAdvanceAccountId(companyId);
   if (!payToPayable && !advId) throw new Error('Worker Advance account (1180) not found');
   const debitId = payToPayable ? wpId : advId!;

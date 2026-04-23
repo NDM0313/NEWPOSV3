@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, ShoppingBag, Plus, Search, Package, Calendar, Loader2, MapPin, Paperclip } from 'lucide-react';
+import { ArrowLeft, ShoppingBag, Plus, Search, Package, Calendar, Loader2, MapPin, Paperclip, MoreVertical, History, Share2, Printer, Download, SquarePen, RotateCcw, Ban, AlertTriangle } from 'lucide-react';
 import type { User } from '../../types';
 import * as purchasesApi from '../../api/purchases';
 import * as branchesApi from '../../api/branches';
@@ -28,10 +28,24 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
   const [showBranchPicker, setShowBranchPicker] = useState(false);
   const [createBranchId, setCreateBranchId] = useState<string | null>(null);
   const [addPaymentOrder, setAddPaymentOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
+  const [menuOrder, setMenuOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
   const [paymentHistory, setPaymentHistory] = useState<purchasesApi.PurchasePaymentRow[]>([]);
   const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
   const [markAsFinalError, setMarkAsFinalError] = useState<string | null>(null);
   const [markAsFinalLoading, setMarkAsFinalLoading] = useState(false);
+  const [cancelOrder, setCancelOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const baseUrl = import.meta.env.VITE_APP_URL || '';
+
+  const openExternalInSameTab = (relativeOrAbsoluteUrl: string): boolean => {
+    const resolved = relativeOrAbsoluteUrl.startsWith('http')
+      ? relativeOrAbsoluteUrl
+      : `${baseUrl}${relativeOrAbsoluteUrl}`;
+    if (!resolved || !/^https?:\/\//i.test(resolved)) return false;
+    window.location.assign(resolved);
+    return true;
+  };
 
   const effectiveBranchId = branchId && branchId !== 'all' ? branchId : undefined;
 
@@ -169,6 +183,102 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
 
   const pendingCount = orders.filter((o) => o.status !== 'received' && o.status !== 'final').length;
   const receivedCount = orders.filter((o) => o.status === 'received' || o.status === 'final').length;
+
+  const handleShareWhatsApp = (order: purchasesApi.PurchaseListItem) => {
+    setMenuOrder(null);
+    const link = `${baseUrl}/purchases?po=${encodeURIComponent(order.id)}`;
+    const text = [
+      `PO: ${order.poNo}`,
+      `Supplier: ${order.vendor}`,
+      `Total: Rs. ${order.total.toLocaleString()}`,
+      `Due: Rs. ${order.dueAmount.toLocaleString()}`,
+      `View: ${link}`,
+    ].join('\n');
+    const cleanPhone = String(order.vendorPhone || '').replace(/[^\d+]/g, '').replace(/^0/, '92');
+    const waUrl = cleanPhone
+      ? `https://wa.me/${encodeURIComponent(cleanPhone)}?text=${encodeURIComponent(text)}`
+      : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.location.assign(waUrl);
+  };
+
+  const handlePrint = (order: purchasesApi.PurchaseListItem) => {
+    setMenuOrder(null);
+    if (!openExternalInSameTab(`/purchases?print=${encodeURIComponent(order.id)}`)) {
+      setActionError('Print URL is not configured. Set VITE_APP_URL and retry.');
+    }
+  };
+
+  const handleEdit = (order: purchasesApi.PurchaseListItem) => {
+    setMenuOrder(null);
+    if (!openExternalInSameTab(`/purchases?edit=${encodeURIComponent(order.id)}`)) {
+      setActionError('Edit URL is not configured. Set VITE_APP_URL and retry.');
+    }
+  };
+
+  const handleReturn = (order: purchasesApi.PurchaseListItem) => {
+    setMenuOrder(null);
+    if (!openExternalInSameTab(`/purchases/returns?original=${encodeURIComponent(order.id)}`)) {
+      setActionError('Return URL is not configured. Set VITE_APP_URL and retry.');
+    }
+  };
+
+  const handleCancel = (order: purchasesApi.PurchaseListItem) => {
+    setMenuOrder(null);
+    setCancelOrder(order);
+  };
+
+  const confirmCancel = async () => {
+    if (!cancelOrder || !companyId) return;
+    setCancelling(true);
+    setActionError(null);
+    const { error } = await purchasesApi.cancelPurchase(companyId, cancelOrder.id);
+    setCancelling(false);
+    if (error) {
+      setActionError(error);
+      return;
+    }
+    setOrders((prev) => prev.filter((o) => o.id !== cancelOrder.id));
+    if (selectedOrder?.id === cancelOrder.id) {
+      setSelectedOrder(null);
+      setView('list');
+    }
+    setCancelOrder(null);
+  };
+
+  const renderOrderMenuActions = (order: purchasesApi.PurchaseListItem) => {
+    const canAddPayment = (order.status === 'final' || order.status === 'received') && order.dueAmount > 0 && (order.branchId || effectiveBranchId);
+    return (
+      <>
+        <button onClick={() => handleOrderClick(order)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+          <History className="w-5 h-5 text-[#3B82F6]" /> View & Payment History
+        </button>
+        {canAddPayment && (
+          <button onClick={() => { setMenuOrder(null); setAddPaymentOrder(order); }} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+            <Plus className="w-5 h-5 text-[#10B981]" /> Add Payment
+          </button>
+        )}
+        <button onClick={() => handleShareWhatsApp(order)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+          <Share2 className="w-5 h-5 text-[#10B981]" /> Share via WhatsApp
+        </button>
+        <button onClick={() => handlePrint(order)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+          <Printer className="w-5 h-5 text-[#3B82F6]" /> Print
+        </button>
+        <button onClick={() => handlePrint(order)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+          <Download className="w-5 h-5 text-[#3B82F6]" /> Download PDF
+        </button>
+        <div className="border-t border-[#374151]" />
+        <button onClick={() => handleEdit(order)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+          <SquarePen className="w-5 h-5 text-[#3B82F6]" /> Edit Purchase
+        </button>
+        <button onClick={() => handleReturn(order)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+          <RotateCcw className="w-5 h-5 text-[#3B82F6]" /> Create Purchase Return
+        </button>
+        <button onClick={() => handleCancel(order)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+          <Ban className="w-5 h-5 text-[#EF4444]" /> Cancel Purchase
+        </button>
+      </>
+    );
+  };
 
   if (view === 'create' && companyId && createBranchId) {
     return (
@@ -486,6 +596,28 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
                     </button>
                   </div>
                 )}
+
+                <button
+                  onClick={(e) => { e.stopPropagation(); setMenuOrder(menuOrder?.id === order.id ? null : order); }}
+                  className="absolute top-3 right-3 p-2 hover:bg-[#374151] rounded-lg text-[#9CA3AF] transition-colors"
+                  aria-label="More options"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+                {menuOrder?.id === order.id && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setMenuOrder(null)}>
+                    <div className="bg-[#1F2937] border border-[#374151] rounded-2xl shadow-xl overflow-hidden w-full max-w-[300px]" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Purchase options">
+                      <div className="px-4 py-3 border-b border-[#374151]">
+                        <p className="text-sm font-medium text-[#9CA3AF]">{order.poNo}</p>
+                        <p className="text-lg font-semibold text-white">Rs. {order.total.toLocaleString()}</p>
+                      </div>
+                      <div className="py-2">{renderOrderMenuActions(order)}</div>
+                      <button onClick={() => setMenuOrder(null)} className="w-full py-3 text-sm text-[#9CA3AF] border-t border-[#374151] hover:bg-[#374151]">
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               );
             })}
@@ -552,6 +684,39 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
                 className="w-full py-3 bg-[#374151] hover:bg-[#4B5563] text-white rounded-lg font-medium"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {actionError && !cancelOrder && (
+        <div className="fixed left-4 right-4 bottom-24 z-[75] py-3 px-4 rounded-lg text-sm font-medium text-center shadow-lg bg-[#EF4444] text-white">
+          {actionError}
+        </div>
+      )}
+
+      {cancelOrder && (
+        <div className="fixed inset-0 z-[85] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={() => setCancelOrder(null)}>
+          <div className="w-full max-w-sm bg-[#1F2937] border border-[#374151] rounded-2xl p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-[#EF4444]/20 text-[#EF4444]">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold">Cancel purchase?</h3>
+                <p className="text-sm text-[#9CA3AF] mt-1">
+                  {cancelOrder.poNo} will be cancelled and removed from active purchase list.
+                </p>
+              </div>
+            </div>
+            {actionError && <p className="mt-3 text-sm text-[#FCA5A5]">{actionError}</p>}
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              <button type="button" onClick={() => setCancelOrder(null)} className="h-10 rounded-lg border border-[#374151] text-[#D1D5DB]">
+                Keep
+              </button>
+              <button type="button" onClick={confirmCancel} disabled={cancelling} className="h-10 rounded-lg bg-[#EF4444] hover:bg-[#DC2626] disabled:opacity-60 text-white font-medium">
+                {cancelling ? 'Cancelling...' : 'Cancel'}
               </button>
             </div>
           </div>

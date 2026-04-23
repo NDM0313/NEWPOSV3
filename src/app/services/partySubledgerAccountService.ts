@@ -186,6 +186,78 @@ export async function ensurePartySubledgersForContact(
   if (t === 'supplier' || t === 'both') await ensurePayableSubaccountForContact(companyId, contactId);
 }
 
+/**
+ * Ensure Worker Payable child under 2010 for worker contacts.
+ * Prefers DB helper RPC for consistency with server-side posting.
+ */
+export async function ensureWorkerPayableSubaccountForContact(
+  companyId: string,
+  workerContactId: string
+): Promise<string | null> {
+  if (!companyId || !workerContactId) return null;
+  const control = await accountHelperService.getAccountByCode('2010', companyId);
+  if (!control?.id) return null;
+
+  const existing = await findSubledgerByContact(companyId, workerContactId, control.id);
+  if (existing) return existing;
+
+  try {
+    const { data, error } = await supabase.rpc('_ensure_worker_payable_subaccount', {
+      p_company_id: companyId,
+      p_contact_id: workerContactId,
+    });
+    if (!error && data) return String(data);
+  } catch {
+    // Fall through to local creation path.
+  }
+
+  const worker = await getContactRow(companyId, workerContactId);
+  const slug = slugFromContactCode(worker?.code, workerContactId);
+  const code = `WP-${slug}`;
+  const name = `Worker Payable — ${worker?.name ?? 'Worker'}`.slice(0, 250);
+
+  try {
+    const created = await accountService.createAccount({
+      company_id: companyId,
+      code,
+      name,
+      type: 'liability',
+      balance: 0,
+      is_active: true,
+      parent_id: control.id,
+      linked_contact_id: workerContactId,
+    });
+    return created?.id ?? null;
+  } catch (e: any) {
+    if (String(e?.message || '').includes('linked_contact') || String(e?.code || '') === 'PGRST204') {
+      try {
+        const created = await accountService.createAccount({
+          company_id: companyId,
+          code,
+          name,
+          type: 'liability',
+          balance: 0,
+          is_active: true,
+          parent_id: control.id,
+        });
+        return created?.id ?? null;
+      } catch {
+        return control.id;
+      }
+    }
+    if (String(e?.message || '').toLowerCase().includes('unique') || String(e?.code || '') === '23505') {
+      const { data: byCode } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('code', code)
+        .maybeSingle();
+      return (byCode as { id?: string } | null)?.id ?? control.id;
+    }
+    return control.id;
+  }
+}
+
 /** GL account id to use for customer AR lines (child if available, else 1100). */
 export async function resolveReceivablePostingAccountId(
   companyId: string,
@@ -207,5 +279,17 @@ export async function resolvePayablePostingAccountId(
   if (!control?.id) return null;
   if (!supplierContactId) return control.id;
   const child = await ensurePayableSubaccountForContact(companyId, supplierContactId);
+  return child || control.id;
+}
+
+/** GL account id to use for worker payable lines (child if available, else 2010). */
+export async function resolveWorkerPayablePostingAccountId(
+  companyId: string,
+  workerContactId: string | null | undefined
+): Promise<string | null> {
+  const control = await accountHelperService.getAccountByCode('2010', companyId);
+  if (!control?.id) return null;
+  if (!workerContactId) return control.id;
+  const child = await ensureWorkerPayableSubaccountForContact(companyId, workerContactId);
   return child || control.id;
 }

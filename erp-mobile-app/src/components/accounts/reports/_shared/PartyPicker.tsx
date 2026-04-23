@@ -54,7 +54,7 @@ async function loadParties(kind: PartyKind, companyId: string): Promise<PartyOpt
     .from('contacts')
     .select('id, name, phone, type, code')
     .eq('company_id', companyId)
-    .eq('type', type)
+    .in('type', [type, 'both'])
     .order('name', { ascending: true })
     .limit(500);
   return (data || []).map((r: Record<string, unknown>) => ({

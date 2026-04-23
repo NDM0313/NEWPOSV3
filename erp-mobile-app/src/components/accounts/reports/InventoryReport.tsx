@@ -27,6 +27,7 @@ export function InventoryReport({ onBack, companyId, user }: InventoryReportProp
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
   const [rows, setRows] = useState<StockMovementRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'in' | 'out'>('all');
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -48,15 +49,17 @@ export function InventoryReport({ onBack, companyId, user }: InventoryReportProp
     }
     let cancelled = false;
     setLoading(true);
+    setError(null);
     getStockMovements(
       companyId,
       range.from || undefined,
       range.to || undefined,
       selectedProduct?.id ?? null,
       selectedVariationId ?? null,
-    ).then(({ data }) => {
+    ).then(({ data, error }) => {
       if (cancelled) return;
       setRows(data);
+      setError(error);
       setLoading(false);
     });
     return () => {
@@ -182,7 +185,12 @@ export function InventoryReport({ onBack, companyId, user }: InventoryReportProp
         )}
       </ReportHeader>
 
-      <ReportShell loading={loading} empty={!loading && filtered.length === 0} emptyLabel="No stock movements in this range.">
+      <ReportShell
+        loading={loading}
+        error={error}
+        empty={!loading && !error && filtered.length === 0}
+        emptyLabel="No stock movements in this range."
+      >
         {groupedByDay ? (
           <div className="space-y-3">
             {groupedByDay.map((g) => (

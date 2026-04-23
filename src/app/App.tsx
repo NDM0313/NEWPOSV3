@@ -95,6 +95,7 @@ import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import { useSettings } from './context/SettingsContext';
 import { GlobalFilterProvider } from './context/GlobalFilterContext';
 import { PermissionInspectorPage } from './components/admin/PermissionInspectorPage';
+import { useCheckPermission } from './hooks/useCheckPermission';
 const AccountingIntegrityLabPage = lazy(() =>
   import('./components/admin/AccountingIntegrityLabPage').then((m) => ({ default: m.default }))
 );
@@ -137,6 +138,7 @@ const ProductionWorkflow = lazy(() => import('./manufacturing/ProductionWorkflow
 const AppContent = () => {
   const { currentView, partyLedgerParams, setCurrentView, setPartyLedgerParams } = useNavigation();
   const { modules, featureFlags } = useSettings();
+  const { hasPermission } = useCheckPermission();
   const studioProductionV2 = featureFlags?.studio_production_v2 === true;
   const studioProductionV3 = featureFlags?.studio_production_v3 === true;
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
@@ -401,7 +403,13 @@ const AppContent = () => {
       )}
       {currentView === 'settings' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <SettingsPageNew />
+          {hasPermission('settings.view') ? (
+            <SettingsPageNew />
+          ) : (
+            <div className="p-8 text-center text-gray-300">
+              You do not have permission to access Settings.
+            </div>
+          )}
         </Suspense>
       )}
       {currentView === 'erp-permissions' && (

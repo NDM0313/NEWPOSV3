@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Plus, Loader2 } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, Sparkles } from 'lucide-react';
 import type { User, Branch } from '../../types';
 import * as studioApi from '../../api/studio';
 import { StudioDashboard, type StudioOrder, type StudioStage } from './StudioDashboard';
@@ -118,6 +118,7 @@ function mapProductionToOrder(
 
 export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSale, focusSaleId, onFocusHandled }: StudioModuleProps) {
   const [view, setView] = useState<View>('dashboard');
+  const [dashboardVariant, setDashboardVariant] = useState<'classic' | 'test'>('classic');
   const [selectedOrder, setSelectedOrder] = useState<StudioOrder | null>(null);
   const [selectedStage, setSelectedStage] = useState<StudioStage | null>(null);
   const [orders, setOrders] = useState<StudioOrder[]>([]);
@@ -167,6 +168,10 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
   }, [focusSaleId, loading, orders, productionsRaw, onFocusHandled]);
 
   if (view === 'dashboard') {
+    const openOrder = (order: StudioOrder) => {
+      setSelectedOrder(order);
+      setView('order-detail');
+    };
     return (
       <div className="min-h-screen pb-24 bg-[#111827]">
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
@@ -188,6 +193,23 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
               Add
             </button>
           </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 bg-white/10 p-1 rounded-xl border border-white/20">
+            <button
+              type="button"
+              onClick={() => setDashboardVariant('classic')}
+              className={`h-9 rounded-lg text-sm font-medium transition-colors ${dashboardVariant === 'classic' ? 'bg-white text-[#7C3AED]' : 'text-white/80 hover:bg-white/10'}`}
+            >
+              Studio (Classic)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDashboardVariant('test')}
+              className={`h-9 rounded-lg text-sm font-medium transition-colors inline-flex items-center justify-center gap-1.5 ${dashboardVariant === 'test' ? 'bg-white text-[#7C3AED]' : 'text-white/80 hover:bg-white/10'}`}
+            >
+              <Sparkles className="w-4 h-4" />
+              Studio Test
+            </button>
+          </div>
         </div>
         <div className="p-4">
           {loading ? (
@@ -198,14 +220,56 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
             <div className="bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-xl p-4 text-[#EF4444] text-sm">
               {error}
             </div>
-          ) : (
+          ) : dashboardVariant === 'classic' ? (
             <StudioDashboard
               orders={orders}
-              onOrderClick={(order) => {
-                setSelectedOrder(order);
-                setView('order-detail');
-              }}
+              onOrderClick={openOrder}
             />
+          ) : (
+            <div className="space-y-3">
+              {orders.length === 0 ? (
+                <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-6 text-center text-[#9CA3AF] text-sm">
+                  No studio orders yet.
+                </div>
+              ) : (
+                orders.map((order) => {
+                  const pendingStages = Math.max(0, order.totalStages - order.completedStages);
+                  return (
+                    <button
+                      key={order.id}
+                      type="button"
+                      onClick={() => openOrder(order)}
+                      className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/60 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{order.orderNumber}</p>
+                          <p className="text-xs text-[#9CA3AF] truncate">{order.customerName}</p>
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded capitalize ${order.status === 'completed' ? 'bg-[#10B981]/20 text-[#10B981]' : order.status === 'in-progress' ? 'bg-[#3B82F6]/20 text-[#93C5FD]' : 'bg-[#374151] text-[#9CA3AF]'}`}>
+                          {order.status}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                        <div className="bg-[#111827] border border-[#374151] rounded-lg p-2">
+                          <p className="text-[#6B7280]">Completed</p>
+                          <p className="text-white font-medium">{order.completedStages}</p>
+                        </div>
+                        <div className="bg-[#111827] border border-[#374151] rounded-lg p-2">
+                          <p className="text-[#6B7280]">Pending</p>
+                          <p className="text-[#F59E0B] font-medium">{pendingStages}</p>
+                        </div>
+                        <div className="bg-[#111827] border border-[#374151] rounded-lg p-2">
+                          <p className="text-[#6B7280]">Target</p>
+                          <p className="text-white font-medium">{order.deadline || '—'}</p>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-xs text-[#9CA3AF] truncate">Current: {order.currentStage || 'Not Started'}</p>
+                    </button>
+                  );
+                })
+              )}
+            </div>
           )}
         </div>
       </div>

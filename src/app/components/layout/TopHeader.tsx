@@ -44,10 +44,12 @@ import { ChangePasswordDialog } from '../auth/ChangePasswordDialog';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 import { productService } from '../../services/productService';
 import { shipmentAccountingService } from '../../services/shipmentAccountingService';
+import { useCheckPermission } from '../../hooks/useCheckPermission';
 
 export const TopHeader = () => {
   const { toggleSidebar, openDrawer, setCurrentView, setMobileNavOpen } = useNavigation();
   const { signOut, user, companyId, branchId } = useSupabase();
+  const { hasPermission } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
   const globalFilter = useGlobalFilter();
   const { dateRangeType, setDateRangeType, setCustomDateRange, getDateRangeLabel, setBranchId: setGlobalBranchId, customStartDate, customEndDate, startDateObj, endDateObj } = globalFilter;
@@ -158,6 +160,10 @@ export const TopHeader = () => {
   };
 
   const handleSettings = () => {
+    if (!hasPermission('settings.view')) {
+      toast.error('You do not have access to Settings.');
+      return;
+    }
     setCurrentView('settings');
   };
 

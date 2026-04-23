@@ -10,6 +10,7 @@ import { productService } from '@/app/services/productService';
 import { settingsService } from '@/app/services/settingsService';
 import { accountHelperService } from '@/app/services/accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from '@/app/services/accountingService';
+import { resolveWorkerPayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
 
 /** Resolve worker name from contacts for a stage row (avoids workers table join which can 400). */
 async function resolveStageWorker(stage: any): Promise<void> {
@@ -268,8 +269,8 @@ async function createProductionCostJournalEntry(params: {
   const { companyId, branchId, stageId, workerId, productionNo, saleId, amount, stageType, performedBy } = params;
   if (amount <= 0) return null;
   const costAccount = await accountHelperService.getAccountByCode('5000', companyId);
-  const payableAccount = await accountHelperService.getAccountByCode('2010', companyId);
-  if (!costAccount?.id || !payableAccount?.id) {
+  const workerPayableAccountId = await resolveWorkerPayablePostingAccountId(companyId, workerId);
+  if (!costAccount?.id || !workerPayableAccountId) {
     console.warn('[studioProductionService] Cost of Production (5000) or Worker Payable (2010) account not found');
     return null;
   }
@@ -288,7 +289,7 @@ async function createProductionCostJournalEntry(params: {
   };
   const lines: JournalEntryLine[] = [
     { id: '', journal_entry_id: '', account_id: costAccount.id, debit: amount, credit: 0, description: `Production cost – ${stageType}` },
-    { id: '', journal_entry_id: '', account_id: payableAccount.id, debit: 0, credit: amount, description: `Worker payable – ${stageType}` },
+    { id: '', journal_entry_id: '', account_id: workerPayableAccountId, debit: 0, credit: amount, description: `Worker payable – ${stageType}` },
   ];
   const result = await accountingService.createEntry(entry, lines);
   const billJeId = (result as any)?.id ?? null;
@@ -314,16 +315,17 @@ async function createProductionCostReversalEntry(params: {
   companyId: string;
   branchId: string | null;
   stageId: string;
+  workerId?: string | null;
   productionNo: string;
   amount: number;
   stageType: string;
   performedBy?: string | null;
 }): Promise<string | null> {
-  const { companyId, branchId, stageId, productionNo, amount, stageType, performedBy } = params;
+  const { companyId, branchId, stageId, workerId, productionNo, amount, stageType, performedBy } = params;
   if (amount <= 0) return null;
   const costAccount = await accountHelperService.getAccountByCode('5000', companyId);
-  const payableAccount = await accountHelperService.getAccountByCode('2010', companyId);
-  if (!costAccount?.id || !payableAccount?.id) return null;
+  const workerPayableAccountId = await resolveWorkerPayablePostingAccountId(companyId, workerId ?? null);
+  if (!costAccount?.id || !workerPayableAccountId) return null;
   const entryNo = `JE-STD-REV-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
   const entryDate = new Date().toISOString().split('T')[0];
   const entry: JournalEntry = {
@@ -338,7 +340,7 @@ async function createProductionCostReversalEntry(params: {
     created_by: performedBy || undefined,
   };
   const lines: JournalEntryLine[] = [
-    { id: '', journal_entry_id: '', account_id: payableAccount.id, debit: amount, credit: 0, description: `Reversal worker payable – ${stageType}` },
+    { id: '', journal_entry_id: '', account_id: workerPayableAccountId, debit: amount, credit: 0, description: `Reversal worker payable – ${stageType}` },
     { id: '', journal_entry_id: '', account_id: costAccount.id, debit: 0, credit: amount, description: `Reversal production cost – ${stageType}` },
   ];
   const result = await accountingService.createEntry(entry, lines);
@@ -1688,6 +1690,7 @@ export const studioProductionService = {
           companyId: production.company_id,
           branchId: production.branch_id || null,
           stageId,
+          workerId: stage.assigned_worker_id ?? null,
           productionNo: production.production_no,
           amount: cost,
           stageType: stage.stage_type || 'stage',
@@ -1762,6 +1765,7 @@ export const studioProductionService = {
       companyId: production.company_id,
       branchId: production.branch_id || null,
       stageId,
+      workerId: stage.assigned_worker_id ?? null,
       productionNo: production.production_no,
       amount: oldCost,
       stageType: stage.stage_type || 'stage',
