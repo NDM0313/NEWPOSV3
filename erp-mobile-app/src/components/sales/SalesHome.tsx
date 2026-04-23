@@ -40,7 +40,7 @@ interface SalesHomeProps {
 
 export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: SalesHomeProps) {
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
-  const [stats, setStats] = useState<{ today: number; week: number }>({ today: 0, week: 0 });
+  const [stats, setStats] = useState<{ today: number; week: number; month: number }>({ today: 0, week: 0, month: 0 });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
@@ -76,10 +76,11 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
 
     const load = async () => {
       const effectiveBranchId = branchId && branchId !== 'all' ? branchId : undefined;
-      const [salesRes, todayRes, weekRes] = await Promise.all([
+      const [salesRes, todayRes, weekRes, monthRes] = await Promise.all([
         salesApi.getAllSales(companyId, effectiveBranchId ?? null),
         reportsApi.getSalesSummary(companyId, effectiveBranchId ?? null, 1),
         reportsApi.getSalesSummary(companyId, effectiveBranchId ?? null, 7),
+        reportsApi.getSalesSummary(companyId, effectiveBranchId ?? null, 30),
       ]);
 
       if (cancelled) return;
@@ -125,6 +126,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
       setStats({
         today: todayRes.data?.totalSales ?? 0,
         week: weekRes.data?.totalSales ?? 0,
+        month: monthRes.data?.totalSales ?? 0,
       });
       setLoading(false);
     };
@@ -201,15 +203,23 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
   const [editSale, setEditSale] = useState<SaleRecord | null>(null);
   const [editDate, setEditDate] = useState<string>('');
   const [editNotes, setEditNotes] = useState<string>('');
+  const [editCustomerName, setEditCustomerName] = useState<string>('');
+  const [editContactNumber, setEditContactNumber] = useState<string>('');
+  const [editPaymentMethod, setEditPaymentMethod] = useState<string>('');
+  const [editDiscount, setEditDiscount] = useState<string>('0');
+  const [editShipment, setEditShipment] = useState<string>('0');
+  const [editExtra, setEditExtra] = useState<string>('0');
+  const [editDeadline, setEditDeadline] = useState<string>('');
   const [editSaving, setEditSaving] = useState(false);
 
   const refetchSales = useCallback(async (): Promise<SaleRecord[]> => {
     if (!companyId) return [];
     const effectiveBranchId = branchId && branchId !== 'all' ? branchId : null;
-    const [salesRes, todayRes, weekRes] = await Promise.all([
+    const [salesRes, todayRes, weekRes, monthRes] = await Promise.all([
       salesApi.getAllSales(companyId, effectiveBranchId),
       reportsApi.getSalesSummary(companyId, effectiveBranchId, 1),
       reportsApi.getSalesSummary(companyId, effectiveBranchId, 7),
+      reportsApi.getSalesSummary(companyId, effectiveBranchId, 30),
     ]);
     let list: SaleRecord[] = [];
     if (salesRes.data?.length) {
@@ -252,6 +262,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     setStats({
       today: todayRes.data?.totalSales ?? 0,
       week: weekRes.data?.totalSales ?? 0,
+      month: monthRes.data?.totalSales ?? 0,
     });
     return list;
   }, [companyId, branchId]);
@@ -333,6 +344,13 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     ).slice(0, 10);
     setEditDate(currentDate);
     setEditNotes(String((sale.raw.notes as string) || ''));
+    setEditCustomerName(String((sale.raw.customer_name as string) || ''));
+    setEditContactNumber(String((sale.raw.contact_number as string) || ''));
+    setEditPaymentMethod(String((sale.raw.payment_method as string) || ''));
+    setEditDiscount(String(Number(sale.raw.discount_amount ?? 0) || 0));
+    setEditShipment(String(Number(sale.raw.shipment_charges ?? 0) || 0));
+    setEditExtra(String(Number(sale.raw.extra_expenses ?? 0) || 0));
+    setEditDeadline(String((sale.raw.deadline as string) || '').slice(0, 10));
     setEditSale(sale);
   };
 
@@ -341,9 +359,32 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     setEditSaving(true);
     setActionError(null);
     try {
-      const updates: Record<string, unknown> = {};
+      const raw = editSale.raw;
+      const subtotal = Number(raw.subtotal ?? 0) || 0;
+      const tax = Number(raw.tax_amount ?? 0) || 0;
+      const studio = Number(raw.studio_charges ?? 0) || 0;
+      const discount = Number(editDiscount) || 0;
+      const shipment = Number(editShipment) || 0;
+      const extra = Number(editExtra) || 0;
+      const total = Math.max(0, subtotal - discount + tax + shipment + extra + studio);
+      const paid = Number(raw.paid_amount ?? 0) || 0;
+      const due = Math.max(0, total - paid);
+
+      const updates: Record<string, unknown> = {
+        notes: editNotes || null,
+        customer_name: editCustomerName || raw.customer_name,
+        contact_number: editContactNumber || null,
+        payment_method: editPaymentMethod || null,
+        discount_amount: discount,
+        shipment_charges: shipment,
+        extra_expenses: extra,
+        total,
+        due_amount: due,
+        updated_at: new Date().toISOString(),
+      };
       if (editDate) updates.invoice_date = editDate;
-      updates.notes = editNotes || null;
+      if (editDeadline) updates.deadline = editDeadline;
+
       const { error } = await supabase
         .from('sales')
         .update(updates)
@@ -381,11 +422,23 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     setCancelling(true);
     setActionError(null);
     try {
-      const { error } = await salesApi.cancelSale(cancelConfirmSale.raw.id as string);
+      const { error } = await salesApi.cancelSale(cancelConfirmSale.raw.id as string, {
+        userId: userId ?? null,
+      });
       if (error) {
         setActionError(error);
       } else {
-        setRecentSales((prev) => prev.filter((s) => s.id !== cancelConfirmSale.id));
+        // Keep the row visible with cancelled badge (matches web). Mark status locally.
+        setRecentSales((prev) =>
+          prev.map((s) =>
+            s.id === cancelConfirmSale.id
+              ? {
+                  ...s,
+                  raw: { ...s.raw, status: 'cancelled' },
+                }
+              : s,
+          ),
+        );
         setSelectedSale(null);
         setActionSuccess(`Invoice ${cancelConfirmSale.id} cancelled successfully.`);
         setCancelConfirmSale(null);
@@ -724,27 +777,47 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
-      <div className="bg-gradient-to-br from-[#3B82F6] to-[#2563EB] p-4 sticky top-0 z-10">
+      <div className="bg-gradient-to-br from-[#1E3A8A] via-[#2563EB] to-[#3B82F6] p-4 sticky top-0 z-10 shadow-lg">
         <div className="flex items-center gap-3 mb-4">
           <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1">
-            <h1 className="font-semibold text-white">Sales</h1>
-            <p className="text-xs text-white/80">Invoices & receipts</p>
+            <h1 className="font-semibold text-white text-lg">Sales</h1>
+            <p className="text-xs text-white/80">{recentSales.length} recent invoices</p>
           </div>
-          <button onClick={onNewSale} className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-white">
-            <Plus className="w-5 h-5" />
+          <button
+            onClick={onNewSale}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white text-[#2563EB] rounded-lg font-semibold text-sm shadow-md hover:bg-white/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New
           </button>
         </div>
+
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl px-2 py-2 border border-white/10">
+            <p className="text-[10px] text-white/70 uppercase tracking-wide">Today</p>
+            <p className="text-sm font-bold text-white truncate">Rs. {stats.today.toLocaleString()}</p>
+          </div>
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl px-2 py-2 border border-white/10">
+            <p className="text-[10px] text-white/70 uppercase tracking-wide">Week</p>
+            <p className="text-sm font-bold text-white truncate">Rs. {stats.week.toLocaleString()}</p>
+          </div>
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl px-2 py-2 border border-white/10">
+            <p className="text-[10px] text-white/70 uppercase tracking-wide">Month</p>
+            <p className="text-sm font-bold text-white truncate">Rs. {stats.month.toLocaleString()}</p>
+          </div>
+        </div>
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search sales..."
-            className="w-full h-10 bg-white/10 border border-white/20 rounded-lg pl-10 pr-4 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20"
+            placeholder="Search invoice # or customer..."
+            className="w-full h-10 bg-white/15 border border-white/20 rounded-xl pl-10 pr-4 text-sm text-white placeholder:text-white/60 focus:outline-none focus:bg-white/20 focus:border-white/40"
           />
         </div>
       </div>
@@ -755,22 +828,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
         </div>
       ) : (
         <>
-          <div className="p-4 grid grid-cols-3 gap-3">
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-3 text-center">
-              <p className="text-xs text-[#9CA3AF] mb-1">Today</p>
-              <p className="text-xl font-bold text-[#3B82F6]">Rs. {stats.today.toLocaleString()}</p>
-            </div>
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-3 text-center">
-              <p className="text-xs text-[#9CA3AF] mb-1">This Week</p>
-              <p className="text-xl font-bold text-[#F59E0B]">Rs. {stats.week.toLocaleString()}</p>
-            </div>
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-3 text-center">
-              <p className="text-xs text-[#9CA3AF] mb-1">Invoices</p>
-              <p className="text-xl font-bold text-[#10B981]">{recentSales.length}</p>
-            </div>
-          </div>
-
-          <div className="p-4 space-y-3">
+          <div className="p-4 pt-4 space-y-3">
             {filteredSales.map((sale) => {
               const isCancelled = sale.raw.status === 'cancelled';
               const overpaid = sale.credit_balance > 0;
@@ -786,8 +844,8 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                 >
                   {/* Row 1: Invoice No. | Amount (right; grand total when studio cost present) */}
                   <div className="flex items-start justify-between gap-2 mb-1">
-                    <h3 className="font-medium text-white truncate">{sale.id}</h3>
-                    <span className="text-sm font-semibold text-[#10B981] shrink-0">
+                    <h3 className={`font-medium truncate ${isCancelled ? 'text-[#9CA3AF] line-through' : 'text-white'}`}>{sale.id}</h3>
+                    <span className={`text-sm font-semibold shrink-0 ${isCancelled ? 'text-[#9CA3AF] line-through' : 'text-[#10B981]'}`}>
                       Rs. {(sale.grand_total ?? sale.amount).toLocaleString()}
                     </span>
                   </div>
@@ -1025,8 +1083,8 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
 
       {editSale && (
         <div className="fixed inset-0 z-[80] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={() => !editSaving && setEditSale(null)}>
-          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b border-[#374151] flex items-center justify-between">
+          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-[#374151] flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-white font-semibold">Edit Invoice</h3>
                 <p className="text-xs text-[#9CA3AF]">{editSale.id}</p>
@@ -1035,15 +1093,90 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-3 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Invoice Date</label>
+                  <input
+                    type="date"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Deadline</label>
+                  <input
+                    type="date"
+                    value={editDeadline}
+                    onChange={(e) => setEditDeadline(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                  />
+                </div>
+              </div>
               <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">Invoice Date</label>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Customer Name</label>
                 <input
-                  type="date"
-                  value={editDate}
-                  onChange={(e) => setEditDate(e.target.value)}
+                  type="text"
+                  value={editCustomerName}
+                  onChange={(e) => setEditCustomerName(e.target.value)}
                   className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Contact #</label>
+                  <input
+                    type="tel"
+                    value={editContactNumber}
+                    onChange={(e) => setEditContactNumber(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Payment Method</label>
+                  <select
+                    value={editPaymentMethod}
+                    onChange={(e) => setEditPaymentMethod(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                  >
+                    <option value="">—</option>
+                    <option value="cash">Cash</option>
+                    <option value="bank">Bank</option>
+                    <option value="card">Card</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="credit">Credit</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Discount</label>
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={editDiscount}
+                    onChange={(e) => setEditDiscount(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Shipping</label>
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={editShipment}
+                    onChange={(e) => setEditShipment(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Extras</label>
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={editExtra}
+                    onChange={(e) => setEditExtra(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-xs text-[#9CA3AF] mb-1">Notes</label>
@@ -1054,12 +1187,31 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                   className="w-full rounded-lg bg-[#111827] border border-[#374151] text-white px-3 py-2 text-sm resize-none"
                 />
               </div>
+              <div className="rounded-lg bg-[#111827] border border-[#374151] p-3 text-xs space-y-1">
+                <div className="flex justify-between text-[#9CA3AF]">
+                  <span>Subtotal</span>
+                  <span className="text-white">Rs. {Number(editSale.raw.subtotal ?? 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-[#9CA3AF]">
+                  <span>Recalculated Total</span>
+                  <span className="text-[#10B981] font-semibold">
+                    Rs. {(
+                      (Number(editSale.raw.subtotal ?? 0) || 0) -
+                      (Number(editDiscount) || 0) +
+                      (Number(editSale.raw.tax_amount ?? 0) || 0) +
+                      (Number(editShipment) || 0) +
+                      (Number(editExtra) || 0) +
+                      (Number(editSale.raw.studio_charges ?? 0) || 0)
+                    ).toLocaleString()}
+                  </span>
+                </div>
+              </div>
               <p className="text-[11px] text-[#F59E0B]">
-                For line-item edits (products, quantities, prices) please cancel this invoice and create a new one — ensures accounting stays consistent.
+                Header edits (date, party, discount, shipping, extras) save directly. For line-item changes (products, quantities, prices) please Cancel this invoice and create a new one — keeps accounting consistent.
               </p>
               {actionError && <div className="rounded-lg bg-[#EF4444] text-white text-sm px-3 py-2">{actionError}</div>}
             </div>
-            <div className="p-4 border-t border-[#374151] grid grid-cols-2 gap-3">
+            <div className="p-4 border-t border-[#374151] grid grid-cols-2 gap-3 shrink-0">
               <button type="button" onClick={() => !editSaving && setEditSale(null)} className="h-11 rounded-lg border border-[#374151] text-[#D1D5DB]">
                 Cancel
               </button>

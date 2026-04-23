@@ -198,6 +198,31 @@ export const saleReturnService = {
     const tax_amount = 0; // Can be enhanced later
     const total = providedTotal !== undefined ? providedTotal : (subtotal - discount_amount + tax_amount);
 
+    // Guard: return total must not exceed remaining returnable on original sale.
+    if (original_sale_id) {
+      const { data: origSale } = await supabase
+        .from('sales')
+        .select('total')
+        .eq('id', original_sale_id)
+        .maybeSingle();
+      const origTotal = Number((origSale as { total?: number } | null)?.total ?? 0) || 0;
+      if (origTotal > 0) {
+        const { data: prior } = await supabase
+          .from('sale_returns')
+          .select('total, status')
+          .eq('original_sale_id', original_sale_id);
+        const priorSum = (prior || [])
+          .filter((r: { status?: string }) => r.status !== 'voided' && r.status !== 'cancelled' && r.status !== 'void')
+          .reduce((s: number, r: { total?: number }) => s + (Number(r.total) || 0), 0);
+        const remaining = Math.max(0, origTotal - priorSum);
+        if (total > remaining + 0.005) {
+          throw new Error(
+            `Return amount (Rs. ${total.toLocaleString()}) exceeds remaining returnable on this invoice (Rs. ${remaining.toLocaleString()}). Original total was Rs. ${origTotal.toLocaleString()}.`,
+          );
+        }
+      }
+    }
+
     // Generate return number
     const return_no = await this.generateReturnNumber(company_id, branch_id);
 

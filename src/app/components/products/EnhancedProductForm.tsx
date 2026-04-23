@@ -12,6 +12,7 @@ import {
   formatVariationName,
 } from '@/app/services/productService';
 import { variationMasterService } from '@/app/services/variationMasterService';
+import { variationLibraryService } from '@/app/services/variationLibraryService';
 import { inventoryService } from '@/app/services/inventoryService';
 import { brandService } from '@/app/services/brandService';
 import { productCategoryService } from '@/app/services/productCategoryService';
@@ -352,7 +353,25 @@ export const EnhancedProductForm = ({
   // datalists until toggle; ensures COLOR/SIZE/etc. match Settings → Inventory → Variations).
   useEffect(() => {
     if (!companyId) return;
-    variationMasterService.get(companyId).then(setVariationMaster).catch(() => setVariationMaster({}));
+    // Merge Settings → Inventory → Variations master WITH the global library
+    // (new 20260500 tables) so newly-added attributes auto-appear in the picker.
+    void (async () => {
+      try {
+        const [legacy, library] = await Promise.all([
+          variationMasterService.get(companyId).catch(() => ({} as Record<string, string[]>)),
+          variationLibraryService.listAttributes(companyId).catch(() => []),
+        ]);
+        const merged: Record<string, string[]> = { ...(legacy || {}) };
+        for (const attr of library) {
+          const existing = new Set((merged[attr.name] || []).map((v) => v.toLowerCase()));
+          const add = attr.values.map((v) => v.value).filter((v) => !existing.has(v.toLowerCase()));
+          merged[attr.name] = [...(merged[attr.name] || []), ...add];
+        }
+        setVariationMaster(merged);
+      } catch {
+        setVariationMaster({});
+      }
+    })();
   }, [companyId]);
 
   // Load suppliers from contacts (type = supplier)

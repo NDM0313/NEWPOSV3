@@ -527,58 +527,25 @@ export async function getSaleStudioSummary(
   };
 }
 
-/** Cancel a sale (reverses stock, updates status) */
-export async function cancelSale(saleId: string): Promise<{ error: string | null }> {
+/**
+ * Cancel a sale (full void): reverses stock, creates sale_reversal journal entry,
+ * sets status='cancelled'. Idempotent — safe to call again on already-cancelled sales.
+ * Server-side: public.cancel_sale_full_void RPC.
+ */
+export async function cancelSale(
+  saleId: string,
+  opts?: { userId?: string | null; reason?: string | null },
+): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
-  const { data: saleRow } = await supabase.from('sales').select('id, invoice_no, branch_id, company_id').eq('id', saleId).single();
-  if (!saleRow) return { error: 'Sale not found' };
-  const s = saleRow as Record<string, unknown>;
-  if (s.status === 'cancelled') return { error: 'Sale is already cancelled' };
-
-  const { data: existing } = await supabase
-    .from('stock_movements')
-    .select('id')
-    .eq('reference_type', 'sale')
-    .eq('reference_id', saleId)
-    .eq('movement_type', 'SALE_CANCELLED')
-    .limit(1);
-  if (existing && existing.length > 0) {
-    const { error } = await supabase.from('sales').update({ status: 'cancelled' }).eq('id', saleId);
-    return { error: error?.message ?? null };
-  }
-
-  const { data: movements } = await supabase
-    .from('stock_movements')
-    .select('id, company_id, branch_id, product_id, variation_id, quantity, unit_cost, total_cost, box_change, piece_change')
-    .eq('reference_type', 'sale')
-    .eq('reference_id', saleId)
-    .eq('movement_type', 'sale');
-
-  if (movements && movements.length > 0) {
-    const invoiceNo = String(s.invoice_no ?? `SL-${saleId.slice(0, 8)}`);
-    for (const m of movements) {
-      const rev: Record<string, unknown> = {
-        company_id: m.company_id,
-        branch_id: m.branch_id,
-        product_id: m.product_id,
-        variation_id: m.variation_id ?? null,
-        movement_type: 'SALE_CANCELLED',
-        quantity: Math.abs(Number(m.quantity) || 0),
-        unit_cost: Number(m.unit_cost) || 0,
-        total_cost: Math.abs(Number(m.total_cost) || 0),
-        reference_type: 'sale',
-        reference_id: saleId,
-        notes: `Reversal of ${invoiceNo} (Cancelled)`,
-      };
-      if (m.box_change != null) rev.box_change = Math.abs(Number(m.box_change) || 0);
-      if (m.piece_change != null) rev.piece_change = Math.abs(Number(m.piece_change) || 0);
-      const { error: insErr } = await supabase.from('stock_movements').insert(rev);
-      if (insErr) return { error: `Stock reversal failed: ${insErr.message}` };
-    }
-  }
-
-  const { error } = await supabase.from('sales').update({ status: 'cancelled' }).eq('id', saleId);
-  return { error: error?.message ?? null };
+  const { data, error } = await supabase.rpc('cancel_sale_full_void', {
+    p_sale_id: saleId,
+    p_user_id: opts?.userId ?? null,
+    p_reason: opts?.reason ?? null,
+  });
+  if (error) return { error: error.message };
+  const res = data as { success?: boolean; error?: string } | null;
+  if (res && res.success === false) return { error: res.error ?? 'Cancel failed' };
+  return { error: null };
 }
 
 /** Record a payment against a sale (Dr Cash/Bank, Cr A/R) via RPC. Respects company_id and branch_id. */
@@ -873,6 +840,8 @@ export type CreateSaleReturnPayload = {
   userId?: string | null;
   reason?: string | null;
   notes?: string | null;
+  /** Header-level discount on the return (flat amount). Persists to sale_returns.discount_amount. */
+  discountAmount?: number;
   items: Array<{
     saleItemId?: string | null;
     productId: string;
@@ -913,7 +882,37 @@ export async function createAndFinalizeSaleReturn(payload: CreateSaleReturnPaylo
   }
 
   const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
+  const discountAmount = Math.max(0, Math.min(Number(payload.discountAmount ?? 0) || 0, subtotal));
+  const total = Math.max(0, subtotal - discountAmount);
   const normalizedDate = new Date().toISOString().slice(0, 10);
+
+  // Client-side cap guard: return total must not exceed remaining returnable amount on original sale.
+  try {
+    const { data: origSale } = await supabase
+      .from('sales')
+      .select('total')
+      .eq('id', payload.saleId)
+      .maybeSingle();
+    const originalTotal = Number((origSale as { total?: number } | null)?.total ?? 0) || 0;
+    if (originalTotal > 0) {
+      const { data: priorRets } = await supabase
+        .from('sale_returns')
+        .select('total, status')
+        .eq('original_sale_id', payload.saleId);
+      const priorSum = (priorRets || [])
+        .filter((r: { status?: string }) => r.status !== 'voided' && r.status !== 'cancelled')
+        .reduce((s: number, r: { total?: number }) => s + (Number(r.total) || 0), 0);
+      const remaining = Math.max(0, originalTotal - priorSum);
+      if (total > remaining + 0.005) {
+        return {
+          data: null,
+          error: `Return amount (Rs. ${total.toLocaleString()}) exceeds remaining returnable on this invoice (Rs. ${remaining.toLocaleString()}). Original total was Rs. ${originalTotal.toLocaleString()}.`,
+        };
+      }
+    }
+  } catch {
+    /* non-fatal: server RPC also guards */
+  }
 
   const { data: saleReturn, error: headerErr } = await supabase
     .from('sale_returns')
@@ -927,9 +926,9 @@ export async function createAndFinalizeSaleReturn(payload: CreateSaleReturnPaylo
       customer_name: payload.customerName || 'Walk-in',
       status: 'draft',
       subtotal,
-      discount_amount: 0,
+      discount_amount: discountAmount,
       tax_amount: 0,
-      total: subtotal,
+      total,
       reason: payload.reason ?? null,
       notes: payload.notes ?? null,
       created_by: payload.userId ?? null,

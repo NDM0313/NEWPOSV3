@@ -472,7 +472,12 @@ export const StudioSaleDetailNew = () => {
 
     const stepStatusMap: Record<string, StepStatus> = {
       'pending': 'Pending',
+      'assigned': 'Assigned',
       'in_progress': 'In Progress',
+      // Parity with mobile: sent_to_worker / received both surface as "In Progress"
+      // in the existing StepStatus union so badges and gating remain consistent.
+      'sent_to_worker': 'In Progress',
+      'received': 'In Progress',
       'completed': 'Completed'
     };
 

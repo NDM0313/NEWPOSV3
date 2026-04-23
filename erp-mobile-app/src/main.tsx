@@ -4,6 +4,7 @@ import './index.css';
 import { registerAllSyncHandlers } from './lib/registerSyncHandlers';
 import { PermissionProvider } from './context/PermissionContext';
 import { SettingsProvider } from './context/SettingsContext';
+import { LoadingProvider } from './contexts/LoadingContext';
 
 registerAllSyncHandlers();
 
@@ -15,9 +16,11 @@ if ('serviceWorker' in navigator) {
 }
 
 createRoot(document.getElementById('root')!).render(
-  <PermissionProvider>
-    <SettingsProvider>
-      <App />
-    </SettingsProvider>
-  </PermissionProvider>
+  <LoadingProvider>
+    <PermissionProvider>
+      <SettingsProvider>
+        <App />
+      </SettingsProvider>
+    </PermissionProvider>
+  </LoadingProvider>
 );

@@ -65,6 +65,21 @@ if [ -f "$ERP_ENV" ]; then
   echo "[fix-jwt] Updated VITE_SUPABASE_ANON_KEY in .env.production"
 fi
 
+# Also sync Mobile ERP .env.production (Vite mobile build reads this file in Docker mobile-builder stage)
+MOBILE_ENV="$ROOT/erp-mobile-app/.env.production"
+if [ -f "$MOBILE_ENV" ]; then
+  grep -v '^VITE_SUPABASE_ANON_KEY=' "$MOBILE_ENV" > "${MOBILE_ENV}.tmp" 2>/dev/null || true
+  printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$NEW_ANON" >> "${MOBILE_ENV}.tmp"
+  mv "${MOBILE_ENV}.tmp" "$MOBILE_ENV"
+  echo "[fix-jwt] Updated VITE_SUPABASE_ANON_KEY in erp-mobile-app/.env.production"
+else
+  echo "[fix-jwt] erp-mobile-app/.env.production missing; creating from root .env.production"
+  {
+    grep -E '^VITE_SUPABASE_URL=' "$ERP_ENV" 2>/dev/null || echo 'VITE_SUPABASE_URL=https://supabase.dincouture.pk'
+    printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$NEW_ANON"
+  } > "$MOBILE_ENV"
+fi
+
 # Recreate containers that use ANON_KEY (restart does NOT reload .env in Docker)
 # Studio serves the key to the browser; Storage/Kong/Functions use it for API. All must get new key from .env.
 if [ -f "$SUPABASE_DIR/docker-compose.yml" ] || [ -f "$SUPABASE_DIR/docker-compose.yaml" ]; then

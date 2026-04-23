@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Plus, Edit2, Trash2, CheckCircle, Clock, Package, Banknote, Building2, Wallet, Percent } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, CheckCircle, Clock, Package, Banknote, Building2, Wallet, Percent, Save } from 'lucide-react';
 import type { StudioOrder, StudioStage } from './StudioDashboard';
+import * as studioApi from '../../api/studio';
+import { useLoading } from '../../contexts/LoadingContext';
 
 const PROFIT_PCT_KEY_PREFIX = 'studio:profitPct:';
 
@@ -38,6 +40,7 @@ export function StudioOrderDetail({
   const [paymentDialogStage, setPaymentDialogStage] = useState<StudioStage | null>(null);
   const [paymentFinalCost, setPaymentFinalCost] = useState('');
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const { withLoading } = useLoading();
 
   const getStageStatusConfig = (status: string) => {
     switch (status) {
@@ -82,12 +85,59 @@ export function StudioOrderDetail({
     } catch { /* ignore */ }
     return '25';
   });
+  const [serverProfitPct, setServerProfitPct] = useState<string | null>(null);
+  const [savingProfit, setSavingProfit] = useState(false);
+  const [profitSaveOk, setProfitSaveOk] = useState(false);
 
   useEffect(() => {
     try {
       localStorage.setItem(profitKey, profitPctStr);
     } catch { /* ignore */ }
   }, [profitKey, profitPctStr]);
+
+  // Load server-persisted profit % on mount.
+  useEffect(() => {
+    let cancelled = false;
+    void studioApi
+      .loadProductionProfitMargin(order.id)
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const v = String(Number.isFinite(data.value) ? data.value : 25);
+        setServerProfitPct(v);
+        setProfitPctStr((cur) => {
+          try {
+            const stored = localStorage.getItem(profitKey);
+            if (stored !== null) return cur;
+          } catch { /* ignore */ }
+          return v;
+        });
+      })
+      .catch(() => {
+        /* non-fatal */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order.id]);
+
+  const profitDirty = serverProfitPct !== null && serverProfitPct !== profitPctStr;
+
+  const saveProfitToServer = async () => {
+    const n = parseFloat(profitPctStr);
+    if (!Number.isFinite(n) || savingProfit) return;
+    setSavingProfit(true);
+    setProfitSaveOk(false);
+    const { error } = await withLoading('Saving profit...', () =>
+      studioApi.saveProductionProfitMargin(order.id, 'percentage', n),
+    );
+    setSavingProfit(false);
+    if (!error) {
+      setServerProfitPct(profitPctStr);
+      setProfitSaveOk(true);
+      setTimeout(() => setProfitSaveOk(false), 1800);
+    }
+  };
 
   const profitPct = useMemo(() => {
     const n = parseFloat(profitPctStr);
@@ -207,6 +257,35 @@ export function StudioOrderDetail({
             <p className="text-[10px] text-[#6B7280] pt-1">
               Customer Charge = Production Cost × (1 + Profit% / 100). Stage-level charges override when present.
             </p>
+
+            {(profitDirty || profitSaveOk) && (
+              <div className="pt-2 flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs">
+                  {profitSaveOk ? (
+                    <>
+                      <CheckCircle size={14} className="text-[#10B981]" />
+                      <span className="text-[#10B981]">Saved to server</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="inline-block w-2 h-2 rounded-full bg-[#F59E0B] animate-pulse" />
+                      <span className="text-[#F59E0B]">Unsaved profit change</span>
+                    </>
+                  )}
+                </div>
+                {profitDirty && (
+                  <button
+                    type="button"
+                    onClick={() => void saveProfitToServer()}
+                    disabled={savingProfit}
+                    className="inline-flex items-center gap-1.5 px-3 h-8 rounded-lg bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-60 text-white text-xs font-semibold"
+                  >
+                    <Save size={13} />
+                    {savingProfit ? 'Saving...' : 'Save'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -397,14 +476,34 @@ export function StudioOrderDetail({
           )}
         </div>
 
-        {canGenerateInvoice && (
-          <button
-            onClick={onGenerateInvoice}
-            className="w-full mb-3 py-3 bg-gradient-to-r from-[#10B981] to-[#059669] rounded-xl font-semibold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity text-white"
-          >
-            <CheckCircle size={20} />
-            Generate Final Invoice
-          </button>
+        {order.status !== 'completed' && order.status !== 'shipped' && (
+          <div className="mb-3">
+            <button
+              onClick={canGenerateInvoice ? onGenerateInvoice : undefined}
+              disabled={!canGenerateInvoice}
+              className={`w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all text-white ${
+                canGenerateInvoice
+                  ? 'bg-gradient-to-r from-[#10B981] to-[#059669] hover:opacity-90 shadow-lg shadow-[#10B981]/20'
+                  : 'bg-[#374151] cursor-not-allowed opacity-70'
+              }`}
+            >
+              <CheckCircle size={20} />
+              Generate Final Invoice
+            </button>
+            {!canGenerateInvoice && order.stages.length > 0 && (
+              <p className="mt-2 text-xs text-[#F59E0B] flex items-center gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#F59E0B]" />
+                Complete all production stages to unlock billing
+                {(() => {
+                  const remaining = order.stages.filter((s) => s.status !== 'completed').length;
+                  return remaining > 0 ? ` (${remaining} pending)` : '';
+                })()}
+              </p>
+            )}
+            {!canGenerateInvoice && order.stages.length === 0 && (
+              <p className="mt-2 text-xs text-[#F59E0B]">Add production stages first</p>
+            )}
+          </div>
         )}
 
         {order.status === 'completed' && (

@@ -197,18 +197,27 @@ export async function updatePurchaseStatus(
   return { error: error?.message ?? null };
 }
 
-export async function cancelPurchase(companyId: string, purchaseId: string): Promise<{ error: string | null }> {
+/**
+ * Cancel a purchase (full void): reverses stock, creates purchase_reversal journal entry,
+ * sets status='cancelled'. Idempotent via cancel_purchase_full_void RPC.
+ */
+export async function cancelPurchase(
+  companyId: string,
+  purchaseId: string,
+  opts?: { userId?: string | null; reason?: string | null },
+): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
-  const { error } = await supabase
-    .from('purchases')
-    .update({
-      status: 'cancelled',
-      cancelled_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('company_id', companyId)
-    .eq('id', purchaseId);
-  return { error: error?.message ?? null };
+  const { data, error } = await supabase.rpc('cancel_purchase_full_void', {
+    p_purchase_id: purchaseId,
+    p_user_id: opts?.userId ?? null,
+    p_reason: opts?.reason ?? null,
+  });
+  if (error) return { error: error.message };
+  const res = data as { success?: boolean; error?: string } | null;
+  if (res && res.success === false) return { error: res.error ?? 'Cancel failed' };
+  // Silence unused parameter lint
+  void companyId;
+  return { error: null };
 }
 
 export interface PurchaseListItem {
@@ -281,7 +290,7 @@ export async function getPurchases(
     .from('purchases')
     .select('id, po_no, supplier_name, contact_number, total, subtotal, discount_amount, paid_amount, due_amount, status, payment_status, po_date, created_by, branch_id')
     .eq('company_id', companyId)
-    .is('cancelled_at', null)
+    // Keep cancelled POs visible with a "Cancelled" badge (web parity). Filtering removed.
     .order('po_date', { ascending: false })
     .limit(50);
   if (branchId && branchId !== 'all' && branchId !== 'default') {

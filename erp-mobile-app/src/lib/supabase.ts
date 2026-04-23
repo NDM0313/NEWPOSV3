@@ -43,18 +43,20 @@ if (!hasConfig) {
   );
 }
 
-/** Public tutorial JWT (iss supabase-demo) — will not work against self-hosted / real projects. */
+/**
+ * Public upstream Supabase *tutorial* anon JWT — will not work against self-hosted / real projects.
+ *
+ * NOTE: Self-hosted Supabase (via our deploy/gen-jwt-keys.cjs) also signs keys with iss='supabase-demo',
+ * so relying only on `iss` gives false positives. The UPSTREAM demo signature below is the unique
+ * fingerprint of the public tutorial key (signed with the well-known default secret
+ * "super-secret-jwt-token-with-at-least-32-characters-long"). Matching the exact signature is the
+ * only reliable way to detect the real "demo" case without flagging legitimately-regenerated keys.
+ */
+const UPSTREAM_DEMO_ANON_SIGNATURE = 'uPWERzbv9FtmRpl0cBPDPox08YhjW_zTOXtwYNLWmuo';
 function isDemoSupabaseAnonKey(key: string): boolean {
   const parts = key.split('.');
-  if (parts.length < 2) return false;
-  try {
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
-    const payload = JSON.parse(atob(b64 + pad)) as { iss?: string };
-    return payload?.iss === 'supabase-demo';
-  } catch {
-    return false;
-  }
+  if (parts.length !== 3) return false;
+  return parts[2] === UPSTREAM_DEMO_ANON_SIGNATURE;
 }
 
 if (typeof window !== 'undefined' && hasConfig && isDemoSupabaseAnonKey(supabaseAnonKey)) {

@@ -45,6 +45,7 @@ import {
   TabsTrigger,
 } from "../ui/tabs";
 import { cn } from "../ui/utils";
+import { formatQty } from "../../utils/quantity";
 
 const mockProducts = [
   { 
@@ -343,7 +344,7 @@ export const ProductList = () => {
                   
                   return (
                     <span className={cn("font-bold text-sm", isOut ? "text-red-500" : isLow ? "text-orange-400" : "text-emerald-400")}>
-                      {item.stock}
+                      {formatQty(item.stock)}
                     </span>
                   );
                 }

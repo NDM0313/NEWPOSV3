@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Package, Plus, RefreshCcw, Save, Trash2, X } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Camera, Image as ImageIcon, Package, Plus, RefreshCcw, Save, Trash2, X } from 'lucide-react';
 import type { Product } from '../../api/products';
 import * as productCategoriesApi from '../../api/productCategories';
 import * as brandsApi from '../../api/brands';
 import * as unitsApi from '../../api/units';
 import * as productsApi from '../../api/products';
+import * as variationLibrary from '../../api/variationLibrary';
+import type { AttributeWithValues } from '../../api/variationLibrary';
 
 export interface AddProductFlowSavePayload {
   id?: string;
@@ -25,6 +27,13 @@ export interface AddProductFlowSavePayload {
   wholesalePrice?: number;
   hasVariations?: boolean;
   variations?: { sku: string; attributes: Record<string, string>; price: number; stock: number }[];
+  /** Newly selected image files to upload after the product is persisted. */
+  imageFiles?: File[];
+  /** Already-uploaded image URLs to keep (edit flow). */
+  existingImageUrls?: string[];
+  /** Combo item lines. */
+  isCombo?: boolean;
+  comboItems?: Array<{ productId: string; variationId?: string | null; name: string; quantity: number; unitPrice: number }>;
 }
 
 interface AddProductFlowProps {
@@ -68,6 +77,44 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
     status: (editProduct?.status || 'active') as 'active' | 'inactive',
     hasVariations: (editProduct as { hasVariations?: boolean })?.hasVariations || false,
   });
+
+  // Image upload state (mobile parity with web EnhancedProductForm)
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>(
+    Array.isArray((editProduct as { imageUrls?: string[] } | undefined)?.imageUrls)
+      ? ((editProduct as { imageUrls?: string[] }).imageUrls as string[])
+      : [],
+  );
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Combo product state
+  const [isCombo, setIsCombo] = useState<boolean>(
+    Boolean((editProduct as { isCombo?: boolean } | undefined)?.isCombo),
+  );
+  const [comboItems, setComboItems] = useState<
+    Array<{ productId: string; variationId?: string | null; name: string; quantity: number; unitPrice: number }>
+  >([]);
+  const [comboProductPicker, setComboProductPicker] = useState<boolean>(false);
+  const [availableComboProducts, setAvailableComboProducts] = useState<productsApi.Product[]>([]);
+
+  // Global variation library (company-level attribute suggestions)
+  const [library, setLibrary] = useState<AttributeWithValues[]>([]);
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    void variationLibrary
+      .listAttributes(companyId)
+      .then((rows) => {
+        if (!cancelled) setLibrary(rows);
+      })
+      .catch((e) => {
+        if (!cancelled) console.warn('[AddProductFlow] variation library load failed:', e);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
 
   // Web ERP style: dynamic attributes + generated variations
   const [variantAttributes, setVariantAttributes] = useState<Array<{ name: string; values: string[] }>>([]);
@@ -294,6 +341,10 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
         barcode: formData.barcode || undefined,
         minStock,
         wholesalePrice,
+        imageFiles: imageFiles.length > 0 ? imageFiles : undefined,
+        existingImageUrls,
+        isCombo,
+        comboItems: isCombo ? comboItems : undefined,
       });
     } else {
       const variations: { sku: string; attributes: Record<string, string>; price: number; stock: number }[] = [];
@@ -329,8 +380,61 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
         wholesalePrice,
         hasVariations: formData.hasVariations,
         variations: formData.hasVariations ? variations : undefined,
+        imageFiles: imageFiles.length > 0 ? imageFiles : undefined,
+        isCombo,
+        comboItems: isCombo ? comboItems : undefined,
       });
     }
+  };
+
+  const handleImagePick = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const arr = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (arr.length === 0) return;
+    setImageFiles((prev) => [...prev, ...arr].slice(0, 8));
+    arr.forEach((f) => {
+      const url = URL.createObjectURL(f);
+      setImagePreviews((prev) => [...prev, url].slice(0, 8));
+    });
+  };
+  const removePickedImage = (idx: number) => {
+    setImageFiles((prev) => prev.filter((_, i) => i !== idx));
+    setImagePreviews((prev) => {
+      const url = prev[idx];
+      if (url) URL.revokeObjectURL(url);
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+  const removeExistingImage = (idx: number) => {
+    setExistingImageUrls((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  useEffect(() => {
+    if (!comboProductPicker || !companyId) return;
+    void (async () => {
+      const { data } = await productsApi.getProducts(companyId);
+      setAvailableComboProducts(data ?? []);
+    })();
+  }, [comboProductPicker, companyId]);
+
+  const addComboItem = (prod: productsApi.Product) => {
+    setComboItems((prev) => [
+      ...prev,
+      {
+        productId: prod.id,
+        variationId: null,
+        name: prod.name,
+        quantity: 1,
+        unitPrice: Number(prod.retailPrice) || 0,
+      },
+    ]);
+    setComboProductPicker(false);
+  };
+  const updateComboItem = (idx: number, patch: Partial<{ quantity: number; unitPrice: number }>) => {
+    setComboItems((prev) => prev.map((c, i) => (i === idx ? { ...c, ...patch } : c)));
+  };
+  const removeComboItem = (idx: number) => {
+    setComboItems((prev) => prev.filter((_, i) => i !== idx));
   };
 
   return (
@@ -666,6 +770,35 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
                       <Plus size={16} /> Add
                     </button>
                   </div>
+                  {library.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      <span className="text-[10px] text-[#6B7280] uppercase tracking-wider mr-1 self-center">From library:</span>
+                      {library
+                        .filter((a) => !variantAttributes.some((va) => va.name.toLowerCase() === a.name.toLowerCase()))
+                        .filter((a) =>
+                          newAttributeName.trim()
+                            ? a.name.toLowerCase().includes(newAttributeName.trim().toLowerCase())
+                            : true,
+                        )
+                        .slice(0, 6)
+                        .map((a) => (
+                          <button
+                            key={a.id}
+                            type="button"
+                            onClick={() => {
+                              setVariantAttributes([
+                                ...variantAttributes,
+                                { name: a.name, values: [] },
+                              ]);
+                              setNewAttributeName('');
+                            }}
+                            className="px-2 py-0.5 rounded-full bg-[#1F2937] border border-[#374151] text-xs text-[#9CA3AF] hover:bg-[#3B82F6]/20 hover:text-[#60A5FA]"
+                          >
+                            {a.name}
+                          </button>
+                        ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Display Attributes + Values */}
@@ -712,6 +845,45 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
                         </span>
                       ))}
                     </div>
+                    {(() => {
+                      const libEntry = library.find((l) => l.name.toLowerCase() === attr.name.toLowerCase());
+                      const suggestions = (libEntry?.values || [])
+                        .filter((v) => !attr.values.some((av) => av.toLowerCase() === v.value.toLowerCase()))
+                        .filter((v) =>
+                          selectedAttributeIndex === attrIndex && newAttributeValue.trim()
+                            ? v.value.toLowerCase().includes(newAttributeValue.trim().toLowerCase())
+                            : true,
+                        )
+                        .slice(0, 8);
+                      if (suggestions.length === 0) return null;
+                      return (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          <span className="text-[10px] text-[#6B7280] uppercase tracking-wider mr-1 self-center">Suggestions:</span>
+                          {suggestions.map((v) => (
+                            <button
+                              key={v.id}
+                              type="button"
+                              onClick={() => {
+                                const updated = [...variantAttributes];
+                                if (!updated[attrIndex].values.includes(v.value)) {
+                                  updated[attrIndex].values.push(v.value);
+                                  setVariantAttributes(updated);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#1F2937] border border-[#374151] text-xs text-[#9CA3AF] hover:bg-[#3B82F6]/20 hover:text-[#60A5FA]"
+                            >
+                              {v.hex_color && (
+                                <span
+                                  className="inline-block w-2.5 h-2.5 rounded-full border border-white/10"
+                                  style={{ backgroundColor: v.hex_color }}
+                                />
+                              )}
+                              {v.value}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))}
 
@@ -762,6 +934,170 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Images */}
+        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-white">Product Images</h3>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-white text-xs font-medium"
+            >
+              <Camera size={14} /> Add
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              handleImagePick(e.target.files);
+              if (e.target) e.target.value = '';
+            }}
+          />
+          {existingImageUrls.length === 0 && imagePreviews.length === 0 ? (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full h-28 rounded-lg border-2 border-dashed border-[#374151] bg-[#111827] flex flex-col items-center justify-center gap-1 text-[#6B7280] hover:border-[#3B82F6] hover:text-[#3B82F6]"
+            >
+              <ImageIcon size={24} />
+              <span className="text-xs">Tap to add product pictures</span>
+            </button>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {existingImageUrls.map((url, idx) => (
+                <div key={`existing-${idx}`} className="relative aspect-square rounded-lg overflow-hidden bg-[#111827]">
+                  <img src={url} alt="Product" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removeExistingImage(idx)}
+                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-[#EF4444] text-white flex items-center justify-center"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+              {imagePreviews.map((url, idx) => (
+                <div key={`new-${idx}`} className="relative aspect-square rounded-lg overflow-hidden bg-[#111827] ring-2 ring-[#3B82F6]/50">
+                  <img src={url} alt="New" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removePickedImage(idx)}
+                    className="absolute top-1 right-1 w-6 h-6 rounded-full bg-[#EF4444] text-white flex items-center justify-center"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Combo Product */}
+        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-white">Combo Product</h3>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isCombo}
+                onChange={(e) => setIsCombo(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-[#374151] peer-checked:bg-[#10B981] rounded-full transition-colors peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all" />
+            </label>
+          </div>
+          {isCombo && (
+            <>
+              <p className="text-xs text-[#9CA3AF] mb-3">
+                A combo product bundles multiple products into one SKU. Stock is managed at the component level.
+              </p>
+              <div className="space-y-2">
+                {comboItems.map((item, idx) => (
+                  <div key={`${item.productId}-${idx}`} className="flex items-center gap-2 bg-[#111827] border border-[#374151] rounded-lg p-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white truncate">{item.name}</p>
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      step="0.01"
+                      value={item.quantity}
+                      onChange={(e) => updateComboItem(idx, { quantity: Number(e.target.value) || 0 })}
+                      className="w-16 h-9 rounded bg-[#1F2937] border border-[#374151] text-white text-xs px-2"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={item.unitPrice}
+                      onChange={(e) => updateComboItem(idx, { unitPrice: Number(e.target.value) || 0 })}
+                      className="w-20 h-9 rounded bg-[#1F2937] border border-[#374151] text-white text-xs px-2"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeComboItem(idx)}
+                      className="p-1 text-[#EF4444] hover:bg-[#374151] rounded"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setComboProductPicker(true)}
+                  className="w-full h-10 rounded-lg border border-dashed border-[#374151] text-[#3B82F6] text-sm font-medium hover:border-[#3B82F6]"
+                >
+                  + Add component
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {comboProductPicker && (
+          <div
+            className="fixed inset-0 z-[90] bg-black/70 flex items-end sm:items-center justify-center p-4"
+            onClick={() => setComboProductPicker(false)}
+          >
+            <div
+              className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-md overflow-hidden max-h-[80vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 border-b border-[#374151] flex items-center justify-between">
+                <h3 className="text-white font-semibold">Select Component</h3>
+                <button onClick={() => setComboProductPicker(false)} className="p-1 text-[#9CA3AF] hover:text-white">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {availableComboProducts.length === 0 ? (
+                  <p className="p-4 text-sm text-[#9CA3AF]">Loading products...</p>
+                ) : (
+                  availableComboProducts
+                    .filter((p) => p.id !== editProduct?.id)
+                    .map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => addComboItem(p)}
+                        className="w-full px-4 py-3 text-left border-b border-[#374151] hover:bg-[#111827]"
+                      >
+                        <p className="text-sm text-white">{p.name}</p>
+                        <p className="text-xs text-[#9CA3AF]">
+                          {p.sku} • Rs. {Number(p.retailPrice).toLocaleString()}
+                        </p>
+                      </button>
+                    ))
+                )}
+              </div>
+            </div>
           </div>
         )}
 

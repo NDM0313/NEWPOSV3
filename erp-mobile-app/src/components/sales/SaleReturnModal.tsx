@@ -5,6 +5,7 @@ import {
   getSaleReturnCandidateItems,
   type SaleReturnCandidateItem,
 } from '../../api/sales';
+import { supabase } from '../../lib/supabase';
 
 interface SaleReturnModalProps {
   isOpen: boolean;
@@ -37,15 +38,32 @@ export function SaleReturnModal({
   const [qtyMap, setQtyMap] = useState<QtyMap>({});
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
+  const [discount, setDiscount] = useState<string>('0');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [originalSaleTotal, setOriginalSaleTotal] = useState<number>(0);
+  const [priorReturnedTotal, setPriorReturnedTotal] = useState<number>(0);
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setDiscount('0');
+    const loadSaleCap = async () => {
+      const { data: sale } = await supabase.from('sales').select('total').eq('id', saleId).maybeSingle();
+      if (!cancelled) setOriginalSaleTotal(Number((sale as { total?: number } | null)?.total ?? 0) || 0);
+      const { data: prior } = await supabase
+        .from('sale_returns')
+        .select('total, status')
+        .eq('original_sale_id', saleId);
+      const sum = (prior || [])
+        .filter((r: { status?: string }) => r.status !== 'voided' && r.status !== 'cancelled')
+        .reduce((s: number, r: { total?: number }) => s + (Number(r.total) || 0), 0);
+      if (!cancelled) setPriorReturnedTotal(sum);
+    };
+    loadSaleCap();
     getSaleReturnCandidateItems(saleId).then(({ data, error: loadErr }) => {
       if (cancelled) return;
       if (loadErr) {
@@ -79,6 +97,10 @@ export function SaleReturnModal({
   );
 
   const subtotal = useMemo(() => selectedRows.reduce((sum, i) => sum + i.qty * i.unitPrice, 0), [selectedRows]);
+  const discountNum = Math.max(0, Math.min(Number(discount) || 0, subtotal));
+  const returnTotal = Math.max(0, subtotal - discountNum);
+  const remainingReturnable = Math.max(0, originalSaleTotal - priorReturnedTotal);
+  const exceedsCap = originalSaleTotal > 0 && returnTotal > remainingReturnable + 0.005;
 
   const handleQtyChange = (key: string, maxQty: number, value: string) => {
     const parsed = Number(value);
@@ -89,6 +111,12 @@ export function SaleReturnModal({
   const handleSubmit = async () => {
     if (selectedRows.length === 0) {
       setError('Select at least one item for return.');
+      return;
+    }
+    if (exceedsCap) {
+      setError(
+        `Return amount (Rs. ${returnTotal.toLocaleString()}) exceeds remaining returnable on this invoice (Rs. ${remainingReturnable.toLocaleString()}).`,
+      );
       return;
     }
     setSaving(true);
@@ -102,6 +130,7 @@ export function SaleReturnModal({
       userId: userId ?? null,
       reason: reason || null,
       notes: notes || null,
+      discountAmount: discountNum,
       items: selectedRows.map((i) => ({
         saleItemId: i.saleItemId,
         productId: i.productId,
@@ -180,16 +209,52 @@ export function SaleReturnModal({
                   className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white placeholder:text-[#6B7280] px-3 text-sm"
                 />
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Notes (optional)"
                   className="w-full rounded-lg bg-[#111827] border border-[#374151] text-white placeholder:text-[#6B7280] px-3 py-2 text-sm resize-none"
                 />
-                <div className="flex items-center justify-between text-sm border-t border-[#374151] pt-2">
-                  <span className="text-[#9CA3AF]">Return total</span>
-                  <span className="text-[#10B981] font-semibold">Rs. {subtotal.toLocaleString()}</span>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-[#9CA3AF] w-28 shrink-0">Discount (Rs.)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                    className="flex-1 h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                  />
                 </div>
+                <div className="space-y-1 border-t border-[#374151] pt-2 text-sm">
+                  <div className="flex justify-between text-[#9CA3AF]">
+                    <span>Subtotal</span>
+                    <span className="text-white">Rs. {subtotal.toLocaleString()}</span>
+                  </div>
+                  {discountNum > 0 && (
+                    <div className="flex justify-between text-[#9CA3AF]">
+                      <span>Discount</span>
+                      <span className="text-[#F59E0B]">- Rs. {discountNum.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-semibold">
+                    <span className="text-[#9CA3AF]">Return total</span>
+                    <span className={exceedsCap ? 'text-[#EF4444]' : 'text-[#10B981]'}>
+                      Rs. {returnTotal.toLocaleString()}
+                    </span>
+                  </div>
+                  {originalSaleTotal > 0 && (
+                    <div className="flex justify-between text-[11px] text-[#6B7280]">
+                      <span>Remaining returnable on invoice</span>
+                      <span>Rs. {remainingReturnable.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+                {exceedsCap && (
+                  <div className="rounded-lg bg-[#EF4444]/20 border border-[#EF4444]/40 text-[#FCA5A5] text-xs px-3 py-2">
+                    Return exceeds remaining returnable amount. Reduce qty or discount.
+                  </div>
+                )}
               </div>
 
               {error && <div className="rounded-lg bg-[#EF4444] text-white text-sm px-3 py-2">{error}</div>}
@@ -204,7 +269,7 @@ export function SaleReturnModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={loading || saving || items.length === 0}
+            disabled={loading || saving || items.length === 0 || exceedsCap}
             className="h-11 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-60 text-white font-medium inline-flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}

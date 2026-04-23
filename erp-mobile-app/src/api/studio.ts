@@ -726,6 +726,42 @@ export async function updateStudioStage(
   }
 }
 
+/** Persist pricing calculator profit margin on studio_productions (matches web pricing calculator save). */
+export async function saveProductionProfitMargin(
+  productionId: string,
+  mode: 'percentage' | 'fixed',
+  value: number,
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  try {
+    const { error } = await supabase
+      .from('studio_productions')
+      .update({ profit_margin_mode: mode, profit_margin_value: value })
+      .eq('id', productionId);
+    return { error: error?.message ?? null };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    return { error: msg };
+  }
+}
+
+/** Load pricing calculator fields for a production (mode + value). */
+export async function loadProductionProfitMargin(
+  productionId: string,
+): Promise<{ data: { mode: 'percentage' | 'fixed'; value: number } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const { data, error } = await supabase
+    .from('studio_productions')
+    .select('profit_margin_mode, profit_margin_value')
+    .eq('id', productionId)
+    .maybeSingle();
+  if (error) return { data: null, error: error.message };
+  if (!data) return { data: null, error: null };
+  const mode = (data as { profit_margin_mode?: string }).profit_margin_mode === 'fixed' ? 'fixed' : 'percentage';
+  const value = Number((data as { profit_margin_value?: number | string }).profit_margin_value ?? 0) || 0;
+  return { data: { mode, value }, error: null };
+}
+
 /** Update production status */
 export async function updateStudioProductionStatus(
   productionId: string,

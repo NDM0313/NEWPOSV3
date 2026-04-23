@@ -47,6 +47,11 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
   const [editOrder, setEditOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
   const [editDate, setEditDate] = useState<string>('');
   const [editNotes, setEditNotes] = useState<string>('');
+  const [editSupplierName, setEditSupplierName] = useState<string>('');
+  const [editContactNumber, setEditContactNumber] = useState<string>('');
+  const [editPaymentMethod, setEditPaymentMethod] = useState<string>('');
+  const [editDiscount, setEditDiscount] = useState<string>('0');
+  const [editShipping, setEditShipping] = useState<string>('0');
   const [editSaving, setEditSaving] = useState(false);
   const [returnNotice, setReturnNotice] = useState<purchasesApi.PurchaseListItem | null>(null);
 
@@ -227,10 +232,22 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
 
   const handlePrint = (order: purchasesApi.PurchaseListItem) => { openPurchasePreview(order); };
 
-  const handleEdit = (order: purchasesApi.PurchaseListItem) => {
+  const handleEdit = async (order: purchasesApi.PurchaseListItem) => {
     setMenuOrder(null);
     setEditDate(String(order.date || '').slice(0, 10));
-    setEditNotes('');
+    setEditSupplierName(order.vendor || '');
+    setEditContactNumber(order.vendorPhone || '');
+    setEditDiscount(String(order.discount ?? 0));
+    // Hydrate extra fields from DB (notes, payment_method, shipping_cost)
+    const { data: extra } = await supabase
+      .from('purchases')
+      .select('notes, payment_method, shipping_cost')
+      .eq('id', order.id)
+      .maybeSingle();
+    const r = (extra ?? {}) as Record<string, unknown>;
+    setEditNotes(String((r.notes as string) || ''));
+    setEditPaymentMethod(String((r.payment_method as string) || ''));
+    setEditShipping(String(Number(r.shipping_cost ?? 0) || 0));
     setEditOrder(order);
   };
 
@@ -239,14 +256,30 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
     setEditSaving(true);
     setActionError(null);
     try {
-      const updates: Record<string, unknown> = {};
+      const subtotal = Number(editOrder.subtotal ?? 0) || 0;
+      const discount = Number(editDiscount) || 0;
+      const shipping = Number(editShipping) || 0;
+      const total = Math.max(0, subtotal - discount + shipping);
+      const paid = Number(editOrder.paidAmount ?? 0) || 0;
+      const due = Math.max(0, total - paid);
+
+      const updates: Record<string, unknown> = {
+        notes: editNotes || null,
+        supplier_name: editSupplierName || editOrder.vendor,
+        contact_number: editContactNumber || null,
+        payment_method: editPaymentMethod || null,
+        discount_amount: discount,
+        shipping_cost: shipping,
+        total,
+        due_amount: due,
+        updated_at: new Date().toISOString(),
+      };
       if (editDate) updates.po_date = editDate;
-      updates.notes = editNotes || null;
+
       const { error } = await supabase.from('purchases').update(updates).eq('id', editOrder.id);
       if (error) setActionError(error.message);
       else {
         setEditOrder(null);
-        // refresh list
         if (companyId) {
           const { data } = await purchasesApi.getPurchases(companyId, effectiveBranchId ?? null);
           if (data) setOrders(data);
@@ -273,16 +306,22 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
     if (!cancelOrder || !companyId) return;
     setCancelling(true);
     setActionError(null);
-    const { error } = await purchasesApi.cancelPurchase(companyId, cancelOrder.id);
+    const { error } = await purchasesApi.cancelPurchase(companyId, cancelOrder.id, {
+      userId: user?.id ?? null,
+    });
     setCancelling(false);
     if (error) {
       setActionError(error);
       return;
     }
-    setOrders((prev) => prev.filter((o) => o.id !== cancelOrder.id));
+    // Keep the PO visible with a "Cancelled" badge (parity with web ERP).
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === cancelOrder.id ? { ...o, status: 'cancelled' } : o,
+      ),
+    );
     if (selectedOrder?.id === cancelOrder.id) {
-      setSelectedOrder(null);
-      setView('list');
+      setSelectedOrder((prev) => (prev ? { ...prev, status: 'cancelled' } : prev));
     }
     setCancelOrder(null);
   };
@@ -748,7 +787,7 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
               <div>
                 <h3 className="text-white font-semibold">Cancel purchase?</h3>
                 <p className="text-sm text-[#9CA3AF] mt-1">
-                  {cancelOrder.poNo} will be cancelled and removed from active purchase list.
+                  {cancelOrder.poNo} will be marked as <span className="text-[#F87171] font-medium">Cancelled</span>. Stock will be restored and the linked journal entry reversed. The PO stays visible in the list with a cancelled badge.
                 </p>
               </div>
             </div>
@@ -797,8 +836,8 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
 
       {editOrder && (
         <div className="fixed inset-0 z-[85] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={() => !editSaving && setEditOrder(null)}>
-          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b border-[#374151] flex items-center justify-between">
+          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-[#374151] flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-white font-semibold">Edit Purchase</h3>
                 <p className="text-xs text-[#9CA3AF]">{editOrder.poNo}</p>
@@ -807,23 +846,75 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-3 overflow-y-auto">
               <div>
                 <label className="block text-xs text-[#9CA3AF] mb-1">Order Date</label>
                 <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)}
                   className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
               </div>
               <div>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Supplier Name</label>
+                <input type="text" value={editSupplierName} onChange={(e) => setEditSupplierName(e.target.value)}
+                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Contact #</label>
+                  <input type="tel" value={editContactNumber} onChange={(e) => setEditContactNumber(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Payment Method</label>
+                  <select value={editPaymentMethod} onChange={(e) => setEditPaymentMethod(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm">
+                    <option value="">—</option>
+                    <option value="cash">Cash</option>
+                    <option value="bank">Bank</option>
+                    <option value="card">Card</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="credit">Credit</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Discount</label>
+                  <input type="number" min="0" step="0.01" value={editDiscount} onChange={(e) => setEditDiscount(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Shipping</label>
+                  <input type="number" min="0" step="0.01" value={editShipping} onChange={(e) => setEditShipping(e.target.value)}
+                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
+                </div>
+              </div>
+              <div>
                 <label className="block text-xs text-[#9CA3AF] mb-1">Notes</label>
                 <textarea rows={3} value={editNotes} onChange={(e) => setEditNotes(e.target.value)}
                   className="w-full rounded-lg bg-[#111827] border border-[#374151] text-white px-3 py-2 text-sm resize-none" />
               </div>
+              <div className="rounded-lg bg-[#111827] border border-[#374151] p-3 text-xs space-y-1">
+                <div className="flex justify-between text-[#9CA3AF]">
+                  <span>Subtotal</span>
+                  <span className="text-white">Rs. {Number(editOrder.subtotal ?? 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-[#9CA3AF]">
+                  <span>Recalculated Total</span>
+                  <span className="text-[#10B981] font-semibold">
+                    Rs. {(
+                      (Number(editOrder.subtotal ?? 0) || 0) -
+                      (Number(editDiscount) || 0) +
+                      (Number(editShipping) || 0)
+                    ).toLocaleString()}
+                  </span>
+                </div>
+              </div>
               <p className="text-[11px] text-[#F59E0B]">
-                For item-level edits (products/quantities/prices) cancel this PO and create a new one to keep stock &amp; accounting consistent.
+                Header edits (date, supplier, discount, shipping) save directly. For item-level changes (products/quantities/prices) Cancel this PO and create a new one.
               </p>
               {actionError && <div className="rounded-lg bg-[#EF4444] text-white text-sm px-3 py-2">{actionError}</div>}
             </div>
-            <div className="p-4 border-t border-[#374151] grid grid-cols-2 gap-3">
+            <div className="p-4 border-t border-[#374151] grid grid-cols-2 gap-3 shrink-0">
               <button type="button" onClick={() => !editSaving && setEditOrder(null)} className="h-11 rounded-lg border border-[#374151] text-[#D1D5DB]">
                 Cancel
               </button>

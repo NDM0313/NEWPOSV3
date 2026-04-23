@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Plus, Loader2, Sparkles } from 'lucide-react';
 import type { User, Branch } from '../../types';
 import * as studioApi from '../../api/studio';
+import { useLoading } from '../../contexts/LoadingContext';
 import { StudioDashboard, type StudioOrder, type StudioStage } from './StudioDashboard';
 import { StudioOrderDetail } from './StudioOrderDetail';
 import { StudioStageAssignment } from './StudioStageAssignment';
@@ -117,6 +118,7 @@ function mapProductionToOrder(
 }
 
 export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSale, focusSaleId, onFocusHandled }: StudioModuleProps) {
+  const { withLoading } = useLoading();
   const [view, setView] = useState<View>('dashboard');
   const [dashboardVariant, setDashboardVariant] = useState<'classic' | 'test'>('classic');
   const [selectedOrder, setSelectedOrder] = useState<StudioOrder | null>(null);
@@ -313,7 +315,7 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
           setView('update-status');
         }}
         onSendToWorker={async (stage) => {
-          const { error } = await studioApi.sendToWorker(stage.id);
+          const { error } = await withLoading('Sending to worker...', () => studioApi.sendToWorker(stage.id));
           if (error) {
             alert(error);
             return;
@@ -326,7 +328,7 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
           }
         }}
         onReceiveWork={async (stage) => {
-          const { error } = await studioApi.receiveWork(stage.id);
+          const { error } = await withLoading('Receiving work...', () => studioApi.receiveWork(stage.id));
           if (error) {
             alert(error);
             return;
@@ -339,7 +341,9 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
           }
         }}
         onConfirmPayment={async (stage, params) => {
-          const { error } = await studioApi.confirmStagePayment(stage.id, params);
+          const { error } = await withLoading('Posting payment...', () =>
+            studioApi.confirmStagePayment(stage.id, params),
+          );
           if (error) {
             alert(error);
             throw new Error(error);
@@ -352,7 +356,7 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
           }
         }}
         onCompleteStage={async (stage) => {
-          const { error } = await studioApi.completeStage(stage.id);
+          const { error } = await withLoading('Completing stage...', () => studioApi.completeStage(stage.id));
           if (error) {
             alert(error);
             return;
@@ -365,7 +369,7 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
           }
         }}
         onReopen={async (stage) => {
-          const { error } = await studioApi.reopenStep(stage.id);
+          const { error } = await withLoading('Reopening stage...', () => studioApi.reopenStep(stage.id));
           if (error) {
             alert(error);
             return;
