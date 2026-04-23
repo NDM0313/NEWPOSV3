@@ -1,11 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X } from 'lucide-react';
 import * as salesApi from '../../api/sales';
 import * as studioApi from '../../api/studio';
 import * as reportsApi from '../../api/reports';
+import { supabase } from '../../lib/supabase';
 import { MobileReceivePayment } from './MobileReceivePayment';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { SaleReturnModal } from './SaleReturnModal';
+import { PdfPreviewModal } from '../shared/PdfPreviewModal';
+import { usePdfPreview } from '../shared/usePdfPreview';
+import { InvoicePreviewPdf, type InvoicePreviewItem } from '../shared/InvoicePreviewPdf';
 
 type SaleRecord = {
   raw: Record<string, unknown>;
@@ -189,16 +193,15 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
   const [returnSale, setReturnSale] = useState<SaleRecord | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-  const baseUrl = import.meta.env.VITE_APP_URL || '';
 
-  const openExternalInSameTab = (relativeOrAbsoluteUrl: string): boolean => {
-    const resolved = relativeOrAbsoluteUrl.startsWith('http')
-      ? relativeOrAbsoluteUrl
-      : `${baseUrl}${relativeOrAbsoluteUrl}`;
-    if (!resolved || !/^https?:\/\//i.test(resolved)) return false;
-    window.location.assign(resolved);
-    return true;
-  };
+  // In-app invoice preview (replaces VITE_APP_URL-dependent print/pdf navigation)
+  const [previewSale, setPreviewSale] = useState<SaleRecord | null>(null);
+  const pdfPreview = usePdfPreview(companyId);
+  // Lightweight editor for invoice date + notes (full line-item edit stays web-only for safety)
+  const [editSale, setEditSale] = useState<SaleRecord | null>(null);
+  const [editDate, setEditDate] = useState<string>('');
+  const [editNotes, setEditNotes] = useState<string>('');
+  const [editSaving, setEditSaving] = useState(false);
 
   const refetchSales = useCallback(async (): Promise<SaleRecord[]> => {
     if (!companyId) return [];
@@ -271,26 +274,44 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
   }, [refetchSales, addPaymentSale, loadPaymentHistory]);
 
   const saleIdRaw = (s: SaleRecord) => (s.raw.id as string) || s.id;
+
+  const openInvoicePreview = useCallback(
+    async (sale: SaleRecord, kind: 'A4' | 'Thermal' | 'PDF') => {
+      setMenuSale(null);
+      setPreviewSale(sale);
+      await pdfPreview.openPreview();
+      if (kind === 'Thermal' || kind === 'A4') {
+        salesApi.logPrint(saleIdRaw(sale), kind, userId).catch(() => {});
+      } else {
+        salesApi.logShare(saleIdRaw(sale), 'pdf', userId).catch(() => {});
+      }
+    },
+    [pdfPreview, userId],
+  );
+
   const handlePrintA4 = (sale: SaleRecord) => {
-    setMenuSale(null);
-    salesApi.logPrint(saleIdRaw(sale), 'A4', userId).catch(() => {});
-    if (!openExternalInSameTab(`/sales?print=${encodeURIComponent(saleIdRaw(sale))}`)) {
-      setActionError('Print URL is not configured. Set VITE_APP_URL and retry.');
-    }
+    openInvoicePreview(sale, 'A4');
   };
   const handlePrintThermal = (sale: SaleRecord) => {
-    setMenuSale(null);
-    salesApi.logPrint(saleIdRaw(sale), 'Thermal', userId).catch(() => {});
-    if (!openExternalInSameTab(`/sales?print=${encodeURIComponent(saleIdRaw(sale))}&thermal=1`)) {
-      setActionError('Thermal print URL is not configured. Set VITE_APP_URL and retry.');
-    }
+    openInvoicePreview(sale, 'Thermal');
   };
+  const handleSharePdf = (sale: SaleRecord) => {
+    openInvoicePreview(sale, 'PDF');
+  };
+  const handleDownloadPdf = (sale: SaleRecord) => {
+    openInvoicePreview(sale, 'PDF');
+  };
+
   const handleShareWhatsApp = (sale: SaleRecord) => {
     setMenuSale(null);
     const due = sale.balance_due ?? 0;
     const total = sale.grand_total ?? sale.amount;
-    const link = `${baseUrl}/sales?invoice=${encodeURIComponent(saleIdRaw(sale))}`;
-    const text = [`Invoice: ${sale.id}`, `Customer: ${sale.customer}`, `Total: Rs. ${total.toLocaleString()}`, `Balance Due: Rs. ${due.toLocaleString()}`, `View: ${link}`].join('\n');
+    const text = [
+      `Invoice: ${sale.id}`,
+      `Customer: ${sale.customer}`,
+      `Total: Rs. ${total.toLocaleString()}`,
+      `Balance Due: Rs. ${due.toLocaleString()}`,
+    ].join('\n');
     const rawPhone = String(
       ((sale.raw.customer as { phone?: string } | null)?.phone as string) ||
       (sale.raw.contact_number as string) ||
@@ -302,26 +323,40 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     const waUrl = cleanPhone
       ? `https://wa.me/${encodeURIComponent(cleanPhone)}?text=${encodeURIComponent(text)}`
       : `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.location.assign(waUrl);
+    window.open(waUrl, '_blank', 'noopener,noreferrer');
   };
-  const handleSharePdf = (sale: SaleRecord) => {
-    setMenuSale(null);
-    salesApi.logShare(saleIdRaw(sale), 'pdf', userId).catch(() => {});
-    if (!openExternalInSameTab(`/sales?print=${encodeURIComponent(saleIdRaw(sale))}`)) {
-      setActionError('PDF URL is not configured. Set VITE_APP_URL and retry.');
-    }
-  };
-  const handleDownloadPdf = (sale: SaleRecord) => {
-    setMenuSale(null);
-    salesApi.logPrint(saleIdRaw(sale), 'A4', userId).catch(() => {});
-    if (!openExternalInSameTab(`/sales?print=${encodeURIComponent(saleIdRaw(sale))}&download=1`)) {
-      setActionError('Download URL is not configured. Set VITE_APP_URL and retry.');
-    }
-  };
+
   const handleEdit = (sale: SaleRecord) => {
     setMenuSale(null);
-    if (!openExternalInSameTab(`/sales?edit=${encodeURIComponent(saleIdRaw(sale))}`)) {
-      setActionError('Edit URL is not configured. Set VITE_APP_URL and retry.');
+    const currentDate = String(
+      (sale.raw.invoice_date as string) || (sale.raw.created_at as string) || '',
+    ).slice(0, 10);
+    setEditDate(currentDate);
+    setEditNotes(String((sale.raw.notes as string) || ''));
+    setEditSale(sale);
+  };
+
+  const confirmEdit = async () => {
+    if (!editSale || editSaving) return;
+    setEditSaving(true);
+    setActionError(null);
+    try {
+      const updates: Record<string, unknown> = {};
+      if (editDate) updates.invoice_date = editDate;
+      updates.notes = editNotes || null;
+      const { error } = await supabase
+        .from('sales')
+        .update(updates)
+        .eq('id', editSale.raw.id as string);
+      if (error) {
+        setActionError(error.message);
+      } else {
+        setActionSuccess(`Invoice ${editSale.id} updated.`);
+        await refetchSales();
+        setEditSale(null);
+      }
+    } finally {
+      setEditSaving(false);
     }
   };
   const handlePaymentHistory = (sale: SaleRecord) => {
@@ -951,6 +986,89 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
             setActionSuccess(`Sale return ${returnNo} created successfully.`);
           }}
         />
+      )}
+
+      {previewSale && pdfPreview.brand && (
+        <PdfPreviewModal
+          open={pdfPreview.open}
+          onClose={() => { pdfPreview.close(); setPreviewSale(null); }}
+          title={`Invoice ${previewSale.id}`}
+          filename={`invoice-${previewSale.id}.pdf`}
+          whatsAppFallbackText={`Invoice: ${previewSale.id}\nCustomer: ${previewSale.customer}\nTotal: Rs. ${(previewSale.grand_total ?? previewSale.amount).toLocaleString()}`}
+        >
+          <InvoicePreviewPdf
+            brand={pdfPreview.brand}
+            docType="sale"
+            docNumber={previewSale.id}
+            docDate={String((previewSale.raw.invoice_date as string) || (previewSale.raw.created_at as string) || '').slice(0, 10)}
+            partyName={previewSale.customer}
+            partyPhone={((previewSale.raw.customer as { phone?: string } | null)?.phone as string) || (previewSale.raw.contact_phone as string) || null}
+            branchName={((previewSale.raw.branch as { name?: string } | null)?.name as string) || null}
+            items={(((previewSale.raw.items as Array<Record<string, unknown>>) || []).map((it) => ({
+              productName: String(it.product_name ?? (it.product as { name?: string } | null)?.name ?? 'Item'),
+              sku: (it.sku as string) || ((it.product as { sku?: string } | null)?.sku as string) || null,
+              quantity: Number(it.quantity ?? 0),
+              unitPrice: Number(it.unit_price ?? 0),
+              total: Number(it.total ?? 0),
+            }) as InvoicePreviewItem))}
+            subtotal={Number(previewSale.raw.subtotal ?? previewSale.amount)}
+            discount={Number(previewSale.raw.discount_amount ?? previewSale.raw.discount ?? 0)}
+            tax={Number(previewSale.raw.tax_amount ?? 0)}
+            total={previewSale.grand_total ?? previewSale.amount}
+            paid={previewSale.total_received}
+            due={previewSale.balance_due}
+            notes={(previewSale.raw.notes as string) || null}
+            generatedBy={previewSale.created_by_name || null}
+          />
+        </PdfPreviewModal>
+      )}
+
+      {editSale && (
+        <div className="fixed inset-0 z-[80] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={() => !editSaving && setEditSale(null)}>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-[#374151] flex items-center justify-between">
+              <div>
+                <h3 className="text-white font-semibold">Edit Invoice</h3>
+                <p className="text-xs text-[#9CA3AF]">{editSale.id}</p>
+              </div>
+              <button onClick={() => !editSaving && setEditSale(null)} className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF]">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Invoice Date</label>
+                <input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Notes</label>
+                <textarea
+                  rows={3}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  className="w-full rounded-lg bg-[#111827] border border-[#374151] text-white px-3 py-2 text-sm resize-none"
+                />
+              </div>
+              <p className="text-[11px] text-[#F59E0B]">
+                For line-item edits (products, quantities, prices) please cancel this invoice and create a new one — ensures accounting stays consistent.
+              </p>
+              {actionError && <div className="rounded-lg bg-[#EF4444] text-white text-sm px-3 py-2">{actionError}</div>}
+            </div>
+            <div className="p-4 border-t border-[#374151] grid grid-cols-2 gap-3">
+              <button type="button" onClick={() => !editSaving && setEditSale(null)} className="h-11 rounded-lg border border-[#374151] text-[#D1D5DB]">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmEdit} disabled={editSaving} className="h-11 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-60 text-white font-medium">
+                {editSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

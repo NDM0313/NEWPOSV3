@@ -5,7 +5,7 @@ import { getDayBook, type DayBookJournalEntry } from '../../../api/reports';
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard } from './_shared/ReportShell';
-import { formatAmount, formatDate, dateRangeLabel } from './_shared/format';
+import { formatAmount, formatDate, dateRangeLabel, displayReferenceNumber } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { TimelinePreviewPdf } from '../../shared/TimelinePreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
@@ -72,7 +72,7 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
         rows: rows.map((e) => ({
           time: new Date(e.createdAt).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' }),
           party: e.description || e.referenceType || '—',
-          reference: e.entryNo,
+          reference: displayReferenceNumber(e.entryNo, e.referenceType),
           fromAccount: e.lines.find((l) => l.credit > 0)?.accountName,
           toAccount: e.lines.find((l) => l.debit > 0)?.accountName,
           amount: Math.max(e.debit, e.credit),
@@ -145,7 +145,7 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-white truncate">{e.description || e.referenceType || '—'}</p>
                           <p className="text-[11px] text-[#9CA3AF] truncate">
-                            {e.entryNo} · {e.referenceType || 'journal'}
+                            {displayReferenceNumber(e.entryNo, e.referenceType)} · {(e.referenceType || 'journal').replace(/_/g, ' ')}
                           </p>
                           <div className="mt-1 grid grid-cols-1 gap-0.5">
                             {e.lines.slice(0, 4).map((l, i) => (
@@ -213,7 +213,7 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
         companyId={companyId}
         referenceType="journal"
         referenceId={selectedEntry?.id ?? null}
-        fallbackTitle={selectedEntry ? `${selectedEntry.entryNo} · ${selectedEntry.referenceType || 'Journal'}` : undefined}
+        fallbackTitle={selectedEntry ? `${displayReferenceNumber(selectedEntry.entryNo, selectedEntry.referenceType)} · ${(selectedEntry.referenceType || 'Journal').replace(/_/g, ' ')}` : undefined}
       />
     </div>
   );

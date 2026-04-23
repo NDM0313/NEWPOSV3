@@ -842,24 +842,26 @@ export async function getSaleReturnCandidateItems(saleId: string): Promise<{
       }))
       .filter((r) => r.productId && r.soldQty > 0);
 
-  const { data, error } = await supabase
-    .from('sales_items')
-    .select('id, product_id, variation_id, product_name, sku, quantity, unit_price, total')
-    .eq('sale_id', saleId)
-    .order('created_at', { ascending: true });
-  if (!error) return { data: mapRows((data || []) as Record<string, unknown>[]), error: null };
-
-  if (error.code === '42P01' || String(error.message).toLowerCase().includes('does not exist')) {
-    const fallback = await supabase
-      .from('sale_items')
+  const sourceTables = ['sales_items', 'sale_items'] as const;
+  let lastError: string | null = null;
+  for (const table of sourceTables) {
+    const { data, error } = await supabase
+      .from(table)
       .select('id, product_id, variation_id, product_name, sku, quantity, unit_price, total')
       .eq('sale_id', saleId)
       .order('created_at', { ascending: true });
-    if (fallback.error) return { data: [], error: fallback.error.message };
-    return { data: mapRows((fallback.data || []) as Record<string, unknown>[]), error: null };
+    if (error) {
+      if (error.code === '42P01' || String(error.message).toLowerCase().includes('does not exist')) {
+        lastError = error.message;
+        continue;
+      }
+      lastError = error.message;
+      continue;
+    }
+    const mapped = mapRows((data || []) as Record<string, unknown>[]);
+    if (mapped.length > 0) return { data: mapped, error: null };
   }
-
-  return { data: [], error: error.message };
+  return { data: [], error: lastError };
 }
 
 export type CreateSaleReturnPayload = {

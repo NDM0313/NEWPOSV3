@@ -30,6 +30,28 @@ export function formatDateTime(d: string | Date | null | undefined): { date: str
   };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Display-safe reference/entry number.
+ * - Returns the value as-is when it's a human-readable reference (e.g. PAY-0012,
+ *   INV-2026-044, EXP-0003).
+ * - When the value is a raw UUID (or empty), returns a readable fallback
+ *   derived from the reference type (e.g. "payment" -> "PAYMENT") so the UI
+ *   never leaks database identifiers to end-users.
+ */
+export function displayReferenceNumber(
+  value: string | null | undefined,
+  fallbackType?: string | null,
+): string {
+  const v = (value || '').trim();
+  if (!v || UUID_RE.test(v)) {
+    const t = (fallbackType || 'entry').replace(/_/g, ' ').trim();
+    return t ? t.toUpperCase() : 'ENTRY';
+  }
+  return v;
+}
+
 export function dateRangeLabel(from?: string, to?: string): string {
   if (!from && !to) return 'All time';
   if (from && to && from === to) return formatDate(from);

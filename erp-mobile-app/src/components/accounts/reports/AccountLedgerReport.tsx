@@ -6,7 +6,7 @@ import { getAccountLedgerLines, type LedgerLine } from '../../../api/reports';
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
-import { formatAmount, formatDate, dateRangeLabel } from './_shared/format';
+import { formatAmount, formatDate, dateRangeLabel, displayReferenceNumber } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
@@ -210,7 +210,7 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
   ];
 
   return (
-    <div className="min-h-screen bg-[#111827] pb-24">
+    <div className="min-h-screen bg-[#111827] pb-28">
       <ReportHeader
         onBack={() => setSelected(null)}
         title={selected.name}
@@ -221,6 +221,22 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
       >
         <DateRangeBar value={range} onChange={setRange} />
       </ReportHeader>
+
+      {/* Floating running balance footer so the current balance is always visible. */}
+      {!detailLoading && lines.length > 0 && (
+        <div className="fixed left-3 right-3 bottom-3 z-40 rounded-xl border border-[#374151] bg-[#111827]/95 backdrop-blur shadow-lg px-4 py-2 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-[#9CA3AF]">Running balance</p>
+            <p className={`text-sm font-bold ${totals.closing >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+              Rs. {formatAmount(totals.closing, 0)}
+            </p>
+          </div>
+          <div className="flex items-center gap-3 text-[11px]">
+            <span className="text-[#10B981]">+ Rs. {formatAmount(totals.debit, 0)}</span>
+            <span className="text-[#EF4444]">− Rs. {formatAmount(totals.credit, 0)}</span>
+          </div>
+        </div>
+      )}
 
       <ReportShell loading={detailLoading} empty={!detailLoading && lines.length === 0} emptyLabel="No ledger activity for this period.">
         <ReportCard>
@@ -239,9 +255,13 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
                 )}
                 <ul className="divide-y divide-[#374151]">
                   {group.lines.map((l) => {
-                    const isDebit = l.debit > 0;
-                    const amount = isDebit ? l.debit : l.credit;
+                    // For asset-style accounts (cash/bank) we display debit as
+                    // money IN (green) and credit as money OUT (red). This
+                    // matches the on-screen semantics users expect.
+                    const isIn = l.debit > 0;
+                    const amount = isIn ? l.debit : l.credit;
                     const time = l.createdAt ? new Date(l.createdAt).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' }) : '';
+                    const refLabel = displayReferenceNumber(l.entryNo, l.referenceType);
                     return (
                       <li key={l.id}>
                         <button
@@ -252,20 +272,25 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
                           <div className="flex items-start gap-3">
                             <div
                               className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                                isDebit ? 'bg-[#F59E0B]/15 text-[#F59E0B]' : 'bg-[#10B981]/15 text-[#10B981]'
+                                isIn ? 'bg-[#10B981]/15 text-[#10B981]' : 'bg-[#EF4444]/15 text-[#EF4444]'
                               }`}
                             >
-                              {isDebit ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownLeft className="w-4 h-4" />}
+                              {isIn ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold text-white truncate">{l.description || '—'}</p>
                               <p className="text-[11px] text-[#9CA3AF] truncate">
-                                {formatDate(l.date)}{time ? ` · ${time}` : ''} · {l.entryNo} · {l.referenceType || '—'}
+                                {formatDate(l.date)}{time ? ` · ${time}` : ''} · {refLabel} · {(l.referenceType || '').replace(/_/g, ' ') || '—'}
                               </p>
                             </div>
                             <div className="text-right shrink-0">
-                              <p className={`text-sm font-bold ${isDebit ? 'text-[#F59E0B]' : 'text-[#10B981]'}`}>
-                                {isDebit ? '+' : '−'} Rs. {formatAmount(amount, 0)}
+                              <span className={`inline-block text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded mb-0.5 ${
+                                isIn ? 'bg-[#10B981]/15 text-[#10B981]' : 'bg-[#EF4444]/15 text-[#EF4444]'
+                              }`}>
+                                {isIn ? 'IN' : 'OUT'}
+                              </span>
+                              <p className={`text-sm font-bold ${isIn ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                                {isIn ? '+' : '−'} Rs. {formatAmount(amount, 0)}
                               </p>
                               <p className="text-[10px] text-[#9CA3AF]">Bal Rs. {formatAmount(l.runningBalance, 0)}</p>
                             </div>
@@ -308,7 +333,7 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
             totals={{ debit: totals.debit, credit: totals.credit }}
             rows={lines.map((l) => ({
               date: l.date,
-              reference: l.entryNo,
+              reference: displayReferenceNumber(l.entryNo, l.referenceType),
               description: l.description,
               debit: l.debit,
               credit: l.credit,
@@ -340,7 +365,7 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
             companyId={companyId}
             referenceType={refType}
             referenceId={refId}
-            fallbackTitle={`${selectedLine.entryNo} · ${selectedLine.referenceType}`}
+            fallbackTitle={`${displayReferenceNumber(selectedLine.entryNo, selectedLine.referenceType)} · ${(selectedLine.referenceType || '').replace(/_/g, ' ')}`}
           />
         );
       })()}

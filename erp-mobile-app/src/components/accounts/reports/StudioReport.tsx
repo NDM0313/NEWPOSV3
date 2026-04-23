@@ -27,7 +27,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function StudioReport({ onBack, companyId, user }: StudioReportProps) {
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('year'));
   const [rows, setRows] = useState<StudioProductionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

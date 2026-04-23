@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, ShoppingBag, Plus, Search, Package, Calendar, Loader2, MapPin, Paperclip, MoreVertical, History, Share2, Printer, Download, SquarePen, RotateCcw, Ban, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ShoppingBag, Plus, Search, Package, Calendar, Loader2, MapPin, Paperclip, MoreVertical, History, Share2, Printer, Download, SquarePen, RotateCcw, Ban, AlertTriangle, X } from 'lucide-react';
 import type { User } from '../../types';
 import * as purchasesApi from '../../api/purchases';
 import * as branchesApi from '../../api/branches';
@@ -8,6 +8,9 @@ import { CreatePurchaseFlow } from './CreatePurchaseFlow';
 import { MobilePaySupplier } from './MobilePaySupplier';
 import { AttachmentPreviewModal } from '../sales/AttachmentPreviewModal';
 import { MobileActionBar } from '../shared/MobileActionBar';
+import { PdfPreviewModal } from '../shared/PdfPreviewModal';
+import { usePdfPreview } from '../shared/usePdfPreview';
+import { InvoicePreviewPdf, type InvoicePreviewItem } from '../shared/InvoicePreviewPdf';
 
 interface PurchaseModuleProps {
   onBack: () => void;
@@ -36,16 +39,16 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
   const [cancelOrder, setCancelOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
-  const baseUrl = import.meta.env.VITE_APP_URL || '';
-
-  const openExternalInSameTab = (relativeOrAbsoluteUrl: string): boolean => {
-    const resolved = relativeOrAbsoluteUrl.startsWith('http')
-      ? relativeOrAbsoluteUrl
-      : `${baseUrl}${relativeOrAbsoluteUrl}`;
-    if (!resolved || !/^https?:\/\//i.test(resolved)) return false;
-    window.location.assign(resolved);
-    return true;
-  };
+  // In-app preview/edit state (replaces VITE_APP_URL-based tab navigation)
+  const [previewOrder, setPreviewOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
+  const [previewItems, setPreviewItems] = useState<InvoicePreviewItem[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const pdfPreview = usePdfPreview(companyId);
+  const [editOrder, setEditOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
+  const [editDate, setEditDate] = useState<string>('');
+  const [editNotes, setEditNotes] = useState<string>('');
+  const [editSaving, setEditSaving] = useState(false);
+  const [returnNotice, setReturnNotice] = useState<purchasesApi.PurchaseListItem | null>(null);
 
   const effectiveBranchId = branchId && branchId !== 'all' ? branchId : undefined;
 
@@ -186,40 +189,79 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
 
   const handleShareWhatsApp = (order: purchasesApi.PurchaseListItem) => {
     setMenuOrder(null);
-    const link = `${baseUrl}/purchases?po=${encodeURIComponent(order.id)}`;
     const text = [
       `PO: ${order.poNo}`,
       `Supplier: ${order.vendor}`,
       `Total: Rs. ${order.total.toLocaleString()}`,
       `Due: Rs. ${order.dueAmount.toLocaleString()}`,
-      `View: ${link}`,
     ].join('\n');
     const cleanPhone = String(order.vendorPhone || '').replace(/[^\d+]/g, '').replace(/^0/, '92');
     const waUrl = cleanPhone
       ? `https://wa.me/${encodeURIComponent(cleanPhone)}?text=${encodeURIComponent(text)}`
       : `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.location.assign(waUrl);
+    window.open(waUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const handlePrint = (order: purchasesApi.PurchaseListItem) => {
+  const openPurchasePreview = useCallback(async (order: purchasesApi.PurchaseListItem) => {
+    if (!companyId) return;
     setMenuOrder(null);
-    if (!openExternalInSameTab(`/purchases?print=${encodeURIComponent(order.id)}`)) {
-      setActionError('Print URL is not configured. Set VITE_APP_URL and retry.');
+    setPreviewOrder(order);
+    setPreviewLoading(true);
+    try {
+      const [{ data: detail }] = await Promise.all([
+        purchasesApi.getPurchaseById(companyId, order.id),
+        pdfPreview.openPreview(),
+      ]);
+      const items: InvoicePreviewItem[] = (detail?.items || []).map((it) => ({
+        productName: it.productName,
+        sku: null,
+        quantity: Number(it.quantity) || 0,
+        unitPrice: Number(it.unitPrice) || 0,
+        total: Number(it.total) || 0,
+      }));
+      setPreviewItems(items);
+    } finally {
+      setPreviewLoading(false);
     }
-  };
+  }, [companyId, pdfPreview]);
+
+  const handlePrint = (order: purchasesApi.PurchaseListItem) => { openPurchasePreview(order); };
 
   const handleEdit = (order: purchasesApi.PurchaseListItem) => {
     setMenuOrder(null);
-    if (!openExternalInSameTab(`/purchases?edit=${encodeURIComponent(order.id)}`)) {
-      setActionError('Edit URL is not configured. Set VITE_APP_URL and retry.');
+    setEditDate(String(order.date || '').slice(0, 10));
+    setEditNotes('');
+    setEditOrder(order);
+  };
+
+  const confirmEditOrder = async () => {
+    if (!editOrder || editSaving) return;
+    setEditSaving(true);
+    setActionError(null);
+    try {
+      const updates: Record<string, unknown> = {};
+      if (editDate) updates.po_date = editDate;
+      updates.notes = editNotes || null;
+      const { error } = await supabase.from('purchases').update(updates).eq('id', editOrder.id);
+      if (error) setActionError(error.message);
+      else {
+        setEditOrder(null);
+        // refresh list
+        if (companyId) {
+          const { data } = await purchasesApi.getPurchases(companyId, effectiveBranchId ?? null);
+          if (data) setOrders(data);
+        }
+      }
+    } finally {
+      setEditSaving(false);
     }
   };
 
   const handleReturn = (order: purchasesApi.PurchaseListItem) => {
     setMenuOrder(null);
-    if (!openExternalInSameTab(`/purchases/returns?original=${encodeURIComponent(order.id)}`)) {
-      setActionError('Return URL is not configured. Set VITE_APP_URL and retry.');
-    }
+    // Purchase return workflow is server-heavy and lives in web ERP. Show a
+    // friendly in-app notice instead of opening a new tab.
+    setReturnNotice(order);
   };
 
   const handleCancel = (order: purchasesApi.PurchaseListItem) => {
@@ -717,6 +759,105 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
               </button>
               <button type="button" onClick={confirmCancel} disabled={cancelling} className="h-10 rounded-lg bg-[#EF4444] hover:bg-[#DC2626] disabled:opacity-60 text-white font-medium">
                 {cancelling ? 'Cancelling...' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewOrder && pdfPreview.brand && (
+        <PdfPreviewModal
+          open={pdfPreview.open}
+          onClose={() => { pdfPreview.close(); setPreviewOrder(null); setPreviewItems([]); }}
+          title={`PO ${previewOrder.poNo}`}
+          filename={`purchase-${previewOrder.poNo}.pdf`}
+          whatsAppFallbackText={`PO: ${previewOrder.poNo}\nSupplier: ${previewOrder.vendor}\nTotal: Rs. ${previewOrder.total.toLocaleString()}`}
+        >
+          {previewLoading ? (
+            <div style={{ padding: 48, textAlign: 'center' }}>Loading items…</div>
+          ) : (
+            <InvoicePreviewPdf
+              brand={pdfPreview.brand}
+              docType="purchase"
+              docNumber={previewOrder.poNo}
+              docDate={String(previewOrder.date || '').slice(0, 10)}
+              partyName={previewOrder.vendor}
+              partyPhone={previewOrder.vendorPhone}
+              items={previewItems}
+              subtotal={previewOrder.subtotal}
+              discount={previewOrder.discount}
+              total={previewOrder.total}
+              paid={previewOrder.paidAmount}
+              due={previewOrder.dueAmount}
+              generatedBy={previewOrder.created_by_name || null}
+            />
+          )}
+        </PdfPreviewModal>
+      )}
+
+      {editOrder && (
+        <div className="fixed inset-0 z-[85] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={() => !editSaving && setEditOrder(null)}>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-[#374151] flex items-center justify-between">
+              <div>
+                <h3 className="text-white font-semibold">Edit Purchase</h3>
+                <p className="text-xs text-[#9CA3AF]">{editOrder.poNo}</p>
+              </div>
+              <button onClick={() => !editSaving && setEditOrder(null)} className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF]">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Order Date</label>
+                <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Notes</label>
+                <textarea rows={3} value={editNotes} onChange={(e) => setEditNotes(e.target.value)}
+                  className="w-full rounded-lg bg-[#111827] border border-[#374151] text-white px-3 py-2 text-sm resize-none" />
+              </div>
+              <p className="text-[11px] text-[#F59E0B]">
+                For item-level edits (products/quantities/prices) cancel this PO and create a new one to keep stock &amp; accounting consistent.
+              </p>
+              {actionError && <div className="rounded-lg bg-[#EF4444] text-white text-sm px-3 py-2">{actionError}</div>}
+            </div>
+            <div className="p-4 border-t border-[#374151] grid grid-cols-2 gap-3">
+              <button type="button" onClick={() => !editSaving && setEditOrder(null)} className="h-11 rounded-lg border border-[#374151] text-[#D1D5DB]">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmEditOrder} disabled={editSaving} className="h-11 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-60 text-white font-medium">
+                {editSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {returnNotice && (
+        <div className="fixed inset-0 z-[85] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={() => setReturnNotice(null)}>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-[#374151] flex items-center gap-3">
+              <RotateCcw className="w-5 h-5 text-[#3B82F6]" />
+              <h3 className="text-white font-semibold">Purchase Return</h3>
+            </div>
+            <div className="p-4 space-y-3 text-sm text-[#D1D5DB]">
+              <p>
+                Purchase Return flow (partial returns, price adjustment, stock reversal, Cr Note)
+                is managed from the web ERP to keep accounting entries atomic.
+              </p>
+              <p className="text-[#F59E0B]">
+                PO: <span className="text-white">{returnNotice.poNo}</span> · Supplier:{' '}
+                <span className="text-white">{returnNotice.vendor}</span>
+              </p>
+              <p className="text-xs text-[#9CA3AF]">
+                Coming soon: in-app draft flow. For now please create the return from web ERP.
+              </p>
+            </div>
+            <div className="p-4 border-t border-[#374151] grid grid-cols-1 gap-2">
+              <button type="button" onClick={() => setReturnNotice(null)} className="h-11 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-white font-medium">
+                Got it
               </button>
             </div>
           </div>

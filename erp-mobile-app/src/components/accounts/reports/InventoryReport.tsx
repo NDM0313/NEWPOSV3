@@ -24,7 +24,8 @@ function variationLabel(v: { attributes: Record<string, string>; sku: string }):
 }
 
 export function InventoryReport({ onBack, companyId, user }: InventoryReportProps) {
-  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
+  // Default to 'year' so users see data even when last-30-day window is empty.
+  const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('year'));
   const [rows, setRows] = useState<StockMovementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

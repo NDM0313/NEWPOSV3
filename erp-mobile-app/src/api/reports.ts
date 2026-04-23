@@ -171,15 +171,26 @@ export async function getContactsByType(
   type: 'customer' | 'supplier',
 ): Promise<{ data: PartyRow[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
-  const { data, error } = await supabase
-    .from('contacts')
-    .select('id, name, code, customer_code, supplier_code, phone, email, balance, type')
-    .eq('company_id', companyId)
-    .in('type', [type, 'both'])
-    .order('name');
-  if (error) return { data: [], error: error.message };
+  // Narrow select to columns that exist in every schema version and filter by
+  // type (also accept 'both' because some contacts double as customers+suppliers).
+  // Previously the select included `code, customer_code, supplier_code` which
+  // fails on DBs where those columns were renamed/removed, silently returning
+  // an empty list from the client's perspective.
+  const tryFetch = async (columns: string) =>
+    supabase
+      .from('contacts')
+      .select(columns)
+      .eq('company_id', companyId)
+      .in('type', [type, 'both'])
+      .order('name');
+  let res = await tryFetch('id, name, code, customer_code, supplier_code, phone, email, balance, type');
+  if (res.error) {
+    // Fallback: minimal column set that we know exists everywhere.
+    res = await tryFetch('id, name, phone, email, balance, type');
+  }
+  if (res.error) return { data: [], error: res.error.message };
   return {
-    data: (data || []).map((r: Record<string, unknown>) => ({
+    data: ((res.data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => ({
       id: String(r.id),
       name: String(r.name ?? '?'),
       code: (r.code ?? r.customer_code ?? r.supplier_code)
@@ -622,39 +633,68 @@ export async function getStudioProductions(
   to?: string,
 ): Promise<{ data: StudioProductionRow[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  // Split-query pattern: avoid ambiguous embeds so reports still work when
+  // multiple FKs exist between studio_productions and child tables.
   let q = supabase
     .from('studio_productions')
     .select(
-      `id, production_no, quantity, status, production_date, created_at, sale_id, product_id,
-       sale:sales(invoice_no, customer_name, total),
-       stages:studio_production_stages(id, status, cost)`,
+      `id, production_no, quantity, status, production_date, created_at, sale_id, product_id`,
     )
     .eq('company_id', companyId)
-    .order('production_date', { ascending: false })
+    .order('production_date', { ascending: false, nullsFirst: false })
     .limit(500);
-  if (from) q = q.gte('created_at', `${from}T00:00:00.000`);
-  if (to) q = q.lte('created_at', `${to}T23:59:59.999`);
+  // Prefer production_date for the range filter; fall back to created_at via OR
+  // would be fragile, so we accept ranges that use production_date OR created_at.
+  if (from) q = q.or(`production_date.gte.${from},created_at.gte.${from}T00:00:00+00:00`);
+  if (to) q = q.or(`production_date.lte.${to},created_at.lte.${to}T23:59:59+00:00`);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   const rows = (data || []) as Array<Record<string, unknown>>;
+
   const productIds = Array.from(
     new Set(rows.map((r) => String(r.product_id ?? '')).filter((id) => !!id)),
   );
+  const saleIds = Array.from(
+    new Set(rows.map((r) => String(r.sale_id ?? '')).filter((id) => !!id)),
+  );
+  const prodIds = Array.from(new Set(rows.map((r) => String(r.id ?? ''))));
+
+  const [productRes, saleRes, stageRes] = await Promise.all([
+    productIds.length
+      ? supabase.from('products').select('id, name').in('id', productIds)
+      : Promise.resolve({ data: [], error: null } as { data: Array<Record<string, unknown>>; error: null }),
+    saleIds.length
+      ? supabase.from('sales').select('id, invoice_no, customer_name, total').in('id', saleIds)
+      : Promise.resolve({ data: [], error: null } as { data: Array<Record<string, unknown>>; error: null }),
+    prodIds.length
+      ? supabase
+          .from('studio_production_stages')
+          .select('id, status, cost, production_id')
+          .in('production_id', prodIds)
+      : Promise.resolve({ data: [], error: null } as { data: Array<Record<string, unknown>>; error: null }),
+  ]);
+
   const productNameMap = new Map<string, string>();
-  if (productIds.length > 0) {
-    const { data: productRows, error: productErr } = await supabase
-      .from('products')
-      .select('id, name')
-      .in('id', productIds);
-    if (productErr) return { data: [], error: productErr.message };
-    (productRows || []).forEach((p: Record<string, unknown>) => {
-      productNameMap.set(String(p.id ?? ''), String(p.name ?? '?'));
-    });
-  }
+  ((productRes.data || []) as Array<Record<string, unknown>>).forEach((p) => {
+    productNameMap.set(String(p.id ?? ''), String(p.name ?? '?'));
+  });
+  const saleMap = new Map<string, Record<string, unknown>>();
+  ((saleRes.data || []) as Array<Record<string, unknown>>).forEach((s) => {
+    saleMap.set(String(s.id ?? ''), s);
+  });
+  const stagesByProduction = new Map<string, Array<{ status: string; cost: number }>>();
+  ((stageRes.data || []) as Array<Record<string, unknown>>).forEach((st) => {
+    const key = String(st.production_id ?? '');
+    if (!key) return;
+    const arr = stagesByProduction.get(key) ?? [];
+    arr.push({ status: String(st.status ?? ''), cost: Number(st.cost) || 0 });
+    stagesByProduction.set(key, arr);
+  });
+
   return {
-    data: rows.map((r: Record<string, unknown>) => {
-      const sale = (r.sale as Record<string, unknown>) || {};
-      const stages = (r.stages as Array<{ status: string; cost: number }>) || [];
+    data: rows.map((r) => {
+      const sale = saleMap.get(String(r.sale_id ?? '')) || {};
+      const stages = stagesByProduction.get(String(r.id ?? '')) ?? [];
       const workerCost = stages.reduce((s, st) => s + (Number(st.cost) || 0), 0);
       const stagesCompleted = stages.filter((s) => s.status === 'completed').length;
       const saleTotal = Number(sale.total) || 0;
@@ -715,8 +755,10 @@ export async function getRentalsInRange(
     .eq('company_id', companyId)
     .order('booking_date', { ascending: false })
     .limit(500);
-  if (from) q = q.gte('created_at', `${from}T00:00:00.000`);
-  if (to) q = q.lte('created_at', `${to}T23:59:59.999`);
+  // Use booking_date primary filter with created_at fallback so bookings that
+  // were back-dated or front-dated still appear within the report range.
+  if (from) q = q.or(`booking_date.gte.${from},created_at.gte.${from}T00:00:00+00:00`);
+  if (to) q = q.or(`booking_date.lte.${to},created_at.lte.${to}T23:59:59+00:00`);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   return {
@@ -784,8 +826,8 @@ export async function getStockMovements(
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
     .limit(1000);
-  if (from) q = q.gte('created_at', from);
-  if (to) q = q.lte('created_at', to + 'T23:59:59.999');
+  if (from) q = q.gte('created_at', `${from}T00:00:00+00:00`);
+  if (to) q = q.lte('created_at', `${to}T23:59:59+00:00`);
   if (productId) q = q.eq('product_id', productId);
   if (variationId) q = q.eq('variation_id', variationId);
   const { data, error } = await q;
