@@ -178,13 +178,37 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView }:
     );
   }
   if (view === 'customer-ledger') {
-    return <PartyLedgerReport onBack={backToReports} kind="customer" companyId={companyId ?? null} user={user} />;
+    return (
+      <PartyLedgerReport
+        onBack={backToReports}
+        kind="customer"
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        user={user}
+      />
+    );
   }
   if (view === 'supplier-ledger') {
-    return <PartyLedgerReport onBack={backToReports} kind="supplier" companyId={companyId ?? null} user={user} />;
+    return (
+      <PartyLedgerReport
+        onBack={backToReports}
+        kind="supplier"
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        user={user}
+      />
+    );
   }
   if (view === 'worker-ledger') {
-    return <PartyLedgerReport onBack={backToReports} kind="worker" companyId={companyId ?? null} user={user} />;
+    return (
+      <PartyLedgerReport
+        onBack={backToReports}
+        kind="worker"
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        user={user}
+      />
+    );
   }
   if (view === 'daybook') {
     return <DayBookReport onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;

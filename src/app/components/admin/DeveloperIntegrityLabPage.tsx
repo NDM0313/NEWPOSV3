@@ -73,6 +73,7 @@ import { toast } from 'sonner';
 import { PartyTieOutRepairPanel } from '@/app/components/admin/PartyTieOutRepairPanel';
 import { runFullAccountingAudit, type FullAccountingAuditResult } from '@/app/services/fullAccountingAuditService';
 import { integrityRepairService, type StockIssue, type StockMovementTrace, type ContactBalanceIssue } from '@/app/services/integrityRepairService';
+import { contactService } from '@/app/services/contactService';
 import { defaultAccountsService } from '@/app/services/defaultAccountsService';
 import {
   previewAllJournalPostingDuplicates,
@@ -2004,18 +2005,15 @@ export default function DeveloperIntegrityLabPage() {
                       // Fetch sub-ledger accounts
                       const { data: subAccounts } = await supabase.from('accounts').select('id, code, name, linked_contact_id').eq('company_id', companyId).eq('is_active', true).not('linked_contact_id', 'is', null);
                       const subMap = new Map<string, { id: string; code: string }>();
-                      for (const a of (subAccounts || []) as any[]) subMap.set(a.linked_contact_id, { id: a.id, code: a.code });
-                      // Fetch GL balances for all sub-ledger accounts
-                      const subIds = (subAccounts || []).map((a: any) => a.id);
-                      let glMap = new Map<string, number>();
-                      if (subIds.length > 0) {
-                        const { data: entries } = await supabase.from('journal_entries').select('id').eq('company_id', companyId).or('is_void.is.null,is_void.eq.false');
-                        const jeIds = (entries || []).map((e: any) => e.id);
-                        if (jeIds.length > 0) {
-                          const { data: lines } = await supabase.from('journal_entry_lines').select('account_id, debit, credit').in('journal_entry_id', jeIds).in('account_id', subIds);
-                          for (const l of (lines || []) as any[]) glMap.set(l.account_id, (glMap.get(l.account_id) || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0));
-                        }
+                      const subMapAR = new Map<string, { id: string; code: string }>();
+                      const subMapAP = new Map<string, { id: string; code: string }>();
+                      for (const a of (subAccounts || []) as any[]) {
+                        if (a.code?.startsWith('AR-')) subMapAR.set(a.linked_contact_id, { id: a.id, code: a.code });
+                        else if (a.code?.startsWith('AP-')) subMapAP.set(a.linked_contact_id, { id: a.id, code: a.code });
+                        subMap.set(a.linked_contact_id, { id: a.id, code: a.code });
                       }
+                      // GL per contact: same RPC as Contacts (subtree + resolver). Old subId-only line sum missed control 1100/2000.
+                      const partyGlMap = await contactService.getContactPartyGlBalancesMap(companyId, null);
                       // Fetch sales data per customer
                       const { data: sales } = await supabase.from('sales').select('id, customer_id, total, paid_amount, due_amount, discount_amount, shipment_charges').eq('company_id', companyId).eq('status', 'final');
                       const salesByCustomer = new Map<string, { totalSales: number; totalPaid: number; totalDue: number }>();
@@ -2062,8 +2060,24 @@ export default function DeveloperIntegrityLabPage() {
                         }
                         const totalReturns = isCustomer ? (returnsByCustomer.get(c.id) || 0) : 0;
                         const operational = Math.round((opening + salesDue - totalReturns) * 100) / 100;
-                        const sub = subMap.get(c.id);
-                        const rawGl = sub ? Math.round((glMap.get(sub.id) || 0) * 100) / 100 : 0;
+                        const sub =
+                          isCustomer && !isSupplier
+                            ? subMapAR.get(c.id) || subMap.get(c.id)
+                            : isSupplier && !isCustomer
+                              ? subMapAP.get(c.id) || subMap.get(c.id)
+                              : subMap.get(c.id);
+                        const slice = partyGlMap?.get(c.id);
+                        let rawGl = 0;
+                        if (c.type === 'customer') {
+                          rawGl = slice ? Math.round(slice.glArReceivable * 100) / 100 : 0;
+                        } else if (c.type === 'supplier') {
+                          rawGl = slice ? Math.round(slice.glApPayable * 100) / 100 : 0;
+                        } else if (slice) {
+                          rawGl =
+                            sub && sub.code?.startsWith('AP-')
+                              ? Math.round(slice.glApPayable * 100) / 100
+                              : Math.round(slice.glArReceivable * 100) / 100;
+                        }
                         // AP accounts have negative GL balance (credit-side); flip sign for comparison
                         const isSupplierType = c.type === 'supplier' || (c.type === 'both' && sub?.code?.startsWith('AP-'));
                         const glBal = isSupplierType ? Math.abs(rawGl) : rawGl;

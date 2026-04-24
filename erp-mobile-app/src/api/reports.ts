@@ -188,6 +188,10 @@ export async function getContactsByType(
     // Fallback: minimal column set that we know exists everywhere.
     res = await tryFetch('id, name, phone, email, balance, type');
   }
+  if (res.error) {
+    // Many schemas have opening_balance/current_balance but no `balance` column.
+    res = await tryFetch('id, name, phone, email, type');
+  }
   if (res.error) return { data: [], error: res.error.message };
   return {
     data: ((res.data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => ({

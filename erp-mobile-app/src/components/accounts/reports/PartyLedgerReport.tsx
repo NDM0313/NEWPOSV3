@@ -1,13 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, ArrowDownLeft, ArrowUpRight, Users, Search } from 'lucide-react';
 import type { User } from '../../../types';
-import {
-  getContactsByType,
-  getContactSubAccountId,
-  getAccountLedgerLines,
-  type LedgerLine,
-  type PartyRow,
-} from '../../../api/reports';
+import { getContactSubAccountId, getAccountLedgerLines, type LedgerLine } from '../../../api/reports';
+import { getContacts, type ContactRole } from '../../../api/contacts';
 import { getWorkersWithPayable, getWorkerLedgerEntries } from '../../../api/accounts';
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
@@ -23,6 +18,8 @@ interface PartyLedgerReportProps {
   onBack: () => void;
   kind: PartyLedgerKind;
   companyId: string | null;
+  /** Same branch semantics as other reports (RPC balances); null = company-wide. */
+  branchId?: string | null;
   user: User;
 }
 
@@ -46,10 +43,11 @@ const displayEntryNo = (value: string, fallbackType?: string) => {
   return v;
 };
 
-export function PartyLedgerReport({ onBack, kind, companyId, user }: PartyLedgerReportProps) {
+export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: PartyLedgerReportProps) {
   const cfg = KIND_LABELS[kind];
   const [parties, setParties] = useState<LocalParty[]>([]);
   const [loading, setLoading] = useState(!!companyId);
+  const [listError, setListError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<LocalParty | null>(null);
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
@@ -63,10 +61,12 @@ export function PartyLedgerReport({ onBack, kind, companyId, user }: PartyLedger
   useEffect(() => {
     if (!companyId) {
       setLoading(false);
+      setListError(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
+    setListError(null);
 
     (async () => {
       try {
@@ -82,14 +82,20 @@ export function PartyLedgerReport({ onBack, kind, companyId, user }: PartyLedger
             })),
           );
         } else {
-          const { data } = await getContactsByType(companyId, kind);
+          const role = kind as ContactRole;
+          const { data, error } = await getContacts(companyId, role, branchId ?? null);
           if (cancelled) return;
+          if (error) {
+            setParties([]);
+            setListError(error);
+            return;
+          }
           setParties(
-            (data as PartyRow[]).map((p) => ({
-              id: p.id,
-              name: p.name,
-              meta: [p.code, p.phone].filter(Boolean).join(' · ') || undefined,
-              balance: Number(p.balance || 0),
+            (data || []).map((c) => ({
+              id: c.id,
+              name: c.name,
+              meta: [c.phone, c.email].filter(Boolean).join(' · ') || undefined,
+              balance: Number(c.balance || 0),
             })),
           );
         }
@@ -100,7 +106,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, user }: PartyLedger
     return () => {
       cancelled = true;
     };
-  }, [companyId, kind]);
+  }, [companyId, kind, branchId]);
 
   useEffect(() => {
     if (!companyId || !selected) {
@@ -214,7 +220,12 @@ export function PartyLedgerReport({ onBack, kind, companyId, user }: PartyLedger
           </div>
         </ReportHeader>
 
-        <ReportShell loading={loading} empty={!loading && filteredParties.length === 0} emptyLabel={`No ${cfg.plural} found.`}>
+        <ReportShell
+          loading={loading}
+          error={listError}
+          empty={!loading && !listError && filteredParties.length === 0}
+          emptyLabel={`No ${cfg.plural} found.`}
+        >
           <ul className="space-y-2">
             {filteredParties.map((p) => (
               <li key={p.id}>

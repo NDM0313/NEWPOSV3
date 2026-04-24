@@ -258,9 +258,10 @@ export function TransactionClassicView({ transactions, saleItemsMap = new Map(),
     setExpandedRows(newExpanded);
   };
 
-  // Calculate totals for summary
-  const totalDebit = transactions.reduce((sum, t) => sum + t.debit, 0);
-  const totalCredit = transactions.reduce((sum, t) => sum + t.credit, 0);
+  // Period totals only — exclude synthetic Opening Balance row (matches summary API / top cards).
+  const rowsForPeriodTotals = transactions.filter((t) => t.documentType !== 'Opening Balance');
+  const totalDebit = rowsForPeriodTotals.reduce((sum, t) => sum + t.debit, 0);
+  const totalCredit = rowsForPeriodTotals.reduce((sum, t) => sum + t.credit, 0);
   const closingBalance = transactions.length > 0 
     ? transactions[transactions.length - 1].runningBalance 
     : 0;

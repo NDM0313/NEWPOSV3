@@ -145,3 +145,26 @@ export async function createPackingListFromSale(payload: {
 
   return getPackingListWithItems(pl.id);
 }
+
+export type PackingListItemPatch = {
+  pieces?: number;
+  cartons?: number;
+  weight?: string | null;
+  sort_order?: number;
+};
+
+/** Update one packing list line (RLS same as select on packing_list_items). */
+export async function updatePackingListItem(
+  itemId: string,
+  patch: PackingListItemPatch,
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const row: Record<string, unknown> = {};
+  if (patch.pieces !== undefined) row.pieces = Math.max(0, Math.floor(Number(patch.pieces) || 0));
+  if (patch.cartons !== undefined) row.cartons = Math.max(0, Math.floor(Number(patch.cartons) || 0));
+  if (patch.weight !== undefined) row.weight = patch.weight;
+  if (patch.sort_order !== undefined) row.sort_order = patch.sort_order;
+  if (Object.keys(row).length === 0) return { error: null };
+  const { error } = await supabase.from('packing_list_items').update(row).eq('id', itemId);
+  return { error: error?.message ?? null };
+}

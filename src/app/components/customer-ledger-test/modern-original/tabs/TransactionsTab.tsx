@@ -199,12 +199,16 @@ export function TransactionsTab({ transactions, saleItemsMap = new Map(), studio
     setActiveFilters(activeFilters.filter(f => f !== filter));
   };
 
-  // Document-type counts exclude synthetic opening row; debit/credit/net match visible table (incl. opening) so top cards = footer / classic ledger.
+  // Period debit/credit exclude the synthetic Opening Balance row so totals match getLedgerSummary / ModernSummaryCards (opening is its own card).
   const periodTransactions = filteredTransactions.filter(t => t.documentType !== 'Opening Balance');
+  const closingFromTable =
+    filteredTransactions.length > 0
+      ? filteredTransactions[filteredTransactions.length - 1].runningBalance
+      : openingBalanceProp;
   const stats = {
-    totalDebit: filteredTransactions.reduce((sum, t) => sum + t.debit, 0),
-    totalCredit: filteredTransactions.reduce((sum, t) => sum + t.credit, 0),
-    netBalance: filteredTransactions.reduce((sum, t) => sum + t.debit - t.credit, 0),
+    totalDebit: periodTransactions.reduce((sum, t) => sum + t.debit, 0),
+    totalCredit: periodTransactions.reduce((sum, t) => sum + t.credit, 0),
+    netBalance: closingFromTable,
     salesCount: periodTransactions.filter(
       t => t.documentType === 'Sale' || t.documentType === 'Studio Sale' || t.documentType === 'Rental'
     ).length,

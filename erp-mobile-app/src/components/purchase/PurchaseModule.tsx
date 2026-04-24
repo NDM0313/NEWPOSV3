@@ -1,8 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, ShoppingBag, Plus, Search, Package, Calendar, Loader2, MapPin, Paperclip, MoreVertical, History, Share2, Printer, Download, SquarePen, RotateCcw, Ban, AlertTriangle, X } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { ArrowLeft, ShoppingBag, Plus, Search, Package, Calendar, Loader2, MapPin, Paperclip, MoreVertical, History, Share2, Printer, Download, SquarePen, RotateCcw, Ban, AlertTriangle, X, Trash2 } from 'lucide-react';
 import type { User } from '../../types';
 import * as purchasesApi from '../../api/purchases';
+import {
+  purchaseAccountingSnapshotFromRow,
+  syncPurchaseDocumentJournalInPlaceMobile,
+} from '../../api/purchaseEditAccounting';
 import * as branchesApi from '../../api/branches';
+import * as contactsApi from '../../api/contacts';
+import * as productsApi from '../../api/products';
 import { supabase, erpMobileCanUseRealtime } from '../../lib/supabase';
 import { CreatePurchaseFlow } from './CreatePurchaseFlow';
 import { MobilePaySupplier } from './MobilePaySupplier';
@@ -18,6 +24,17 @@ interface PurchaseModuleProps {
   companyId: string | null;
   branchId: string | null;
 }
+
+type EditPurchaseLine = {
+  lineKey: string;
+  lineId: string;
+  productId: string;
+  variationId: string | null;
+  productName: string;
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+};
 
 export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseModuleProps) {
   const [view, setView] = useState<'list' | 'create' | 'details'>('list');
@@ -47,11 +64,20 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
   const [editOrder, setEditOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
   const [editDate, setEditDate] = useState<string>('');
   const [editNotes, setEditNotes] = useState<string>('');
+  const [editSupplierId, setEditSupplierId] = useState<string | null>(null);
   const [editSupplierName, setEditSupplierName] = useState<string>('');
-  const [editContactNumber, setEditContactNumber] = useState<string>('');
-  const [editPaymentMethod, setEditPaymentMethod] = useState<string>('');
+  const [editSupplierOptions, setEditSupplierOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [editSuppliersLoading, setEditSuppliersLoading] = useState(false);
+  const [frozenShippingCost, setFrozenShippingCost] = useState(0);
   const [editDiscount, setEditDiscount] = useState<string>('0');
-  const [editShipping, setEditShipping] = useState<string>('0');
+  const [editTax, setEditTax] = useState<string>('0');
+  const [showDiscountField, setShowDiscountField] = useState(false);
+  const [showTaxField, setShowTaxField] = useState(false);
+  const [productCatalog, setProductCatalog] = useState<productsApi.Product[]>([]);
+  const [productSearch, setProductSearch] = useState('');
+  const [showAddProductRow, setShowAddProductRow] = useState(false);
+  const [editLineItems, setEditLineItems] = useState<EditPurchaseLine[]>([]);
+  const [editLinesLoading, setEditLinesLoading] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [returnNotice, setReturnNotice] = useState<purchasesApi.PurchaseListItem | null>(null);
 
@@ -234,56 +260,302 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
 
   const handleEdit = async (order: purchasesApi.PurchaseListItem) => {
     setMenuOrder(null);
-    setEditDate(String(order.date || '').slice(0, 10));
-    setEditSupplierName(order.vendor || '');
-    setEditContactNumber(order.vendorPhone || '');
-    setEditDiscount(String(order.discount ?? 0));
-    // Hydrate extra fields from DB (notes, payment_method, shipping_cost)
-    const { data: extra } = await supabase
-      .from('purchases')
-      .select('notes, payment_method, shipping_cost')
-      .eq('id', order.id)
-      .maybeSingle();
-    const r = (extra ?? {}) as Record<string, unknown>;
-    setEditNotes(String((r.notes as string) || ''));
-    setEditPaymentMethod(String((r.payment_method as string) || ''));
-    setEditShipping(String(Number(r.shipping_cost ?? 0) || 0));
     setEditOrder(order);
+    setEditLineItems([]);
+    setEditLinesLoading(true);
+    setActionError(null);
+    setProductSearch('');
+    setShowAddProductRow(false);
+    const effBranch = branchId && branchId !== 'all' ? branchId : null;
+    if (companyId) {
+      setEditSuppliersLoading(true);
+      void contactsApi.getContacts(companyId, 'supplier', effBranch).then(({ data, error: sErr }) => {
+        setEditSuppliersLoading(false);
+        if (!sErr && data?.length) setEditSupplierOptions(data.map((c) => ({ id: c.id, name: c.name })));
+        else setEditSupplierOptions([]);
+      });
+      void productsApi.getProducts(companyId).then(({ data }) => setProductCatalog(data || []));
+    } else {
+      setEditSupplierOptions([]);
+      setProductCatalog([]);
+    }
+    if (!companyId) {
+      setEditLinesLoading(false);
+      return;
+    }
+    const { data: det, error: detErr } = await purchasesApi.getPurchaseById(companyId, order.id);
+    setEditLinesLoading(false);
+    if (detErr || !det) {
+      setEditDate(String(order.date || '').slice(0, 10));
+      setEditSupplierName(order.vendor || '');
+      setEditSupplierId(null);
+      setEditDiscount(String(order.discount ?? 0));
+      setShowDiscountField(Number(order.discount ?? 0) > 0);
+      const { data: extra } = await supabase
+        .from('purchases')
+        .select('notes, shipping_cost, tax_amount, supplier_id')
+        .eq('id', order.id)
+        .maybeSingle();
+      const r = (extra ?? {}) as Record<string, unknown>;
+      setEditNotes(String((r.notes as string) || ''));
+      setFrozenShippingCost(Number(r.shipping_cost ?? 0) || 0);
+      const taxVal = Number(r.tax_amount ?? 0) || 0;
+      setEditTax(String(taxVal));
+      setShowTaxField(taxVal > 0);
+      setEditSupplierId((r.supplier_id as string) || null);
+      return;
+    }
+    setEditDate(det.orderDate && det.orderDate !== '—' ? det.orderDate.slice(0, 10) : String(order.date || '').slice(0, 10));
+    setEditSupplierName(det.vendor);
+    setEditSupplierId(det.supplierId ?? null);
+    setEditDiscount(String(det.discount));
+    setEditTax(String(det.taxAmount ?? 0));
+    setFrozenShippingCost(Number(det.shippingCost) || 0);
+    setEditNotes(det.notes ?? '');
+    setShowDiscountField(det.discount > 0);
+    setShowTaxField(det.taxAmount > 0);
+    setEditLineItems(
+      det.items
+        .filter((it) => it.productId)
+        .map((it) => ({
+          lineKey: it.id,
+          lineId: it.id,
+          productId: it.productId as string,
+          variationId: it.variationId ?? null,
+          productName: it.productName,
+          sku: it.sku || '—',
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+        })),
+    );
+  };
+
+  const updateEditPurchaseLine = (index: number, patch: Partial<EditPurchaseLine>) => {
+    setEditLineItems((prev) => {
+      const next = [...prev];
+      if (!next[index]) return prev;
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  };
+
+  const removeEditPurchaseLine = (index: number) => {
+    setEditLineItems((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
+  const editPurchaseLineSubtotal = editLineItems.reduce(
+    (s, r) => s + Math.max(0, (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0)),
+    0,
+  );
+
+  const filteredPurchaseCatalog = useMemo(() => {
+    if (!editOrder) return [];
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return productCatalog.slice(0, 35);
+    return productCatalog
+      .filter((p) => p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+      .slice(0, 45);
+  }, [editOrder, productSearch, productCatalog]);
+
+  const closePurchaseEditModal = () => {
+    if (editSaving) return;
+    setEditOrder(null);
+    setEditLineItems([]);
+    setEditSupplierOptions([]);
+    setProductCatalog([]);
+    setProductSearch('');
+    setShowAddProductRow(false);
+    setShowDiscountField(false);
+    setShowTaxField(false);
+  };
+
+  const pickProductForEditPurchase = (p: productsApi.Product) => {
+    const key = globalThis.crypto?.randomUUID?.() ?? `plk-${Date.now()}`;
+    if (p.hasVariations && p.variations && p.variations.length > 0) {
+      const v = p.variations[0];
+      setEditLineItems((prev) => [
+        ...prev,
+        {
+          lineKey: key,
+          lineId: key,
+          productId: p.id,
+          variationId: v.id,
+          productName: `${p.name} (${Object.values(v.attributes || {}).filter(Boolean).join(', ')})`,
+          sku: v.sku,
+          quantity: 1,
+          unitPrice: Number(v.price) || 0,
+        },
+      ]);
+    } else {
+      setEditLineItems((prev) => [
+        ...prev,
+        {
+          lineKey: key,
+          lineId: key,
+          productId: p.id,
+          variationId: null,
+          productName: p.name,
+          sku: p.sku,
+          quantity: 1,
+          unitPrice: Number(p.costPrice) || Number(p.retailPrice) || 0,
+        },
+      ]);
+    }
+    setProductSearch('');
+    setShowAddProductRow(false);
   };
 
   const confirmEditOrder = async () => {
     if (!editOrder || editSaving) return;
+    const purchaseId = editOrder.id;
+    const poNoCapture = editOrder.poNo;
+    const vendorCapture = editOrder.vendor;
+    let oldPurchaseSnap: ReturnType<typeof purchaseAccountingSnapshotFromRow> | null = null;
+    if (companyId) {
+      const { data: rb } = await supabase
+        .from('purchases')
+        .select('total, subtotal, discount_amount, shipping_cost, tax_amount, purchase_charges')
+        .eq('id', purchaseId)
+        .maybeSingle();
+      oldPurchaseSnap = purchaseAccountingSnapshotFromRow(
+        rb
+          ? (rb as Record<string, unknown>)
+          : {
+              total: editOrder.total,
+              subtotal: editOrder.subtotal,
+              discount_amount: editOrder.discount,
+              shipping_cost: frozenShippingCost,
+            },
+      );
+    }
     setEditSaving(true);
     setActionError(null);
     try {
-      const subtotal = Number(editOrder.subtotal ?? 0) || 0;
       const discount = Number(editDiscount) || 0;
-      const shipping = Number(editShipping) || 0;
-      const total = Math.max(0, subtotal - discount + shipping);
+      const shipping = frozenShippingCost;
+      const tax = Number(editTax) || 0;
       const paid = Number(editOrder.paidAmount ?? 0) || 0;
-      const due = Math.max(0, total - paid);
 
-      const updates: Record<string, unknown> = {
-        notes: editNotes || null,
-        supplier_name: editSupplierName || editOrder.vendor,
-        contact_number: editContactNumber || null,
-        payment_method: editPaymentMethod || null,
-        discount_amount: discount,
-        shipping_cost: shipping,
-        total,
-        due_amount: due,
-        updated_at: new Date().toISOString(),
-      };
-      if (editDate) updates.po_date = editDate;
+      const lines = editLineItems
+        .map((row) => {
+          const qty = Math.max(0, Number(row.quantity) || 0);
+          const up = Math.max(0, Number(row.unitPrice) || 0);
+          const total = Math.max(0, qty * up);
+          return { ...row, quantity: qty, unitPrice: up, total };
+        })
+        .filter((row) => row.productId && row.quantity > 0);
 
-      const { error } = await supabase.from('purchases').update(updates).eq('id', editOrder.id);
-      if (error) setActionError(error.message);
-      else {
-        setEditOrder(null);
-        if (companyId) {
-          const { data } = await purchasesApi.getPurchases(companyId, effectiveBranchId ?? null);
-          if (data) setOrders(data);
+      if (lines.length === 0) {
+        if (editLineItems.length > 0) {
+          setActionError('Add at least one line with quantity greater than zero.');
+          return;
         }
+        const subtotal = Number(editOrder.subtotal ?? 0) || 0;
+        const total = Math.max(0, subtotal - discount + tax + shipping);
+        const due = Math.max(0, total - paid);
+        const updates: Record<string, unknown> = {
+          notes: editNotes || null,
+          supplier_name: editSupplierName || editOrder.vendor,
+          supplier_id: editSupplierId || null,
+          discount_amount: discount,
+          tax_amount: tax,
+          shipping_cost: shipping,
+          total,
+          due_amount: due,
+          updated_at: new Date().toISOString(),
+        };
+        if (editDate) updates.po_date = editDate;
+        const { error } = await supabase.from('purchases').update(updates).eq('id', editOrder.id);
+        if (error) setActionError(error.message);
+        else {
+          if (companyId && oldPurchaseSnap) {
+            try {
+              const { data: newRow } = await supabase
+                .from('purchases')
+                .select('total, subtotal, discount_amount, shipping_cost, tax_amount, purchase_charges')
+                .eq('id', purchaseId)
+                .maybeSingle();
+              if (newRow) {
+                const newSnap = purchaseAccountingSnapshotFromRow(newRow as Record<string, unknown>);
+                const acct = await syncPurchaseDocumentJournalInPlaceMobile({
+                  companyId,
+                  purchaseId,
+                  supplierId: editSupplierId,
+                  supplierName: editSupplierName || vendorCapture,
+                  poNo: poNoCapture,
+                  oldSnapshot: oldPurchaseSnap,
+                  newSnapshot: newSnap,
+                });
+                if (acct.error) console.warn('[PurchaseModule] Ledger sync after header edit:', acct.error);
+              }
+            } catch (e) {
+              console.warn('[PurchaseModule] Ledger sync threw (header path):', e);
+            }
+          }
+          setEditOrder(null);
+          setEditLineItems([]);
+          if (companyId) {
+            const { data } = await purchasesApi.getPurchases(companyId, effectiveBranchId ?? null);
+            if (data) setOrders(data);
+          }
+        }
+        return;
+      }
+
+      const rpcRes = await purchasesApi.updatePurchaseWithItems({
+        purchaseId: editOrder.id,
+        userId: user.id,
+        supplierId: editSupplierId,
+        items: lines.map((r) => ({
+          productId: r.productId,
+          variationId: r.variationId,
+          productName: r.productName,
+          sku: r.sku,
+          quantity: r.quantity,
+          unitPrice: r.unitPrice,
+          total: r.total,
+        })),
+        discountAmount: discount,
+        taxAmount: tax,
+        shippingCost: shipping,
+        notes: editNotes || null,
+        supplierName: editSupplierName || null,
+        contactNumber: null,
+        poDate: editDate || null,
+      });
+      if (rpcRes.error) {
+        setActionError(rpcRes.error);
+        return;
+      }
+      if (companyId && oldPurchaseSnap) {
+        try {
+          const { data: newRow } = await supabase
+            .from('purchases')
+            .select('total, subtotal, discount_amount, shipping_cost, tax_amount, purchase_charges')
+            .eq('id', purchaseId)
+            .maybeSingle();
+          if (newRow) {
+            const newSnap = purchaseAccountingSnapshotFromRow(newRow as Record<string, unknown>);
+            const acct = await syncPurchaseDocumentJournalInPlaceMobile({
+              companyId,
+              purchaseId,
+              supplierId: editSupplierId,
+              supplierName: editSupplierName || vendorCapture,
+              poNo: poNoCapture,
+              oldSnapshot: oldPurchaseSnap,
+              newSnapshot: newSnap,
+            });
+            if (acct.error) console.warn('[PurchaseModule] Ledger sync after line edit:', acct.error);
+          }
+        } catch (e) {
+          console.warn('[PurchaseModule] Ledger sync threw (line path):', e);
+        }
+      }
+      setEditOrder(null);
+      setEditLineItems([]);
+      if (companyId) {
+        const { data } = await purchasesApi.getPurchases(companyId, effectiveBranchId ?? null);
+        if (data) setOrders(data);
       }
     } finally {
       setEditSaving(false);
@@ -835,87 +1107,190 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
       )}
 
       {editOrder && (
-        <div className="fixed inset-0 z-[85] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={() => !editSaving && setEditOrder(null)}>
-          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-[85] bg-black/70 flex items-end sm:items-center justify-center p-4"
+          onClick={closePurchaseEditModal}
+        >
+          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b border-[#374151] flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-white font-semibold">Edit Purchase</h3>
                 <p className="text-xs text-[#9CA3AF]">{editOrder.poNo}</p>
               </div>
-              <button onClick={() => !editSaving && setEditOrder(null)} className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF]">
+              <button type="button" onClick={closePurchaseEditModal} className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF]">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="p-4 space-y-3 overflow-y-auto">
               <div>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Supplier</label>
+                <select
+                  value={editSupplierId ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setEditSupplierId(v || null);
+                    const s = editSupplierOptions.find((x) => x.id === v);
+                    if (s) setEditSupplierName(s.name);
+                    else if (!v) setEditSupplierName(editOrder.vendor || '');
+                  }}
+                  disabled={editSuppliersLoading}
+                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                >
+                  <option value="">—</option>
+                  {editSupplierOptions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                {editSuppliersLoading && <p className="text-[10px] text-[#9CA3AF] mt-1">Loading suppliers…</p>}
+              </div>
+              <div>
                 <label className="block text-xs text-[#9CA3AF] mb-1">Order Date</label>
                 <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)}
                   className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
               </div>
-              <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">Supplier Name</label>
-                <input type="text" value={editSupplierName} onChange={(e) => setEditSupplierName(e.target.value)}
-                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-[#9CA3AF] mb-1">Contact #</label>
-                  <input type="tel" value={editContactNumber} onChange={(e) => setEditContactNumber(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-[#9CA3AF] mb-1">Payment Method</label>
-                  <select value={editPaymentMethod} onChange={(e) => setEditPaymentMethod(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm">
-                    <option value="">—</option>
-                    <option value="cash">Cash</option>
-                    <option value="bank">Bank</option>
-                    <option value="card">Card</option>
-                    <option value="cheque">Cheque</option>
-                    <option value="credit">Credit</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              {(showDiscountField || Number(editOrder.discount ?? 0) > 0) && (
                 <div>
                   <label className="block text-xs text-[#9CA3AF] mb-1">Discount</label>
                   <input type="number" min="0" step="0.01" value={editDiscount} onChange={(e) => setEditDiscount(e.target.value)}
                     className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
                 </div>
+              )}
+              {!showDiscountField && Number(editOrder.discount ?? 0) <= 0 && (
+                <button type="button" onClick={() => setShowDiscountField(true)} className="text-xs text-[#60A5FA] hover:underline">
+                  Add discount
+                </button>
+              )}
+
+              {(showTaxField || Number(editTax) > 0) && (
                 <div>
-                  <label className="block text-xs text-[#9CA3AF] mb-1">Shipping</label>
-                  <input type="number" min="0" step="0.01" value={editShipping} onChange={(e) => setEditShipping(e.target.value)}
+                  <label className="block text-xs text-[#9CA3AF] mb-1">Tax</label>
+                  <input type="number" min="0" step="0.01" value={editTax} onChange={(e) => setEditTax(e.target.value)}
                     className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
                 </div>
-              </div>
+              )}
+              {!showTaxField && Number(editTax) <= 0 && (
+                <button type="button" onClick={() => setShowTaxField(true)} className="text-xs text-[#60A5FA] hover:underline">
+                  Add tax
+                </button>
+              )}
+
               <div>
                 <label className="block text-xs text-[#9CA3AF] mb-1">Notes</label>
                 <textarea rows={3} value={editNotes} onChange={(e) => setEditNotes(e.target.value)}
                   className="w-full rounded-lg bg-[#111827] border border-[#374151] text-white px-3 py-2 text-sm resize-none" />
               </div>
+
+              <div className="border-t border-[#374151] pt-3">
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <p className="text-xs font-semibold text-white">Line items</p>
+                  <button type="button" onClick={() => setShowAddProductRow((s) => !s)} className="text-xs text-[#60A5FA] font-medium">
+                    {showAddProductRow ? 'Hide search' : '+ Add product'}
+                  </button>
+                </div>
+                {showAddProductRow && (
+                  <div className="mb-3 space-y-2">
+                    <input
+                      type="search"
+                      placeholder="Search product name or SKU…"
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      className="w-full h-9 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                    />
+                    <ul className="max-h-32 overflow-y-auto rounded-lg border border-[#374151] divide-y divide-[#374151] bg-[#111827]">
+                      {filteredPurchaseCatalog.map((p) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            onClick={() => pickProductForEditPurchase(p)}
+                            className="w-full text-left px-3 py-2 text-xs text-white hover:bg-[#374151]"
+                          >
+                            {p.name} <span className="text-[#9CA3AF]">({p.sku})</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {editLinesLoading ? (
+                  <p className="text-xs text-[#9CA3AF] py-2">Loading lines…</p>
+                ) : editLineItems.length === 0 ? (
+                  <p className="text-[11px] text-[#F59E0B]">
+                    No purchase lines loaded. You can still save header fields only (apply DB migration update_purchase_with_items to edit lines).
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {editLineItems.map((row, idx) => (
+                      <div key={row.lineKey} className="rounded-lg bg-[#111827] border border-[#374151] p-2 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs text-white truncate min-w-0 flex-1">{row.productName}</p>
+                          {editLineItems.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeEditPurchaseLine(idx)}
+                              className="p-1.5 rounded-lg text-[#EF4444] hover:bg-[#EF4444]/10 shrink-0"
+                              aria-label="Remove line"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] text-[#9CA3AF]">Qty</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={row.quantity}
+                              onChange={(e) => updateEditPurchaseLine(idx, { quantity: Number(e.target.value) || 0 })}
+                              className="w-full h-9 rounded bg-[#0B1120] border border-[#374151] text-white px-2 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-[#9CA3AF]">Unit price</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={row.unitPrice}
+                              onChange={(e) => updateEditPurchaseLine(idx, { unitPrice: Number(e.target.value) || 0 })}
+                              className="w-full h-9 rounded bg-[#0B1120] border border-[#374151] text-white px-2 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="rounded-lg bg-[#111827] border border-[#374151] p-3 text-xs space-y-1">
                 <div className="flex justify-between text-[#9CA3AF]">
-                  <span>Subtotal</span>
-                  <span className="text-white">Rs. {Number(editOrder.subtotal ?? 0).toLocaleString()}</span>
+                  <span>Lines subtotal</span>
+                  <span className="text-white">Rs. {editPurchaseLineSubtotal.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-[#9CA3AF]">
                   <span>Recalculated Total</span>
                   <span className="text-[#10B981] font-semibold">
                     Rs. {(
-                      (Number(editOrder.subtotal ?? 0) || 0) -
+                      (editLineItems.length > 0 ? editPurchaseLineSubtotal : Number(editOrder.subtotal ?? 0) || 0) -
                       (Number(editDiscount) || 0) +
-                      (Number(editShipping) || 0)
+                      (Number(editTax) || 0) +
+                      frozenShippingCost
                     ).toLocaleString()}
                   </span>
                 </div>
               </div>
-              <p className="text-[11px] text-[#F59E0B]">
-                Header edits (date, supplier, discount, shipping) save directly. For item-level changes (products/quantities/prices) Cancel this PO and create a new one.
+              <p className="text-[11px] text-[#9CA3AF]">
+                Line changes save via server (stock rebuilt). Total must stay at or above amount already paid. Shipping is not edited here.
               </p>
               {actionError && <div className="rounded-lg bg-[#EF4444] text-white text-sm px-3 py-2">{actionError}</div>}
             </div>
             <div className="p-4 border-t border-[#374151] grid grid-cols-2 gap-3 shrink-0">
-              <button type="button" onClick={() => !editSaving && setEditOrder(null)} className="h-11 rounded-lg border border-[#374151] text-[#D1D5DB]">
+              <button type="button" onClick={closePurchaseEditModal} className="h-11 rounded-lg border border-[#374151] text-[#D1D5DB]">
                 Cancel
               </button>
               <button type="button" onClick={confirmEditOrder} disabled={editSaving} className="h-11 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-60 text-white font-medium">

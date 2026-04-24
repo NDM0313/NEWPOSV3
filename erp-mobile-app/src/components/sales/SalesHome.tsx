@@ -1,9 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2 } from 'lucide-react';
 import * as salesApi from '../../api/sales';
 import * as studioApi from '../../api/studio';
 import * as reportsApi from '../../api/reports';
+import * as contactsApi from '../../api/contacts';
+import * as productsApi from '../../api/products';
 import { supabase } from '../../lib/supabase';
+import {
+  syncSaleDocumentJournalInPlaceMobile,
+  saleAccountingSnapshotFromRow,
+  type SaleLedgerSyncSkipReason,
+} from '../../api/saleEditAccounting';
+
+function saleLedgerSkipHint(reason: SaleLedgerSyncSkipReason | undefined): string {
+  if (!reason || reason === 'snap_unchanged' || reason === 'not_configured') return '';
+  const map: Record<SaleLedgerSyncSkipReason, string> = {
+    not_configured: '',
+    snap_unchanged: '',
+    no_document_je: 'No sale document ledger entry yet (post sale on web or run document posting).',
+    sale_row_missing: 'Ledger sync skipped: sale row missing.',
+    sale_not_final: 'Ledger sync skipped: sale is not final.',
+    no_invoice_no: 'Ledger sync skipped: invoice number missing.',
+    missing_ar_account: 'Ledger sync skipped: receivable account (1100) not found.',
+  };
+  return map[reason] || '';
+}
 import { MobileReceivePayment } from './MobileReceivePayment';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { SaleReturnModal } from './SaleReturnModal';
@@ -199,17 +220,34 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
   // In-app invoice preview (replaces VITE_APP_URL-dependent print/pdf navigation)
   const [previewSale, setPreviewSale] = useState<SaleRecord | null>(null);
   const pdfPreview = usePdfPreview(companyId);
-  // Lightweight editor for invoice date + notes (full line-item edit stays web-only for safety)
+  /** Line rows for edit modal (loaded from DB; save via update_sale_with_items RPC). */
+  type EditSaleLine = {
+    lineKey: string;
+    productId: string;
+    variationId: string | null;
+    productName: string;
+    sku: string;
+    quantity: number;
+    unitPrice: number;
+    discountAmount: number;
+    taxAmount: number;
+  };
   const [editSale, setEditSale] = useState<SaleRecord | null>(null);
+  const [editLineItems, setEditLineItems] = useState<EditSaleLine[]>([]);
+  const [editLinesLoading, setEditLinesLoading] = useState(false);
   const [editDate, setEditDate] = useState<string>('');
   const [editNotes, setEditNotes] = useState<string>('');
+  const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
   const [editCustomerName, setEditCustomerName] = useState<string>('');
-  const [editContactNumber, setEditContactNumber] = useState<string>('');
-  const [editPaymentMethod, setEditPaymentMethod] = useState<string>('');
+  const [editCustomerOptions, setEditCustomerOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [editCustomersLoading, setEditCustomersLoading] = useState(false);
+  const [productCatalog, setProductCatalog] = useState<productsApi.Product[]>([]);
+  const [productSearch, setProductSearch] = useState('');
+  const [showAddProductRow, setShowAddProductRow] = useState(false);
+  const [showDiscountField, setShowDiscountField] = useState(false);
+  const [showExtrasField, setShowExtrasField] = useState(false);
   const [editDiscount, setEditDiscount] = useState<string>('0');
-  const [editShipment, setEditShipment] = useState<string>('0');
   const [editExtra, setEditExtra] = useState<string>('0');
-  const [editDeadline, setEditDeadline] = useState<string>('');
   const [editSaving, setEditSaving] = useState(false);
 
   const refetchSales = useCallback(async (): Promise<SaleRecord[]> => {
@@ -337,6 +375,20 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     window.open(waUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const closeEditSaleModal = () => {
+    if (editSaving) return;
+    setEditSale(null);
+    setEditLineItems([]);
+    setEditLinesLoading(false);
+    setEditCustomerId(null);
+    setEditCustomerOptions([]);
+    setProductCatalog([]);
+    setProductSearch('');
+    setShowAddProductRow(false);
+    setShowDiscountField(false);
+    setShowExtrasField(false);
+  };
+
   const handleEdit = (sale: SaleRecord) => {
     setMenuSale(null);
     const currentDate = String(
@@ -344,14 +396,55 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     ).slice(0, 10);
     setEditDate(currentDate);
     setEditNotes(String((sale.raw.notes as string) || ''));
+    setEditCustomerId((sale.raw.customer_id as string) || null);
     setEditCustomerName(String((sale.raw.customer_name as string) || ''));
-    setEditContactNumber(String((sale.raw.contact_number as string) || ''));
-    setEditPaymentMethod(String((sale.raw.payment_method as string) || ''));
     setEditDiscount(String(Number(sale.raw.discount_amount ?? 0) || 0));
-    setEditShipment(String(Number(sale.raw.shipment_charges ?? 0) || 0));
     setEditExtra(String(Number(sale.raw.extra_expenses ?? 0) || 0));
-    setEditDeadline(String((sale.raw.deadline as string) || '').slice(0, 10));
+    setShowDiscountField(Number(sale.raw.discount_amount ?? 0) > 0);
+    setShowExtrasField(Number(sale.raw.extra_expenses ?? 0) > 0);
+    setProductSearch('');
+    setShowAddProductRow(false);
     setEditSale(sale);
+    setEditLineItems([]);
+    setEditLinesLoading(true);
+    const effBranch = branchId && branchId !== 'all' ? branchId : null;
+    if (companyId) {
+      setEditCustomersLoading(true);
+      void contactsApi.getContacts(companyId, 'customer', effBranch).then(({ data, error: cErr }) => {
+        setEditCustomersLoading(false);
+        if (!cErr && data?.length) {
+          setEditCustomerOptions(data.map((c) => ({ id: c.id, name: c.name })));
+        } else {
+          setEditCustomerOptions([]);
+        }
+      });
+      void productsApi.getProducts(companyId).then(({ data }) => {
+        setProductCatalog(data || []);
+      });
+    } else {
+      setEditCustomerOptions([]);
+      setProductCatalog([]);
+    }
+    void salesApi.getSaleReturnCandidateItems(String(sale.raw.id)).then(({ data, error: lineErr }) => {
+      setEditLinesLoading(false);
+      if (lineErr || !data?.length) {
+        setEditLineItems([]);
+        return;
+      }
+      setEditLineItems(
+        data.map((r, idx) => ({
+          lineKey: `${r.productId}-${idx}-${r.variationId ?? 'x'}`,
+          productId: r.productId,
+          variationId: r.variationId,
+          productName: r.productName,
+          sku: r.sku,
+          quantity: r.soldQty,
+          unitPrice: r.unitPrice,
+          discountAmount: 0,
+          taxAmount: 0,
+        })),
+      );
+    });
   };
 
   const confirmEdit = async () => {
@@ -360,46 +453,222 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     setActionError(null);
     try {
       const raw = editSale.raw;
-      const subtotal = Number(raw.subtotal ?? 0) || 0;
+      const paid = Number(editSale.total_received ?? raw.paid_amount ?? 0) || 0;
       const tax = Number(raw.tax_amount ?? 0) || 0;
       const studio = Number(raw.studio_charges ?? 0) || 0;
       const discount = Number(editDiscount) || 0;
-      const shipment = Number(editShipment) || 0;
+      const shipmentFrozen = Number(raw.shipment_charges ?? 0) || 0;
       const extra = Number(editExtra) || 0;
-      const total = Math.max(0, subtotal - discount + tax + shipment + extra + studio);
-      const paid = Number(raw.paid_amount ?? 0) || 0;
-      const due = Math.max(0, total - paid);
 
-      const updates: Record<string, unknown> = {
-        notes: editNotes || null,
-        customer_name: editCustomerName || raw.customer_name,
-        contact_number: editContactNumber || null,
-        payment_method: editPaymentMethod || null,
-        discount_amount: discount,
-        shipment_charges: shipment,
-        extra_expenses: extra,
-        total,
-        due_amount: due,
-        updated_at: new Date().toISOString(),
-      };
-      if (editDate) updates.invoice_date = editDate;
-      if (editDeadline) updates.deadline = editDeadline;
+      const lines = editLineItems
+        .map((row) => {
+          const qty = Math.max(0, Number(row.quantity) || 0);
+          const up = Math.max(0, Number(row.unitPrice) || 0);
+          const da = Math.max(0, Number(row.discountAmount) || 0);
+          const ta = Math.max(0, Number(row.taxAmount) || 0);
+          const lineTot = Math.max(0, qty * up - da + ta);
+          return { ...row, quantity: qty, unitPrice: up, discountAmount: da, taxAmount: ta, total: lineTot };
+        })
+        .filter((row) => row.productId && row.quantity > 0);
 
-      const { error } = await supabase
-        .from('sales')
-        .update(updates)
-        .eq('id', editSale.raw.id as string);
-      if (error) {
-        setActionError(error.message);
-      } else {
-        setActionSuccess(`Invoice ${editSale.id} updated.`);
-        await refetchSales();
-        setEditSale(null);
+      if (lines.length === 0) {
+        if (editLineItems.length > 0) {
+          setActionError('Add at least one line with quantity greater than zero.');
+          return;
+        }
+        const subtotal = Number(raw.subtotal ?? 0) || 0;
+        const totalHdr = Math.max(0, subtotal - discount + tax + shipmentFrozen + extra + studio);
+        const dueHdr = Math.max(0, totalHdr - paid);
+        const updates: Record<string, unknown> = {
+          notes: editNotes || null,
+          customer_name: editCustomerName || raw.customer_name,
+          customer_id: editCustomerId || null,
+          discount_amount: discount,
+          extra_expenses: extra,
+          total: totalHdr,
+          due_amount: dueHdr,
+          updated_at: new Date().toISOString(),
+        };
+        if (editDate) updates.invoice_date = editDate;
+        const { error } = await supabase.from('sales').update(updates).eq('id', raw.id as string);
+        if (error) setActionError(error.message);
+        else {
+          const oldSnap = saleAccountingSnapshotFromRow(raw);
+          const newSnap: typeof oldSnap = {
+            total: totalHdr,
+            subtotal,
+            discount,
+            extraExpense: extra,
+            shippingCharges: shipmentFrozen,
+          };
+          let acct: { updated: boolean; error: string | null; skipReason?: SaleLedgerSyncSkipReason };
+          try {
+            acct = await syncSaleDocumentJournalInPlaceMobile({
+              companyId: String(raw.company_id ?? companyId ?? ''),
+              saleId: String(raw.id),
+              customerId: editCustomerId ?? (raw.customer_id as string) ?? null,
+              invoiceNo: String((raw.invoice_no as string) || editSale.id),
+              oldSnapshot: oldSnap,
+              newSnapshot: newSnap,
+            });
+          } catch (e) {
+            console.warn('[SalesHome] Ledger sync threw (header path):', e);
+            acct = { updated: false, error: (e as Error)?.message ?? String(e) };
+          }
+          if (acct.error) console.warn('[SalesHome] Ledger sync after header edit:', acct.error);
+          const skipHint = saleLedgerSkipHint(acct.skipReason);
+          const ledgerNote = [
+            acct.updated ? 'Sale document ledger updated' : '',
+            acct.error ? `Ledger: ${acct.error}` : '',
+            !acct.updated && !acct.error && skipHint ? skipHint : '',
+          ]
+            .filter(Boolean)
+            .join('; ');
+          setActionSuccess(`Invoice ${editSale.id} updated.${ledgerNote ? ` (${ledgerNote})` : ''}`);
+          await refetchSales();
+          setEditSale(null);
+          setEditLineItems([]);
+        }
+        return;
       }
+
+      const lineSubtotal = lines.reduce((s, r) => s + r.total, 0);
+      const oldAcctSnap = saleAccountingSnapshotFromRow(raw);
+      const rpcErr = await salesApi.updateSaleWithItems({
+        saleId: String(raw.id),
+        userId: userId ?? null,
+        customerId: editCustomerId,
+        items: lines.map((r) => ({
+          productId: r.productId,
+          variationId: r.variationId,
+          productName: r.productName,
+          sku: r.sku,
+          quantity: r.quantity,
+          unitPrice: r.unitPrice,
+          discountAmount: r.discountAmount,
+          taxAmount: r.taxAmount,
+          total: r.total,
+        })),
+        discountAmount: discount,
+        taxAmount: tax,
+        shipmentCharges: shipmentFrozen,
+        extraExpenses: extra,
+        notes: editNotes || null,
+        customerName: editCustomerName || null,
+        contactNumber: null,
+        paymentMethod: null,
+        invoiceDate: editDate || null,
+        deadline: null,
+      });
+      if (rpcErr.error) {
+        setActionError(rpcErr.error);
+        return;
+      }
+      const newTotal = Math.max(0, lineSubtotal - discount + tax + shipmentFrozen + extra + studio);
+      const newAcctSnap = {
+        total: newTotal,
+        subtotal: lineSubtotal,
+        discount,
+        extraExpense: extra,
+        shippingCharges: shipmentFrozen,
+      };
+      let acct: { updated: boolean; error: string | null; skipReason?: SaleLedgerSyncSkipReason };
+      try {
+        acct = await syncSaleDocumentJournalInPlaceMobile({
+          companyId: String(raw.company_id ?? companyId ?? ''),
+          saleId: String(raw.id),
+          customerId: editCustomerId ?? (raw.customer_id as string) ?? null,
+          invoiceNo: String((raw.invoice_no as string) || editSale.id),
+          oldSnapshot: oldAcctSnap,
+          newSnapshot: newAcctSnap,
+        });
+      } catch (e) {
+        console.warn('[SalesHome] Ledger sync threw (line path):', e);
+        acct = { updated: false, error: (e as Error)?.message ?? String(e) };
+      }
+      if (acct.error) console.warn('[SalesHome] Ledger sync after line edit:', acct.error);
+      const skipHintLine = saleLedgerSkipHint(acct.skipReason);
+      const ledgerNote = [
+        acct.updated ? 'Sale document ledger updated' : '',
+        acct.error ? `Ledger: ${acct.error}` : '',
+        !acct.updated && !acct.error && skipHintLine ? skipHintLine : '',
+      ]
+        .filter(Boolean)
+        .join('; ');
+      setActionSuccess(`Invoice ${editSale.id} updated.${ledgerNote ? ` (${ledgerNote})` : ''}`);
+      await refetchSales();
+      setEditSale(null);
+      setEditLineItems([]);
+      setEditLinesLoading(false);
     } finally {
       setEditSaving(false);
     }
   };
+
+  const updateEditLine = (index: number, patch: Partial<EditSaleLine>) => {
+    setEditLineItems((prev) => {
+      const next = [...prev];
+      if (!next[index]) return prev;
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  };
+
+  const removeEditLine = (index: number) => {
+    setEditLineItems((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
+  const pickProductForEditSale = (p: productsApi.Product) => {
+    const key = globalThis.crypto?.randomUUID?.() ?? `lk-${Date.now()}`;
+    if (p.hasVariations && p.variations && p.variations.length > 0) {
+      const v = p.variations[0];
+      setEditLineItems((prev) => [
+        ...prev,
+        {
+          lineKey: key,
+          productId: p.id,
+          variationId: v.id,
+          productName: `${p.name} (${Object.values(v.attributes || {}).filter(Boolean).join(', ')})`,
+          sku: v.sku,
+          quantity: 1,
+          unitPrice: Number(v.price) || 0,
+          discountAmount: 0,
+          taxAmount: 0,
+        },
+      ]);
+    } else {
+      setEditLineItems((prev) => [
+        ...prev,
+        {
+          lineKey: key,
+          productId: p.id,
+          variationId: null,
+          productName: p.name,
+          sku: p.sku,
+          quantity: 1,
+          unitPrice: Number(p.retailPrice) || 0,
+          discountAmount: 0,
+          taxAmount: 0,
+        },
+      ]);
+    }
+    setProductSearch('');
+    setShowAddProductRow(false);
+  };
+
+  const filteredEditCatalog = useMemo(() => {
+    if (!editSale) return [];
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return productCatalog.slice(0, 35);
+    return productCatalog
+      .filter((p) => p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+      .slice(0, 45);
+  }, [editSale, productSearch, productCatalog]);
+
+  const editLineSubtotal = editLineItems.reduce(
+    (s, r) => s + Math.max(0, (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0) - (Number(r.discountAmount) || 0) + (Number(r.taxAmount) || 0)),
+    0,
+  );
   const handlePaymentHistory = (sale: SaleRecord) => {
     setMenuSale(null);
     setSelectedSale(sale);
@@ -1082,102 +1351,97 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
       )}
 
       {editSale && (
-        <div className="fixed inset-0 z-[80] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={() => !editSaving && setEditSale(null)}>
-          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[80] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={closeEditSaleModal}>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b border-[#374151] flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-white font-semibold">Edit Invoice</h3>
                 <p className="text-xs text-[#9CA3AF]">{editSale.id}</p>
               </div>
-              <button onClick={() => !editSaving && setEditSale(null)} className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF]">
+              <button type="button" onClick={closeEditSaleModal} className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF]">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="p-4 space-y-3 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-[#9CA3AF] mb-1">Invoice Date</label>
-                  <input
-                    type="date"
-                    value={editDate}
-                    onChange={(e) => setEditDate(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-[#9CA3AF] mb-1">Deadline</label>
-                  <input
-                    type="date"
-                    value={editDeadline}
-                    onChange={(e) => setEditDeadline(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Customer</label>
+                <select
+                  value={editCustomerId ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setEditCustomerId(v || null);
+                    const c = editCustomerOptions.find((x) => x.id === v);
+                    if (c) setEditCustomerName(c.name);
+                    else if (!v) setEditCustomerName(String((editSale.raw.customer_name as string) || 'Walk-in'));
+                  }}
+                  disabled={editCustomersLoading}
+                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                >
+                  <option value="">Walk-in / other</option>
+                  {editCustomerOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                {editCustomersLoading && <p className="text-[10px] text-[#9CA3AF] mt-1">Loading customers…</p>}
               </div>
               <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">Customer Name</label>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Invoice Date</label>
                 <input
-                  type="text"
-                  value={editCustomerName}
-                  onChange={(e) => setEditCustomerName(e.target.value)}
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
                   className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-[#9CA3AF] mb-1">Contact #</label>
-                  <input
-                    type="tel"
-                    value={editContactNumber}
-                    onChange={(e) => setEditContactNumber(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-[#9CA3AF] mb-1">Payment Method</label>
-                  <select
-                    value={editPaymentMethod}
-                    onChange={(e) => setEditPaymentMethod(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                  >
-                    <option value="">—</option>
-                    <option value="cash">Cash</option>
-                    <option value="bank">Bank</option>
-                    <option value="card">Card</option>
-                    <option value="cheque">Cheque</option>
-                    <option value="credit">Credit</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
+
+              {(showDiscountField || Number(editSale.raw.discount_amount ?? 0) > 0) && (
                 <div>
                   <label className="block text-xs text-[#9CA3AF] mb-1">Discount</label>
                   <input
-                    type="number" min="0" step="0.01"
+                    type="number"
+                    min="0"
+                    step="0.01"
                     value={editDiscount}
                     onChange={(e) => setEditDiscount(e.target.value)}
                     className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs text-[#9CA3AF] mb-1">Shipping</label>
-                  <input
-                    type="number" min="0" step="0.01"
-                    value={editShipment}
-                    onChange={(e) => setEditShipment(e.target.value)}
-                    className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                  />
-                </div>
+              )}
+              {!showDiscountField && Number(editSale.raw.discount_amount ?? 0) <= 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowDiscountField(true)}
+                  className="text-xs text-[#60A5FA] hover:underline"
+                >
+                  Add discount
+                </button>
+              )}
+
+              {(showExtrasField || Number(editSale.raw.extra_expenses ?? 0) > 0) && (
                 <div>
                   <label className="block text-xs text-[#9CA3AF] mb-1">Extras</label>
                   <input
-                    type="number" min="0" step="0.01"
+                    type="number"
+                    min="0"
+                    step="0.01"
                     value={editExtra}
                     onChange={(e) => setEditExtra(e.target.value)}
                     className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
                   />
                 </div>
-              </div>
+              )}
+              {!showExtrasField && Number(editSale.raw.extra_expenses ?? 0) <= 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowExtrasField(true)}
+                  className="text-xs text-[#60A5FA] hover:underline"
+                >
+                  Add extras
+                </button>
+              )}
+
               <div>
                 <label className="block text-xs text-[#9CA3AF] mb-1">Notes</label>
                 <textarea
@@ -1187,32 +1451,121 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                   className="w-full rounded-lg bg-[#111827] border border-[#374151] text-white px-3 py-2 text-sm resize-none"
                 />
               </div>
+
+              <div className="border-t border-[#374151] pt-3">
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <p className="text-xs font-semibold text-white">Line items</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddProductRow((s) => !s)}
+                    className="text-xs text-[#60A5FA] font-medium"
+                  >
+                    {showAddProductRow ? 'Hide search' : '+ Add product'}
+                  </button>
+                </div>
+                {showAddProductRow && (
+                  <div className="mb-3 space-y-2">
+                    <input
+                      type="search"
+                      placeholder="Search product name or SKU…"
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      className="w-full h-9 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                    />
+                    <ul className="max-h-32 overflow-y-auto rounded-lg border border-[#374151] divide-y divide-[#374151] bg-[#111827]">
+                      {filteredEditCatalog.map((p) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            onClick={() => pickProductForEditSale(p)}
+                            className="w-full text-left px-3 py-2 text-xs text-white hover:bg-[#374151]"
+                          >
+                            {p.name} <span className="text-[#9CA3AF]">({p.sku})</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {editLinesLoading ? (
+                  <p className="text-xs text-[#9CA3AF] py-2">Loading lines…</p>
+                ) : editLineItems.length === 0 ? (
+                  <p className="text-[11px] text-[#F59E0B]">
+                    No sale lines loaded (apply DB migration update_sale_with_items). You can still save header fields only.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {editLineItems.map((row, idx) => (
+                      <div key={row.lineKey} className="rounded-lg bg-[#111827] border border-[#374151] p-2 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs text-white truncate min-w-0 flex-1">{row.productName}</p>
+                          {editLineItems.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeEditLine(idx)}
+                              className="p-1.5 rounded-lg text-[#EF4444] hover:bg-[#EF4444]/10 shrink-0"
+                              aria-label="Remove line"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] text-[#9CA3AF]">Qty</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={row.quantity}
+                              onChange={(e) => updateEditLine(idx, { quantity: Number(e.target.value) || 0 })}
+                              className="w-full h-9 rounded bg-[#0B1120] border border-[#374151] text-white px-2 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-[#9CA3AF]">Unit price</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={row.unitPrice}
+                              onChange={(e) => updateEditLine(idx, { unitPrice: Number(e.target.value) || 0 })}
+                              className="w-full h-9 rounded bg-[#0B1120] border border-[#374151] text-white px-2 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="rounded-lg bg-[#111827] border border-[#374151] p-3 text-xs space-y-1">
                 <div className="flex justify-between text-[#9CA3AF]">
-                  <span>Subtotal</span>
-                  <span className="text-white">Rs. {Number(editSale.raw.subtotal ?? 0).toLocaleString()}</span>
+                  <span>Lines subtotal</span>
+                  <span className="text-white">Rs. {editLineSubtotal.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-[#9CA3AF]">
                   <span>Recalculated Total</span>
                   <span className="text-[#10B981] font-semibold">
                     Rs. {(
-                      (Number(editSale.raw.subtotal ?? 0) || 0) -
+                      editLineSubtotal -
                       (Number(editDiscount) || 0) +
                       (Number(editSale.raw.tax_amount ?? 0) || 0) +
-                      (Number(editShipment) || 0) +
+                      (Number(editSale.raw.shipment_charges ?? 0) || 0) +
                       (Number(editExtra) || 0) +
                       (Number(editSale.raw.studio_charges ?? 0) || 0)
                     ).toLocaleString()}
                   </span>
                 </div>
               </div>
-              <p className="text-[11px] text-[#F59E0B]">
-                Header edits (date, party, discount, shipping, extras) save directly. For line-item changes (products, quantities, prices) please Cancel this invoice and create a new one — keeps accounting consistent.
+              <p className="text-[11px] text-[#9CA3AF]">
+                Line changes save via server (stock rebuilt). Total must stay at or above amount already received. Shipment charges are not edited here.
               </p>
               {actionError && <div className="rounded-lg bg-[#EF4444] text-white text-sm px-3 py-2">{actionError}</div>}
             </div>
             <div className="p-4 border-t border-[#374151] grid grid-cols-2 gap-3 shrink-0">
-              <button type="button" onClick={() => !editSaving && setEditSale(null)} className="h-11 rounded-lg border border-[#374151] text-[#D1D5DB]">
+              <button type="button" onClick={closeEditSaleModal} className="h-11 rounded-lg border border-[#374151] text-[#D1D5DB]">
                 Cancel
               </button>
               <button type="button" onClick={confirmEdit} disabled={editSaving} className="h-11 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-60 text-white font-medium">

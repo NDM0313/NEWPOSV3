@@ -157,25 +157,25 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
                 onClick={() => onOrderClick(order)}
                 className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6] transition-colors text-left"
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="font-semibold text-white">{order.orderNumber}</p>
+                <div className="flex items-start justify-between mb-3 gap-2 min-w-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <p className="font-semibold text-white truncate min-w-0">{order.orderNumber}</p>
                       <span
-                        className={`px-2 py-0.5 ${statusConfig.bg} rounded-full text-xs font-medium flex items-center gap-1`}
+                        className={`px-2 py-0.5 ${statusConfig.bg} rounded-full text-xs font-medium flex items-center gap-1 shrink-0 max-w-full`}
                         style={{ color: statusConfig.color }}
                       >
                         <StatusIcon size={12} />
-                        {statusConfig.text}
+                        <span className="truncate">{statusConfig.text}</span>
                       </span>
                     </div>
-                    <p className="text-sm text-[#9CA3AF]">{order.customerName}</p>
+                    <p className="text-sm text-[#9CA3AF] truncate">{order.customerName}</p>
                   </div>
-                  <p className="text-sm font-semibold text-white">Rs. {order.totalAmount.toLocaleString()}</p>
+                  <p className="text-sm font-semibold text-white shrink-0">Rs. {order.totalAmount.toLocaleString()}</p>
                 </div>
 
-                <div className="mb-3 pb-3 border-b border-[#374151]">
-                  <p className="text-sm text-white">{order.productName}</p>
+                <div className="mb-3 pb-3 border-b border-[#374151] min-w-0">
+                  <p className="text-sm text-white line-clamp-2 break-words">{order.productName}</p>
                   <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 text-xs text-[#6B7280]">
                     <span>Created: {order.createdDate}</span>
                     {order.deadline && (
@@ -214,7 +214,9 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
                           }`}
                         >
                           <span>{getStageIcon(stage.type)}</span>
-                          <span>{stage.name}</span>
+                          <span className="truncate max-w-[5.5rem] sm:max-w-[7rem]" title={stage.name}>
+                            {stage.name}
+                          </span>
                           {stage.status === 'completed' && <CheckCircle size={12} />}
                           {(stage.status === 'in-progress' || stage.status === 'assigned' || stage.status === 'sent_to_worker' || stage.status === 'received') && <Clock size={12} />}
                         </div>
@@ -224,9 +226,13 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
                 )}
 
                 {(order.currentStage || order.stages.length === 0) && (
-                  <div className="bg-[#374151] rounded-lg p-2 space-y-0.5">
-                    <p className="text-xs text-[#9CA3AF]">Stage: <span className="text-white font-medium">{order.currentStage}</span></p>
-                    <p className="text-xs text-[#9CA3AF]">Status: <span className="text-white font-medium">{statusConfig.text}</span></p>
+                  <div className="bg-[#374151] rounded-lg p-2 space-y-0.5 min-w-0">
+                    <p className="text-xs text-[#9CA3AF] line-clamp-2 break-words">
+                      Stage: <span className="text-white font-medium">{order.currentStage}</span>
+                    </p>
+                    <p className="text-xs text-[#9CA3AF] truncate">
+                      Status: <span className="text-white font-medium">{statusConfig.text}</span>
+                    </p>
                   </div>
                 )}
               </button>

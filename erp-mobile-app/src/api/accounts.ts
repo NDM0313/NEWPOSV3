@@ -348,12 +348,16 @@ export async function createJournalEntry(params: {
   entryDate: string;
   description: string;
   referenceType: string;
+  /** When set (e.g. sale id for sale_adjustment), links GL row to the document. */
+  referenceId?: string | null;
+  /** PF-14 style idempotency key; requires DB column + unique partial index when used. */
+  actionFingerprint?: string | null;
   lines: { accountId: string; debit: number; credit: number; description?: string }[];
   userId?: string | null;
   attachments?: { url: string; name: string }[] | null;
 }): Promise<{ data: { id: string; entry_no: string } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
-  const { companyId, branchId, entryDate, description, referenceType, lines, userId, attachments } = params;
+  const { companyId, branchId, entryDate, description, referenceType, referenceId, actionFingerprint, lines, userId, attachments } = params;
   const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
   const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
   if (Math.abs(totalDebit - totalCredit) > 0.01) {
@@ -369,11 +373,21 @@ export async function createJournalEntry(params: {
     created_by: userId ?? null,
   };
   if (branchId && branchId !== 'all' && branchId !== 'default') entryRow.branch_id = branchId;
+  if (referenceId) entryRow.reference_id = referenceId;
+  if (actionFingerprint) entryRow.action_fingerprint = actionFingerprint;
   if (attachments && attachments.length > 0) entryRow.attachments = attachments;
 
   let result = await supabase.from('journal_entries').insert(entryRow).select('id, entry_no').single();
   if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('attachments')) {
     delete entryRow.attachments;
+    result = await supabase.from('journal_entries').insert(entryRow).select('id, entry_no').single();
+  }
+  if (result.error && result.error.code === 'PGRST204' && String(result.error.message || '').includes('action_fingerprint')) {
+    delete entryRow.action_fingerprint;
+    result = await supabase.from('journal_entries').insert(entryRow).select('id, entry_no').single();
+  }
+  if (result.error && result.error.code === 'PGRST204' && String(result.error.message || '').toLowerCase().includes('reference_id')) {
+    delete entryRow.reference_id;
     result = await supabase.from('journal_entries').insert(entryRow).select('id, entry_no').single();
   }
   const { data: entry, error: entryErr } = result;

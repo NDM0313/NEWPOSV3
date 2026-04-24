@@ -12,11 +12,46 @@ import { accountHelperService } from '@/app/services/accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from '@/app/services/accountingService';
 import { resolveWorkerPayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
 
-/** Resolve worker name from contacts for a stage row (avoids workers table join which can 400). */
+/** Contact first (parity with mobile), then `workers` when id is a worker row or contact name missing. */
 async function resolveStageWorker(stage: any): Promise<void> {
   if (!stage?.assigned_worker_id) return;
-  const { data: c } = await supabase.from('contacts').select('id, name').eq('id', stage.assigned_worker_id).maybeSingle();
-  if (c) stage.worker = { id: stage.assigned_worker_id, name: (c as any).name || '' };
+  const wid = stage.assigned_worker_id as string;
+  const { data: c } = await supabase.from('contacts').select('id, name').eq('id', wid).maybeSingle();
+  const contactName = (c as { name?: string } | null)?.name?.trim() ?? '';
+  if (contactName) {
+    stage.worker = { id: wid, name: contactName };
+    return;
+  }
+  const { data: w } = await supabase.from('workers').select('id, name').eq('id', wid).maybeSingle();
+  if (w) {
+    stage.worker = { id: wid, name: (w as { name?: string }).name || '' };
+    return;
+  }
+  stage.worker = { id: wid, name: contactName };
+}
+
+/** Batch: same resolution as mobile `getStudioStages` (contacts + workers fallback). */
+async function workerDisplayNamesByIds(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (unique.length === 0) return out;
+  const { data: contacts } = await supabase.from('contacts').select('id, name').in('id', unique);
+  for (const row of contacts || []) {
+    const r = row as { id: string; name?: string | null };
+    if (r.id) out.set(r.id, (r.name || '').trim());
+  }
+  const needWorker = unique.filter((id) => !String(out.get(id) ?? '').trim());
+  if (needWorker.length === 0) return out;
+  const { data: workers } = await supabase.from('workers').select('id, name').in('id', needWorker);
+  for (const row of workers || []) {
+    const r = row as { id: string; name?: string | null };
+    if (!r.id) continue;
+    const nm = (r.name || '').trim();
+    if (!nm) continue;
+    if (String(out.get(r.id) ?? '').trim()) continue;
+    out.set(r.id, nm);
+  }
+  return out;
 }
 
 export type StudioProductionStatus = 'draft' | 'in_progress' | 'completed' | 'cancelled';
@@ -1045,11 +1080,7 @@ export const studioProductionService = {
       }
       const rows = (data || []) as any[];
       const workerIds = [...new Set(rows.filter((s) => s.assigned_worker_id).map((s) => s.assigned_worker_id))];
-      let nameById = new Map<string, string>();
-      if (workerIds.length > 0) {
-        const { data: contacts } = await supabase.from('contacts').select('id, name').in('id', workerIds);
-        nameById = new Map((contacts || []).map((c: any) => [c.id, c.name || '']));
-      }
+      const nameById = workerIds.length > 0 ? await workerDisplayNamesByIds(workerIds) : new Map<string, string>();
       rows.forEach((s) => {
         const pid = s.production_id;
         if (!out.has(pid)) out.set(pid, []);
@@ -1065,7 +1096,7 @@ export const studioProductionService = {
     }
   },
 
-  /** Stages for a production. Select * only (no workers join) to avoid 400 when workers table missing or assigned_worker_id = contact id. Resolve names from contacts. */
+  /** Stages for a production. Resolve worker display names from contacts, then workers (mobile parity). */
   async getStagesByProductionId(productionId: string): Promise<StudioProductionStage[]> {
     try {
       const { data, error } = await supabase
@@ -1082,16 +1113,11 @@ export const studioProductionService = {
       if (import.meta.env?.DEV && stages.length > 0) console.log('[studioProductionService] getStagesByProductionId', { productionId, count: stages.length });
       const workerIds = stages.filter((s) => s.assigned_worker_id).map((s) => s.assigned_worker_id);
       if (workerIds.length > 0) {
-        const uniqueIds = [...new Set(workerIds)];
-        const { data: contacts } = await supabase
-          .from('contacts')
-          .select('id, name')
-          .in('id', uniqueIds);
-        const nameById = new Map((contacts || []).map((c: any) => [c.id, c.name || '']));
+        const nameById = await workerDisplayNamesByIds([...new Set(workerIds)]);
         stages.forEach((s) => {
           if (s.assigned_worker_id) {
-            const name = nameById.get(s.assigned_worker_id);
-            s.worker = name ? { id: s.assigned_worker_id, name } : { id: s.assigned_worker_id, name: '' };
+            const name = nameById.get(s.assigned_worker_id) || '';
+            s.worker = { id: s.assigned_worker_id, name };
           }
         });
       }

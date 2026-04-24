@@ -113,7 +113,7 @@ export default function CustomerLedgerPageOriginal({
 
       // Load all data in parallel
       const payScope = showAuditPayments ? 'audit' : 'live';
-      const ledgerOpts = { paymentScope: payScope as const };
+      const ledgerOpts = { paymentScope: payScope as const, branchId: branchId ?? null };
       const [summary, transactions, invoices, payments, aging] = await Promise.all([
         customerLedgerAPI.getLedgerSummary(
           selectedCustomer.id,
@@ -135,13 +135,7 @@ export default function CustomerLedgerPageOriginal({
           dateRange.from,
           dateRange.to
         ),
-        customerLedgerAPI.getPayments(
-          selectedCustomer.id,
-          companyId,
-          dateRange.from,
-          dateRange.to,
-          ledgerOpts
-        ),
+        customerLedgerAPI.getPayments(selectedCustomer.id, companyId, dateRange.from, dateRange.to, ledgerOpts),
         customerLedgerAPI.getAgingReport(selectedCustomer.id, companyId),
       ]);
 
@@ -179,7 +173,7 @@ export default function CustomerLedgerPageOriginal({
     if (selectedCustomer && companyId) {
       loadLedgerData();
     }
-  }, [selectedCustomer, dateRange, companyId, showAuditPayments]);
+  }, [selectedCustomer, dateRange, companyId, showAuditPayments, branchId]);
 
   // Same refresh pattern as supplier/worker/user: listen for sale/payment/ledger events
   const loadLedgerRef = useRef<() => void>(() => {});

@@ -354,7 +354,17 @@ export interface PurchaseDetail {
   vendor: string;
   vendorPhone: string;
   branchId?: string | null;
-  items: { id: string; productName: string; quantity: number; unitPrice: number; total: number; packingDetails?: { total_boxes?: number; total_pieces?: number; total_meters?: number; packs?: number; units_per_pack?: number } }[];
+  items: {
+    id: string;
+    productId?: string;
+    variationId?: string | null;
+    sku?: string | null;
+    productName: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+    packingDetails?: { total_boxes?: number; total_pieces?: number; total_meters?: number; packs?: number; units_per_pack?: number };
+  }[];
   subtotal: number;
   discount: number;
   total: number;
@@ -364,6 +374,11 @@ export interface PurchaseDetail {
   paymentStatus: string;
   orderDate: string;
   expectedDeliveryDate?: string;
+  taxAmount: number;
+  shippingCost: number;
+  notes?: string | null;
+  paymentMethod?: string | null;
+  supplierId?: string | null;
 }
 
 export async function getPurchaseById(
@@ -373,7 +388,7 @@ export async function getPurchaseById(
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const { data: purchase, error: purchaseError } = await supabase
     .from('purchases')
-    .select('id, po_no, supplier_name, contact_number, branch_id, subtotal, discount_amount, total, paid_amount, due_amount, status, payment_status, po_date')
+    .select('id, po_no, supplier_id, supplier_name, contact_number, branch_id, subtotal, discount_amount, tax_amount, shipping_cost, total, paid_amount, due_amount, status, payment_status, po_date, notes, payment_method')
     .eq('id', purchaseId)
     .eq('company_id', companyId)
     .single();
@@ -381,7 +396,7 @@ export async function getPurchaseById(
 
   const { data: items, error: itemsError } = await supabase
     .from('purchase_items')
-    .select('id, product_name, quantity, unit_price, total, packing_details')
+    .select('id, product_id, variation_id, sku, product_name, quantity, unit_price, total, packing_details')
     .eq('purchase_id', purchaseId);
   if (itemsError) return { data: null, error: itemsError.message };
 
@@ -402,6 +417,9 @@ export async function getPurchaseById(
           : undefined;
         return {
           id: i.id as string,
+          productId: (i.product_id as string) || undefined,
+          variationId: (i.variation_id as string) || null,
+          sku: (i.sku as string) || null,
           productName: (i.product_name as string) || '—',
           quantity: Number(i.quantity) || 0,
           unitPrice: Number(i.unit_price) || 0,
@@ -412,15 +430,71 @@ export async function getPurchaseById(
       branchId: (p.branch_id as string) ?? null,
       subtotal: Number(p.subtotal) || 0,
       discount: Number(p.discount_amount) || 0,
+      taxAmount: Number(p.tax_amount) || 0,
+      shippingCost: Number(p.shipping_cost) || 0,
       total: Number(p.total) || 0,
       paidAmount: Number(p.paid_amount) || 0,
       dueAmount: Number(p.due_amount) || 0,
       status: String(p.status || 'ordered'),
       paymentStatus: String(p.payment_status || 'unpaid'),
       orderDate: p.po_date ? new Date(p.po_date as string).toISOString().slice(0, 10) : '—',
+      notes: (p.notes as string) ?? null,
+      paymentMethod: (p.payment_method as string) ?? null,
+      supplierId: (p.supplier_id as string) ?? null,
     },
     error: null,
   };
+}
+
+/** Line-item + header update (RPC). Allowed only when purchase has no payments. */
+export async function updatePurchaseWithItems(params: {
+  purchaseId: string;
+  userId: string | null;
+  supplierId?: string | null;
+  items: Array<{
+    productId: string;
+    variationId?: string | null;
+    productName: string;
+    sku?: string | null;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+  }>;
+  discountAmount: number;
+  taxAmount: number;
+  shippingCost: number;
+  notes?: string | null;
+  supplierName?: string | null;
+  contactNumber?: string | null;
+  poDate?: string | null;
+}): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const p_items = params.items.map((i) => ({
+    product_id: i.productId,
+    variation_id: i.variationId ?? null,
+    product_name: i.productName,
+    sku: i.sku ?? '—',
+    quantity: i.quantity,
+    unit_price: i.unitPrice,
+    total: i.total,
+  }));
+  const { data, error } = await supabase.rpc('update_purchase_with_items', {
+    p_purchase_id: params.purchaseId,
+    p_user_id: params.userId,
+    p_items: p_items,
+    p_discount_amount: params.discountAmount,
+    p_tax_amount: params.taxAmount,
+    p_shipping_cost: params.shippingCost,
+    p_notes: params.notes ?? null,
+    p_supplier_name: params.supplierName ?? null,
+    p_contact_number: params.contactNumber ?? null,
+    p_po_date: params.poDate && params.poDate.length >= 10 ? params.poDate.slice(0, 10) : null,
+    p_supplier_id: params.supplierId ?? null,
+  });
+  if (error) return { error: error.message };
+  const row = data as { success?: boolean; error?: string } | null;
+  if (row && row.success === false) return { error: row.error || 'Update failed' };
+  return { error: null };
 }
 
 export type PurchasePaymentRow = {

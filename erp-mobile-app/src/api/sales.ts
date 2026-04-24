@@ -831,6 +831,67 @@ export async function getSaleReturnCandidateItems(saleId: string): Promise<{
   return { data: [], error: lastError };
 }
 
+/** Line-item + header update (RPC). Blocked when sale has a finalized return; total must stay >= paid_amount. */
+export async function updateSaleWithItems(params: {
+  saleId: string;
+  userId: string | null;
+  customerId?: string | null;
+  items: Array<{
+    productId: string;
+    variationId?: string | null;
+    productName: string;
+    sku?: string | null;
+    quantity: number;
+    unitPrice: number;
+    discountAmount?: number;
+    taxAmount?: number;
+    total: number;
+  }>;
+  discountAmount: number;
+  taxAmount: number;
+  shipmentCharges: number;
+  extraExpenses: number;
+  notes?: string | null;
+  customerName?: string | null;
+  contactNumber?: string | null;
+  paymentMethod?: string | null;
+  invoiceDate?: string | null;
+  deadline?: string | null;
+}): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const p_items = params.items.map((i) => ({
+    product_id: i.productId,
+    variation_id: i.variationId ?? null,
+    product_name: i.productName,
+    sku: i.sku ?? '—',
+    quantity: i.quantity,
+    unit_price: i.unitPrice,
+    discount_amount: i.discountAmount ?? 0,
+    tax_amount: i.taxAmount ?? 0,
+    total: i.total,
+  }));
+  const { data, error } = await supabase.rpc('update_sale_with_items', {
+    p_sale_id: params.saleId,
+    p_user_id: params.userId,
+    p_items: p_items,
+    p_discount_amount: params.discountAmount,
+    p_tax_amount: params.taxAmount,
+    p_shipment_charges: params.shipmentCharges,
+    p_extra_expenses: params.extraExpenses,
+    p_notes: params.notes ?? null,
+    p_customer_name: params.customerName ?? null,
+    p_contact_number: params.contactNumber ?? null,
+    p_payment_method: params.paymentMethod ?? null,
+    p_invoice_date: params.invoiceDate && params.invoiceDate.length >= 10 ? params.invoiceDate.slice(0, 10) : null,
+    p_deadline: params.deadline && params.deadline.length >= 10 ? params.deadline.slice(0, 10) : null,
+    p_customer_id: params.customerId ?? null,
+  });
+  if (error) return { error: error.message };
+  const row = data as { success?: boolean; error?: string } | null;
+  if (row && row.success === false) return { error: row.error || 'Update failed' };
+  return { error: null };
+}
+
 export type CreateSaleReturnPayload = {
   companyId: string;
   branchId: string;

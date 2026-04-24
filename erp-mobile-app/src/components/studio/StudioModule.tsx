@@ -32,6 +32,14 @@ type View =
   | 'invoice'
   | 'shipment';
 
+const shortOrderStatusLabel: Record<StudioOrder['status'], string> = {
+  pending: 'Pending',
+  'in-progress': 'Active',
+  ready: 'Ready',
+  completed: 'Done',
+  shipped: 'Shipped',
+};
+
 function mapProductionToOrder(
   prod: studioApi.StudioProductionRow,
   stages: studioApi.StudioStageRow[]
@@ -243,13 +251,22 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
                       onClick={() => openOrder(order)}
                       className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6]/60 transition-colors"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
+                      <div className="flex items-start justify-between gap-2 min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-white truncate">{order.orderNumber}</p>
                           <p className="text-xs text-[#9CA3AF] truncate">{order.customerName}</p>
                         </div>
-                        <span className={`text-xs px-2 py-0.5 rounded capitalize ${order.status === 'completed' ? 'bg-[#10B981]/20 text-[#10B981]' : order.status === 'in-progress' ? 'bg-[#3B82F6]/20 text-[#93C5FD]' : 'bg-[#374151] text-[#9CA3AF]'}`}>
-                          {order.status}
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded shrink-0 max-w-[38%] truncate ${
+                            order.status === 'completed'
+                              ? 'bg-[#10B981]/20 text-[#10B981]'
+                              : order.status === 'in-progress'
+                                ? 'bg-[#3B82F6]/20 text-[#93C5FD]'
+                                : 'bg-[#374151] text-[#9CA3AF]'
+                          }`}
+                          title={order.status}
+                        >
+                          {shortOrderStatusLabel[order.status]}
                         </span>
                       </div>
                       <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
@@ -266,7 +283,9 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
                           <p className="text-white font-medium">{order.deadline || '—'}</p>
                         </div>
                       </div>
-                      <p className="mt-2 text-xs text-[#9CA3AF] truncate">Current: {order.currentStage || 'Not Started'}</p>
+                      <p className="mt-2 text-xs text-[#9CA3AF] line-clamp-2 break-words min-w-0">
+                        Current: <span className="text-white font-medium">{order.currentStage || 'Not Started'}</span>
+                      </p>
                     </button>
                   );
                 })

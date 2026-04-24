@@ -173,7 +173,9 @@ function arJournalLineMatchesCustomer(
   salesMap: Map<string, any>,
   paymentIds: string[],
   paymentDetailsMap: Map<string, any>,
-  customerSaleReturnIds: Set<string>
+  customerSaleReturnIds: Set<string>,
+  /** Rental booking ids for this party — include AR journal lines with reference_type rental when reference_id matches. */
+  rentalIdsForParty: Set<string>
 ): boolean {
   const entry = line.journal_entry;
   if (!entry) return false;
@@ -225,8 +227,8 @@ function arJournalLineMatchesCustomer(
   ) {
     return true;
   }
-  if (entry.reference_type === 'rental') {
-    return false;
+  if (entry.reference_type === 'rental' && entry.reference_id) {
+    return rentalIdsForParty.has(String(entry.reference_id));
   }
   return false;
 }
@@ -2320,6 +2322,9 @@ export const accountingService = {
         console.warn('[ACCOUNTING SERVICE] getCustomerLedger - Rental fetch failed (non-critical):', e);
       }
       const rentalsMap = new Map(customerRentals.map((r: any) => [r.id, r]));
+      const rentalIdsForParty = new Set(
+        customerRentals.map((r: any) => (r?.id != null ? String(r.id) : '')).filter(Boolean)
+      );
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - Rentals:', customerRentals.length, 'Payments:', customerRentalPayments.length);
 
       // PHASE 3: Filter by customer ID (from sales.customer_id OR payments via sales OR rentals)
@@ -2351,7 +2356,8 @@ export const accountingService = {
               salesMap,
               paymentIds,
               paymentDetailsMap,
-              customerSaleReturnIds
+              customerSaleReturnIds,
+              rentalIdsForParty
             );
           });
         }
@@ -2362,7 +2368,8 @@ export const accountingService = {
           salesMap,
           paymentIds,
           paymentDetailsMap,
-          customerSaleReturnIds
+          customerSaleReturnIds,
+          rentalIdsForParty
         );
         if (ok && entry.reference_type === 'sale') saleMatchCount++;
         if (ok && (entry.reference_type === 'payment' || entry.payment_id)) paymentMatchCount++;
@@ -2733,8 +2740,10 @@ export const accountingService = {
             document_type: 'Payment',
           });
         });
-        // Rentals: always add synthetic (journal entries use Cash/Revenue, not AR)
+        // Rentals: synthetic charge only when no AR journal row already carries this rental_id
         customerRentals.forEach((r: any) => {
+          const rid = r?.id != null ? String(r.id) : '';
+          if (rid && rentalIdsInJournal.has(rid)) return;
           const rawDate = r.pickup_date || r.booking_date || r.created_at;
           const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
           if (!d) return;

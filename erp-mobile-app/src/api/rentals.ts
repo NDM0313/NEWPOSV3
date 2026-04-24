@@ -1,4 +1,9 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  linkRentalPaymentJournalEntry,
+  postRentalAdvanceJournalMobile,
+  postRentalExpenseJournalMobile,
+} from './rentalBookingAccounting';
 
 /** UI status: map DB status (picked_up, active, closed) to web-like labels */
 export function mapRentalStatus(dbStatus: string): string {
@@ -94,6 +99,8 @@ export interface CreateBookingInput {
   securityDocumentType?: string | null;
   securityDocumentNumber?: string | null;
   securityDocumentImageUrl?: string | null;
+  /** Devaluation / shop costs — same as web `rental_expenses`; not added into `rental_charges`. */
+  expenses?: Array<{ description: string; amount: number }>;
   items: Array<{
     productId: string;
     productName: string;
@@ -130,6 +137,7 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     securityDocumentType = null,
     securityDocumentNumber = null,
     securityDocumentImageUrl = null,
+    expenses = [],
     items,
   } = input;
 
@@ -145,8 +153,13 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
   const totalAmount = rentalCharges + securityDeposit;
   const dueAmount = Math.max(0, totalAmount - paidAmount);
 
+  const expenseTotal = (expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const commissionEligible = Math.max(0, rentalCharges - expenseTotal);
   const commissionPct = commissionPercent != null && Number.isFinite(commissionPercent) ? Number(commissionPercent) : null;
-  const commissionAmount = commissionPct != null && commissionPct > 0 ? Math.round(rentalCharges * (commissionPct / 100) * 100) / 100 : 0;
+  const commissionAmount =
+    commissionPct != null && commissionPct > 0
+      ? Math.round(commissionEligible * (commissionPct / 100) * 100) / 100
+      : 0;
 
   const rentalInsert: Record<string, unknown> = {
     company_id: companyId,
@@ -168,11 +181,14 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     created_by: userId,
   };
   if (salesmanId) rentalInsert.salesman_id = salesmanId;
-  if (commissionPct != null) {
+  if (commissionPct != null && salesmanId) {
     rentalInsert.commission_percent = commissionPct;
     rentalInsert.commission_amount = commissionAmount;
-    rentalInsert.commission_eligible_amount = rentalCharges;
-    rentalInsert.commission_status = 'pending';
+    rentalInsert.commission_eligible_amount = commissionEligible;
+    rentalInsert.commission_status = commissionAmount > 0 ? 'pending' : null;
+  }
+  if (expenses && expenses.length > 0 && expenseTotal > 0) {
+    rentalInsert.rental_expenses = expenses;
   }
   if (securityDocumentType) rentalInsert.security_document_type = securityDocumentType;
   if (securityDocumentNumber) rentalInsert.security_document_number = securityDocumentNumber.trim() || null;
@@ -181,13 +197,29 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     rentalInsert.security_status = 'collected';
   }
 
-  const { data: rentalData, error: rentalError } = await supabase
-    .from('rentals')
-    .insert(rentalInsert)
-    .select('id, booking_no')
-    .single();
+  let rentalData: { id: string; booking_no?: string | null } | null = null;
+  const firstIns = await supabase.from('rentals').insert(rentalInsert).select('id, booking_no').single();
+  if (firstIns.error) {
+    const msg = String(firstIns.error.message || '');
+    if (msg.includes('rental_expenses') || msg.includes('commission') || msg.includes('salesman_id')) {
+      const fallback: Record<string, unknown> = { ...rentalInsert };
+      delete fallback.rental_expenses;
+      delete fallback.salesman_id;
+      delete fallback.commission_percent;
+      delete fallback.commission_amount;
+      delete fallback.commission_eligible_amount;
+      delete fallback.commission_status;
+      const retry = await supabase.from('rentals').insert(fallback).select('id, booking_no').single();
+      if (retry.error) return { data: null, error: retry.error.message };
+      rentalData = retry.data as { id: string; booking_no?: string | null };
+    } else {
+      return { data: null, error: firstIns.error.message };
+    }
+  } else {
+    rentalData = firstIns.data as { id: string; booking_no?: string | null };
+  }
 
-  if (rentalError) return { data: null, error: rentalError.message };
+  if (!rentalData?.id) return { data: null, error: 'Rental insert failed.' };
 
   const itemsPayload = items.map((i) => {
     const row: Record<string, unknown> = {
@@ -218,32 +250,94 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     return { data: null, error: itemsError.message };
   }
 
+  const bookingNoDisplay = rentalData.booking_no || `RNT-${rentalData.id.slice(0, 8)}`;
+
   if (paidAmount > 0) {
-    let method = (advancePaymentMethod === 'bank' || advancePaymentMethod === 'other') ? advancePaymentMethod : 'cash';
-    if (advancePaymentAccountId) {
-      const { data: acc, error: accErr } = await supabase
-        .from('accounts')
-        .select('id, type')
-        .eq('id', advancePaymentAccountId)
-        .eq('company_id', companyId)
-        .eq('is_active', true)
-        .single();
-      if (accErr || !acc) return { data: null, error: 'Invalid or inactive payment account. Select an account from the list.' };
-      const t = String((acc as Record<string, unknown>).type ?? '').toLowerCase();
-      method = t === 'bank' || t === 'asset' ? t : t === 'mobile_wallet' ? 'other' : 'cash';
+    if (!advancePaymentAccountId) {
+      await supabase.from('rental_items').delete().eq('rental_id', rentalData.id);
+      await supabase.from('rentals').delete().eq('id', rentalData.id);
+      return { data: null, error: 'Select payment account for advance (required for ledger posting).' };
     }
-    await supabase.from('rental_payments').insert({
-      rental_id: rentalData.id,
+    let method = (advancePaymentMethod === 'bank' || advancePaymentMethod === 'other') ? advancePaymentMethod : 'cash';
+    const { data: acc, error: accErr } = await supabase
+      .from('accounts')
+      .select('id, type')
+      .eq('id', advancePaymentAccountId)
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .single();
+    if (accErr || !acc) {
+      await supabase.from('rental_items').delete().eq('rental_id', rentalData.id);
+      await supabase.from('rentals').delete().eq('id', rentalData.id);
+      return { data: null, error: 'Invalid or inactive payment account. Select an account from the list.' };
+    }
+    const t = String((acc as Record<string, unknown>).type ?? '').toLowerCase();
+    method = t === 'bank' || t === 'asset' ? 'bank' : t === 'mobile_wallet' ? 'other' : 'cash';
+
+    const { data: payRow, error: payInsErr } = await supabase
+      .from('rental_payments')
+      .insert({
+        rental_id: rentalData.id,
+        amount: paidAmount,
+        method,
+        reference: 'Advance at booking',
+        payment_date: bookingDate,
+        payment_type: 'advance',
+        created_by: userId,
+      })
+      .select('id')
+      .single();
+    if (payInsErr || !payRow) {
+      await supabase.from('rental_items').delete().eq('rental_id', rentalData.id);
+      await supabase.from('rentals').delete().eq('id', rentalData.id);
+      return { data: null, error: payInsErr?.message ?? 'Failed to record advance payment.' };
+    }
+
+    const je = await postRentalAdvanceJournalMobile({
+      companyId,
+      branchId,
+      rentalId: rentalData.id,
+      bookingNo: bookingNoDisplay,
+      customerName: customerName,
       amount: paidAmount,
-      method,
-      reference: 'Advance at booking',
-      payment_date: bookingDate,
-      payment_type: 'advance',
-      created_by: userId,
+      paymentAccountId: advancePaymentAccountId,
+      entryDate: bookingDate,
+      userId,
     });
+    if (je.error || !je.journalEntryId) {
+      await supabase.from('rental_payments').delete().eq('id', (payRow as { id: string }).id);
+      await supabase.from('rental_items').delete().eq('rental_id', rentalData.id);
+      await supabase.from('rentals').delete().eq('id', rentalData.id);
+      return { data: null, error: je.error || 'Ledger: could not post rental advance (Dr payment / Cr Rental Advance).' };
+    }
+    await linkRentalPaymentJournalEntry((payRow as { id: string }).id, je.journalEntryId);
   }
 
-  return { data: { id: rentalData.id, booking_no: rentalData.booking_no || `RNT-${rentalData.id.slice(0, 8)}` }, error: null };
+  if (expenses && expenses.length > 0 && expenseTotal > 0) {
+    const exJe = await postRentalExpenseJournalMobile({
+      companyId,
+      branchId,
+      rentalId: rentalData.id,
+      bookingNo: bookingNoDisplay,
+      expenses,
+      entryDate: bookingDate,
+      userId,
+    });
+    if (exJe.error) {
+      console.warn('[rentals.createBooking] Rental expense JE skipped:', exJe.error);
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+      window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
+    } catch {
+      /* non-browser */
+    }
+  }
+
+  return { data: { id: rentalData.id, booking_no: bookingNoDisplay }, error: null };
 }
 
 export async function getRentals(companyId: string, branchId?: string | null): Promise<{ data: RentalListItem[]; error: string | null }> {

@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { contactService } from '@/app/services/contactService';
 
 // ======================== TYPES ========================
 
@@ -255,19 +256,9 @@ export const integrityRepairService = {
       subMap.set(a.linked_contact_id, { id: a.id, code: a.code });
     });
 
-    // GL balances
-    const subIds = (subAccounts || []).map((a: any) => a.id);
-    const glMap = new Map<string, number>();
-    if (subIds.length > 0) {
-      const { data: entries } = await supabase.from('journal_entries').select('id')
-        .eq('company_id', companyId).or('is_void.is.null,is_void.eq.false');
-      const jeIds = (entries || []).map((e: any) => e.id);
-      if (jeIds.length > 0) {
-        const { data: lines } = await supabase.from('journal_entry_lines')
-          .select('account_id, debit, credit').in('journal_entry_id', jeIds).in('account_id', subIds);
-        (lines || []).forEach((l: any) => glMap.set(l.account_id, (glMap.get(l.account_id) || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0)));
-      }
-    }
+    // GL per contact: same RPC as Contacts page (AR/AP subtree + party resolver). Summing only
+    // journal_entry_lines on linked_contact_id accounts missed Dr/Cr on control 1100/2000 and showed GL=0.
+    const partyGlMap = await contactService.getContactPartyGlBalancesMap(companyId, null);
 
     // Sales (include cancelled to track payments), purchases, returns, payments
     const { data: allSales } = await supabase.from('sales').select('id, customer_id, total, paid_amount, due_amount, status').eq('company_id', companyId).in('status', ['final', 'cancelled']);
@@ -293,8 +284,23 @@ export const integrityRepairService = {
       const sub = isCustomer ? (subMapAR.get(c.id) || subMap.get(c.id)) : (subMapAP.get(c.id) || subMap.get(c.id));
       if (!sub) continue;
 
-      const rawGl = glMap.get(sub.id) || 0;
-      const glBal = (sub.code?.startsWith('AP-')) ? Math.abs(rawGl) : rawGl;
+      const slice = partyGlMap?.get(c.id);
+      let rawGl = 0;
+      if (c.type === 'customer') {
+        rawGl = slice ? Math.round(slice.glArReceivable * 100) / 100 : 0;
+      } else if (c.type === 'supplier') {
+        rawGl = slice ? Math.round(slice.glApPayable * 100) / 100 : 0;
+      } else {
+        rawGl =
+          sub.code?.startsWith('AP-')
+            ? slice
+              ? Math.round(slice.glApPayable * 100) / 100
+              : 0
+            : slice
+              ? Math.round(slice.glArReceivable * 100) / 100
+              : 0;
+      }
+      const glBal = sub.code?.startsWith('AP-') ? Math.abs(rawGl) : rawGl;
 
       // Calculate operational — GL is source of truth; operational is approximate
       let operational = 0;

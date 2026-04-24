@@ -898,6 +898,15 @@ export const StudioSaleDetailNew = () => {
     }
   }, [productionId, saleDetail, stagesToProductionSteps, companyId, branchId]);
 
+  /** After mobile / other tab updates, refresh stages when user returns to this tab. */
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void reloadProductionSteps();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [reloadProductionSteps]);
+
   // Calculate costs
   const calculateInternalCosts = () => {
     if (!saleDetail) return { fabricCost: 0, productionCost: 0, accessoriesCost: 0, shippingCost: 0, totalCost: 0, profit: 0, margin: 0 };

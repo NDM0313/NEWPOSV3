@@ -150,19 +150,26 @@ export function TransactionsTab({ transactions, onTransactionClick }: Transactio
     setActiveFilters(activeFilters.filter(f => f !== filter));
   };
 
-  // Calculate comprehensive stats
+  const periodRows = filteredTransactions.filter((t) => t.documentType !== 'Opening Balance');
+  const closingFromTable =
+    filteredTransactions.length > 0
+      ? filteredTransactions[filteredTransactions.length - 1].runningBalance
+      : 0;
+  // Period debit/credit exclude synthetic opening row (aligns with operational summary API).
   const stats = {
-    totalDebit: filteredTransactions.reduce((sum, t) => sum + t.debit, 0),
-    totalCredit: filteredTransactions.reduce((sum, t) => sum + t.credit, 0),
-    netBalance: filteredTransactions.reduce((sum, t) => sum + t.debit - t.credit, 0),
+    totalDebit: periodRows.reduce((sum, t) => sum + t.debit, 0),
+    totalCredit: periodRows.reduce((sum, t) => sum + t.credit, 0),
+    netBalance: closingFromTable,
     salesCount: filteredTransactions.filter(t => t.documentType === 'Sale').length,
     paymentsCount: filteredTransactions.filter(t => t.documentType === 'Payment').length,
     discountsCount: filteredTransactions.filter(t => t.documentType === 'Discount').length,
-    avgTransaction: filteredTransactions.length > 0 
-      ? (filteredTransactions.reduce((sum, t) => sum + (t.debit || t.credit), 0) / filteredTransactions.length)
+    avgTransaction: periodRows.length > 0
+      ? (periodRows.reduce((sum, t) => sum + (t.debit || t.credit), 0) / periodRows.length)
       : 0,
-    highestTransaction: Math.max(...filteredTransactions.map(t => t.debit || t.credit || 0)),
-    lowestTransaction: Math.min(...filteredTransactions.filter(t => t.debit > 0 || t.credit > 0).map(t => t.debit || t.credit)),
+    highestTransaction: periodRows.length > 0 ? Math.max(...periodRows.map(t => t.debit || t.credit || 0)) : 0,
+    lowestTransaction: periodRows.filter(t => t.debit > 0 || t.credit > 0).length > 0
+      ? Math.min(...periodRows.filter(t => t.debit > 0 || t.credit > 0).map(t => t.debit || t.credit))
+      : 0,
     withNotes: filteredTransactions.filter(t => t.notes).length,
     linkedTransactions: filteredTransactions.filter(t => t.linkedInvoices && t.linkedInvoices.length > 0).length,
   };

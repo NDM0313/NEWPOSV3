@@ -200,9 +200,11 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     return sum + lineRate * item.quantity;
   }, 0);
   const extraExpense = parseFloat(extraExpenseAmount) || 0;
-  const rentAmount = Math.max(0, itemsRentAmount + extraExpense);
+  /** Line rent only (posted as rental_charges); extra expense is shop P&L, not added to customer contract. */
+  const customerRentTotal = Math.max(0, itemsRentAmount);
   const paidAmount = parseFloat(advancePaid) || 0;
-  const balanceDue = Math.max(0, rentAmount - paidAmount);
+  const balanceDue = Math.max(0, customerRentTotal - paidAmount);
+  const commissionBasePreview = Math.max(0, customerRentTotal - extraExpense);
 
   const handleSave = async () => {
     if (!companyId || !effectiveBranchId || effectiveBranchId === 'all') {
@@ -217,7 +219,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       setError('Add at least one product.');
       return;
     }
-    if (rentAmount <= 0) {
+    if (customerRentTotal <= 0) {
       setError('Enter a valid rent amount.');
       return;
     }
@@ -236,15 +238,13 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
     setSaving(true);
     setError('');
-    const items = selectedItems.map((item, i) => ({
+    const items = selectedItems.map((item) => ({
       productId: item.product.id,
       productName: item.product.name,
       quantity: item.quantity,
       ratePerDay: Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0,
       durationDays,
-      total:
-        ((Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0) * item.quantity) +
-        (i === selectedItems.length - 1 ? extraExpense : 0),
+      total: (Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0) * item.quantity,
       variationId: item.variationId,
       variationLabel: item.variationLabel,
     }));
@@ -260,10 +260,16 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       bookingDate: today,
       pickupDate,
       returnDate,
-      rentalCharges: rentAmount,
+      rentalCharges: customerRentTotal,
       paidAmount,
       advancePaymentAccountId: paidAmount > 0 ? advancePaymentAccountId ?? undefined : undefined,
-      notes: [notes.trim(), extraExpense > 0 ? `Extra expenses: Rs. ${extraExpense.toLocaleString()}` : ''].filter(Boolean).join(' | ') || null,
+      notes: [notes.trim(), extraExpense > 0 ? `Shop expense / devaluation: Rs. ${extraExpense.toLocaleString()}` : '']
+        .filter(Boolean)
+        .join(' | ') || null,
+      expenses:
+        extraExpense > 0
+          ? [{ description: 'Extra / devaluation (resku)', amount: extraExpense }]
+          : undefined,
       salesmanId: salesmanId || null,
       commissionPercent: Number.isFinite(commissionPctNum) ? commissionPctNum : null,
       securityDocumentType: securityDocType || null,
@@ -286,7 +292,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       type: 'rental',
       title: 'Booking Saved Successfully',
       transactionNo: createResult?.booking_no ?? null,
-      amount: rentAmount,
+      amount: customerRentTotal,
       partyName: selectedCustomer.name,
       date: new Date().toISOString(),
       branch: branchName ?? undefined,
@@ -623,7 +629,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
   // ─── Step 3: Manual Rent Entry ───────────────────────────────────────────
   if (step === 'rent') {
-    const canNext = rentAmount > 0;
+    const canNext = customerRentTotal > 0;
     return (
       <div className="min-h-screen bg-[#111827] pb-24">
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
@@ -706,8 +712,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               <span className="text-white">Rs. {extraExpense.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-sm pt-2 border-t border-[#374151]">
-              <span className="text-[#9CA3AF]">Total rent</span>
-              <span className="text-[#10B981] font-semibold">Rs. {rentAmount.toLocaleString()}</span>
+              <span className="text-[#9CA3AF]">Customer rent (ledger)</span>
+              <span className="text-[#10B981] font-semibold">Rs. {customerRentTotal.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -796,7 +802,9 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             />
             {salesmanId && commissionNum > 0 && Number.isFinite(commissionNum) && (
               <p className="text-xs text-[#10B981] mt-1">
-                Commission amount: Rs. {Math.round(rentAmount * (commissionNum / 100)).toLocaleString()} on Rs. {rentAmount.toLocaleString()}
+                Commission amount: Rs.{' '}
+                {Math.round(commissionBasePreview * (commissionNum / 100)).toLocaleString()} on Rs.{' '}
+                {commissionBasePreview.toLocaleString()} (after devaluation)
               </p>
             )}
             {!commissionValid && <p className="text-xs text-[#EF4444] mt-1">Enter a percentage between 0 and 100.</p>}
@@ -842,7 +850,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <div className="flex justify-between">
               <span className="text-[#9CA3AF]">Rent amount</span>
-              <span className="font-bold text-white">Rs. {rentAmount.toLocaleString()}</span>
+              <span className="font-bold text-white">Rs. {customerRentTotal.toLocaleString()}</span>
             </div>
           </div>
           <div>
@@ -1006,7 +1014,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             <div className="flex justify-between text-sm"><span className="text-[#9CA3AF]">Product</span><span className="text-white">{selectedItems.map((i) => i.product.name + (i.variationLabel ? ` (${i.variationLabel})` : '')).join(', ')}</span></div>
             <div className="flex justify-between text-sm"><span className="text-[#9CA3AF]">Pickup</span><span className="text-white">{pickupDate}</span></div>
             <div className="flex justify-between text-sm"><span className="text-[#9CA3AF]">Return</span><span className="text-white">{returnDate}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-[#9CA3AF]">Rent</span><span className="text-white">Rs. {rentAmount.toLocaleString()}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-[#9CA3AF]">Rent</span><span className="text-white">Rs. {customerRentTotal.toLocaleString()}</span></div>
             <div className="flex justify-between text-sm"><span className="text-[#9CA3AF]">Advance</span><span className="text-white">Rs. {paidAmount.toLocaleString()}</span></div>
             <div className="flex justify-between text-sm pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="text-[#F59E0B] font-medium">Rs. {balanceDue.toLocaleString()}</span></div>
           </div>
@@ -1095,7 +1103,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           ))}
         </div>
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-2">
-          <div className="flex justify-between"><span className="text-[#9CA3AF]">Rent</span><span className="font-bold text-white">Rs. {rentAmount.toLocaleString()}</span></div>
+          <div className="flex justify-between"><span className="text-[#9CA3AF]">Rent</span><span className="font-bold text-white">Rs. {customerRentTotal.toLocaleString()}</span></div>
           <div className="flex justify-between"><span className="text-[#9CA3AF]">Advance</span><span className="text-white">Rs. {paidAmount.toLocaleString()}</span></div>
           {paidAmount > 0 && advancePaymentAccountId && <div className="flex justify-between text-xs text-[#6B7280]"><span>Receive into</span><span>{paymentAccounts.find((a) => a.id === advancePaymentAccountId)?.name ?? '—'}</span></div>}
           <div className="flex justify-between pt-2 border-t border-[#374151]"><span className="text-[#9CA3AF]">Balance due</span><span className="font-bold text-[#F59E0B]">Rs. {balanceDue.toLocaleString()}</span></div>
@@ -1106,7 +1114,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             <p className="text-white font-medium">{salesmen.find((s) => s.id === salesmanId)?.name ?? '—'}</p>
             {commissionPct.trim() !== '' && Number.isFinite(parseFloat(commissionPct)) && (
               <p className="text-xs text-[#10B981]">
-                Commission: {commissionPct}% → Rs. {Math.round(rentAmount * (parseFloat(commissionPct) / 100)).toLocaleString()}
+                Commission: {commissionPct}% → Rs.{' '}
+                {Math.round(commissionBasePreview * (parseFloat(commissionPct) / 100)).toLocaleString()}
               </p>
             )}
           </div>
