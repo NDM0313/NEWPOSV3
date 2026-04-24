@@ -1011,7 +1011,7 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
               <div>
                 <h3 className="text-white font-semibold">Cancel invoice?</h3>
                 <p className="text-sm text-[#9CA3AF] mt-1">
-                  {cancelConfirmSale.id} will be cancelled and hidden from active sales.
+                  {cancelConfirmSale.id} will be fully voided (stock and accounting reversed). It stays in the list with a Cancelled badge.
                 </p>
               </div>
             </div>

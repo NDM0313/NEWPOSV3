@@ -109,14 +109,14 @@ export function StudioStageSelection({ onBack, onSave, existingStageTypes = [], 
 
   const removeCustom = (entry: CustomStageEntry) => {
     setCustomStages((prev) => prev.filter((c) => c.localId !== entry.localId));
-    // Only remove from `selected` if no other custom stage maps to the same type and
-    // the preset itself isn't already selected through some other affordance.
-    const remainingForType = customStages.filter(
-      (c) => c.localId !== entry.localId && c.mapsTo === entry.mapsTo,
-    );
-    if (remainingForType.length === 0) {
-      setSelected((prev) => prev.filter((s) => s !== entry.mapsTo));
-    }
+    // Each custom row appended exactly one `mapsTo` slot in `selected` (see addCustom).
+    // Remove one matching occurrence from the end so preset + custom both mapping to
+    // the same type stay correct when only the custom row is deleted.
+    setSelected((sel) => {
+      const i = sel.lastIndexOf(entry.mapsTo);
+      if (i === -1) return sel;
+      return [...sel.slice(0, i), ...sel.slice(i + 1)];
+    });
   };
 
   const orderLabel = useMemo(() => {
