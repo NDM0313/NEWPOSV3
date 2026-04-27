@@ -202,6 +202,8 @@ export const rentalService = {
     rentalCharges: number;
     securityDeposit?: number;
     paidAmount?: number;
+    /** Cash/bank account for advance GL (defaults to 1000). */
+    advancePaymentAccountId?: string | null;
     notes?: string | null;
     expenses?: Array<{ description: string; amount: number }>;
     salesmanId?: string | null;
@@ -229,6 +231,7 @@ export const rentalService = {
       rentalCharges,
       securityDeposit = 0,
       paidAmount: advanceAmount = 0,
+      advancePaymentAccountId = null,
       notes = null,
       expenses = [],
       salesmanId = null,
@@ -345,8 +348,85 @@ export const rentalService = {
       throw itemsError;
     }
 
-    // Record advance payment if provided
-    if (effectivePaid > 0) {
+    // Party AR GL (named customer): revenue (when charges > 0) + optional advance cash receipt
+    if (customerId) {
+      try {
+        const {
+          postRentalPartyRevenueIfNeeded,
+          postRentalPartyDiscountIfNeeded,
+          postRentalPartyCashReceipt,
+          fetchRentalArAmounts,
+        } = await import('./rentalPartyArAccounting');
+        const { accountHelperService } = await import('./accountHelperService');
+        if (rentalCharges > 0) {
+          await postRentalPartyRevenueIfNeeded({
+            companyId,
+            branchId,
+            rentalId: rentalData.id,
+            customerId,
+            customerName,
+            rentalCharges,
+            entryDate: bookingDate,
+            createdBy: createdBy || null,
+          });
+          const am = await fetchRentalArAmounts(rentalData.id);
+          if (am && am.discountAmount > 0) {
+            await postRentalPartyDiscountIfNeeded({
+              companyId,
+              branchId,
+              rentalId: rentalData.id,
+              customerId,
+              customerName,
+              discountAmount: am.discountAmount,
+              entryDate: bookingDate,
+              createdBy: createdBy || null,
+            });
+          }
+        }
+        if (effectivePaid > 0) {
+          const payIns = await supabase
+            .from('rental_payments')
+            .insert({
+              rental_id: rentalData.id,
+              amount: effectivePaid,
+              method: 'cash',
+              reference: `Advance - ${bookingNo}`,
+              payment_date: bookingDate,
+              created_by: createdBy || null,
+              ...(advancePaymentAccountId ? { payment_account_id: advancePaymentAccountId } : {}),
+            })
+            .select('id')
+            .single();
+          const payId = (payIns.data as { id?: string } | null)?.id;
+          const cashId =
+            advancePaymentAccountId ||
+            (await accountHelperService.getAccountByCode('1000', companyId))?.id ||
+            null;
+          if (payId && cashId) {
+            const { journalEntryId } = await postRentalPartyCashReceipt({
+              companyId,
+              branchId,
+              rentalId: rentalData.id,
+              rentalPaymentId: payId,
+              customerId,
+              customerName,
+              amount: effectivePaid,
+              paymentAccountId: cashId,
+              rentalCharges,
+              securityDeposit,
+              entryDate: bookingDate,
+              createdBy: createdBy || null,
+              description: `Rental booking advance — ${bookingNo}`,
+            });
+            if (journalEntryId) {
+              await supabase.from('rental_payments').update({ journal_entry_id: journalEntryId }).eq('id', payId);
+            }
+          }
+        }
+      } catch (rentalGlErr) {
+        console.warn('[rentalService] createBooking party AR GL failed:', rentalGlErr);
+      }
+    } else if (effectivePaid > 0) {
       await supabase.from('rental_payments').insert({
         rental_id: rentalData.id,
         amount: effectivePaid,
@@ -357,29 +437,81 @@ export const rentalService = {
       });
     }
 
-    // Post rental expense JE if expenses exist (Dr Rental Expense 5300 / Cr Cash 1000)
+    // Dress devaluation (wear): named customer → Dr Rental Income 4200 / Cr party AR (not cash). Walk-in → legacy Dr 5300 / Cr cash.
     if (expenses && expenses.length > 0) {
       const totalExpense = expenses.reduce((sum: number, e: { amount: number }) => sum + (Number(e.amount) || 0), 0);
       if (totalExpense > 0) {
         try {
-          const { accountingService } = await import('./accountingService');
-          const getAccId = async (code: string) => {
-            const { data } = await supabase.from('accounts').select('id').eq('code', code).eq('company_id', companyId).eq('is_active', true).maybeSingle();
-            return data?.id as string | null;
-          };
-          const expAccId = await getAccId('5300') || await getAccId('6100');
-          const cashAccId = await getAccId('1000');
-          if (expAccId && cashAccId) {
-            const expDesc = expenses.map((e: { description: string; amount: number }) => `${e.description}: Rs ${e.amount}`).join(', ');
-            await accountingService.createEntry(
-              { id: '', company_id: companyId, entry_no: `JE-REXP-${Date.now()}`, entry_date: bookingDate, description: `Rental expense — ${bookingNo} (${expDesc})`, reference_type: 'expense', reference_id: rentalData.id, created_by: createdBy || undefined },
-              [
-                { id: '', journal_entry_id: '', account_id: expAccId, debit: totalExpense, credit: 0, description: `Rental Expense — ${bookingNo}` },
-                { id: '', journal_entry_id: '', account_id: cashAccId, debit: 0, credit: totalExpense, description: `Cash — rental expense ${bookingNo}` },
-              ]
-            );
+          if (customerId) {
+            const { postRentalPartyDevaluationIfNeeded } = await import('./rentalPartyArAccounting');
+            const res = await postRentalPartyDevaluationIfNeeded({
+              companyId,
+              branchId,
+              rentalId: rentalData.id,
+              customerId,
+              customerName,
+              amount: totalExpense,
+              expenses: expenses as { description: string; amount: number }[],
+              bookingNo,
+              entryDate: bookingDate,
+              createdBy: createdBy || null,
+            });
+            if (!res.skipped && !res.journalEntryId && res.reason === 'missing_gl_accounts') {
+              console.warn('[rentalService] Rental devaluation JE skipped: AR or Rental Income (4200) not resolved.');
+            }
+          } else {
+            const { accountingService } = await import('./accountingService');
+            const getAccId = async (code: string) => {
+              const { data } = await supabase
+                .from('accounts')
+                .select('id')
+                .eq('code', code)
+                .eq('company_id', companyId)
+                .eq('is_active', true)
+                .maybeSingle();
+              return data?.id as string | null;
+            };
+            const expAccId = await getAccId('5300') || await getAccId('6100');
+            const cashAccId = await getAccId('1000');
+            if (expAccId && cashAccId) {
+              const expDesc = expenses
+                .map((e: { description: string; amount: number }) => `${e.description}: Rs ${e.amount}`)
+                .join(', ');
+              await accountingService.createEntry(
+                {
+                  id: '',
+                  company_id: companyId,
+                  entry_no: `JE-REXP-${Date.now()}`,
+                  entry_date: bookingDate,
+                  description: `Rental expense (walk-in / no party AR) — ${bookingNo} (${expDesc})`,
+                  reference_type: 'expense',
+                  reference_id: rentalData.id,
+                  created_by: createdBy || undefined,
+                },
+                [
+                  {
+                    id: '',
+                    journal_entry_id: '',
+                    account_id: expAccId,
+                    debit: totalExpense,
+                    credit: 0,
+                    description: `Rental expense — ${bookingNo}`,
+                  },
+                  {
+                    id: '',
+                    journal_entry_id: '',
+                    account_id: cashAccId,
+                    debit: 0,
+                    credit: totalExpense,
+                    description: `Cash — rental expense ${bookingNo}`,
+                  },
+                ]
+              );
+            }
           }
-        } catch (expErr) { console.warn('[rentalService] Rental expense JE failed:', expErr); }
+        } catch (expErr) {
+          console.warn('[rentalService] Rental devaluation / expense JE failed:', expErr);
+        }
       }
     }
 

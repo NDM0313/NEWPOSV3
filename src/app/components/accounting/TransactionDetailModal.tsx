@@ -1374,14 +1374,36 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               </div>
             )}
 
-            {transaction.description?.toLowerCase().includes('expense') && (
-              <div className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
-                <h3 className="text-sm font-semibold text-orange-400 mb-2">Extra Expense Recorded</h3>
-                <p className="text-sm text-gray-300">
-                  This transaction records an extra expense (e.g., stitching, packing) linked to the sale.
-                </p>
-              </div>
-            )}
+            {(() => {
+              const desc = (transaction.description || '').toLowerCase();
+              const rt = String(transaction.reference_type || '').toLowerCase();
+              const isRentalDevaluation =
+                desc.includes('rental devaluation') ||
+                desc.includes('rental expense') ||
+                (rt === 'rental' && (desc.includes('devaluation') || desc.includes('(wear)')));
+              if (isRentalDevaluation) {
+                return (
+                  <div className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
+                    <h3 className="text-sm font-semibold text-orange-400 mb-2">Rental dress devaluation</h3>
+                    <p className="text-sm text-gray-300">
+                      This posting reflects wear / devaluation on rented inventory. For named customers it reduces rental
+                      income and the customer&apos;s receivable (party AR), not operating cash.
+                    </p>
+                  </div>
+                );
+              }
+              if (desc.includes('expense') && !desc.includes('commission')) {
+                return (
+                  <div className="bg-orange-500/10 rounded-lg p-4 border border-orange-500/30">
+                    <h3 className="text-sm font-semibold text-orange-400 mb-2">Extra Expense Recorded</h3>
+                    <p className="text-sm text-gray-300">
+                      This transaction records an extra expense (e.g., stitching, packing) linked to the sale.
+                    </p>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             {transaction.description?.toLowerCase().includes('commission') && (
               <div className="bg-purple-500/10 rounded-lg p-4 border border-purple-500/30">

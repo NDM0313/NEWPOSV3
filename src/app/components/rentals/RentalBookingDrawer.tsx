@@ -1067,9 +1067,9 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                     </div>
                   )}
 
-                  {/* Rental Expenses */}
+                  {/* Dress devaluation (wear) — nets vs rental income + party AR for named customers */}
                   <div className="space-y-2">
-                    <Label className="text-xs text-gray-500 uppercase">Rental Expenses (Maintenance / Alteration)</Label>
+                    <Label className="text-xs text-gray-500 uppercase">Dress devaluation (wear / upkeep)</Label>
                     <div className="flex gap-2">
                       <Input value={expenseDesc} onChange={e => setExpenseDesc(e.target.value)} placeholder="e.g. Dry cleaning, alteration" className="flex-1 h-8 bg-gray-900 border-gray-800 text-white text-sm" />
                       <Input value={expenseAmt} onChange={e => setExpenseAmt(e.target.value)} placeholder="Amount" type="number" className="w-24 h-8 bg-gray-900 border-gray-800 text-white text-sm text-right" />
@@ -1085,7 +1085,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                       </div>
                     ))}
                     {totalExpenses > 0 && (
-                      <div className="text-xs text-gray-500 text-right">Total Expenses: <span className="text-red-400 font-mono">{formatCurrency(totalExpenses)}</span></div>
+                      <div className="text-xs text-gray-500 text-right">Total devaluation: <span className="text-red-400 font-mono">{formatCurrency(totalExpenses)}</span></div>
                     )}
                   </div>
 

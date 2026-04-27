@@ -1127,7 +1127,7 @@ export const customerLedgerAPI = {
     if (rentalIds.length > 0) {
       let rpQuery = supabase
         .from('rental_payments')
-        .select('id, rental_id, amount, method, reference, payment_date, created_at')
+        .select('id, rental_id, amount, method, reference, payment_date, created_at, journal_entry_id')
         .in('rental_id', rentalIds);
       if (fromDate) rpQuery = rpQuery.gte('payment_date', fromDate);
       if (toDate) rpQuery = rpQuery.lte('payment_date', toDate);
@@ -1160,8 +1160,9 @@ export const customerLedgerAPI = {
       });
     });
 
-    // Add rental payments as credit transactions
+    // Add rental payments as credit transactions (skip when GL already linked — AR journal shows the receipt)
     customerRentalPayments.forEach((p: any) => {
+      if (p.journal_entry_id) return;
       const rawDate = p.payment_date || p.created_at;
       const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
       if (!d) return;

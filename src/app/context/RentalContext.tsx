@@ -362,7 +362,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
 
   const addPayment = async (rentalId: string, amount: number, method: string, reference?: string) => {
     if (!companyId) return;
-    await rentalService.addPayment(rentalId, companyId, amount, method, reference, user?.id);
+    const payRow = await rentalService.addPayment(rentalId, companyId, amount, method, reference, user?.id);
     // Issue 11: Post rental payment to accounting so reports/ledger reconcile with rental_payments
     const rental = getRentalById(rentalId);
     if (rental && amount > 0) {
@@ -373,6 +373,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
         customerId: rental.customerId || '',
         remainingAmount: amount,
         paymentMethod,
+        rentalPaymentId: payRow?.id,
       }).catch((err) => {
         console.warn('[RentalContext] Ledger posting failed (payment already recorded):', err);
       });
@@ -398,23 +399,47 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
   const markAsPickedUp = async (rentalId: string, payload: { actualPickupDate: string; notes?: string; documentType: string; documentNumber: string; documentExpiry?: string; documentReceived: boolean; remainingPaymentConfirmed: boolean; deliverOnCredit?: boolean; documentFrontImage?: string; documentBackImage?: string; customerPhoto?: string }) => {
     if (!companyId) return;
     const rental = getRentalById(rentalId);
-    if (payload.deliverOnCredit && rental) {
-      const remaining = (rental.totalAmount ?? 0) - (rental.paidAmount ?? 0);
-      if (remaining > 0) {
-        await accounting.recordRentalCreditDelivery({
-          bookingId: rentalId,
-          customerName: rental.customerName,
-          customerId: rental.customerId || '',
-          remainingAmount: remaining,
-          paymentMethod: 'Cash',
-        }).catch((err) => {
-          console.warn('[RentalContext] AR posting failed (pickup will proceed):', err);
-        });
+    const pickupDay = (payload.actualPickupDate || '').toString().slice(0, 10) || new Date().toISOString().split('T')[0];
+    if (rental?.customerId) {
+      try {
+        const {
+          fetchRentalArAmounts,
+          postRentalPartyRevenueIfNeeded,
+          postRentalPartyDiscountIfNeeded,
+        } = await import('@/app/services/rentalPartyArAccounting');
+        const am = await fetchRentalArAmounts(rentalId);
+        if (am) {
+          await postRentalPartyRevenueIfNeeded({
+            companyId,
+            branchId: rental.branchId || null,
+            rentalId,
+            customerId: rental.customerId,
+            customerName: rental.customerName,
+            rentalCharges: am.rentalCharges,
+            entryDate: pickupDay,
+            createdBy: user?.id ?? null,
+          });
+          if (am.discountAmount > 0) {
+            await postRentalPartyDiscountIfNeeded({
+              companyId,
+              branchId: rental.branchId || null,
+              rentalId,
+              customerId: rental.customerId,
+              customerName: rental.customerName,
+              discountAmount: am.discountAmount,
+              entryDate: pickupDay,
+              createdBy: user?.id ?? null,
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[RentalContext] Party AR revenue at pickup skipped:', e);
       }
     }
+    // Deliver on credit: party AR already shows unpaid balance from Dr AR / Cr Income (no second income JE).
     await rentalService.markAsPickedUp(rentalId, companyId, payload, user?.id);
-    // When NOT delivering on credit: recognize any unreleased advance as income at pickup
-    if (!payload.deliverOnCredit && rental) {
+    // Legacy 2020 → 4200 recognition (no-op when party AR model used)
+    if (rental) {
       accounting.recognizeRentalAdvance({
         bookingId: rentalId,
         customerName: rental.customerName,

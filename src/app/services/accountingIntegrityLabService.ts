@@ -22,6 +22,11 @@ import {
 } from '@/app/lib/postingStatusGate';
 import { listActiveCanonicalSaleDocumentJournalEntryIds } from '@/app/services/saleAccountingService';
 import { listActiveCanonicalPurchaseDocumentJournalEntryIds } from '@/app/services/purchaseAccountingService';
+import { accountingService } from '@/app/services/accountingService';
+import {
+  postRentalPartyDevaluationIfNeeded,
+  rentalPartyDevaluationRepairFingerprint,
+} from '@/app/services/rentalPartyArAccounting';
 
 /** Re-export for lab UI (prefer importing from @/app/lib/integrityLabConstants in new code) */
 export const INTEGRITY_LAB_SESSION_KEY = _INTEGRITY_LAB_SESSION_KEY;
@@ -3075,4 +3080,423 @@ export async function runOwnerEquityCapitalVisibilityCheck(companyId: string): P
       note: 'Drawings / retained naming hints in meta only. Presentation — does not replace TB/BS suite.',
     },
   };
+}
+
+// ─── G · Rental dress devaluation GL repair (legacy Dr 5300 / Cr cash → Dr 4200 / Cr party AR) ───
+
+const LEGACY_RENTAL_EXP_CODES = new Set(['5300', '6100']);
+const CASH_LIKE_CODES = new Set(['1000', '1010', '1020']);
+
+export interface RentalDevaluationMismatchRow {
+  journalEntryId: string;
+  entryNo: string | null;
+  entryDate: string | null;
+  description: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  rentalId: string;
+  bookingNo: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  amount: number;
+  debitCodes: string[];
+  creditCodes: string[];
+  fixable: boolean;
+  reason: string;
+}
+
+type LineWithCode = {
+  debit: number;
+  credit: number;
+  account?: { code?: string | null } | null;
+};
+
+function isLegacyTwoLineRentalExpense(lines: LineWithCode[] | null | undefined): boolean {
+  if (!lines || lines.length < 2) return false;
+  let drExp = false;
+  let crCash = false;
+  let td = 0;
+  let tc = 0;
+  for (const l of lines) {
+    const code = String(l.account?.code ?? '').trim();
+    const d = Number(l.debit) || 0;
+    const c = Number(l.credit) || 0;
+    td += d;
+    tc += c;
+    if (d > 0.005 && LEGACY_RENTAL_EXP_CODES.has(code)) drExp = true;
+    if (c > 0.005 && CASH_LIKE_CODES.has(code)) crCash = true;
+  }
+  return drExp && crCash && Math.abs(td - tc) < 0.02;
+}
+
+function legacyAmountFromLines(lines: LineWithCode[]): number {
+  let d = 0;
+  for (const l of lines) {
+    const code = String(l.account?.code ?? '').trim();
+    if (LEGACY_RENTAL_EXP_CODES.has(code)) d += Number(l.debit) || 0;
+  }
+  return d;
+}
+
+/** List legacy rental “expense” JEs (Dr 5300/6100, Cr cash) that should be dress devaluation vs party AR + 4200. */
+export async function scanRentalDevaluationMismatches(companyId: string): Promise<RentalDevaluationMismatchRow[]> {
+  const { data: rentals, error: rErr } = await supabase.from('rentals').select('id').eq('company_id', companyId);
+  if (rErr || !rentals?.length) return [];
+  const rentalSet = new Set((rentals as { id: string }[]).map((r) => String(r.id)));
+
+  const { data: jes, error: jErr } = await supabase
+    .from('journal_entries')
+    .select(
+      'id, entry_no, entry_date, description, reference_type, reference_id, action_fingerprint, is_void, branch_id'
+    )
+    .eq('company_id', companyId)
+    .or('is_void.is.null,is_void.eq.false');
+  if (jErr || !jes?.length) return [];
+
+  const candidates = (jes as Record<string, unknown>[]).filter((je) => {
+    const rt = String(je.reference_type || '').toLowerCase();
+    const rid = String(je.reference_id || '').trim();
+    const desc = String(je.description || '').toLowerCase();
+    const fp = String(je.action_fingerprint || '');
+    if (rt === 'correction_reversal') return false;
+    if (fp.startsWith('rental_party_devaluation')) return false;
+    if (fp.startsWith('rental_booking_expense:')) return true;
+    if (rt === 'expense' && rentalSet.has(rid)) return true;
+    if (rentalSet.has(rid) && desc.includes('rental expense')) return true;
+    return false;
+  });
+
+  const ids = candidates.map((j) => String(j.id));
+  if (!ids.length) return [];
+
+  const { data: lines, error: lErr } = await supabase
+    .from('journal_entry_lines')
+    .select('journal_entry_id, debit, credit, account:accounts(code)')
+    .in('journal_entry_id', ids);
+  if (lErr || !lines?.length) return [];
+
+  const byJe = new Map<string, LineWithCode[]>();
+  for (const row of lines as unknown as (LineWithCode & { journal_entry_id: string })[]) {
+    const jid = String(row.journal_entry_id);
+    if (!byJe.has(jid)) byJe.set(jid, []);
+    byJe.get(jid)!.push(row);
+  }
+
+  const out: RentalDevaluationMismatchRow[] = [];
+  for (const je of candidates) {
+    const jid = String(je.id);
+    const jl = byJe.get(jid) || [];
+    if (!isLegacyTwoLineRentalExpense(jl)) continue;
+
+    const rentalId =
+      rentalSet.has(String(je.reference_id || '')) ? String(je.reference_id) : String(je.reference_id || '');
+    if (!rentalSet.has(rentalId)) continue;
+
+    const rev = await accountingService.findActiveCorrectionReversalJournalId(companyId, jid);
+    if (rev) {
+      out.push({
+        journalEntryId: jid,
+        entryNo: (je.entry_no as string) ?? null,
+        entryDate: (je.entry_date as string) ?? null,
+        description: (je.description as string) ?? null,
+        referenceType: (je.reference_type as string) ?? null,
+        referenceId: (je.reference_id as string) ?? null,
+        rentalId,
+        bookingNo: null,
+        customerId: null,
+        customerName: null,
+        amount: legacyAmountFromLines(jl),
+        debitCodes: [],
+        creditCodes: [],
+        fixable: false,
+        reason: 'Already has an active correction_reversal — skip.',
+      });
+      continue;
+    }
+
+    const repairFp = rentalPartyDevaluationRepairFingerprint(companyId, jid);
+    const { data: rep } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('action_fingerprint', repairFp)
+      .maybeSingle();
+    if (rep?.id) {
+      out.push({
+        journalEntryId: jid,
+        entryNo: (je.entry_no as string) ?? null,
+        entryDate: (je.entry_date as string) ?? null,
+        description: (je.description as string) ?? null,
+        referenceType: (je.reference_type as string) ?? null,
+        referenceId: (je.reference_id as string) ?? null,
+        rentalId,
+        bookingNo: null,
+        customerId: null,
+        customerName: null,
+        amount: legacyAmountFromLines(jl),
+        debitCodes: [],
+        creditCodes: [],
+        fixable: false,
+        reason: 'Repair JE already posted for this legacy row.',
+      });
+      continue;
+    }
+
+    const { data: rent } = await supabase
+      .from('rentals')
+      .select('id, booking_no, customer_id, customer_name, rental_expenses, booking_date')
+      .eq('id', rentalId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    const r = rent as {
+      booking_no?: string | null;
+      customer_id?: string | null;
+      customer_name?: string | null;
+      rental_expenses?: unknown;
+      booking_date?: string | null;
+    } | null;
+
+    const amount = legacyAmountFromLines(jl);
+    const debitCodes = jl
+      .filter((l) => (Number(l.debit) || 0) > 0.005)
+      .map((l) => String(l.account?.code ?? ''))
+      .filter(Boolean);
+    const creditCodes = jl
+      .filter((l) => (Number(l.credit) || 0) > 0.005)
+      .map((l) => String(l.account?.code ?? ''))
+      .filter(Boolean);
+
+    let fixable = true;
+    let reason = 'OK to reverse + repost as Dr Rental Income / Cr party AR.';
+    if (!r?.customer_id) {
+      fixable = false;
+      reason = 'WARN: rental has no customer_id — use walk-in policy or set customer before repair.';
+    }
+
+    out.push({
+      journalEntryId: jid,
+      entryNo: (je.entry_no as string) ?? null,
+      entryDate: (je.entry_date as string) ?? null,
+      description: (je.description as string) ?? null,
+      referenceType: (je.reference_type as string) ?? null,
+      referenceId: (je.reference_id as string) ?? null,
+      rentalId,
+      bookingNo: r?.booking_no ? String(r.booking_no) : null,
+      customerId: r?.customer_id ? String(r.customer_id) : null,
+      customerName: r?.customer_name ? String(r.customer_name) : null,
+      amount,
+      debitCodes,
+      creditCodes,
+      fixable,
+      reason,
+    });
+  }
+
+  return out.sort((a, b) => (b.entryDate || '').localeCompare(a.entryDate || ''));
+}
+
+export interface RentalDevaluationFixPreview {
+  journalEntryId: string;
+  rentalId: string;
+  bookingNo: string | null;
+  amount: number;
+  reversalSummary: string;
+  newJeSummary: string;
+  warnings: string[];
+}
+
+export async function previewRentalDevaluationFixes(
+  companyId: string,
+  journalEntryIds: string[]
+): Promise<RentalDevaluationFixPreview[]> {
+  const uniq = [...new Set(journalEntryIds.filter(Boolean))];
+  const previews: RentalDevaluationFixPreview[] = [];
+  for (const jid of uniq) {
+    const entry = await accountingService.getEntry(jid).catch(() => null);
+    if (!entry || (entry as { company_id?: string }).company_id !== companyId) {
+      previews.push({
+        journalEntryId: jid,
+        rentalId: '',
+        bookingNo: null,
+        amount: 0,
+        reversalSummary: '—',
+        newJeSummary: '—',
+        warnings: ['Journal entry not found or wrong company.'],
+      });
+      continue;
+    }
+    const { data: lineRows } = await supabase
+      .from('journal_entry_lines')
+      .select('debit, credit, account:accounts(code)')
+      .eq('journal_entry_id', jid);
+    const lines = (lineRows || []) as LineWithCode[];
+    if (!isLegacyTwoLineRentalExpense(lines)) {
+      previews.push({
+        journalEntryId: jid,
+        rentalId: String((entry as { reference_id?: string }).reference_id || ''),
+        bookingNo: null,
+        amount: 0,
+        reversalSummary: '—',
+        newJeSummary: '—',
+        warnings: ['Not a recognized legacy two-line pattern (5300/6100 vs cash).'],
+      });
+      continue;
+    }
+    const rentalId = String((entry as { reference_id?: string }).reference_id || '');
+    const { data: rent } = await supabase
+      .from('rentals')
+      .select('booking_no, customer_id, customer_name, rental_expenses')
+      .eq('id', rentalId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    const r = rent as { booking_no?: string; customer_id?: string; customer_name?: string; rental_expenses?: unknown } | null;
+    const amount = legacyAmountFromLines(lines);
+    const warnings: string[] = [];
+    if (!r?.customer_id) warnings.push('No customer on rental — AR cannot be resolved automatically.');
+    const reversalSummary = `correction_reversal: mirror swap debits/credits of JE ${jid.slice(0, 8)}…`;
+    const newJeSummary = `Dr Rental Income (4200) / Cr party AR — amount ${amount} — reference_type rental — fingerprint ${rentalPartyDevaluationRepairFingerprint(companyId, jid)}`;
+    previews.push({
+      journalEntryId: jid,
+      rentalId,
+      bookingNo: r?.booking_no ? String(r.booking_no) : null,
+      amount,
+      reversalSummary,
+      newJeSummary,
+      warnings,
+    });
+  }
+  return previews;
+}
+
+export interface RentalDevaluationApplyResult {
+  journalEntryId: string;
+  reversalJournalId?: string;
+  newJournalId?: string;
+  error?: string;
+  dryRun: boolean;
+}
+
+/**
+ * For each selected legacy JE: post `correction_reversal`, then post correct Dr 4200 / Cr party AR with repair fingerprint.
+ * @param dryRun when true, only returns previews without posting.
+ */
+export async function applyRentalDevaluationFixes(params: {
+  companyId: string;
+  journalEntryIds: string[];
+  createdBy?: string | null;
+  dryRun: boolean;
+}): Promise<{ results: RentalDevaluationApplyResult[] }> {
+  const { companyId, journalEntryIds, createdBy, dryRun } = params;
+  const results: RentalDevaluationApplyResult[] = [];
+  const previews = await previewRentalDevaluationFixes(companyId, journalEntryIds);
+
+  for (const p of previews) {
+    if (!p.rentalId || p.amount <= 0) {
+      results.push({ journalEntryId: p.journalEntryId, dryRun, error: 'Invalid rental or amount.' });
+      continue;
+    }
+    if (dryRun) {
+      results.push({
+        journalEntryId: p.journalEntryId,
+        dryRun: true,
+        reversalJournalId: '(dry-run)',
+        newJournalId: '(dry-run)',
+        error: p.warnings.length ? `Note: ${p.warnings.join(' ')}` : undefined,
+      });
+      continue;
+    }
+    if (p.warnings.length && p.warnings.some((w) => w.includes('No customer'))) {
+      results.push({
+        journalEntryId: p.journalEntryId,
+        dryRun,
+        error: p.warnings.join(' '),
+      });
+      continue;
+    }
+
+    try {
+      const orig = await accountingService.getEntry(p.journalEntryId);
+      const branchId = ((orig as { branch_id?: string | null }).branch_id ?? null) as string | null;
+      const rev = await accountingService.createReversalEntry(
+        companyId,
+        branchId,
+        p.journalEntryId,
+        createdBy ?? null,
+        'Integrity Lab (G): rental devaluation GL repair — reverse legacy cash expense',
+        { bypassJournalSourceControlPolicy: true }
+      );
+      if (!rev?.id) {
+        results.push({ journalEntryId: p.journalEntryId, dryRun, error: 'Reversal could not be created.' });
+        continue;
+      }
+
+      const { data: rent } = await supabase
+        .from('rentals')
+        .select('customer_id, customer_name, booking_no, rental_expenses, booking_date')
+        .eq('id', p.rentalId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      const r = rent as {
+        customer_id?: string | null;
+        customer_name?: string | null;
+        booking_no?: string | null;
+        rental_expenses?: unknown;
+        booking_date?: string | null;
+      } | null;
+      if (!r?.customer_id) {
+        results.push({
+          journalEntryId: p.journalEntryId,
+          reversalJournalId: rev.id,
+          dryRun,
+          error: 'Reversal posted but new JE skipped: rental has no customer_id.',
+        });
+        continue;
+      }
+
+      let expenses: { description: string; amount: number }[] = [];
+      const raw = r.rental_expenses;
+      if (Array.isArray(raw)) {
+        expenses = raw
+          .map((x: unknown) => {
+            const o = x as { description?: string; amount?: unknown };
+            return { description: String(o.description || 'Item'), amount: Number(o.amount) || 0 };
+          })
+          .filter((e) => e.amount > 0);
+      }
+      if (!expenses.length) {
+        expenses = [{ description: 'Dress devaluation (legacy JE)', amount: p.amount }];
+      }
+      const stableTotal = expenses.reduce((s, e) => s + e.amount, 0);
+      if (Math.abs(stableTotal - p.amount) > 0.05) {
+        expenses = [{ description: 'Dress devaluation (legacy JE)', amount: p.amount }];
+      }
+
+      const entryDate = String(r.booking_date || (orig as { entry_date?: string }).entry_date || '').slice(0, 10);
+      const posted = await postRentalPartyDevaluationIfNeeded({
+        companyId,
+        branchId,
+        rentalId: p.rentalId,
+        customerId: r.customer_id,
+        customerName: String(r.customer_name || 'Customer'),
+        amount: p.amount,
+        expenses,
+        bookingNo: String(r.booking_no || p.bookingNo || p.rentalId.slice(0, 8)),
+        entryDate: entryDate || new Date().toISOString().slice(0, 10),
+        createdBy: createdBy ?? null,
+        repairSourceJournalEntryId: p.journalEntryId,
+      });
+
+      results.push({
+        journalEntryId: p.journalEntryId,
+        reversalJournalId: rev.id,
+        newJournalId: posted.journalEntryId ?? undefined,
+        dryRun,
+        error: posted.journalEntryId ? undefined : 'Correcting JE not created (check 4200 / party AR).',
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      results.push({ journalEntryId: p.journalEntryId, dryRun, error: msg });
+    }
+  }
+  return { results };
 }

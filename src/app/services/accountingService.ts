@@ -2314,7 +2314,7 @@ export const accountingService = {
         if (rentalIds.length > 0) {
           const { data: rpData } = await supabase
             .from('rental_payments')
-            .select('id, rental_id, amount, method, payment_date, created_at')
+            .select('id, rental_id, amount, method, payment_date, created_at, journal_entry_id')
             .in('rental_id', rentalIds);
           customerRentalPayments = rpData ?? [];
         }
@@ -2652,6 +2652,7 @@ export const accountingService = {
         });
         // Rental payments (credit – customer paid)
         customerRentalPayments.forEach((p: any) => {
+          if (p.journal_entry_id) return;
           const rawDate = p.payment_date || p.created_at;
           const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
           if (!d) return;
@@ -2763,6 +2764,7 @@ export const accountingService = {
           });
         });
         customerRentalPayments.forEach((p: any) => {
+          if (p.journal_entry_id) return;
           const rawDate = p.payment_date || p.created_at;
           const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
           if (!d) return;

@@ -274,6 +274,8 @@ export interface RentalBookingParams {
   paymentAccountId?: string;
   /** Journal / payment date (YYYY-MM-DD). */
   paymentDate?: string;
+  /** Links GL fingerprint to `rental_payments.id` (avoids duplicate JEs). */
+  rentalPaymentId?: string;
 }
 
 export interface RentalDeliveryParams {
@@ -284,6 +286,7 @@ export interface RentalDeliveryParams {
   paymentMethod: PaymentMethod;
   paymentAccountId?: string;
   paymentDate?: string;
+  rentalPaymentId?: string;
 }
 
 export interface RentalReturnParams {
@@ -1872,6 +1875,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       paymentMethod,
       paymentAccountId,
       paymentDate,
+      rentalPaymentId,
     } = params;
 
     const postingDate = paymentDate?.slice(0, 10) || new Date().toISOString().split('T')[0];
@@ -1883,19 +1887,95 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       ...(paymentAccountId ? { debitAccountId: paymentAccountId } : {}),
     };
 
-    // Record advance (debit = user-selected payment account when paymentAccountId set)
-    const advanceSuccess = await createEntry({
-      source: 'Rental',
-      referenceNo: bookingId,
-      debitAccount: (paymentAccountId ? 'Cash' : paymentMethod) as AccountType,
-      creditAccount: 'Rental Advance',
-      amount: advanceAmount,
-      description: `Rental booking advance - ${customerName}`,
-      module: 'Rental',
-      metadata: advanceMeta,
-    });
+    if (advanceAmount <= 0) return true;
 
-    // Record security deposit (only if cash)
+    const rentalBranchId = (branchId && branchId !== 'all') ? branchId : null;
+
+    // Party AR model (named customer): Dr Cash/Bank / Cr party AR + ensure Dr AR / Cr Rental Income for charges.
+    if (customerId && companyId && paymentAccountId) {
+      try {
+        const {
+          fetchRentalArAmounts,
+          postRentalPartyRevenueIfNeeded,
+          postRentalPartyDiscountIfNeeded,
+          postRentalPartyCashReceipt,
+        } = await import('@/app/services/rentalPartyArAccounting');
+        const amounts = await fetchRentalArAmounts(bookingId);
+        const rentalCharges = amounts?.rentalCharges ?? 0;
+        const securityDeposit = amounts?.securityDeposit ?? 0;
+        await postRentalPartyRevenueIfNeeded({
+          companyId,
+          branchId: rentalBranchId,
+          rentalId: bookingId,
+          customerId,
+          customerName,
+          rentalCharges,
+          entryDate: postingDate,
+          createdBy: currentUserId || null,
+        });
+        if (amounts && amounts.discountAmount > 0) {
+          await postRentalPartyDiscountIfNeeded({
+            companyId,
+            branchId: rentalBranchId,
+            rentalId: bookingId,
+            customerId,
+            customerName,
+            discountAmount: amounts.discountAmount,
+            entryDate: postingDate,
+            createdBy: currentUserId || null,
+          });
+        }
+        const payFp =
+          rentalPaymentId ||
+          `legacy-adv:${companyId}:${bookingId}:${postingDate}:${Math.round(advanceAmount * 100)}`;
+        const { journalEntryId } = await postRentalPartyCashReceipt({
+          companyId,
+          branchId: rentalBranchId,
+          rentalId: bookingId,
+          rentalPaymentId: payFp,
+          customerId,
+          customerName,
+          amount: advanceAmount,
+          paymentAccountId,
+          rentalCharges,
+          securityDeposit,
+          entryDate: postingDate,
+          createdBy: currentUserId || null,
+          description: `Rental booking advance — ${customerName}`,
+        });
+        if (rentalPaymentId && journalEntryId) {
+          const { rentalService } = await import('@/app/services/rentalService');
+          await rentalService.linkJournalEntryToRentalPayment(rentalPaymentId, journalEntryId).catch(() => {});
+        }
+      } catch (e) {
+        console.warn('[AccountingContext] Party AR rental advance failed, falling back to 2020:', e);
+        const advanceSuccess = await createEntry({
+          source: 'Rental',
+          referenceNo: bookingId,
+          debitAccount: (paymentAccountId ? 'Cash' : paymentMethod) as AccountType,
+          creditAccount: 'Rental Advance',
+          amount: advanceAmount,
+          description: `Rental booking advance - ${customerName}`,
+          module: 'Rental',
+          metadata: advanceMeta,
+        });
+        if (!advanceSuccess) return false;
+      }
+    } else {
+      const advanceSuccess = await createEntry({
+        source: 'Rental',
+        referenceNo: bookingId,
+        debitAccount: (paymentAccountId ? 'Cash' : paymentMethod) as AccountType,
+        creditAccount: 'Rental Advance',
+        amount: advanceAmount,
+        description: `Rental booking advance - ${customerName}`,
+        module: 'Rental',
+        metadata: advanceMeta,
+      });
+      if (!advanceSuccess) return false;
+    }
+
+    // Record security deposit (only if cash) — document deposit; not part of rent AR slice above
     if (securityDepositType === 'Cash' && securityDepositAmount > 0) {
       const sdMeta: Record<string, unknown> = {
         customerId,
@@ -1916,34 +1996,131 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       });
     }
 
-    return advanceSuccess;
+    return true;
   };
 
   const recordRentalDelivery = async (params: RentalDeliveryParams): Promise<boolean> => {
-    const { bookingId, customerName, customerId, remainingAmount, paymentMethod, paymentAccountId, paymentDate } = params;
+    const { bookingId, customerName, customerId, remainingAmount, paymentMethod, paymentAccountId, paymentDate, rentalPaymentId } = params;
 
     const postingDate = paymentDate?.slice(0, 10) || new Date().toISOString().split('T')[0];
-    // Post remaining payment: Dr Cash/Bank / Cr Rental Income (code 4200)
-    const paymentOk = await createEntry({
-      source: 'Rental',
-      referenceNo: bookingId,
-      debitAccount: (paymentAccountId ? 'Cash' : paymentMethod) as AccountType,
-      creditAccount: 'Rental Income',
-      amount: remainingAmount,
-      description: `Rental remaining payment - ${customerName}`,
-      module: 'Rental',
-      metadata: {
-        customerId,
-        customerName,
-        bookingId,
-        postingDate,
-        ...(paymentAccountId ? { debitAccountId: paymentAccountId } : {}),
-      },
-    });
+    const rentalBranchId = (branchId && branchId !== 'all') ? branchId : null;
 
-    // Always try to recognize any unreleased advance — even when remainingAmount = 0 (fully advance-paid rentals)
+    if (remainingAmount <= 0) {
+      await recognizeRentalAdvance({ bookingId, customerName, customerId, postingDate });
+      return true;
+    }
+
+    let payAccId = paymentAccountId;
+    if (!payAccId && companyId) {
+      try {
+        const { accountHelperService } = await import('@/app/services/accountHelperService');
+        if (paymentMethod === 'Bank') payAccId = (await accountHelperService.getAccountByCode('1010', companyId))?.id;
+        else if (paymentMethod === 'Mobile Wallet') payAccId = (await accountHelperService.getAccountByCode('1020', companyId))?.id;
+        else payAccId = (await accountHelperService.getAccountByCode('1000', companyId))?.id;
+      } catch {
+        payAccId = undefined;
+      }
+    }
+
+    if (customerId && companyId && payAccId) {
+      try {
+        const {
+          fetchRentalArAmounts,
+          postRentalPartyRevenueIfNeeded,
+          postRentalPartyDiscountIfNeeded,
+          postRentalPartyCashReceipt,
+        } = await import('@/app/services/rentalPartyArAccounting');
+        const amounts = await fetchRentalArAmounts(bookingId);
+        const rentalCharges = amounts?.rentalCharges ?? 0;
+        const securityDeposit = amounts?.securityDeposit ?? 0;
+        await postRentalPartyRevenueIfNeeded({
+          companyId,
+          branchId: rentalBranchId,
+          rentalId: bookingId,
+          customerId,
+          customerName,
+          rentalCharges,
+          entryDate: postingDate,
+          createdBy: currentUserId || null,
+        });
+        if (amounts && amounts.discountAmount > 0) {
+          await postRentalPartyDiscountIfNeeded({
+            companyId,
+            branchId: rentalBranchId,
+            rentalId: bookingId,
+            customerId,
+            customerName,
+            discountAmount: amounts.discountAmount,
+            entryDate: postingDate,
+            createdBy: currentUserId || null,
+          });
+        }
+        const payFp =
+          rentalPaymentId ||
+          `legacy-rem:${companyId}:${bookingId}:${postingDate}:${Math.round(remainingAmount * 100)}`;
+        const { journalEntryId } = await postRentalPartyCashReceipt({
+          companyId,
+          branchId: rentalBranchId,
+          rentalId: bookingId,
+          rentalPaymentId: payFp,
+          customerId,
+          customerName,
+          amount: remainingAmount,
+          paymentAccountId: payAccId,
+          rentalCharges,
+          securityDeposit,
+          entryDate: postingDate,
+          createdBy: currentUserId || null,
+          description: `Rental remaining payment — ${customerName}`,
+        });
+        if (rentalPaymentId && journalEntryId) {
+          const { rentalService } = await import('@/app/services/rentalService');
+          await rentalService.linkJournalEntryToRentalPayment(rentalPaymentId, journalEntryId).catch(() => {});
+        }
+      } catch (e) {
+        console.warn('[AccountingContext] Party AR rental payment failed, falling back to Cr Income:', e);
+        const paymentOk = await createEntry({
+          source: 'Rental',
+          referenceNo: bookingId,
+          debitAccount: (payAccId ? 'Cash' : paymentMethod) as AccountType,
+          creditAccount: 'Rental Income',
+          amount: remainingAmount,
+          description: `Rental remaining payment - ${customerName}`,
+          module: 'Rental',
+          metadata: {
+            customerId,
+            customerName,
+            bookingId,
+            postingDate,
+            ...(payAccId ? { debitAccountId: payAccId } : {}),
+          },
+        });
+        await recognizeRentalAdvance({ bookingId, customerName, customerId, postingDate });
+        return paymentOk;
+      }
+    } else {
+      const paymentOk = await createEntry({
+        source: 'Rental',
+        referenceNo: bookingId,
+        debitAccount: (payAccId ? 'Cash' : paymentMethod) as AccountType,
+        creditAccount: 'Rental Income',
+        amount: remainingAmount,
+        description: `Rental remaining payment - ${customerName}`,
+        module: 'Rental',
+        metadata: {
+          customerId,
+          customerName,
+          bookingId,
+          postingDate,
+          ...(payAccId ? { debitAccountId: payAccId } : {}),
+        },
+      });
+      await recognizeRentalAdvance({ bookingId, customerName, customerId, postingDate });
+      return paymentOk;
+    }
+
     await recognizeRentalAdvance({ bookingId, customerName, customerId, postingDate });
-    return paymentOk;
+    return true;
   };
 
   /**
@@ -2001,6 +2178,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   /** When delivering on credit: Debit AR, Credit Rental Income (customer owes) */
   const recordRentalCreditDelivery = async (params: RentalDeliveryParams): Promise<boolean> => {
     const { bookingId, customerName, customerId, remainingAmount } = params;
+    let debitAccountId: string | undefined;
+    if (companyId && customerId) {
+      try {
+        const { resolveReceivablePostingAccountId } = await import('@/app/services/partySubledgerAccountService');
+        debitAccountId = (await resolveReceivablePostingAccountId(companyId, customerId)) || undefined;
+      } catch {
+        debitAccountId = undefined;
+      }
+    }
     return await createEntry({
       source: 'Rental',
       referenceNo: bookingId,
@@ -2009,7 +2195,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       amount: remainingAmount,
       description: `Rental credit - ${customerName}`,
       module: 'Rental',
-      metadata: { customerId, customerName, bookingId }
+      metadata: { customerId, customerName, bookingId, ...(debitAccountId ? { debitAccountId } : {}) },
     });
   };
 

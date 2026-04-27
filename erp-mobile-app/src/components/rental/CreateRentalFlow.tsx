@@ -200,7 +200,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     return sum + lineRate * item.quantity;
   }, 0);
   const extraExpense = parseFloat(extraExpenseAmount) || 0;
-  /** Line rent only (posted as rental_charges); extra expense is shop P&L, not added to customer contract. */
+  /** Line rent only (posted as rental_charges); devaluation is Dr rental income / Cr party AR (named customer), not added into rental_charges. */
   const customerRentTotal = Math.max(0, itemsRentAmount);
   const paidAmount = parseFloat(advancePaid) || 0;
   const balanceDue = Math.max(0, customerRentTotal - paidAmount);
@@ -268,7 +268,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         .join(' | ') || null,
       expenses:
         extraExpense > 0
-          ? [{ description: 'Extra / devaluation (resku)', amount: extraExpense }]
+          ? [{ description: 'Dress devaluation (wear)', amount: extraExpense }]
           : undefined,
       salesmanId: salesmanId || null,
       commissionPercent: Number.isFinite(commissionPctNum) ? commissionPctNum : null,
@@ -708,7 +708,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               <span className="text-white">Rs. {itemsRentAmount.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-[#9CA3AF]">Extra expenses</span>
+              <span className="text-[#9CA3AF]">Dress devaluation (wear)</span>
               <span className="text-white">Rs. {extraExpense.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-sm pt-2 border-t border-[#374151]">
@@ -1032,7 +1032,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
                 ))}
               </select>
               {paymentAccounts.length === 0 && <p className="text-xs text-[#F59E0B] mt-1">No payment accounts. Add Cash/Bank in Accounts.</p>}
-              <p className="text-xs text-[#6B7280] mt-1">Dr Cash/Bank, Cr Rental Advance Liability.</p>
+              <p className="text-xs text-[#6B7280] mt-1">Dr Cash/Bank, Cr customer receivable; rental charges Dr AR / Cr Rental Income.</p>
             </div>
           )}
         </div>

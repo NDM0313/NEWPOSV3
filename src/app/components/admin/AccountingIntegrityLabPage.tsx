@@ -40,11 +40,15 @@ import {
   runModuleCertificationSuite,
   summarizeCompanyReconciliationStatus,
   snapshotToComparableJson,
+  scanRentalDevaluationMismatches,
+  previewRentalDevaluationFixes,
+  applyRentalDevaluationFixes,
   INTEGRITY_LAB_SESSION_KEY,
   type LabCheckResult,
   type LabCheckCategory,
   type LabNavAction,
   type WarningClassification,
+  type RentalDevaluationMismatchRow,
 } from '@/app/services/accountingIntegrityLabService';
 import { toast } from 'sonner';
 import { formatPostgrestError } from '@/app/lib/formatPostgrestError';
@@ -96,6 +100,7 @@ const CLASS_LABEL: Record<WarningClassification, string> = {
   missing_backfill: 'Missing backfill',
   source_link: 'Source / link',
   reconciliation_timing: 'Reconciliation timing',
+  posting_or_opening_mismatch: 'Posting mismatch',
   informational: 'Informational',
 };
 
@@ -107,6 +112,7 @@ function ClassificationBadge({ c }: { c?: WarningClassification }) {
     missing_backfill: 'bg-violet-500/20 text-violet-300',
     source_link: 'bg-cyan-500/20 text-cyan-300',
     reconciliation_timing: 'bg-amber-500/20 text-amber-200',
+    posting_or_opening_mismatch: 'bg-orange-500/20 text-orange-200',
     informational: 'bg-blue-500/15 text-blue-300',
   };
   return (
@@ -117,7 +123,7 @@ function ClassificationBadge({ c }: { c?: WarningClassification }) {
 }
 
 export function AccountingIntegrityLabPage() {
-  const { companyId, branchId, setBranchId, accessibleBranchIds } = useSupabase();
+  const { companyId, branchId, setBranchId, accessibleBranchIds, user } = useSupabase();
   const { openDrawer, setCurrentView, setOpenSaleIdForView } = useNavigation();
 
   const [categoryFilter, setCategoryFilter] = useState<LabCheckCategory | 'all'>('all');
@@ -146,6 +152,11 @@ export function AccountingIntegrityLabPage() {
   const [certificationActionPass, setCertificationActionPass] = useState<boolean | null>(null);
   /** Whole-company suite; null until user runs it explicitly. */
   const [companyReconSummary, setCompanyReconSummary] = useState<'pass' | 'warn' | 'fail' | null>(null);
+  const [rentalGlRows, setRentalGlRows] = useState<RentalDevaluationMismatchRow[]>([]);
+  const [rentalGlScanLoading, setRentalGlScanLoading] = useState(false);
+  const [rentalGlSelected, setRentalGlSelected] = useState<Set<string>>(() => new Set());
+  const [rentalGlPreviewJson, setRentalGlPreviewJson] = useState<string>('');
+  const [rentalGlApplyLoading, setRentalGlApplyLoading] = useState(false);
   /** Audit trail for tab F (no nested <p> inside CardDescription). */
   /** Include docs with NULL branch_id when a branch is selected (QA: drafts often need this). */
   const [labIncludeNullBranch, setLabIncludeNullBranch] = useState(true);
@@ -618,6 +629,7 @@ export function AccountingIntegrityLabPage() {
           <TabsTrigger value="state">D · Effective state</TabsTrigger>
           <TabsTrigger value="reports">E · Reports reconcile</TabsTrigger>
           <TabsTrigger value="snapshots">F · Snapshots</TabsTrigger>
+          <TabsTrigger value="rental_gl">G · Rental GL repair</TabsTrigger>
         </TabsList>
 
         <TabsContent value="setup" className="space-y-4 mt-4">
@@ -1490,6 +1502,176 @@ export function AccountingIntegrityLabPage() {
                 Trial Balance · Balance Sheet · P&amp;L · Receivables vs AR · Payables vs AP · Inventory heuristic ·
                 Accounts.balance vs journal · Posting gate (sample)
               </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="rental_gl" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>G · Rental dress devaluation GL repair</CardTitle>
+              <CardDescription>
+                Legacy rental “expense” postings (Dr 5300 / Cr cash) are dress devaluation and should net against rental
+                income and party AR. Scan finds candidates; preview shows reversal + correcting JE; apply posts reversal then
+                Dr 4200 / Cr party AR (repair fingerprint). Use dry-run first. Tab F snapshots still record last wrapped
+                action — this tab runs dedicated service calls.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!companyId || rentalGlScanLoading}
+                  onClick={async () => {
+                    if (!companyId) return;
+                    setRentalGlScanLoading(true);
+                    setRentalGlPreviewJson('');
+                    try {
+                      const rows = await scanRentalDevaluationMismatches(companyId);
+                      setRentalGlRows(rows);
+                      setRentalGlSelected(new Set());
+                      toast.success(`Scan complete: ${rows.length} row(s)`);
+                    } catch (e: unknown) {
+                      toast.error(e instanceof Error ? e.message : 'Scan failed');
+                    } finally {
+                      setRentalGlScanLoading(false);
+                    }
+                  }}
+                >
+                  {rentalGlScanLoading ? 'Scanning…' : 'Scan legacy rental expense JEs'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={rentalGlSelected.size === 0}
+                  onClick={async () => {
+                    if (!companyId || rentalGlSelected.size === 0) return;
+                    const prev = await previewRentalDevaluationFixes(companyId, [...rentalGlSelected]);
+                    setRentalGlPreviewJson(JSON.stringify(prev, null, 2));
+                    toast.success('Preview updated');
+                  }}
+                >
+                  Preview selected
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={rentalGlSelected.size === 0 || rentalGlApplyLoading}
+                  onClick={async () => {
+                    if (!companyId || rentalGlSelected.size === 0) return;
+                    setRentalGlApplyLoading(true);
+                    try {
+                      const { results } = await applyRentalDevaluationFixes({
+                        companyId,
+                        journalEntryIds: [...rentalGlSelected],
+                        createdBy: user?.id ?? null,
+                        dryRun: true,
+                      });
+                      setRentalGlPreviewJson(JSON.stringify(results, null, 2));
+                      toast.success('Dry-run complete (no GL writes)');
+                    } catch (e: unknown) {
+                      toast.error(e instanceof Error ? e.message : 'Dry-run failed');
+                    } finally {
+                      setRentalGlApplyLoading(false);
+                    }
+                  }}
+                >
+                  Apply dry-run
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={rentalGlSelected.size === 0 || rentalGlApplyLoading}
+                  onClick={async () => {
+                    if (!companyId || rentalGlSelected.size === 0) return;
+                    if (
+                      !window.confirm(
+                        'Post correction_reversal for each selected JE, then post Dr Rental Income / Cr party AR? This cannot be undone from here.'
+                      )
+                    ) {
+                      return;
+                    }
+                    setRentalGlApplyLoading(true);
+                    try {
+                      const { results } = await applyRentalDevaluationFixes({
+                        companyId,
+                        journalEntryIds: [...rentalGlSelected],
+                        createdBy: user?.id ?? null,
+                        dryRun: false,
+                      });
+                      setRentalGlPreviewJson(JSON.stringify(results, null, 2));
+                      const rows = await scanRentalDevaluationMismatches(companyId);
+                      setRentalGlRows(rows);
+                      setRentalGlSelected(new Set());
+                      toast.success('Apply finished — see JSON for per-row outcomes');
+                    } catch (e: unknown) {
+                      toast.error(e instanceof Error ? e.message : 'Apply failed');
+                    } finally {
+                      setRentalGlApplyLoading(false);
+                    }
+                  }}
+                >
+                  Apply (live)
+                </Button>
+              </div>
+
+              {rentalGlRows.length > 0 ? (
+                <ScrollArea className="max-h-[280px] rounded border border-border/40">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-muted-foreground border-b border-border/40">
+                        <th className="p-2 w-8"></th>
+                        <th className="p-2">JE</th>
+                        <th className="p-2">Date</th>
+                        <th className="p-2">Rental</th>
+                        <th className="p-2">Amt</th>
+                        <th className="p-2">Lines</th>
+                        <th className="p-2">Fixable</th>
+                        <th className="p-2">Note</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rentalGlRows.map((r) => (
+                        <tr key={r.journalEntryId} className="border-t border-border/30 align-top">
+                          <td className="p-2">
+                            <Checkbox
+                              checked={rentalGlSelected.has(r.journalEntryId)}
+                              disabled={!r.fixable}
+                              onCheckedChange={(c) => {
+                                setRentalGlSelected((prev) => {
+                                  const next = new Set(prev);
+                                  if (c === true) next.add(r.journalEntryId);
+                                  else next.delete(r.journalEntryId);
+                                  return next;
+                                });
+                              }}
+                            />
+                          </td>
+                          <td className="p-2 font-mono break-all max-w-[120px]">{r.entryNo || r.journalEntryId.slice(0, 8)}</td>
+                          <td className="p-2 whitespace-nowrap">{r.entryDate || '—'}</td>
+                          <td className="p-2">{r.bookingNo || r.rentalId.slice(0, 8)}</td>
+                          <td className="p-2 tabular-nums">{r.amount.toLocaleString()}</td>
+                          <td className="p-2 font-mono text-[10px]">
+                            Dr {r.debitCodes.join('+')} / Cr {r.creditCodes.join('+')}
+                          </td>
+                          <td className="p-2">{r.fixable ? 'yes' : 'no'}</td>
+                          <td className="p-2 text-muted-foreground">{r.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </ScrollArea>
+              ) : (
+                <p className="text-sm text-muted-foreground">Run scan to load rows (empty until then).</p>
+              )}
+
+              <div>
+                <Label className="text-xs text-muted-foreground">Preview / last apply result (JSON)</Label>
+                <pre className="mt-1 max-h-64 overflow-auto rounded border border-border/50 bg-muted/30 p-2 text-[10px] font-mono whitespace-pre-wrap">
+                  {rentalGlPreviewJson || '—'}
+                </pre>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

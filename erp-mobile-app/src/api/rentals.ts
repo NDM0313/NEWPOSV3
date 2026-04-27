@@ -3,6 +3,7 @@ import {
   linkRentalPaymentJournalEntry,
   postRentalAdvanceJournalMobile,
   postRentalExpenseJournalMobile,
+  postRentalPartyRevenueJournalMobile,
 } from './rentalBookingAccounting';
 
 /** UI status: map DB status (picked_up, active, closed) to web-like labels */
@@ -303,14 +304,35 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
       paymentAccountId: advancePaymentAccountId,
       entryDate: bookingDate,
       userId,
+      customerId,
+      rentalCharges,
+      securityDeposit,
+      rentalPaymentId: (payRow as { id: string }).id,
     });
     if (je.error || !je.journalEntryId) {
       await supabase.from('rental_payments').delete().eq('id', (payRow as { id: string }).id);
       await supabase.from('rental_items').delete().eq('rental_id', rentalData.id);
       await supabase.from('rentals').delete().eq('id', rentalData.id);
-      return { data: null, error: je.error || 'Ledger: could not post rental advance (Dr payment / Cr Rental Advance).' };
+      return {
+        data: null,
+        error: je.error || 'Ledger: could not post rental advance (party AR or Cr Rental Advance).',
+      };
     }
     await linkRentalPaymentJournalEntry((payRow as { id: string }).id, je.journalEntryId);
+  } else if (customerId && rentalCharges > 0) {
+    const rev = await postRentalPartyRevenueJournalMobile({
+      companyId,
+      branchId,
+      rentalId: rentalData.id,
+      customerId,
+      customerName,
+      rentalCharges,
+      entryDate: bookingDate,
+      userId,
+    });
+    if (rev.error) {
+      console.warn('[rentals.createBooking] Party AR revenue JE skipped:', rev.error);
+    }
   }
 
   if (expenses && expenses.length > 0 && expenseTotal > 0) {
@@ -322,6 +344,8 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
       expenses,
       entryDate: bookingDate,
       userId,
+      customerId: customerId || null,
+      customerName,
     });
     if (exJe.error) {
       console.warn('[rentals.createBooking] Rental expense JE skipped:', exJe.error);

@@ -1259,6 +1259,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     paymentMethod,
                     paymentAccountId: selectedAccount,
                     paymentDate: payDay,
+                    rentalPaymentId: rp?.id,
                   })
                   .catch((err) => {
                     console.warn('[UnifiedPaymentDialog] Rental advance JE failed (payment recorded):', err);
@@ -1273,6 +1274,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     paymentMethod,
                     paymentAccountId: selectedAccount,
                     paymentDate: payDay,
+                    rentalPaymentId: rp?.id,
                   })
                   .catch((err) => {
                     console.warn('[UnifiedPaymentDialog] Ledger posting failed (payment recorded):', err);
