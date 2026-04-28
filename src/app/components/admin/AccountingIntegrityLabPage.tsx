@@ -35,7 +35,6 @@ import { restoreSaleFromCancelled, restorePurchaseFromCancelled } from '@/app/li
 import { accountService } from '@/app/services/accountService';
 import {
   buildExtendedLabSnapshot,
-  runCompanyReconciliationChecks,
   runDocumentCertificationChecks,
   runModuleCertificationSuite,
   summarizeCompanyReconciliationStatus,
@@ -58,6 +57,7 @@ import { ScrollArea } from '@/app/components/ui/scroll-area';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { Checkbox } from '@/app/components/ui/checkbox';
+import { runUnifiedAccountingCompanyChecks } from '@/app/services/integrityUnifiedService';
 
 type Scenario = 'sale' | 'purchase' | 'inventory' | 'reconciliation';
 interface DocRow {
@@ -337,7 +337,7 @@ export function AccountingIntegrityLabPage() {
     if (!companyId) return;
     setCompanyChecksLoading(true);
     try {
-      const results = await runCompanyReconciliationChecks(companyId, branchId);
+      const results = await runUnifiedAccountingCompanyChecks({ companyId, branchId });
       setCompanyChecks(results);
       setCompanyReconSummary(summarizeCompanyReconciliationStatus(results));
     } catch (e: any) {
@@ -964,44 +964,46 @@ export function AccountingIntegrityLabPage() {
                   ))}
                 </div>
                 <div className="flex flex-wrap gap-1 mt-2">
-                  {[
-                    ['Pur: finalize', () => wrapAction('Finalize purchase', async () => purchaseService.updatePurchaseStatus(selectedPurchaseId, 'final'))],
-                    ['Pur: add pay', () => wrapAction('Add purchase payment', async () => purchaseService.recordPayment(selectedPurchaseId, Number(paymentAmount) || 0, 'Cash', payAccountId, companyId!, branchId || undefined))],
-                    ['Pur: +discount', () => wrapAction('Edit purchase discount +10', async () => {
-                      const { data } = await supabase.from('purchases').select('discount_amount').eq('id', selectedPurchaseId).single();
-                      await purchaseService.updatePurchase(selectedPurchaseId, { discount_amount: (Number((data as any)?.discount_amount) || 0) + 10 } as any);
-                    })],
-                    ['Pur: +freight', () => wrapAction('Edit purchase freight/shipping +20', async () => {
-                      const { data } = await supabase.from('purchases').select('shipping_cost').eq('id', selectedPurchaseId).single();
-                      await purchaseService.updatePurchase(selectedPurchaseId, { shipping_cost: (Number((data as any)?.shipping_cost) || 0) + 20 } as any);
-                    })],
-                    ['Pur: line qty', () => wrapAction('Bump first purchase line qty +1', async () => {
-                      const { data: row } = await supabase.from('purchase_items').select('id, quantity').eq('purchase_id', selectedPurchaseId).limit(1).maybeSingle();
-                      if (!row) throw new Error('No purchase_items');
-                      await supabase.from('purchase_items').update({ quantity: (Number((row as any).quantity) || 0) + 1 }).eq('id', (row as any).id);
-                    })],
-                    ['Pur: pay amt', () => wrapAction('Edit purchase payment amount', async () => {
-                      const pid = await firstPaymentIdForPurchase(selectedPurchaseId);
-                      if (!pid) throw new Error('No payment');
-                      await purchaseService.updatePayment(pid, selectedPurchaseId, { amount: Number(paymentAmount) || 1 });
-                    })],
-                    ['Pur: pay acct', () => wrapAction('Edit purchase payment account', async () => {
-                      const pid = await firstPaymentIdForPurchase(selectedPurchaseId);
-                      if (!pid || !payAccountId) throw new Error('Payment + account required');
-                      await purchaseService.updatePayment(pid, selectedPurchaseId, { accountId: payAccountId });
-                    })],
-                    ['Pur: cancel', () => wrapAction('Cancel purchase', async () => purchaseService.cancelPurchase(selectedPurchaseId))],
-                    ['Pur: restore→draft', () => wrapAction('Restore cancelled PO → draft', async () => {
-                      if (!companyId) throw new Error('No company');
-                      await restorePurchaseFromCancelled(selectedPurchaseId, 'draft', companyId);
-                    })],
-                    ['Pur: restore→order', () => wrapAction('Restore cancelled PO → order', async () => {
-                      if (!companyId) throw new Error('No company');
-                      await restorePurchaseFromCancelled(selectedPurchaseId, 'ordered', companyId);
-                    })],
-                  ].map(([label, fn]) => (
-                    <Button key={String(label)} size="sm" variant="outline" className="h-7 text-[10px]" disabled={!selectedPurchaseId} onClick={() => (fn as () => void)()}>
-                      {label}
+                  {(
+                    [
+                      { label: 'Pur: finalize', run: () => wrapAction('Finalize purchase', async () => { await purchaseService.updatePurchaseStatus(selectedPurchaseId, 'final'); }) },
+                      { label: 'Pur: add pay', run: () => wrapAction('Add purchase payment', async () => { await purchaseService.recordPayment(selectedPurchaseId, Number(paymentAmount) || 0, 'Cash', payAccountId, companyId!, branchId || undefined); }) },
+                      { label: 'Pur: +discount', run: () => wrapAction('Edit purchase discount +10', async () => {
+                        const { data } = await supabase.from('purchases').select('discount_amount').eq('id', selectedPurchaseId).single();
+                        await purchaseService.updatePurchase(selectedPurchaseId, { discount_amount: (Number((data as any)?.discount_amount) || 0) + 10 } as any);
+                      }) },
+                      { label: 'Pur: +freight', run: () => wrapAction('Edit purchase freight/shipping +20', async () => {
+                        const { data } = await supabase.from('purchases').select('shipping_cost').eq('id', selectedPurchaseId).single();
+                        await purchaseService.updatePurchase(selectedPurchaseId, { shipping_cost: (Number((data as any)?.shipping_cost) || 0) + 20 } as any);
+                      }) },
+                      { label: 'Pur: line qty', run: () => wrapAction('Bump first purchase line qty +1', async () => {
+                        const { data: row } = await supabase.from('purchase_items').select('id, quantity').eq('purchase_id', selectedPurchaseId).limit(1).maybeSingle();
+                        if (!row) throw new Error('No purchase_items');
+                        await supabase.from('purchase_items').update({ quantity: (Number((row as any).quantity) || 0) + 1 }).eq('id', (row as any).id);
+                      }) },
+                      { label: 'Pur: pay amt', run: () => wrapAction('Edit purchase payment amount', async () => {
+                        const pid = await firstPaymentIdForPurchase(selectedPurchaseId);
+                        if (!pid) throw new Error('No payment');
+                        await purchaseService.updatePayment(pid, selectedPurchaseId, { amount: Number(paymentAmount) || 1 });
+                      }) },
+                      { label: 'Pur: pay acct', run: () => wrapAction('Edit purchase payment account', async () => {
+                        const pid = await firstPaymentIdForPurchase(selectedPurchaseId);
+                        if (!pid || !payAccountId) throw new Error('Payment + account required');
+                        await purchaseService.updatePayment(pid, selectedPurchaseId, { accountId: payAccountId });
+                      }) },
+                      { label: 'Pur: cancel', run: () => wrapAction('Cancel purchase', async () => purchaseService.cancelPurchase(selectedPurchaseId)) },
+                      { label: 'Pur: restore→draft', run: () => wrapAction('Restore cancelled PO → draft', async () => {
+                        if (!companyId) throw new Error('No company');
+                        await restorePurchaseFromCancelled(selectedPurchaseId, 'draft', companyId);
+                      }) },
+                      { label: 'Pur: restore→order', run: () => wrapAction('Restore cancelled PO → order', async () => {
+                        if (!companyId) throw new Error('No company');
+                        await restorePurchaseFromCancelled(selectedPurchaseId, 'ordered', companyId);
+                      }) },
+                    ] as Array<{ label: string; run: () => void }>
+                  ).map((x) => (
+                    <Button key={x.label} size="sm" variant="outline" className="h-7 text-[10px]" disabled={!selectedPurchaseId} onClick={() => x.run()}>
+                      {x.label}
                     </Button>
                   ))}
                 </div>
@@ -1512,8 +1514,8 @@ export function AccountingIntegrityLabPage() {
               <CardTitle>G · Rental dress devaluation GL repair</CardTitle>
               <CardDescription>
                 Legacy rental “expense” postings (Dr 5300 / Cr cash) are dress devaluation and should net against rental
-                income and party AR. Scan finds candidates; preview shows reversal + correcting JE; apply posts reversal then
-                Dr 4200 / Cr party AR (repair fingerprint). Use dry-run first. Tab F snapshots still record last wrapped
+                income without party ledger impact. Scan finds candidates; preview shows reversal + correcting JE; apply posts
+                reversal then Dr 5300 / Cr 4200 (repair fingerprint). Use dry-run first. Tab F snapshots still record last wrapped
                 action — this tab runs dedicated service calls.
               </CardDescription>
             </CardHeader>
@@ -1587,7 +1589,7 @@ export function AccountingIntegrityLabPage() {
                     if (!companyId || rentalGlSelected.size === 0) return;
                     if (
                       !window.confirm(
-                        'Post correction_reversal for each selected JE, then post Dr Rental Income / Cr party AR? This cannot be undone from here.'
+                        'Post correction_reversal for each selected JE, then post Dr Rental Expense (5300) / Cr Rental Income (4200)? This cannot be undone from here.'
                       )
                     ) {
                       return;

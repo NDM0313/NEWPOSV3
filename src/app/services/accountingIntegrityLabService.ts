@@ -3082,7 +3082,7 @@ export async function runOwnerEquityCapitalVisibilityCheck(companyId: string): P
   };
 }
 
-// ─── G · Rental dress devaluation GL repair (legacy Dr 5300 / Cr cash → Dr 4200 / Cr party AR) ───
+// ─── G · Rental dress devaluation GL repair (legacy Dr 5300 / Cr cash → Dr 5300 / Cr 4200) ───
 
 const LEGACY_RENTAL_EXP_CODES = new Set(['5300', '6100']);
 const CASH_LIKE_CODES = new Set(['1000', '1010', '1020']);
@@ -3138,7 +3138,7 @@ function legacyAmountFromLines(lines: LineWithCode[]): number {
   return d;
 }
 
-/** List legacy rental “expense” JEs (Dr 5300/6100, Cr cash) that should be dress devaluation vs party AR + 4200. */
+/** List legacy rental “expense” JEs (Dr 5300/6100, Cr cash) that should be repaired to Dr 5300 / Cr 4200. */
 export async function scanRentalDevaluationMismatches(companyId: string): Promise<RentalDevaluationMismatchRow[]> {
   const { data: rentals, error: rErr } = await supabase.from('rentals').select('id').eq('company_id', companyId);
   if (rErr || !rentals?.length) return [];
@@ -3267,7 +3267,7 @@ export async function scanRentalDevaluationMismatches(companyId: string): Promis
       .filter(Boolean);
 
     let fixable = true;
-    let reason = 'OK to reverse + repost as Dr Rental Income / Cr party AR.';
+    let reason = 'OK to reverse + repost as Dr Rental Expense (5300) / Cr Rental Income (4200).';
     if (!r?.customer_id) {
       fixable = false;
       reason = 'WARN: rental has no customer_id — use walk-in policy or set customer before repair.';
@@ -3354,7 +3354,7 @@ export async function previewRentalDevaluationFixes(
     const warnings: string[] = [];
     if (!r?.customer_id) warnings.push('No customer on rental — AR cannot be resolved automatically.');
     const reversalSummary = `correction_reversal: mirror swap debits/credits of JE ${jid.slice(0, 8)}…`;
-    const newJeSummary = `Dr Rental Income (4200) / Cr party AR — amount ${amount} — reference_type rental — fingerprint ${rentalPartyDevaluationRepairFingerprint(companyId, jid)}`;
+    const newJeSummary = `Dr Rental Expense (5300) / Cr Rental Income (4200) — amount ${amount} — reference_type rental — fingerprint ${rentalPartyDevaluationRepairFingerprint(companyId, jid)}`;
     previews.push({
       journalEntryId: jid,
       rentalId,
@@ -3377,7 +3377,7 @@ export interface RentalDevaluationApplyResult {
 }
 
 /**
- * For each selected legacy JE: post `correction_reversal`, then post correct Dr 4200 / Cr party AR with repair fingerprint.
+ * For each selected legacy JE: post `correction_reversal`, then post correct Dr 5300 / Cr 4200 with repair fingerprint.
  * @param dryRun when true, only returns previews without posting.
  */
 export async function applyRentalDevaluationFixes(params: {
@@ -3491,7 +3491,7 @@ export async function applyRentalDevaluationFixes(params: {
         reversalJournalId: rev.id,
         newJournalId: posted.journalEntryId ?? undefined,
         dryRun,
-        error: posted.journalEntryId ? undefined : 'Correcting JE not created (check 4200 / party AR).',
+        error: posted.journalEntryId ? undefined : 'Correcting JE not created (check 5300 / 4200 accounts).',
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
