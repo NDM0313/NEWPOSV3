@@ -1272,7 +1272,7 @@ export const saleService = {
     options?: { notes?: string; attachments?: any }
   ) {
     // 🔒 CANCELLED: No payment allowed on cancelled sales
-    const { data: saleRow } = await supabase.from('sales').select('status').eq('id', saleId).single();
+    const { data: saleRow } = await supabase.from('sales').select('status, customer_id').eq('id', saleId).single();
     if (saleRow && (saleRow as any).status === 'cancelled') {
       throw new Error('Cannot record payment on a cancelled invoice.');
     }
@@ -1290,10 +1290,6 @@ export const saleService = {
       throw new Error('Company and branch are required for payment.');
     }
     
-    // Let DB trigger set reference_number to avoid duplicate key (payments_reference_number_unique).
-    // Do not send reference_number on insert unless caller explicitly provided one (e.g. edit flow).
-    const callerRef = referenceNumber && String(referenceNumber).trim() ? String(referenceNumber).trim() : null;
-
     // Use provided date or current date
     const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
     
@@ -1329,57 +1325,61 @@ export const saleService = {
     const { data: { user: authUser } } = await supabase.auth.getUser();
     const authUserId = authUser?.id ?? null;
 
-    let uniqueRef: string;
-    if (callerRef) {
-      uniqueRef = callerRef;
-    } else {
-      try {
-        uniqueRef = await documentNumberService.getNextDocumentNumber(companyId, branchId ?? null, 'customer_receipt');
-      } catch {
-        uniqueRef = generatePaymentReference(null);
-      }
-    }
-    const paymentData: any = {
-      company_id: companyId,
-      branch_id: branchId,
-      payment_type: 'received',
-      reference_type: 'sale',
-      reference_id: saleId,
-      amount,
-      payment_method: enumPaymentMethod,
-      payment_date: paymentDateValue,
-      payment_account_id: accountId,
-      received_by: authUserId,
-      created_by: authUserId,
-      reference_number: uniqueRef,
+    const callerRef = referenceNumber && String(referenceNumber).trim() ? String(referenceNumber).trim() : null;
+    const rpcArgs: Record<string, any> = {
+      p_company_id: companyId,
+      p_branch_id: branchId,
+      p_payment_type: 'received',
+      p_reference_type: 'sale',
+      p_reference_id: saleId,
+      p_amount: amount,
+      p_payment_method: enumPaymentMethod,
+      p_payment_date: paymentDateValue,
+      p_payment_account_id: accountId,
+      p_reference_number: callerRef,
+      p_notes: options?.notes ?? null,
+      p_created_by: authUserId,
     };
-    if (options?.notes !== undefined && options.notes !== '') {
-      paymentData.notes = options.notes;
+    const { data: rpcData, error: rpcError } = await supabase.rpc('record_payment_with_accounting', rpcArgs);
+    if (rpcError) {
+      console.error('[SALE SERVICE] Payment RPC error:', {
+        error: rpcError,
+        errorCode: (rpcError as any)?.code,
+        errorMessage: (rpcError as any)?.message,
+        errorDetails: (rpcError as any)?.details,
+        rpcArgs,
+      });
+      throw new Error((rpcError as any)?.message || 'Payment posting failed.');
     }
+    const rpcRes = (rpcData || {}) as {
+      success?: boolean;
+      error?: string;
+      payment_id?: string;
+      reference_number?: string;
+      journal_entry_id?: string;
+    };
+    if (!rpcRes.success || !rpcRes.payment_id) {
+      console.error('[SALE SERVICE] Payment RPC returned failure payload:', {
+        rpcRes,
+        rpcArgs,
+      });
+      throw new Error(rpcRes.error || 'Payment posting failed.');
+    }
+    const paymentPatch: Record<string, any> = {};
+    const saleCustomerId = (saleRow as any)?.customer_id ? String((saleRow as any).customer_id) : null;
+    if (saleCustomerId) paymentPatch.contact_id = saleCustomerId;
     if (options?.attachments !== undefined && options.attachments != null) {
       const arr = Array.isArray(options.attachments) ? options.attachments : [options.attachments];
-      if (arr.length > 0) {
-        paymentData.attachments = JSON.parse(JSON.stringify(arr));
+      if (arr.length > 0) paymentPatch.attachments = JSON.parse(JSON.stringify(arr));
+    }
+    if (Object.keys(paymentPatch).length > 0) {
+      const { error: patchErr } = await supabase
+        .from('payments')
+        .update(paymentPatch)
+        .eq('id', rpcRes.payment_id);
+      if (patchErr && String((patchErr as any)?.code || '') !== 'PGRST204') {
+        console.warn('[SALE SERVICE] Payment patch warning:', patchErr);
       }
-    }
-
-    // Guardrail: On duplicate reference_number (unique constraint), do NOT retry with same uniqueRef—call getNextDocumentNumber again for a new ref.
-    const doInsert = (data: typeof paymentData) => supabase.from('payments').insert(data).select().single();
-    let result = await doInsert(paymentData);
-
-    if (result.error && result.error.code === 'PGRST204' && result.error.message?.includes('attachments')) {
-      delete paymentData.attachments;
-      result = await doInsert(paymentData);
-    }
-    if (result.error) {
-      console.error('[SALE SERVICE] Payment insert error:', {
-        error: result.error,
-        paymentData,
-        accountId,
-        companyId,
-        branchId
-      });
-      throw result.error;
     }
     // Activity timeline: log payment_added for sale (non-blocking)
     activityLogService.logActivity({
@@ -1393,26 +1393,31 @@ export const saleService = {
       description: `Payment of Rs ${Number(amount).toLocaleString()} via ${paymentMethod} recorded`,
     }).catch((err) => console.warn('[SALE SERVICE] Activity log payment_added failed:', err));
 
-    const paymentRow = result.data as { id?: string } | null;
+    const paymentRow = { id: rpcRes.payment_id } as { id?: string } | null;
     if (paymentRow?.id) {
       auditLogService.logPaymentCreated(companyId, paymentRow.id, {
         reference_type: 'sale',
         reference_id: saleId,
         amount,
       });
-      const { ensureSalePaymentJournalAfterInsert } = await import('@/app/services/saleAccountingService');
       const { assertActiveJournalForPaymentId } = await import('@/app/lib/paymentPostingInvariant');
-      const jeId = await ensureSalePaymentJournalAfterInsert(paymentRow.id);
-      if (!jeId) {
-        throw new Error(
-          'Payment was saved but no journal entry was created (trigger may be disabled or AR/payment account missing). Check Accounts Receivable (1100) and re-post.'
-        );
+      if (!rpcRes.journal_entry_id) {
+        console.error('[SALE SERVICE] RPC success without journal_entry_id:', {
+          payment_id: rpcRes.payment_id,
+          reference_type: 'sale',
+          reference_id: saleId,
+        });
+        throw new Error('Payment posted but journal entry id is missing. Please verify posting integrity.');
       }
       await assertActiveJournalForPaymentId(paymentRow.id, 'saleService.recordPayment');
     }
 
     dispatchContactBalancesRefresh(companyId);
-    return result.data;
+    return {
+      id: rpcRes.payment_id,
+      reference_number: rpcRes.reference_number,
+      journal_entry_id: rpcRes.journal_entry_id ?? null,
+    };
   },
 
   /**

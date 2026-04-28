@@ -11,7 +11,7 @@
 //   expense  → EXP  (Expense)
 //   payment  → PAY  (Payment)
 //   job      → JOB  (Worker Job)
-//   journal  → JV   (Journal Voucher)
+//   journal  → JE   (Journal Entry)
 
 import { useContext } from 'react';
 import { SettingsContext } from '@/app/context/SettingsContext';
@@ -66,7 +66,7 @@ const DEFAULT_NUMBERING = {
   paymentNextNumber: 1,
   jobPrefix: 'JOB-',
   jobNextNumber: 1,
-  journalPrefix: 'JV-',
+  journalPrefix: 'JE-',
   journalNextNumber: 1,
 };
 
@@ -169,7 +169,7 @@ export const useDocumentNumbering = () => {
 
       case 'journal':
         return {
-          prefix: numbering.journalPrefix ?? 'JV-',
+          prefix: numbering.journalPrefix ?? 'JE-',
           nextNumber: numbering.journalNextNumber ?? 1,
           padding: 4
         };

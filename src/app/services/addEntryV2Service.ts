@@ -148,53 +148,57 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
   const { companyId, branchId, customerId, customerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments, invoiceAllocations } = params;
   if (!companyId || !customerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid customer receipt params');
   const branch = validBranchId(branchId);
-  const refNo = await getCustomerReceiptRef(companyId, branch);
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
-
-  const { data: arAccounts } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('code.eq.1100,name.ilike.%Accounts Receivable%').limit(1);
-  const arId = (arAccounts?.[0] as { id: string })?.id;
-  if (!arId) throw new Error('Accounts Receivable account (1100) not found');
-
-  const receiptPayload: Record<string, unknown> = {
-    company_id: companyId,
-    branch_id: branch,
-    payment_type: 'received',
-    reference_type: 'manual_receipt',
-    reference_id: null,
+  const rpcArgs: Record<string, unknown> = {
+    p_company_id: companyId,
+    p_branch_id: branch,
+    p_payment_type: 'received',
+    p_reference_type: 'manual_receipt',
+    p_reference_id: customerId,
+    p_amount: amount,
+    p_payment_method: normalizePaymentMethod(paymentMethod),
+    p_payment_date: paymentDate,
+    p_payment_account_id: paymentAccountId,
+    p_reference_number: null,
+    p_notes: notes || null,
+    p_created_by: uid,
+  };
+  const { data: rpcData, error: rpcErr } = await supabase.rpc('record_payment_with_accounting', rpcArgs);
+  if (rpcErr) {
+    console.error('[AddEntryV2] createCustomerReceiptEntry RPC error:', {
+      error: rpcErr,
+      code: (rpcErr as any)?.code,
+      message: (rpcErr as any)?.message,
+      details: (rpcErr as any)?.details,
+      rpcArgs,
+    });
+    throw new Error(`Payment posting failed: ${(rpcErr as any)?.message || 'Unknown RPC error'}`);
+  }
+  const rpcRes = (rpcData || {}) as {
+    success?: boolean;
+    error?: string;
+    payment_id?: string;
+    journal_entry_id?: string;
+    reference_number?: string;
+  };
+  if (!rpcRes.success || !rpcRes.payment_id || !rpcRes.reference_number) {
+    console.error('[AddEntryV2] createCustomerReceiptEntry RPC failed payload:', rpcRes);
+    throw new Error(rpcRes.error || 'Payment posting failed.');
+  }
+  const paymentId = rpcRes.payment_id;
+  const refNo = rpcRes.reference_number;
+  const journalEntryId = rpcRes.journal_entry_id || '';
+  const patchPayload: Record<string, unknown> = {
     contact_id: customerId,
-    amount,
-    payment_method: normalizePaymentMethod(paymentMethod),
-    payment_account_id: paymentAccountId,
-    payment_date: paymentDate,
-    reference_number: refNo,
-    notes: notes || undefined,
-    received_by: uid,
-    created_by: uid,
-  };
-  if (attachments && attachments.length > 0) receiptPayload.attachments = attachments;
-  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(receiptPayload).select('id').single();
-  if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
-  const paymentId = (paymentRow as { id: string }).id;
-  logPaymentCreated(companyId, paymentId, { reference_type: 'manual_receipt', amount, contact_id: customerId });
-
-  const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-  const desc = notes || `Receipt from ${customerName}`;
-  const journalEntry: JournalEntry = {
-    company_id: companyId,
-    branch_id: branch ?? undefined,
-    entry_no: entryNo,
-    entry_date: paymentDate,
-    description: desc,
-    reference_type: 'manual_receipt',
     reference_id: customerId,
-    created_by: uid ?? undefined,
   };
-  const lines: JournalEntryLine[] = [
-    { account_id: paymentAccountId, debit: amount, credit: 0, description: desc },
-    { account_id: arId, debit: 0, credit: amount, description: desc },
-  ];
-  const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
+  if (attachments && attachments.length > 0) patchPayload.attachments = attachments;
+  const { error: patchErr } = await supabase.from('payments').update(patchPayload).eq('id', paymentId);
+  if (patchErr && String((patchErr as any)?.code || '') !== 'PGRST204') {
+    console.warn('[AddEntryV2] customer receipt patch warning:', patchErr);
+  }
+  logPaymentCreated(companyId, paymentId, { reference_type: 'manual_receipt', amount, contact_id: customerId });
 
   await applyManualReceiptAllocations({
     companyId,
@@ -216,12 +220,12 @@ export async function createCustomerReceiptEntry(params: CreateCustomerReceiptPa
     console.log('[AddEntryV2] createCustomerReceiptEntry:', {
       payload: { customerId, customerName, amount, paymentAccountId, paymentDate },
       paymentId,
-      journalEntryId: (saved as { id: string }).id,
+      journalEntryId,
       referenceNumber: refNo,
       refetchEvent: 'ledgerUpdated(customer)',
     });
   }
-  return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
+  return { paymentId, journalEntryId, referenceNumber: refNo };
 }
 
 // ─── 3. Supplier Payment ──────────────────────────────────────────────────
@@ -242,51 +246,57 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
   const { companyId, branchId, supplierContactId, supplierName, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments } = params;
   if (!companyId || !supplierContactId || amount <= 0 || !paymentAccountId) throw new Error('Invalid supplier payment params');
   const branch = validBranchId(branchId);
-  const refNo = await getOutgoingPaymentRef(companyId, branch);
   const { data: { user } } = await supabase.auth.getUser();
   const uid = (user as any)?.id ?? null;
-
-  const supplierPayPayload: Record<string, unknown> = {
-    company_id: companyId,
-    branch_id: branch,
-    payment_type: 'paid',
-    reference_type: 'manual_payment',
-    reference_id: null,
+  const rpcArgs: Record<string, unknown> = {
+    p_company_id: companyId,
+    p_branch_id: branch,
+    p_payment_type: 'paid',
+    p_reference_type: 'manual_payment',
+    p_reference_id: supplierContactId,
+    p_amount: amount,
+    p_payment_method: normalizePaymentMethod(paymentMethod),
+    p_payment_date: paymentDate,
+    p_payment_account_id: paymentAccountId,
+    p_reference_number: null,
+    p_notes: notes || null,
+    p_created_by: uid,
+  };
+  const { data: rpcData, error: rpcErr } = await supabase.rpc('record_payment_with_accounting', rpcArgs);
+  if (rpcErr) {
+    console.error('[AddEntryV2] createSupplierPaymentEntry RPC error:', {
+      error: rpcErr,
+      code: (rpcErr as any)?.code,
+      message: (rpcErr as any)?.message,
+      details: (rpcErr as any)?.details,
+      rpcArgs,
+    });
+    throw new Error(`Payment posting failed: ${(rpcErr as any)?.message || 'Unknown RPC error'}`);
+  }
+  const rpcRes = (rpcData || {}) as {
+    success?: boolean;
+    error?: string;
+    payment_id?: string;
+    journal_entry_id?: string;
+    reference_number?: string;
+  };
+  if (!rpcRes.success || !rpcRes.payment_id || !rpcRes.reference_number) {
+    console.error('[AddEntryV2] createSupplierPaymentEntry RPC failed payload:', rpcRes);
+    throw new Error(rpcRes.error || 'Payment posting failed.');
+  }
+  const paymentId = rpcRes.payment_id;
+  const refNo = rpcRes.reference_number;
+  const journalEntryId = rpcRes.journal_entry_id || '';
+  const patchPayload: Record<string, unknown> = {
     contact_id: supplierContactId,
-    amount,
-    payment_method: normalizePaymentMethod(paymentMethod),
-    payment_account_id: paymentAccountId,
-    payment_date: paymentDate,
-    reference_number: refNo,
-    notes: notes || undefined,
-    received_by: uid,
-    created_by: uid,
+    reference_id: supplierContactId,
   };
-  if (attachments && attachments.length > 0) supplierPayPayload.attachments = attachments;
-  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(supplierPayPayload).select('id').single();
-  if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
-  const paymentId = (paymentRow as { id: string }).id;
+  if (attachments && attachments.length > 0) patchPayload.attachments = attachments;
+  const { error: patchErr } = await supabase.from('payments').update(patchPayload).eq('id', paymentId);
+  if (patchErr && String((patchErr as any)?.code || '') !== 'PGRST204') {
+    console.warn('[AddEntryV2] supplier payment patch warning:', patchErr);
+  }
   logPaymentCreated(companyId, paymentId, { reference_type: 'manual_payment', amount, contact_id: supplierContactId });
-
-  const apId =
-    (await resolvePayablePostingAccountId(companyId, supplierContactId)) || (await getApAccountId(companyId));
-  const desc = notes || `Manual payment to ${supplierName}`;
-  const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-  const journalEntry: JournalEntry = {
-    company_id: companyId,
-    branch_id: branch ?? undefined,
-    entry_no: entryNo,
-    entry_date: paymentDate,
-    description: desc,
-    reference_type: 'manual_payment',
-    reference_id: paymentId,
-    created_by: uid ?? undefined,
-  };
-  const lines: JournalEntryLine[] = [
-    { account_id: apId, debit: amount, credit: 0, description: desc },
-    { account_id: paymentAccountId, debit: 0, credit: amount, description: desc },
-  ];
-  const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
 
   await applyManualSupplierPaymentAllocations({
     companyId,
@@ -305,7 +315,7 @@ export async function createSupplierPaymentEntry(params: CreateSupplierPaymentPa
     window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
   }
   dispatchContactBalancesRefresh(companyId);
-  return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
+  return { paymentId, journalEntryId, referenceNumber: refNo };
 }
 
 // ─── 4. Worker Payment ────────────────────────────────────────────────────

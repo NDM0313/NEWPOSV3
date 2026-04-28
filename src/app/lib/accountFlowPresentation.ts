@@ -138,8 +138,11 @@ export function netEconomicMeaning(e: AccountFlowLineInput, pres: JournalLinePre
   if (rt === 'manual_receipt') {
     return 'Receipt from customer';
   }
-  if (rt === 'manual_payment' || rt === 'on_account') {
+  if (rt === 'manual_payment') {
     return 'Supplier payment';
+  }
+  if (rt === 'on_account') {
+    return 'Receipt from customer';
   }
   if (rt === 'sale') {
     return 'Sale / customer-side posting';

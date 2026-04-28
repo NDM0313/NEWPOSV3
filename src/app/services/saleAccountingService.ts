@@ -1098,7 +1098,7 @@ async function waitForJournalOnPaymentId(paymentId: string): Promise<string | nu
     const { data } = await supabase
       .from('journal_entries')
       .select('id')
-      .eq('payment_id', paymentId)
+      .or(`payment_id.eq.${paymentId},and(reference_type.eq.payment,reference_id.eq.${paymentId})`)
       .or('is_void.is.null,is_void.eq.false')
       .maybeSingle();
     if (data?.id) return data.id as string;
@@ -1108,13 +1108,13 @@ async function waitForJournalOnPaymentId(paymentId: string): Promise<string | nu
 }
 
 /**
- * Idempotent: if DB trigger already created Dr Cash/Bank, Cr AR for this sale payment, returns that JE id.
- * Otherwise creates the same shape as create_payment_journal_entry (reference_type sale + sale id + payment_id).
+ * Idempotent: if DB already created Dr Cash/Bank, Cr AR for this payment, returns that JE id.
+ * Otherwise creates canonical payment JE shape (reference_type payment + reference_id payment id + payment_id).
  */
 export async function ensureSalePaymentJournalIfMissing(paymentId: string): Promise<string | null> {
   const { data: pay, error } = await supabase
     .from('payments')
-    .select('id, company_id, branch_id, reference_type, reference_id, amount, payment_account_id, payment_date')
+    .select('id, company_id, branch_id, reference_type, reference_id, reference_number, amount, payment_account_id, payment_date')
     .eq('id', paymentId)
     .maybeSingle();
   if (error || !pay) return null;
@@ -1132,7 +1132,7 @@ export async function ensureSalePaymentJournalIfMissing(paymentId: string): Prom
   const { data: existing } = await supabase
     .from('journal_entries')
     .select('id')
-    .eq('payment_id', paymentId)
+    .or(`payment_id.eq.${paymentId},and(reference_type.eq.payment,reference_id.eq.${paymentId})`)
     .or('is_void.is.null,is_void.eq.false')
     .maybeSingle();
   if (existing?.id) return existing.id as string;
@@ -1164,15 +1164,16 @@ export async function ensureSalePaymentJournalIfMissing(paymentId: string): Prom
   const amt = Math.round((Number(p.amount) || 0) * 100) / 100;
   if (amt <= 0) return null;
 
+  const paymentRefNo = String((pay as { reference_number?: string | null } | null)?.reference_number || '').trim();
   const entry: JournalEntry = {
     id: '',
     company_id: p.company_id,
     branch_id: p.branch_id || undefined,
     entry_no: entryNo,
     entry_date: entryDate,
-    description: `Payment received${inv ? ` – ${inv}` : ''}`,
-    reference_type: 'sale',
-    reference_id: p.reference_id,
+    description: `Payment: ${paymentRefNo || `PAYMENT-${paymentId.slice(0, 8)}`}`,
+    reference_type: 'payment',
+    reference_id: paymentId,
     created_by: uid || undefined,
   };
   const lines: JournalEntryLine[] = [

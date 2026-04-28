@@ -368,7 +368,8 @@ async function loadCustomerData(companyId: string, contactId: string) {
     .select('id, reference_number, amount, payment_type, reference_type, reference_id, payment_account_id, payment_date, voided_at, contact_id, created_at')
     .eq('company_id', companyId)
     .eq('contact_id', contactId)
-    .or('payment_type.eq.received,reference_type.in.(sale,manual_receipt,on_account)');
+    .eq('payment_type', 'received')
+    .in('reference_type', ['sale', 'manual_receipt', 'on_account']);
 
   const paymentIds = (payments || []).map((p: any) => p.id);
   let mutations: RawMutationRow[] = [];
@@ -417,7 +418,8 @@ async function loadSupplierData(companyId: string, contactId: string) {
     .select('id, reference_number, amount, payment_type, reference_type, reference_id, payment_account_id, payment_date, voided_at, contact_id, created_at')
     .eq('company_id', companyId)
     .eq('contact_id', contactId)
-    .or('payment_type.eq.paid,reference_type.in.(purchase,manual_payment,on_account)');
+    .eq('payment_type', 'paid')
+    .in('reference_type', ['purchase', 'manual_payment']);
 
   const paymentIds = (payments || []).map((p: any) => p.id);
   let mutations: RawMutationRow[] = [];

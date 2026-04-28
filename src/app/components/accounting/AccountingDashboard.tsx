@@ -169,10 +169,17 @@ function journalRowPresentation(entry: AccountingEntry): {
       badgeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
     };
   }
-  const meta = entry.metadata as { referenceType?: string; paymentId?: string; rootReferenceType?: string } | undefined;
+  const meta = entry.metadata as {
+    referenceType?: string;
+    paymentId?: string;
+    rootReferenceType?: string;
+    linkedPaymentReferenceType?: string | null;
+  } | undefined;
   const rtRaw = String(meta?.referenceType || '').toLowerCase();
   const payId = meta?.paymentId;
   const rootRt = String(meta?.rootReferenceType || '').toLowerCase();
+  const linkedRt = String(meta?.linkedPaymentReferenceType || '').toLowerCase();
+  const effectivePaymentRt = linkedRt || rootRt || rtRaw;
   if (rtRaw === 'worker_payment') {
     return {
       typeLabel: 'Worker payment',
@@ -195,14 +202,14 @@ function journalRowPresentation(entry: AccountingEntry): {
     };
   }
   if (rtRaw === 'payment_adjustment' && payId) {
-    if (rootRt === 'purchase' || rootRt === 'manual_payment' || rootRt === 'on_account') {
+    if (rootRt === 'purchase' || rootRt === 'manual_payment') {
       return {
         typeLabel: 'Supplier payment',
         amountClass: 'text-sky-400',
         badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/35',
       };
     }
-    if (rootRt === 'sale' || rootRt === 'manual_receipt') {
+    if (rootRt === 'sale' || rootRt === 'manual_receipt' || rootRt === 'on_account') {
       return {
         typeLabel: 'Customer receipt',
         amountClass: 'text-emerald-400',
@@ -221,6 +228,29 @@ function journalRowPresentation(entry: AccountingEntry): {
       amountClass: 'text-emerald-400',
       badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
     };
+  }
+  if (rtRaw === 'on_account') {
+    return {
+      typeLabel: 'Customer receipt',
+      amountClass: 'text-emerald-400',
+      badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
+    };
+  }
+  if (entry.module === 'Payments' || rtRaw === 'payment') {
+    if (effectivePaymentRt === 'sale' || effectivePaymentRt === 'manual_receipt' || effectivePaymentRt === 'on_account') {
+      return {
+        typeLabel: 'Customer receipt',
+        amountClass: 'text-emerald-400',
+        badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
+      };
+    }
+    if (effectivePaymentRt === 'purchase' || effectivePaymentRt === 'manual_payment') {
+      return {
+        typeLabel: 'Supplier payment',
+        amountClass: 'text-sky-400',
+        badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/35',
+      };
+    }
   }
   if (entry.module === 'Payments' || rtRaw === 'manual_payment') {
     return {

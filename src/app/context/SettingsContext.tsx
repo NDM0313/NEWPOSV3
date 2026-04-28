@@ -292,7 +292,7 @@ function getDefaultSettingsStub(): SettingsContextType {
     updateAccountingSettings: noop,
     defaultAccounts: { paymentMethods: [] },
     updateDefaultAccounts: noop,
-    numberingRules: { salePrefix: 'SL-', saleNextNumber: 1, purchasePrefix: 'PUR-', purchaseNextNumber: 1, rentalPrefix: 'RNT-', rentalNextNumber: 1, expensePrefix: 'EXP-', expenseNextNumber: 1, productPrefix: 'PRD-', productNextNumber: 1, studioPrefix: 'STD-', studioNextNumber: 1, posPrefix: 'POS-', posNextNumber: 1, paymentPrefix: 'PAY-', paymentNextNumber: 1, jobPrefix: 'JOB-', jobNextNumber: 1, journalPrefix: 'JV-', journalNextNumber: 1 },
+    numberingRules: { salePrefix: 'SL-', saleNextNumber: 1, purchasePrefix: 'PUR-', purchaseNextNumber: 1, rentalPrefix: 'RNT-', rentalNextNumber: 1, expensePrefix: 'EXP-', expenseNextNumber: 1, productPrefix: 'PRD-', productNextNumber: 1, studioPrefix: 'STD-', studioNextNumber: 1, posPrefix: 'POS-', posNextNumber: 1, paymentPrefix: 'PAY-', paymentNextNumber: 1, jobPrefix: 'JOB-', jobNextNumber: 1, journalPrefix: 'JE-', journalNextNumber: 1 },
     updateNumberingRules: noopSync,
     getNextNumber: async () => '',
     currentUser: { role: 'Admin', canCreateSale: true, canEditSale: true, canDeleteSale: true, canCancelSale: true, canViewSale: true, canViewContacts: true, canViewReports: true, canManageSettings: true, canManageUsers: true, canAccessAccounting: true, canMakePayments: true, canReceivePayments: true, canManageExpenses: true, canManageProducts: true, canManagePurchases: true, canManageRentals: true },
@@ -441,7 +441,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     paymentNextNumber: 1,
     jobPrefix: 'JOB-',
     jobNextNumber: 1,
-    journalPrefix: 'JV-',
+    journalPrefix: 'JE-',
     journalNextNumber: 1,
   });
 
@@ -697,7 +697,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         paymentNextNumber: getNext('payment').next ?? 1,
         jobPrefix: getNext('job').prefix || 'JOB-',
         jobNextNumber: getNext('job').next ?? 1,
-        journalPrefix: getNext('journal').prefix || 'JV-',
+        journalPrefix: getNext('journal').prefix || 'JE-',
         journalNextNumber: getNext('journal').next ?? 1,
       });
 
@@ -1002,7 +1002,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         pos: { prefix: updated.posPrefix, nextNumber: updated.posNextNumber },
         payment: { prefix: updated.paymentPrefix ?? 'PAY-', nextNumber: updated.paymentNextNumber ?? 1 },
         job: { prefix: updated.jobPrefix ?? 'JOB-', nextNumber: updated.jobNextNumber ?? 1 },
-        journal: { prefix: updated.journalPrefix ?? 'JV-', nextNumber: updated.journalNextNumber ?? 1 },
+        journal: { prefix: updated.journalPrefix ?? 'JE-', nextNumber: updated.journalNextNumber ?? 1 },
       };
 
       const branch = branchId === 'all' ? undefined : branchId || undefined;
