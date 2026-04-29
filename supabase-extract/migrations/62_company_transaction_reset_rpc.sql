@@ -29,6 +29,8 @@ DECLARE
   v_counts JSONB := '{}'::JSONB;
   v_contacts BIGINT := 0;
   v_products BIGINT := 0;
+  v_payment_allocations BIGINT := 0;
+  v_expense_items BIGINT := 0;
 BEGIN
   IF p_company_id IS NULL THEN
     RETURN jsonb_build_object('success', FALSE, 'error', 'company_id is required');
@@ -36,6 +38,18 @@ BEGIN
 
   SELECT COUNT(*) INTO v_contacts FROM contacts WHERE company_id = p_company_id;
   SELECT COUNT(*) INTO v_products FROM products WHERE company_id = p_company_id;
+
+  IF to_regclass('public.payment_allocations') IS NOT NULL THEN
+    EXECUTE 'SELECT COUNT(*) FROM payment_allocations WHERE company_id = $1'
+      INTO v_payment_allocations
+      USING p_company_id;
+  END IF;
+
+  IF to_regclass('public.expense_items') IS NOT NULL THEN
+    EXECUTE 'SELECT COUNT(*) FROM expense_items WHERE expense_id IN (SELECT id FROM expenses WHERE company_id = $1)'
+      INTO v_expense_items
+      USING p_company_id;
+  END IF;
 
   v_counts := v_counts
     || jsonb_build_object('sales', (SELECT COUNT(*) FROM sales WHERE company_id = p_company_id))
@@ -49,9 +63,9 @@ BEGIN
     || jsonb_build_object('rentals', (SELECT COUNT(*) FROM rentals WHERE company_id = p_company_id))
     || jsonb_build_object('rental_items', (SELECT COUNT(*) FROM rental_items WHERE rental_id IN (SELECT id FROM rentals WHERE company_id = p_company_id)))
     || jsonb_build_object('payments', (SELECT COUNT(*) FROM payments WHERE company_id = p_company_id))
-    || jsonb_build_object('payment_allocations', (SELECT COUNT(*) FROM payment_allocations WHERE company_id = p_company_id))
+    || jsonb_build_object('payment_allocations', v_payment_allocations)
     || jsonb_build_object('expenses', (SELECT COUNT(*) FROM expenses WHERE company_id = p_company_id))
-    || jsonb_build_object('expense_items', (SELECT COUNT(*) FROM expense_items WHERE expense_id IN (SELECT id FROM expenses WHERE company_id = p_company_id)))
+    || jsonb_build_object('expense_items', v_expense_items)
     || jsonb_build_object('journal_entries', (SELECT COUNT(*) FROM journal_entries WHERE company_id = p_company_id))
     || jsonb_build_object('journal_entry_lines', (SELECT COUNT(*) FROM journal_entry_lines WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE company_id = p_company_id)))
     || jsonb_build_object('ledger_master', (SELECT COUNT(*) FROM ledger_master WHERE company_id = p_company_id))
