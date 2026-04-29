@@ -140,6 +140,20 @@ BEGIN
   v_prev_replication_role := current_setting('session_replication_role', true);
   PERFORM set_config('session_replication_role', 'replica', true);
 
+  -- Pre-clear journals first to avoid canonical document unique-index conflicts
+  -- if any downstream delete path attempts to re-post before final journal sweep.
+  DELETE FROM journal_entry_lines
+  WHERE journal_entry_id IN (
+    SELECT id FROM journal_entries WHERE company_id = p_company_id
+  );
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  v_deleted := v_deleted || jsonb_build_object('pre_journal_entry_lines', v_rows);
+
+  DELETE FROM journal_entries
+  WHERE company_id = p_company_id;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  v_deleted := v_deleted || jsonb_build_object('pre_journal_entries', v_rows);
+
   INSERT INTO company_reset_audit_logs (
     company_id,
     requested_by,
