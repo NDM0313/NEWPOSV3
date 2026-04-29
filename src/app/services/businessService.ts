@@ -18,6 +18,14 @@ export interface CreateBusinessRequest {
   businessType?: string;
   /** Module ids to enable (sales, purchases, pos, studio, etc.); applied to modules_config */
   modules?: string[];
+  /** Financial/inventory bootstrap settings */
+  accountingMethod?: 'Accrual' | 'Cash';
+  taxMode?: 'Inclusive' | 'Exclusive';
+  defaultTaxRate?: number;
+  costingMethod?: 'FIFO' | 'Weighted Average';
+  allowNegativeStock?: boolean;
+  defaultUnit?: string;
+  baseUnits?: string[];
 }
 
 export interface CreateBusinessResponse {
@@ -93,6 +101,13 @@ export const businessService = {
           p_timezone: data.timezone || null,
           p_business_type: data.businessType || null,
           p_modules: data.modules && data.modules.length > 0 ? data.modules : null,
+          p_accounting_method: data.accountingMethod || 'Accrual',
+          p_tax_mode: data.taxMode || 'Inclusive',
+          p_default_tax_rate: Number.isFinite(Number(data.defaultTaxRate)) ? Number(data.defaultTaxRate) : 0,
+          p_costing_method: data.costingMethod || 'FIFO',
+          p_allow_negative_stock: Boolean(data.allowNegativeStock),
+          p_default_unit: data.defaultUnit || 'pcs',
+          p_base_units: data.baseUnits && data.baseUnits.length > 0 ? data.baseUnits : ['pcs'],
         }
       );
 
@@ -145,6 +160,13 @@ export const businessService = {
     timezone?: string;
     businessType?: string;
     modules?: string[];
+    accountingMethod?: 'Accrual' | 'Cash';
+    taxMode?: 'Inclusive' | 'Exclusive';
+    defaultTaxRate?: number;
+    costingMethod?: 'FIFO' | 'Weighted Average';
+    allowNegativeStock?: boolean;
+    defaultUnit?: string;
+    baseUnits?: string[];
   }): Promise<CreateBusinessResponse> {
     try {
       const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -171,6 +193,13 @@ export const businessService = {
         p_timezone: data.timezone || null,
         p_business_type: data.businessType || null,
         p_modules: data.modules && data.modules.length > 0 ? data.modules : null,
+        p_accounting_method: data.accountingMethod || 'Accrual',
+        p_tax_mode: data.taxMode || 'Inclusive',
+        p_default_tax_rate: Number.isFinite(Number(data.defaultTaxRate)) ? Number(data.defaultTaxRate) : 0,
+        p_costing_method: data.costingMethod || 'FIFO',
+        p_allow_negative_stock: Boolean(data.allowNegativeStock),
+        p_default_unit: data.defaultUnit || 'pcs',
+        p_base_units: data.baseUnits && data.baseUnits.length > 0 ? data.baseUnits : ['pcs'],
       });
 
       if (txError) {

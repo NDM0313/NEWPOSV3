@@ -530,7 +530,7 @@ export const Dashboard = () => {
               <StatCard title="Payables (operational)" value={formatCurrency(displayMetricsWithCashBank.payables)} change="—" icon={ArrowUpRight} trend="down" iconColor="text-[#F59E0B]" />
             </div>
             <p className="text-[11px] text-[#6B7280] mb-4 leading-snug">
-              Receivables / Payables above: SUM(<code className="text-gray-500">get_contact_balances_summary</code>) for company or selected branch after DB migration <code className="text-gray-500">20260370_phase2a2_...</code>. That roll-up uses per-contact rules (e.g. final sales balance, net of on-account / manual receipts per RPC) — not the same as raw SUM(<code className="text-gray-500">sales.due_amount</code>), not the same as GL control on{' '}
+              Receivables / Payables above: GL roll-up from <code className="text-gray-500">get_contact_party_gl_balances</code> for company or selected branch. This is chart/journal basis and intentionally different from raw SUM(<code className="text-gray-500">sales.due_amount</code>) document due.
               <span className="text-gray-400">Accounting → Accounts</span>, and payables include supplier + worker/studio slice from the RPC.
             </p>
             {(displayMetricsWithCashBank.sales_trend?.length > 0 || displayMetricsWithCashBank.expense_trend?.length > 0 || displayMetricsWithCashBank.profit_trend?.length > 0) && (
@@ -599,7 +599,7 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      {/* Same source as executive summary (displayMetrics): operational AR/AP from get_contact_balances_summary roll-up; profit/revenue from period context — not canonical P&L */}
+      {/* Same source as executive summary (displayMetrics): GL-party AR/AP from get_contact_party_gl_balances roll-up; profit/revenue from period context — not canonical P&L */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <StatCard 
           title="Receivables (operational)" 

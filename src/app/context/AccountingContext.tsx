@@ -18,6 +18,11 @@ import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { warnIfUsingStoredBalanceAsTruth } from '@/app/services/accountingCanonicalGuard';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
 import {
+  DATA_INVALIDATED_EVENT,
+  type DataInvalidationDetail,
+  shouldAcceptInvalidation,
+} from '@/app/lib/dataInvalidationBus';
+import {
   buildPaymentChainIndex,
   paymentChainFlagsForJournalEntry,
   type PaymentChainIndex,
@@ -859,29 +864,74 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   /** Journal / payment flows dispatch `accountingEntriesChanged` — keep context entries + accounts in sync without full reload. */
   useEffect(() => {
     if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queue = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void loadAccounts();
+        void debouncedLoadEntries();
+      }, 200);
+    };
     const bump = () => {
-      void loadAccounts();
-      void debouncedLoadEntries();
+      queue();
       // Do not dispatch CONTACT_BALANCES_REFRESH here: callers already fire it where needed, and it retriggers
       // listeners (e.g. statement page journalRefreshTick) in the same turn as accountingEntriesChanged/paymentAdded.
     };
-    /** Payments / receipts dispatch contact refresh without always firing accountingEntriesChanged — reload GL so COA balances match party RPCs. */
+    const onDataInvalidated = (ev: Event) => {
+      const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      if (
+        !shouldAcceptInvalidation(detail, {
+          domain: ['accounting', 'sales', 'purchases', 'contacts'],
+          companyId,
+          branchId: branchId === 'all' ? null : branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      queue();
+    };
     const onContactBalancesRefresh = (ev: Event) => {
       const cid = (ev as CustomEvent<{ companyId?: string }>).detail?.companyId;
-      if (cid && cid === companyId) {
-        void loadAccounts();
-        void debouncedLoadEntries();
-      }
+      if (cid && cid === companyId) queue();
     };
     window.addEventListener('accountingEntriesChanged', bump);
     window.addEventListener('paymentAdded', bump);
     window.addEventListener('ledgerUpdated', bump);
     window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, onContactBalancesRefresh);
+    window.addEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
     return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener('accountingEntriesChanged', bump);
       window.removeEventListener('paymentAdded', bump);
       window.removeEventListener('ledgerUpdated', bump);
       window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, onContactBalancesRefresh);
+      window.removeEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+    };
+  }, [branchId, companyId, loadAccounts, debouncedLoadEntries]);
+
+  // Cross-client sync (mobile/web): refresh accounting when DB rows change outside this browser tab.
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queue = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void loadAccounts();
+        void debouncedLoadEntries();
+      }, 250);
+    };
+    const channel = supabase
+      .channel(`accounting-live-${companyId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_entries', filter: `company_id=eq.${companyId}` }, queue)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `company_id=eq.${companyId}` }, queue)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases', filter: `company_id=eq.${companyId}` }, queue)
+      .subscribe();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      void supabase.removeChannel(channel);
     };
   }, [companyId, loadAccounts, debouncedLoadEntries]);
 

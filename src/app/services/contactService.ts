@@ -93,32 +93,22 @@ export const contactService = {
   ): Promise<{
     map: Map<string, { receivables: number; payables: number }>;
     error: string | null;
+    reasonTag: 'ok' | 'rpc_missing' | 'rpc_empty';
   }> {
-    // RPC expects UUID or null; avoid 400 from empty string or 'all'
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const safeBranchId =
-      branchId && branchId !== 'all' && typeof branchId === 'string' && uuidRegex.test(branchId.trim())
-        ? branchId.trim()
-        : null;
-    const { data, error } = await supabase.rpc('get_contact_balances_summary', {
-      p_company_id: companyId,
-      p_branch_id: safeBranchId,
-    });
-    if (error) {
-      const msg = error.message || 'get_contact_balances_summary failed';
-      if (import.meta.env?.DEV) console.warn('[CONTACT SERVICE] get_contact_balances_summary RPC error:', msg);
-      return { map: new Map(), error: msg };
+    // GL-only cutover: derive balances from party GL RPC (1100/2000/2010).
+    const partyMap = await this.getContactPartyGlBalancesMap(companyId, branchId);
+    if (!partyMap) {
+      return { map: new Map(), error: 'get_contact_party_gl_balances failed', reasonTag: 'rpc_missing' };
     }
     const map = new Map<string, { receivables: number; payables: number }>();
-    (data ?? []).forEach((row: { contact_id: string; receivables?: number; payables?: number }) => {
-      if (row?.contact_id) {
-        map.set(String(row.contact_id), {
-          receivables: Number(row.receivables ?? 0) || 0,
-          payables: Number(row.payables ?? 0) || 0,
-        });
-      }
+    partyMap.forEach((row, contactId) => {
+      map.set(String(contactId), {
+        receivables: Math.max(0, Number(row.glArReceivable) || 0),
+        // Keep AP + worker payable in one field to preserve existing contact table contract.
+        payables: Math.max(0, (Number(row.glApPayable) || 0) + (Number(row.glWorkerPayable) || 0)),
+      });
     });
-    return { map, error: null };
+    return { map, error: null, reasonTag: map.size > 0 ? 'ok' : 'rpc_empty' };
   },
 
   /**

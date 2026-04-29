@@ -178,6 +178,17 @@ interface SaleFormProps {
   onClose: () => void;
 }
 
+const SALE_FORM_BOOTSTRAP_TTL_MS = 45_000;
+const saleFormBootstrapCache = new Map<
+  string,
+  {
+    ts: number;
+    customers: any[];
+    products: any[];
+    defaultCustomerId: string | null;
+  }
+>();
+
 export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFormProps) => {
     useEffect(() => {
         if (!initialSale?.id || !convertToFinal) return;
@@ -592,6 +603,24 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 console.log('[SALE FORM] Skipping loadData - data already loaded (prevents state reset)');
                 return;
             }
+            const branchForBalances =
+                branchId && branchId !== 'all'
+                    ? branchId
+                    : contextBranchId && contextBranchId !== 'all'
+                      ? contextBranchId
+                      : null;
+            const cacheKey = `${companyId}:${branchForBalances ?? 'all'}`;
+            const cached = saleFormBootstrapCache.get(cacheKey);
+            if (cached && Date.now() - cached.ts < SALE_FORM_BOOTSTRAP_TTL_MS) {
+                setCustomers(cached.customers);
+                setProducts(cached.products);
+                if (!customerId && !initialSale && cached.defaultCustomerId) {
+                    setCustomerId(cached.defaultCustomerId);
+                }
+                dataLoadedRef.current = true;
+                if (import.meta.env?.DEV) console.log('[SALE FORM] Reused bootstrap cache');
+                return;
+            }
             
             try {
                 setLoading(true);
@@ -599,12 +628,6 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 await contactService.ensureDefaultWalkingCustomerForCompany(companyId);
 
                 // Load customers + operational AR per contact (RPC; not raw SUM(sales.due_amount))
-                const branchForBalances =
-                    branchId && branchId !== 'all'
-                        ? branchId
-                        : contextBranchId && contextBranchId !== 'all'
-                          ? contextBranchId
-                          : null;
                 const [contactsData, balanceSummary] = await Promise.all([
                     contactService.getAllContacts(companyId),
                     contactService.getContactBalancesSummary(companyId, branchForBalances),
@@ -713,6 +736,12 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 );
                 
                 setProducts(productsList);
+                saleFormBootstrapCache.set(cacheKey, {
+                    ts: Date.now(),
+                    customers: customerList,
+                    products: productsList,
+                    defaultCustomerId,
+                });
                 
                 // Mark data as loaded to prevent future reloads
                 dataLoadedRef.current = true;

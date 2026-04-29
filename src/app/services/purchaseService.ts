@@ -242,6 +242,150 @@ function buildPurchaseItemInsertRowMinimal(item: PurchaseItem, purchaseId: strin
   };
 }
 
+function roundCost(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 10000) / 10000;
+}
+
+function computeWeightedCost(currentQty: number, currentCost: number, incomingQty: number, incomingCost: number): number {
+  const safeIncomingQty = Number(incomingQty) || 0;
+  const safeIncomingCost = Number(incomingCost) || 0;
+  if (safeIncomingQty <= 0 || safeIncomingCost <= 0) return roundCost(currentCost);
+  const safeCurrentQty = Math.max(0, Number(currentQty) || 0);
+  const safeCurrentCost = Math.max(0, Number(currentCost) || 0);
+  const denominator = safeCurrentQty + safeIncomingQty;
+  if (denominator <= 0) return roundCost(safeIncomingCost);
+  return roundCost(((safeCurrentQty * safeCurrentCost) + (safeIncomingQty * safeIncomingCost)) / denominator);
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { code?: string; message?: string };
+  const message = String(e.message || '').toLowerCase();
+  return e.code === '42703' || (message.includes('column') && message.includes('does not exist'));
+}
+
+type CostRollupItem = {
+  product_id: string;
+  variation_id?: string | null;
+  quantity: number;
+  unit_price: number;
+};
+
+async function applyWeightedCostRollup(params: {
+  companyId: string;
+  branchId?: string | null;
+  purchaseId?: string;
+  items: CostRollupItem[];
+}): Promise<void> {
+  const { companyId, branchId, purchaseId, items } = params;
+  const validItems = (items || []).filter((it) => Number(it.quantity) > 0 && Number(it.unit_price) > 0 && it.product_id);
+  if (!companyId || validItems.length === 0) return;
+
+  const productIncoming = new Map<string, { qty: number; sum: number }>();
+  const variationIncoming = new Map<string, { productId: string; qty: number; sum: number }>();
+  for (const item of validItems) {
+    const qty = Number(item.quantity) || 0;
+    const cost = Number(item.unit_price) || 0;
+    const key = String(item.product_id);
+    const prevProduct = productIncoming.get(key) ?? { qty: 0, sum: 0 };
+    prevProduct.qty += qty;
+    prevProduct.sum += qty * cost;
+    productIncoming.set(key, prevProduct);
+    if (item.variation_id) {
+      const vKey = String(item.variation_id);
+      const prevVar = variationIncoming.get(vKey) ?? { productId: key, qty: 0, sum: 0 };
+      prevVar.qty += qty;
+      prevVar.sum += qty * cost;
+      variationIncoming.set(vKey, prevVar);
+    }
+  }
+
+  const productIds = Array.from(productIncoming.keys());
+  if (productIds.length === 0) return;
+
+  // Current product costs
+  const { data: products } = await supabase
+    .from('products')
+    .select('id, cost_price')
+    .in('id', productIds);
+  const productCostById = new Map<string, number>((products || []).map((p: any) => [String(p.id), Number(p.cost_price) || 0]));
+
+  // Current variation costs (schema tolerant)
+  const variationIds = Array.from(variationIncoming.keys());
+  const variationCostById = new Map<string, number>();
+  if (variationIds.length > 0) {
+    let variationRows: any[] = [];
+    const full = await supabase.from('product_variations').select('id, product_id, purchase_price, cost_price').in('id', variationIds);
+    if (!full.error && full.data) {
+      variationRows = full.data as any[];
+    } else if (isMissingColumnError(full.error)) {
+      const fallback = await supabase.from('product_variations').select('id, product_id, cost_price').in('id', variationIds);
+      if (!fallback.error && fallback.data) {
+        variationRows = fallback.data as any[];
+      } else {
+        const minimal = await supabase.from('product_variations').select('id, product_id').in('id', variationIds);
+        variationRows = (minimal.data as any[]) || [];
+      }
+    }
+    for (const row of variationRows) {
+      const c = Number((row as any).purchase_price ?? (row as any).cost_price) || 0;
+      variationCostById.set(String((row as any).id), c);
+    }
+  }
+
+  // Stock snapshot excluding current purchase rows so weighted math is deterministic.
+  let stockQuery = supabase
+    .from('stock_movements')
+    .select('product_id, variation_id, quantity, reference_type, reference_id')
+    .eq('company_id', companyId)
+    .in('product_id', productIds);
+  if (branchId && branchId !== 'all') stockQuery = stockQuery.eq('branch_id', branchId);
+  const { data: stockRows } = await stockQuery;
+  const stockByProduct = new Map<string, number>();
+  const stockByVariation = new Map<string, number>();
+  for (const row of stockRows || []) {
+    const refType = String((row as any).reference_type || '');
+    const refId = String((row as any).reference_id || '');
+    if (purchaseId && refType === 'purchase' && refId === purchaseId) continue;
+    const q = Number((row as any).quantity) || 0;
+    const pId = String((row as any).product_id || '');
+    const vId = (row as any).variation_id ? String((row as any).variation_id) : '';
+    if (!pId) continue;
+    if (vId) stockByVariation.set(vId, (stockByVariation.get(vId) || 0) + q);
+    stockByProduct.set(pId, (stockByProduct.get(pId) || 0) + q);
+  }
+
+  // Update variation weighted costs first
+  for (const [variationId, incoming] of variationIncoming) {
+    const currentQty = Math.max(0, stockByVariation.get(variationId) || 0);
+    const currentCost = variationCostById.get(variationId) || 0;
+    const incomingCost = incoming.sum / Math.max(1, incoming.qty);
+    const next = computeWeightedCost(currentQty, currentCost, incoming.qty, incomingCost);
+    if (next <= 0) continue;
+    const upFull = await supabase
+      .from('product_variations')
+      .update({ purchase_price: next, cost_price: next })
+      .eq('id', variationId);
+    if (upFull.error && isMissingColumnError(upFull.error)) {
+      const upCost = await supabase.from('product_variations').update({ cost_price: next }).eq('id', variationId);
+      if (upCost.error && isMissingColumnError(upCost.error)) {
+        await supabase.from('product_variations').update({ purchase_price: next }).eq('id', variationId);
+      }
+    }
+  }
+
+  // Update parent product weighted costs
+  for (const [productId, incoming] of productIncoming) {
+    const currentQty = Math.max(0, stockByProduct.get(productId) || 0);
+    const currentCost = productCostById.get(productId) || 0;
+    const incomingCost = incoming.sum / Math.max(1, incoming.qty);
+    const next = computeWeightedCost(currentQty, currentCost, incoming.qty, incomingCost);
+    if (next <= 0) continue;
+    await supabase.from('products').update({ cost_price: next, updated_at: new Date().toISOString() }).eq('id', productId);
+  }
+}
+
 export const purchaseService = {
   // Create purchase with items and optional per-line charges (for line-by-line ledger)
   async createPurchase(
@@ -280,6 +424,18 @@ export const purchaseService = {
       await supabase.from('purchases').delete().eq('id', purchaseData.id);
       throw itemsError;
     }
+
+    await applyWeightedCostRollup({
+      companyId: String((purchaseData as any).company_id || purchase.company_id),
+      branchId: (purchaseData as any).branch_id ?? purchase.branch_id ?? null,
+      purchaseId: String((purchaseData as any).id || ''),
+      items: items.map((item) => ({
+        product_id: String(item.product_id),
+        variation_id: item.variation_id ?? null,
+        quantity: Number(item.quantity) || 0,
+        unit_price: Number(item.unit_price) || 0,
+      })),
+    });
 
     // Insert purchase_charges (one row per extra expense / discount) for line-by-line accounting
     if (charges && charges.length > 0) {
@@ -909,6 +1065,15 @@ export const purchaseService = {
       });
     }
     return data;
+  },
+
+  async recomputeWeightedCostsForItems(args: {
+    companyId: string;
+    branchId?: string | null;
+    purchaseId?: string;
+    items: Array<{ product_id: string; variation_id?: string | null; quantity: number; unit_price: number }>;
+  }) {
+    await applyWeightedCostRollup(args);
   },
 
   // Delete purchase with complete cascade delete

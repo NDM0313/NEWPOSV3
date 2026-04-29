@@ -1014,17 +1014,21 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
                 console.log('[PURCHASE CONTEXT] ✅ Verification passed: Items count matches expected count');
               }
             }
-            // STEP 5: Auto-update product cost_price from latest purchase price
-            for (const item of itemsWithPurchaseId as any[]) {
-              const unitPrice = Number(item.unit_price) || 0;
-              if (unitPrice > 0 && item.product_id) {
-                await supabase.from('products').update({ cost_price: unitPrice, updated_at: new Date().toISOString() }).eq('id', item.product_id);
-                if (item.variation_id) {
-                  await supabase.from('product_variations').update({ cost_price: unitPrice }).eq('id', item.variation_id);
-                }
-              }
+            // STEP 5: Weighted-average cost rollup (parent + variation), shared with purchase service create flow
+            if (companyId) {
+              await purchaseService.recomputeWeightedCostsForItems({
+                companyId,
+                branchId: (supabaseUpdates as any).branch_id || branchId || null,
+                purchaseId: id,
+                items: (itemsWithPurchaseId as any[]).map((item) => ({
+                  product_id: String(item.product_id),
+                  variation_id: item.variation_id || null,
+                  quantity: Number(item.quantity) || 0,
+                  unit_price: Number(item.unit_price) || 0,
+                })),
+              });
+              console.log('[PURCHASE CONTEXT] ✅ Weighted product/variation costs recomputed');
             }
-            console.log('[PURCHASE CONTEXT] ✅ Product cost_price updated from purchase prices');
           } else {
             console.log('[PURCHASE CONTEXT] ⚠️ No items to insert (purchaseItems.length = 0) - purchase will have 0 items');
           }

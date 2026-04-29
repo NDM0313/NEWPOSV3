@@ -458,4 +458,110 @@ export const settingsService = {
     await this.setDocumentSequence(companyId, branchId, documentType, sequence.prefix, nextNumber, padding);
     return `${sequence.prefix}${String(nextNumber).padStart(padding, '0')}`;
   },
+
+  /**
+   * Idempotent bootstrap guard for newly created companies.
+   * Creates missing-only defaults so onboarding never stays in partial state.
+   */
+  async ensureCompanyBootstrapDefaults(
+    companyId: string,
+    options?: {
+      modules?: string[];
+      defaultTaxRate?: number;
+      taxMode?: 'Inclusive' | 'Exclusive';
+      costingMethod?: 'FIFO' | 'Weighted Average';
+    }
+  ): Promise<void> {
+    const moduleList = options?.modules && options.modules.length
+      ? options.modules
+      : ['sales', 'purchases', 'accounting', 'reports'];
+
+    for (const moduleName of moduleList) {
+      if (!moduleName) continue;
+      await this.setModuleEnabled(companyId, moduleName, true).catch(() => undefined);
+    }
+
+    const accounting = await this.getSetting(companyId, 'accounting_settings').catch(() => null);
+    if (!accounting?.value) {
+      await this.setSetting(
+        companyId,
+        'accounting_settings',
+        {
+          taxCalculationMethod: options?.taxMode || 'Inclusive',
+          defaultTaxRate: Number.isFinite(Number(options?.defaultTaxRate)) ? Number(options?.defaultTaxRate) : 0,
+          manualJournalEnabled: true,
+          defaultCurrency: 'PKR',
+          multiCurrencyEnabled: false,
+        },
+        'accounting',
+        'Auto-seeded by ensureCompanyBootstrapDefaults'
+      ).catch(() => undefined);
+    }
+
+    const defaults = await this.getSetting(companyId, 'default_accounts').catch(() => null);
+    if (!defaults?.value) {
+      await this.setSetting(
+        companyId,
+        'default_accounts',
+        {
+          paymentMethods: [
+            { id: 'cash', method: 'Cash', enabled: true, defaultAccount: 'Cash' },
+            { id: 'bank', method: 'Bank', enabled: true, defaultAccount: 'Bank' },
+            { id: 'wallet', method: 'Mobile Wallet', enabled: true, defaultAccount: 'Mobile Wallet' },
+          ],
+        },
+        'accounts',
+        'Auto-seeded by ensureCompanyBootstrapDefaults'
+      ).catch(() => undefined);
+    }
+
+    const inv = await this.getSetting(companyId, 'inventory_settings').catch(() => null);
+    if (!inv?.value) {
+      await this.setSetting(
+        companyId,
+        'inventory_settings',
+        {
+          negativeStockAllowed: false,
+          valuationMethod: options?.costingMethod || 'FIFO',
+          defaultUnitId: null,
+        },
+        'inventory',
+        'Auto-seeded by ensureCompanyBootstrapDefaults'
+      ).catch(() => undefined);
+    }
+
+    const numberingDefaults: Array<{ type: string; prefix: string }> = [
+      { type: 'sale', prefix: 'SL-' },
+      { type: 'purchase', prefix: 'PUR-' },
+      { type: 'rental', prefix: 'RNT-' },
+      { type: 'expense', prefix: 'EXP-' },
+      { type: 'product', prefix: 'PRD-' },
+      { type: 'studio', prefix: 'STD-' },
+      { type: 'pos', prefix: 'POS-' },
+      { type: 'payment', prefix: 'PAY-' },
+      { type: 'job', prefix: 'JOB-' },
+      { type: 'journal', prefix: 'JV-' },
+    ];
+    for (const row of numberingDefaults) {
+      const existing = await this.getDocumentSequence(companyId, undefined, row.type).catch(() => null);
+      if (!existing) {
+        await this.setDocumentSequence(companyId, undefined, row.type, row.prefix, 0, 4).catch(() => undefined);
+      }
+    }
+
+    const { data: categories } = await supabase
+      .from('product_categories')
+      .select('id')
+      .eq('company_id', companyId)
+      .limit(1);
+    if (!categories || categories.length === 0) {
+      const now = new Date().toISOString();
+      await supabase.from('product_categories').insert([
+        { company_id: companyId, name: 'General', parent_id: null, description: 'Auto default', is_active: true, updated_at: now },
+        { company_id: companyId, name: 'Raw Material', parent_id: null, description: 'Auto default', is_active: true, updated_at: now },
+        { company_id: companyId, name: 'Finished Goods', parent_id: null, description: 'Auto default', is_active: true, updated_at: now },
+        { company_id: companyId, name: 'Services', parent_id: null, description: 'Auto default', is_active: true, updated_at: now },
+      ]).catch(() => undefined);
+    }
+  },
 };

@@ -36,6 +36,7 @@ import {
   ShieldAlert,
   ExternalLink,
   Undo2,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -69,6 +70,11 @@ import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { accountService } from '@/app/services/accountService';
 import { contactService } from '@/app/services/contactService';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
+import {
+  DATA_INVALIDATED_EVENT,
+  type DataInvalidationDetail,
+  shouldAcceptInvalidation,
+} from '@/app/lib/dataInvalidationBus';
 import { toast } from 'sonner';
 import { getControlAccountKind } from '@/app/lib/accountControlKind';
 import { AccountsHierarchyList } from '@/app/components/accounting/AccountsHierarchyList';
@@ -154,6 +160,37 @@ const REF_TYPE_COLORS: Record<string, string> = {
 
 function refTypeBadgeLabel(rt: string): string {
   return rt.replace(/_/g, ' ').replace(/opening balance /g, 'OB ');
+}
+
+function normalizeSearchValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  return String(value).trim().toLowerCase();
+}
+
+function buildJournalSearchHaystack(entry: AccountingEntry): string {
+  const meta = (entry.metadata || {}) as Record<string, unknown>;
+  const tokens = [
+    entry.id,
+    entry.referenceNo,
+    entry.description,
+    entry.module,
+    entry.debitAccount,
+    entry.creditAccount,
+    entry.createdBy,
+    entry.source,
+    meta.referenceType,
+    meta.rootReferenceType,
+    meta.referenceId,
+    meta.reference_id,
+    meta.paymentId,
+    meta.paymentMethod,
+    meta.documentNo,
+    meta.sourceModule,
+  ];
+  return tokens
+    .map((part) => normalizeSearchValue(part))
+    .filter(Boolean)
+    .join(' ');
 }
 
 /** Journal list: line amount is stored positive; classify by module/source (sign-based Income/Expense was wrong for all rows). */
@@ -603,18 +640,41 @@ export const AccountingDashboard = () => {
   const [partyGlEpoch, setPartyGlEpoch] = useState(0);
 
   useEffect(() => {
-    const bump = () => setPartyGlEpoch((n) => n + 1);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const bump = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        setPartyGlEpoch((n) => n + 1);
+      }, 180);
+    };
+    const onInvalidated = (ev: Event) => {
+      const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      if (
+        !shouldAcceptInvalidation(detail, {
+          domain: ['accounting', 'contacts', 'sales', 'purchases'],
+          companyId,
+          branchId: branchId === 'all' ? null : branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      bump();
+    };
     window.addEventListener('accountingEntriesChanged', bump);
     window.addEventListener('paymentAdded', bump);
     window.addEventListener('ledgerUpdated', bump);
     window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
+    window.addEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
     return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener('accountingEntriesChanged', bump);
       window.removeEventListener('paymentAdded', bump);
       window.removeEventListener('ledgerUpdated', bump);
       window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, bump);
+      window.removeEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
     };
-  }, []);
+  }, [branchId, companyId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -780,29 +840,7 @@ export const AccountingDashboard = () => {
   const filteredTransactions = useMemo(() => {
     let filtered = transactions;
 
-    // Search filter
-    if (searchTerm) {
-      const search = searchTerm.toLowerCase();
-      const meta = (txn: (typeof transactions)[0]) => (txn.metadata || {}) as Record<string, unknown>;
-      filtered = filtered.filter((txn) => {
-        const m = meta(txn);
-        const refId = String(m.referenceId ?? m.reference_id ?? '').toLowerCase();
-        const payId = String(m.paymentId ?? '').toLowerCase();
-        return (
-          String(txn.id || '').toLowerCase().includes(search) ||
-          txn.referenceNo.toLowerCase().includes(search) ||
-          txn.description.toLowerCase().includes(search) ||
-          txn.module.toLowerCase().includes(search) ||
-          txn.debitAccount.toLowerCase().includes(search) ||
-          txn.creditAccount.toLowerCase().includes(search) ||
-          txn.createdBy.toLowerCase().includes(search) ||
-          (refId && refId.includes(search)) ||
-          (payId && payId.includes(search))
-        );
-      });
-    }
-
-    // Type filter — supports both source-based and reference_type-based filtering
+    // Type filter — supports both source-based and reference_type-based filtering.
     if (typeFilter !== 'all') {
       filtered = filtered.filter(txn => {
         const ref = ((txn.metadata as any)?.referenceType || '').toLowerCase();
@@ -818,6 +856,12 @@ export const AccountingDashboard = () => {
         if (typeFilter === 'adjustment') return ref.includes('adjustment');
         return true;
       });
+    }
+
+    // Multi-field search filter.
+    const normalizedSearch = normalizeSearchValue(searchTerm);
+    if (normalizedSearch) {
+      filtered = filtered.filter((txn) => buildJournalSearchHaystack(txn).includes(normalizedSearch));
     }
 
     return filtered;
@@ -1066,8 +1110,8 @@ export const AccountingDashboard = () => {
         <p className="text-[11px] text-gray-600 mt-3 max-w-6xl leading-relaxed">
           <span className="font-medium text-gray-500">Semantics map — </span>
           These cards are <span className="text-gray-400">GL journal–derived</span> (revenue/expense accounts and AR/AP control legs). Operational follow-up uses the{' '}
-          <span className="text-gray-400">Receivables / Payables</span> tabs (document due: <code className="text-gray-500">sales.due</code> / <code className="text-gray-500">purchases.due</code>). Party operational roll-up (Contacts, executive dashboard AR/AP after migration 20260370) comes from{' '}
-          <code className="text-gray-500">get_contact_balances_summary</code>. Compare numbers only within the same source.
+          <span className="text-gray-400">Receivables / Payables</span> tabs (document due: <code className="text-gray-500">sales.due</code> / <code className="text-gray-500">purchases.due</code>). Contacts and AR/AP roll-up are GL-based from{' '}
+          <code className="text-gray-500">get_contact_party_gl_balances</code> (same chart/journal source).
         </p>
       </div>
 
@@ -1165,6 +1209,32 @@ export const AccountingDashboard = () => {
               </div>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[260px] max-w-[680px]">
+                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by reference, description, account, model/type, module..."
+                  className="pl-9 pr-10 h-9 bg-gray-900/70 border-gray-700 text-sm text-gray-100 placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-blue-500/50"
+                />
+                {searchTerm.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:text-gray-200 hover:bg-gray-800/80"
+                    aria-label="Clear journal search"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                ) : null}
+              </div>
+              <Badge variant="outline" className="text-xs text-gray-300 border-gray-700">
+                {listForPagination.length} result{listForPagination.length === 1 ? '' : 's'}
+              </Badge>
+            </div>
+
             {/* Filter pills by transaction type */}
             <div className="flex flex-wrap gap-1.5">
               {[
@@ -1201,8 +1271,19 @@ export const AccountingDashboard = () => {
               {filteredTransactions.length === 0 ? (
                 <div className="text-center py-12">
                   <FileText size={48} className="mx-auto text-gray-600 mb-3" />
-                  <p className="text-gray-400 text-sm font-medium">No journal entries yet</p>
-                  <p className="text-gray-500 text-xs mt-1">Create a sale, record a payment, or add an entry to see transactions here.</p>
+                  {searchTerm.trim() || typeFilter !== 'all' ? (
+                    <>
+                      <p className="text-gray-400 text-sm font-medium">No journal entries match your filters</p>
+                      <p className="text-gray-500 text-xs mt-1">
+                        Try a different keyword, clear search, or switch transaction type.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-gray-400 text-sm font-medium">No journal entries yet</p>
+                      <p className="text-gray-500 text-xs mt-1">Create a sale, record a payment, or add an entry to see transactions here.</p>
+                    </>
+                  )}
                 </div>
               ) : (
                 <>

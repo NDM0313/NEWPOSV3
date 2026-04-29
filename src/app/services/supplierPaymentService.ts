@@ -86,6 +86,9 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
       .single();
     if ((purchaseRow as any)?.supplier_id) resolvedContactId = (purchaseRow as any).supplier_id;
   }
+  if (!resolvedContactId) {
+    throw new Error('Supplier payment requires a linked supplier contact (contact_id) for AR/AP accountability.');
+  }
 
   const validBranchId = (branchId && branchId !== 'all') ? branchId : null;
   const enumPaymentMethod = normalizePaymentMethod(paymentMethod);

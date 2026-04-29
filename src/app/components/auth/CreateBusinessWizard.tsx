@@ -225,6 +225,13 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
         timezone: formData.timezone || undefined,
         businessType: formData.businessType,
         modules: formData.modules,
+        accountingMethod: formData.accountingMethod,
+        taxMode: formData.taxMode,
+        defaultTaxRate: formData.defaultTaxRate,
+        costingMethod: formData.costingMethod as 'FIFO' | 'Weighted Average',
+        allowNegativeStock: formData.allowNegativeStock,
+        defaultUnit: formData.defaultUnit,
+        baseUnits: formData.baseUnits,
       });
       if (!result.success) throw new Error(result.error || 'Failed to create business');
       onSuccess(formData.email, formData.password);

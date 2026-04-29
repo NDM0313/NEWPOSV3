@@ -111,9 +111,18 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const fetchingRef = useRef<Set<string>>(new Set());
   const fetchedRef = useRef<Set<string>>(new Set());
   const lastFetchedUserIdRef = useRef<string | null>(null);
+  const lastProfileRequestAtRef = useRef<Map<string, number>>(new Map());
   /** Production: ignore logout (session=null) for this many ms after sign-in – GoTrue can emit SIGNED_OUT on SecurityError. */
   /** Log storage/security retry only once per userId to avoid 15–20 console messages. */
   const storageErrorLoggedRef = useRef<Set<string>>(new Set());
+
+  const requestUserProfileLoad = (userId: string) => {
+    const now = Date.now();
+    const lastAt = lastProfileRequestAtRef.current.get(userId) ?? 0;
+    if (now - lastAt < 1500) return;
+    lastProfileRequestAtRef.current.set(userId, now);
+    fetchUserData(userId, false, 0);
+  };
 
   // Initialize user session. Retry getSession on 502/5xx so transient gateway errors don't immediately show login.
   const attemptSessionLoad = async (attempt = 0): Promise<void> => {
@@ -138,7 +147,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
       }
       if (session?.user) {
-        fetchUserData(session.user.id, false, 0);
+        requestUserProfileLoad(session.user.id);
       }
       setLoading(false);
     } catch (e: any) {
@@ -180,7 +189,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (current?.user) {
             setSession(current);
             setUser(current.user);
-            fetchUserData(current.user.id, false, 0);
+            requestUserProfileLoad(current.user.id);
             return;
           }
         } catch {
@@ -205,7 +214,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           fetchingRef.current.clear();
           fetchedRef.current.clear();
         }
-        fetchUserData(newUser.id, false, 0);
+        requestUserProfileLoad(newUser.id);
       }
       } catch {
         setLoading(false);
@@ -543,6 +552,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       loadEnablePacking(companyId);
       settingsService.ensureDefaultInventorySettings(companyId).catch(() => {
         /* RLS or missing settings table — getAllowNegativeStock still defaults to false */
+      });
+      settingsService.ensureCompanyBootstrapDefaults(companyId).catch(() => {
+        /* best-effort self-heal for partially seeded companies */
       });
     } else setEnablePackingState(false);
   }, [companyId]);

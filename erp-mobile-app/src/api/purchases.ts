@@ -28,16 +28,25 @@ export interface CreatePurchaseInput {
   shippingCost: number;
   total: number;
   notes?: string;
+  attachments?: { url: string; name: string }[];
   userId: string;
 }
 
 /**
- * Get next PO number from server – ATOMIC, same engine as Web (Settings → Numbering Rules).
- * Uses generate_document_number via getNextDocumentNumber. Never generate locally.
+ * Get next purchase number from server (company-level global sequence).
+ * Uses same global allocator as web PurchaseContext (PDR/POR/PUR by status).
  */
-async function getNextPONumber(companyId: string, branchId: string): Promise<string> {
-  const { getNextDocumentNumber } = await import('./documentNumber');
-  return getNextDocumentNumber(companyId, branchId, 'purchase');
+async function getNextPONumber(companyId: string, status: PurchaseStatus): Promise<string> {
+  const code: 'PDR' | 'POR' | 'PUR' =
+    status === 'ordered' ? 'POR' : status === 'draft' ? 'PDR' : 'PUR';
+  const { data, error } = await supabase.rpc('get_next_document_number_global', {
+    p_company_id: companyId,
+    p_type: code,
+  });
+  if (error || typeof data !== 'string' || !data) {
+    throw new Error(error?.message || 'Failed to get purchase document number');
+  }
+  return data;
 }
 
 export async function createPurchase(
@@ -60,6 +69,7 @@ export async function createPurchase(
     shippingCost,
     total,
     notes,
+    attachments,
     userId,
     status = 'ordered',
     paidAmount = 0,
@@ -76,7 +86,7 @@ export async function createPurchase(
 
   let poNo: string;
   try {
-    poNo = await getNextPONumber(companyId, branchId);
+    poNo = await getNextPONumber(companyId, status);
   } catch (err) {
     return { data: null, error: (err as Error).message ?? 'Failed to get PO number' };
   }
@@ -88,7 +98,9 @@ export async function createPurchase(
   const purchaseRow = {
     company_id: companyId,
     branch_id: branchId,
-    po_no: poNo,
+    po_no: status === 'ordered' || status === 'draft' ? null : poNo,
+    order_no: status === 'ordered' ? poNo : null,
+    draft_no: status === 'draft' ? poNo : null,
     po_date: new Date().toISOString(),
     supplier_id: supplierId || null,
     supplier_name: supplierName || 'Unknown',
@@ -103,6 +115,7 @@ export async function createPurchase(
     paid_amount: paid,
     due_amount: due,
     notes: notes || null,
+    attachments: Array.isArray(attachments) && attachments.length > 0 ? attachments : null,
     created_by: userId,
   };
 
@@ -139,6 +152,19 @@ export async function createPurchase(
   if (itemsError) {
     await supabase.from('purchases').delete().eq('id', purchaseId);
     return { data: null, error: `Failed to save items: ${itemsError.message}` };
+  }
+
+  // Keep mobile discount posting behavior in parity with web by writing discount to purchase_charges.
+  if ((Number(discountAmount) || 0) > 0) {
+    const { error: discountChargeError } = await supabase.from('purchase_charges').insert({
+      purchase_id: purchaseId,
+      charge_type: 'discount',
+      amount: Number(discountAmount) || 0,
+      created_by: userId,
+    });
+    if (discountChargeError) {
+      console.warn('[PURCHASES API] discount purchase_charge insert failed:', discountChargeError);
+    }
   }
 
   // Accounting: post journal entry for the purchase (Dr Inventory/Tax,
@@ -379,6 +405,7 @@ export interface PurchaseDetail {
   notes?: string | null;
   paymentMethod?: string | null;
   supplierId?: string | null;
+  attachments?: { url: string; name: string }[] | null;
 }
 
 export async function getPurchaseById(
@@ -388,7 +415,7 @@ export async function getPurchaseById(
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const { data: purchase, error: purchaseError } = await supabase
     .from('purchases')
-    .select('id, po_no, supplier_id, supplier_name, contact_number, branch_id, subtotal, discount_amount, tax_amount, shipping_cost, total, paid_amount, due_amount, status, payment_status, po_date, notes, payment_method')
+    .select('id, po_no, order_no, draft_no, supplier_id, supplier_name, contact_number, branch_id, subtotal, discount_amount, tax_amount, shipping_cost, total, paid_amount, due_amount, status, payment_status, po_date, notes, payment_method, attachments')
     .eq('id', purchaseId)
     .eq('company_id', companyId)
     .single();
@@ -406,7 +433,7 @@ export async function getPurchaseById(
   return {
     data: {
       id: p.id as string,
-      poNo: (p.po_no as string) || '—',
+      poNo: ((p.po_no as string) || (p.order_no as string) || (p.draft_no as string) || '—'),
       vendor: (p.supplier_name as string) || '—',
       vendorPhone: (p.contact_number as string) || '—',
       items: (items || []).map((i: Record<string, unknown>) => {
@@ -441,6 +468,11 @@ export async function getPurchaseById(
       notes: (p.notes as string) ?? null,
       paymentMethod: (p.payment_method as string) ?? null,
       supplierId: (p.supplier_id as string) ?? null,
+      attachments: Array.isArray(p.attachments)
+        ? (p.attachments as { url?: string; name?: string }[])
+            .map((a) => ({ url: String(a?.url ?? ''), name: String(a?.name ?? 'Attachment') }))
+            .filter((a) => a.url)
+        : null,
     },
     error: null,
   };
@@ -494,6 +526,26 @@ export async function updatePurchaseWithItems(params: {
   if (error) return { error: error.message };
   const row = data as { success?: boolean; error?: string } | null;
   if (row && row.success === false) return { error: row.error || 'Update failed' };
+  // Keep mobile + web discount posting parity on edit as well.
+  const { error: delDiscountErr } = await supabase
+    .from('purchase_charges')
+    .delete()
+    .eq('purchase_id', params.purchaseId)
+    .eq('charge_type', 'discount');
+  if (delDiscountErr) {
+    console.warn('[PURCHASES API] discount charge delete failed:', delDiscountErr);
+  }
+  if ((Number(params.discountAmount) || 0) > 0) {
+    const { error: insDiscountErr } = await supabase.from('purchase_charges').insert({
+      purchase_id: params.purchaseId,
+      charge_type: 'discount',
+      amount: Number(params.discountAmount) || 0,
+      created_by: params.userId,
+    });
+    if (insDiscountErr) {
+      console.warn('[PURCHASES API] discount charge upsert failed:', insDiscountErr);
+    }
+  }
   return { error: null };
 }
 
@@ -523,11 +575,20 @@ export async function getPurchasePayments(purchaseId: string): Promise<{
   const list: PurchasePaymentRow[] = (data || []).map((p: Record<string, unknown>) => {
     let attachments: { url: string; name: string }[] | undefined;
     const raw = p.attachments;
-    if (Array.isArray(raw) && raw.length > 0) {
-      attachments = raw.map((a: unknown) => {
+    const normalizeAttachments = (arr: unknown[]) =>
+      arr.map((a: unknown) => {
         const o = a as Record<string, unknown>;
         return { url: String(o?.url ?? ''), name: String(o?.name ?? 'Attachment') };
       }).filter((a) => a.url);
+    if (Array.isArray(raw) && raw.length > 0) {
+      attachments = normalizeAttachments(raw);
+    } else if (typeof raw === 'string' && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) attachments = normalizeAttachments(parsed);
+      } catch {
+        // ignore malformed legacy string
+      }
     }
     return {
       id: String(p.id ?? ''),

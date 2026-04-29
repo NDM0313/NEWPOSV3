@@ -136,6 +136,12 @@ export async function postPurchaseDocumentAccounting(purchaseId: string): Promis
     .select('charge_type, amount')
     .eq('purchase_id', purchaseId);
   const charges = (chargeRows || []) as { charge_type?: string; amount?: number }[];
+  const headerDiscount = Number((p as { discount_amount?: number }).discount_amount ?? 0) || 0;
+  const hasDiscountCharge = charges.some((c) => String(c?.charge_type || '').toLowerCase() === 'discount');
+  if (headerDiscount > 0 && !hasDiscountCharge) {
+    // Defensive fallback for legacy/mobile rows where header discount exists but purchase_charges row was missing.
+    charges.push({ charge_type: 'discount', amount: headerDiscount });
+  }
 
   return createPurchaseJournalEntry({
     purchaseId,

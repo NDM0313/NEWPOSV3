@@ -481,6 +481,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
   /** In-flight guard: prevent overlapping loadAllSettings (avoids "Timer 'loadAllSettings' already exists"). */
   const loadAllSettingsInProgressRef = useRef(false);
+  const lastLoadKeyRef = useRef<string | null>(null);
+  const lastLoadAtRef = useRef(0);
 
   // ============================================
   // 🎯 LOAD SETTINGS FROM DATABASE
@@ -488,7 +490,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
   const loadAllSettings = useCallback(async () => {
     if (loadAllSettingsInProgressRef.current) return;
+    const loadKey = `${companyId ?? 'none'}:${branchId ?? 'none'}:${user?.id ?? 'none'}`;
+    const now = Date.now();
+    if (lastLoadKeyRef.current === loadKey && now - lastLoadAtRef.current < 1500) return;
     loadAllSettingsInProgressRef.current = true;
+    lastLoadKeyRef.current = loadKey;
+    lastLoadAtRef.current = now;
     if (import.meta.env?.DEV) console.log('[PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false');
     if (!companyId) {
       setLoading(false);

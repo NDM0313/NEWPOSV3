@@ -289,6 +289,8 @@ export const inventoryService = {
     const variationPieceMap: Record<string, number> = {};
     /** Quantity-weighted unit_cost from movements (when product_variations row has no cost yet). */
     const variationCostWeighted: Record<string, { sum: number; q: number }> = {};
+    /** Quantity-weighted unit_cost from non-variation movements for parent product fallback cost. */
+    const productCostWeighted: Record<string, { sum: number; q: number }> = {};
 
     const canProcessMovements =
       Array.isArray(movRows) && (!movementsError || isMissingColumnError(movementsError));
@@ -312,6 +314,10 @@ export const inventoryService = {
           if (!variationCostWeighted[variationId]) variationCostWeighted[variationId] = { sum: 0, q: 0 };
           variationCostWeighted[variationId].sum += uc * absQ;
           variationCostWeighted[variationId].q += absQ;
+        } else if (!variationId && Number.isFinite(uc) && uc > 0 && absQ > 0) {
+          if (!productCostWeighted[productId]) productCostWeighted[productId] = { sum: 0, q: 0 };
+          productCostWeighted[productId].sum += uc * absQ;
+          productCostWeighted[productId].q += absQ;
         }
 
         if (variationId) {
@@ -371,7 +377,41 @@ export const inventoryService = {
       }
 
       const minStock = Number(p.min_stock) ?? 0;
-      const avgCost = Number(p.cost_price) ?? 0;
+      const storedCost = Number(p.cost_price) || 0;
+      let avgCost = storedCost;
+      if (!(avgCost > 0)) {
+        const parentWeighted = productCostWeighted[p.id];
+        if (parentWeighted && parentWeighted.q > 0) {
+          avgCost = Math.round((parentWeighted.sum / parentWeighted.q) * 10000) / 10000;
+        } else if (hasVariations && (variationMap[p.id] || []).length > 0) {
+          const variationRows = (variationMap[p.id] || [])
+            .map((v: any) => {
+              const ownPurchase = variationPurchaseFromApiRow(v as Record<string, unknown>);
+              const ownCost = Number(v?.cost_price) || 0;
+              const wc = variationCostWeighted[v.id];
+              const movementCost = wc && wc.q > 0 ? (wc.sum / wc.q) : 0;
+              const resolvedCost =
+                ownPurchase && ownPurchase > 0
+                  ? ownPurchase
+                  : ownCost > 0
+                    ? ownCost
+                    : movementCost > 0
+                      ? movementCost
+                      : 0;
+              return {
+                qty: Math.max(0, variationStockMap[v.id] ?? 0),
+                cost: resolvedCost,
+              };
+            })
+            .filter((r) => r.cost > 0);
+          const weightedQty = variationRows.reduce((sum, r) => sum + r.qty, 0);
+          if (weightedQty > 0) {
+            avgCost = Math.round((variationRows.reduce((sum, r) => sum + (r.qty * r.cost), 0) / weightedQty) * 10000) / 10000;
+          } else if (variationRows.length > 0) {
+            avgCost = Math.round((variationRows.reduce((sum, r) => sum + r.cost, 0) / variationRows.length) * 10000) / 10000;
+          }
+        }
+      }
       const sellingPrice = Number(p.retail_price) ?? 0;
       const stockValue = totalStock * avgCost;
 

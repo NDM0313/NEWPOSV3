@@ -57,7 +57,7 @@ function safeBranchForRpc(branchId: string | null | undefined): string | null {
   return UUID_RE.test(branchId.trim()) ? branchId.trim() : null;
 }
 
-/** Sum receivables and payables across all contacts from operational RPC (same as Contacts list source). */
+/** Sum receivables and payables across all contacts from GL-backed contact service map. */
 async function sumOperationalFromRpc(companyId: string, branchId: string | null | undefined): Promise<{
   receivables: number;
   payables: number;
@@ -159,9 +159,9 @@ export async function getCompanyReconciliationSnapshot(
     varianceSupplierPayablesVsAp: varSupVsAp,
     unmappedArJournalCount: unmappedAr,
     unmappedApJournalCount: unmappedAp,
-    confidence: 'pending_journal_mapping',
+    confidence: 'company_control_only',
     message:
-      'Per-contact GL-aligned balances require party linkage on journal lines (planned). Shown: company operational totals vs control accounts + unmapped journal heuristic. Mixed payables include workers — compare supplier-only operational to AP 2000; worker payables belong to WP 2010 / party GL.',
+      'GL-only mode: contact totals are derived from party GL mapping. Compare supplier payables to AP 2000 and worker payables to WP 2010; use unmapped journal counters to fix linkage gaps.',
   };
 }
 

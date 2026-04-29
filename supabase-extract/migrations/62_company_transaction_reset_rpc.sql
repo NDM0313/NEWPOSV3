@@ -29,8 +29,14 @@ DECLARE
   v_counts JSONB := '{}'::JSONB;
   v_contacts BIGINT := 0;
   v_products BIGINT := 0;
-  v_payment_allocations BIGINT := 0;
-  v_expense_items BIGINT := 0;
+  v_payments BIGINT := 0;
+  v_expenses BIGINT := 0;
+  v_journal_entries BIGINT := 0;
+  v_sales BIGINT := 0;
+  v_purchases BIGINT := 0;
+  v_rentals BIGINT := 0;
+  v_stock_movements BIGINT := 0;
+  v_activity_logs BIGINT := 0;
 BEGIN
   IF p_company_id IS NULL THEN
     RETURN jsonb_build_object('success', FALSE, 'error', 'company_id is required');
@@ -38,46 +44,24 @@ BEGIN
 
   SELECT COUNT(*) INTO v_contacts FROM contacts WHERE company_id = p_company_id;
   SELECT COUNT(*) INTO v_products FROM products WHERE company_id = p_company_id;
-
-  IF to_regclass('public.payment_allocations') IS NOT NULL THEN
-    EXECUTE 'SELECT COUNT(*) FROM payment_allocations WHERE company_id = $1'
-      INTO v_payment_allocations
-      USING p_company_id;
-  END IF;
-
-  IF to_regclass('public.expense_items') IS NOT NULL THEN
-    EXECUTE 'SELECT COUNT(*) FROM expense_items WHERE expense_id IN (SELECT id FROM expenses WHERE company_id = $1)'
-      INTO v_expense_items
-      USING p_company_id;
-  END IF;
+  SELECT COUNT(*) INTO v_sales FROM sales WHERE company_id = p_company_id;
+  SELECT COUNT(*) INTO v_purchases FROM purchases WHERE company_id = p_company_id;
+  SELECT COUNT(*) INTO v_rentals FROM rentals WHERE company_id = p_company_id;
+  SELECT COUNT(*) INTO v_payments FROM payments WHERE company_id = p_company_id;
+  SELECT COUNT(*) INTO v_expenses FROM expenses WHERE company_id = p_company_id;
+  SELECT COUNT(*) INTO v_journal_entries FROM journal_entries WHERE company_id = p_company_id;
+  SELECT COUNT(*) INTO v_stock_movements FROM stock_movements WHERE company_id = p_company_id;
+  SELECT COUNT(*) INTO v_activity_logs FROM activity_logs WHERE company_id = p_company_id;
 
   v_counts := v_counts
-    || jsonb_build_object('sales', (SELECT COUNT(*) FROM sales WHERE company_id = p_company_id))
-    || jsonb_build_object('sale_items', (SELECT COUNT(*) FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE company_id = p_company_id)))
-    || jsonb_build_object('sale_returns', (SELECT COUNT(*) FROM sale_returns WHERE company_id = p_company_id))
-    || jsonb_build_object('sale_return_items', (SELECT COUNT(*) FROM sale_return_items WHERE sale_return_id IN (SELECT id FROM sale_returns WHERE company_id = p_company_id)))
-    || jsonb_build_object('purchases', (SELECT COUNT(*) FROM purchases WHERE company_id = p_company_id))
-    || jsonb_build_object('purchase_items', (SELECT COUNT(*) FROM purchase_items WHERE purchase_id IN (SELECT id FROM purchases WHERE company_id = p_company_id)))
-    || jsonb_build_object('purchase_returns', (SELECT COUNT(*) FROM purchase_returns WHERE company_id = p_company_id))
-    || jsonb_build_object('purchase_return_items', (SELECT COUNT(*) FROM purchase_return_items WHERE purchase_return_id IN (SELECT id FROM purchase_returns WHERE company_id = p_company_id)))
-    || jsonb_build_object('rentals', (SELECT COUNT(*) FROM rentals WHERE company_id = p_company_id))
-    || jsonb_build_object('rental_items', (SELECT COUNT(*) FROM rental_items WHERE rental_id IN (SELECT id FROM rentals WHERE company_id = p_company_id)))
-    || jsonb_build_object('payments', (SELECT COUNT(*) FROM payments WHERE company_id = p_company_id))
-    || jsonb_build_object('payment_allocations', v_payment_allocations)
-    || jsonb_build_object('expenses', (SELECT COUNT(*) FROM expenses WHERE company_id = p_company_id))
-    || jsonb_build_object('expense_items', v_expense_items)
-    || jsonb_build_object('journal_entries', (SELECT COUNT(*) FROM journal_entries WHERE company_id = p_company_id))
-    || jsonb_build_object('journal_entry_lines', (SELECT COUNT(*) FROM journal_entry_lines WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE company_id = p_company_id)))
-    || jsonb_build_object('ledger_master', (SELECT COUNT(*) FROM ledger_master WHERE company_id = p_company_id))
-    || jsonb_build_object('ledger_entries', (SELECT COUNT(*) FROM ledger_entries WHERE ledger_id IN (SELECT id FROM ledger_master WHERE company_id = p_company_id)))
-    || jsonb_build_object('stock_movements', (SELECT COUNT(*) FROM stock_movements WHERE company_id = p_company_id))
-    || jsonb_build_object('activity_logs', (SELECT COUNT(*) FROM activity_logs WHERE company_id = p_company_id))
-    || jsonb_build_object('courier_shipments', (SELECT COUNT(*) FROM courier_shipments WHERE company_id = p_company_id))
-    || jsonb_build_object('sale_shipments', (SELECT COUNT(*) FROM sale_shipments WHERE company_id = p_company_id))
-    || jsonb_build_object('share_logs', (SELECT COUNT(*) FROM share_logs WHERE sale_id IN (SELECT id FROM sales WHERE company_id = p_company_id)))
-    || jsonb_build_object('print_logs', (SELECT COUNT(*) FROM print_logs WHERE sale_id IN (SELECT id FROM sales WHERE company_id = p_company_id)))
-    || jsonb_build_object('studio_productions', (SELECT COUNT(*) FROM studio_productions WHERE company_id = p_company_id))
-    || jsonb_build_object('studio_production_stages', (SELECT COUNT(*) FROM studio_production_stages WHERE production_id IN (SELECT id FROM studio_productions WHERE company_id = p_company_id)));
+    || jsonb_build_object('sales', v_sales)
+    || jsonb_build_object('purchases', v_purchases)
+    || jsonb_build_object('rentals', v_rentals)
+    || jsonb_build_object('payments', v_payments)
+    || jsonb_build_object('expenses', v_expenses)
+    || jsonb_build_object('journal_entries', v_journal_entries)
+    || jsonb_build_object('stock_movements', v_stock_movements)
+    || jsonb_build_object('activity_logs', v_activity_logs);
 
   RETURN jsonb_build_object(
     'success', TRUE,
@@ -134,7 +118,22 @@ BEGIN
     RETURN jsonb_build_object('success', FALSE, 'error', 'Only owner/admin can reset company transactions');
   END IF;
 
-  v_preview := preview_company_transaction_reset(p_company_id);
+  -- Lightweight precheck (avoid calling heavy preview path inside execute).
+  v_preview := jsonb_build_object(
+    'success', TRUE,
+    'mode', 'hard_delete_txn',
+    'preserve', jsonb_build_object(
+      'contacts', (SELECT COUNT(*) FROM contacts WHERE company_id = p_company_id),
+      'products', (SELECT COUNT(*) FROM products WHERE company_id = p_company_id)
+    ),
+    'transactional', jsonb_build_object(
+      'sales', (SELECT COUNT(*) FROM sales WHERE company_id = p_company_id),
+      'purchases', (SELECT COUNT(*) FROM purchases WHERE company_id = p_company_id),
+      'payments', (SELECT COUNT(*) FROM payments WHERE company_id = p_company_id),
+      'expenses', (SELECT COUNT(*) FROM expenses WHERE company_id = p_company_id),
+      'journal_entries', (SELECT COUNT(*) FROM journal_entries WHERE company_id = p_company_id)
+    )
+  );
 
   -- Hard reset should not invoke transactional posting triggers while purging rows.
   v_prev_replication_role := current_setting('session_replication_role', true);
@@ -296,6 +295,25 @@ BEGIN
   DELETE FROM activity_logs WHERE company_id = p_company_id;
   GET DIAGNOSTICS v_rows = ROW_COUNT;
   v_deleted := v_deleted || jsonb_build_object('activity_logs', v_rows);
+
+  -- Reset company-level numbering counters so next documents restart from 001.
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='document_sequences_global') THEN
+    DELETE FROM document_sequences_global WHERE company_id = p_company_id;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    v_deleted := v_deleted || jsonb_build_object('document_sequences_global_reset', v_rows);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='document_sequences') THEN
+    DELETE FROM document_sequences WHERE company_id = p_company_id;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    v_deleted := v_deleted || jsonb_build_object('document_sequences_reset', v_rows);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='erp_document_sequences') THEN
+    DELETE FROM erp_document_sequences WHERE company_id = p_company_id;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    v_deleted := v_deleted || jsonb_build_object('erp_document_sequences_reset', v_rows);
+  END IF;
 
   UPDATE company_reset_audit_logs
   SET deleted_counts = v_deleted

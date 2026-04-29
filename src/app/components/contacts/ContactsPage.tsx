@@ -39,6 +39,12 @@ import { formatCurrency } from '@/app/utils/formatCurrency';
 import { supabase } from '@/lib/supabase';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
 import { CONTACTS_PARTY_DRILLDOWN_KEY } from '@/app/lib/contactsPartyDrilldown';
+import {
+  DATA_INVALIDATED_EVENT,
+  type DataInvalidationDetail,
+  shouldAcceptInvalidation,
+} from '@/app/lib/dataInvalidationBus';
+import { shouldRunFocusRefresh } from '@/app/lib/focusRefreshPolicy';
 import { Pagination } from '@/app/components/ui/pagination';
 import { CustomSelect } from '@/app/components/ui/custom-select';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
@@ -92,7 +98,7 @@ const workerRoleLabels: Record<WorkerRole, string> = {
   'embroidery': 'Embroidery',
 };
 
-/** Operational (open-doc) vs party-attributed GL slice — flag mismatch for row badge only; do not replace operational amount. */
+/** GL row amount vs party-attributed GL slice consistency check for row badge. */
 const OP_VS_PARTY_GL_TOL = 1.01;
 
 /** Dev-only: set localStorage DEBUG_CONTACT_BALANCE_TRACE to a contact UUID to log balance source per load. */
@@ -177,8 +183,9 @@ export const ContactsPage = () => {
     cashBankNetDrMinusCr: number | null;
   } | null>(null);
   const [reconSnapshot, setReconSnapshot] = useState<CompanyReconciliationSnapshot | null>(null);
-  /** Operational row amounts: from get_contact_balances_summary only (no merged-document fallback). */
-  const [operationalEngine, setOperationalEngine] = useState<'rpc' | null>(null);
+  /** GL-only row amounts from get_contact_party_gl_balances. */
+  const [operationalEngine, setOperationalEngine] = useState<'gl' | null>(null);
+  const [operationalReasonTag, setOperationalReasonTag] = useState<'ok' | 'rpc_missing' | 'rpc_empty' | null>(null);
   /** Party-attributed GL slice per contact (optional compare-only; does not drive row numbers). */
   const [partyGlByContactId, setPartyGlByContactId] = useState<Map<
     string,
@@ -204,6 +211,7 @@ export const ContactsPage = () => {
   const filterRef = useRef<HTMLDivElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
   const loadContactsInProgressRef = useRef(false);
+  const queuedReloadRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** If refresh is requested while a load runs, run one more load when the current one finishes. */
   const pendingContactsBalanceRefreshRef = useRef(false);
   /** Incremented on each loadContacts start; stale async RPC/fallback must not call setContacts after a newer load began. */
@@ -211,6 +219,15 @@ export const ContactsPage = () => {
   const loadContactsRef = useRef<() => Promise<void>>(async () => {});
   const [filterPosition, setFilterPosition] = useState({ top: 0, left: 0 });
   const [companyBranches, setCompanyBranches] = useState<Branch[]>([]);
+
+  const queueSmartReload = useCallback(() => {
+    if (!companyId) return;
+    if (queuedReloadRef.current) return;
+    queuedReloadRef.current = setTimeout(() => {
+      queuedReloadRef.current = null;
+      void loadContactsRef.current();
+    }, 220);
+  }, [companyId]);
 
   useEffect(() => {
     if (!companyId) {
@@ -229,70 +246,29 @@ export const ContactsPage = () => {
     [companyBranches]
   );
 
-  // Convert Supabase contact to app format (receivables = due from customer, payables = due to supplier/worker)
+  // Convert Supabase contact to app format. Phase-1 keeps operational amounts neutral (0/0)
+  // until canonical RPC balances load; this avoids showing fallback/test math as final balances.
   const convertFromSupabaseContact = useCallback(
     (
       supabaseContact: any,
       index: number,
-      sales: any[],
-      purchases: any[],
+      _sales: any[],
+      _purchases: any[],
       /** Same id as contact (type=worker); studio stores payables on workers + worker_ledger */
       workerBalanceByContactId?: Map<string, number>
     ): Contact => {
     // Determine contact type (worker | supplier | customer | both)
     const isWorker = supabaseContact.type === 'worker';
     const isSupplier = supabaseContact.type === 'supplier' || supabaseContact.type === 'both';
-    const isCustomer = supabaseContact.type === 'customer' || supabaseContact.type === 'both';
     const contactType: 'customer' | 'supplier' | 'worker' | 'both' =
       supabaseContact.type === 'both' ? 'both' : isWorker ? 'worker' : isSupplier ? 'supplier' : 'customer';
 
-    // Receivables: prefer GL sub-ledger balance (includes opening + sales + payments + returns)
-    // Fallback: opening_balance + sales due (doesn't account for payments against opening)
-    const cid = String(supabaseContact.id ?? '');
-    const glData = partyGlByContactId?.get(cid);
+    const receivables = 0;
 
-    let receivables = 0;
-    if (isCustomer && glData && glData.glArReceivable !== undefined) {
-      // GL sub-ledger is the source of truth — includes all transactions
-      receivables = Math.max(0, Number(glData.glArReceivable) || 0);
-    } else if (isCustomer) {
-      // Fallback: operational calculation
-      const contactSales = sales.filter(
-        (s) => String(s.customer_id ?? '') === cid || (s.customer_name && s.customer_name === supabaseContact.name)
-      );
-      const salesReceivables = contactSales.reduce((sum, s) => {
-        const due = s.due_amount != null ? Number(s.due_amount) : (Number(s.total) || 0) - (Number(s.paid_amount) || 0);
-        return sum + Math.max(0, due);
-      }, 0);
-      const openingReceivables = Math.max(0, Number(supabaseContact.opening_balance) || 0);
-      receivables = salesReceivables + openingReceivables;
-    }
-
-    // Payables: prefer GL sub-ledger for suppliers; worker ledger for workers
+    // Payables in phase-1 are also neutral (0/0) until RPC load completes.
     let payables = 0;
-    if (isWorker) {
-      const wid = String(supabaseContact.id);
-      const fromWorkers = workerBalanceByContactId?.get(wid);
-      payables = Math.max(
-        0,
-        fromWorkers !== undefined && fromWorkers !== null
-          ? fromWorkers
-          : Number(supabaseContact.current_balance) || Number(supabaseContact.opening_balance) || 0
-      );
-    } else if (isSupplier && glData && glData.glApPayable !== undefined) {
-      // GL sub-ledger is source of truth for supplier payables
-      payables = Math.max(0, Number(glData.glApPayable) || 0);
-    } else if (isSupplier) {
-      // Fallback: operational calculation
-      const contactPurchases = purchases.filter(
-        (p) => String(p.supplier_id ?? '') === cid || (p.supplier_name && p.supplier_name === supabaseContact.name)
-      );
-      const purchasePayables = contactPurchases.reduce((sum, p) => {
-        const due = p.due_amount != null ? Number(p.due_amount) : (Number(p.total) || 0) - (Number(p.paid_amount) || 0);
-        return sum + Math.max(0, due);
-      }, 0);
-      const openingPayables = Math.max(0, Number(supabaseContact.supplier_opening_balance) || Number(supabaseContact.opening_balance) || 0);
-      payables = purchasePayables + openingPayables;
+    if (isWorker && workerBalanceByContactId?.has(String(supabaseContact.id))) {
+      payables = 0;
     }
 
     // Use DB code only (global sequence); no frontend-generated CUS-001
@@ -376,6 +352,7 @@ export const ContactsPage = () => {
       setBalancesLoading(false);
       setBalancesStale(false);
       setOperationalEngine(null);
+      setOperationalReasonTag(null);
       setPartyGlByContactId(null);
 
       const [, contactsData] = await Promise.all([
@@ -436,40 +413,46 @@ export const ContactsPage = () => {
         });
       }
 
-      // Phase 2: canonical operational amounts only from get_contact_balances_summary (no client merge fallback).
+      // Phase 2: GL-only balances from party GL RPC.
       const loadBalances = async () => {
         try {
-          const { map: balanceMap, error: rpcBalanceError } = await contactService.getContactBalancesSummary(
+          const partyMap = await contactService.getContactPartyGlBalancesMap(
             companyId,
             branchId === 'all' ? null : branchId
           );
           if (myGen !== loadContactsGenerationRef.current) return;
 
-          if (rpcBalanceError) {
+          if (!partyMap) {
             if (import.meta.env?.DEV) {
-              console.warn('[CONTACTS PAGE] get_contact_balances_summary:', rpcBalanceError);
+              console.warn('[CONTACTS PAGE] get_contact_party_gl_balances returned null');
             }
-            toast.error(`Contact balances unavailable: ${rpcBalanceError}`);
+            toast.error('Contact balances unavailable: get_contact_party_gl_balances failed');
             setOperationalEngine(null);
+            setOperationalReasonTag('rpc_missing');
             setBalancesStale(true);
             return;
           }
 
-          setOperationalEngine('rpc');
-          if (balanceMap.size === 0 && phase1Contacts.length > 0 && import.meta.env?.DEV) {
+          setOperationalEngine('gl');
+          setOperationalReasonTag(partyMap.size > 0 ? 'ok' : 'rpc_empty');
+          if (partyMap.size === 0 && phase1Contacts.length > 0 && import.meta.env?.DEV) {
             console.warn(
-              '[CONTACTS PAGE] get_contact_balances_summary returned zero rows but contacts exist — applying 0/0 per row (check RLS or RPC).'
+              '[CONTACTS PAGE] get_contact_party_gl_balances returned zero rows but contacts exist.'
             );
           }
+          setPartyGlByContactId(partyMap);
           const withBalances: Contact[] = phase1Contacts.map((contact) => {
             const uuid = contact.uuid;
-            const bal = uuid ? balanceMap.get(String(uuid)) : undefined;
-            const r = Number(bal?.receivables ?? 0) || 0;
-            const p = Number(bal?.payables ?? 0) || 0;
+            const bal = uuid ? partyMap.get(String(uuid)) : undefined;
+            const r = Math.max(0, Number(bal?.glArReceivable ?? 0) || 0);
+            const p = Math.max(
+              0,
+              (Number(bal?.glApPayable ?? 0) || 0) + (Number(bal?.glWorkerPayable ?? 0) || 0)
+            );
             if (debugTraceId && uuid === debugTraceId) {
               console.log('[CONTACTS BALANCE TRACE]', {
                 contactId: uuid,
-                source: 'rpc',
+                source: 'party_gl_rpc',
                 before: { r: contact.receivables, p: contact.payables },
                 after: { r, p },
               });
@@ -479,7 +462,7 @@ export const ContactsPage = () => {
           if (myGen !== loadContactsGenerationRef.current) return;
           if (debugContactsReceiptEditEnabled()) {
             const sal = withBalances.find((c) => c.name?.toLowerCase() === 'salar');
-            const salRpc = sal ? balanceMap.get(String(sal.uuid)) : undefined;
+            const salRpc = sal ? partyMap.get(String(sal.uuid)) : undefined;
             console.debug('[CONTACTS receipt-edit trace] phase2 rpc merge', {
               companyId,
               branchId,
@@ -503,6 +486,7 @@ export const ContactsPage = () => {
       if (msg === 'Request timed out') {
         setBalancesStale(true);
         setOperationalEngine(null);
+        setOperationalReasonTag('rpc_missing');
         toast.error('Due balances timed out; refresh the page or try again — row amounts are hidden until operational load completes.');
       } else {
         setBalancesStale(false);
@@ -539,7 +523,7 @@ export const ContactsPage = () => {
 
   const balanceColumnsPending = balancesLoading || balancesStale;
 
-  /** Load party-attributed GL map for row GL subline + mismatch badges (operational amounts stay primary). */
+  /** Keep party-attributed GL map refreshed for row GL subline. */
   useEffect(() => {
     if (!companyId || listLoading || balancesLoading || balancesStale) {
       if (listLoading || balancesLoading || balancesStale) setPartyGlByContactId(null);
@@ -625,14 +609,15 @@ export const ContactsPage = () => {
   // Refetch when page gains focus so receivables/payables stay updated (e.g. after payment or ledger)
   useEffect(() => {
     const onFocus = () => {
+      if (!shouldRunFocusRefresh(`contacts:${companyId ?? 'none'}`, 8000)) return;
       if (debugContactsReceiptEditEnabled()) {
         console.debug('[CONTACTS receipt-edit trace] event', 'window focus', { companyId });
       }
-      if (companyId) loadContacts();
+      if (companyId && document.visibilityState === 'visible') queueSmartReload();
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [companyId, loadContacts]);
+  }, [companyId, queueSmartReload]);
 
   // After Add Entry / manual receipt saves — refresh operational balances + reconciliation snapshot inputs
   useEffect(() => {
@@ -645,11 +630,11 @@ export const ContactsPage = () => {
       }
       const d = (e as CustomEvent<{ companyId?: string }>).detail;
       if (d?.companyId && d.companyId !== companyId) return;
-      loadContacts();
+      queueSmartReload();
     };
     window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, onBalancesRefresh as EventListener);
     return () => window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, onBalancesRefresh as EventListener);
-  }, [companyId, loadContacts]);
+  }, [companyId, queueSmartReload]);
 
   /** Catch-all for sale/purchase flows that dispatch paymentAdded without contactBalancesRefresh (Phase 8 sync). */
   useEffect(() => {
@@ -657,11 +642,11 @@ export const ContactsPage = () => {
       if (debugContactsReceiptEditEnabled()) {
         console.debug('[CONTACTS receipt-edit trace] event', 'paymentAdded', { companyId });
       }
-      if (companyId) loadContacts();
+      if (companyId && document.visibilityState === 'visible') queueSmartReload();
     };
     window.addEventListener('paymentAdded', onPaymentAdded);
     return () => window.removeEventListener('paymentAdded', onPaymentAdded);
-  }, [companyId, loadContacts]);
+  }, [companyId, queueSmartReload]);
 
   /** Journal / manual entry changes: reload operational RPC rows + GL strip inputs without full reload. */
   useEffect(() => {
@@ -669,11 +654,11 @@ export const ContactsPage = () => {
       if (debugContactsReceiptEditEnabled()) {
         console.debug('[CONTACTS receipt-edit trace] event', 'accountingEntriesChanged', { companyId });
       }
-      if (companyId) loadContacts();
+      if (companyId && document.visibilityState === 'visible') queueSmartReload();
     };
     window.addEventListener('accountingEntriesChanged', onAccountingChanged);
     return () => window.removeEventListener('accountingEntriesChanged', onAccountingChanged);
-  }, [companyId, loadContacts]);
+  }, [companyId, queueSmartReload]);
 
   /** Sale/purchase/Add Entry paths dispatch ledgerUpdated; keep Contacts rows/cards in sync without relying only on paymentAdded. */
   useEffect(() => {
@@ -684,11 +669,36 @@ export const ContactsPage = () => {
           detail: (ev as CustomEvent<{ ledgerType?: string; entityId?: string }>).detail,
         });
       }
-      if (companyId) loadContacts();
+      if (companyId && document.visibilityState === 'visible') queueSmartReload();
     };
     window.addEventListener('ledgerUpdated', onLedgerUpdated);
     return () => window.removeEventListener('ledgerUpdated', onLedgerUpdated);
-  }, [companyId, loadContacts]);
+  }, [companyId, queueSmartReload]);
+
+  useEffect(() => {
+    const onInvalidated = (ev: Event) => {
+      const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      if (
+        !shouldAcceptInvalidation(detail, {
+          domain: ['contacts', 'sales', 'purchases', 'accounting'],
+          companyId,
+          branchId: branchId === 'all' ? null : branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      if (document.visibilityState !== 'visible') return;
+      queueSmartReload();
+    };
+    window.addEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    return () => window.removeEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+  }, [branchId, companyId, queueSmartReload]);
+
+  useEffect(() => {
+    return () => {
+      if (queuedReloadRef.current) clearTimeout(queuedReloadRef.current);
+    };
+  }, []);
 
   // Position filter dropdown when open (for portal)
   useEffect(() => {
@@ -1004,27 +1014,20 @@ export const ContactsPage = () => {
             <details className="mt-2 text-xs text-gray-500 max-w-3xl group">
               <summary
                 className="cursor-pointer text-gray-400 hover:text-gray-300 list-none flex items-center gap-1 [&::-webkit-details-marker]:hidden"
-                title="Operational balance: get_contact_balances_summary (payments/allocations). Party GL: get_contact_party_gl_balances on AR/AP subtree — different RPC family; variance is timing or PF-14 attribution, not a duplicate column."
+                title="GL-only balances: get_contact_party_gl_balances on AR/AP subtree."
               >
                 <span className="underline-offset-2 group-open:underline">Balance &amp; GL notes</span>
               </summary>
               <p className="mt-2 leading-relaxed pl-0 border-l-2 border-gray-700 pl-3">
-                <strong className="text-gray-400">Primary amounts</strong> are operational from{' '}
-                <code className="text-gray-500 text-[10px]">get_contact_balances_summary</code>
-                {operationalEngine === 'rpc' && ' (RPC). '}
+                <strong className="text-gray-400">Primary amounts</strong> are GL-derived from{' '}
+                <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code>
+                {operationalEngine === 'gl' && ' (RPC). '}
                 {operationalEngine === null && !listLoading && contacts.length > 0 && <span> (resolving…). </span>}
                 {balancesStale && contacts.length > 0 && (
-                  <span className="text-amber-400/90"> (RPC failed — refresh or check grants / migration 20260430). </span>
+                  <span className="text-amber-400/90"> (RPC failed — refresh or check grants / party GL migration). </span>
                 )}
-                When the party GL map is loaded, a <strong className="text-gray-400">second line</strong> shows signed{' '}
-                <code className="text-gray-500 text-[10px]">get_contact_party_gl_balances</code> (1100 / 2000 / worker) —
-                same engine as Customer statement → <strong className="text-gray-400">GL (journal)</strong> tab and{' '}
-                <strong className="text-gray-400">Reconciliation</strong>.                 Amber icon = operational still differs from party GL
-                slice (timing / attribution).{' '}
-                <strong className="text-gray-400">Do not</strong> read the violet party-GL strip as a duplicate of the green
-                operational row — two different engines. After payment edits, if amber persists, trace the payment in Developer
-                Tools → <span className="text-gray-300">AR / AP Truth Lab</span> and repair bad PF-14 JEs (do not hide lines from
-                the chart).
+                Signed GL strip below uses the same basis (1100 / 2000 / worker). Contacts, Accounting cards, and AR/AP
+                reconciliation should now match this same GL engine.
               </p>
             </details>
           </div>
@@ -1036,6 +1039,12 @@ export const ContactsPage = () => {
             Add Contact
           </Button>
         </div>
+        {!listLoading && contacts.length > 0 && operationalReasonTag !== 'ok' && (
+          <div className="mt-3 rounded-md border border-amber-700/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+            Balance engine warning: {operationalReasonTag === 'rpc_missing' ? 'rpc_missing' : 'rpc_empty'}.
+            {' '}GL balance unavailable/empty hai — branch scope, RPC grants, ya posting gap verify karein.
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex flex-wrap items-center gap-1.5 mt-3 sm:gap-2">
@@ -1074,7 +1083,7 @@ export const ContactsPage = () => {
                   {balanceColumnsPending ? '—' : formatCurrency(summaryOperational.totalReceivables)}
                 </p>
                 <p className="text-[9px] text-gray-600 mt-0.5 hidden sm:block">
-                  Operational · <code className="text-gray-500">get_contact_balances_summary</code>
+                  GL-derived · <code className="text-gray-500">get_contact_party_gl_balances</code>
                 </p>
                 <p className="text-[9px] text-slate-500 mt-0.5 hidden lg:block leading-snug">
                   Scoped to this tab’s contacts (and branch). Sales <span className="text-slate-400">Total Due</span> is all final invoices company-wide — not the same roll-up.
@@ -1109,7 +1118,7 @@ export const ContactsPage = () => {
                   {balanceColumnsPending ? '—' : formatCurrency(summaryOperational.totalPayables)}
                 </p>
                 <p className="text-[9px] text-gray-600 mt-0.5 hidden sm:block">
-                  Operational · <code className="text-gray-500">get_contact_balances_summary</code>
+                  GL-derived · <code className="text-gray-500">get_contact_party_gl_balances</code>
                 </p>
                 {!balanceColumnsPending && summaryPartyGlSigned && (
                   <p className="text-[9px] text-violet-300/90 mt-0.5 leading-snug hidden sm:block">
@@ -1449,14 +1458,14 @@ export const ContactsPage = () => {
                   </p>
                   <span
                     className="text-gray-500 shrink-0"
-                    title="Operational: SUM receivables for contacts type customer + both (this tab, branch) from get_contact_balances_summary only. GL: party AR on 1100 subtree (control + linked party sub-accounts), Dr−Cr net from get_contact_party_gl_balances roll-up. Variance = operational − GL net — expect amber when bases differ (e.g. open docs vs journal timing)."
+                    title="GL: party AR on 1100 subtree (control + linked party sub-accounts), Dr−Cr net from get_contact_party_gl_balances."
                   >
                     <HelpCircle size={14} />
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <p className="text-gray-500">Operational</p>
+                    <p className="text-gray-500">GL (party)</p>
                     <p className="text-green-400 font-semibold tabular-nums">
                       {reconSnapshot.customerReceivablesOperational != null
                         ? formatCurrency(reconSnapshot.customerReceivablesOperational)
@@ -1502,14 +1511,14 @@ export const ContactsPage = () => {
                   </p>
                   <span
                     className="text-gray-500 shrink-0"
-                    title="Operational: SUM payables for supplier + both only. GL: AP control 2000 net Cr−Dr. Do not include worker payables here — they map to WP 2010."
+                    title="GL: AP control 2000 net Cr−Dr. Worker payables are shown separately on WP 2010."
                   >
                     <HelpCircle size={14} />
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <p className="text-gray-500">Operational</p>
+                    <p className="text-gray-500">GL (party)</p>
                     <p className="text-red-400 font-semibold tabular-nums">
                       {reconSnapshot.supplierPayablesOperational != null
                         ? formatCurrency(reconSnapshot.supplierPayablesOperational)
@@ -1555,14 +1564,14 @@ export const ContactsPage = () => {
                   </p>
                   <span
                     className="text-gray-500 shrink-0"
-                    title="Operational: worker contact payables from get_contact_balances_summary (unpaid worker ledger / fallback). GL: Worker Payable 2010 net Cr−Dr. Not comparable to AP 2000."
+                    title="GL: Worker Payable 2010 net Cr−Dr. Not comparable to AP 2000."
                   >
                     <HelpCircle size={14} />
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <p className="text-gray-500">Operational</p>
+                    <p className="text-gray-500">GL (party)</p>
                     <p className="text-orange-300 font-semibold tabular-nums">
                       {reconSnapshot.workerPayablesOperational != null
                         ? formatCurrency(reconSnapshot.workerPayablesOperational)
@@ -1658,7 +1667,7 @@ export const ContactsPage = () => {
               <div>
                 <p className="font-semibold text-amber-100">Contacts vs general ledger (same branch)</p>
                 <p className="text-gray-400 mt-1 leading-relaxed">
-                  <strong>Contacts (this tab)</strong> = operational roll-up (<code className="text-amber-400/80">get_contact_balances_summary</code>) — same basis as the green/red card totals.
+                  <strong>Contacts (this tab)</strong> = GL roll-up (<code className="text-amber-400/80">get_contact_party_gl_balances</code>) — same basis as the green/red card totals.
                   <strong className="ml-1">Trial Balance</strong> = net on AR/AP control accounts from journal (life-to-date). A gap usually means
                   manual journals, on-account receipts, or legacy data. For party-attributed GL sums (signed), use the violet line on the cards or Control breakdown on Accounts.
                 </p>
@@ -1715,7 +1724,7 @@ export const ContactsPage = () => {
               </div>
               {subledgerVsGl.ap.workerPayablesOperational != null && subledgerVsGl.ap.workerPayablesOperational > 0.01 && (
                 <p className="text-[11px] text-slate-500 border-t border-gray-800/60 pt-2">
-                  Worker operational payables {formatCurrency(subledgerVsGl.ap.workerPayablesOperational)} — compare to WP 2010 / party GL, not AP 2000.
+                  Worker GL payables {formatCurrency(subledgerVsGl.ap.workerPayablesOperational)} — compare to WP 2010 / party GL, not AP 2000.
                 </p>
               )}
               </div>
@@ -1890,7 +1899,7 @@ export const ContactsPage = () => {
                                   <AlertCircle
                                     size={14}
                                     className="text-amber-400 shrink-0"
-                                    title="Operational receivable ≠ party AR (1100 subtree) — check Customer ledger GL tab / journals"
+                                    title={`GL receivable variance [${operationalReasonTag || 'posting_gap'}] — check Customer ledger GL tab / journals`}
                                   />
                                 )}
                               <div
@@ -1898,7 +1907,7 @@ export const ContactsPage = () => {
                                   'text-sm font-semibold tabular-nums leading-[1.4]',
                                   contact.receivables > 0 ? 'text-green-400' : 'text-gray-600'
                                 )}
-                                title="Operational receivable — get_contact_balances_summary only (no merged-document fallback)"
+                                title="GL receivable — get_contact_party_gl_balances (1100 subtree)"
                               >
                                 {formatCurrency(contact.receivables)}
                               </div>
@@ -1941,7 +1950,7 @@ export const ContactsPage = () => {
                                   <AlertCircle
                                     size={14}
                                     className="text-amber-400 shrink-0"
-                                    title="Operational payable ≠ party AP / worker GL from journals — check party statement GL tab"
+                                    title={`GL payable variance [${operationalReasonTag || 'posting_gap'}] — check party statement GL tab`}
                                   />
                                 )}
                               <div
@@ -1949,7 +1958,7 @@ export const ContactsPage = () => {
                                   'text-sm font-semibold tabular-nums leading-[1.4]',
                                   contact.payables > 0 ? 'text-red-400' : 'text-gray-600'
                                 )}
-                                title="Operational payable — get_contact_balances_summary only (no merged-document fallback)"
+                                title="GL payable — get_contact_party_gl_balances (AP / worker subtree)"
                               >
                                 {formatCurrency(contact.payables)}
                               </div>

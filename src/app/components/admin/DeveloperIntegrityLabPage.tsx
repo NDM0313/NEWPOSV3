@@ -165,7 +165,7 @@ export default function DeveloperIntegrityLabPage() {
   const [glSyncLoading, setGlSyncLoading] = useState(false);
 
   const [contactReconLoading, setContactReconLoading] = useState(false);
-  const [contactReconData, setContactReconData] = useState<{ name: string; code: string; type: string; opening: number; sales_due: number; operational: number; gl_balance: number; diff: number; sub_account: string }[] | null>(null);
+  const [contactReconData, setContactReconData] = useState<{ name: string; code: string; type: string; opening: number; sales_due: number; operational: number; gl_balance: number; diff: number; sub_account: string; reason_tag: 'ok' | 'missing_party_link' | 'posting_gap' | 'branch_scope_mismatch' | 'rpc_empty' }[] | null>(null);
 
   const [invDetailLoading, setInvDetailLoading] = useState(false);
   const [invDetailData, setInvDetailData] = useState<{ product: string; sku: string; variation: string; var_sku: string; qty: number; cost: number; sale_price: number; stock_value: number; margin: number }[] | null>(null);
@@ -2082,7 +2082,26 @@ export default function DeveloperIntegrityLabPage() {
                         const isSupplierType = c.type === 'supplier' || (c.type === 'both' && sub?.code?.startsWith('AP-'));
                         const glBal = isSupplierType ? Math.abs(rawGl) : rawGl;
                         const diff = Math.round((operational - glBal) * 100) / 100;
-                        rows.push({ name: c.name, code: c.code || '', type: c.type, opening, sales_due: salesDue, operational, gl_balance: glBal, diff, sub_account: sub?.code || 'NONE' });
+                        const reasonTag: 'ok' | 'missing_party_link' | 'posting_gap' | 'branch_scope_mismatch' | 'rpc_empty' =
+                          Math.abs(diff) <= 0.01
+                            ? 'ok'
+                            : !partyGlMap
+                              ? 'rpc_empty'
+                              : sub?.code === 'NONE' || !sub
+                                ? 'missing_party_link'
+                                : 'posting_gap';
+                        rows.push({
+                          name: c.name,
+                          code: c.code || '',
+                          type: c.type,
+                          opening,
+                          sales_due: salesDue,
+                          operational,
+                          gl_balance: glBal,
+                          diff,
+                          sub_account: sub?.code || 'NONE',
+                          reason_tag: reasonTag,
+                        });
                       }
                       rows.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
                       setContactReconData(rows);
@@ -2194,6 +2213,8 @@ export default function DeveloperIntegrityLabPage() {
                         <th className="text-right p-2">Operational</th>
                         <th className="text-right p-2">GL Balance</th>
                         <th className="text-right p-2">Difference</th>
+                        <th className="text-left p-2">Reason</th>
+                        <th className="text-left p-2">Quick Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2209,6 +2230,21 @@ export default function DeveloperIntegrityLabPage() {
                           <td className="p-2 text-right text-amber-300">{r.gl_balance.toLocaleString()}</td>
                           <td className={`p-2 text-right font-bold ${Math.abs(r.diff) > 0.01 ? 'text-red-400' : 'text-emerald-400'}`}>
                             {Math.abs(r.diff) > 0.01 ? r.diff.toLocaleString() : '0'}
+                          </td>
+                          <td className="p-2 text-[11px] text-amber-300">{r.reason_tag}</td>
+                          <td className="p-2">
+                            {r.reason_tag !== 'ok' ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 border-gray-600"
+                                onClick={() => setCurrentView('ar-ap-reconciliation-center')}
+                              >
+                                Fix in AR/AP Center
+                              </Button>
+                            ) : (
+                              <span className="text-[11px] text-emerald-400">No action</span>
+                            )}
                           </td>
                         </tr>
                       ))}

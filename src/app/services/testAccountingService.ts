@@ -1,8 +1,7 @@
 /**
  * Test Accounting Service – Accounting Test Page.
  * Canonical rule: any money movement (Cash/Bank/Wallet) creates payments row + JE with payment_id.
- * Uses canonical reference_type: manual_payment, manual_receipt, expense, worker_payment, purchase, on_account.
- * No production use of test_transfer / test_worker_payment / test_supplier_payment.
+ * Uses canonical reference_type only: manual_payment, manual_receipt, expense, worker_payment, purchase, on_account.
  */
 
 import { supabase } from '@/lib/supabase';
@@ -12,19 +11,7 @@ import { createSupplierPayment } from '@/app/services/supplierPaymentService';
 import { createWorkerPayment } from '@/app/services/workerPaymentService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
 
-/** Legacy test_* types – only for reading existing DB rows (getTestEntries). New posts use canonical types. */
-const REF = {
-  manual: 'test_manual',
-  transfer: 'test_transfer',
-  supplier_payment: 'test_supplier_payment',
-  worker_payment: 'test_worker_payment',
-  expense: 'test_expense',
-  customer_receipt: 'test_customer_receipt',
-} as const;
-
-const REF_LIST = Object.values(REF);
-
-/** Canonical reference types used when posting from Test page (so list shows new entries too). */
+/** Canonical reference types used by the test page. */
 const CANONICAL_LIST = [
   'manual_payment', 'manual_receipt', 'expense', 'worker_payment', 'purchase', 'on_account',
 ];
@@ -49,17 +36,11 @@ async function getNextPaymentRef(companyId: string, branchId: string | null | un
   }
 }
 
-export type TestEntryType = keyof typeof REF;
+export type TestEntryType = 'manual' | 'transfer' | 'supplier_payment' | 'worker_payment' | 'expense' | 'customer_receipt';
 
-/** Human-readable label for reference_type (legacy test_* and canonical types) */
+/** Human-readable label for canonical reference_type values. */
 export function getTestEntryTypeLabel(ref: string): string {
   const map: Record<string, string> = {
-    [REF.manual]: 'Journal Voucher',
-    [REF.transfer]: 'Account Transfer',
-    [REF.supplier_payment]: 'Supplier Payment',
-    [REF.worker_payment]: 'Worker Payment',
-    [REF.expense]: 'Expense',
-    [REF.customer_receipt]: 'Customer Receipt',
     manual_payment: 'Manual Payment',
     manual_receipt: 'Manual Receipt',
     expense: 'Expense',
@@ -182,7 +163,7 @@ export interface CustomerReceiptParams {
 
 export const testAccountingService = {
   /**
-   * Fetch all test account entries (reference_type like test_*) from the database.
+   * Fetch accounting test entries from canonical reference types only.
    * Used by Accounting Test page to list and view saved entries.
    */
   async getTestEntries(
@@ -206,7 +187,7 @@ export const testAccountingService = {
       `
       )
       .eq('company_id', companyId)
-      .in('reference_type', [...REF_LIST, ...CANONICAL_LIST])
+      .in('reference_type', CANONICAL_LIST)
       .order('entry_date', { ascending: false })
       .order('created_at', { ascending: false });
 

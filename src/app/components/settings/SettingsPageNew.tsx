@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { AddUserModal } from '../users/AddUserModal';
 import { AddBranchModal } from '../branches/AddBranchModal';
 import { exportAndDownloadBackup } from '@/app/services/backupService';
+import { companyResetService, type CompanyResetPreview } from '@/app/services/companyResetService';
 import { InventoryMasters, type InventoryMasterTab } from './inventory/InventoryMasters';
 import { LeadTools } from './LeadTools';
 import { invoiceDocumentService } from '@/app/services/invoiceDocumentService';
@@ -362,6 +363,11 @@ export const SettingsPageNew = () => {
     const r = userRole.toLowerCase().trim();
     return r === 'admin' || r === 'owner' || r === 'super admin' || r === 'superadmin';
   })();
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H1',location:'SettingsPageNew.tsx:roleCheck',message:'reset panel role gate evaluated',data:{userRole:userRole||null,isAdminOrOwner},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }, [userRole, isAdminOrOwner]);
   const accounting = useAccounting();
   const [mainTab, setMainTab] = useState<MainTab>('general');
   const [activeSubTab, setActiveSubTab] = useState<string>('company');
@@ -398,6 +404,10 @@ export const SettingsPageNew = () => {
   const [numberingForm, setNumberingForm] = useState(settings.numberingRules);
   const [modulesForm, setModulesForm] = useState(settings.modules);
   const [units, setUnits] = useState<{ id: string; name: string; short_code?: string }[]>([]);
+  const [resetPreview, setResetPreview] = useState<CompanyResetPreview | null>(null);
+  const [loadingResetPreview, setLoadingResetPreview] = useState(false);
+  const [executingReset, setExecutingReset] = useState(false);
+  const [resetConfirmation, setResetConfirmation] = useState('');
 
   // Phase B: Invoice template settings (A4 & Thermal)
   const [invoiceTemplateA4, setInvoiceTemplateA4] = useState<Partial<InvoiceTemplate>>({
@@ -429,6 +439,86 @@ export const SettingsPageNew = () => {
       setLoadingUsers(false);
     }
   }, [companyId]);
+
+  const formatResetError = useCallback((message?: string | null) => {
+    const msg = String(message || '').trim();
+    if (!msg) return 'Reset request failed';
+    const lower = msg.toLowerCase();
+    if (
+      lower.includes('bad gateway') ||
+      lower.includes('gateway timeout') ||
+      lower.includes('service unavailable') ||
+      lower.includes('502') ||
+      lower.includes('503') ||
+      lower.includes('504')
+    ) {
+      return 'Service temporarily unavailable. Retry in 5-10 seconds.';
+    }
+    return msg;
+  }, []);
+
+  const loadResetPreview = useCallback(async () => {
+    if (!companyId) return;
+    // #region agent log
+    fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H2',location:'SettingsPageNew.tsx:loadResetPreview:start',message:'Preview reset requested from UI',data:{companyIdPresent:Boolean(companyId),contentKey},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    setLoadingResetPreview(true);
+    try {
+      const preview = await companyResetService.preview(companyId);
+      if (!preview.success) {
+        // #region agent log
+        fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H2',location:'SettingsPageNew.tsx:loadResetPreview:failed',message:'Preview reset failed in UI',data:{error:preview.error||null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        toast.error(formatResetError(preview.error || 'Failed to load reset preview'));
+        return;
+      }
+      // #region agent log
+      fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H2',location:'SettingsPageNew.tsx:loadResetPreview:success',message:'Preview reset loaded in UI',data:{hasTransactional:Boolean(preview.transactional)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      setResetPreview(preview);
+    } catch (error: any) {
+      toast.error(formatResetError(error?.message || 'Failed to load reset preview'));
+    } finally {
+      setLoadingResetPreview(false);
+    }
+  }, [companyId, formatResetError]);
+
+  const executeCompanyReset = useCallback(async () => {
+    if (!companyId) return;
+    // #region agent log
+    fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H4',location:'SettingsPageNew.tsx:executeCompanyReset:start',message:'Execute reset requested from UI',data:{companyIdPresent:Boolean(companyId),typed:resetConfirmation.trim().toUpperCase(),isAdminOrOwner,userRole:userRole||null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    if (resetConfirmation.trim().toUpperCase() !== 'RESET') {
+      toast.error('Please type RESET to confirm');
+      return;
+    }
+    setExecutingReset(true);
+    try {
+      const result = await companyResetService.execute(companyId, resetConfirmation.trim().toUpperCase());
+      if (!result.success) {
+        // #region agent log
+        fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H3',location:'SettingsPageNew.tsx:executeCompanyReset:failed',message:'Execute reset failed in UI',data:{error:result.error||null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        toast.error(formatResetError(result.error || 'Reset failed'));
+        return;
+      }
+      // #region agent log
+      fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H3',location:'SettingsPageNew.tsx:executeCompanyReset:success',message:'Execute reset succeeded in UI',data:{auditId:result.auditId||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      toast.success('Company transactional data reset completed');
+      setResetConfirmation('');
+      await loadResetPreview();
+      try {
+        localStorage.removeItem('erp_modules');
+        sessionStorage.clear();
+      } catch {
+        // no-op
+      }
+      setTimeout(() => window.location.reload(), 700);
+    } finally {
+      setExecutingReset(false);
+    }
+  }, [companyId, formatResetError, loadResetPreview, resetConfirmation]);
 
   // Phase B: Load invoice templates (A4 & Thermal) when opening the tab
   const loadInvoiceTemplates = useCallback(async () => {
@@ -2563,6 +2653,62 @@ export const SettingsPageNew = () => {
                     <RefreshCw size={16} />
                     Clear cache & refresh
                   </Button>
+                </div>
+
+                <div className="bg-red-950/30 p-6 rounded-lg border border-red-800/60">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="text-red-400" size={20} />
+                      <h4 className="text-white font-medium">Company Transaction Reset (Danger Zone)</h4>
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="border-red-700 text-red-300 hover:bg-red-900/30"
+                      disabled={!companyId || loadingResetPreview}
+                      onClick={loadResetPreview}
+                    >
+                      {loadingResetPreview ? 'Loading...' : 'Preview reset impact'}
+                    </Button>
+                  </div>
+
+                  <p className="text-sm text-gray-300 mb-3">
+                    Ye action transactional data wipe karega aur master data preserve karega: customers, suppliers, items/products, workers.
+                  </p>
+                  <p className="text-xs text-gray-400 mb-4">
+                    Remove hoga: sales, purchases, rentals, payments, expenses, journal/ledger, stock, courier/studio flows.
+                  </p>
+
+                  {resetPreview?.success ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div className="bg-gray-900/70 border border-gray-800 rounded p-3">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Preserved</p>
+                        <p className="text-sm text-gray-200">Contacts: {resetPreview.preserve?.contacts ?? 0}</p>
+                        <p className="text-sm text-gray-200">Products: {resetPreview.preserve?.products ?? 0}</p>
+                      </div>
+                      <div className="bg-gray-900/70 border border-gray-800 rounded p-3">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Transactional rows (preview)</p>
+                        <p className="text-sm text-red-300">
+                          Total: {Object.values(resetPreview.transactional || {}).reduce((sum, n) => sum + Number(n || 0), 0)}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-col md:flex-row gap-3 md:items-center">
+                    <Input
+                      value={resetConfirmation}
+                      onChange={(e) => setResetConfirmation(e.target.value)}
+                      placeholder="Type RESET to confirm"
+                      className="bg-gray-900 border-red-900/70 text-white md:max-w-xs"
+                    />
+                    <Button
+                      onClick={executeCompanyReset}
+                      disabled={!companyId || executingReset || resetConfirmation.trim().toUpperCase() !== 'RESET'}
+                      className="bg-red-700 hover:bg-red-600 text-white"
+                    >
+                      {executingReset ? 'Resetting...' : 'Run Transaction Reset'}
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}

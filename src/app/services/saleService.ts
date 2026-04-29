@@ -1272,7 +1272,7 @@ export const saleService = {
     options?: { notes?: string; attachments?: any }
   ) {
     // 🔒 CANCELLED: No payment allowed on cancelled sales
-    const { data: saleRow } = await supabase.from('sales').select('status').eq('id', saleId).single();
+    const { data: saleRow } = await supabase.from('sales').select('status, customer_id').eq('id', saleId).single();
     if (saleRow && (saleRow as any).status === 'cancelled') {
       throw new Error('Cannot record payment on a cancelled invoice.');
     }
@@ -1345,6 +1345,7 @@ export const saleService = {
       payment_type: 'received',
       reference_type: 'sale',
       reference_id: saleId,
+      contact_id: (saleRow as any)?.customer_id || null,
       amount,
       payment_method: enumPaymentMethod,
       payment_date: paymentDateValue,
@@ -1353,6 +1354,9 @@ export const saleService = {
       created_by: authUserId,
       reference_number: uniqueRef,
     };
+    if (!paymentData.contact_id) {
+      throw new Error('Sale payment requires linked customer contact_id for AR/AP accountability.');
+    }
     if (options?.notes !== undefined && options.notes !== '') {
       paymentData.notes = options.notes;
     }
@@ -1430,6 +1434,9 @@ export const saleService = {
     paymentDate?: string,
     options?: { notes?: string; attachments?: any }
   ) {
+    if (!contactId || !String(contactId).trim()) {
+      throw new Error('Customer contact_id is required for on-account payment.');
+    }
     if (!accountId || !companyId || !branchId) {
       throw new Error('Account, company and branch are required for on-account payment.');
     }

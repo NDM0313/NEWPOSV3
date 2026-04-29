@@ -146,6 +146,16 @@ interface PurchaseFormProps {
   onClose: () => void;
 }
 
+const PURCHASE_FORM_BOOTSTRAP_TTL_MS = 45_000;
+const purchaseFormBootstrapCache = new Map<
+  string,
+  {
+    ts: number;
+    suppliers: any[];
+    products: any[];
+  }
+>();
+
 export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFormProps) => {
     // Supabase & Context
     const { companyId, branchId: contextBranchId, supabaseClient, requiresBranchSelection } = useSupabase();
@@ -157,6 +167,11 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const { createPurchase, updatePurchase, refreshPurchases } = usePurchases();
     const { openDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, createdProduct, setCreatedProduct, openPackingModal } = useNavigation();
     const { generateDocumentNumber, generateDocumentNumberSafe } = useDocumentNumbering();
+    const dataLoadedRef = useRef(false);
+
+    useEffect(() => {
+        dataLoadedRef.current = false;
+    }, [companyId]);
     
     // STEP 1: Detect edit mode - check for purchase ID in multiple possible fields
     // CRITICAL FIX: Database uses UUID, but frontend might pass numeric id
@@ -774,17 +789,27 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     useEffect(() => {
         const loadData = async () => {
             if (!companyId) return;
+            if (dataLoadedRef.current) return;
+            const branchForBalances =
+                branchId && branchId !== 'all' && String(branchId).trim() !== ''
+                    ? branchId
+                    : contextBranchId && contextBranchId !== 'all'
+                      ? contextBranchId
+                      : null;
+            const cacheKey = `${companyId}:${branchForBalances ?? 'all'}`;
+            const cached = purchaseFormBootstrapCache.get(cacheKey);
+            if (cached && Date.now() - cached.ts < PURCHASE_FORM_BOOTSTRAP_TTL_MS) {
+                setSuppliers(cached.suppliers);
+                setProducts(cached.products);
+                dataLoadedRef.current = true;
+                if (import.meta.env?.DEV) console.log('[PURCHASE FORM] Reused bootstrap cache');
+                return;
+            }
             
             try {
                 setLoading(true);
                 
                 const contactsData = await contactService.getAllContacts(companyId);
-                const branchForBalances =
-                    branchId && branchId !== 'all' && String(branchId).trim() !== ''
-                        ? branchId
-                        : contextBranchId && contextBranchId !== 'all'
-                          ? contextBranchId
-                          : null;
                 const { map: payableMap, error: balanceErr } = await contactService.getContactBalancesSummary(
                     companyId,
                     branchForBalances
@@ -831,6 +856,12 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                     };
                 });
                 setProducts(productsList);
+                purchaseFormBootstrapCache.set(cacheKey, {
+                    ts: Date.now(),
+                    suppliers: supplierContacts,
+                    products: productsList,
+                });
+                dataLoadedRef.current = true;
             } catch (error) {
                 console.error('[PURCHASE FORM] Error loading data:', error);
                 toast.error('Failed to load data');

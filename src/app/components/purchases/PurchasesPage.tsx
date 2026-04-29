@@ -60,6 +60,7 @@ import { toast } from 'sonner';
 import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { supabase } from '@/lib/supabase';
 import { getEffectivePurchaseStatus, getPurchaseStatusBadgeConfig, DEFAULT_PURCHASE_BADGE, isPaymentClosedForPurchase, canAddPaymentToPurchase } from '@/app/utils/statusHelpers';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import {
@@ -121,6 +122,28 @@ export const PurchasesPage = () => {
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
+
+  // Cross-client sync (mobile/web): pull latest purchases without manual refresh.
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queueRefresh = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void refreshPurchases();
+      }, 220);
+    };
+    const channel = supabase
+      .channel(`purchases-live-${companyId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases', filter: `company_id=eq.${companyId}` }, queueRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `company_id=eq.${companyId}` }, queueRefresh)
+      .subscribe();
+    return () => {
+      if (timer) clearTimeout(timer);
+      void supabase.removeChannel(channel);
+    };
+  }, [companyId, refreshPurchases]);
   
   // Load branches for location display
   useEffect(() => {
