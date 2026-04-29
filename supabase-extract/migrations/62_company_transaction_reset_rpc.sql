@@ -92,6 +92,7 @@ DECLARE
   v_deleted JSONB := '{}'::JSONB;
   v_audit_id UUID;
   v_rows BIGINT := 0;
+  v_prev_replication_role TEXT := NULL;
 BEGIN
   IF p_company_id IS NULL THEN
     RETURN jsonb_build_object('success', FALSE, 'error', 'company_id is required');
@@ -120,6 +121,10 @@ BEGIN
   END IF;
 
   v_preview := preview_company_transaction_reset(p_company_id);
+
+  -- Hard reset should not invoke transactional posting triggers while purging rows.
+  v_prev_replication_role := current_setting('session_replication_role', true);
+  PERFORM set_config('session_replication_role', 'replica', true);
 
   INSERT INTO company_reset_audit_logs (
     company_id,
@@ -268,6 +273,12 @@ BEGIN
   SET deleted_counts = v_deleted
   WHERE id = v_audit_id;
 
+  PERFORM set_config(
+    'session_replication_role',
+    COALESCE(NULLIF(v_prev_replication_role, ''), 'origin'),
+    true
+  );
+
   RETURN jsonb_build_object(
     'success', TRUE,
     'auditId', v_audit_id,
@@ -275,6 +286,15 @@ BEGIN
     'deleted', v_deleted
   );
 EXCEPTION WHEN OTHERS THEN
+  BEGIN
+    PERFORM set_config(
+      'session_replication_role',
+      COALESCE(NULLIF(v_prev_replication_role, ''), 'origin'),
+      true
+    );
+  EXCEPTION WHEN OTHERS THEN
+    NULL;
+  END;
   RETURN jsonb_build_object('success', FALSE, 'error', SQLERRM);
 END;
 $$;
