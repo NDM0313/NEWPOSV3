@@ -1,5 +1,9 @@
 import { useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ExternalLink } from 'lucide-react';
+import {
+  allowsDayBookUnifiedEdit,
+  getMobileSalePurchaseOpenTarget,
+} from '../../lib/journalEntryEditPolicy';
 import type { User } from '../../types';
 import { AccountsDashboard, type AccountEntry } from './AccountsDashboard';
 import { GeneralEntryFlow } from './GeneralEntryFlow';
@@ -9,6 +13,7 @@ import { WorkerPaymentFlow } from './WorkerPaymentFlow';
 import { ExpenseEntryFlow } from './ExpenseEntryFlow';
 import { ChartOfAccountsView } from './ChartOfAccountsView';
 import { AddAccountForm } from './AddAccountForm';
+import { EntryEditSheet } from './EntryEditSheet';
 import { ReportsHub, type LegacyReportKey } from './reports/ReportsHub';
 import { AccountLedgerReport } from './reports/AccountLedgerReport';
 import { PartyLedgerReport } from './reports/PartyLedgerReport';
@@ -30,6 +35,7 @@ interface AccountsModuleProps {
   /** If true, the module opens directly on the reports hub (used when navigating from the legacy
    * Reports / Ledger tiles on the home screen). */
   initialView?: 'dashboard' | 'reports';
+  onNavigateToDocumentEdit?: (kind: 'sale' | 'purchase', documentId: string) => void;
 }
 
 type View =
@@ -61,10 +67,11 @@ type View =
   | 'rental-report'
   | 'inventory-report';
 
-export function AccountsModule({ onBack, user, companyId, branch, initialView }: AccountsModuleProps) {
+export function AccountsModule({ onBack, user, companyId, branch, initialView, onNavigateToDocumentEdit }: AccountsModuleProps) {
   const [view, setView] = useState<View>(initialView === 'reports' ? 'reports' : 'dashboard');
   const [selectedEntry, setSelectedEntry] = useState<AccountEntry | null>(null);
   const [ledgerInitialAccountId, setLedgerInitialAccountId] = useState<string | null>(null);
+  const [editSheetOpen, setEditSheetOpen] = useState(false);
 
   const backToReports = () => setView('reports');
   const backFromReportsHub = () => {
@@ -160,6 +167,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView }:
         onOpenReport={openReport}
         companyId={companyId ?? null}
         branchId={branch?.id ?? null}
+        onNavigateToDocumentEdit={onNavigateToDocumentEdit}
       />
     );
   }
@@ -174,6 +182,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView }:
         companyId={companyId ?? null}
         user={user}
         initialAccountId={ledgerInitialAccountId}
+        branchId={branch?.id ?? null}
       />
     );
   }
@@ -220,6 +229,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView }:
         companyId={companyId ?? null}
         user={user}
         kind="cash"
+        branchId={branch?.id ?? null}
         onViewLedger={(accountId) => openReport('account-ledger', { accountId })}
       />
     );
@@ -231,6 +241,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView }:
         companyId={companyId ?? null}
         user={user}
         kind="bank"
+        branchId={branch?.id ?? null}
         onViewLedger={(accountId) => openReport('account-ledger', { accountId })}
       />
     );
@@ -242,6 +253,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView }:
         companyId={companyId ?? null}
         user={user}
         kind="wallet"
+        branchId={branch?.id ?? null}
         onViewLedger={(accountId) => openReport('account-ledger', { accountId })}
       />
     );
@@ -292,8 +304,19 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView }:
 
     const typeConfig = getEntryTypeConfig(selectedEntry.type);
 
+    const canEditFromAccounts = allowsDayBookUnifiedEdit(
+      selectedEntry.referenceType,
+      selectedEntry.paymentId ?? null,
+    );
+    const salePurchaseTarget = getMobileSalePurchaseOpenTarget(
+      selectedEntry.referenceType,
+      selectedEntry.referenceId ?? null,
+      selectedEntry.paymentId ?? null,
+    );
+
     return (
-      <div className="min-h-screen pb-24 bg-[#111827]">
+      <>
+        <div className="min-h-screen pb-24 bg-[#111827]">
         <div className={`bg-gradient-to-br ${typeConfig.color} p-4 sticky top-0 z-10`}>
           <div className="flex items-center gap-3">
             <button
@@ -357,25 +380,77 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView }:
             </div>
           </div>
 
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-            <h2 className="text-sm font-semibold text-white mb-4">Audit Trail</h2>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] rounded-full flex items-center justify-center">
-                <span className="text-white font-bold">{selectedEntry.addedBy.split(' ').map((n) => n[0]).join('')}</span>
-              </div>
-              <div className="flex-1">
-                <p className="text-xs text-[#9CA3AF]">Added By</p>
-                <p className="text-sm font-semibold text-white">{selectedEntry.addedBy}</p>
-                <p className="text-xs text-[#6B7280]">{selectedEntry.addedByRole}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-[#9CA3AF]">Created At</p>
-                <p className="text-sm text-white">{selectedEntry.createdAt}</p>
+            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+              <h2 className="text-sm font-semibold text-white mb-4">Audit Trail</h2>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] rounded-full flex items-center justify-center">
+                  <span className="text-white font-bold">{selectedEntry.addedBy.split(' ').map((n) => n[0]).join('')}</span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-[#9CA3AF]">Added By</p>
+                  <p className="text-sm font-semibold text-white">{selectedEntry.addedBy}</p>
+                  <p className="text-xs text-[#6B7280]">{selectedEntry.addedByRole}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-[#9CA3AF]">Created At</p>
+                  <p className="text-sm text-white">{selectedEntry.createdAt}</p>
+                </div>
               </div>
             </div>
+
+            {canEditFromAccounts ? (
+              <button
+                type="button"
+                onClick={() => setEditSheetOpen(true)}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-[#4B5563] hover:bg-[#374151] rounded-lg text-white font-semibold text-sm mt-4"
+              >
+                Edit Entry
+              </button>
+            ) : (
+              <div className="space-y-3 mt-4">
+                <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+                  <p className="text-sm text-white font-medium mb-1">
+                    {salePurchaseTarget
+                      ? 'Invoices and purchases cannot be edited here — open Sales or Purchases to change the document.'
+                      : 'This entry is controlled by its source module (inventory, opening balance, rental, returns, etc.). Edit it there, not from Accounts.'}
+                  </p>
+                  <p className="text-xs text-amber-100/90 leading-relaxed">
+                    {salePurchaseTarget
+                      ? 'سیل یا پرچیز یہاں سے ایڈٹ نہیں ہو سکتے — براہ کرم سیلز یا پرچیز سیکشن میں جا کر ڈاکیومنٹ ایڈٹ کریں۔'
+                      : 'یہ واؤچر سورس ماڈیول سے کنٹرول ہوتا ہے۔ اسے Accounts سے نہیں، متعلقہ جگہ (سٹاک، اوپننگ، رینٹل، وغیرہ) میں جا کر درست کریں۔'}
+                  </p>
+                </div>
+                {salePurchaseTarget && onNavigateToDocumentEdit ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onNavigateToDocumentEdit(salePurchaseTarget.kind, salePurchaseTarget.id)
+                    }
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-[#6366F1] hover:bg-[#4F46E5] rounded-lg text-white font-semibold text-sm"
+                  >
+                    <ExternalLink className="w-4 h-4 shrink-0" />
+                    {salePurchaseTarget.kind === 'sale' ? 'Open in Sales' : 'Open in Purchase'}
+                  </button>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
-      </div>
+
+        {editSheetOpen && companyId && (
+          <EntryEditSheet
+            entry={selectedEntry}
+            companyId={companyId}
+            onClose={() => setEditSheetOpen(false)}
+            onSuccess={() => {
+              setEditSheetOpen(false);
+              // Optimistically set view back to dashboard to refresh
+              setView('dashboard');
+              setSelectedEntry(null);
+            }}
+          />
+        )}
+      </>
     );
   }
 

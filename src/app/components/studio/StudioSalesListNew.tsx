@@ -133,12 +133,14 @@ export const StudioSalesListNew = () => {
   }, []);
 
   // Convert sale (from sales table, is_studio = true) to StudioSale; optional stages for production status
-  const convertFromSale = useCallback((sale: any, stages?: Array<{ status?: string }>): StudioSale => {
+  const convertFromSale = useCallback(
+    (sale: any, stages?: Array<{ status?: string }>, designNameFromProduction?: string | null): StudioSale => {
     const customer = sale.customer || {};
     const items = sale.items || [];
-    const fabricSummary = items.length > 0
-      ? (items[0].product_name || items[0].item_description || 'N/A')
-      : 'N/A';
+    const dn = String(designNameFromProduction ?? '').trim();
+    const fabricSummary =
+      dn ||
+      (items.length > 0 ? (items[0].product_name || items[0].item_description || 'N/A') : 'N/A');
     const meters = items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
     const productionStatus = stages ? deriveProductionStatus(stages) : 'Not Started';
     const { notesWithoutDeadline } = parseStudioDeadlineFromNotes(sale.notes);
@@ -182,9 +184,10 @@ export const StudioSalesListNew = () => {
 
       const saleIds = (studioSalesFromSales || []).map((s: any) => s.id).filter(Boolean);
       const stagesBySaleId: Record<string, Array<{ status?: string }>> = {};
+      let productionsBySale: Array<{ id?: string; sale_id?: string; design_name?: string | null }> = [];
       if (saleIds.length > 0) {
         try {
-          const productionsBySale = await studioProductionService.getProductionsBySaleIds(saleIds);
+          productionsBySale = await studioProductionService.getProductionsBySaleIds(saleIds);
           const productionIds = productionsBySale.map((p: any) => p.id).filter(Boolean);
           const stagesMap = productionIds.length > 0
             ? await studioProductionService.getStagesByProductionIds(productionIds)
@@ -200,8 +203,15 @@ export const StudioSalesListNew = () => {
         }
       }
 
+      const designBySaleId: Record<string, string> = {};
+      for (const p of productionsBySale) {
+        const sid = p.sale_id;
+        const name = String(p.design_name ?? '').trim();
+        if (sid && name && !designBySaleId[sid]) designBySaleId[sid] = name;
+      }
+
       const fromSales = (studioSalesFromSales || []).map((sale: any) =>
-        convertFromSale(sale, stagesBySaleId[sale.id])
+        convertFromSale(sale, stagesBySaleId[sale.id], designBySaleId[sale.id] ?? null)
       );
       setSales(fromSales);
     } catch (error) {
@@ -486,7 +496,7 @@ export const StudioSalesListNew = () => {
               <tr>
                 <th className="p-4 font-medium min-w-[140px]">Sale / Invoice No</th>
                 <th className="p-4 font-medium min-w-[180px]">Customer</th>
-                <th className="p-4 font-medium min-w-[180px]">Product / Fabric</th>
+                <th className="p-4 font-medium min-w-[180px]">Studio product / fabric</th>
                 <th className="p-4 font-medium min-w-[120px]">Sale Date</th>
                 <th className="p-4 font-medium min-w-[120px]">Deadline</th>
                 <th className="p-4 font-medium min-w-[160px]">Notes</th>

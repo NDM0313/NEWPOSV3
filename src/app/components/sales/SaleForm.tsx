@@ -381,6 +381,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
     // Studio Sale State
     const [isStudioSale, setIsStudioSale] = useState<boolean>(false);
+    /** Persisted to studio_productions.design_name (required for studio sales). */
+    const [studioProductName, setStudioProductName] = useState<string>("");
     const [studioNotes, setStudioNotes] = useState<string>("");
 
     // Status State (Draft, Quotation, Final, etc.)
@@ -1319,6 +1321,21 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         setSaleNotes(loadedNotes);
                         setStudioNotes(loadedNotes);
 
+                        void (async () => {
+                            try {
+                                const { supabase } = await import('@/lib/supabase');
+                                const { data: prodRow } = await supabase
+                                    .from('studio_productions')
+                                    .select('design_name')
+                                    .eq('sale_id', full.id)
+                                    .maybeSingle();
+                                const dn = prodRow?.design_name != null ? String(prodRow.design_name).trim() : '';
+                                if (dn) setStudioProductName(dn);
+                            } catch {
+                                /* ignore */
+                            }
+                        })();
+
                         // Pre-fill from sale_charges: shipping → Shipping section; others → Extra Expenses
                         const charges = (full as any).charges ?? (full as any).sale_charges ?? [];
                         const chargeList = Array.isArray(charges) ? charges : [];
@@ -1978,6 +1995,11 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             return;
         }
 
+        if (isStudioSale && !String(studioProductName ?? '').trim()) {
+            toast.error('Studio product name is required.');
+            return;
+        }
+
         // HARD validation: packing opened but not saved → block submit (only when packing is enabled)
         if (enablePacking) {
             const packingOpenedNotSaved = items.some(i => i.packingTouched && !i.packingDetails);
@@ -2275,7 +2297,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 partialPayments: (effectiveFinal && partialPayments.length > 0) ? partialPayments : [],
                 // Studio sale: show on Studio page and use studio invoice numbering
                 isStudioSale: isStudioSale,
-                is_studio: isStudioSale
+                is_studio: isStudioSale,
+                ...(isStudioSale ? { studioDesignName: String(studioProductName ?? '').trim() } : {}),
             };
             
             // Same row: new sale → create; edit or convert-to-final → update
@@ -2853,28 +2876,41 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
                     {/* Studio Details - Inline when active */}
                     {isStudioSale && (
-                        <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-2 flex items-center gap-2 flex-wrap mt-3">
-                            <div className="flex items-center gap-1.5 text-xs text-purple-400">
-                                <Palette size={12} />
-                                <Scissors size={12} />
-                                <Sparkles size={12} />
+                        <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-2 flex flex-col gap-2 mt-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5 text-xs text-purple-400 shrink-0">
+                                    <Palette size={12} />
+                                    <Scissors size={12} />
+                                    <Sparkles size={12} />
+                                </div>
+                                <div className="flex-1 min-w-[200px] flex flex-col gap-0.5">
+                                    <Label className="text-[10px] uppercase tracking-wide text-purple-400/90">Studio product name</Label>
+                                    <Input
+                                        required
+                                        value={studioProductName}
+                                        onChange={(e) => setStudioProductName(e.target.value)}
+                                        placeholder="Required — e.g. replica / outfit name"
+                                        className="h-8 bg-gray-950 border-purple-500/30 text-white text-xs placeholder:text-purple-400/30"
+                                    />
+                                </div>
+                                <div className="w-40">
+                                    <Label className="text-[10px] uppercase tracking-wide text-purple-400/90 mb-0.5 block">Deadline</Label>
+                                    <CalendarDatePicker
+                                        value={studioDeadline}
+                                        onChange={(date) => {
+                                            studioDeadlineRef.current = date ?? undefined;
+                                            setStudioDeadline(date ?? undefined);
+                                        }}
+                                        placeholder="Deadline"
+                                        showTime={false}
+                                    />
+                                </div>
                             </div>
-                            <div className="w-40">
-                                <CalendarDatePicker
-                                    value={studioDeadline}
-                                    onChange={(date) => {
-                                        studioDeadlineRef.current = date ?? undefined;
-                                        setStudioDeadline(date ?? undefined);
-                                    }}
-                                    placeholder="Deadline"
-                                    showTime={false}
-                                />
-                            </div>
-                            <Input 
-                                placeholder="Notes..."
+                            <Input
+                                placeholder="Production notes (optional)..."
                                 value={studioNotes}
                                 onChange={(e) => setStudioNotes(e.target.value)}
-                                className="flex-1 min-w-[150px] h-7 bg-gray-950 border-purple-500/30 text-white text-xs placeholder:text-purple-400/30"
+                                className="w-full h-7 bg-gray-950 border-purple-500/30 text-white text-xs placeholder:text-purple-400/30"
                             />
                         </div>
                     )}

@@ -2,15 +2,27 @@ import { useState } from 'react';
 import { Search, Clock, CheckCircle, Package } from 'lucide-react';
 
 export interface StudioOrder {
+  /** Primary production id (first line in the sale); APIs that need one production default here */
   id: string;
+  /** Sale UUID — one dashboard row per sale */
+  saleId: string;
+  /** All studio_productions ids for this sale (ordered) */
+  productionIds: string[];
+  /** production id → product label for line picker */
+  productionLineLabels?: Record<string, string>;
   orderNumber: string;
   customerName: string;
+  /** Combined product labels for list cards */
   productName: string;
+  /** Replica / custom outfit title from studio_productions.design_name */
+  designName?: string | null;
   totalAmount: number;
   createdDate: string;
   /** Deadline date (from sale) for display on card */
   deadline?: string;
   status: 'pending' | 'in-progress' | 'ready' | 'completed' | 'shipped';
+  /** True when every production has studio invoice line linked (generated_invoice_item_id). */
+  customerInvoiceGenerated: boolean;
   currentStage?: string;
   stages: StudioStage[];
   completedStages: number;
@@ -19,6 +31,10 @@ export interface StudioOrder {
 
 export interface StudioStage {
   id: string;
+  /** studio_productions row this stage belongs to */
+  productionId: string;
+  /** DB stage_order for sorting merged pipelines */
+  stageOrder?: number;
   name: string;
   type: 'dyeing' | 'stitching' | 'handwork' | 'embroidery' | 'finishing' | 'quality-check';
   assignedTo: string;
@@ -49,7 +65,8 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
     const matchesSearch =
       order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.productName.toLowerCase().includes(searchQuery.toLowerCase());
+      order.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (order.designName && order.designName.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesStatus = filterStatus === 'all' || order.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
@@ -153,7 +170,7 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
 
             return (
               <button
-                key={order.id}
+                key={order.saleId}
                 onClick={() => onOrderClick(order)}
                 className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#8B5CF6] transition-colors text-left"
               >
@@ -170,6 +187,9 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
                       </span>
                     </div>
                     <p className="text-sm text-[#9CA3AF] truncate">{order.customerName}</p>
+                    {order.designName?.trim() && (
+                      <p className="text-xs text-[#A78BFA] font-medium truncate mt-0.5">Replica: {order.designName.trim()}</p>
+                    )}
                   </div>
                   <p className="text-sm font-semibold text-white shrink-0">Rs. {order.totalAmount.toLocaleString()}</p>
                 </div>

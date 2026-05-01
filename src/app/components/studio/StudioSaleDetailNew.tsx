@@ -231,6 +231,8 @@ interface StudioSaleDetail {
   balanceDue: number;
   
   fabricPurchaseCost: number;
+  /** From studio_productions.design_name — user-entered studio / replica title (preferred header label). */
+  studioProductName?: string | null;
   /** 'sale' = from sales table (payment can be recorded); 'studio_order' = from studio_orders only */
   source?: 'sale' | 'studio_order';
   /** Sale line items (when source is sale). Used to check if studio product line exists (invoice generated). */
@@ -666,10 +668,13 @@ export const StudioSaleDetailNew = () => {
             convertedDetail.payments = payments;
           } catch (_) { /* ignore */ }
           let productionSteps: ProductionStep[] = [];
+          let studioProductName: string | undefined;
           try {
             const productions = await studioProductionService.getProductionsBySaleId(sale.id);
             if (productions.length > 0) {
               const prod = productions[0] as any;
+              const dn = String(prod.design_name ?? '').trim();
+              if (dn) studioProductName = dn;
               const prodId = prod.id;
               setProductionId(prodId);
               setInvoiceLinked(!!prod.generated_invoice_item_id);
@@ -760,7 +765,11 @@ export const StudioSaleDetailNew = () => {
             convertedDetail.totalAmount = (convertedDetail.baseAmount || 0) + shipmentCharges;
             convertedDetail.balanceDue = Math.max(0, convertedDetail.totalAmount - (convertedDetail.paidAmount || 0));
           } catch (_) { /* ignore */ }
-          setSaleDetail({ ...convertedDetail, productionSteps });
+          setSaleDetail({
+            ...convertedDetail,
+            ...(studioProductName ? { studioProductName } : {}),
+            productionSteps,
+          });
           // Restore custom tasks from persisted 'extra' stages so they show after navigation
           setCustomTasks(productionSteps.filter((s) => s.stageType === 'extra').map((s) => ({ id: s.id, name: s.name })));
           return;
@@ -2446,9 +2455,14 @@ export const StudioSaleDetailNew = () => {
               <p className="text-xs text-gray-400">{saleDetail.customerPhone}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 mb-1">Fabric</p>
-              <p className="text-white font-medium">{saleDetail.fabricName}</p>
+              <p className="text-xs text-gray-500 mb-1">{saleDetail.studioProductName ? 'Studio product' : 'Fabric'}</p>
+              <p className="text-white font-medium">{saleDetail.studioProductName || saleDetail.fabricName}</p>
               <p className="text-xs text-gray-400">{saleDetail.meters} meters</p>
+              {saleDetail.studioProductName &&
+                saleDetail.fabricName &&
+                saleDetail.studioProductName.trim() !== String(saleDetail.fabricName).trim() && (
+                  <p className="text-xs text-gray-500 mt-1">Fabric line: {saleDetail.fabricName}</p>
+                )}
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-1">Sale Date</p>

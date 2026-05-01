@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2 } from 'lucide-react';
 import * as salesApi from '../../api/sales';
 import * as studioApi from '../../api/studio';
@@ -30,6 +30,7 @@ import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { SaleReturnModal } from './SaleReturnModal';
 import { PdfPreviewModal } from '../shared/PdfPreviewModal';
 import { usePdfPreview } from '../shared/usePdfPreview';
+import { NumericInput } from '../common';
 import { InvoicePreviewPdf, type InvoicePreviewItem } from '../shared/InvoicePreviewPdf';
 
 type SaleRecord = {
@@ -51,15 +52,58 @@ type SaleRecord = {
   shipment_status?: string;
 };
 
+function mapEnrichedRowToSaleRecord(s: Record<string, unknown>): SaleRecord {
+  const cust = s.customer as { name?: string } | null;
+  const createdByUser = (s.created_by ?? s.created_by_user) as { full_name?: string } | null;
+  const d = (s.invoice_date as string) || (s.created_at as string) || '';
+  const dateObj = d ? new Date(d) : new Date();
+  const isToday = dateObj.toDateString() === new Date().toDateString();
+  const isYesterday = dateObj.toDateString() === new Date(Date.now() - 864e5).toDateString();
+  let dateStr = dateObj.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
+  if (isToday) dateStr = `Today, ${dateStr}`;
+  else if (isYesterday) dateStr = `Yesterday, ${dateStr}`;
+  else dateStr = dateObj.toLocaleDateString('en-PK', { day: 'numeric', month: 'short' });
+  const totalAmount = Number(s.total_amount ?? s.total ?? 0);
+  const totalReceived = Number(s.total_received ?? 0);
+  const balanceDue = Number(s.balance_due ?? 0);
+  const creditBalance = Number(s.credit_balance ?? 0);
+  const studioCharges = Number(s.studio_charges ?? 0);
+  const grandTotal = Number(s.grand_total ?? totalAmount);
+  return {
+    raw: s,
+    id: (s.invoice_no as string) || (s.id as string) || '—',
+    customer: (cust?.name as string) || (s.customer_name as string) || 'Walk-in',
+    amount: totalAmount,
+    total_received: totalReceived,
+    balance_due: balanceDue,
+    credit_balance: creditBalance,
+    date: dateStr,
+    created_by_name: (createdByUser?.full_name as string) || '',
+    studio_charges: studioCharges,
+    grand_total: grandTotal,
+    shipment_status: (s.shipment_status as string) || undefined,
+  };
+}
+
 interface SalesHomeProps {
   onBack: () => void;
   onNewSale: () => void;
   companyId: string | null;
   branchId: string | null;
   userId?: string | null;
+  initialEditSaleId?: string | null;
+  onConsumedInitialEditSaleId?: () => void;
 }
 
-export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: SalesHomeProps) {
+export function SalesHome({
+  onBack,
+  onNewSale,
+  companyId,
+  branchId,
+  userId,
+  initialEditSaleId,
+  onConsumedInitialEditSaleId,
+}: SalesHomeProps) {
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
   const [stats, setStats] = useState<{ today: number; week: number; month: number }>({ today: 0, week: 0, month: 0 });
   const [loading, setLoading] = useState(true);
@@ -227,8 +271,9 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
     variationId: string | null;
     productName: string;
     sku: string;
-    quantity: number;
-    unitPrice: number;
+    /** String allows empty field while editing; parse at save/subtotal. */
+    quantity: string;
+    unitPrice: string;
     discountAmount: number;
     taxAmount: number;
   };
@@ -433,19 +478,41 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
       }
       setEditLineItems(
         data.map((r, idx) => ({
-          lineKey: `${r.productId}-${idx}-${r.variationId ?? 'x'}`,
-          productId: r.productId,
+          lineKey: r.saleItemId || `line-${idx}-${r.variationId ?? 'n'}-${r.productName?.slice(0, 8) ?? ''}`,
+          productId: r.productId || '',
           variationId: r.variationId,
           productName: r.productName,
           sku: r.sku,
-          quantity: r.soldQty,
-          unitPrice: r.unitPrice,
+          quantity: String(r.soldQty ?? ''),
+          unitPrice: String(r.unitPrice ?? ''),
           discountAmount: 0,
           taxAmount: 0,
         })),
       );
     });
   };
+
+  const handleEditRef = useRef(handleEdit);
+  handleEditRef.current = handleEdit;
+
+  useEffect(() => {
+    if (!initialEditSaleId || !companyId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data: row, error } = await salesApi.getSaleEnrichedById(companyId, initialEditSaleId);
+      if (cancelled) return;
+      if (error || !row) {
+        onConsumedInitialEditSaleId?.();
+        return;
+      }
+      const saleRecord = mapEnrichedRowToSaleRecord(row);
+      await handleEditRef.current(saleRecord);
+      if (!cancelled) onConsumedInitialEditSaleId?.();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialEditSaleId, companyId, onConsumedInitialEditSaleId]);
 
   const confirmEdit = async () => {
     if (!editSale || editSaving) return;
@@ -460,16 +527,25 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
       const shipmentFrozen = Number(raw.shipment_charges ?? 0) || 0;
       const extra = Number(editExtra) || 0;
 
-      const lines = editLineItems
-        .map((row) => {
-          const qty = Math.max(0, Number(row.quantity) || 0);
-          const up = Math.max(0, Number(row.unitPrice) || 0);
-          const da = Math.max(0, Number(row.discountAmount) || 0);
-          const ta = Math.max(0, Number(row.taxAmount) || 0);
-          const lineTot = Math.max(0, qty * up - da + ta);
-          return { ...row, quantity: qty, unitPrice: up, discountAmount: da, taxAmount: ta, total: lineTot };
-        })
-        .filter((row) => row.productId && row.quantity > 0);
+      const normalizedSaleLines = editLineItems.map((row) => {
+        const qty = Math.max(0, parseFloat(String(row.quantity).trim()) || 0);
+        const up = Math.max(0, parseFloat(String(row.unitPrice).trim()) || 0);
+        const da = Math.max(0, Number(row.discountAmount) || 0);
+        const ta = Math.max(0, Number(row.taxAmount) || 0);
+        const lineTot = Math.max(0, qty * up - da + ta);
+        return { ...row, quantity: qty, unitPrice: up, discountAmount: da, taxAmount: ta, total: lineTot };
+      });
+
+      const hasPositiveQtySale = normalizedSaleLines.some((r) => r.quantity > 0);
+      if (
+        hasPositiveQtySale &&
+        normalizedSaleLines.some((r) => r.quantity > 0 && !String(r.productId || '').trim())
+      ) {
+        setActionError('Each line must be linked to a product. Use + Add product to replace orphan lines.');
+        return;
+      }
+
+      const lines = normalizedSaleLines.filter((row) => String(row.productId || '').trim() && row.quantity > 0);
 
       if (lines.length === 0) {
         if (editLineItems.length > 0) {
@@ -630,8 +706,8 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
           variationId: v.id,
           productName: `${p.name} (${Object.values(v.attributes || {}).filter(Boolean).join(', ')})`,
           sku: v.sku,
-          quantity: 1,
-          unitPrice: Number(v.price) || 0,
+          quantity: '1',
+          unitPrice: String(Number(v.price) || 0),
           discountAmount: 0,
           taxAmount: 0,
         },
@@ -645,8 +721,8 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
           variationId: null,
           productName: p.name,
           sku: p.sku,
-          quantity: 1,
-          unitPrice: Number(p.retailPrice) || 0,
+          quantity: '1',
+          unitPrice: String(Number(p.retailPrice) || 0),
           discountAmount: 0,
           taxAmount: 0,
         },
@@ -665,10 +741,11 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
       .slice(0, 45);
   }, [editSale, productSearch, productCatalog]);
 
-  const editLineSubtotal = editLineItems.reduce(
-    (s, r) => s + Math.max(0, (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0) - (Number(r.discountAmount) || 0) + (Number(r.taxAmount) || 0)),
-    0,
-  );
+  const editLineSubtotal = editLineItems.reduce((s, r) => {
+    const qty = Math.max(0, parseFloat(String(r.quantity).trim()) || 0);
+    const up = Math.max(0, parseFloat(String(r.unitPrice).trim()) || 0);
+    return s + Math.max(0, qty * up - (Number(r.discountAmount) || 0) + (Number(r.taxAmount) || 0));
+  }, 0);
   const handlePaymentHistory = (sale: SaleRecord) => {
     setMenuSale(null);
     setSelectedSale(sale);
@@ -1351,14 +1428,34 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
       )}
 
       {editSale && (
-        <div className="fixed inset-0 z-[80] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={closeEditSaleModal}>
-          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-[80] bg-black/70 flex items-end sm:items-center justify-center p-4"
+          onClick={() => {
+            if (!editSaving) closeEditSaleModal();
+          }}
+        >
+          <div className="relative bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {editSaving && (
+              <div
+                className="absolute inset-0 z-[100] rounded-2xl bg-black/55 flex flex-col items-center justify-center gap-2 pointer-events-auto"
+                aria-busy="true"
+                aria-live="polite"
+              >
+                <Loader2 className="w-9 h-9 text-white animate-spin" />
+                <span className="text-sm font-medium text-white">Saving…</span>
+              </div>
+            )}
             <div className="p-4 border-b border-[#374151] flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-white font-semibold">Edit Invoice</h3>
                 <p className="text-xs text-[#9CA3AF]">{editSale.id}</p>
               </div>
-              <button type="button" onClick={closeEditSaleModal} className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF]">
+              <button
+                type="button"
+                onClick={closeEditSaleModal}
+                disabled={editSaving}
+                className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF] disabled:opacity-40 disabled:pointer-events-none"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1491,14 +1588,21 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                   <p className="text-xs text-[#9CA3AF] py-2">Loading lines…</p>
                 ) : editLineItems.length === 0 ? (
                   <p className="text-[11px] text-[#F59E0B]">
-                    No sale lines loaded (apply DB migration update_sale_with_items). You can still save header fields only.
+                    No sale lines loaded. You can still save header-only changes. If this persists, reload the sale from the list.
                   </p>
                 ) : (
                   <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                     {editLineItems.map((row, idx) => (
                       <div key={row.lineKey} className="rounded-lg bg-[#111827] border border-[#374151] p-2 space-y-2">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-xs text-white truncate min-w-0 flex-1">{row.productName}</p>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs text-white truncate">{row.productName}</p>
+                            {!String(row.productId || '').trim() && (
+                              <p className="text-[10px] text-amber-400 mt-0.5">
+                                Not linked to a catalog product — remove or replace with + Add product.
+                              </p>
+                            )}
+                          </div>
                           {editLineItems.length > 1 && (
                             <button
                               type="button"
@@ -1512,25 +1616,29 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="text-[10px] text-[#9CA3AF]">Qty</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
+                            <NumericInput
+                              label="Qty"
                               value={row.quantity}
-                              onChange={(e) => updateEditLine(idx, { quantity: Number(e.target.value) || 0 })}
-                              className="w-full h-9 rounded bg-[#0B1120] border border-[#374151] text-white px-2 text-sm"
+                              onChange={(v) => updateEditLine(idx, { quantity: v })}
+                              allowDecimal
+                              min={0}
+                              maxDecimals={4}
+                              disabled={editSaving}
+                              className="[&_label]:text-[10px] [&_label]:mb-0.5 [&_label]:font-normal"
+                              inputClassName="!h-9 !text-sm !px-2 !rounded-lg !bg-[#0B1120]"
                             />
                           </div>
                           <div>
-                            <label className="text-[10px] text-[#9CA3AF]">Unit price</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
+                            <NumericInput
+                              label="Unit price"
                               value={row.unitPrice}
-                              onChange={(e) => updateEditLine(idx, { unitPrice: Number(e.target.value) || 0 })}
-                              className="w-full h-9 rounded bg-[#0B1120] border border-[#374151] text-white px-2 text-sm"
+                              onChange={(v) => updateEditLine(idx, { unitPrice: v })}
+                              allowDecimal
+                              min={0}
+                              maxDecimals={4}
+                              disabled={editSaving}
+                              className="[&_label]:text-[10px] [&_label]:mb-0.5 [&_label]:font-normal"
+                              inputClassName="!h-9 !text-sm !px-2 !rounded-lg !bg-[#0B1120]"
                             />
                           </div>
                         </div>
@@ -1565,11 +1673,28 @@ export function SalesHome({ onBack, onNewSale, companyId, branchId, userId }: Sa
               {actionError && <div className="rounded-lg bg-[#EF4444] text-white text-sm px-3 py-2">{actionError}</div>}
             </div>
             <div className="p-4 border-t border-[#374151] grid grid-cols-2 gap-3 shrink-0">
-              <button type="button" onClick={closeEditSaleModal} className="h-11 rounded-lg border border-[#374151] text-[#D1D5DB]">
+              <button
+                type="button"
+                onClick={closeEditSaleModal}
+                disabled={editSaving}
+                className="h-11 rounded-lg border border-[#374151] text-[#D1D5DB] disabled:opacity-50 disabled:pointer-events-none"
+              >
                 Cancel
               </button>
-              <button type="button" onClick={confirmEdit} disabled={editSaving} className="h-11 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-60 text-white font-medium">
-                {editSaving ? 'Saving...' : 'Save'}
+              <button
+                type="button"
+                onClick={confirmEdit}
+                disabled={editSaving}
+                className="h-11 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-60 text-white font-medium inline-flex items-center justify-center gap-2 disabled:pointer-events-none"
+              >
+                {editSaving ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin shrink-0" />
+                    Saving…
+                  </>
+                ) : (
+                  'Save'
+                )}
               </button>
             </div>
           </div>

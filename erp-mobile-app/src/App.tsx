@@ -74,6 +74,7 @@ export default function App() {
   const [salesInitialType, setSalesInitialType] = useState<'regular' | 'studio' | null>(null);
   const [studioFocusSaleId, setStudioFocusSaleId] = useState<string | null>(null);
   const [isPinLocked, setIsPinLocked] = useState(false);
+  const [documentEditIntent, setDocumentEditIntent] = useState<{ kind: 'sale' | 'purchase'; id: string } | null>(null);
 
   useEffect(() => {
     const cleanup = initInputKeyboard();
@@ -330,6 +331,18 @@ export default function App() {
     setActiveBottomTab('home');
   };
 
+  const navigateToDocumentEdit = (kind: 'sale' | 'purchase', documentId: string) => {
+    setDocumentEditIntent({ kind, id: documentId });
+    setShowModuleGrid(false);
+    if (kind === 'sale') {
+      setCurrentScreen('sales');
+      setActiveBottomTab('sales');
+    } else {
+      setCurrentScreen('purchase');
+      setActiveBottomTab('home');
+    }
+  };
+
   const handleLogout = async () => {
     await authApi.signOut();
     try { localStorage.removeItem(BRANCH_STORAGE_KEY); } catch { /* ignore */ }
@@ -445,6 +458,10 @@ export default function App() {
                     setStudioFocusSaleId(saleId);
                     setCurrentScreen('studio');
                   }}
+                  initialEditSaleId={documentEditIntent?.kind === 'sale' ? documentEditIntent.id : null}
+                  onConsumedInitialEditSaleId={() =>
+                    setDocumentEditIntent((prev) => (prev?.kind === 'sale' ? null : prev))
+                  }
                 />
       )}
       {currentScreen === 'pos' && user && (
@@ -482,12 +499,32 @@ export default function App() {
       {currentScreen === 'purchase' && user && (
         !canAccessScreen('purchase', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
-          : <PurchaseModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
+          : (
+            <PurchaseModule
+              onBack={navigateHome}
+              user={user}
+              companyId={companyId}
+              branchId={selectedBranch?.id ?? null}
+              initialEditPurchaseId={documentEditIntent?.kind === 'purchase' ? documentEditIntent.id : null}
+              onConsumedInitialEditPurchaseId={() =>
+                setDocumentEditIntent((prev) => (prev?.kind === 'purchase' ? null : prev))
+              }
+            />
+            )
       )}
       {currentScreen === 'reports' && user && (
         !canAccessScreen('reports', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
-          : <AccountsModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} initialView="reports" />
+          : (
+            <AccountsModule
+              onBack={navigateHome}
+              user={user}
+              companyId={companyId}
+              branch={selectedBranch}
+              initialView="reports"
+              onNavigateToDocumentEdit={navigateToDocumentEdit}
+            />
+            )
       )}
       {currentScreen === 'rental' && user && (
         !canAccessScreen('rental', selectedBranch?.id)
@@ -510,7 +547,15 @@ export default function App() {
       {currentScreen === 'accounts' && user && (
         !canAccessScreen('accounts', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
-          : <AccountsModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
+          : (
+            <AccountsModule
+              onBack={navigateHome}
+              user={user}
+              companyId={companyId}
+              branch={selectedBranch}
+              onNavigateToDocumentEdit={navigateToDocumentEdit}
+            />
+            )
       )}
       {currentScreen === 'expense' && user && (
         !canAccessScreen('expense', selectedBranch?.id)
@@ -530,7 +575,16 @@ export default function App() {
       {currentScreen === 'ledger' && user && (
         !canAccessScreen('accounts', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
-          : <AccountsModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} initialView="reports" />
+          : (
+            <AccountsModule
+              onBack={navigateHome}
+              user={user}
+              companyId={companyId}
+              branch={selectedBranch}
+              initialView="reports"
+              onNavigateToDocumentEdit={navigateToDocumentEdit}
+            />
+            )
       )}
       {currentScreen === 'dashboard' && user && (
         !canAccessScreen('dashboard', selectedBranch?.id)

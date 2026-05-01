@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { ArrowLeft, Calendar, FileText } from 'lucide-react';
+import { ArrowLeft, Calendar, FileText, Tag } from 'lucide-react';
 
 export interface StudioDetailsData {
   orderDate: string;
   deadlineDate: string;
+  /** Required replica / studio outfit product name (persisted as studio_productions.design_name). */
+  studioProductName: string;
   productionNotes: string;
 }
 
@@ -33,10 +35,16 @@ interface StudioDetailsStepProps {
 export function StudioDetailsStep({ onBack, initialData, onNext }: StudioDetailsStepProps) {
   const [orderDate, setOrderDate] = useState(initialData.orderDate || today());
   const [deadlineDate, setDeadlineDate] = useState(initialData.deadlineDate || todayPlus7());
+  const [studioProductName, setStudioProductName] = useState(initialData.studioProductName || '');
   const [productionNotes, setProductionNotes] = useState(initialData.productionNotes || '');
 
   const handleNext = () => {
-    onNext({ orderDate, deadlineDate, productionNotes });
+    const name = studioProductName.trim();
+    if (!name) {
+      alert('Enter studio product name (replica / outfit title).');
+      return;
+    }
+    onNext({ orderDate, deadlineDate, studioProductName: name, productionNotes });
   };
 
   return (
@@ -51,7 +59,7 @@ export function StudioDetailsStep({ onBack, initialData, onNext }: StudioDetails
       </div>
 
       <div className="p-4 space-y-4">
-        <p className="text-sm text-[#9CA3AF]">Order date, deadline and production notes (before invoice).</p>
+        <p className="text-sm text-[#9CA3AF]">Order date, deadline, studio product name (required), then optional notes.</p>
 
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-4">
           <div>
@@ -81,7 +89,24 @@ export function StudioDetailsStep({ onBack, initialData, onNext }: StudioDetails
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Production Notes (optional)</label>
+            <label className="block text-sm font-medium text-[#F9FAFB] mb-2">
+              Studio product name <span className="text-red-400">*</span>
+            </label>
+            <div className="flex items-start gap-2 bg-[#111827] border border-[#374151] rounded-lg px-3 py-2.5">
+              <Tag className="w-5 h-5 text-[#8B5CF6] flex-shrink-0 mt-0.5" />
+              <input
+                type="text"
+                value={studioProductName}
+                onChange={(e) => setStudioProductName(e.target.value)}
+                placeholder="Replica / outfit title for this studio order"
+                className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-[#6B7280]"
+              />
+            </div>
+            <p className="text-xs text-[#6B7280] mt-1">Saved as the design name on production (same as Studio detail).</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Production notes (optional)</label>
             <div className="flex items-center gap-2 bg-[#111827] border border-[#374151] rounded-lg px-3 py-2.5">
               <FileText className="w-5 h-5 text-[#6B7280] flex-shrink-0" />
               <textarea

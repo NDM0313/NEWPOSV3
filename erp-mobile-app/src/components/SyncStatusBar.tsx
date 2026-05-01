@@ -31,7 +31,7 @@ export function SyncStatusBar({ status, onSyncClick }: SyncStatusBarProps) {
         : status === 'sync_error' || hasErrors
           ? 'Sync Error'
           : unsyncedCount > 0
-            ? `${unsyncedCount} pending`
+            ? `Tap to sync · ${unsyncedCount} pending`
             : 'Online';
 
   const color =

@@ -502,6 +502,12 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (isStudioSale && (!saleData.items || saleData.items.length === 0)) {
         throw new Error('Studio order must have at least one product (fabric/material). Add an item in the sale before saving.');
       }
+      if (isStudioSale) {
+        const dn = String((saleData as any).studioDesignName ?? '').trim();
+        if (!dn) {
+          throw new Error('Studio product name is required.');
+        }
+      }
       let docType: 'draft' | 'quotation' | 'order' | 'invoice' | 'pos' | 'studio' = 'invoice';
       if (isPOS) {
         docType = 'pos';
@@ -732,6 +738,42 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           const { supabase: sb } = await import('@/lib/supabase');
           await sb.from('sales').update({ is_studio: true }).eq('id', result.id);
         } catch (_) { /* column may not exist */ }
+        const designTrim = String((saleData as any).studioDesignName ?? '').trim();
+        if (designTrim && companyId && supabaseItems.length > 0) {
+          try {
+            const { supabase: sb } = await import('@/lib/supabase');
+            const productionNo =
+              String((result as any).order_no || (result as any).invoice_no || effectiveInvoiceNo || '').trim();
+            const first = supabaseItems[0];
+            const qtySum = supabaseItems.reduce((s, it) => s + (Number(it.quantity) || 0), 0);
+            const quantity = qtySum > 0 ? qtySum : Number(first?.quantity) || 1;
+            const { data: existingProd } = await sb
+              .from('studio_productions')
+              .select('id')
+              .eq('sale_id', result.id)
+              .maybeSingle();
+            if (existingProd?.id) {
+              await sb.from('studio_productions').update({ design_name: designTrim }).eq('id', existingProd.id);
+            } else if (first?.product_id) {
+              const productionDate = new Date().toISOString().slice(0, 10);
+              await sb.from('studio_productions').insert({
+                company_id: companyId,
+                branch_id: effectiveBranchId,
+                sale_id: result.id,
+                production_no: productionNo || `STD-${result.id.slice(0, 8)}`,
+                production_date: productionDate,
+                product_id: first.product_id,
+                variation_id: first.variation_id || null,
+                quantity,
+                status: 'draft',
+                created_by: createdByAuthId ?? undefined,
+                design_name: designTrim,
+              });
+            }
+          } catch (studioProdErr) {
+            console.warn('[SALES CONTEXT] Studio production design row failed (sale was created):', studioProdErr);
+          }
+        }
       }
       // Document number comes from DB (get_next_document_number_global); do not increment frontend counter
       
@@ -2210,6 +2252,66 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           performedBy: user.id,
           description,
         }).catch((err) => console.warn('[SALES CONTEXT] Activity log failed:', err));
+      }
+
+      const studioDesignPatch = (updates as any).studioDesignName;
+      if (studioDesignPatch !== undefined && companyId) {
+        const trimmed = String(studioDesignPatch).trim();
+        try {
+          const rowSale = await saleService.getSaleById(id);
+          const isStudioRow =
+            (rowSale as any)?.is_studio === true ||
+            String((rowSale as any)?.order_no ?? '')
+              .toUpperCase()
+              .startsWith('STD-') ||
+            String((rowSale as any)?.order_no ?? '')
+              .toUpperCase()
+              .startsWith('ST-');
+          if (isStudioRow) {
+            if (!trimmed) {
+              throw new Error('Studio product name is required.');
+            }
+            const { supabase: sb } = await import('@/lib/supabase');
+            const { data: existingProd } = await sb
+              .from('studio_productions')
+              .select('id')
+              .eq('sale_id', id)
+              .maybeSingle();
+            const branchIdRow = (rowSale as any)?.branch_id as string | undefined;
+            const productionNo =
+              String((rowSale as any)?.order_no || (rowSale as any)?.invoice_no || '').trim() || `STD-${id.slice(0, 8)}`;
+            if (existingProd?.id) {
+              await sb.from('studio_productions').update({ design_name: trimmed }).eq('id', existingProd.id);
+            } else {
+              const { data: saleItemsRows } = await sb
+                .from('sales_items')
+                .select('product_id, variation_id, quantity')
+                .eq('sale_id', id);
+              const si = saleItemsRows || [];
+              const first = si[0];
+              if (first?.product_id) {
+                const qtySum = si.reduce((s: number, it: any) => s + (Number(it.quantity) || 0), 0);
+                const qty = qtySum > 0 ? qtySum : Number(first.quantity) || 1;
+                await sb.from('studio_productions').insert({
+                  company_id: companyId,
+                  branch_id: branchIdRow,
+                  sale_id: id,
+                  production_no: productionNo,
+                  production_date: new Date().toISOString().slice(0, 10),
+                  product_id: first.product_id,
+                  variation_id: first.variation_id || null,
+                  quantity: qty,
+                  status: 'draft',
+                  created_by: user?.id ?? undefined,
+                  design_name: trimmed,
+                });
+              }
+            }
+          }
+        } catch (studioSyncErr: any) {
+          console.error('[SALES CONTEXT] Studio production design sync on update failed:', studioSyncErr);
+          throw studioSyncErr;
+        }
       }
 
       // POS updates show their own toast; avoid duplicate for POS invoices

@@ -50,9 +50,10 @@ export interface SaleData {
   total: number;
   notes: string;
   saleType: 'regular' | 'studio';
-  /** Studio only: order date (YYYY-MM-DD), deadline (YYYY-MM-DD), production notes */
+  /** Studio only: order date (YYYY-MM-DD), deadline (YYYY-MM-DD), required design name, optional production notes */
   orderDate?: string;
   deadlineDate?: string;
+  studioProductName?: string;
   productionNotes?: string;
 }
 
@@ -65,9 +66,20 @@ interface SalesModuleProps {
   initialSaleType?: 'regular' | 'studio';
   /** If provided, completing a studio sale navigates to the Studio module with the new sale focused. */
   onOpenStudio?: (saleId: string) => void;
+  initialEditSaleId?: string | null;
+  onConsumedInitialEditSaleId?: () => void;
 }
 
-export function SalesModule({ onBack, user, companyId, branchId, initialSaleType, onOpenStudio }: SalesModuleProps) {
+export function SalesModule({
+  onBack,
+  user,
+  companyId,
+  branchId,
+  initialSaleType,
+  onOpenStudio,
+  initialEditSaleId,
+  onConsumedInitialEditSaleId,
+}: SalesModuleProps) {
   const responsive = useResponsive();
   const [step, setStep] = useState<SalesStep>(initialSaleType === 'studio' ? 'customer' : 'home');
   const [saving, setSaving] = useState(false);
@@ -93,6 +105,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
     saleType: initialSaleType === 'studio' ? 'studio' : 'regular',
     orderDate: todayStr(),
     deadlineDate: todayPlus7Str(),
+    studioProductName: '',
     productionNotes: '',
   });
 
@@ -144,6 +157,9 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       setSaveError('Please select a payment account for accounting.');
       return;
     }
+    setSaving(true);
+    setSaveError(null);
+    try {
     // When "All Branches" selected, use first branch (RPC requires valid UUID)
     let effectiveBranchId = branchId && branchId !== 'all' ? branchId : null;
     if (!effectiveBranchId && companyId) {
@@ -154,8 +170,10 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       setSaveError('Please select a specific branch to create sales.');
       return;
     }
-    setSaving(true);
-    setSaveError(null);
+    if (saleData.saleType === 'studio' && !(saleData.studioProductName ?? '').trim()) {
+      setSaveError('Studio product name is required.');
+      return;
+    }
     const items = saleData.products.map((p) => ({
       productId: p.id,
       variationId: p.variationId,
@@ -190,6 +208,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       ...(saleData.saleType === 'studio' && {
         orderDate: saleData.orderDate || undefined,
         deadline: saleData.deadlineDate || undefined,
+        studioDesignName: (saleData.studioProductName ?? '').trim() || undefined,
       }),
     };
 
@@ -201,12 +220,10 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       } catch (e) {
         setSaveError(e instanceof Error ? e.message : 'Failed to save offline.');
       }
-      setSaving(false);
       return;
     }
 
     const { data, error } = await salesApi.createSale(salePayload);
-    setSaving(false);
     if (error) {
       setSaveError(error);
       return;
@@ -228,6 +245,9 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       branch: branchName ?? undefined,
       entityId: data?.id ?? null,
     });
+    } finally {
+      setSaving(false);
+    }
   };
   const handleNewSaleFromConfirmation = () => {
     setCreatedInvoiceNo(null);
@@ -243,6 +263,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       saleType: 'regular',
       orderDate: todayStr(),
       deadlineDate: todayPlus7Str(),
+      studioProductName: '',
       productionNotes: '',
     });
     setStep('customer');
@@ -263,6 +284,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       saleType: 'regular',
       orderDate: todayStr(),
       deadlineDate: todayPlus7Str(),
+      studioProductName: '',
       productionNotes: '',
     });
     onBack();
@@ -306,6 +328,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       saleType: 'regular',
       orderDate: todayStr(),
       deadlineDate: todayPlus7Str(),
+      studioProductName: '',
       productionNotes: '',
     });
     if (wasStudio && studioSaleId && onOpenStudio) {
@@ -331,6 +354,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
       saleType: 'regular',
       orderDate: todayStr(),
       deadlineDate: todayPlus7Str(),
+      studioProductName: '',
       productionNotes: '',
     });
     setStep('customer');
@@ -338,7 +362,17 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
 
   return (
     <>
-      {step === 'home' && <SalesHome onBack={onBack} onNewSale={handleNewSale} companyId={companyId} branchId={branchId} userId={user?.id ?? null} />}
+      {step === 'home' && (
+        <SalesHome
+          onBack={onBack}
+          onNewSale={handleNewSale}
+          companyId={companyId}
+          branchId={branchId}
+          userId={user?.id ?? null}
+          initialEditSaleId={initialEditSaleId}
+          onConsumedInitialEditSaleId={onConsumedInitialEditSaleId}
+        />
+      )}
       {step === 'customer' && (responsive.isTablet ? (
         <SelectCustomerTablet
           companyId={companyId}
@@ -372,6 +406,7 @@ export function SalesModule({ onBack, user, companyId, branchId, initialSaleType
           initialData={{
             orderDate: saleData.orderDate || new Date().toISOString().split('T')[0],
             deadlineDate: saleData.deadlineDate || (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().split('T')[0]; })(),
+            studioProductName: saleData.studioProductName || '',
             productionNotes: saleData.productionNotes || '',
           }}
           onNext={handleStudioDetailsNext}

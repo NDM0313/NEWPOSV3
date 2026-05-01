@@ -3,6 +3,10 @@ import { ChevronRight, ArrowDownLeft, ArrowUpRight, Wallet, Search } from 'lucid
 import type { User } from '../../../types';
 import * as accountsApi from '../../../api/accounts';
 import { getAccountLedgerLines, type LedgerLine } from '../../../api/reports';
+import {
+  getCustomerArGlLedgerLinesForContact,
+  getSupplierApGlLedgerLinesForContact,
+} from '../../../api/partyGlLedger';
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
@@ -12,17 +16,28 @@ import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
 import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
 import type { TransactionReferenceType } from '../../../api/transactionDetail';
+import { sortLedgerLinesAndRebuildRunningBalance } from '../../../lib/ledgerChronology';
 
 interface AccountLedgerReportProps {
   onBack: () => void;
   companyId: string | null;
   initialAccountId?: string | null;
   user: User;
+  /** Selected app branch — ledger lines match web when scoped (includes NULL branch_id JEs). */
+  branchId?: string | null;
   filterTypes?: ('cash' | 'bank' | 'mobile_wallet' | 'asset' | 'liability' | 'equity' | 'income' | 'expense')[];
   titleOverride?: string;
 }
 
-export function AccountLedgerReport({ onBack, companyId, initialAccountId, user, filterTypes, titleOverride }: AccountLedgerReportProps) {
+export function AccountLedgerReport({
+  onBack,
+  companyId,
+  initialAccountId,
+  user,
+  branchId,
+  filterTypes,
+  titleOverride,
+}: AccountLedgerReportProps) {
   const [accounts, setAccounts] = useState<accountsApi.AccountRow[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [search, setSearch] = useState('');
@@ -33,6 +48,10 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
   const [opening, setOpening] = useState(0);
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedLine, setSelectedLine] = useState<LedgerLine | null>(null);
+  const [ledgerRefreshNonce, setLedgerRefreshNonce] = useState(0);
+  const [manualLedgerRefresh, setManualLedgerRefresh] = useState(false);
+  /** Shown when party GL RPC fails and we fall back to raw sub-account lines. */
+  const [ledgerFallbackNotice, setLedgerFallbackNotice] = useState<string | null>(null);
   const preview = usePdfPreview(companyId);
 
   useEffect(() => {
@@ -61,22 +80,123 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
     if (!companyId || !selected) {
       setLines([]);
       setOpening(0);
+      setLedgerFallbackNotice(null);
+      setManualLedgerRefresh(false);
       return;
     }
     let cancelled = false;
     setDetailLoading(true);
-    getAccountLedgerLines(companyId, selected.id, range.from || undefined, range.to || undefined).then(
-      ({ openingBalance, lines }) => {
+    setLedgerFallbackNotice(null);
+
+    const cid = selected.linkedContactId ?? null;
+    /** Party AP sub-accounts are often stored as `liability` (not only `payable`) under the COA. */
+    const useSupplierAp =
+      !!cid &&
+      (selected.type === 'payable' || selected.type === 'liability');
+    const useCustomerAr = selected.type === 'receivable' && !!cid;
+
+    (async () => {
+      try {
+        if (useSupplierAp && cid) {
+          const rpcRes = await getSupplierApGlLedgerLinesForContact(
+            companyId,
+            cid,
+            branchId ?? null,
+            range.from || undefined,
+            range.to || undefined,
+          );
+          if (cancelled) return;
+          if (!rpcRes.error) {
+            setOpening(rpcRes.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
+            setLedgerFallbackNotice(null);
+            return;
+          }
+          const fb = await getAccountLedgerLines(
+            companyId,
+            selected.id,
+            range.from || undefined,
+            range.to || undefined,
+            branchId ?? null,
+          );
+          if (cancelled) return;
+          setOpening(fb.openingBalance);
+          setLines(sortLedgerLinesAndRebuildRunningBalance(fb.lines, fb.openingBalance));
+          setLedgerFallbackNotice(
+            `Party AP GL unavailable (${rpcRes.error}). Showing lines posted only to this sub-account.`,
+          );
+          return;
+        }
+
+        if (useCustomerAr && cid) {
+          const rpcRes = await getCustomerArGlLedgerLinesForContact(
+            companyId,
+            cid,
+            branchId ?? null,
+            range.from || undefined,
+            range.to || undefined,
+          );
+          if (cancelled) return;
+          if (!rpcRes.error) {
+            setOpening(rpcRes.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
+            setLedgerFallbackNotice(null);
+            return;
+          }
+          const fb = await getAccountLedgerLines(
+            companyId,
+            selected.id,
+            range.from || undefined,
+            range.to || undefined,
+            branchId ?? null,
+          );
+          if (cancelled) return;
+          setOpening(fb.openingBalance);
+          setLines(sortLedgerLinesAndRebuildRunningBalance(fb.lines, fb.openingBalance));
+          setLedgerFallbackNotice(
+            `Party AR GL unavailable (${rpcRes.error}). Showing lines posted only to this sub-account.`,
+          );
+          return;
+        }
+
+        const res = await getAccountLedgerLines(
+          companyId,
+          selected.id,
+          range.from || undefined,
+          range.to || undefined,
+          branchId ?? null,
+        );
         if (cancelled) return;
-        setOpening(openingBalance);
-        setLines(lines);
-        setDetailLoading(false);
-      },
-    );
+        setOpening(res.openingBalance);
+        setLines(sortLedgerLinesAndRebuildRunningBalance(res.lines, res.openingBalance));
+        setLedgerFallbackNotice(null);
+      } catch {
+        if (!cancelled) {
+          setOpening(0);
+          setLines([]);
+          setLedgerFallbackNotice(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setDetailLoading(false);
+          setManualLedgerRefresh(false);
+        }
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
-  }, [companyId, selected, range.from, range.to]);
+  }, [companyId, selected, range.from, range.to, branchId, ledgerRefreshNonce]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const onVis = () => {
+      if (document.visibilityState === 'visible') setLedgerRefreshNonce((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [selected?.id]);
 
   const totals = useMemo(() => {
     const debit = lines.reduce((s, l) => s + l.debit, 0);
@@ -209,15 +329,32 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
     { label: 'Closing', value: `Rs. ${formatAmount(totals.closing, 0)}` },
   ];
 
+  const detailSubtitle =
+    (branchId && branchId !== 'all' && branchId !== 'default'
+      ? `${selected.code} · ${selected.type} · this branch + company-wide entries`
+      : `${selected.code} · ${selected.type}`) +
+    (selected.linkedContactId &&
+    !ledgerFallbackNotice &&
+    (selected.type === 'payable' || selected.type === 'liability')
+      ? ' · Party AP (GL)'
+      : selected.type === 'receivable' && selected.linkedContactId && !ledgerFallbackNotice
+        ? ' · Party AR (GL)'
+        : '');
+
   return (
     <div className="min-h-screen bg-[#111827] pb-28">
       <ReportHeader
         onBack={() => setSelected(null)}
         title={selected.name}
-        subtitle={`${selected.code} · ${selected.type}`}
+        subtitle={detailSubtitle}
         stats={stats}
         onShare={preview.openPreview}
         sharing={preview.loading}
+        onRefresh={() => {
+          setManualLedgerRefresh(true);
+          setLedgerRefreshNonce((n) => n + 1);
+        }}
+        refreshing={manualLedgerRefresh && detailLoading}
       >
         <DateRangeBar value={range} onChange={setRange} />
       </ReportHeader>
@@ -234,6 +371,14 @@ export function AccountLedgerReport({ onBack, companyId, initialAccountId, user,
           <div className="flex items-center gap-3 text-[11px]">
             <span className="text-[#10B981]">+ Rs. {formatAmount(totals.debit, 0)}</span>
             <span className="text-[#EF4444]">− Rs. {formatAmount(totals.credit, 0)}</span>
+          </div>
+        </div>
+      )}
+
+      {ledgerFallbackNotice && (
+        <div className="px-4 pt-2">
+          <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-lg text-sm text-amber-100">
+            {ledgerFallbackNotice}
           </div>
         </div>
       )}

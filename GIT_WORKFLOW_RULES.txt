@@ -38,7 +38,7 @@ Confirm:
 Run:
 
 git add .
-git commit -m "edit tracation complete "
+git commit -m "studio edit "
 git push origin main
 
 Examples:

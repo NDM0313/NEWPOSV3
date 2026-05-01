@@ -25,6 +25,7 @@ interface TransactionsTimelineProps {
   companyId: string | null;
   branchId?: string | null;
   onViewLedger?: (info: { partyId?: string | null; partyName?: string | null; accountId?: string | null }) => void;
+  onNavigateToDocumentEdit?: (kind: 'sale' | 'purchase', documentId: string) => void;
   /** Optional initial filters (e.g. open with only today's payments). */
   initialFilters?: Partial<GetTransactionsFilters>;
   /** Custom header title */
@@ -56,6 +57,30 @@ function formatDate(dateStr: string): { date: string; time: string } {
   return { date, time };
 }
 
+function transactionEffectiveMs(tx: TransactionRow): number {
+  const c = String(tx.createdAt || '').trim();
+  if (c) {
+    const ms = Date.parse(c);
+    if (!Number.isNaN(ms)) return ms;
+  }
+  const p = String(tx.paymentDate || '').slice(0, 10);
+  if (p) {
+    const ms = Date.parse(`${p}T00:00:00.000Z`);
+    if (!Number.isNaN(ms)) return ms;
+  }
+  return 0;
+}
+
+function compareTransactionsWithinDay(a: TransactionRow, b: TransactionRow): number {
+  const ta = transactionEffectiveMs(a);
+  const tb = transactionEffectiveMs(b);
+  if (ta !== tb) return ta - tb;
+  const pa = String(a.paymentDate || '').slice(0, 10);
+  const pb = String(b.paymentDate || '').slice(0, 10);
+  if (pa !== pb) return pa.localeCompare(pb);
+  return String(a.id).localeCompare(String(b.id));
+}
+
 function groupByDate(rows: TransactionRow[]): Array<{ key: string; label: string; items: TransactionRow[] }> {
   const out: Array<{ key: string; label: string; items: TransactionRow[] }> = [];
   const map: Record<string, TransactionRow[]> = {};
@@ -65,13 +90,14 @@ function groupByDate(rows: TransactionRow[]): Array<{ key: string; label: string
     map[key].push(r);
   });
   Object.keys(map)
-    .sort((a, b) => b.localeCompare(a))
+    .sort((a, b) => a.localeCompare(b))
     .forEach((k) => {
       const d = new Date(k);
       const label = Number.isNaN(d.getTime())
         ? k
         : d.toLocaleDateString('en-PK', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
-      out.push({ key: k, label, items: map[k] });
+      const items = [...map[k]].sort(compareTransactionsWithinDay);
+      out.push({ key: k, label, items });
     });
   return out;
 }
@@ -81,6 +107,7 @@ export function TransactionsTimeline({
   companyId,
   branchId,
   onViewLedger,
+  onNavigateToDocumentEdit: _onNavigateToDocumentEdit,
   initialFilters,
   title = 'Transactions',
   userName,

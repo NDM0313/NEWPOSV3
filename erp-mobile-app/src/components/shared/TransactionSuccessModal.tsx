@@ -8,6 +8,10 @@ export interface TransactionSuccessData {
   title: string;
   /** Transaction number e.g. SL-0023, PUR-0001 */
   transactionNo?: string | null;
+  /** User-facing reference (e.g. JE voucher); falls back to transactionNo in UI when absent */
+  referenceDisplay?: string | null;
+  /** Full stored payment reference for tooltip when primary is shortened (e.g. PAY-FB-*) */
+  referenceFull?: string | null;
   amount?: number | null;
   /** Party name: customer, supplier, etc. */
   partyName?: string | null;
@@ -107,12 +111,25 @@ export function TransactionSuccessModal({
 
           {/* Details card */}
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-6 space-y-2">
-            {data.transactionNo && (
-              <div className="flex justify-between text-sm">
-                <span className="text-[#9CA3AF]">Transaction No</span>
-                <span className="font-medium text-white">{data.transactionNo}</span>
+            {(data.referenceDisplay || data.transactionNo) && (
+              <div className="flex justify-between text-sm gap-2">
+                <span className="text-[#9CA3AF] shrink-0">{data.type === 'payment' ? 'Reference' : 'Transaction No'}</span>
+                <span
+                  className="font-medium text-white text-right min-w-0 break-all"
+                  title={data.referenceFull || data.referenceDisplay || data.transactionNo || undefined}
+                >
+                  {data.referenceDisplay ?? data.transactionNo}
+                </span>
               </div>
             )}
+            {data.referenceFull &&
+              data.referenceDisplay &&
+              data.referenceFull.trim() !== data.referenceDisplay.trim() && (
+                <div className="flex justify-between text-[11px] gap-2 text-[#6B7280]">
+                  <span className="shrink-0">Payment ref</span>
+                  <span className="text-right break-all min-w-0">{data.referenceFull}</span>
+                </div>
+              )}
             {data.amount != null && data.amount !== undefined && (
               <div className="flex justify-between text-sm">
                 <span className="text-[#9CA3AF]">Amount</span>

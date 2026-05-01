@@ -32,6 +32,9 @@ export interface AccountEntry {
   addedByRole: string;
   createdAt: string;
   status: 'posted' | 'pending' | 'cancelled';
+  referenceType?: string | null;
+  referenceId?: string | null;
+  paymentId?: string | null;
 }
 
 interface AccountsDashboardProps {
@@ -49,9 +52,11 @@ interface AccountsDashboardProps {
 }
 
 function mapReferenceTypeToEntryType(ref: string): AccountEntry['type'] {
-  if (ref === 'transfer') return 'transfer';
-  if (ref === 'payment') return 'supplier-payment';
-  if (ref === 'expense') return 'expense';
+  const r = (ref || '').toLowerCase();
+  if (r === 'transfer') return 'transfer';
+  if (r === 'payment' || r === 'manual_payment') return 'supplier-payment';
+  if (r === 'worker_payment') return 'worker-payment';
+  if (r === 'expense' || r === 'expense_payment') return 'expense';
   return 'general';
 }
 
@@ -117,6 +122,9 @@ export function AccountsDashboard({
             addedByRole: user.role,
             createdAt: e.entry_date,
             status: 'posted' as const,
+            referenceType: e.reference_type,
+            referenceId: e.reference_id,
+            paymentId: e.payment_id ?? null,
           };
         });
         setEntries(mapped);

@@ -1,5 +1,16 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
+/** Shown when PostgREST reports missing studio_productions.design_name (DB not migrated). */
+export const STUDIO_DESIGN_NAME_MIGRATION_HINT =
+  'Database is missing column studio_productions.design_name. In Supabase SQL Editor, run migrations/20260458_studio_productions_design_name.sql (or from project root: node scripts/run-migrations.js when DATABASE_POOLER_URL / DATABASE_URL points at this database).';
+
+export function formatStudioSchemaError(message: string | null | undefined): string {
+  const m = String(message ?? '');
+  if (/studio_productions\.design_name/i.test(m) && /does not exist/i.test(m)) return STUDIO_DESIGN_NAME_MIGRATION_HINT;
+  if (/column .*design_name/i.test(m) && /does not exist/i.test(m)) return STUDIO_DESIGN_NAME_MIGRATION_HINT;
+  return m || 'Unknown error';
+}
+
 /** DB stage types (enum: dyer, stitching, handwork, embroidery, finishing, quality_check after migration) */
 export type DbStageType = 'dyer' | 'stitching' | 'handwork' | 'embroidery' | 'finishing' | 'quality_check';
 
@@ -34,6 +45,10 @@ export interface StudioProductionRow {
   status: 'draft' | 'in_progress' | 'completed' | 'cancelled';
   current_stage_id?: string | null;
   product_id: string;
+  /** Replica / custom outfit title (optional). */
+  design_name?: string | null;
+  /** sales_items.id of linked studio line — same gate as web before shipment. */
+  generated_invoice_item_id?: string | null;
   product?: { id: string; name: string; sku?: string };
   sale?: { id: string; invoice_no: string; customer_name: string; total: number; invoice_date: string; deadline?: string | null };
 }
@@ -41,6 +56,7 @@ export interface StudioProductionRow {
 export interface StudioStageRow {
   id: string;
   production_id: string;
+  stage_order?: number;
   stage_type: DbStageType;
   assigned_worker_id: string | null;
   cost: number;
@@ -222,17 +238,19 @@ export async function getStudioProductions(
   try {
     let q = supabase
       .from('studio_productions')
-      .select('id, sale_id, production_no, production_date, status, product_id, product:products!product_id(id, name, sku), sale:sales(id, invoice_no, customer_name, total, invoice_date, deadline)')
+      .select(
+        'id, sale_id, production_no, production_date, status, product_id, design_name, generated_invoice_item_id, product:products!product_id(id, name, sku), sale:sales(id, invoice_no, customer_name, total, invoice_date, deadline)',
+      )
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
       .limit(100);
     if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
     const { data, error } = await q;
-    if (error) return { data: [], error: error.message };
+    if (error) return { data: [], error: formatStudioSchemaError(error.message) };
     return { data: (data || []) as unknown as StudioProductionRow[], error: null };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
-    return { data: [], error: msg };
+    return { data: [], error: formatStudioSchemaError(msg) };
   }
 }
 
@@ -405,7 +423,7 @@ export async function receiveWork(stageId: string): Promise<{ error: string | nu
 /** Confirm payment: set cost + accounting. pay_now = true → Dr 5000 Cr Cash; false → Dr 5000 Cr 2010 + worker ledger unpaid */
 export async function confirmStagePayment(
   stageId: string,
-  params: { final_cost: number; pay_now: boolean }
+  params: { final_cost: number; pay_now: boolean; payment_account_id?: string | null }
 ): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
   try {
@@ -413,6 +431,7 @@ export async function confirmStagePayment(
       p_stage_id: stageId,
       p_final_cost: params.final_cost,
       p_pay_now: params.pay_now,
+      p_payment_account_id: params.pay_now && params.payment_account_id ? params.payment_account_id : null,
     });
     if (e) return { error: (r as unknown as { error?: string })?.error ?? e.message };
     if (!(r as { ok?: boolean })?.ok) return { error: (r as unknown as { error?: string })?.error ?? 'Confirm payment failed' };
@@ -760,6 +779,21 @@ export async function loadProductionProfitMargin(
   const mode = (data as { profit_margin_mode?: string }).profit_margin_mode === 'fixed' ? 'fixed' : 'percentage';
   const value = Number((data as { profit_margin_value?: number | string }).profit_margin_value ?? 0) || 0;
   return { data: { mode, value }, error: null };
+}
+
+/** Persist replica / new design name on unified studio production. */
+export async function updateStudioProductionDesignName(
+  productionId: string,
+  designName: string | null
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  try {
+    const v = designName?.trim() || null;
+    const { error } = await supabase.from('studio_productions').update({ design_name: v }).eq('id', productionId);
+    return { error: error?.message ? formatStudioSchemaError(error.message) : null };
+  } catch (e: unknown) {
+    return { error: formatStudioSchemaError(e instanceof Error ? e.message : 'Unknown error') };
+  }
 }
 
 /** Update production status */

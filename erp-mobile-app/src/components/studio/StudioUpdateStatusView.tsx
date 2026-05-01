@@ -1,7 +1,16 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Loader2, User } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { ArrowLeft, Loader2, User, Banknote, Building2, Wallet } from 'lucide-react';
 import * as studioApi from '../../api/studio';
+import { getPaymentAccounts } from '../../api/accounts';
+import type { AccountRow } from '../../api/accounts';
 import type { StudioOrder, StudioStage } from './StudioDashboard';
+
+type StudioPayMethod = 'cash' | 'bank' | 'wallet';
+const STUDIO_METHOD_TO_TYPE: Record<StudioPayMethod, string[]> = {
+  cash: ['cash'],
+  bank: ['bank'],
+  wallet: ['mobile_wallet'],
+};
 
 interface StudioUpdateStatusViewProps {
   selectedOrder: StudioOrder;
@@ -26,6 +35,12 @@ export function StudioUpdateStatusView({
   const [expectedDate, setExpectedDate] = useState(selectedStage.expectedDate || '');
   const [expectedCost, setExpectedCost] = useState(selectedStage.internalCost?.toString() ?? '');
   const [finalCost, setFinalCost] = useState(selectedStage.internalCost?.toString() ?? '');
+  const [payNowPickerOpen, setPayNowPickerOpen] = useState(false);
+  const [payNowStep, setPayNowStep] = useState<1 | 2>(1);
+  const [payNowMethod, setPayNowMethod] = useState<StudioPayMethod | null>(null);
+  const [payAccounts, setPayAccounts] = useState<AccountRow[]>([]);
+  const [payAccountsLoading, setPayAccountsLoading] = useState(false);
+  const [payAccountsError, setPayAccountsError] = useState<string | null>(null);
   const isPending = selectedStage.status === 'pending';
   const isAssigned = selectedStage.status === 'assigned';
   const isSentToWorker = selectedStage.status === 'sent_to_worker' || selectedStage.status === 'in-progress';
@@ -80,19 +95,73 @@ export function StudioUpdateStatusView({
     onComplete();
   };
 
-  const handleConfirmPayment = async (payNow: boolean) => {
+  const openPayNowPicker = () => {
+    const cost = parseFloat(finalCost) || 0;
+    if (cost <= 0) {
+      alert('Enter final cost');
+      return;
+    }
+    setPayNowStep(1);
+    setPayNowMethod(null);
+    setPayNowPickerOpen(true);
+  };
+
+  const accountsForPayMethod = useMemo(() => {
+    if (!payNowMethod) return [];
+    const types = STUDIO_METHOD_TO_TYPE[payNowMethod].map((t) => t.toLowerCase());
+    return payAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
+  }, [payAccounts, payNowMethod]);
+
+  useEffect(() => {
+    if (!payNowPickerOpen) return;
+    let cancelled = false;
+    setPayAccountsLoading(true);
+    setPayAccountsError(null);
+    getPaymentAccounts(companyId).then(({ data, error }) => {
+      if (cancelled) return;
+      setPayAccountsLoading(false);
+      if (error) setPayAccountsError(error);
+      else setPayAccounts(data || []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [payNowPickerOpen, companyId]);
+
+  const handleConfirmPaymentLater = async () => {
     const cost = parseFloat(finalCost) || 0;
     if (cost <= 0) {
       alert('Enter final cost');
       return;
     }
     setLoading(true);
-    const { error } = await studioApi.confirmStagePayment(selectedStage.id, { final_cost: cost, pay_now: payNow });
+    const { error } = await studioApi.confirmStagePayment(selectedStage.id, { final_cost: cost, pay_now: false });
     setLoading(false);
     if (error) {
       alert(error);
       return;
     }
+    onComplete();
+  };
+
+  const handleConfirmPaymentPayNow = async (paymentAccountId: string) => {
+    const cost = parseFloat(finalCost) || 0;
+    if (cost <= 0) {
+      alert('Enter final cost');
+      return;
+    }
+    setLoading(true);
+    const { error } = await studioApi.confirmStagePayment(selectedStage.id, {
+      final_cost: cost,
+      pay_now: true,
+      payment_account_id: paymentAccountId,
+    });
+    setLoading(false);
+    if (error) {
+      alert(error);
+      return;
+    }
+    setPayNowPickerOpen(false);
     onComplete();
   };
 
@@ -321,7 +390,8 @@ export function StudioUpdateStatusView({
                   />
                 </div>
                 <button
-                  onClick={() => handleConfirmPayment(true)}
+                  type="button"
+                  onClick={openPayNowPicker}
                   disabled={loading}
                   className="w-full py-3 bg-[#10B981] hover:bg-[#059669] rounded-xl font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
                 >
@@ -329,7 +399,8 @@ export function StudioUpdateStatusView({
                   Pay Now
                 </button>
                 <button
-                  onClick={() => handleConfirmPayment(false)}
+                  type="button"
+                  onClick={handleConfirmPaymentLater}
                   disabled={loading}
                   className="w-full py-3 bg-[#3B82F6] hover:bg-[#2563EB] rounded-xl font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
                 >
@@ -367,6 +438,114 @@ export function StudioUpdateStatusView({
           </div>
         )}
       </div>
+
+      {payNowPickerOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-5 w-full max-w-sm shadow-xl max-h-[90vh] flex flex-col">
+            {payNowStep === 2 && payNowMethod ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPayNowStep(1);
+                    setPayNowMethod(null);
+                  }}
+                  disabled={loading}
+                  className="flex items-center gap-2 text-sm text-[#9CA3AF] hover:text-white mb-3 disabled:opacity-50"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
+                </button>
+                <h3 className="text-lg font-semibold text-white mb-1">Select account</h3>
+                <p className="text-sm text-[#9CA3AF] mb-3">
+                  {payNowMethod === 'cash' ? 'Cash' : payNowMethod === 'bank' ? 'Bank' : 'Wallet'} · Rs.{' '}
+                  {(parseFloat(finalCost) || 0).toLocaleString()}
+                </p>
+                {payAccountsLoading ? (
+                  <div className="flex items-center justify-center py-12 text-[#9CA3AF] gap-2">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span className="text-sm">Loading accounts…</span>
+                  </div>
+                ) : payAccountsError ? (
+                  <p className="text-sm text-red-400 py-4">{payAccountsError}</p>
+                ) : accountsForPayMethod.length === 0 ? (
+                  <p className="text-sm text-[#9CA3AF] py-4">No accounts for this method.</p>
+                ) : (
+                  <div className="overflow-y-auto flex-1 min-h-0 space-y-2 mb-3 max-h-[45vh]">
+                    {accountsForPayMethod.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => handleConfirmPaymentPayNow(a.id)}
+                        disabled={loading}
+                        className="w-full text-left rounded-lg border border-[#374151] bg-[#111827] px-4 py-3 hover:border-[#8B5CF6] disabled:opacity-50"
+                      >
+                        <p className="text-white font-medium">{a.name}</p>
+                        <p className="text-xs text-[#9CA3AF]">
+                          {a.code} · Rs. {(a.balance ?? 0).toLocaleString()}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold text-white mb-1">Pay Now</h3>
+                <p className="text-sm text-[#9CA3AF] mb-4">
+                  Rs. {(parseFloat(finalCost) || 0).toLocaleString()} — choose how you paid
+                </p>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPayNowMethod('cash');
+                      setPayNowStep(2);
+                    }}
+                    disabled={loading || payAccountsLoading}
+                    className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl bg-[#10B981]/20 border border-[#10B981]/50 hover:bg-[#10B981]/30 text-[#10B981] disabled:opacity-50"
+                  >
+                    <Banknote className="w-6 h-6" />
+                    <span className="text-xs font-medium">Cash</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPayNowMethod('bank');
+                      setPayNowStep(2);
+                    }}
+                    disabled={loading || payAccountsLoading}
+                    className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl bg-[#3B82F6]/20 border border-[#3B82F6]/50 hover:bg-[#3B82F6]/30 text-[#3B82F6] disabled:opacity-50"
+                  >
+                    <Building2 className="w-6 h-6" />
+                    <span className="text-xs font-medium">Bank</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPayNowMethod('wallet');
+                      setPayNowStep(2);
+                    }}
+                    disabled={loading || payAccountsLoading}
+                    className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl bg-[#F59E0B]/20 border border-[#F59E0B]/50 hover:bg-[#F59E0B]/30 text-[#F59E0B] disabled:opacity-50"
+                  >
+                    <Wallet className="w-6 h-6" />
+                    <span className="text-xs font-medium">Wallet</span>
+                  </button>
+                </div>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setPayNowPickerOpen(false)}
+              disabled={loading}
+              className="w-full py-2 rounded-lg text-sm text-[#9CA3AF] hover:bg-[#374151] disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

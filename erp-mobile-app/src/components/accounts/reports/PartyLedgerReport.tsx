@@ -2,8 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, ArrowDownLeft, ArrowUpRight, Users, Search } from 'lucide-react';
 import type { User } from '../../../types';
 import { getContactSubAccountId, getAccountLedgerLines, type LedgerLine } from '../../../api/reports';
+import {
+  getSupplierApGlLedgerLinesForContact,
+  getCustomerArGlLedgerLinesForContact,
+} from '../../../api/partyGlLedger';
 import { getContacts, type ContactRole } from '../../../api/contacts';
-import { getWorkersWithPayable, getWorkerLedgerEntries } from '../../../api/accounts';
+import { getWorkersWithPayable } from '../../../api/accounts';
+import { getWorkerPartyGlLedgerLines } from '../../../api/workerPartyGlLedger';
+import {
+  fetchContactPartyGlBalancesMap,
+  partyGlDueForListRole,
+  partyGlSliceFromMap,
+} from '../../../api/contactBalancesRpc';
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
@@ -11,6 +21,7 @@ import { formatAmount, formatDate, dateRangeLabel } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
+import { sortLedgerLinesAndRebuildRunningBalance } from '../../../lib/ledgerChronology';
 
 export type PartyLedgerKind = 'customer' | 'supplier' | 'worker';
 
@@ -56,6 +67,9 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
   const [opening, setOpening] = useState(0);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [listRefreshNonce, setListRefreshNonce] = useState(0);
+  const [ledgerRefreshNonce, setLedgerRefreshNonce] = useState(0);
+  const [manualLedgerRefresh, setManualLedgerRefresh] = useState(false);
   const preview = usePdfPreview(companyId);
 
   useEffect(() => {
@@ -71,15 +85,25 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
     (async () => {
       try {
         if (kind === 'worker') {
-          const { data } = await getWorkersWithPayable(companyId);
+          const [{ data }, partyGl] = await Promise.all([
+            getWorkersWithPayable(companyId),
+            fetchContactPartyGlBalancesMap(companyId, branchId ?? null),
+          ]);
           if (cancelled) return;
           setParties(
-            (data || []).map((w) => ({
-              id: w.id,
-              name: w.name,
-              meta: w.type || w.phone || undefined,
-              balance: Number(w.totalPayable || 0),
-            })),
+            (data || []).map((w) => {
+              const slice = partyGlSliceFromMap(partyGl.map, w.id);
+              const balance =
+                !partyGl.error && slice
+                  ? partyGlDueForListRole(slice, 'worker')
+                  : Number(w.totalPayable || 0);
+              return {
+                id: w.id,
+                name: w.name,
+                meta: w.type || w.phone || undefined,
+                balance,
+              };
+            }),
           );
         } else {
           const role = kind as ContactRole;
@@ -106,12 +130,13 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
     return () => {
       cancelled = true;
     };
-  }, [companyId, kind, branchId]);
+  }, [companyId, kind, branchId, listRefreshNonce]);
 
   useEffect(() => {
     if (!companyId || !selected) {
       setLines([]);
       setOpening(0);
+      setManualLedgerRefresh(false);
       return;
     }
     let cancelled = false;
@@ -121,68 +146,111 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
     (async () => {
       try {
         if (kind === 'worker') {
-          const { data } = await getWorkerLedgerEntries(companyId, selected.id);
-          if (cancelled) return;
-          const filtered = (data || []).filter((r) => {
-            if (!range.from && !range.to) return true;
-            const d = r.created_at.slice(0, 10);
-            if (range.from && d < range.from) return false;
-            if (range.to && d > range.to) return false;
-            return true;
-          });
-          let running = 0;
-          const arr: LedgerLine[] = [];
-          for (const r of filtered.slice().reverse()) {
-            // For workers: credit = payable (worker earns), debit = payment to worker
-            const isPayment = r.reference_type === 'payment' || r.status === 'paid';
-            const debit = isPayment ? r.amount : 0;
-            const credit = isPayment ? 0 : r.amount;
-            running += debit - credit;
-            arr.push({
-              id: r.id,
-              date: r.created_at.slice(0, 10),
-              createdAt: r.created_at,
-              entryNo: r.reference_id || r.reference_type,
-              description: r.notes || r.reference_type,
-              reference: r.reference_id || '',
-              referenceType: r.reference_type,
-              journalEntryId: '',
-              sourceReferenceId: r.reference_id ?? null,
-              debit,
-              credit,
-              runningBalance: running,
-            });
-          }
-          setOpening(0);
-          setLines(arr);
-        } else {
-          const subId = await getContactSubAccountId(companyId, selected.id);
-          if (cancelled) return;
-          if (!subId) {
-            setOpening(0);
-            setLines([]);
-            setDetailError('No sub-ledger account found for this party yet.');
-            return;
-          }
-          const { openingBalance, lines: rows, error } = await getAccountLedgerLines(
+          const rpcRes = await getWorkerPartyGlLedgerLines(
             companyId,
-            subId,
+            selected.id,
+            branchId ?? null,
             range.from || undefined,
             range.to || undefined,
           );
           if (cancelled) return;
-          setOpening(openingBalance);
-          setLines(rows);
-          if (error) setDetailError(error);
+          if (rpcRes.error) {
+            setDetailError(rpcRes.error);
+            setOpening(0);
+            setLines([]);
+            return;
+          }
+          setOpening(rpcRes.openingBalance);
+          setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
+          setDetailError(null);
+        } else {
+          const rpcLoad =
+            kind === 'supplier'
+              ? getSupplierApGlLedgerLinesForContact(
+                  companyId,
+                  selected.id,
+                  branchId ?? null,
+                  range.from || undefined,
+                  range.to || undefined,
+                )
+              : getCustomerArGlLedgerLinesForContact(
+                  companyId,
+                  selected.id,
+                  branchId ?? null,
+                  range.from || undefined,
+                  range.to || undefined,
+                );
+
+          const rpcRes = await rpcLoad;
+          if (cancelled) return;
+
+          if (!rpcRes.error) {
+            setOpening(rpcRes.openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
+            setDetailError(null);
+          } else {
+            const subId = await getContactSubAccountId(companyId, selected.id);
+            if (cancelled) return;
+            if (!subId) {
+              setOpening(0);
+              setLines([]);
+              setDetailError(
+                `${rpcRes.error} · No linked sub-account for legacy fallback.`,
+              );
+              return;
+            }
+            const { openingBalance, lines: rows, error } = await getAccountLedgerLines(
+              companyId,
+              subId,
+              range.from || undefined,
+              range.to || undefined,
+              branchId ?? null,
+            );
+            if (cancelled) return;
+            setOpening(openingBalance);
+            setLines(sortLedgerLinesAndRebuildRunningBalance(rows, openingBalance));
+            setDetailError(
+              error
+                ? `${rpcRes.error} · Fallback: ${error}`
+                : `Showing sub-account only (${rpcRes.error}). Totals may not match web AP/AR statement.`,
+            );
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setDetailError(err instanceof Error ? err.message : 'Failed to load ledger');
+          setLines([]);
+          setOpening(0);
         }
       } finally {
-        if (!cancelled) setDetailLoading(false);
+        if (!cancelled) {
+          setDetailLoading(false);
+          setManualLedgerRefresh(false);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [companyId, selected, kind, range.from, range.to]);
+  }, [companyId, selected, kind, range.from, range.to, branchId, ledgerRefreshNonce]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const onVis = () => {
+      if (document.visibilityState === 'visible') setLedgerRefreshNonce((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [selected?.id]);
+
+  useEffect(() => {
+    if (selected) return;
+    const onVis = () => {
+      if (document.visibilityState === 'visible') setListRefreshNonce((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [selected]);
 
   const totals = useMemo(() => {
     const debit = lines.reduce((s, l) => s + l.debit, 0);
@@ -208,6 +276,8 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
           title={cfg.title}
           subtitle={`Select ${cfg.plural === 'customers' ? 'a customer' : cfg.plural === 'suppliers' ? 'a supplier' : 'a worker'}`}
           gradient={cfg.gradient}
+          onRefresh={() => setListRefreshNonce((n) => n + 1)}
+          refreshing={loading}
         >
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60" size={16} />
@@ -286,16 +356,26 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
     { label: 'Closing', value: `Rs. ${formatAmount(totals.closing, 0)}` },
   ];
 
+  const detailPartySubtitle =
+    branchId && branchId !== 'all' && branchId !== 'default'
+      ? `${selected.meta || cfg.title} · GL: this branch + company-wide`
+      : selected.meta || cfg.title;
+
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
       <ReportHeader
         onBack={() => setSelected(null)}
         title={selected.name}
-        subtitle={selected.meta || cfg.title}
+        subtitle={detailPartySubtitle}
         stats={stats}
         onShare={preview.openPreview}
         sharing={preview.loading}
         gradient={cfg.gradient}
+        onRefresh={() => {
+          setManualLedgerRefresh(true);
+          setLedgerRefreshNonce((n) => n + 1);
+        }}
+        refreshing={manualLedgerRefresh && detailLoading}
       >
         <DateRangeBar value={range} onChange={setRange} />
       </ReportHeader>

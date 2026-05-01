@@ -7,6 +7,8 @@ export interface AccountRow {
   name: string;
   type: string;
   balance: number;
+  /** Party-linked AR/AP sub-account — enables party GL ledger RPC on mobile. */
+  linkedContactId?: string | null;
 }
 
 /** Account types supported for Create Account (same as web ERP) */
@@ -173,21 +175,36 @@ export async function createAccount(
 
 export async function getAccounts(companyId: string): Promise<{ data: AccountRow[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
-  const q = supabase
+  const withLink = await supabase
     .from('accounts')
-    .select('id, code, name, type, balance')
+    .select('id, code, name, type, balance, linked_contact_id')
     .eq('company_id', companyId)
     .eq('is_active', true)
     .order('code');
-  const { data, error } = await q;
+  let rows: Record<string, unknown>[] = (withLink.data || []) as Record<string, unknown>[];
+  let error = withLink.error;
+  if (error && /linked_contact|column/i.test(String(error.message || ''))) {
+    const minimal = await supabase
+      .from('accounts')
+      .select('id, code, name, type, balance')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .order('code');
+    rows = (minimal.data || []) as Record<string, unknown>[];
+    error = minimal.error;
+  }
   if (error) return { data: [], error: error.message };
   return {
-    data: (data || []).map((r: Record<string, unknown>) => ({
+    data: rows.map((r) => ({
       id: String(r.id ?? ''),
       code: String(r.code ?? '—'),
       name: String(r.name ?? '—'),
       type: String(r.type ?? '—'),
       balance: Number(r.balance) || 0,
+      linkedContactId:
+        r['linked_contact_id'] != null && String(r['linked_contact_id']).trim() !== ''
+          ? String(r['linked_contact_id'])
+          : null,
     })),
     error: null,
   };
@@ -201,6 +218,7 @@ export async function getPaymentAccounts(companyId: string): Promise<{ data: Acc
     .select('id, code, name, type, balance')
     .eq('company_id', companyId)
     .eq('is_active', true)
+    .or('is_group.eq.false,is_group.is.null')
     .in('type', ['cash', 'bank', 'asset', 'mobile_wallet'])
     .order('code');
   const { data, error } = await q;
@@ -221,6 +239,8 @@ export interface JournalEntryRow {
   entry_date: string;
   description: string;
   reference_type: string;
+  reference_id?: string | null;
+  payment_id?: string | null;
   total_debit: number;
   total_credit: number;
   lines?: { account_id: string; debit: number; credit: number; account?: { name: string } }[];
@@ -235,10 +255,11 @@ export async function getJournalEntries(
   let q = supabase
     .from('journal_entries')
     .select(`
-      id, entry_no, entry_date, description, reference_type,
+      id, entry_no, entry_date, description, reference_type, reference_id, payment_id,
       lines:journal_entry_lines(account_id, debit, credit, account:accounts(name))
     `)
     .eq('company_id', companyId)
+    .or('is_void.is.null,is_void.eq.false')
     .order('entry_date', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -255,6 +276,8 @@ export async function getJournalEntries(
       entry_date: e.entry_date ? new Date(e.entry_date as string).toISOString().slice(0, 10) : '',
       description: String(e.description ?? ''),
       reference_type: String(e.reference_type ?? ''),
+      reference_id: e.reference_id != null && e.reference_id !== '' ? String(e.reference_id) : null,
+      payment_id: e.payment_id != null && e.payment_id !== '' ? String(e.payment_id) : null,
       total_debit: totalDebit,
       total_credit: totalCredit,
       lines,

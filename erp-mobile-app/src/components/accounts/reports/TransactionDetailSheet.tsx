@@ -7,14 +7,17 @@ import {
   BookOpen,
   Loader2,
   Paperclip,
+  SquarePen,
 } from 'lucide-react';
 import {
   getTransactionDetail,
   type TransactionDetail,
 } from '../../../api/transactions';
+import { buildPaymentReferenceLabels } from '../../../utils/paymentReferenceDisplay';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { ReceiptPreviewPdf } from '../../shared/ReceiptPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
+import { TransactionEditSheet } from './TransactionEditSheet';
 
 interface Props {
   paymentId: string;
@@ -57,6 +60,10 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
       .finally(() => setLoading(false));
   }, [companyId, paymentId]);
 
+  const refLabels = detail
+    ? buildPaymentReferenceLabels(detail.referenceNumber ?? null, detail.entryNo ?? null)
+    : { primary: '', full: '' };
+
   const isReceived = detail?.direction === 'received';
   const amountColor = isReceived ? 'text-[#10B981]' : 'text-[#EF4444]';
   const Icon = isReceived ? ArrowDownLeft : ArrowUpRight;
@@ -74,6 +81,13 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
       accountId: detail.partyAccountId,
     });
   };
+
+  const refType = (detail?.referenceType || '').toLowerCase();
+  
+  const canEditDirectly =
+    detail && refType !== 'correction_reversal';
+
+  const [editSheetOpen, setEditSheetOpen] = useState(false);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center md:justify-center bg-black/60" onClick={onClose}>
@@ -134,7 +148,15 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
               <h3 className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide mb-3">Reference</h3>
               <dl className="grid grid-cols-2 gap-y-2 text-sm">
                 <dt className="text-[#9CA3AF]">Reference #</dt>
-                <dd className="text-white text-right">{detail.referenceNumber ?? detail.entryNo ?? '—'}</dd>
+                <dd className="text-white text-right break-all" title={refLabels.full || undefined}>
+                  {refLabels.primary || (detail.referenceNumber ?? detail.entryNo ?? '—')}
+                </dd>
+                {refLabels.full && refLabels.primary && refLabels.full !== refLabels.primary && (
+                  <>
+                    <dt className="text-[#9CA3AF] text-[11px]">Payment ref</dt>
+                    <dd className="text-[#9CA3AF] text-right text-[11px] break-all">{refLabels.full}</dd>
+                  </>
+                )}
                 <dt className="text-[#9CA3AF]">Type</dt>
                 <dd className="text-white text-right capitalize">{detail.referenceType.replace('_', ' ')}</dd>
                 {detail.branchName && (
@@ -216,16 +238,36 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
               >
                 <BookOpen className="w-4 h-4" /> View Ledger
               </button>
+              {canEditDirectly && (
+                <button
+                  onClick={() => setEditSheetOpen(true)}
+                  className="col-span-2 flex items-center justify-center gap-2 py-3 bg-[#4B5563] hover:bg-[#374151] rounded-lg text-white font-semibold text-sm mt-1"
+                >
+                  <SquarePen className="w-4 h-4" /> Edit Transaction
+                </button>
+              )}
             </div>
           </div>
         )}
       </div>
 
+      {editSheetOpen && detail && (
+        <TransactionEditSheet
+          detail={detail}
+          companyId={companyId}
+          onClose={() => setEditSheetOpen(false)}
+          onSuccess={() => {
+            setEditSheetOpen(false);
+            onClose(); // Close the parent sheet to trigger a refresh of the timeline
+          }}
+        />
+      )}
+
       {preview.brand && detail && (
         <PdfPreviewModal
           open={preview.open}
           title={detail.direction === 'received' ? 'Payment Receipt' : 'Payment Voucher'}
-          filename={`Receipt_${detail.referenceNumber ?? detail.entryNo ?? detail.id}.pdf`}
+          filename={`Receipt_${refLabels.primary || (detail.referenceNumber ?? detail.entryNo ?? detail.id)}.pdf`}
           onClose={preview.close}
           whatsAppFallbackText={`${detail.direction === 'received' ? 'Received' : 'Paid'} Rs. ${detail.amount.toLocaleString('en-PK')} — ${detail.partyName ?? detail.partyAccountName ?? ''}`}
         >
@@ -237,7 +279,10 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
             dateTime={detail.createdAt || detail.paymentDate}
             fromAccountName={detail.direction === 'received' ? detail.paymentAccountName : (detail.partyAccountName ?? detail.partyName ?? null)}
             toAccountName={detail.direction === 'received' ? (detail.partyAccountName ?? detail.partyName ?? null) : detail.paymentAccountName}
-            referenceNumber={detail.referenceNumber ?? detail.entryNo ?? null}
+            referenceNumber={refLabels.primary || (detail.referenceNumber ?? detail.entryNo ?? null)}
+            referenceStorageNumber={
+              refLabels.full !== refLabels.primary ? refLabels.full : undefined
+            }
             referenceType={detail.referenceType}
             method={METHOD_LABEL[detail.method] ?? detail.method}
             notes={detail.notes}

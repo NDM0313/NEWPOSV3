@@ -1092,16 +1092,30 @@ async function postAdjustmentJE(
 const TRIGGER_JE_POLL_MS = 120;
 const TRIGGER_JE_MAX_WAIT_MS = 900;
 
+async function findJournalIdForPayment(paymentId: string): Promise<string | null> {
+  const voidFilter = 'is_void.is.null,is_void.eq.false';
+  const byPaymentId = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('payment_id', paymentId)
+    .or(voidFilter)
+    .maybeSingle();
+  if (byPaymentId.data?.id) return byPaymentId.data.id as string;
+  const legacyRpcJe = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('reference_type', 'payment')
+    .eq('reference_id', paymentId)
+    .or(voidFilter)
+    .maybeSingle();
+  return (legacyRpcJe.data?.id as string) ?? null;
+}
+
 async function waitForJournalOnPaymentId(paymentId: string): Promise<string | null> {
   const deadline = Date.now() + TRIGGER_JE_MAX_WAIT_MS;
   while (Date.now() < deadline) {
-    const { data } = await supabase
-      .from('journal_entries')
-      .select('id')
-      .eq('payment_id', paymentId)
-      .or('is_void.is.null,is_void.eq.false')
-      .maybeSingle();
-    if (data?.id) return data.id as string;
+    const id = await findJournalIdForPayment(paymentId);
+    if (id) return id;
     await new Promise((r) => setTimeout(r, TRIGGER_JE_POLL_MS));
   }
   return null;
@@ -1129,13 +1143,8 @@ export async function ensureSalePaymentJournalIfMissing(paymentId: string): Prom
   };
   if (String(p.reference_type || '').toLowerCase() !== 'sale' || !p.reference_id) return null;
 
-  const { data: existing } = await supabase
-    .from('journal_entries')
-    .select('id')
-    .eq('payment_id', paymentId)
-    .or('is_void.is.null,is_void.eq.false')
-    .maybeSingle();
-  if (existing?.id) return existing.id as string;
+  const existingId = await findJournalIdForPayment(paymentId);
+  if (existingId) return existingId;
 
   const { data: saleRow } = await supabase
     .from('sales')

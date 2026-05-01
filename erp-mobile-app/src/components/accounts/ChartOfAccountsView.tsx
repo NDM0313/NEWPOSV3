@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, BookOpen, Loader2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ArrowLeft, Plus, BookOpen, Loader2, RefreshCw } from 'lucide-react';
 import * as accountsApi from '../../api/accounts';
 
 interface ChartOfAccountsViewProps {
@@ -12,7 +12,7 @@ export function ChartOfAccountsView({ onBack, onAddAccount, companyId }: ChartOf
   const [accounts, setAccounts] = useState<accountsApi.AccountRow[]>([]);
   const [loading, setLoading] = useState(!!companyId);
 
-  const load = () => {
+  const load = useCallback(() => {
     if (!companyId) {
       setAccounts([]);
       setLoading(false);
@@ -23,9 +23,17 @@ export function ChartOfAccountsView({ onBack, onAddAccount, companyId }: ChartOf
       setLoading(false);
       setAccounts(error ? [] : data);
     });
-  };
+  }, [companyId]);
 
-  useEffect(load, [companyId]);
+  useEffect(load, [load]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [load]);
 
   return (
     <div className="min-h-screen pb-24 bg-[#111827]">
@@ -38,13 +46,24 @@ export function ChartOfAccountsView({ onBack, onAddAccount, companyId }: ChartOf
             <h1 className="font-semibold text-white">Chart of Accounts</h1>
             <p className="text-xs text-white/80">Manage accounts (same as Web ERP)</p>
           </div>
-          <button
-            onClick={onAddAccount}
-            className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-white flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            <span className="text-sm font-medium hidden sm:inline">Add</span>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => load()}
+              disabled={loading || !companyId}
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white disabled:opacity-40"
+              title="Refresh balances"
+            >
+              <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={onAddAccount}
+              className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-white flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              <span className="text-sm font-medium hidden sm:inline">Add</span>
+            </button>
+          </div>
         </div>
       </div>
 

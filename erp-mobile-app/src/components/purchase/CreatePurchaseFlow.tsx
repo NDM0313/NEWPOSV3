@@ -9,6 +9,7 @@ import * as purchasesApi from '../../api/purchases';
 import * as contactsApi from '../../api/contacts';
 import * as productsApi from '../../api/products';
 import { getBranches } from '../../api/branches';
+import { addPending } from '../../lib/offlineStore';
 import type { ProductVariationRow } from '../../api/products';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
@@ -213,7 +214,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
     } else {
       status = 'received';
     }
-    const { data: createResult, error: err } = await purchasesApi.createPurchase({
+    const createInput: purchasesApi.CreatePurchaseInput = {
       companyId,
       branchId,
       supplierId: vendor.id,
@@ -246,7 +247,36 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
       total,
       notes: notes.trim() || undefined,
       userId,
-    });
+    };
+
+    if (!navigator.onLine) {
+      try {
+        await addPending('purchase', { action: 'create', input: createInput }, companyId, branchId);
+        let branchName: string | null = null;
+        try {
+          const { data: branches } = await getBranches(companyId);
+          branchName = branches?.find((b) => b.id === branchId)?.name ?? null;
+        } catch {
+          /* offline — branch label optional */
+        }
+        setConfirmationData({
+          type: 'purchase',
+          title: 'Purchase Saved Successfully',
+          transactionNo: 'Pending sync',
+          amount: total,
+          partyName: vendor.name,
+          date: new Date().toISOString(),
+          branch: branchName ?? undefined,
+          entityId: null,
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to save offline.');
+      }
+      setSaving(false);
+      return;
+    }
+
+    const { data: createResult, error: err } = await purchasesApi.createPurchase(createInput);
     setSaving(false);
     if (err) {
       setError(err);

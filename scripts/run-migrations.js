@@ -202,7 +202,9 @@ async function run() {
     console.log('');
     console.log('Migrations complete. Applied', runCount, 'new migration(s).');
   } catch (err) {
-    console.error('Error:', err.message);
+    const msg = err?.message || err?.code || (err && JSON.stringify(err)) || String(err);
+    console.error('Error:', msg);
+    if (err?.stack && !msg) console.error(err.stack);
     if (dbFatal && !err?.message?.includes(dbFatal.message || '')) {
       console.error('[MIGRATE] Last DB fatal:', dbFatal.message || dbFatal);
     }

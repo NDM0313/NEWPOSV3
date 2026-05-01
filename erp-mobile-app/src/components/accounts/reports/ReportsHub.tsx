@@ -51,13 +51,14 @@ interface ReportsHubProps {
   onOpenReport: (key: LegacyReportKey, opts?: { partyId?: string | null; accountId?: string | null; partyName?: string | null }) => void;
   companyId: string | null;
   branchId?: string | null;
+  onNavigateToDocumentEdit?: (kind: 'sale' | 'purchase', documentId: string) => void;
 }
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function ReportsHub({ onBack, onOpenReport, companyId, branchId }: ReportsHubProps) {
+export function ReportsHub({ onBack, onOpenReport, companyId, branchId, onNavigateToDocumentEdit }: ReportsHubProps) {
   const [view, setView] = useState<'hub' | 'timeline'>('hub');
   const [todayRows, setTodayRows] = useState<TransactionRow[]>([]);
   const [recentRows, setRecentRows] = useState<TransactionRow[]>([]);
@@ -104,6 +105,7 @@ export function ReportsHub({ onBack, onOpenReport, companyId, branchId }: Report
         branchId={branchId}
         onBack={() => setView('hub')}
         onViewLedger={({ accountId }) => onOpenReport('account-ledger', { accountId })}
+        onNavigateToDocumentEdit={onNavigateToDocumentEdit}
       />
     );
   }

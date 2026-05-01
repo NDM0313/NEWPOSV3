@@ -11,11 +11,16 @@ import {
   AlertTriangle,
   Upload,
   FileText,
+  Loader2,
 } from 'lucide-react';
 import { getPaymentAccounts } from '../../api/accounts';
 import { getBranches } from '../../api/branches';
 import { MAX_FILE_SIZE_BYTES, ACCEPT_TYPES } from '../../api/paymentAttachments';
 import { TransactionSuccessModal, type TransactionSuccessData } from './TransactionSuccessModal';
+import {
+  buildPaymentReferenceLabels,
+  fetchPrimaryJournalEntryNoForPayment,
+} from '../../utils/paymentReferenceDisplay';
 import { PdfPreviewModal } from './PdfPreviewModal';
 import { ReceiptPreviewPdf } from './ReceiptPreviewPdf';
 import { usePdfPreview } from './usePdfPreview';
@@ -272,7 +277,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
       if (paymentMethod === 'cash') return a.type === 'cash';
       if (paymentMethod === 'bank') return a.type === 'bank';
       if (paymentMethod === 'card') return a.type === 'bank';
-      return a.type === 'mobile_wallet' || a.type === 'asset';
+      return a.type === 'mobile_wallet';
     });
   }, [accounts, paymentMethod]);
 
@@ -352,6 +357,12 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         return;
       }
 
+      let journalEntryNo: string | null = null;
+      if (result.paymentId && companyId) {
+        journalEntryNo = await fetchPrimaryJournalEntryNoForPayment(companyId, result.paymentId);
+      }
+      const refLabels = buildPaymentReferenceLabels(result.referenceNumber ?? null, journalEntryNo);
+
       const partyAccountName =
         result.partyAccountName ??
         (partyName
@@ -368,6 +379,8 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         type: 'payment',
         title: successTitle(mode),
         transactionNo: result.referenceNumber ?? null,
+        referenceDisplay: refLabels.primary || (result.referenceNumber ?? null),
+        referenceFull: refLabels.full || (result.referenceNumber ?? null),
         amount,
         partyName: partyName ?? null,
         date: new Date().toISOString(),
@@ -404,7 +417,17 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-[#111827]">
+    <div className="fixed inset-0 z-[70] flex flex-col bg-[#111827] relative">
+      {submitting && (
+        <div
+          className="absolute inset-0 z-[100] bg-black/55 flex flex-col items-center justify-center gap-2 pointer-events-auto rounded-none"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <Loader2 className="w-9 h-9 text-white animate-spin" />
+          <span className="text-sm font-medium text-white">Processing…</span>
+        </div>
+      )}
       <div className="flex items-center justify-between p-4 border-b border-[#374151] bg-[#1F2937] shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <Banknote className="w-6 h-6 text-[#3B82F6] shrink-0" />
@@ -416,7 +439,8 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         <button
           type="button"
           onClick={onClose}
-          className="p-2 rounded-lg text-[#9CA3AF] hover:bg-[#374151] hover:text-white transition-colors shrink-0"
+          disabled={submitting}
+          className="p-2 rounded-lg text-[#9CA3AF] hover:bg-[#374151] hover:text-white transition-colors shrink-0 disabled:opacity-40 disabled:pointer-events-none"
           aria-label="Close"
         >
           <X className="w-5 h-5" />
@@ -654,11 +678,12 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         </div>
       )}
 
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-[#111827] border-t border-[#374151] flex gap-3">
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-[#111827] border-t border-[#374151] flex gap-3 z-[60]">
         <button
           type="button"
           onClick={onClose}
-          className="flex-1 py-3 rounded-lg border border-[#374151] text-[#9CA3AF] font-medium hover:bg-[#374151] transition-colors"
+          disabled={submitting}
+          className="flex-1 py-3 rounded-lg border border-[#374151] text-[#9CA3AF] font-medium hover:bg-[#374151] transition-colors disabled:opacity-50 disabled:pointer-events-none"
         >
           Cancel
         </button>
@@ -666,10 +691,13 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
           type="button"
           onClick={handleConfirm}
           disabled={!isValid || submitting}
-          className="flex-1 py-3 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-white font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+          className="flex-1 py-3 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-white font-medium inline-flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none transition-colors"
         >
           {submitting ? (
-            <span className="animate-pulse">Processing...</span>
+            <>
+              <Loader2 className="w-5 h-5 animate-spin shrink-0" />
+              Processing…
+            </>
           ) : (
             <>
               <Check className="w-5 h-5" />
@@ -694,7 +722,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         <PdfPreviewModal
           open={preview.open}
           title={shareHeading(mode)}
-          filename={`Receipt_${success.transactionNo ?? success.paymentIdRaw ?? Date.now()}.pdf`}
+          filename={`Receipt_${success.referenceDisplay ?? success.transactionNo ?? success.paymentIdRaw ?? Date.now()}.pdf`}
           onClose={() => {
             preview.close();
             closeSuccess();
@@ -713,7 +741,12 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
             toAccountName={
               mode === 'receive' || mode === 'rental' ? success.fromAccountName : success.toAccountName
             }
-            referenceNumber={success.transactionNo ?? null}
+            referenceNumber={success.referenceDisplay ?? success.transactionNo ?? null}
+            referenceStorageNumber={
+              success.referenceFull && success.referenceFull !== (success.referenceDisplay ?? success.transactionNo)
+                ? success.referenceFull
+                : undefined
+            }
             method={METHOD_LABELS[paymentMethod]}
             notes={notes.trim() || null}
             branchName={success.branch ?? null}

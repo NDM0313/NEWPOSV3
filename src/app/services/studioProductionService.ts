@@ -209,6 +209,8 @@ export interface StudioProduction {
   updated_at: string;
   product?: { id: string; name: string; sku?: string };
   worker?: { id: string; name: string };
+  /** Replica / studio outfit title (Sale Form); canonical display name when set. */
+  design_name?: string | null;
   /** Product created for this studio order (invoice line). Set when studio product line is added. */
   generated_product_id?: string | null;
   /** sales_items.id of the generated studio line. Pricing sync updates only this item. */
@@ -578,7 +580,7 @@ export const studioProductionService = {
     try {
       const { data, error } = await supabase
         .from('studio_productions')
-        .select('id, sale_id, production_no, company_id, branch_id, status, created_at')
+        .select('id, sale_id, production_no, company_id, branch_id, status, created_at, design_name')
         .in('sale_id', saleIds)
         .order('created_at', { ascending: false });
       if (error) {

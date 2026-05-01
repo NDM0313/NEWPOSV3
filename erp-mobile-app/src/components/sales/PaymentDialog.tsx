@@ -75,18 +75,23 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
     return allAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
   };
 
-  const handleMethodSelect = (method: PaymentMethod) => {
+  const handleMethodSelect = async (method: PaymentMethod) => {
     setPaymentMethod(method);
     setSelectedAccount(null);
     if (method === 'credit') {
-      // Credit: no account/amount; complete immediately with paid=0, due=total
-      onComplete({
-        paymentMethod: 'Credit',
-        paidAmount: 0,
-        dueAmount: totalAmount,
-        accountId: null,
-        accountName: null,
-      });
+      try {
+        await Promise.resolve(
+          onComplete({
+            paymentMethod: 'Credit',
+            paidAmount: 0,
+            dueAmount: totalAmount,
+            accountId: null,
+            accountName: null,
+          })
+        );
+      } catch (e) {
+        console.error('[PaymentDialog] Credit onComplete failed:', e);
+      }
       return;
     }
     setStep(2);
@@ -165,7 +170,18 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
   const remaining = totalAmount - paymentAmount;
 
   return (
-    <div className="min-h-screen bg-[#111827] pb-24">
+    <div className="min-h-screen bg-[#111827] pb-24 relative">
+      {saving ? (
+        <div
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <Loader2 className="h-10 w-10 animate-spin text-[#3B82F6] mb-3" />
+          <p className="text-white text-sm font-medium">Posting…</p>
+          <p className="text-[#9CA3AF] text-xs mt-1">Please wait — do not close</p>
+        </div>
+      ) : null}
       {/* Header */}
       <div className="bg-[#1F2937] border-b border-[#374151] px-4 py-3 sticky top-0 z-10">
         <div className="flex items-center justify-between">
@@ -230,8 +246,10 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
           <h2 className="text-sm font-medium text-[#9CA3AF] mb-4">SELECT PAYMENT METHOD</h2>
 
           <button
-            onClick={() => handleMethodSelect('cash')}
-            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left"
+            type="button"
+            disabled={saving}
+            onClick={() => void handleMethodSelect('cash')}
+            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left disabled:opacity-50 disabled:pointer-events-none"
           >
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-[#10B981]/10 rounded-xl flex items-center justify-center">
@@ -245,8 +263,10 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
           </button>
 
           <button
-            onClick={() => handleMethodSelect('bank')}
-            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left"
+            type="button"
+            disabled={saving}
+            onClick={() => void handleMethodSelect('bank')}
+            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left disabled:opacity-50 disabled:pointer-events-none"
           >
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-[#3B82F6]/10 rounded-xl flex items-center justify-center">
@@ -260,8 +280,10 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
           </button>
 
           <button
-            onClick={() => handleMethodSelect('wallet')}
-            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left"
+            type="button"
+            disabled={saving}
+            onClick={() => void handleMethodSelect('wallet')}
+            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left disabled:opacity-50 disabled:pointer-events-none"
           >
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-[#8B5CF6]/10 rounded-xl flex items-center justify-center">
@@ -275,8 +297,10 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
           </button>
 
           <button
-            onClick={() => handleMethodSelect('card')}
-            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left"
+            type="button"
+            disabled={saving}
+            onClick={() => void handleMethodSelect('card')}
+            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left disabled:opacity-50 disabled:pointer-events-none"
           >
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-[#F59E0B]/10 rounded-xl flex items-center justify-center">
@@ -291,8 +315,10 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
 
           {(showCredit) && (
             <button
-              onClick={() => handleMethodSelect('credit')}
-              className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#F59E0B] transition-all active:scale-[0.98] text-left"
+              type="button"
+              disabled={saving}
+              onClick={() => void handleMethodSelect('credit')}
+              className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#F59E0B] transition-all active:scale-[0.98] text-left disabled:opacity-50 disabled:pointer-events-none"
             >
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-[#F59E0B]/10 rounded-xl flex items-center justify-center">
@@ -347,9 +373,11 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
           <div className="space-y-2">
             {getAccounts().map((account) => (
               <button
+                type="button"
                 key={account.id}
+                disabled={saving}
                 onClick={() => handleAccountSelect(account)}
-                className={`w-full bg-[#1F2937] border-2 rounded-xl p-4 transition-all active:scale-[0.98] text-left ${
+                className={`w-full bg-[#1F2937] border-2 rounded-xl p-4 transition-all active:scale-[0.98] text-left disabled:opacity-50 disabled:pointer-events-none ${
                   selectedAccount?.id === account.id
                     ? 'border-[#3B82F6] bg-[#3B82F6]/5'
                     : 'border-[#374151] hover:border-[#3B82F6]/50'
@@ -372,8 +400,9 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
           )}
 
           <button
+            type="button"
             onClick={handleProceedToAmount}
-            disabled={!selectedAccount || accountsLoading}
+            disabled={!selectedAccount || accountsLoading || saving}
             className="w-full mt-6 h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] disabled:text-[#6B7280] rounded-lg font-medium transition-colors active:scale-[0.98] text-white"
           >
             Next →
@@ -397,11 +426,13 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
             <h2 className="text-sm font-medium text-[#9CA3AF]">PAYMENT TYPE</h2>
 
             <button
+              type="button"
+              disabled={saving}
               onClick={() => {
                 setPaymentMode('full');
                 setAmount(totalAmount.toString());
               }}
-              className={`w-full p-4 rounded-xl text-left transition-all ${
+              className={`w-full p-4 rounded-xl text-left transition-all disabled:opacity-50 disabled:pointer-events-none ${
                 paymentMode === 'full'
                   ? 'bg-[#3B82F6]/10 border-2 border-[#3B82F6]'
                   : 'bg-[#1F2937] border border-[#374151]'
@@ -416,8 +447,10 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
             </button>
 
             <button
+              type="button"
+              disabled={saving}
               onClick={() => setPaymentMode('partial')}
-              className={`w-full p-4 rounded-xl text-left transition-all ${
+              className={`w-full p-4 rounded-xl text-left transition-all disabled:opacity-50 disabled:pointer-events-none ${
                 paymentMode === 'partial'
                   ? 'bg-[#3B82F6]/10 border-2 border-[#3B82F6]'
                   : 'bg-[#1F2937] border border-[#374151]'
@@ -434,18 +467,21 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="Enter amount"
-                  className="w-full max-w-full min-w-0 mt-3 h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm focus:outline-none focus:border-[#3B82F6] text-white box-border"
+                  disabled={saving}
+                  className="w-full max-w-full min-w-0 mt-3 h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm focus:outline-none focus:border-[#3B82F6] text-white box-border disabled:opacity-50"
                   onClick={(e) => e.stopPropagation()}
                 />
               )}
             </button>
 
             <button
+              type="button"
+              disabled={saving}
               onClick={() => {
                 setPaymentMode('skip');
                 setAmount('0');
               }}
-              className={`w-full p-4 rounded-xl text-left transition-all ${
+              className={`w-full p-4 rounded-xl text-left transition-all disabled:opacity-50 disabled:pointer-events-none ${
                 paymentMode === 'skip'
                   ? 'bg-[#3B82F6]/10 border-2 border-[#3B82F6]'
                   : 'bg-[#1F2937] border border-[#374151]'
@@ -462,9 +498,11 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
               <div className="grid grid-cols-3 gap-2">
                 {quickAmounts.map((qa) => (
                   <button
+                    type="button"
                     key={qa}
+                    disabled={saving}
                     onClick={() => setAmount(qa.toString())}
-                    className="h-10 bg-[#1F2937] border border-[#374151] hover:border-[#3B82F6] rounded-lg text-sm font-medium transition-colors text-white"
+                    className="h-10 bg-[#1F2937] border border-[#374151] hover:border-[#3B82F6] rounded-lg text-sm font-medium transition-colors text-white disabled:opacity-50"
                   >
                     {qa >= 1000 ? `${qa / 1000}K` : qa}
                   </button>

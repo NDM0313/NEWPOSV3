@@ -6,6 +6,7 @@ import { registerSyncHandler } from './syncEngine';
 import * as salesApi from '../api/sales';
 import * as expensesApi from '../api/expenses';
 import * as accountsApi from '../api/accounts';
+import { syncPurchasePending } from './syncPurchase';
 
 export function registerAllSyncHandlers(): void {
   registerSyncHandler('sale', async (record) => {
@@ -169,4 +170,6 @@ export function registerAllSyncHandlers(): void {
     }
     return { error: 'Invalid payment payload' };
   });
+
+  registerSyncHandler('purchase', async (record) => syncPurchasePending(record));
 }

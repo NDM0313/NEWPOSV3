@@ -10,6 +10,8 @@ export interface ReceiptPreviewPdfProps {
   fromAccountName?: string | null;
   toAccountName?: string | null;
   referenceNumber?: string | null;
+  /** Long stored payment ref when primary display is a JE no. or shortened PAY-FB */
+  referenceStorageNumber?: string | null;
   method?: string | null;
   notes?: string | null;
   branchName?: string | null;
@@ -41,6 +43,7 @@ export function ReceiptPreviewPdf({
   fromAccountName,
   toAccountName,
   referenceNumber,
+  referenceStorageNumber,
   method,
   notes,
   branchName,
@@ -49,6 +52,13 @@ export function ReceiptPreviewPdf({
 }: ReceiptPreviewPdfProps) {
   const rows: Array<[string, string]> = [];
   if (referenceNumber) rows.push(['Reference #', referenceNumber]);
+  if (
+    referenceStorageNumber &&
+    referenceNumber &&
+    referenceStorageNumber.trim() !== referenceNumber.trim()
+  ) {
+    rows.push(['Payment ref', referenceStorageNumber]);
+  }
   if (referenceType) rows.push(['Type', referenceType.replace('_', ' ')]);
   if (method) rows.push(['Method', method]);
   if (branchName) rows.push(['Branch', branchName]);

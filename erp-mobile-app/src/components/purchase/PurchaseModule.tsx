@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ArrowLeft, ShoppingBag, Plus, Search, Package, Calendar, Loader2, MapPin, Paperclip, MoreVertical, History, Share2, Printer, Download, SquarePen, RotateCcw, Ban, AlertTriangle, X, Trash2 } from 'lucide-react';
 import type { User } from '../../types';
 import * as purchasesApi from '../../api/purchases';
@@ -10,6 +10,7 @@ import * as branchesApi from '../../api/branches';
 import * as contactsApi from '../../api/contacts';
 import * as productsApi from '../../api/products';
 import { supabase, erpMobileCanUseRealtime } from '../../lib/supabase';
+import { addPending } from '../../lib/offlineStore';
 import { CreatePurchaseFlow } from './CreatePurchaseFlow';
 import { MobilePaySupplier } from './MobilePaySupplier';
 import { AttachmentPreviewModal } from '../sales/AttachmentPreviewModal';
@@ -23,6 +24,9 @@ interface PurchaseModuleProps {
   user: User;
   companyId: string | null;
   branchId: string | null;
+  /** Open edit modal for this purchase (e.g. from Reports → transaction detail). */
+  initialEditPurchaseId?: string | null;
+  onConsumedInitialEditPurchaseId?: () => void;
 }
 
 type EditPurchaseLine = {
@@ -36,7 +40,14 @@ type EditPurchaseLine = {
   unitPrice: number;
 };
 
-export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseModuleProps) {
+export function PurchaseModule({
+  onBack,
+  user,
+  companyId,
+  branchId,
+  initialEditPurchaseId,
+  onConsumedInitialEditPurchaseId,
+}: PurchaseModuleProps) {
   const [view, setView] = useState<'list' | 'create' | 'details'>('list');
   const [orders, setOrders] = useState<purchasesApi.PurchaseListItem[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<purchasesApi.PurchaseDetail | null>(null);
@@ -315,20 +326,49 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
     setShowDiscountField(det.discount > 0);
     setShowTaxField(det.taxAmount > 0);
     setEditLineItems(
-      det.items
-        .filter((it) => it.productId)
-        .map((it) => ({
-          lineKey: it.id,
-          lineId: it.id,
-          productId: it.productId as string,
-          variationId: it.variationId ?? null,
-          productName: it.productName,
-          sku: it.sku || '—',
-          quantity: it.quantity,
-          unitPrice: it.unitPrice,
-        })),
+      det.items.map((it) => ({
+        lineKey: it.id,
+        lineId: it.id,
+        productId: it.productId ? String(it.productId) : '',
+        variationId: it.variationId ?? null,
+        productName: it.productName,
+        sku: it.sku || '—',
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+      })),
     );
   };
+
+  const handleEditRef = useRef(handleEdit);
+  handleEditRef.current = handleEdit;
+
+  useEffect(() => {
+    if (!initialEditPurchaseId || !companyId) return;
+    let cancelled = false;
+    const stub: purchasesApi.PurchaseListItem = {
+      id: initialEditPurchaseId,
+      poNo: '—',
+      vendor: '',
+      vendorPhone: '',
+      total: 0,
+      subtotal: 0,
+      discount: 0,
+      paidAmount: 0,
+      dueAmount: 0,
+      status: 'ordered',
+      paymentStatus: 'unpaid',
+      date: '',
+      itemCount: 0,
+      branchId: null,
+    };
+    void (async () => {
+      await handleEditRef.current(stub);
+      if (!cancelled) onConsumedInitialEditPurchaseId?.();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialEditPurchaseId, companyId, onConsumedInitialEditPurchaseId]);
 
   const updateEditPurchaseLine = (index: number, patch: Partial<EditPurchaseLine>) => {
     setEditLineItems((prev) => {
@@ -414,7 +454,7 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
     if (companyId) {
       const { data: rb } = await supabase
         .from('purchases')
-        .select('total, subtotal, discount_amount, shipping_cost, tax_amount, purchase_charges')
+        .select('total, subtotal, discount_amount, shipping_cost, tax_amount, purchase_charges(*)')
         .eq('id', purchaseId)
         .maybeSingle();
       oldPurchaseSnap = purchaseAccountingSnapshotFromRow(
@@ -436,14 +476,23 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
       const tax = Number(editTax) || 0;
       const paid = Number(editOrder.paidAmount ?? 0) || 0;
 
-      const lines = editLineItems
-        .map((row) => {
-          const qty = Math.max(0, Number(row.quantity) || 0);
-          const up = Math.max(0, Number(row.unitPrice) || 0);
-          const total = Math.max(0, qty * up);
-          return { ...row, quantity: qty, unitPrice: up, total };
-        })
-        .filter((row) => row.productId && row.quantity > 0);
+      const normalizedLines = editLineItems.map((row) => {
+        const qty = Math.max(0, Number(row.quantity) || 0);
+        const up = Math.max(0, Number(row.unitPrice) || 0);
+        const total = Math.max(0, qty * up);
+        return { ...row, quantity: qty, unitPrice: up, total };
+      });
+
+      const hasPositiveQty = normalizedLines.some((r) => r.quantity > 0);
+      if (
+        hasPositiveQty &&
+        normalizedLines.some((r) => r.quantity > 0 && !String(r.productId || '').trim())
+      ) {
+        setActionError('Each line must be linked to a product. Use + Add product to replace orphan lines.');
+        return;
+      }
+
+      const lines = normalizedLines.filter((row) => String(row.productId || '').trim() && row.quantity > 0);
 
       if (lines.length === 0) {
         if (editLineItems.length > 0) {
@@ -472,7 +521,7 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
             try {
               const { data: newRow } = await supabase
                 .from('purchases')
-                .select('total, subtotal, discount_amount, shipping_cost, tax_amount, purchase_charges')
+                .select('total, subtotal, discount_amount, shipping_cost, tax_amount, purchase_charges(*)')
                 .eq('id', purchaseId)
                 .maybeSingle();
               if (newRow) {
@@ -531,7 +580,7 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
         try {
           const { data: newRow } = await supabase
             .from('purchases')
-            .select('total, subtotal, discount_amount, shipping_cost, tax_amount, purchase_charges')
+            .select('total, subtotal, discount_amount, shipping_cost, tax_amount, purchase_charges(*)')
             .eq('id', purchaseId)
             .maybeSingle();
           if (newRow) {
@@ -578,6 +627,41 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
     if (!cancelOrder || !companyId) return;
     setCancelling(true);
     setActionError(null);
+
+    if (!navigator.onLine) {
+      let syncBranch =
+        cancelOrder.branchId ??
+        (branchId && branchId !== 'all' && branchId !== 'default' ? branchId : null);
+      if (!syncBranch && branches.length > 0) syncBranch = branches[0].id;
+      if (!syncBranch) {
+        const { data: br } = await branchesApi.getBranches(companyId);
+        syncBranch = br?.[0]?.id ?? null;
+      }
+      if (!syncBranch) {
+        setActionError('Could not determine branch for offline sync. Try again when online.');
+        setCancelling(false);
+        return;
+      }
+      try {
+        await addPending(
+          'purchase',
+          {
+            action: 'cancel',
+            companyId,
+            purchaseId: cancelOrder.id,
+            userId: user?.id ?? null,
+          },
+          companyId,
+          syncBranch,
+        );
+        setCancelOrder(null);
+      } catch (e) {
+        setActionError(e instanceof Error ? e.message : 'Failed to queue cancel.');
+      }
+      setCancelling(false);
+      return;
+    }
+
     const { error } = await purchasesApi.cancelPurchase(companyId, cancelOrder.id, {
       userId: user?.id ?? null,
     });
@@ -1218,14 +1302,21 @@ export function PurchaseModule({ onBack, user, companyId, branchId }: PurchaseMo
                   <p className="text-xs text-[#9CA3AF] py-2">Loading lines…</p>
                 ) : editLineItems.length === 0 ? (
                   <p className="text-[11px] text-[#F59E0B]">
-                    No purchase lines loaded. You can still save header fields only (apply DB migration update_purchase_with_items to edit lines).
+                    No purchase lines loaded. You can still save header-only changes (notes, supplier, date). If this persists, reload the purchase from the list.
                   </p>
                 ) : (
                   <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                     {editLineItems.map((row, idx) => (
                       <div key={row.lineKey} className="rounded-lg bg-[#111827] border border-[#374151] p-2 space-y-2">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-xs text-white truncate min-w-0 flex-1">{row.productName}</p>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs text-white truncate">{row.productName}</p>
+                            {!String(row.productId || '').trim() && (
+                              <p className="text-[10px] text-amber-400 mt-0.5">
+                                Not linked to a catalog product — remove this line or add a replacement with + Add product.
+                              </p>
+                            )}
+                          </div>
                           {editLineItems.length > 1 && (
                             <button
                               type="button"

@@ -38,6 +38,8 @@ export interface CreateSaleInput {
   orderDate?: string;
   /** Studio: deadline (YYYY-MM-DD) */
   deadline?: string;
+  /** Studio: replica / outfit title → studio_productions.design_name */
+  studioDesignName?: string;
 }
 
 /** When branchId is 'default' (no branches), use first branch for RPC. No auto-create (POST branches can 403). */
@@ -64,7 +66,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: 'App not configured.' };
   }
 
-  const { companyId, branchId, customerId, customerName, contactNumber, items, subtotal, discountAmount, taxAmount, expenses, total, paymentMethod, notes, isStudio, userId, paidAmount, dueAmount, paymentAccountId, orderDate: _orderDate, deadline } = input;
+  const { companyId, branchId, customerId, customerName, contactNumber, items, subtotal, discountAmount, taxAmount, expenses, total, paymentMethod, notes, isStudio, userId, paidAmount, dueAmount, paymentAccountId, orderDate: _orderDate, deadline, studioDesignName } = input;
 
   if (!companyId || !branchId || !userId) {
     return { data: null, error: 'Missing company, branch, or user.' };
@@ -233,25 +235,26 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     if (payErr) console.warn('[SALES API] Payment record insert failed:', payErr);
   }
 
-  // Create studio_production(s) for Studio Sales so they appear in Studio dashboard
+  // One unified studio production per sale (single pipeline; sale total is one bill).
   if (isStudio && items.length > 0) {
     const productionDate = new Date().toISOString().slice(0, 10);
-    const productionRows = items.map((item, i) => {
-      const productionNo = items.length === 1 ? invoiceNo : `${invoiceNo}-${i + 1}`;
-      return {
-        company_id: companyId,
-        branch_id: effectiveBranchId,
-        sale_id: saleId,
-        production_no: productionNo,
-        production_date: productionDate,
-        product_id: item.productId,
-        variation_id: item.variationId || null,
-        quantity: item.quantity,
-        status: 'draft' as const,
-        created_by: userId,
-      };
+    const first = items[0];
+    const qtySum = items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+    const quantity = qtySum > 0 ? qtySum : Number(first.quantity) || 1;
+    const designTrim = (studioDesignName ?? '').trim() || null;
+    const { error: prodErr } = await supabase.from('studio_productions').insert({
+      company_id: companyId,
+      branch_id: effectiveBranchId,
+      sale_id: saleId,
+      production_no: invoiceNo,
+      production_date: productionDate,
+      product_id: first.productId,
+      variation_id: first.variationId || null,
+      quantity,
+      status: 'draft' as const,
+      created_by: userId,
+      ...(designTrim ? { design_name: designTrim } : {}),
     });
-    const { error: prodErr } = await supabase.from('studio_productions').insert(productionRows);
     if (prodErr) {
       console.warn('[SALES API] Studio production(s) insert failed (sale saved):', prodErr);
     }
@@ -335,6 +338,58 @@ export async function getAllSales(
   const withPayments = await enrichSalesWithPayments(companyId, withStudio);
   const enriched = await enrichSalesWithShipping(withPayments);
   return { data: enriched, error: null };
+}
+
+/** One sale with the same payment / shipping / studio enrichment as getAllSales (timeline → edit invoice). */
+export async function getSaleEnrichedById(
+  companyId: string,
+  saleId: string,
+): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  if (!companyId || !saleId) return { data: null, error: 'Company and sale id required.' };
+
+  let row: Record<string, unknown> | null = null;
+
+  const q1 = await supabase
+    .from('sales')
+    .select(
+      `*,
+      customer:contacts(id, name, phone),
+      branch:branches(id, name, code),
+      items:sales_items(*, product:products(*), variation:product_variations(*))`,
+    )
+    .eq('company_id', companyId)
+    .eq('id', saleId)
+    .maybeSingle();
+
+  if (q1.error) {
+    if (q1.error.code === '42P01' || String(q1.error.message || '').includes('sales_items')) {
+      const q2 = await supabase
+        .from('sales')
+        .select(
+          `*,
+          customer:contacts(id, name, phone),
+          branch:branches(id, name, code),
+          items:sale_items(*, product:products(*), variation:product_variations(*))`,
+        )
+        .eq('company_id', companyId)
+        .eq('id', saleId)
+        .maybeSingle();
+      if (q2.error) return { data: null, error: q2.error.message };
+      row = (q2.data || null) as Record<string, unknown> | null;
+    } else {
+      return { data: null, error: q1.error.message };
+    }
+  } else {
+    row = (q1.data || null) as Record<string, unknown> | null;
+  }
+
+  if (!row) return { data: null, error: 'Sale not found.' };
+
+  const withStudio = await enrichSalesWithStudioChargesBatch([row]);
+  const withPayments = await enrichSalesWithPayments(companyId, withStudio);
+  const enriched = await enrichSalesWithShipping(withPayments);
+  return { data: (enriched[0] as Record<string, unknown>) ?? null, error: null };
 }
 
 /** Same as web saleService.getAllSales — studio worker cost from productions (RPC). */
@@ -807,7 +862,7 @@ export async function getSaleReturnCandidateItems(saleId: string): Promise<{
         unitPrice: Number(r.unit_price ?? 0),
         lineTotal: Number(r.total ?? 0),
       }))
-      .filter((r) => r.productId && r.soldQty > 0);
+      .filter((r) => r.soldQty > 0);
 
   const sourceTables = ['sales_items', 'sale_items'] as const;
   let lastError: string | null = null;

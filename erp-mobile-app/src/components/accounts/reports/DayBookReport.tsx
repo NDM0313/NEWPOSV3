@@ -56,7 +56,17 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
       arr.push(e);
       map.set(key, arr);
     }
-    return Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, rows]) => {
+        const sorted = [...rows].sort((a, b) => {
+          const ta = Date.parse(String(a.createdAt || '')) || 0;
+          const tb = Date.parse(String(b.createdAt || '')) || 0;
+          if (ta !== tb) return ta - tb;
+          return String(a.id).localeCompare(String(b.id));
+        });
+        return [date, sorted] as [string, DayBookJournalEntry[]];
+      });
   }, [entries]);
 
   const totals = useMemo(() => {

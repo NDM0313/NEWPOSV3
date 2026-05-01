@@ -7,7 +7,18 @@ const DB_NAME = 'erp_mobile_offline';
 const DB_VERSION = 1;
 const STORE_NAME = 'pending';
 
-export type PendingType = 'sale' | 'payment' | 'expense' | 'journal_entry';
+export type PendingType = 'sale' | 'payment' | 'expense' | 'journal_entry' | 'purchase';
+
+/** Stored under type `purchase`; discriminated by `action`. */
+export type PurchasePendingPayload =
+  | { action: 'create'; input: Record<string, unknown> }
+  | {
+      action: 'cancel';
+      companyId: string;
+      purchaseId: string;
+      userId?: string | null;
+      reason?: string | null;
+    };
 
 export interface PendingRecord {
   id: string;

@@ -1,6 +1,13 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { normalizeCompanyId } from './contactBalancesUtils';
-import { balanceRowFromMap, fetchContactBalancesSummary } from './contactBalancesRpc';
+import type { ContactBalancesRow } from './contactBalancesRpc';
+import {
+  balanceRowFromMap,
+  fetchContactPartyGlBalancesMap,
+  fetchOperationalContactBalancesSummary,
+  partyGlDueForListRole,
+  partyGlSliceFromMap,
+} from './contactBalancesRpc';
 
 export type ContactRole = 'customer' | 'supplier' | 'worker';
 export type BackendContactType = 'customer' | 'supplier' | 'both' | 'worker';
@@ -55,12 +62,25 @@ function rolesToType(roles: ContactRole[]): BackendContactType {
   return 'both';
 }
 
+/** Operational RPC row → single display balance on customer/supplier/worker list (branch context). */
 function balanceFromRpcRow(
   contactType: string,
   receivables: number,
-  payables: number
+  payables: number,
+  listRole?: ContactRole
 ): number {
   const t = (contactType || '').toLowerCase();
+  if (listRole === 'customer') {
+    if (t === 'both') return Math.max(0, receivables);
+    return Math.max(0, receivables);
+  }
+  if (listRole === 'supplier') {
+    if (t === 'both') return Math.max(0, payables);
+    return Math.max(0, payables);
+  }
+  if (listRole === 'worker') {
+    return Math.max(0, payables);
+  }
   if (t === 'supplier') return Math.max(0, payables);
   if (t === 'worker') return Math.max(0, payables);
   if (t === 'both') return Math.max(0, receivables) + Math.max(0, payables);
@@ -90,14 +110,39 @@ export async function getContacts(
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
 
-  const { map: balanceById } = await fetchContactBalancesSummary(company, branchId);
+  const partyGl = await fetchContactPartyGlBalancesMap(company, branchId);
+  const opFallBack =
+    partyGl.error != null
+      ? await fetchOperationalContactBalancesSummary(company, branchId)
+      : { map: new Map<string, ContactBalancesRow>(), error: null as string | null };
+
+  const listRole: ContactRole | undefined =
+    type === 'customer' || type === 'supplier' || type === 'worker' ? type : undefined;
 
   const list: Contact[] = (data || []).map((row: ContactRow & { worker_role?: string; created_at?: string; updated_at?: string }) => {
-    const rpc = balanceRowFromMap(balanceById, row.id);
     const opening = Number(row.opening_balance ?? 0);
-    const balance = rpc
-      ? balanceFromRpcRow(row.type || 'customer', rpc.receivables, rpc.payables)
-      : opening;
+    let balance = opening;
+
+    if (!partyGl.error) {
+      const slice = partyGlSliceFromMap(partyGl.map, row.id);
+      if (slice) {
+        if (listRole) {
+          balance = partyGlDueForListRole(slice, listRole);
+        } else {
+          balance =
+            Math.max(0, slice.glArReceivable) +
+            Math.max(0, slice.glApPayable) +
+            Math.max(0, slice.glWorkerPayable);
+        }
+      } else {
+        balance = opening;
+      }
+    } else {
+      const rpc = balanceRowFromMap(opFallBack.map, row.id);
+      balance = rpc
+        ? balanceFromRpcRow(row.type || 'customer', rpc.receivables, rpc.payables, listRole)
+        : opening;
+    }
     return {
       id: row.id,
       name: row.name,

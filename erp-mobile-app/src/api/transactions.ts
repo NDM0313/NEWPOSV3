@@ -171,8 +171,8 @@ export async function getPaymentTransactions(
       'id, created_at, payment_date, payment_type, reference_type, reference_id, reference_number, amount, payment_method, payment_account_id, branch_id, notes, attachments, created_by',
     )
     .eq('company_id', filters.companyId)
-    .order('payment_date', { ascending: false })
-    .order('created_at', { ascending: false })
+    .order('payment_date', { ascending: true })
+    .order('created_at', { ascending: true })
     .limit(filters.limit ?? 150);
 
   if (filters.branchId && filters.branchId !== 'all' && filters.branchId !== 'default') {

@@ -19,6 +19,8 @@ export interface NumericInputProps
   min?: number;
   max?: number;
   maxDecimals?: number;
+  /** Merged onto the inner `<input>` (after base styles). Use to override height/padding in dense layouts. */
+  inputClassName?: string;
 }
 
 const BASE_CLASS =
@@ -30,6 +32,9 @@ const BASE_CLASS_WITH_PREFIX = BASE_CLASS.replace('px-4', 'pl-12 pr-4');
  * - inputMode: decimal (with decimals) or numeric (integers only)
  * - Validation: numbers only, decimals/negative per options
  * - Enter key: focusNext or submit (from global config or prop)
+ *
+ * Empty field while typing: pass **string** state from the parent (`''` when cleared).
+ * If `value` is a number (including `0`), it always displays that digit — use strings to allow a blank control.
  */
 export const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(function NumericInput(
   {
@@ -44,7 +49,8 @@ export const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(func
     min,
     max,
     maxDecimals,
-    placeholder = '0',
+    inputClassName,
+    placeholder = '',
     disabled = false,
     className = '',
     required = false,
@@ -88,11 +94,11 @@ export const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(func
     [onEnterPress, submitOnEnter, config.enterKeyBehavior]
   );
 
-  const displayValue = typeof value === 'number' ? (value === 0 && value !== 0 ? '' : String(value)) : value;
+  const displayValue = typeof value === 'number' ? String(value) : value;
   const inputMode = allowDecimal ? 'decimal' : 'numeric';
   const enterKeyHint = getEnterKeyHint(config.enterKeyBehavior, submitOnEnter);
 
-  const inputClass = `${prefix ? BASE_CLASS_WITH_PREFIX : BASE_CLASS} ${error ? 'border-[#EF4444]' : ''}`;
+  const inputClass = `${prefix ? BASE_CLASS_WITH_PREFIX : BASE_CLASS} ${error ? 'border-[#EF4444]' : ''} ${inputClassName ?? ''}`.trim();
 
   return (
     <div className={className}>

@@ -55,6 +55,24 @@ export async function getCompanyBrand(companyId: string | null): Promise<Company
   };
 }
 
+/** Match web `accountingService.getAccountLedger` branch rule: include NULL branch_id JEs when scoped. */
+const LEDGER_BRANCH_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function journalEntryMatchesLedgerBranch(
+  branchId: string | null | undefined,
+  je: { branch_id?: unknown },
+): boolean {
+  const bid =
+    branchId && branchId !== 'all' && branchId !== 'default'
+      ? String(branchId).trim()
+      : '';
+  if (!bid || !LEDGER_BRANCH_UUID_RE.test(bid)) return true;
+  const jb = je.branch_id;
+  if (jb == null || jb === '') return true;
+  return String(jb) === bid;
+}
+
 /** One line in a ledger report (date, voucher, description, Dr, Cr, running balance). */
 export interface LedgerLine {
   id: string;
@@ -73,12 +91,13 @@ export interface LedgerLine {
   runningBalance: number;
 }
 
-/** Fetch ledger lines for any account with optional date range. */
+/** Fetch ledger lines for any account with optional date range and optional branch scope (web parity). */
 export async function getAccountLedgerLines(
   companyId: string,
   accountId: string,
   from?: string,
   to?: string,
+  branchId?: string | null,
 ): Promise<{ openingBalance: number; lines: LedgerLine[]; error: string | null }> {
   if (!isSupabaseConfigured) return { openingBalance: 0, lines: [], error: 'App not configured.' };
 
@@ -90,7 +109,9 @@ export async function getAccountLedgerLines(
   if (fromIso) {
     const { data: before } = await supabase
       .from('journal_entry_lines')
-      .select('debit, credit, journal_entry:journal_entries!inner(company_id, is_void, entry_date)')
+      .select(
+        'debit, credit, journal_entry:journal_entries!inner(company_id, is_void, entry_date, branch_id)',
+      )
       .eq('account_id', accountId)
       .eq('journal_entry.company_id', companyId)
       .lt('journal_entry.entry_date', from!)
@@ -98,6 +119,7 @@ export async function getAccountLedgerLines(
     opening = (before || []).reduce((s, r: Record<string, unknown>) => {
       const je = (r as Record<string, unknown>).journal_entry as Record<string, unknown> | null;
       if (je && (je.is_void as boolean)) return s;
+      if (!journalEntryMatchesLedgerBranch(branchId, je || {})) return s;
       return s + Number(r.debit || 0) - Number(r.credit || 0);
     }, 0);
   }
@@ -109,7 +131,7 @@ export async function getAccountLedgerLines(
       `
       id, debit, credit, description,
       journal_entry:journal_entries!inner(
-        id, entry_no, entry_date, description, reference_type, reference_id, is_void, created_at, company_id
+        id, entry_no, entry_date, description, reference_type, reference_id, is_void, created_at, company_id, branch_id
       )
     `,
     )
@@ -135,6 +157,7 @@ export async function getAccountLedgerLines(
   for (const r of rows) {
     const je = Array.isArray(r.journal_entry) ? r.journal_entry[0] : r.journal_entry;
     if (!je || je.is_void === true) continue;
+    if (!journalEntryMatchesLedgerBranch(branchId, je)) continue;
     const debit = Number(r.debit || 0);
     const credit = Number(r.credit || 0);
     running += debit - credit;

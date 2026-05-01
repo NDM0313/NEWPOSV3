@@ -19,6 +19,8 @@ interface AccountSummaryReportProps {
   user: User;
   kind: AccountKind;
   onViewLedger?: (accountId: string) => void;
+  /** Ledger movements scoped like web account ledger (includes NULL branch_id JEs). */
+  branchId?: string | null;
 }
 
 const KIND_CONFIG: Record<AccountKind, { title: string; subtitle: string; types: string[]; gradient: 'indigo' | 'emerald' | 'amber' | 'slate' | 'rose'; icon: typeof Wallet }> = {
@@ -27,13 +29,15 @@ const KIND_CONFIG: Record<AccountKind, { title: string; subtitle: string; types:
   wallet: { title: 'Wallet Summary', subtitle: 'Mobile wallet activity', types: ['mobile_wallet'], gradient: 'amber', icon: Smartphone },
 };
 
-export function AccountSummaryReport({ onBack, companyId, user, kind, onViewLedger }: AccountSummaryReportProps) {
+export function AccountSummaryReport({ onBack, companyId, user, kind, onViewLedger, branchId }: AccountSummaryReportProps) {
   const cfg = KIND_CONFIG[kind];
   const Icon = cfg.icon;
   const [accounts, setAccounts] = useState<accountsApi.AccountRow[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
   const [movements, setMovements] = useState<Record<string, { inAmount: number; outAmount: number; net: number; count: number; lines: LedgerLine[] }>>({});
+  const [movementsRefreshNonce, setMovementsRefreshNonce] = useState(0);
+  const [movementsRefreshBusy, setMovementsRefreshBusy] = useState(false);
   const preview = usePdfPreview(companyId);
 
   useEffect(() => {
@@ -57,31 +61,50 @@ export function AccountSummaryReport({ onBack, companyId, user, kind, onViewLedg
   useEffect(() => {
     if (!companyId || accounts.length === 0) {
       setMovements({});
+      setMovementsRefreshBusy(false);
       return;
     }
     let cancelled = false;
     (async () => {
       const out: typeof movements = {};
-      await Promise.all(
-        accounts.map(async (a) => {
-          const { lines } = await getAccountLedgerLines(companyId, a.id, range.from || undefined, range.to || undefined);
-          const debit = lines.reduce((s, l) => s + l.debit, 0);
-          const credit = lines.reduce((s, l) => s + l.credit, 0);
-          out[a.id] = {
-            inAmount: debit,
-            outAmount: credit,
-            net: debit - credit,
-            count: lines.length,
-            lines,
-          };
-        }),
-      );
-      if (!cancelled) setMovements(out);
+      try {
+        await Promise.all(
+          accounts.map(async (a) => {
+            const { lines } = await getAccountLedgerLines(
+              companyId,
+              a.id,
+              range.from || undefined,
+              range.to || undefined,
+              branchId ?? null,
+            );
+            const debit = lines.reduce((s, l) => s + l.debit, 0);
+            const credit = lines.reduce((s, l) => s + l.credit, 0);
+            out[a.id] = {
+              inAmount: debit,
+              outAmount: credit,
+              net: debit - credit,
+              count: lines.length,
+              lines,
+            };
+          }),
+        );
+        if (!cancelled) setMovements(out);
+      } finally {
+        if (!cancelled) setMovementsRefreshBusy(false);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [companyId, accounts, range.from, range.to]);
+  }, [companyId, accounts, range.from, range.to, branchId, movementsRefreshNonce]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') setMovementsRefreshNonce((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [companyId]);
 
   const totals = useMemo(() => {
     let inAmt = 0;
@@ -121,16 +144,26 @@ export function AccountSummaryReport({ onBack, companyId, user, kind, onViewLedg
     { label: 'Net', value: `Rs. ${formatAmount(totals.net, 0)}` },
   ];
 
+  const summarySubtitle =
+    branchId && branchId !== 'all' && branchId !== 'default'
+      ? `${cfg.subtitle} · scoped branch + company-wide JEs`
+      : cfg.subtitle;
+
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
       <ReportHeader
         onBack={onBack}
         title={cfg.title}
-        subtitle={cfg.subtitle}
+        subtitle={summarySubtitle}
         stats={stats}
         onShare={preview.openPreview}
         sharing={preview.loading}
         gradient={cfg.gradient}
+        onRefresh={() => {
+          setMovementsRefreshBusy(true);
+          setMovementsRefreshNonce((n) => n + 1);
+        }}
+        refreshing={movementsRefreshBusy}
       >
         <DateRangeBar value={range} onChange={setRange} />
       </ReportHeader>
