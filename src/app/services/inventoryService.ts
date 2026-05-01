@@ -13,6 +13,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { isDebugErpEnabled } from '@/app/lib/debugErp';
 import { openingBalanceJournalService } from '@/app/services/openingBalanceJournalService';
 import {
   parseVariationAttributesRaw,
@@ -360,7 +361,7 @@ export const inventoryService = {
       // Negative stock = more out (sales) than in (purchases/production). UI still shows it; log only in dev to avoid console noise.
       if (totalStock < 0) {
         const alreadyWarned = negativeStockWarnedIds.has(p.id);
-        if (!alreadyWarned && import.meta.env?.DEV) {
+        if (!alreadyWarned && import.meta.env?.DEV && isDebugErpEnabled()) {
           negativeStockWarnedIds.add(p.id);
           const productMovements = movements?.filter((m: any) =>
             m.product_id === p.id && (!m.variation_id || !hasVariations)

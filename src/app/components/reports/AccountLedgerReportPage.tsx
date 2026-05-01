@@ -26,6 +26,7 @@ import {
 import { Switch } from '@/app/components/ui/switch';
 import { Label } from '@/app/components/ui/label';
 import { cn } from '@/app/components/ui/utils';
+import { isDebugErpEnabled } from '@/app/lib/debugErp';
 import {
   deriveFromToForLedgerLine,
   netEconomicMeaning,
@@ -60,6 +61,30 @@ function formatLiquidityAccountLabel(a: { name?: string | null; code?: string | 
   const code = String(a.code || '').trim();
   if (!name) return '';
   return code ? `${name} (${code})` : name;
+}
+
+/** Party column: contact join + statement-scope fallback when payment.contact_id was missing historically. */
+function resolveStatementPartyDisplay(params: {
+  entry: AccountLedgerEntry;
+  partyByKey: Record<string, { name: string; contactId: string }>;
+  statementType: AccountingStatementMode;
+  selectedContactId: string;
+  selectedWorkerId: string;
+  selectedPartyName: string;
+  workers: { id: string; name: string }[];
+}): string {
+  const pid = params.entry.payment_id;
+  if (!pid) return '';
+  const mapped = params.partyByKey[pid]?.name?.trim();
+  if (mapped) return mapped;
+  const st = params.statementType;
+  if ((st === 'customer' || st === 'supplier' || st === 'account_contact') && params.selectedContactId) {
+    return params.selectedPartyName.trim();
+  }
+  if (st === 'worker' && params.selectedWorkerId) {
+    return params.workers.find((w) => w.id === params.selectedWorkerId)?.name?.trim() || '';
+  }
+  return '';
 }
 
 type SettlementColumnOpts = {
@@ -582,20 +607,22 @@ export const AccountLedgerReportPage: React.FC<{
           }
         }
         setEntries(loaded || []);
-        console.log('[STATEMENT_FILTER_TRACE] fetch', {
-          statementType: applied.statementType,
-          contactType: applied.selectedContactType,
-          selectedContactId: applied.selectedContactId,
-          selectedWorkerId: applied.selectedWorkerId,
-          selectedAccountId: applied.selectedAccountId,
-          sourceModuleFilter: applied.sourceModuleFilter,
-          transactionTypeFilter: applied.transactionTypeFilter,
-          polarity: applied.polarity,
-          includeReversals: applied.includeReversals,
-          includeManualEntries: applied.includeManualEntries,
-          includeAdjustments: applied.includeAdjustments,
-          rowsReturned: (loaded || []).length,
-        });
+        if (isDebugErpEnabled()) {
+          console.log('[STATEMENT_FILTER_TRACE] fetch', {
+            statementType: applied.statementType,
+            contactType: applied.selectedContactType,
+            selectedContactId: applied.selectedContactId,
+            selectedWorkerId: applied.selectedWorkerId,
+            selectedAccountId: applied.selectedAccountId,
+            sourceModuleFilter: applied.sourceModuleFilter,
+            transactionTypeFilter: applied.transactionTypeFilter,
+            polarity: applied.polarity,
+            includeReversals: applied.includeReversals,
+            includeManualEntries: applied.includeManualEntries,
+            includeAdjustments: applied.includeAdjustments,
+            rowsReturned: (loaded || []).length,
+          });
+        }
       } finally {
         setLoading(false);
       }
@@ -615,7 +642,7 @@ export const AccountLedgerReportPage: React.FC<{
     (async () => {
       const { data } = await supabase
         .from('payments')
-        .select('id, contact_id, payment_account_id, contact:contacts(name)')
+        .select('id, contact_id, payment_account_id, reference_type, reference_id, contact:contacts(name)')
         .in('id', paymentIds);
       const map: Record<string, { name: string; contactId: string }> = {};
       (data || []).forEach((p: any) => {
@@ -624,6 +651,47 @@ export const AccountLedgerReportPage: React.FC<{
           contactId: String(p.contact_id || ''),
         };
       });
+
+      const rows = (data || []) as Array<{
+        id: string;
+        reference_type?: string | null;
+        reference_id?: string | null;
+      }>;
+      const saleIds = [
+        ...new Set(
+          rows.filter((p) => !map[p.id]?.name && String(p.reference_type || '').toLowerCase() === 'sale' && p.reference_id).map((p) => String(p.reference_id))
+        ),
+      ];
+      const purchaseIds = [
+        ...new Set(
+          rows
+            .filter((p) => !map[p.id]?.name && String(p.reference_type || '').toLowerCase() === 'purchase' && p.reference_id)
+            .map((p) => String(p.reference_id))),
+      ];
+      const saleNameById: Record<string, string> = {};
+      if (saleIds.length) {
+        const { data: saleRows } = await supabase.from('sales').select('id, customer_name').in('id', saleIds);
+        (saleRows || []).forEach((s: { id: string; customer_name?: string | null }) => {
+          const nm = String(s.customer_name || '').trim();
+          if (nm) saleNameById[s.id] = nm;
+        });
+      }
+      const purchaseNameById: Record<string, string> = {};
+      if (purchaseIds.length) {
+        const { data: purRows } = await supabase.from('purchases').select('id, supplier_name').in('id', purchaseIds);
+        (purRows || []).forEach((r: { id: string; supplier_name?: string | null }) => {
+          const nm = String(r.supplier_name || '').trim();
+          if (nm) purchaseNameById[r.id] = nm;
+        });
+      }
+      rows.forEach((p) => {
+        if (map[p.id]?.name) return;
+        const rt = String(p.reference_type || '').toLowerCase();
+        const rid = p.reference_id ? String(p.reference_id) : '';
+        if (rt === 'sale' && rid && saleNameById[rid]) map[p.id].name = saleNameById[rid];
+        if (rt === 'purchase' && rid && purchaseNameById[rid]) map[p.id].name = purchaseNameById[rid];
+      });
+
       setPartyByKey(map);
 
       const accIds = [...new Set((data || []).map((p: any) => p.payment_account_id).filter(Boolean))] as string[];
@@ -699,6 +767,11 @@ export const AccountLedgerReportPage: React.FC<{
     })();
   }, [entries, companyId]);
 
+  const selectedPartyName =
+    applied.statementType === 'worker'
+      ? workers.find((w) => w.id === applied.selectedWorkerId)?.name || ''
+      : contacts.find((c) => c.id === applied.selectedContactId)?.name || '';
+
   /** Default statement order: calendar date, then time-of-day (created_at), then stable id. */
   const sortedEntries = useMemo(() => {
     const base = [...entries].filter((e) => {
@@ -711,7 +784,17 @@ export const AccountLedgerReportPage: React.FC<{
       if (applied.polarity === 'credit' && Number(e.credit || 0) <= 0) return false;
       if (applied.searchTerm.trim()) {
         const q = applied.searchTerm.toLowerCase();
-        const party = e.payment_id ? (partyByKey[e.payment_id]?.name || '') : '';
+        const party = e.payment_id
+          ? resolveStatementPartyDisplay({
+              entry: e,
+              partyByKey,
+              statementType: applied.statementType,
+              selectedContactId: applied.selectedContactId,
+              selectedWorkerId: applied.selectedWorkerId,
+              selectedPartyName,
+              workers,
+            })
+          : '';
         const settle =
           e.payment_id && paymentSettlementById[e.payment_id] ? paymentSettlementById[e.payment_id] : '';
         const cashV = e.payment_id ? primaryCashVoucherByPaymentId[e.payment_id] || '' : '';
@@ -750,6 +833,8 @@ export const AccountLedgerReportPage: React.FC<{
     partyByKey,
     paymentSettlementById,
     primaryCashVoucherByPaymentId,
+    selectedPartyName,
+    workers,
   ]);
 
   const accountById = useMemo(() => {
@@ -831,11 +916,6 @@ export const AccountLedgerReportPage: React.FC<{
   }, [statementType, selectedAccountId, selectedContactType, selectedContactId, selectedWorkerId]);
 
   const selectedAccount = accountById.get(applied.selectedAccountId || selectedAccountId);
-  // Use applied party (contact or worker), never draft-only UI selection for row display labels.
-  const selectedPartyName =
-    applied.statementType === 'worker'
-      ? workers.find((w) => w.id === applied.selectedWorkerId)?.name || ''
-      : contacts.find((c) => c.id === applied.selectedContactId)?.name || '';
 
   const branchScopeResolved =
     branchScopeLabel ||
@@ -1078,7 +1158,17 @@ export const AccountLedgerReportPage: React.FC<{
           e.branch_name || e.branch_id || '',
           e.source_module || '',
           presentationLabel(e.presentationKind),
-          e.payment_id ? (partyByKey[e.payment_id]?.name || '') : '',
+          e.payment_id
+            ? resolveStatementPartyDisplay({
+                entry: e,
+                partyByKey,
+                statementType: applied.statementType,
+                selectedContactId: applied.selectedContactId,
+                selectedWorkerId: applied.selectedWorkerId,
+                selectedPartyName,
+                workers,
+              })
+            : '',
           e.description,
           e.counter_account || '',
           flow.from,
@@ -1136,20 +1226,22 @@ export const AccountLedgerReportPage: React.FC<{
   }, [applied]);
 
   const applyFilters = () => {
-    console.log('[STATEMENT_FILTER_TRACE] apply_click', {
-      statementType,
-      contactType: selectedContactType,
-      selectedContactId,
-      selectedWorkerId,
-      selectedAccountId,
-      selectedCategory,
-      sourceModuleFilter,
-      transactionTypeFilter,
-      polarity,
-      includeReversals,
-      includeManualEntries,
-      includeAdjustments,
-    });
+    if (isDebugErpEnabled()) {
+      console.log('[STATEMENT_FILTER_TRACE] apply_click', {
+        statementType,
+        contactType: selectedContactType,
+        selectedContactId,
+        selectedWorkerId,
+        selectedAccountId,
+        selectedCategory,
+        sourceModuleFilter,
+        transactionTypeFilter,
+        polarity,
+        includeReversals,
+        includeManualEntries,
+        includeAdjustments,
+      });
+    }
     setApplied({
       // Primary selectors are auto-applied; Apply controls only secondary/advanced filters.
       statementType: prevAppliedRef.current.statementType,
@@ -1176,17 +1268,19 @@ export const AccountLedgerReportPage: React.FC<{
           .filter(Boolean)
       )
     );
-    console.log('[STATEMENT_FILTER_TRACE] render', {
-      appliedStatementType: applied.statementType,
-      appliedContactType: applied.selectedContactType,
-      appliedContactId: applied.selectedContactId,
-      appliedWorkerId: applied.selectedWorkerId,
-      sortedRows: sortedEntries.length,
-      presentedRows: presentedEntries.length,
-      distinctPartyContactIds,
-      usedSelectedContactFallbackInRows: false,
-      viewMode,
-    });
+    if (isDebugErpEnabled()) {
+      console.log('[STATEMENT_FILTER_TRACE] render', {
+        appliedStatementType: applied.statementType,
+        appliedContactType: applied.selectedContactType,
+        appliedContactId: applied.selectedContactId,
+        appliedWorkerId: applied.selectedWorkerId,
+        sortedRows: sortedEntries.length,
+        presentedRows: presentedEntries.length,
+        distinctPartyContactIds,
+        usedSelectedContactFallbackInRows: false,
+        viewMode,
+      });
+    }
   }, [applied, sortedEntries, presentedEntries, partyByKey, contacts, viewMode]);
 
   if (loadingAccounts) {
@@ -1544,7 +1638,19 @@ export const AccountLedgerReportPage: React.FC<{
                         {presentationLabel(e.presentationKind)}
                       </span>
                     </td>
-                    <td className="p-3 text-white">{e.payment_id ? (partyByKey[e.payment_id]?.name || '—') : '—'}</td>
+                    <td className="p-3 text-white">
+                      {e.payment_id
+                        ? resolveStatementPartyDisplay({
+                            entry: e,
+                            partyByKey,
+                            statementType: applied.statementType,
+                            selectedContactId: applied.selectedContactId,
+                            selectedWorkerId: applied.selectedWorkerId,
+                            selectedPartyName,
+                            workers,
+                          }) || '—'
+                        : '—'}
+                    </td>
                     <td className="p-3 text-white min-w-[20rem] w-[24rem] max-w-[32rem] whitespace-normal break-words align-top leading-snug">
                       {e.description}
                     </td>

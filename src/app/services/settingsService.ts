@@ -305,9 +305,9 @@ export const settingsService = {
       query = query.is('branch_id', null);
     }
 
-    const { data, error } = await query.single();
+    const { data, error } = await query.limit(1).maybeSingle();
 
-    if (error && error.code !== 'PGRST116') throw error;
+    if (error) throw error;
     return data;
   },
 

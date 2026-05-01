@@ -5,7 +5,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useAccounting } from '@/app/context/AccountingContext';
-import { supabase } from '@/lib/supabase';
+import { supabase, isPlaceholderSupabaseAnonKey } from '@/lib/supabase';
 import { rentalService, RentalStatus } from '@/app/services/rentalService';
 import { toast } from 'sonner';
 
@@ -202,6 +202,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (!companyId) return;
     if (import.meta.env.VITE_DISABLE_REALTIME === 'true') return;
+    if (isPlaceholderSupabaseAnonKey) return;
     const channel = supabase
       .channel('rentals-realtime')
       .on(

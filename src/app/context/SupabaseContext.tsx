@@ -261,7 +261,15 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         .maybeSingle();
 
       if (import.meta.env?.DEV) {
-        console.log('[FETCH USER DATA] Result:', { data, error: error ? { code: error.code, message: error.message } : null });
+        const errDiag = error
+          ? {
+              code: error.code,
+              message: error.message,
+              details: (error as { details?: string }).details,
+              hint: (error as { hint?: string }).hint,
+            }
+          : null;
+        console.log('[FETCH USER DATA] Result:', { data, error: errDiag });
       }
 
       if (error) {
@@ -295,12 +303,23 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         // Other transient: single retry (existing behavior)
         if (!serverErr && !storageErr && !isRetry) {
-          console.warn('[FETCH USER DATA] Transient error, retrying once in 1.5s:', { code: error.code, message: error.message });
+          console.warn('[FETCH USER DATA] Transient error, retrying once in 1.5s:', {
+            code: error.code,
+            message: error.message,
+            details: (error as { details?: string }).details,
+            hint: (error as { hint?: string }).hint,
+          });
           fetchingRef.current.delete(userId);
           setTimeout(() => fetchUserData(userId, true, 0), 1500);
           return;
         }
-        console.error('[FETCH USER DATA ERROR]', { message: error.message, code: error.code, userId });
+        console.error('[FETCH USER DATA ERROR]', {
+          userId,
+          code: error.code,
+          message: error.message,
+          details: (error as { details?: string }).details,
+          hint: (error as { hint?: string }).hint,
+        });
         setProfileLoadComplete(true);
         return;
       }

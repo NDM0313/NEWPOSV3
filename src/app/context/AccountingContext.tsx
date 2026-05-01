@@ -12,7 +12,7 @@ import { pickCanonicalInventoryAssetAccount } from '@/app/lib/inventoryAccountRo
 import { accountingReportsService } from '@/app/services/accountingReportsService';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
-import { supabase } from '@/lib/supabase';
+import { supabase, isPlaceholderSupabaseAnonKey } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { warnIfUsingStoredBalanceAsTruth } from '@/app/services/accountingCanonicalGuard';
@@ -913,6 +913,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   // Cross-client sync (mobile/web): refresh accounting when DB rows change outside this browser tab.
   useEffect(() => {
     if (!companyId) return;
+    if (import.meta.env.VITE_DISABLE_REALTIME === 'true') return;
+    if (isPlaceholderSupabaseAnonKey) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const queue = () => {
       if (timer) return;

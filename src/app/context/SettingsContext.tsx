@@ -10,6 +10,7 @@ import { accountService } from '@/app/services/accountService';
 import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { isDebugErpEnabled } from '@/app/lib/debugErp';
 
 // ============================================
 // 🎯 TYPES & INTERFACES
@@ -496,7 +497,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     loadAllSettingsInProgressRef.current = true;
     lastLoadKeyRef.current = loadKey;
     lastLoadAtRef.current = now;
-    if (import.meta.env?.DEV) console.log('[PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false');
+    if (import.meta.env?.DEV && isDebugErpEnabled()) {
+      console.log('[PERM_DEBUG] loadAllSettings started; loading=true → isPermissionLoaded=false');
+    }
     if (!companyId) {
       setLoading(false);
       loadAllSettingsInProgressRef.current = false;
@@ -764,7 +767,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
               derivedPerms = await permissionEngine.loadPermissions(userId, companyId, engineRole, role);
             }
           } catch (err) {
-            if (import.meta.env?.DEV) console.log('[PERM_DEBUG] permissionEngine.loadPermissions threw:', err);
+            if (import.meta.env?.DEV && isDebugErpEnabled()) {
+              console.log('[PERM_DEBUG] permissionEngine.loadPermissions threw:', err);
+            }
           }
           if (derivedPerms) {
             canManagePurchases = derivedPerms.canManagePurchases;
@@ -789,7 +794,19 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
             canEditSale = derivedPerms.canEditSale;
             canDeleteSale = derivedPerms.canDeleteSale;
           }
-          if (import.meta.env?.DEV) console.log('[PERM_DEBUG] 3. Derived flags:', { canViewSale, canCreateSale, canEditSale, canViewReports, canManageProducts, canViewContacts, canAccessAccounting, canUsePos, canAccessStudio });
+          if (import.meta.env?.DEV && isDebugErpEnabled()) {
+            console.log('[PERM_DEBUG] 3. Derived flags:', {
+              canViewSale,
+              canCreateSale,
+              canEditSale,
+              canViewReports,
+              canManageProducts,
+              canViewContacts,
+              canAccessAccounting,
+              canUsePos,
+              canAccessStudio,
+            });
+          }
           setCurrentUser({
             role,
             canCreateSale,
@@ -818,14 +835,16 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       }
 
       console.timeEnd('loadAllSettings');
-      if (import.meta.env?.DEV) console.log('✅ Settings loaded');
+      if (import.meta.env?.DEV && isDebugErpEnabled()) console.log('✅ Settings loaded');
     } catch (error) {
       console.error('[SETTINGS CONTEXT] Error loading settings:', error);
       toast.error('Failed to load settings');
     } finally {
       setLoading(false);
       loadAllSettingsInProgressRef.current = false;
-      if (import.meta.env?.DEV) console.log('[PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true');
+      if (import.meta.env?.DEV && isDebugErpEnabled()) {
+        console.log('[PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true');
+      }
     }
   }, [companyId, branchId, user?.id]);
 
