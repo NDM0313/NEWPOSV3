@@ -2,7 +2,8 @@
  * Sale Accounting Service (Phase 4: one contract)
  *
  * Source lock: journal_entries + journal_entry_lines + accounts only.
- * COA: 1100 AR, 4000 Sales Revenue, 4110 Shipping Income, 5200 Discount Allowed, 5300 Extra Expense, 5000 COGS, 1200 Inventory, 2000 AP.
+ * COA: 1100 AR, 4000 Sales Revenue, 4010 Studio Service Revenue, 4110 Shipping Income, 5200 Discount Allowed, 5300 Extra Expense,
+ * 5010 COGS–Inventory (physical goods COGS), 5000 Cost of Production (studio stage labor / worker accruals only), 1200 Inventory, 2000 AP.
  * Payment isolation: document JEs never touch payment_id; payment has its own flow.
  *
  * Sale create: Dr AR (total), Dr Discount (if any), Cr Sales Revenue (product), Cr Shipping Income (4110, if shipmentCharges), COGS/Inventory.
@@ -200,6 +201,70 @@ async function ensureRevenueAccount(companyId: string): Promise<{ id: string } |
   return null;
 }
 
+/** Studio invoice lines credit here; merchandise stays on 4000. Auto-created if missing. */
+async function ensureStudioServiceRevenueAccount(companyId: string): Promise<{ id: string } | null> {
+  let account = await accountHelperService.getAccountByCode('4010', companyId);
+  if (account?.id) return account;
+
+  try {
+    const { data: created, error } = await supabase
+      .from('accounts')
+      .insert({
+        company_id: companyId,
+        code: '4010',
+        name: 'Studio Service Revenue',
+        type: 'Sales Revenue',
+        balance: 0,
+        is_active: true,
+      })
+      .select('id')
+      .single();
+
+    if (!error && created?.id) {
+      console.log('[saleAccountingService] Created Studio Service Revenue (4010) account');
+      return created;
+    }
+  } catch (e) {
+    console.warn('[saleAccountingService] Could not auto-create Studio Service Revenue account:', e);
+  }
+  return null;
+}
+
+/**
+ * Split product revenue credit between merchandise (4000) and studio service (4010) using sales_items line totals as weights.
+ */
+async function computeProductRevenueCreditSplit(
+  saleId: string,
+  revenueCreditTotal: number
+): Promise<{ merchandiseCredit: number; studioServiceCredit: number }> {
+  const { data: rows } = await supabase.from('sales_items').select('total, is_studio_product').eq('sale_id', saleId);
+  let merchSum = 0;
+  let studioSum = 0;
+  for (const r of rows || []) {
+    const t = Number((r as { total?: number }).total) || 0;
+    if ((r as { is_studio_product?: boolean | null }).is_studio_product === true) studioSum += t;
+    else merchSum += t;
+  }
+  const sum = merchSum + studioSum;
+  if (sum <= 0 || revenueCreditTotal <= 0) {
+    return { merchandiseCredit: revenueCreditTotal, studioServiceCredit: 0 };
+  }
+  if (studioSum <= 0) {
+    return { merchandiseCredit: revenueCreditTotal, studioServiceCredit: 0 };
+  }
+  if (merchSum <= 0) {
+    return { merchandiseCredit: 0, studioServiceCredit: revenueCreditTotal };
+  }
+  const wStudio = studioSum / sum;
+  let studioCredit = Math.round(revenueCreditTotal * wStudio * 100) / 100;
+  let merchCredit = Math.round((revenueCreditTotal - studioCredit) * 100) / 100;
+  const drift = Math.round((revenueCreditTotal - merchCredit - studioCredit) * 100) / 100;
+  if (drift !== 0) {
+    merchCredit = Math.round((merchCredit + drift) * 100) / 100;
+  }
+  return { merchandiseCredit: merchCredit, studioServiceCredit: studioCredit };
+}
+
 /** Ensure Discount Allowed (5200) exists for the company; create if missing. */
 async function ensureDiscountAllowedAccount(companyId: string): Promise<{ id: string } | null> {
   const existing = await accountHelperService.getAccountByCode('5200', companyId);
@@ -288,31 +353,29 @@ async function ensureShippingIncomeAccount(companyId: string): Promise<{ id: str
   return null;
 }
 
-/** Issue 08: COGS account (5000) for Cost of Production / Cost of Goods Sold. */
+/** Physical inventory COGS (5010). Studio/worker stage costs stay on 5000 — see studioProductionService. */
 async function ensureCOGSAccount(companyId: string): Promise<{ id: string } | null> {
-  const existing = await accountHelperService.getAccountByCode('5000', companyId);
+  const existing = await accountHelperService.getAccountByCode('5010', companyId);
   if (existing?.id) return existing;
-  const { data: byName } = await supabase
-    .from('accounts')
-    .select('id')
-    .eq('company_id', companyId)
-    .or('name.ilike.%Cost of Production%,name.ilike.%Cost of Goods Sold%')
-    .eq('is_active', true)
-    .limit(1)
-    .maybeSingle();
-  if (byName?.id) return byName;
   try {
     const { data, error } = await supabase
       .from('accounts')
-      .insert({ company_id: companyId, code: '5000', name: 'Cost of Production', type: 'expense', balance: 0, is_active: true })
+      .insert({
+        company_id: companyId,
+        code: '5010',
+        name: 'COGS - Inventory',
+        type: 'expense',
+        balance: 0,
+        is_active: true,
+      })
       .select('id')
       .single();
     if (!error && data?.id) {
-      console.log('[saleAccountingService] Created COGS account (5000)');
+      console.log('[saleAccountingService] Created COGS - Inventory account (5010)');
       return data;
     }
   } catch (e) {
-    console.warn('[saleAccountingService] Could not auto-create COGS account:', e);
+    console.warn('[saleAccountingService] Could not auto-create COGS - Inventory (5010):', e);
   }
   return null;
 }
@@ -355,11 +418,16 @@ async function ensureInventoryAccount(companyId: string): Promise<{ id: string }
  * Falls back to product.cost_price only when no purchase/opening movements exist.
  */
 async function getSaleCogs(saleId: string): Promise<number> {
-  // Get sale items with product_id and quantity
-  let items: { product_id?: string; quantity: number; product?: { cost_price?: number; company_id?: string } | null }[] = [];
+  // Get sale items with product_id and quantity (is_studio_product lines excluded — labor in stage JEs)
+  let items: {
+    product_id?: string;
+    quantity: number;
+    is_studio_product?: boolean | null;
+    product?: { cost_price?: number; company_id?: string } | null;
+  }[] = [];
   const { data: fromSalesItems, error: err1 } = await supabase
     .from('sales_items')
-    .select('product_id, quantity, product:products(cost_price, company_id)')
+    .select('product_id, quantity, is_studio_product, product:products(cost_price, company_id)')
     .eq('sale_id', saleId);
   if (!err1 && fromSalesItems?.length) {
     items = fromSalesItems as typeof items;
@@ -367,6 +435,8 @@ async function getSaleCogs(saleId: string): Promise<number> {
 
   let total = 0;
   for (const row of items) {
+    /** Labor for studio lines is expensed via studio_production_stage JEs (Dr 5000); do not duplicate in sale COGS. */
+    if ((row as { is_studio_product?: boolean | null }).is_studio_product === true) continue;
     const qty = Number(row.quantity) || 0;
     if (qty <= 0 || !row.product_id) continue;
 
@@ -406,7 +476,7 @@ export const saleAccountingService = {
    * Create journal entry when sale is finalized (Phase 4: one contract).
    *
    * Dr AR (1100) = total + shipping (full customer receivable). Cr: Sales Revenue (4000), Shipping Income (4110), Dr Discount (5200) if any.
-   * COGS: Dr Cost of Production (5000), Cr Inventory (1200).
+   * COGS: Dr COGS - Inventory (5010), Cr Inventory (1200).
    * Safe to call multiple times — duplicate is detected and skipped.
    */
   async createSaleJournalEntry(params: {
@@ -504,14 +574,46 @@ export const saleAccountingService = {
 
     const revenueCredit = Math.round((grossTotal - shippingAmount) * 100) / 100;
     if (revenueCredit > 0) {
-      lines.push({
-        id: '',
-        journal_entry_id: '',
-        account_id: revenueAccount.id,
-        debit: 0,
-        credit: revenueCredit,
-        description: `Sales Revenue – ${invoiceNo}`,
-      });
+      const split = await computeProductRevenueCreditSplit(saleId, revenueCredit);
+      const studioRevAccount = await ensureStudioServiceRevenueAccount(companyId);
+      if (split.studioServiceCredit > 0 && studioRevAccount?.id) {
+        if (split.merchandiseCredit > 0) {
+          lines.push({
+            id: '',
+            journal_entry_id: '',
+            account_id: revenueAccount.id,
+            debit: 0,
+            credit: split.merchandiseCredit,
+            description: `Sales Revenue (merchandise) – ${invoiceNo}`,
+          });
+          lines.push({
+            id: '',
+            journal_entry_id: '',
+            account_id: studioRevAccount.id,
+            debit: 0,
+            credit: split.studioServiceCredit,
+            description: `Studio Service Revenue – ${invoiceNo}`,
+          });
+        } else {
+          lines.push({
+            id: '',
+            journal_entry_id: '',
+            account_id: studioRevAccount.id,
+            debit: 0,
+            credit: split.studioServiceCredit,
+            description: `Studio Service Revenue – ${invoiceNo}`,
+          });
+        }
+      } else {
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: revenueAccount.id,
+          debit: 0,
+          credit: revenueCredit,
+          description: `Sales Revenue – ${invoiceNo}`,
+        });
+      }
     }
     if (shippingAmount > 0) {
       const shippingAccount = await ensureShippingIncomeAccount(companyId);
@@ -536,7 +638,7 @@ export const saleAccountingService = {
       }
     }
 
-    // Issue 08: COGS – Dr Cost of Production (5000), Cr Inventory (1200)
+    // Issue 08: COGS – Dr COGS - Inventory (5010), Cr Inventory (1200)
     const totalCogs = await getSaleCogs(saleId);
     if (totalCogs > 0) {
       const cogsAccount = await ensureCOGSAccount(companyId);
@@ -676,7 +778,7 @@ export const saleAccountingService = {
     /** 0-1 fraction of COGS to reverse (for partial cancel after return). Default 1. */
     cogsMultiplier?: number;
   }): Promise<string | null> {
-    const { saleId, companyId, branchId, total, discountAmount = 0, shipmentCharges = 0, invoiceNo, performedBy, cogsMultiplier = 1 } = params;
+    const { saleId, companyId, branchId, total, discountAmount = 0, shipmentCharges: _shipmentCharges = 0, invoiceNo, performedBy, cogsMultiplier = 1 } = params;
 
     if (!saleId || !companyId || total <= 0) return null;
 
@@ -720,14 +822,46 @@ export const saleAccountingService = {
 
     const lines: JournalEntryLine[] = [];
     if (revenueReversal > 0) {
-      lines.push({
-        id: '',
-        journal_entry_id: '',
-        account_id: revenueAccount.id,
-        debit: revenueReversal,
-        credit: 0,
-        description: `Reversal Sales Revenue – ${invoiceNo}`,
-      });
+      const split = await computeProductRevenueCreditSplit(saleId, revenueReversal);
+      const studioRevAccount = await ensureStudioServiceRevenueAccount(companyId);
+      if (split.studioServiceCredit > 0 && studioRevAccount?.id) {
+        if (split.merchandiseCredit > 0) {
+          lines.push({
+            id: '',
+            journal_entry_id: '',
+            account_id: revenueAccount.id,
+            debit: split.merchandiseCredit,
+            credit: 0,
+            description: `Reversal Sales Revenue (merchandise) – ${invoiceNo}`,
+          });
+          lines.push({
+            id: '',
+            journal_entry_id: '',
+            account_id: studioRevAccount.id,
+            debit: split.studioServiceCredit,
+            credit: 0,
+            description: `Reversal Studio Service Revenue – ${invoiceNo}`,
+          });
+        } else {
+          lines.push({
+            id: '',
+            journal_entry_id: '',
+            account_id: studioRevAccount.id,
+            debit: split.studioServiceCredit,
+            credit: 0,
+            description: `Reversal Studio Service Revenue – ${invoiceNo}`,
+          });
+        }
+      } else {
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: revenueAccount.id,
+          debit: revenueReversal,
+          credit: 0,
+          description: `Reversal Sales Revenue – ${invoiceNo}`,
+        });
+      }
     }
     // Shipping Income is NOT reversed — shipping is non-refundable (courier already paid).
     if (hasDiscount) {
@@ -750,7 +884,7 @@ export const saleAccountingService = {
       description: `Reversal Accounts Receivable – ${invoiceNo}`,
     });
 
-    // Issue 08: Reverse COGS – Dr Inventory (1200), Cr Cost of Production (5000)
+    // Issue 08: Reverse COGS – Dr Inventory (1200), Cr COGS - Inventory (5010)
     // Apply cogsMultiplier to only reverse the un-returned portion (returns already reversed their COGS)
     const fullCogs = await getSaleCogs(saleId);
     const totalCogs = Math.round(fullCogs * cogsMultiplier * 100) / 100;
@@ -937,7 +1071,7 @@ export const saleAccountingService = {
    *
    * Standard sale return accounting requires TWO journal entries:
    *   1. Settlement JE  — Dr Sales Revenue / Cr AR or Cash/Bank (handled by AccountingContext.recordSaleReturn)
-   *   2. Inventory JE   — Dr Inventory (1200) / Cr COGS (5000)  ← THIS function
+   *   2. Inventory JE   — Dr Inventory (1200) / Cr COGS - Inventory (5010)  ← THIS function
    *
    * Both must be tagged reference_type='sale_return', reference_id=returnId so that
    * voidSaleReturn can reverse them automatically via createReversalEntry.

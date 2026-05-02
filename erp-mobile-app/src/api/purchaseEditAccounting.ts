@@ -69,37 +69,84 @@ async function accountIdByCode(companyId: string, code: string): Promise<string 
   return (data as { id: string }).id;
 }
 
+async function fallbackInventoryAccountId(companyId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('accounts')
+    .select('id, name, type')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .or('type.eq.inventory,name.ilike.%inventory%')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (data as { id?: string } | null)?.id ?? null;
+}
+
 async function resolveApAccountId(companyId: string, supplierId: string | null | undefined): Promise<string | null> {
   const controlId = (await accountIdByCode(companyId, '2000')) || (await accountIdByCode(companyId, '2100'));
-  if (!controlId) return null;
-  if (!supplierId) return controlId;
+  const fallbackControlId = async () => {
+    const { data } = await supabase
+      .from('accounts')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('is_active', true)
+      .or('name.ilike.%payable%,type.eq.liability')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    return (data as { id?: string } | null)?.id ?? null;
+  };
+  const effectiveControlId = controlId || (await fallbackControlId());
+  if (!effectiveControlId) return null;
+  if (!supplierId) return effectiveControlId;
   const { data: sub } = await supabase
     .from('accounts')
     .select('id')
     .eq('company_id', companyId)
     .eq('linked_contact_id', supplierId)
-    .eq('parent_id', controlId)
+    .eq('parent_id', effectiveControlId)
     .eq('is_active', true)
     .limit(1)
     .maybeSingle();
-  return (sub as { id?: string } | null)?.id ?? controlId;
+  return (sub as { id?: string } | null)?.id ?? effectiveControlId;
 }
 
-async function findCanonicalPurchaseDocumentJe(companyId: string, purchaseId: string): Promise<{ id: string; description: string } | null> {
+async function findCanonicalPurchaseDocumentJe(
+  companyId: string,
+  purchaseId: string,
+  poNo?: string | null,
+): Promise<{ id: string; description: string } | null> {
+  const selectCols = 'id, description, is_void, updated_at, created_at';
   const { data, error } = await supabase
     .from('journal_entries')
-    .select('id, description, is_void')
+    .select(selectCols)
     .eq('company_id', companyId)
     .eq('reference_type', 'purchase')
     .eq('reference_id', purchaseId)
     .is('payment_id', null)
-    .order('created_at', { ascending: true })
+    .order('updated_at', { ascending: false })
     .limit(8);
-  if (error || !data?.length) return null;
-  const rows = data as { id: string; description: string | null; is_void?: boolean | null }[];
+  const rows = (data || []) as { id: string; description: string | null; is_void?: boolean | null }[];
   const active = rows.find((r) => r.is_void !== true);
-  if (!active) return null;
-  return { id: active.id, description: active.description || '' };
+  if (!error && active) return { id: active.id, description: active.description || '' };
+
+  // Fallback for legacy/dirty data where reference_id link is missing but description carries PO number.
+  if (poNo) {
+    const { data: byDesc } = await supabase
+      .from('journal_entries')
+      .select(selectCols)
+      .eq('company_id', companyId)
+      .eq('reference_type', 'purchase')
+      .is('payment_id', null)
+      .ilike('description', `%${poNo}%`)
+      .order('updated_at', { ascending: false })
+      .limit(8);
+    const activeByDesc = ((byDesc || []) as { id: string; description: string | null; is_void?: boolean | null }[]).find(
+      (r) => r.is_void !== true,
+    );
+    if (activeByDesc) return { id: activeByDesc.id, description: activeByDesc.description || '' };
+  }
+  return null;
 }
 
 export async function syncPurchaseDocumentJournalInPlaceMobile(params: {
@@ -124,13 +171,13 @@ export async function syncPurchaseDocumentJournalInPlaceMobile(params: {
     oldSnapshot.otherCharges === newSnapshot.otherCharges;
   if (snapSame) return { updated: false, error: null, skipReason: 'snap_unchanged' };
 
-  const purJe = await findCanonicalPurchaseDocumentJe(companyId, purchaseId);
+  const purJe = await findCanonicalPurchaseDocumentJe(companyId, purchaseId, poNo);
   if (!purJe) return { updated: false, error: null, skipReason: 'no_document_je' };
 
   const jeId = purJe.id;
 
   try {
-    const inventoryId = await accountIdByCode(companyId, '1200');
+    const inventoryId = (await accountIdByCode(companyId, '1200')) || (await fallbackInventoryAccountId(companyId));
     const discountId = (await accountIdByCode(companyId, '5210')) || (await accountIdByCode(companyId, '6100'));
     const apAccountId = await resolveApAccountId(companyId, supplierId ?? null);
     if (!inventoryId || !apAccountId) {
@@ -177,10 +224,26 @@ export async function syncPurchaseDocumentJournalInPlaceMobile(params: {
       if (insErr) return { updated: false, error: insErr.message };
     }
 
+    // Keep JE header totals consistent with rebuilt lines (reports may read header first).
+    const totalDebit = newLines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
+    const totalCredit = newLines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
+    const { error: totalsErr } = await supabase
+      .from('journal_entries')
+      .update({
+        total_debit: totalDebit,
+        total_credit: totalCredit,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', jeId);
+    if (totalsErr) return { updated: false, error: totalsErr.message };
+
     const ts = new Date().toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
     const editLog = `[Edited ${ts}: Total Rs ${oldSnapshot.total.toLocaleString()} → Rs ${newSnapshot.total.toLocaleString()}]`;
     const baseDesc = (purJe.description || '').replace(/\s*\[Edited[^\]]*\]/g, '').trim();
-    await supabase.from('journal_entries').update({ description: `${baseDesc} ${editLog}`.slice(0, 500) }).eq('id', jeId);
+    await supabase
+      .from('journal_entries')
+      .update({ description: `${baseDesc} ${editLog}`.slice(0, 500), updated_at: new Date().toISOString() })
+      .eq('id', jeId);
 
     return { updated: true, error: null };
   } catch (e) {

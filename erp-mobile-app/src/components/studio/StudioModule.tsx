@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ArrowLeft, Plus, Loader2, Sparkles, Percent } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, Sparkles, Percent, Search, Save, CheckCircle } from 'lucide-react';
 import type { User, Branch } from '../../types';
 import * as studioApi from '../../api/studio';
+import * as studioInvoiceApi from '../../api/studioInvoiceLine';
+import type { StudioInvoiceProductRow } from '../../api/studioInvoiceLine';
+import { getCategories } from '../../api/productCategories';
 import { useLoading } from '../../contexts/LoadingContext';
 import { StudioDashboard, type StudioOrder, type StudioStage } from './StudioDashboard';
 import { StudioOrderDetail } from './StudioOrderDetail';
@@ -9,7 +12,12 @@ import { StudioStageAssignment } from './StudioStageAssignment';
 import { StudioStageSelection } from './StudioStageSelection';
 import { StudioUpdateStatusView } from './StudioUpdateStatusView';
 import type { UiStageType } from '../../api/studio';
-import { computeStudioCustomerPricing, readStudioProfitPctFromStorage } from './studioPricing';
+import {
+  computeStudioCustomerPricing,
+  readStudioProfitPctFromStorage,
+  writeStudioProfitPctToStorage,
+} from './studioPricing';
+import { NumericInput } from '../common';
 
 interface StudioModuleProps {
   onBack: () => void;
@@ -124,6 +132,7 @@ function mapProductionToOrder(
       completedDate,
       sentDate,
       receivedDate,
+      notes: s.notes ?? null,
     };
   });
 
@@ -225,17 +234,32 @@ function mergeProductionsToOrder(
   };
 }
 
-export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSale, focusSaleId, onFocusHandled }: StudioModuleProps) {
+export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focusSaleId, onFocusHandled }: StudioModuleProps) {
   const { withLoading } = useLoading();
   const [view, setView] = useState<View>('dashboard');
   const [dashboardVariant, setDashboardVariant] = useState<'classic' | 'test'>('classic');
   const [selectedOrder, setSelectedOrder] = useState<StudioOrder | null>(null);
   const [selectedStage, setSelectedStage] = useState<StudioStage | null>(null);
-  /** Seed for invoice preview; localStorage overrides per render via readStudioProfitPctFromStorage. */
+  /** Invoice screen: profit markup % (persisted locally + optional server default). */
   const [invoiceProfitPct, setInvoiceProfitPct] = useState(25);
+  const [invoiceProfitPctStr, setInvoiceProfitPctStr] = useState('25');
+  const [invoiceServerProfitPct, setInvoiceServerProfitPct] = useState<string | null>(null);
+  const [invoiceProfitSaving, setInvoiceProfitSaving] = useState(false);
+  const [invoiceProfitSaveOk, setInvoiceProfitSaveOk] = useState(false);
+  /** When true, changing profit rules does not overwrite the bill amount (user typed a custom Rs.). */
+  const [invSalePriceUserEdited, setInvSalePriceUserEdited] = useState(false);
   const [orders, setOrders] = useState<StudioOrder[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [error, setError] = useState<string | null>(null);
+  /** Generate invoice (mobile parity with web Product & Invoice) */
+  const [invProductQuery, setInvProductQuery] = useState('');
+  const [invSelectedProduct, setInvSelectedProduct] = useState<StudioInvoiceProductRow | null>(null);
+  const [invSearchResults, setInvSearchResults] = useState<StudioInvoiceProductRow[]>([]);
+  const [invSalePrice, setInvSalePrice] = useState('');
+  const [invCategoryId, setInvCategoryId] = useState('');
+  const [invCategories, setInvCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [invSyncReplica, setInvSyncReplica] = useState(true);
+  const [invSearchBusy, setInvSearchBusy] = useState(false);
   const refreshMergedOrder = useCallback(
     async (saleId: string): Promise<StudioOrder | null> => {
       if (!companyId) return null;
@@ -303,33 +327,58 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
   useEffect(() => {
     if (!selectedOrder) return;
     const stored = readStudioProfitPctFromStorage(selectedOrder.id);
-    setInvoiceProfitPct(stored !== null ? stored : 25);
+    const initialPct = stored !== null ? stored : 25;
+    setInvoiceProfitPct(initialPct);
+    setInvoiceProfitPctStr(String(initialPct));
+    setInvoiceServerProfitPct(null);
+    setInvoiceProfitSaveOk(false);
     let cancelled = false;
     void studioApi.loadProductionProfitMargin(selectedOrder.id).then(({ data }) => {
       if (cancelled || !data) return;
       const v = Number.isFinite(data.value) ? data.value : 25;
+      setInvoiceServerProfitPct(String(v));
       try {
         if (readStudioProfitPctFromStorage(selectedOrder.id) !== null) return;
       } catch {
         /* ignore */
       }
       setInvoiceProfitPct(v);
+      setInvoiceProfitPctStr(String(v));
     });
     return () => {
       cancelled = true;
     };
   }, [selectedOrder?.id]);
 
+  useEffect(() => {
+    if (view !== 'invoice' || !selectedOrder || !companyId) return;
+    const seed =
+      selectedOrder.designName?.trim() ||
+      selectedOrder.productName?.trim() ||
+      '';
+    setInvProductQuery(seed);
+    setInvSalePrice('');
+    setInvSelectedProduct(null);
+    setInvSearchResults([]);
+    setInvCategoryId('');
+    setInvSyncReplica(true);
+    setInvSalePriceUserEdited(false);
+    void getCategories(companyId).then(({ data }) => setInvCategories(data || []));
+  }, [view, selectedOrder?.id, companyId]);
+
   const invoicePricing = useMemo(() => {
     if (!selectedOrder || view !== 'invoice') return null;
-    let pct = invoiceProfitPct;
-    const fromStore = readStudioProfitPctFromStorage(selectedOrder.id);
-    if (fromStore !== null) pct = fromStore;
     return {
-      ...computeStudioCustomerPricing(selectedOrder, pct),
-      profitPct: pct,
+      ...computeStudioCustomerPricing(selectedOrder, invoiceProfitPct),
+      profitPct: invoiceProfitPct,
     };
   }, [selectedOrder, view, invoiceProfitPct]);
+
+  useEffect(() => {
+    if (view !== 'invoice' || !invoicePricing) return;
+    if (invSalePriceUserEdited) return;
+    setInvSalePrice(String(Math.max(0, Math.round(invoicePricing.effectiveCustomerCharge))));
+  }, [view, selectedOrder?.id, invoicePricing?.effectiveCustomerCharge, invSalePriceUserEdited]);
 
   /** Run studio API call then refresh dashboard + merged order under one global loading overlay. */
   const orderDetailSyncAfterApi = useCallback(
@@ -614,9 +663,11 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
                 assignedTo: stageData.assignedTo ?? 'Unassigned',
                 workerId: stageData.workerId,
                 internalCost: stageData.internalCost ?? 0,
+                expectedCost: stageData.internalCost ?? 0,
                 customerCharge: stageData.customerCharge ?? 0,
                 expectedDate: stageData.expectedDate ?? '',
                 status: assignedNow ? 'assigned' : 'pending',
+                notes: (stageData as { notes?: string | null })?.notes ?? null,
               };
               setSelectedOrder({
                 ...selectedOrder,
@@ -683,6 +734,97 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
   }
 
   if (view === 'invoice' && selectedOrder) {
+    const canSubmitInvoice = Boolean(companyId) && (invProductQuery.trim().length > 0 || invSelectedProduct);
+    const handleInvoiceSearch = async () => {
+      if (!companyId) return;
+      const q = invProductQuery.trim();
+      setInvSearchBusy(true);
+      try {
+        const { data, error } = await studioInvoiceApi.searchProductsForStudioInvoice(companyId, q);
+        if (error) alert(error);
+        else setInvSearchResults(data);
+      } finally {
+        setInvSearchBusy(false);
+      }
+    };
+
+    const handleConfirmInvoice = () => {
+      if (!companyId) {
+        alert('Select a company to create the invoice line.');
+        return;
+      }
+      const price = Number(String(invSalePrice).replace(/,/g, '')) || 0;
+      if (price <= 0) {
+        alert('Enter a valid sale price.');
+        return;
+      }
+      if (invProductQuery.trim().length < 1 && !invSelectedProduct) {
+        alert('Enter a product name or pick an existing product.');
+        return;
+      }
+      void withLoading('Saving invoice line...', async () => {
+        const { error } = await studioInvoiceApi.upsertStudioInvoiceLine({
+          companyId,
+          branchId: branch?.id ?? null,
+          saleId: selectedOrder.saleId,
+          productionId: selectedOrder.id,
+          invoiceNoLabel: selectedOrder.orderNumber ?? '',
+          salePrice: price,
+          productName: invProductQuery.trim(),
+          categoryId: invCategoryId || null,
+          existingProductId: invSelectedProduct?.id ?? null,
+          syncReplicaTitle: invSyncReplica,
+        });
+        if (error) {
+          alert(error);
+          return;
+        }
+        alert(
+          selectedOrder.customerInvoiceGenerated
+            ? 'Invoice line updated and sale totals refreshed.'
+            : 'Invoice line added, production linked, and sale totals updated.',
+        );
+        await loadOrders();
+        const next = await refreshMergedOrder(selectedOrder.saleId);
+        if (next) setSelectedOrder(next);
+        setView('order-detail');
+      });
+    };
+
+    const suggestedBillRs =
+      invoicePricing !== null ? Math.max(0, Math.round(invoicePricing.effectiveCustomerCharge)) : 0;
+    const parsedInvoiceProfit = Number.parseFloat(invoiceProfitPctStr);
+    const invoiceProfitDirty =
+      invoiceServerProfitPct !== null &&
+      Number.isFinite(parsedInvoiceProfit) &&
+      Math.abs(Number.parseFloat(invoiceServerProfitPct) - parsedInvoiceProfit) > 1e-5;
+
+    const applyInvoiceProfitInput = (raw: string) => {
+      setInvoiceProfitPctStr(raw);
+      if (raw === '' || raw === '-') return;
+      const n = Number.parseFloat(raw);
+      if (Number.isFinite(n)) {
+        setInvoiceProfitPct(n);
+        writeStudioProfitPctToStorage(selectedOrder.id, n);
+      }
+    };
+
+    const saveInvoiceProfitToServer = async () => {
+      const n = Number.parseFloat(invoiceProfitPctStr);
+      if (!Number.isFinite(n) || invoiceProfitSaving) return;
+      setInvoiceProfitSaving(true);
+      setInvoiceProfitSaveOk(false);
+      const { error } = await studioApi.saveProductionProfitMargin(selectedOrder.id, 'percentage', n);
+      setInvoiceProfitSaving(false);
+      if (!error) {
+        setInvoiceServerProfitPct(invoiceProfitPctStr);
+        setInvoiceProfitSaveOk(true);
+        setTimeout(() => setInvoiceProfitSaveOk(false), 1800);
+      } else {
+        alert(error);
+      }
+    };
+
     return (
       <div className="min-h-screen pb-24 bg-[#111827]">
         <div className="bg-gradient-to-br from-[#10B981] to-[#059669] p-4 sticky top-0 z-10">
@@ -694,13 +836,13 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="flex-1">
-              <h1 className="font-semibold text-white">Generate Invoice</h1>
+              <h1 className="font-semibold text-white">Product & Invoice</h1>
               <p className="text-xs text-white/80">{selectedOrder.orderNumber}</p>
             </div>
           </div>
         </div>
-        <div className="p-4">
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-6 mb-4">
+        <div className="p-4 space-y-4">
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-6">
             <h2 className="text-lg font-bold text-white mb-4">Studio Invoice</h2>
             <div className="space-y-3 mb-4 pb-4 border-b border-[#374151]">
               <p className="text-sm">
@@ -725,18 +867,52 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
                     <span className="text-[#9CA3AF]">Production cost</span>
                     <span className="text-[#F87171] font-medium">Rs. {invoicePricing.totalInternalCost.toLocaleString()}</span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <span className="text-[#9CA3AF] flex items-center gap-1">
                       <Percent className="w-3.5 h-3.5 shrink-0" />
                       Profit % (markup)
                     </span>
-                    <span className="text-white font-medium">
-                      {invoicePricing.profitPct % 1 === 0
-                        ? invoicePricing.profitPct
-                        : invoicePricing.profitPct.toFixed(1)}
-                      %
-                    </span>
+                    <div className="flex items-center gap-2 flex-1 min-w-[8rem] justify-end">
+                      <NumericInput
+                        value={invoiceProfitPctStr}
+                        onChange={applyInvoiceProfitInput}
+                        allowDecimal
+                        maxDecimals={2}
+                        min={0}
+                        className="w-28 shrink-0"
+                        inputClassName="!h-9 !py-1 !px-2 text-sm text-right"
+                      />
+                      <span className="text-sm text-[#9CA3AF] shrink-0">%</span>
+                    </div>
                   </div>
+                  {(invoiceProfitDirty || invoiceProfitSaveOk) && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <div className="flex items-center gap-1.5 text-xs">
+                        {invoiceProfitSaveOk ? (
+                          <>
+                            <CheckCircle size={14} className="text-[#10B981]" />
+                            <span className="text-[#10B981]">Saved as default for this order</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="inline-block w-2 h-2 rounded-full bg-[#F59E0B] animate-pulse" />
+                            <span className="text-[#F59E0B]">Not saved as server default yet</span>
+                          </>
+                        )}
+                      </div>
+                      {invoiceProfitDirty && (
+                        <button
+                          type="button"
+                          onClick={() => void saveInvoiceProfitToServer()}
+                          disabled={invoiceProfitSaving}
+                          className="inline-flex items-center gap-1.5 px-3 h-8 rounded-lg bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-60 text-white text-xs font-semibold shrink-0"
+                        >
+                          <Save size={13} />
+                          {invoiceProfitSaving ? 'Saving…' : 'Save default'}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2 mb-4">
                   <h3 className="text-sm font-semibold text-[#8B5CF6] mb-2">Stage breakdown</h3>
@@ -757,8 +933,7 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
                 </div>
                 {invoicePricing.totalStageCustomerCharge === 0 && selectedOrder.stages.length > 0 ? (
                   <p className="text-xs text-[#9CA3AF] mb-4 leading-relaxed">
-                    No per-stage customer amounts are set—the total below uses production cost × profit %, matching the Cost
-                    Summary on the order.
+                    No per-stage customer amounts are set—the suggested total below uses production cost × profit % only.
                   </p>
                 ) : null}
                 {invoicePricing.totalStageCustomerCharge > 0 &&
@@ -777,41 +952,175 @@ export function StudioModule({ onBack, companyId, branch: _branch, onNewStudioSa
                 ) : null}
                 <div className="pt-4 border-t border-[#374151]">
                   <div className="flex justify-between items-center gap-2">
-                    <span className="text-lg font-bold text-white">Total customer charge</span>
+                    <span className="text-lg font-bold text-white">Suggested customer charge</span>
                     <span className="text-2xl font-bold text-[#10B981] shrink-0">
                       Rs. {invoicePricing.effectiveCustomerCharge.toLocaleString()}
                     </span>
                   </div>
                   <p className="text-[10px] text-[#6B7280] mt-2 leading-relaxed">
-                    Same as Cost Summary: the higher of the profit markup and the sum of stage customer lines.
+                    Uses this profit % and stage customer lines: the higher of markup on production cost and the sum of
+                    per-stage customer amounts. You can override the billed amount below.
                   </p>
                 </div>
               </>
             ) : null}
           </div>
+
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-white mb-1">Catalog product</h3>
+              <p className="text-xs text-[#9CA3AF] mb-3">
+                Search to link an existing product, or leave unselected to create a new one from the name below.
+              </p>
+              {selectedOrder.designName?.trim() ? (
+                <p className="text-xs text-[#6B7280] mb-2">Prefilled from replica title — edit before creating.</p>
+              ) : null}
+              {selectedOrder.customerInvoiceGenerated ? (
+                <p className="text-xs text-amber-200/90 mb-3 rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2">
+                  This order already has a linked invoice line. Submitting updates the line, product, and sale total.
+                </p>
+              ) : null}
+              {selectedOrder.productionIds.length > 1 ? (
+                <p className="text-xs text-[#9CA3AF] mb-3">
+                  Multiple productions on this sale: the line is linked to the primary production ({selectedOrder.orderNumber}).
+                </p>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs text-[#9CA3AF]">Product name (search / new)</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={invProductQuery}
+                  onChange={(e) => {
+                    setInvProductQuery(e.target.value);
+                    setInvSelectedProduct(null);
+                  }}
+                  className="flex-1 min-w-0 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2.5 text-sm text-white placeholder:text-[#6B7280]"
+                  placeholder="Product name"
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleInvoiceSearch()}
+                  disabled={invSearchBusy || !invProductQuery.trim()}
+                  className="shrink-0 px-3 py-2.5 rounded-lg bg-[#374151] text-white border border-[#4B5563] disabled:opacity-50 inline-flex items-center justify-center"
+                  aria-label="Search products"
+                >
+                  {invSearchBusy ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            {invSearchResults.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-xs text-[#9CA3AF]">Tap to use catalog product</p>
+                <ul className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-[#374151] divide-y divide-[#374151]">
+                  {invSearchResults.map((row) => (
+                    <li key={row.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInvSelectedProduct(row);
+                          setInvProductQuery(row.name);
+                        }}
+                        className={`w-full text-left px-3 py-2.5 text-sm ${
+                          invSelectedProduct?.id === row.id ? 'bg-[#7C3AED]/30 text-white' : 'text-[#E5E7EB] hover:bg-[#111827]'
+                        }`}
+                      >
+                        <span className="font-medium">{row.name}</span>
+                        <span className="text-[#9CA3AF] text-xs ml-2">{row.sku}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInvSelectedProduct(null);
+                  }}
+                  className="text-xs text-[#A78BFA] underline"
+                >
+                  Clear selection — create new product from name
+                </button>
+              </div>
+            ) : null}
+
+            {!invSelectedProduct ? (
+              <div className="space-y-2">
+                <label className="text-xs text-[#9CA3AF]">Category (new product)</label>
+                <select
+                  value={invCategoryId}
+                  onChange={(e) => setInvCategoryId(e.target.value)}
+                  className="w-full rounded-lg bg-[#111827] border border-[#374151] px-3 py-2.5 text-sm text-white"
+                >
+                  <option value="">Optional — uncategorized</option>
+                  {invCategories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <p className="text-sm text-[#10B981]">
+                Using catalog: <span className="font-medium text-white">{invSelectedProduct.name}</span>{' '}
+                <span className="text-[#9CA3AF]">({invSelectedProduct.sku})</span>
+              </p>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-xs text-[#9CA3AF]">Amount to bill (Rs.)</label>
+              <p className="text-xs text-[#6B7280] flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span>Suggested from rules: Rs. {suggestedBillRs.toLocaleString()}</span>
+                {invSalePriceUserEdited ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInvSalePriceUserEdited(false);
+                      setInvSalePrice(String(suggestedBillRs));
+                    }}
+                    className="text-[#A78BFA] underline font-medium"
+                  >
+                    Use suggested
+                  </button>
+                ) : null}
+              </p>
+              <NumericInput
+                value={invSalePrice}
+                onChange={(v) => {
+                  setInvSalePriceUserEdited(true);
+                  setInvSalePrice(v);
+                }}
+                allowDecimal
+                className="w-full"
+                inputClassName="!h-auto !py-2.5 !px-3 text-sm"
+                placeholder="0"
+              />
+              <p className="text-[10px] text-[#6B7280]">This is what posts to the sale invoice line; edit freely if you need a custom total.</p>
+            </div>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={invSyncReplica}
+                onChange={(e) => setInvSyncReplica(e.target.checked)}
+                className="mt-1 rounded border-[#4B5563]"
+              />
+              <span className="text-sm text-[#D1D5DB] leading-snug">
+                Update replica title on the order to match the catalog product name after saving.
+              </span>
+            </label>
+          </div>
+
           <button
-            onClick={() => {
-              void withLoading('Generating invoice...', async () => {
-                const results = await Promise.all(
-                  selectedOrder.productionIds.map((pid) =>
-                    studioApi.updateStudioProductionStatus(pid, 'completed'),
-                  ),
-                );
-                const err = results.find((r) => r.error)?.error;
-                if (err) {
-                  alert(err);
-                  return;
-                }
-                alert('Invoice generated successfully!');
-                await loadOrders();
-                const next = await refreshMergedOrder(selectedOrder.saleId);
-                if (next) setSelectedOrder(next);
-                setView('order-detail');
-              });
-            }}
-            className="w-full py-4 bg-gradient-to-r from-[#10B981] to-[#059669] rounded-xl font-semibold text-white"
+            type="button"
+            onClick={handleConfirmInvoice}
+            disabled={!canSubmitInvoice}
+            className="w-full py-4 bg-gradient-to-r from-[#10B981] to-[#059669] rounded-xl font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Confirm & Generate Invoice
+            {selectedOrder.customerInvoiceGenerated ? 'Update invoice line' : 'Confirm & generate invoice'}
           </button>
         </div>
       </div>

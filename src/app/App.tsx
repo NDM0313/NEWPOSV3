@@ -89,6 +89,7 @@ const CustomerLedgerInteractiveTest = lazy(() =>
   import('./components/customer-ledger-test/CustomerLedgerInteractiveTest').then((m) => ({ default: m.default }))
 );
 import { SupabaseProvider } from './context/SupabaseContext';
+import { WebRealtimeBridge } from './lib/WebRealtimeBridge';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { PublicContactForm } from './components/public/PublicContactForm';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
@@ -538,6 +539,7 @@ export default function App() {
           <PermissionV2ThemeSync>
             <SupabaseProvider>
               <ProtectedRoute>
+            <WebRealtimeBridge />
             <GlobalFilterProvider>
               <ModuleProvider>
                 <AccountingProvider>

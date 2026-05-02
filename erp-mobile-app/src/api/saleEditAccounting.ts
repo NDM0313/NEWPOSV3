@@ -135,7 +135,8 @@ export async function syncSaleDocumentJournalInPlaceMobile(params: {
     const revenueId = (await getAccId('4100')) || (await getAccId('4000'));
     const discountId = await getAccId('5200');
     const shippingIncomeId = await getAccId('4110');
-    const cogsId = await getAccId('5000');
+    const cogs5010 = await getAccId('5010');
+    const cogs5000 = await getAccId('5000');
     const inventoryId = await getAccId('1200');
     const ar1100 = await getAccId('1100');
 
@@ -173,7 +174,10 @@ export async function syncSaleDocumentJournalInPlaceMobile(params: {
       } else if (shippingIncomeId && accId === shippingIncomeId) {
         newDebit = 0;
         newCredit = newShipping;
-      } else if (cogsId && accId === cogsId && line.debit > 0) {
+      } else if (
+        ((cogs5010 && accId === cogs5010) || (cogs5000 && accId === cogs5000)) &&
+        line.debit > 0
+      ) {
         const { data: saleItems } = await supabase.from('sales_items').select('product_id, quantity').eq('sale_id', saleId);
         let totalCogs = 0;
         for (const si of (saleItems || []) as { product_id: string; quantity: number }[]) {
@@ -206,12 +210,20 @@ export async function syncSaleDocumentJournalInPlaceMobile(params: {
       }
     }
 
-    if (cogsId && inventoryId) {
-      const { data: cogsLine } = await supabase.from('journal_entry_lines').select('debit').eq('journal_entry_id', jeId).eq('account_id', cogsId).maybeSingle();
-      if (cogsLine && (cogsLine as { debit?: number }).debit != null) {
+    const cogsIds = [cogs5010, cogs5000].filter(Boolean) as string[];
+    if (cogsIds.length > 0 && inventoryId) {
+      const { data: cogsRows } = await supabase
+        .from('journal_entry_lines')
+        .select('debit')
+        .eq('journal_entry_id', jeId)
+        .in('account_id', cogsIds)
+        .gt('debit', 0)
+        .limit(1);
+      const cogsDebit = cogsRows?.[0] ? Number((cogsRows[0] as { debit?: number }).debit) : 0;
+      if (cogsDebit > 0) {
         await supabase
           .from('journal_entry_lines')
-          .update({ credit: Number((cogsLine as { debit: number }).debit) || 0 })
+          .update({ credit: cogsDebit })
           .eq('journal_entry_id', jeId)
           .eq('account_id', inventoryId);
       }

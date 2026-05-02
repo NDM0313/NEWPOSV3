@@ -12,7 +12,9 @@ function applyInputAttributes(el: HTMLInputElement | HTMLTextAreaElement) {
   const tag = el.tagName.toLowerCase();
   const type = (el.getAttribute('type') || 'text').toLowerCase();
   const step = el.getAttribute('step');
-  const hasNumericHint = el.hasAttribute('data-input-numeric') || el.getAttribute('inputMode') === 'decimal' || el.getAttribute('inputMode') === 'numeric';
+  const existingInputMode = (el.getAttribute('inputMode') || '').toLowerCase();
+  const hasNumericHint =
+    el.hasAttribute('data-input-numeric') || existingInputMode === 'decimal' || existingInputMode === 'numeric';
 
   if (tag === 'textarea') {
     el.setAttribute('inputMode', 'text');
@@ -48,6 +50,12 @@ function applyInputAttributes(el: HTMLInputElement | HTMLTextAreaElement) {
   }
 
   if (type === 'number' || hasNumericHint) {
+    if (existingInputMode === 'decimal' || existingInputMode === 'numeric') {
+      el.setAttribute('inputMode', existingInputMode);
+      el.setAttribute('enterKeyHint', 'next');
+      el.dataset.keyboardApplied = 'true';
+      return;
+    }
     const stepVal = step ? parseFloat(step) : 1;
     const hasDecimal = stepVal > 0 && stepVal < 1;
     el.setAttribute('inputMode', hasDecimal ? 'decimal' : 'numeric');

@@ -2150,9 +2150,15 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 // EDIT MODE: Preserve existing invoice number UNLESS type was changed to Studio (then use next STD-XXXX)
                 const existingIsStudio = initialSale.invoiceNo.startsWith('STD-') || initialSale.invoiceNo.startsWith('ST-');
                 if (isStudioSale && !existingIsStudio) {
-                    // Type changed to Studio → regenerate invoice number (STD-XXXX) and persist via update
+                    // Type changed to Studio → next STD from DB (updateSale does not allocate; sync hook can return empty)
                     documentType = 'studio';
-                    documentNumber = generateDocumentNumber('studio');
+                    try {
+                        documentNumber = companyId
+                            ? await documentNumberService.getNextDocumentNumberGlobal(companyId, 'STD')
+                            : generateDocumentNumber('studio');
+                    } catch {
+                        documentNumber = generateDocumentNumber('studio');
+                    }
                     } else {
                     if (saleStatus === 'final' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
                         // When user changed status to Final in edit mode (not convert flow), use new SL- number

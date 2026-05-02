@@ -17,7 +17,9 @@ import { buildPaymentReferenceLabels } from '../../../utils/paymentReferenceDisp
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { ReceiptPreviewPdf } from '../../shared/ReceiptPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
-import { TransactionEditSheet } from './TransactionEditSheet';
+import { EditTransactionSheet } from './_shared/EditTransactionSheet';
+import { canEditTransaction } from '../../../api/transactions';
+import { dispatchMobileAccountingInvalidated } from '../../../lib/dataInvalidationBus';
 
 interface Props {
   paymentId: string;
@@ -49,6 +51,7 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const preview = usePdfPreview(companyId);
+  const [showEdit, setShowEdit] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -81,13 +84,7 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
       accountId: detail.partyAccountId,
     });
   };
-
-  const refType = (detail?.referenceType || '').toLowerCase();
-  
-  const canEditDirectly =
-    detail && refType !== 'correction_reversal';
-
-  const [editSheetOpen, setEditSheetOpen] = useState(false);
+  const editability = detail ? canEditTransaction(detail.referenceType, 'payment_row') : { editable: false, kind: 'locked' as const };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center md:justify-center bg-black/60" onClick={onClose}>
@@ -238,9 +235,10 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
               >
                 <BookOpen className="w-4 h-4" /> View Ledger
               </button>
-              {canEditDirectly && (
+              {editability.editable && (
                 <button
-                  onClick={() => setEditSheetOpen(true)}
+                  type="button"
+                  onClick={() => setShowEdit(true)}
                   className="col-span-2 flex items-center justify-center gap-2 py-3 bg-[#4B5563] hover:bg-[#374151] rounded-lg text-white font-semibold text-sm mt-1"
                 >
                   <SquarePen className="w-4 h-4" /> Edit Transaction
@@ -250,18 +248,6 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
           </div>
         )}
       </div>
-
-      {editSheetOpen && detail && (
-        <TransactionEditSheet
-          detail={detail}
-          companyId={companyId}
-          onClose={() => setEditSheetOpen(false)}
-          onSuccess={() => {
-            setEditSheetOpen(false);
-            onClose(); // Close the parent sheet to trigger a refresh of the timeline
-          }}
-        />
-      )}
 
       {preview.brand && detail && (
         <PdfPreviewModal
@@ -290,6 +276,29 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
             generatedBy="User"
           />
         </PdfPreviewModal>
+      )}
+      {detail && showEdit && (
+        <EditTransactionSheet
+          open={true}
+          companyId={companyId}
+          mode={editability.kind === 'journal' ? 'journal' : 'payment'}
+          targetId={editability.kind === 'journal' ? (detail.journalEntryId || '') : detail.paymentId}
+          onClose={() => setShowEdit(false)}
+          onSaved={() => {
+            setShowEdit(false);
+            dispatchMobileAccountingInvalidated({
+              companyId,
+              reason: 'transaction-edited',
+            });
+            setLoading(true);
+            getTransactionDetail(companyId, paymentId)
+              .then(({ data, error }) => {
+                if (error) setError(error);
+                setDetail(data);
+              })
+              .finally(() => setLoading(false));
+          }}
+        />
       )}
     </div>
   );

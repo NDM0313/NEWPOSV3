@@ -9,8 +9,15 @@ import {
 import * as branchesApi from '../../api/branches';
 import * as contactsApi from '../../api/contacts';
 import * as productsApi from '../../api/products';
-import { supabase, erpMobileCanUseRealtime } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
 import { addPending } from '../../lib/offlineStore';
+import {
+  dispatchMobileAccountingInvalidated,
+  dispatchMobileInvalidated,
+  shouldAcceptMobileInvalidation,
+  MOBILE_DATA_INVALIDATED_EVENT,
+  type MobileInvalidationDetail,
+} from '../../lib/dataInvalidationBus';
 import { CreatePurchaseFlow } from './CreatePurchaseFlow';
 import { MobilePaySupplier } from './MobilePaySupplier';
 import { AttachmentPreviewModal } from '../sales/AttachmentPreviewModal';
@@ -92,6 +99,22 @@ export function PurchaseModule({
   const [editSaving, setEditSaving] = useState(false);
   const [returnNotice, setReturnNotice] = useState<purchasesApi.PurchaseListItem | null>(null);
 
+  const dispatchPurchaseEditInvalidation = useCallback(() => {
+    if (!companyId) return;
+    const scopedBranchId = branchId && branchId !== 'all' ? branchId : null;
+    dispatchMobileInvalidated({
+      domain: 'purchases',
+      companyId,
+      branchId: scopedBranchId,
+      reason: 'purchase_edited',
+    });
+    dispatchMobileAccountingInvalidated({
+      companyId,
+      branchId: scopedBranchId,
+      reason: 'purchase_edited',
+    });
+  }, [branchId, companyId]);
+
   const effectiveBranchId = branchId && branchId !== 'all' ? branchId : undefined;
 
   const loadPaymentHistory = useCallback(async (purchaseId: string) => {
@@ -133,17 +156,34 @@ export function PurchaseModule({
   }, [companyId, effectiveBranchId, loadOrders]);
 
   useEffect(() => {
-    if (!companyId || !erpMobileCanUseRealtime) return;
-    const channel = supabase
-      .channel('purchases-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases' }, () => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queue = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
         loadOrders();
-      })
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
+      }, 220);
     };
-  }, [companyId, loadOrders]);
+    const onInvalidated = (event: Event) => {
+      const detail = (event as CustomEvent<MobileInvalidationDetail>).detail;
+      if (
+        !shouldAcceptMobileInvalidation(detail, {
+          domain: ['purchases', 'accounting'],
+          companyId,
+          branchId: effectiveBranchId ?? null,
+        })
+      ) {
+        return;
+      }
+      queue();
+    };
+    window.addEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    };
+  }, [companyId, effectiveBranchId, loadOrders]);
 
   useEffect(() => {
     if (companyId && branchId === 'all') {
@@ -547,6 +587,7 @@ export function PurchaseModule({
             const { data } = await purchasesApi.getPurchases(companyId, effectiveBranchId ?? null);
             if (data) setOrders(data);
           }
+          dispatchPurchaseEditInvalidation();
         }
         return;
       }
@@ -606,6 +647,7 @@ export function PurchaseModule({
         const { data } = await purchasesApi.getPurchases(companyId, effectiveBranchId ?? null);
         if (data) setOrders(data);
       }
+      dispatchPurchaseEditInvalidation();
     } finally {
       setEditSaving(false);
     }

@@ -454,6 +454,12 @@ export async function getDayBook(
       };
     });
     if (mode === 'cash' && !isCash) continue;
+    const headerDebit = Number(e.total_debit ?? 0);
+    const headerCredit = Number(e.total_credit ?? 0);
+    const hasLineTotals = linesRaw.length > 0;
+    const debitToUse = hasLineTotals ? debit : headerDebit;
+    const creditToUse = hasLineTotals ? credit : headerCredit;
+
     out.push({
       id: String(e.id),
       entryNo: String(e.entry_no ?? ''),
@@ -461,8 +467,8 @@ export async function getDayBook(
       createdAt: String(e.created_at ?? ''),
       description: String(e.description ?? ''),
       referenceType: String(e.reference_type ?? ''),
-      debit: Number(e.total_debit ?? debit),
-      credit: Number(e.total_credit ?? credit),
+      debit: debitToUse,
+      credit: creditToUse,
       isCash,
       lines,
     });

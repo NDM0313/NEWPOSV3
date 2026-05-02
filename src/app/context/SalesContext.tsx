@@ -29,6 +29,11 @@ import {
 import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { assertDomainEditSafetyTestMode, classifySalesEdit } from '@/app/lib/accountingEditClassification';
 import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
+import {
+  DATA_INVALIDATED_EVENT,
+  shouldAcceptInvalidation,
+  type DataInvalidationDetail,
+} from '@/app/lib/dataInvalidationBus';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -468,6 +473,36 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     window.addEventListener('saleUpdated', onSaleUpdated);
     return () => window.removeEventListener('saleUpdated', onSaleUpdated);
   }, [companyId, loadSales]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queue = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void loadSales();
+      }, 220);
+    };
+    const onDataInvalidated = (ev: Event) => {
+      const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      if (
+        !shouldAcceptInvalidation(detail, {
+          domain: ['sales', 'accounting', 'contacts'],
+          companyId,
+          branchId: branchId === 'all' ? null : branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      queue();
+    };
+    window.addEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+    };
+  }, [branchId, companyId, loadSales]);
 
   // When page changes we do not refetch; SalesPage slices the loaded sales for display
 

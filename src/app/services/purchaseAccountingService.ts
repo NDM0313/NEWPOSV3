@@ -14,6 +14,7 @@ import { pickCanonicalInventoryAssetAccount } from '@/app/lib/inventoryAccountRo
 import { canPostAccountingForPurchaseStatus } from '@/app/lib/postingStatusGate';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
 import { resolvePayablePostingAccountId } from './partySubledgerAccountService';
+import { documentNumberService } from './documentNumberService';
 
 export type PurchaseAccountingSnapshot = {
   total: number;
@@ -255,11 +256,26 @@ export async function createPurchaseJournalEntry(params: {
   if (!inventoryAccountId || !apAccountId) return null;
 
   const itemsSubtotal = Number(subtotal ?? 0) || Number(total) || 0;
+  const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, branchId);
+  const normalizedCharges = [...charges];
+  const hasDiscountLine = normalizedCharges.some((c) => String(c?.charge_type ?? c?.chargeType ?? '').toLowerCase() === 'discount');
+  if (!hasDiscountLine) {
+    const { data: purchaseHeader } = await supabase
+      .from('purchases')
+      .select('discount_amount')
+      .eq('id', purchaseId)
+      .maybeSingle();
+    const headerDiscount = Number((purchaseHeader as { discount_amount?: number } | null)?.discount_amount ?? 0) || 0;
+    if (headerDiscount > 0) {
+      normalizedCharges.push({ charge_type: 'discount', amount: headerDiscount });
+    }
+  }
+
   const entry: JournalEntry = {
     id: '',
     company_id: companyId,
     branch_id: branchId && branchId !== 'all' ? branchId : undefined,
-    entry_no: `JE-PUR-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+    entry_no: entryNo,
     entry_date: entryDate || new Date().toISOString().slice(0, 10),
     description: `Purchase ${poNo} from ${supplierName}`,
     reference_type: 'purchase',
@@ -275,7 +291,7 @@ export async function createPurchaseJournalEntry(params: {
       { id: '', journal_entry_id: '', account_id: apAccountId, debit: 0, credit: itemsSubtotal, description: `Payable to ${supplierName}` },
     );
   }
-  for (const c of charges) {
+  for (const c of normalizedCharges) {
     const amount = Number(c?.amount ?? 0);
     const type = String(c?.charge_type ?? c?.chargeType ?? '').toLowerCase();
     const chargeLabel = purchaseLedgerChargeLabel(type);
@@ -311,7 +327,7 @@ async function postPurchaseAdjustmentJE(
     if (import.meta.env?.DEV) console.log('[purchaseAccountingService] Skipping duplicate purchase_adjustment JE:', description.slice(0, 60));
     return;
   }
-  const entryNo = `JE-PUR-ADJ-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+  const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, branchId);
   const fingerprint = `purchase_adjustment:${companyId}:${purchaseId}:${description}`;
   const entry: JournalEntry = {
     id: '',
@@ -484,7 +500,7 @@ export async function reversePurchaseDocumentJournalEntry(params: {
     return null;
   }
 
-  const entryNo = `JE-PUR-REV-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+  const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, branchId);
   const entryDate = new Date().toISOString().split('T')[0];
   const entry: JournalEntry = {
     id: '',

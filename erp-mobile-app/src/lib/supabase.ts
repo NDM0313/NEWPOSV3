@@ -77,6 +77,18 @@ export const erpMobileUsingDemoSupabaseAnonKey = hasConfig && isDemoSupabaseAnon
 export const erpMobileCanUseRealtime =
   hasConfig && import.meta.env.VITE_DISABLE_REALTIME !== 'true' && !isDemoSupabaseAnonKey(supabaseAnonKey);
 
+export const mobileRealtimeHealth = {
+  configured: hasConfig,
+  canUseRealtime: erpMobileCanUseRealtime,
+  reason: !hasConfig
+    ? 'missing-env'
+    : isDemoSupabaseAnonKey(supabaseAnonKey)
+      ? 'demo-anon-key'
+      : import.meta.env.VITE_DISABLE_REALTIME === 'true'
+        ? 'disabled-by-env'
+        : 'ok',
+} as const;
+
 /**
  * REST/Auth stay same-origin in dev (Vite proxy). Realtime WebSockets through that proxy are
  * fragile; use a direct wss:// URL to VITE_SUPABASE_HOST when in dev on localhost/LAN.
@@ -127,4 +139,8 @@ if (hasConfig) {
       window.dispatchEvent(new CustomEvent('erp-auth-signed-out'));
     }
   });
+}
+
+if (import.meta.env.DEV) {
+  console.info('[ERP Mobile] Realtime health:', mobileRealtimeHealth);
 }

@@ -242,6 +242,19 @@ export const documentNumberService = {
   },
 
   /**
+   * Canonical journal entry number allocator (ERP numbering engine).
+   * Falls back to time-based format only if RPC fails, to avoid blocking posting.
+   */
+  async getNextJournalEntryNumber(companyId: string, branchId?: string | null): Promise<string> {
+    try {
+      return await this.getNextDocumentNumber(companyId, branchId ?? null, 'journal', false);
+    } catch (error) {
+      console.warn('[DOCUMENT NUMBER] getNextJournalEntryNumber fallback:', error);
+      return `JE-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+    }
+  },
+
+  /**
    * Get next global document number from database (company-level, atomic).
    * Sales: SL (invoice), PS (POS), DRAFT (draft), QT (quotation), SO (order), STD (studio).
    * Other: PUR, PAY, RNT. Frontend must NOT generate numbers manually.

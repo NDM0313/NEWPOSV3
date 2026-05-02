@@ -36,6 +36,9 @@ import { SyncStatusBar } from './components/SyncStatusBar';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { runSync, getUnsyncedCount } from './lib/syncEngine';
 import { markUnlocked, clearUnlockMark, shouldRelock } from './lib/pinLock';
+import { dispatchMobileInvalidated } from './lib/dataInvalidationBus';
+import { subscribeMobileRealtime } from './lib/realtimeSubscriptions';
+import { mobileRealtimeHealth } from './lib/supabase';
 
 const MODULE_TITLES: Record<Screen, string> = {
   login: 'Login',
@@ -139,6 +142,42 @@ export default function App() {
     window.addEventListener('online', onOnline);
     return () => { cancelled = true; clearInterval(t); window.removeEventListener('online', onOnline); };
   }, [online, user?.id, setStatus]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    const cleanup = subscribeMobileRealtime({
+      companyId,
+      branchId: selectedBranch?.id ?? null,
+      channelKey: 'global',
+      domains: ['sales', 'purchases', 'accounting', 'contacts'],
+      onChange: (domain) => {
+        dispatchMobileInvalidated({
+          domain,
+          companyId,
+          branchId: selectedBranch?.id ?? null,
+          reason: 'realtime-change',
+        });
+      },
+    });
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [companyId, selectedBranch?.id]);
+
+  useEffect(() => {
+    if (!companyId || mobileRealtimeHealth.canUseRealtime) return;
+    const fallback = setInterval(() => {
+      (['sales', 'purchases', 'accounting', 'contacts'] as const).forEach((domain) =>
+        dispatchMobileInvalidated({
+          domain,
+          companyId,
+          branchId: selectedBranch?.id ?? null,
+          reason: 'fallback-poll',
+        })
+      );
+    }, 45000);
+    return () => clearInterval(fallback);
+  }, [companyId, selectedBranch?.id]);
 
   useEffect(() => {
     if (user?.id && user?.role) reload(user.id, user.role, user.profileId, companyId ?? undefined);

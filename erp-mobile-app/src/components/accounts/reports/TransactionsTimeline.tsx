@@ -16,6 +16,9 @@ import {
   type GetTransactionsFilters,
 } from '../../../api/transactions';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
+import { EditTransactionSheet } from './_shared/EditTransactionSheet';
+import { canEditTransaction } from '../../../api/transactions';
+import { dispatchMobileAccountingInvalidated } from '../../../lib/dataInvalidationBus';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { TimelinePreviewPdf } from '../../shared/TimelinePreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
@@ -123,6 +126,7 @@ export function TransactionsTimeline({
   const [search, setSearch] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<{ mode: 'payment' | 'journal'; id: string } | null>(null);
 
   useEffect(() => {
     if (!companyId) return;
@@ -299,7 +303,17 @@ export function TransactionsTimeline({
             </div>
             <ul className="space-y-2">
               {g.items.map((t) => (
-                <TransactionRowCard key={t.id} tx={t} onClick={() => setDetailId(t.id)} />
+                <TransactionRowCard
+                  key={t.id}
+                  tx={t}
+                  onClick={() => setDetailId(t.id)}
+                  onEdit={() => {
+                    const check = canEditTransaction(t.referenceType, 'payment_row');
+                    if (!check.editable) return;
+                    if (check.kind === 'journal' && !t.journalEntryId) return;
+                    setEditTarget({ mode: check.kind === 'journal' ? 'journal' : 'payment', id: check.kind === 'journal' ? t.journalEntryId! : t.id });
+                  }}
+                />
               ))}
             </ul>
           </div>
@@ -312,6 +326,23 @@ export function TransactionsTimeline({
           companyId={companyId}
           onClose={() => setDetailId(null)}
           onViewLedger={onViewLedger}
+        />
+      )}
+      {editTarget && companyId && (
+        <EditTransactionSheet
+          open={true}
+          companyId={companyId}
+          mode={editTarget.mode}
+          targetId={editTarget.id}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => {
+            refresh();
+            dispatchMobileAccountingInvalidated({
+              companyId,
+              branchId: branchId ?? null,
+              reason: 'transaction-edited',
+            });
+          }}
         />
       )}
 
@@ -384,7 +415,7 @@ function StatCard({ label, value, color }: { label: string; value: number; color
   );
 }
 
-function TransactionRowCard({ tx, onClick }: { tx: TransactionRow; onClick: () => void }) {
+function TransactionRowCard({ tx, onClick, onEdit }: { tx: TransactionRow; onClick: () => void; onEdit: () => void }) {
   const isReceived = tx.direction === 'received';
   const amountColor = isReceived ? 'text-[#10B981]' : 'text-[#EF4444]';
   const pillBg = isReceived ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30' : 'bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/30';
@@ -393,13 +424,11 @@ function TransactionRowCard({ tx, onClick }: { tx: TransactionRow; onClick: () =
   const from = isReceived ? (tx.paymentAccountName ?? '—') : (tx.partyAccountName ?? tx.partyName ?? '—');
   const to = isReceived ? (tx.partyAccountName ?? tx.partyName ?? '—') : (tx.paymentAccountName ?? '—');
 
+  const editability = canEditTransaction(tx.referenceType, 'payment_row');
   return (
     <li>
-      <button
-        type="button"
-        onClick={onClick}
-        className="w-full bg-[#1F2937] hover:bg-[#243044] border border-[#374151] rounded-xl p-3 text-left transition-colors"
-      >
+      <div className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-3 transition-colors hover:border-[#4B5563]">
+        <button type="button" onClick={onClick} className="w-full text-left">
         <div className="flex items-start gap-3">
           <div className={`shrink-0 mt-0.5 w-9 h-9 rounded-full flex items-center justify-center ${pillBg}`}>
             <Icon className="w-4 h-4" />
@@ -434,7 +463,18 @@ function TransactionRowCard({ tx, onClick }: { tx: TransactionRow; onClick: () =
             </div>
           </div>
         </div>
-      </button>
+        </button>
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            disabled={!editability.editable}
+            onClick={onEdit}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#374151] text-white disabled:opacity-40"
+          >
+            Edit
+          </button>
+        </div>
+      </div>
     </li>
   );
 }

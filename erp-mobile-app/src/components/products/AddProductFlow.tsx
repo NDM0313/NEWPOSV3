@@ -603,7 +603,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
             <div>
               <label className="block text-sm text-[#9CA3AF] mb-1.5">Cost Price</label>
               <input
-                type="number"
+                type="text"
                 inputMode="decimal"
                 pattern="[0-9.]*"
                 value={formData.costPrice}
@@ -615,7 +615,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
             <div>
               <label className="block text-sm text-[#9CA3AF] mb-1.5">Retail Price *</label>
               <input
-                type="number"
+                type="text"
                 inputMode="decimal"
                 pattern="[0-9.]*"
                 value={formData.retailPrice}
@@ -627,7 +627,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
             <div>
               <label className="block text-sm text-[#9CA3AF] mb-1.5">Wholesale Price</label>
               <input
-                type="number"
+                type="text"
                 inputMode="decimal"
                 pattern="[0-9.]*"
                 value={formData.wholesalePrice}
@@ -646,7 +646,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
               <div>
                 <label className="block text-sm text-[#9CA3AF] mb-1.5">Current Stock</label>
                 <input
-                  type="number"
+                  type="text"
                   inputMode="numeric"
                   pattern="[0-9]*"
                   value={formData.stock}
@@ -658,7 +658,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
               <div>
                 <label className="block text-sm text-[#9CA3AF] mb-1.5">Min Stock</label>
                 <input
-                  type="number"
+                  type="text"
                   inputMode="numeric"
                   pattern="[0-9]*"
                   value={formData.minStock}

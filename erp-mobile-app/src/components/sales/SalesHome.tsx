@@ -7,6 +7,13 @@ import * as contactsApi from '../../api/contacts';
 import * as productsApi from '../../api/products';
 import { supabase } from '../../lib/supabase';
 import {
+  MOBILE_DATA_INVALIDATED_EVENT,
+  dispatchMobileAccountingInvalidated,
+  dispatchMobileInvalidated,
+  shouldAcceptMobileInvalidation,
+  type MobileInvalidationDetail,
+} from '../../lib/dataInvalidationBus';
+import {
   syncSaleDocumentJournalInPlaceMobile,
   saleAccountingSnapshotFromRow,
   type SaleLedgerSyncSkipReason,
@@ -295,6 +302,25 @@ export function SalesHome({
   const [editExtra, setEditExtra] = useState<string>('0');
   const [editSaving, setEditSaving] = useState(false);
 
+  const dispatchSaleEditInvalidation = useCallback(
+    () => {
+      if (!companyId) return;
+      const scopedBranchId = branchId && branchId !== 'all' ? branchId : null;
+      dispatchMobileInvalidated({
+        domain: 'sales',
+        companyId,
+        branchId: scopedBranchId,
+        reason: 'sale_edited',
+      });
+      dispatchMobileAccountingInvalidated({
+        companyId,
+        branchId: scopedBranchId,
+        reason: 'sale_edited',
+      });
+    },
+    [branchId, companyId]
+  );
+
   const refetchSales = useCallback(async (): Promise<SaleRecord[]> => {
     if (!companyId) return [];
     const effectiveBranchId = branchId && branchId !== 'all' ? branchId : null;
@@ -366,6 +392,36 @@ export function SalesHome({
       setSelectedSale(null);
     }
   }, [refetchSales, addPaymentSale, loadPaymentHistory]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queue = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void refetchSales();
+      }, 220);
+    };
+    const onInvalidated = (event: Event) => {
+      const detail = (event as CustomEvent<MobileInvalidationDetail>).detail;
+      if (
+        !shouldAcceptMobileInvalidation(detail, {
+          domain: ['sales', 'contacts', 'accounting'],
+          companyId,
+          branchId: branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      queue();
+    };
+    window.addEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    };
+  }, [branchId, companyId, refetchSales]);
 
   const saleIdRaw = (s: SaleRecord) => (s.raw.id as string) || s.id;
 
@@ -602,6 +658,7 @@ export function SalesHome({
             .join('; ');
           setActionSuccess(`Invoice ${editSale.id} updated.${ledgerNote ? ` (${ledgerNote})` : ''}`);
           await refetchSales();
+          dispatchSaleEditInvalidation();
           setEditSale(null);
           setEditLineItems([]);
         }
@@ -673,6 +730,7 @@ export function SalesHome({
         .join('; ');
       setActionSuccess(`Invoice ${editSale.id} updated.${ledgerNote ? ` (${ledgerNote})` : ''}`);
       await refetchSales();
+      dispatchSaleEditInvalidation();
       setEditSale(null);
       setEditLineItems([]);
       setEditLinesLoading(false);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Plus, Minus, Trash2, Search, Loader2, Package } from 'lucide-react';
+import { ArrowLeft, Plus, Minus, Trash2, Search, Loader2, Package, Upload, X } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { SelectSupplierTablet, type Supplier } from './SelectSupplierTablet';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
@@ -16,6 +16,7 @@ import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
 import { MobileActionBar } from '../shared/MobileActionBar';
 import { createPortal } from 'react-dom';
 import { useSettings } from '../../context/SettingsContext';
+import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 
 interface PurchaseItem {
   id: string;
@@ -83,7 +84,11 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductForPurchase | null>(null);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [attachmentError, setAttachmentError] = useState('');
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const lastItemRef = useRef<HTMLDivElement | null>(null);
+  const { runSingleFlight, isRunning: isSubmitRunning } = useSingleFlightAction();
 
   useEffect(() => {
     if (step === 'vendor') {
@@ -201,99 +206,115 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
     setItems(items.filter((i) => !matchItem(i, productId, variationId)));
 
   const handleSaveWithPayment = async (result: PaymentResult) => {
-    if (!vendor || items.length === 0) return;
-    setSaving(true);
-    setError('');
-    const paid = result.paidAmount ?? 0;
-    // If user picked "Order" -> 'ordered' (ignore paid). Else: fully paid -> 'final'; partial/none -> 'received'.
-    let status: 'ordered' | 'received' | 'final';
-    if (creationStatus === 'ordered') {
-      status = 'ordered';
-    } else if (paid > 0 && paid >= total - 0.005) {
-      status = 'final';
-    } else {
-      status = 'received';
-    }
-    const createInput: purchasesApi.CreatePurchaseInput = {
-      companyId,
-      branchId,
-      supplierId: vendor.id,
-      supplierName: vendor.name,
-      contactNumber: vendor.phone,
-      status,
-      paidAmount: paid,
-      paymentMethod: paid > 0 ? paymentLabelToMethod(result.paymentMethod ?? '') : undefined,
-      paymentAccountId: paid > 0 ? (result.accountId ?? undefined) : undefined,
-      items: items.map((i) => ({
-        productId: i.productId,
-        variationId: i.variationId,
-        productName: i.name,
-        sku: i.sku,
-        quantity: i.quantity,
-        unitPrice: i.unitPrice,
-        total: i.total,
-        packingDetails:
-          i.packingDetails && ((i.packingDetails.total_meters ?? 0) > 0 || ((i.packingDetails.packs ?? 0) > 0 && (i.packingDetails.units_per_pack ?? 0) > 0))
-            ? {
-                total_boxes: i.packingDetails.total_boxes ?? i.packingDetails.packs,
-                total_pieces: i.packingDetails.total_pieces ?? (i.packingDetails.packs != null && i.packingDetails.units_per_pack != null ? i.packingDetails.packs * i.packingDetails.units_per_pack : undefined),
-              }
-            : undefined,
-      })),
-      subtotal,
-      discountAmount: discount,
-      taxAmount: 0,
-      shippingCost: 0,
-      total,
-      notes: notes.trim() || undefined,
-      userId,
-    };
-
-    if (!navigator.onLine) {
-      try {
-        await addPending('purchase', { action: 'create', input: createInput }, companyId, branchId);
-        let branchName: string | null = null;
-        try {
-          const { data: branches } = await getBranches(companyId);
-          branchName = branches?.find((b) => b.id === branchId)?.name ?? null;
-        } catch {
-          /* offline — branch label optional */
-        }
-        setConfirmationData({
-          type: 'purchase',
-          title: 'Purchase Saved Successfully',
-          transactionNo: 'Pending sync',
-          amount: total,
-          partyName: vendor.name,
-          date: new Date().toISOString(),
-          branch: branchName ?? undefined,
-          entityId: null,
-        });
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to save offline.');
+    await runSingleFlight(async () => {
+      if (!vendor || items.length === 0) return;
+      setSaving(true);
+      setError('');
+      const paid = result.paidAmount ?? 0;
+      // If user picked "Order" -> 'ordered' (ignore paid). Else: fully paid -> 'final'; partial/none -> 'received'.
+      let status: 'ordered' | 'received' | 'final';
+      if (creationStatus === 'ordered') {
+        status = 'ordered';
+      } else if (paid > 0 && paid >= total - 0.005) {
+        status = 'final';
+      } else {
+        status = 'received';
       }
-      setSaving(false);
-      return;
-    }
 
-    const { data: createResult, error: err } = await purchasesApi.createPurchase(createInput);
-    setSaving(false);
-    if (err) {
-      setError(err);
-      return;
-    }
-    let branchName: string | null = null;
-    const { data: branches } = await getBranches(companyId);
-    branchName = branches?.find((b) => b.id === branchId)?.name ?? null;
-    setConfirmationData({
-      type: 'purchase',
-      title: 'Purchase Saved Successfully',
-      transactionNo: createResult?.poNo ?? null,
-      amount: total,
-      partyName: vendor.name,
-      date: new Date().toISOString(),
-      branch: branchName ?? undefined,
-      entityId: createResult?.id ?? null,
+      setAttachmentError('');
+      let purchaseAttachments: { url: string; name: string }[] | undefined;
+      if (attachments.length > 0) {
+        const upload = await purchasesApi.uploadPurchaseAttachments(companyId, `${vendor.id}-${Date.now()}`, attachments);
+        if (upload.error) {
+          setSaving(false);
+          setAttachmentError(upload.error);
+          return;
+        }
+        purchaseAttachments = upload.data;
+      }
+
+      const createInput: purchasesApi.CreatePurchaseInput = {
+        companyId,
+        branchId,
+        supplierId: vendor.id,
+        supplierName: vendor.name,
+        contactNumber: vendor.phone,
+        status,
+        paidAmount: paid,
+        paymentMethod: paid > 0 ? paymentLabelToMethod(result.paymentMethod ?? '') : undefined,
+        paymentAccountId: paid > 0 ? (result.accountId ?? undefined) : undefined,
+        items: items.map((i) => ({
+          productId: i.productId,
+          variationId: i.variationId,
+          productName: i.name,
+          sku: i.sku,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          total: i.total,
+          packingDetails:
+            i.packingDetails && ((i.packingDetails.total_meters ?? 0) > 0 || ((i.packingDetails.packs ?? 0) > 0 && (i.packingDetails.units_per_pack ?? 0) > 0))
+              ? {
+                  total_boxes: i.packingDetails.total_boxes ?? i.packingDetails.packs,
+                  total_pieces: i.packingDetails.total_pieces ?? (i.packingDetails.packs != null && i.packingDetails.units_per_pack != null ? i.packingDetails.packs * i.packingDetails.units_per_pack : undefined),
+                }
+              : undefined,
+        })),
+        subtotal,
+        discountAmount: discount,
+        taxAmount: 0,
+        shippingCost: 0,
+        total,
+        notes: notes.trim() || undefined,
+        attachments: purchaseAttachments,
+        userId,
+      };
+
+      if (!navigator.onLine) {
+        try {
+          await addPending('purchase', { action: 'create', input: createInput }, companyId, branchId);
+          let branchName: string | null = null;
+          try {
+            const { data: branches } = await getBranches(companyId);
+            branchName = branches?.find((b) => b.id === branchId)?.name ?? null;
+          } catch {
+            /* offline — branch label optional */
+          }
+          setConfirmationData({
+            type: 'purchase',
+            title: 'Purchase Saved Successfully',
+            transactionNo: 'Pending sync',
+            amount: total,
+            partyName: vendor.name,
+            date: new Date().toISOString(),
+            branch: branchName ?? undefined,
+            entityId: null,
+          });
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Failed to save offline.');
+        }
+        setSaving(false);
+        return;
+      }
+
+      const { data: createResult, error: createErr } = await purchasesApi.createPurchase(createInput);
+      setSaving(false);
+      if (createErr) {
+        setError(createErr);
+        return;
+      }
+      let branchName: string | null = null;
+      const { data: branches } = await getBranches(companyId);
+      branchName = branches?.find((b) => b.id === branchId)?.name ?? null;
+      setConfirmationData({
+        type: 'purchase',
+        title: 'Purchase Saved Successfully',
+        transactionNo: createResult?.poNo ?? null,
+        amount: total,
+        partyName: vendor.name,
+        date: new Date().toISOString(),
+        branch: branchName ?? undefined,
+        entityId: createResult?.id ?? null,
+      });
     });
   };
 
@@ -490,12 +511,8 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
                 <button
                   key={prod.id}
                   onClick={() => {
-                    if (prod.hasVariations && (prod.variations?.length ?? 0) > 0) {
-                      setSelectedProduct(prod);
-                      setShowAddModal(true);
-                    } else {
-                      addItem(prod, 1);
-                    }
+                    setSelectedProduct(prod);
+                    setShowAddModal(true);
                   }}
                   className="bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#10B981] active:scale-95 transition-all text-left"
                 >
@@ -649,11 +666,53 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
             />
           </div>
         </div>
-        {error && <p className="text-sm text-red-400 px-4">{error}</p>}
+        {(error || attachmentError) && <p className="text-sm text-red-400 px-4">{error || attachmentError}</p>}
+        <div className="px-4 pb-3">
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Attachments (optional)</label>
+            <input
+              ref={attachmentInputRef}
+              type="file"
+              multiple
+              accept="image/*,.pdf"
+              className="hidden"
+              onChange={(e) => {
+                const picked = Array.from(e.target.files || []);
+                setAttachmentError('');
+                setAttachments((prev) => [...prev, ...picked].slice(0, 5));
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => attachmentInputRef.current?.click()}
+              className="w-full border-2 border-dashed border-[#374151] rounded-lg p-3 flex items-center justify-center gap-2 text-[#9CA3AF] hover:bg-[#374151]/30"
+            >
+              <Upload className="w-4 h-4" />
+              Add files (max 5)
+            </button>
+            {attachments.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {attachments.map((file, index) => (
+                  <div key={`${file.name}-${index}`} className="flex items-center justify-between text-xs text-[#D1D5DB] bg-[#111827] rounded px-2 py-1">
+                    <span className="truncate">{file.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))}
+                      className="text-[#EF4444]"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
         <MobileActionBar
           buttonLabel={creationStatus === 'ordered' ? (saving ? 'Saving…' : 'Save Order') : 'Proceed to Payment →'}
           onButtonClick={() => {
             setError('');
+            if (saving || isSubmitRunning) return;
             if (creationStatus === 'ordered') {
               void handleSaveWithPayment({ paidAmount: 0, paymentMethod: '', accountId: null });
             } else {
@@ -676,7 +735,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
           companyId={companyId}
           onBack={() => setStep('summary')}
           onComplete={(result) => handleSaveWithPayment(result)}
-          saving={saving}
+          saving={saving || isSubmitRunning}
           saveError={error}
           showCreditOption={true}
         />
@@ -704,29 +763,37 @@ interface AddToPurchaseModalProps {
 function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps) {
   const { enablePacking } = useSettings();
   const allowDecimal = product.unitAllowDecimal === true;
-  const [quantity, setQuantity] = useState<number>(1);
-  const [unitPrice, setUnitPrice] = useState(product.costPrice);
+  const [quantity, setQuantity] = useState<string>('1');
+  const [unitPrice, setUnitPrice] = useState<string>(String(product.costPrice || 0));
   const [selectedVariation, setSelectedVariation] = useState<ProductVariationRow | null>(null);
   const [packingDetails, setPackingDetails] = useState<PackingDetails | undefined>(undefined);
   const [showPacking, setShowPacking] = useState(false);
 
   const hasVariations = product.hasVariations && (product.variations?.length ?? 0) > 0;
   const usePackingQty = packingDetails != null && (packingDetails.total_meters ?? 0) > 0;
-  const total = unitPrice * quantity;
+  const parsedQuantity = Number.parseFloat(quantity || '0');
+  const parsedUnitPrice = Number.parseFloat(unitPrice || '0');
+  const total = (Number.isFinite(parsedQuantity) ? parsedQuantity : 0) * (Number.isFinite(parsedUnitPrice) ? parsedUnitPrice : 0);
 
   const handleQtyChange = (raw: string) => {
+    if (raw === '') {
+      setQuantity('');
+      return;
+    }
     const parsed = parseFloat(raw);
-    const value = Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
-    if (!allowDecimal && value % 1 !== 0) return; // Reject decimals when unit doesn't allow
-    setQuantity(allowDecimal ? value : Math.round(value));
+    if (!Number.isFinite(parsed) || parsed < 0) return;
+    if (!allowDecimal && parsed % 1 !== 0) return;
+    setQuantity(raw);
   };
 
   const handleAdd = () => {
-    if (quantity <= 0 || unitPrice <= 0) return;
+    const qty = Number.parseFloat(quantity || '0');
+    const price = Number.parseFloat(unitPrice || '0');
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) return;
     if (hasVariations && !selectedVariation) return;
     onAdd(
-      quantity,
-      unitPrice,
+      allowDecimal ? qty : Math.round(qty),
+      price,
       selectedVariation?.id,
       selectedVariation ? formatVariationLabel(selectedVariation.attributes) : undefined,
       selectedVariation?.sku ?? product.sku,
@@ -761,7 +828,7 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
                       type="button"
                       onClick={() => {
                         setSelectedVariation(v);
-                        setUnitPrice(v.price || product.costPrice);
+                        setUnitPrice(String(v.price || product.costPrice || 0));
                       }}
                       className={`p-3 rounded-xl border text-left transition-all ${
                         isSelected
@@ -810,7 +877,9 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
                 type="button"
                 onClick={() => {
                   if (usePackingQty) return;
-                  setQuantity((q) => Math.max(allowDecimal ? 0.01 : 1, allowDecimal ? q - 0.01 : q - 1));
+                  const current = Number.parseFloat(quantity || '0');
+                  const next = Math.max(allowDecimal ? 0.01 : 1, allowDecimal ? current - 0.01 : current - 1);
+                  setQuantity(String(allowDecimal ? Number(next.toFixed(2)) : Math.round(next)));
                 }}
                 disabled={usePackingQty}
                 className="w-12 h-12 bg-[#111827] border border-[#374151] rounded-lg flex items-center justify-center hover:bg-[#374151] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -835,7 +904,9 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
                 type="button"
                 onClick={() => {
                   if (usePackingQty) return;
-                  setQuantity((q) => allowDecimal ? q + 0.01 : q + 1);
+                  const current = Number.parseFloat(quantity || '0');
+                  const next = allowDecimal ? current + 0.01 : current + 1;
+                  setQuantity(String(allowDecimal ? Number(next.toFixed(2)) : Math.round(next)));
                 }}
                 disabled={usePackingQty}
                 className="w-12 h-12 bg-[#111827] border border-[#374151] rounded-lg flex items-center justify-center hover:bg-[#374151] disabled:opacity-50 disabled:cursor-not-allowed"
@@ -853,7 +924,16 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
               pattern="[0-9.]*"
               min="0"
               value={unitPrice}
-              onChange={(e) => setUnitPrice(parseFloat(e.target.value) || 0)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === '') {
+                  setUnitPrice('');
+                  return;
+                }
+                const parsed = parseFloat(raw);
+                if (!Number.isFinite(parsed) || parsed < 0) return;
+                setUnitPrice(raw);
+              }}
               className="w-full h-14 bg-[#111827] border-2 border-[#374151] rounded-lg px-4 text-lg font-semibold text-[#F9FAFB] focus:outline-none focus:border-[#10B981]"
             />
             <p className="text-xs text-[#6B7280] mt-2">Base cost: Rs. {product.costPrice.toLocaleString()}</p>
@@ -876,7 +956,7 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
               </button>
               <button
                 onClick={handleAdd}
-                disabled={quantity <= 0 || unitPrice <= 0 || (hasVariations && !selectedVariation)}
+                disabled={(Number.parseFloat(quantity || '0') <= 0) || (Number.parseFloat(unitPrice || '0') <= 0) || (hasVariations && !selectedVariation)}
                 className="flex-1 h-12 bg-[#10B981] hover:bg-[#059669] disabled:bg-[#374151] disabled:text-[#6B7280] rounded-lg font-medium text-[#F9FAFB]"
               >
                 Add to Order
@@ -893,7 +973,7 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
         onSave={(d) => {
           setPackingDetails(d);
           const m = d.total_meters ?? 0;
-          if (m > 0) setQuantity(m);
+          if (m > 0) setQuantity(String(m));
           setShowPacking(false);
         }}
         initialData={packingDetails}

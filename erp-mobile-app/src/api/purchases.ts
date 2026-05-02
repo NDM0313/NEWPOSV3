@@ -32,6 +32,50 @@ export interface CreatePurchaseInput {
   userId: string;
 }
 
+const PURCHASE_ATTACHMENTS_BUCKET = 'purchase-attachments';
+const MAX_PURCHASE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
+
+export async function uploadPurchaseAttachments(
+  companyId: string,
+  purchaseRef: string,
+  files: File[]
+): Promise<{ data: { url: string; name: string }[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) return { data: [], error: null };
+
+  const uploaded: { url: string; name: string }[] = [];
+  const prefix = `${companyId}/${purchaseRef}/${Date.now()}`;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    if (file.size > MAX_PURCHASE_ATTACHMENT_BYTES) {
+      return { data: uploaded, error: `File "${file.name}" is too large. Max 10MB per file.` };
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `${prefix}_${i}_${safeName}`;
+
+    const { error } = await supabase.storage.from(PURCHASE_ATTACHMENTS_BUCKET).upload(path, file, {
+      upsert: true,
+      contentType: file.type || 'application/octet-stream',
+    });
+    if (error) {
+      const msg = String(error.message || '').toLowerCase();
+      const bucketMissing = msg.includes('bucket') && (msg.includes('not found') || msg.includes('does not exist'));
+      return {
+        data: uploaded,
+        error: bucketMissing
+          ? 'Storage bucket "purchase-attachments" not found. Create it in Supabase Storage first.'
+          : error.message,
+      };
+    }
+    const { data: urlData } = supabase.storage.from(PURCHASE_ATTACHMENTS_BUCKET).getPublicUrl(path);
+    uploaded.push({ url: urlData?.publicUrl || path, name: file.name });
+  }
+
+  return { data: uploaded, error: null };
+}
+
 /**
  * Get next purchase number from server (company-level global sequence).
  * Uses same global allocator as web PurchaseContext (PDR/POR/PUR by status).

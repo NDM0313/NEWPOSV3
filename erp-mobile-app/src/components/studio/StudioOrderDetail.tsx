@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Plus, Edit2, Trash2, CheckCircle, Clock, Package, Banknote, Building2, Wallet, Percent, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, CheckCircle, Clock, Package, Banknote, Building2, Wallet, Loader2 } from 'lucide-react';
 import type { StudioOrder, StudioStage } from './StudioDashboard';
-import * as studioApi from '../../api/studio';
 import { getPaymentAccounts } from '../../api/accounts';
 import type { AccountRow } from '../../api/accounts';
 import { useLoading } from '../../contexts/LoadingContext';
-import { computeStudioCustomerPricing, STUDIO_PROFIT_PCT_STORAGE_PREFIX } from './studioPricing';
+import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
+import { getTotalInternalProductionCost } from './studioPricing';
 
 type StudioPayMethod = 'cash' | 'bank' | 'wallet';
 const STUDIO_METHOD_TO_TYPE: Record<StudioPayMethod, string[]> = {
@@ -28,7 +28,12 @@ interface StudioOrderDetailProps {
   onReceiveWork?: (stage: StudioStage) => void;
   onConfirmPayment?: (
     stage: StudioStage,
-    params: { final_cost: number; pay_now: boolean; payment_account_id?: string | null }
+    params: {
+      final_cost: number;
+      pay_now: boolean;
+      payment_account_id?: string | null;
+      notes?: string | null;
+    }
   ) => void;
   onCompleteStage?: (stage: StudioStage) => void;
   onReopen?: (stage: StudioStage) => void;
@@ -61,7 +66,10 @@ export function StudioOrderDetail({
   const [paymentAccounts, setPaymentAccounts] = useState<AccountRow[]>([]);
   const [paymentAccountsLoading, setPaymentAccountsLoading] = useState(false);
   const [paymentAccountsError, setPaymentAccountsError] = useState<string | null>(null);
-  const { withLoading, isLoading } = useLoading();
+  const [paymentRemarks, setPaymentRemarks] = useState('');
+  const [stageDetailSheet, setStageDetailSheet] = useState<StudioStage | null>(null);
+  const { isLoading } = useLoading();
+  const { runSingleFlight, isRunning: isConfirmPaymentRunning } = useSingleFlightAction();
 
   useEffect(() => {
     if (!paymentDialogStage || !companyId) {
@@ -89,6 +97,31 @@ export function StudioOrderDetail({
     const types = STUDIO_METHOD_TO_TYPE[paymentPayMethod].map((t) => t.toLowerCase());
     return paymentAccounts.filter((a) => types.includes((a.type || '').toLowerCase()));
   }, [paymentAccounts, paymentPayMethod]);
+
+  const paymentBusy = paymentSubmitting || isConfirmPaymentRunning;
+
+  const postConfirmPayment = async (
+    stage: StudioStage,
+    params: {
+      final_cost: number;
+      pay_now: boolean;
+      payment_account_id?: string | null;
+      notes?: string | null;
+    },
+  ) => {
+    await runSingleFlight(async () => {
+      setPaymentSubmitting(true);
+      try {
+        await Promise.resolve(onConfirmPayment?.(stage, params));
+        setPaymentDialogStage(null);
+        setPaymentPayStep(1);
+        setPaymentPayMethod(null);
+        setPaymentRemarks('');
+      } finally {
+        setPaymentSubmitting(false);
+      }
+    });
+  };
 
   const getStageStatusConfig = (status: string) => {
     switch (status) {
@@ -132,90 +165,7 @@ export function StudioOrderDetail({
     setDesignNameEditing(false);
   }, [order.id, order.designName]);
 
-  const profitKey = `${STUDIO_PROFIT_PCT_STORAGE_PREFIX}${order.id}`;
-  const [profitPctStr, setProfitPctStr] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem(profitKey);
-      if (saved !== null) return saved;
-    } catch { /* ignore */ }
-    return '25';
-  });
-  const [serverProfitPct, setServerProfitPct] = useState<string | null>(null);
-  const [savingProfit, setSavingProfit] = useState(false);
-  const [profitSaveOk, setProfitSaveOk] = useState(false);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(profitKey, profitPctStr);
-    } catch { /* ignore */ }
-  }, [profitKey, profitPctStr]);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(profitKey);
-      setProfitPctStr(saved !== null ? saved : '25');
-    } catch {
-      setProfitPctStr('25');
-    }
-    setServerProfitPct(null);
-    setProfitSaveOk(false);
-  }, [profitKey]);
-
-  // Load server-persisted profit % on mount.
-  useEffect(() => {
-    let cancelled = false;
-    void studioApi
-      .loadProductionProfitMargin(order.id)
-      .then(({ data }) => {
-        if (cancelled || !data) return;
-        const v = String(Number.isFinite(data.value) ? data.value : 25);
-        setServerProfitPct(v);
-        setProfitPctStr((cur) => {
-          try {
-            const stored = localStorage.getItem(profitKey);
-            if (stored !== null) return cur;
-          } catch { /* ignore */ }
-          return v;
-        });
-      })
-      .catch(() => {
-        /* non-fatal */
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order.id, profitKey]);
-
-  const profitDirty = serverProfitPct !== null && serverProfitPct !== profitPctStr;
-
-  const saveProfitToServer = async () => {
-    const n = parseFloat(profitPctStr);
-    if (!Number.isFinite(n) || savingProfit) return;
-    setSavingProfit(true);
-    setProfitSaveOk(false);
-    const { error } = await withLoading('Saving profit...', () =>
-      studioApi.saveProductionProfitMargin(order.id, 'percentage', n),
-    );
-    setSavingProfit(false);
-    if (!error) {
-      setServerProfitPct(profitPctStr);
-      setProfitSaveOk(true);
-      setTimeout(() => setProfitSaveOk(false), 1800);
-    }
-  };
-
-  const profitPct = useMemo(() => {
-    const n = parseFloat(profitPctStr);
-    return Number.isFinite(n) ? n : 0;
-  }, [profitPctStr]);
-
-  const { totalInternalCost, totalStageCustomerCharge, suggestedCustomerCharge, effectiveCustomerCharge } = useMemo(
-    () => computeStudioCustomerPricing(order, profitPct),
-    [order, profitPct],
-  );
-  const profitMargin = effectiveCustomerCharge - totalInternalCost;
-  const effectiveMarginPct = totalInternalCost > 0 ? (profitMargin / totalInternalCost) * 100 : 0;
+  const totalInternalCost = useMemo(() => getTotalInternalProductionCost(order), [order]);
 
   const allStagesCompleted = order.stages.length > 0 && order.stages.every((s) => s.status === 'completed');
   const canGenerateInvoice =
@@ -349,89 +299,26 @@ export function StudioOrderDetail({
 
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-4">
           <h2 className="text-sm font-semibold text-[#8B5CF6] mb-3">Cost Summary</h2>
+          <p className="text-xs text-[#6B7280] mb-3">
+            Internal production costs only. Set profit and billing amount when you generate the invoice.
+          </p>
           <div className="space-y-2">
             <div className="flex justify-between">
-              <p className="text-sm text-[#9CA3AF]">Production Cost</p>
+              <p className="text-sm text-[#9CA3AF]">Total production cost</p>
               <p className="text-sm font-semibold text-[#EF4444]">Rs. {totalInternalCost.toLocaleString()}</p>
             </div>
-            <div className="flex items-center justify-between gap-3 pt-1">
-              <p className="text-sm text-[#9CA3AF] flex items-center gap-1">
-                <Percent className="w-3.5 h-3.5" />
-                Profit %
-              </p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={profitPctStr}
-                  onChange={(e) => setProfitPctStr(e.target.value)}
-                  placeholder="25"
-                  className="w-20 text-right bg-[#111827] border border-[#374151] rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-[#8B5CF6]"
-                />
-                <span className="text-sm text-[#9CA3AF]">%</span>
+            {order.stages.length > 0 ? (
+              <div className="pt-2 border-t border-[#374151] space-y-2">
+                <p className="text-xs font-medium text-[#9CA3AF]">By stage (internal cost)</p>
+                {order.stages.map((stage) => (
+                  <div key={stage.id} className="flex justify-between gap-2 text-sm">
+                    <span className="text-white min-w-0 truncate">{stage.name}</span>
+                    <span className="text-[#F87171] font-medium shrink-0">Rs. {stage.internalCost.toLocaleString()}</span>
+                  </div>
+                ))}
               </div>
-            </div>
-            <div className="flex justify-between pt-1">
-              <p className="text-sm text-[#9CA3AF]">Customer charge</p>
-              <p className="text-sm font-semibold text-[#10B981]">Rs. {effectiveCustomerCharge.toLocaleString()}</p>
-            </div>
-            {totalStageCustomerCharge > 0 && totalStageCustomerCharge < suggestedCustomerCharge && (
-              <div className="flex justify-between">
-                <p className="text-xs text-[#6B7280]">Sum of stage customer lines</p>
-                <p className="text-xs text-[#9CA3AF]">Rs. {totalStageCustomerCharge.toLocaleString()}</p>
-              </div>
-            )}
-            {suggestedCustomerCharge < effectiveCustomerCharge && totalStageCustomerCharge > 0 && (
-              <div className="flex justify-between">
-                <p className="text-xs text-[#6B7280]">Markup minimum (cost × profit%)</p>
-                <p className="text-xs text-[#9CA3AF]">Rs. {suggestedCustomerCharge.toLocaleString()}</p>
-              </div>
-            )}
-            <div className="pt-2 border-t border-[#374151] flex justify-between items-center">
-              <p className="text-sm font-semibold text-white">Profit Margin</p>
-              <div className="text-right">
-                <p className={`text-sm font-bold ${profitMargin >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                  Rs. {profitMargin.toLocaleString()}
-                </p>
-                {totalInternalCost > 0 && (
-                  <p className={`text-xs ${profitMargin >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                    {effectiveMarginPct.toFixed(1)}%
-                  </p>
-                )}
-              </div>
-            </div>
-            <p className="text-[10px] text-[#6B7280] pt-1">
-              Customer charge is the higher of the profit markup (production cost × (1 + Profit% / 100)) and the sum of stage
-              customer lines.
-            </p>
-
-            {(profitDirty || profitSaveOk) && (
-              <div className="pt-2 flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs">
-                  {profitSaveOk ? (
-                    <>
-                      <CheckCircle size={14} className="text-[#10B981]" />
-                      <span className="text-[#10B981]">Saved to server</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="inline-block w-2 h-2 rounded-full bg-[#F59E0B] animate-pulse" />
-                      <span className="text-[#F59E0B]">Unsaved profit change</span>
-                    </>
-                  )}
-                </div>
-                {profitDirty && (
-                  <button
-                    type="button"
-                    onClick={() => void saveProfitToServer()}
-                    disabled={savingProfit}
-                    className="inline-flex items-center gap-1.5 px-3 h-8 rounded-lg bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-60 text-white text-xs font-semibold"
-                  >
-                    <Save size={13} />
-                    {savingProfit ? 'Saving...' : 'Save'}
-                  </button>
-                )}
-              </div>
+            ) : (
+              <p className="text-xs text-[#6B7280] pt-1">Add stages to see a cost breakdown.</p>
             )}
           </div>
         </div>
@@ -514,45 +401,58 @@ export function StudioOrderDetail({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div>
-                        <p className="text-xs text-[#9CA3AF]">Internal Cost</p>
-                        <p className="text-sm font-semibold text-[#EF4444]">
-                          Rs. {stage.internalCost.toLocaleString()}
+                    <button
+                      type="button"
+                      className="w-full text-left rounded-lg border border-[#374151] bg-[#111827]/40 hover:bg-[#111827]/70 px-3 py-2 mb-3 focus:outline-none focus:border-[#6B7280]"
+                      onClick={() => setStageDetailSheet(stage)}
+                    >
+                      {stage.notes?.trim() ? (
+                        <p className="text-xs text-[#D1D5DB] mb-2 line-clamp-2 whitespace-pre-wrap leading-snug">
+                          {stage.notes}
                         </p>
+                      ) : (
+                        <p className="text-xs text-[#6B7280] mb-2">Notes / task — tap for full detail</p>
+                      )}
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                          <p className="text-xs text-[#9CA3AF]">Internal Cost</p>
+                          <p className="text-sm font-semibold text-[#EF4444]">
+                            Rs. {stage.internalCost.toLocaleString()}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-[#9CA3AF]">Customer Charge</p>
+                          <p className="text-sm font-semibold text-[#10B981]">
+                            Rs. {stage.customerCharge.toLocaleString()}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-[#9CA3AF]">Expected Date</p>
+                          <p className="text-sm text-white">{stage.expectedDate}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-[#9CA3AF]">Type</p>
+                          <p className="text-sm text-white">{stage.name}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs text-[#9CA3AF]">Customer Charge</p>
-                        <p className="text-sm font-semibold text-[#10B981]">
-                          Rs. {stage.customerCharge.toLocaleString()}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-[#9CA3AF]">Expected Date</p>
-                        <p className="text-sm text-white">{stage.expectedDate}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-[#9CA3AF]">Type</p>
-                        <p className="text-sm text-white">{stage.name}</p>
-                      </div>
-                    </div>
 
-                    <div className="bg-[#374151] rounded-lg p-2 mb-3">
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        <div>
-                          <p className="text-[#9CA3AF]">Sent</p>
-                          <p className="text-white">{stage.sentDate ?? '—'}</p>
-                        </div>
-                        <div>
-                          <p className="text-[#9CA3AF]">Received</p>
-                          <p className="text-white">{stage.receivedDate ?? '—'}</p>
-                        </div>
-                        <div>
-                          <p className="text-[#9CA3AF]">Completed</p>
-                          <p className="text-white">{stage.completedDate ?? '—'}</p>
+                      <div className="bg-[#374151] rounded p-2">
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div>
+                            <p className="text-[#9CA3AF]">Sent</p>
+                            <p className="text-white">{stage.sentDate ?? '—'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[#9CA3AF]">Received</p>
+                            <p className="text-white">{stage.receivedDate ?? '—'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[#9CA3AF]">Completed</p>
+                            <p className="text-white">{stage.completedDate ?? '—'}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </button>
 
                     {stage.status !== 'completed' && (
                       <button
@@ -578,6 +478,7 @@ export function StudioOrderDetail({
                               setPaymentFinalCost(assignedAmount ? String(assignedAmount) : '');
                               setPaymentPayStep(1);
                               setPaymentPayMethod(null);
+                              setPaymentRemarks('');
                               setPaymentDialogStage(stage);
                               return;
                             }
@@ -672,9 +573,71 @@ export function StudioOrderDetail({
         )}
       </div>
 
+      {stageDetailSheet && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+          onClick={() => setStageDetailSheet(null)}
+        >
+          <div
+            className="bg-[#1F2937] border border-[#374151] rounded-lg p-4 w-full max-w-md max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start gap-2 mb-3 border-b border-[#374151] pb-2">
+              <div>
+                <h3 className="text-base font-semibold text-white">{stageDetailSheet.name}</h3>
+                <p className="text-xs text-[#9CA3AF] mt-0.5">
+                  {getStageStatusConfig(stageDetailSheet.status).text} · {stageDetailSheet.assignedTo}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-xs font-medium text-[#9CA3AF] hover:text-white shrink-0"
+                onClick={() => setStageDetailSheet(null)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between gap-2">
+                <span className="text-[#9CA3AF]">Expected cost</span>
+                <span className="text-white tabular-nums">
+                  Rs. {(stageDetailSheet.expectedCost ?? 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-[#9CA3AF]">Recorded cost</span>
+                <span className="text-white tabular-nums">
+                  Rs. {(stageDetailSheet.internalCost ?? 0).toLocaleString()}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs pt-1 border-t border-[#374151]">
+                <div>
+                  <p className="text-[#9CA3AF]">Sent</p>
+                  <p className="text-white">{stageDetailSheet.sentDate ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[#9CA3AF]">Received</p>
+                  <p className="text-white">{stageDetailSheet.receivedDate ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[#9CA3AF]">Completed</p>
+                  <p className="text-white">{stageDetailSheet.completedDate ?? '—'}</p>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-[#374151]">
+                <p className="text-xs text-[#9CA3AF] mb-1">Notes</p>
+                <p className="text-xs text-[#E5E7EB] whitespace-pre-wrap leading-relaxed">
+                  {stageDetailSheet.notes?.trim() ? stageDetailSheet.notes : '—'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {paymentDialogStage && onConfirmPayment && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-5 w-full max-w-sm shadow-xl max-h-[90vh] flex flex-col">
+          <div className="bg-[#1F2937] border border-[#374151] rounded-lg p-5 w-full max-w-sm max-h-[90vh] flex flex-col">
             {paymentPayStep === 2 && paymentPayMethod ? (
               <>
                 <button
@@ -683,7 +646,7 @@ export function StudioOrderDetail({
                     setPaymentPayStep(1);
                     setPaymentPayMethod(null);
                   }}
-                  disabled={paymentSubmitting}
+                  disabled={paymentBusy}
                   className="flex items-center gap-2 text-sm text-[#9CA3AF] hover:text-white mb-3 disabled:opacity-50"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -709,7 +672,7 @@ export function StudioOrderDetail({
                       <button
                         key={a.id}
                         type="button"
-                        onClick={async () => {
+                        onClick={() => {
                           const cost =
                             parseFloat(paymentFinalCost) ||
                             (paymentDialogStage.expectedCost ??
@@ -720,21 +683,14 @@ export function StudioOrderDetail({
                             alert('Enter final cost');
                             return;
                           }
-                          setPaymentSubmitting(true);
-                          try {
-                            await Promise.resolve(
-                              onConfirmPayment(paymentDialogStage, {
-                                final_cost: cost,
-                                pay_now: true,
-                                payment_account_id: a.id,
-                              }),
-                            );
-                            setPaymentDialogStage(null);
-                          } finally {
-                            setPaymentSubmitting(false);
-                          }
+                          void postConfirmPayment(paymentDialogStage, {
+                            final_cost: cost,
+                            pay_now: true,
+                            payment_account_id: a.id,
+                            notes: paymentRemarks.trim() || null,
+                          });
                         }}
-                        disabled={paymentSubmitting}
+                        disabled={paymentBusy}
                         className="w-full text-left rounded-lg border border-[#374151] bg-[#111827] px-4 py-3 hover:border-[#8B5CF6] disabled:opacity-50"
                       >
                         <p className="text-white font-medium">{a.name}</p>
@@ -764,7 +720,15 @@ export function StudioOrderDetail({
                       paymentDialogStage.customerCharge ??
                       '',
                   )}
-                  className="w-full bg-[#374151] border border-[#4B5563] rounded-lg px-4 py-3 text-white text-base mb-4 focus:outline-none focus:border-[#8B5CF6]"
+                  className="w-full bg-[#374151] border border-[#4B5563] rounded-lg px-4 py-3 text-white text-base mb-3 focus:outline-none focus:border-[#8B5CF6]"
+                />
+                <label className="block text-sm font-medium text-[#9CA3AF] mb-1">Remarks (optional)</label>
+                <textarea
+                  value={paymentRemarks}
+                  onChange={(e) => setPaymentRemarks(e.target.value)}
+                  placeholder="Saved with payment confirmation as [Payment Remarks]"
+                  rows={2}
+                  className="w-full bg-[#374151] border border-[#4B5563] rounded-lg px-3 py-2 text-white text-sm mb-4 resize-none focus:outline-none focus:border-[#8B5CF6]"
                 />
                 <p className="text-xs text-[#6B7280] mb-3">Pay Now (pick method, then account) or Pay Later</p>
                 {!companyId ? (
@@ -791,7 +755,7 @@ export function StudioOrderDetail({
                       setPaymentPayMethod('cash');
                       setPaymentPayStep(2);
                     }}
-                    disabled={paymentSubmitting || paymentAccountsLoading}
+                    disabled={paymentBusy || paymentAccountsLoading}
                     className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl bg-[#10B981]/20 border border-[#10B981]/50 hover:bg-[#10B981]/30 text-[#10B981] disabled:opacity-50"
                   >
                     <Banknote className="w-6 h-6" />
@@ -817,7 +781,7 @@ export function StudioOrderDetail({
                       setPaymentPayMethod('bank');
                       setPaymentPayStep(2);
                     }}
-                    disabled={paymentSubmitting || paymentAccountsLoading}
+                    disabled={paymentBusy || paymentAccountsLoading}
                     className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl bg-[#3B82F6]/20 border border-[#3B82F6]/50 hover:bg-[#3B82F6]/30 text-[#3B82F6] disabled:opacity-50"
                   >
                     <Building2 className="w-6 h-6" />
@@ -843,7 +807,7 @@ export function StudioOrderDetail({
                       setPaymentPayMethod('wallet');
                       setPaymentPayStep(2);
                     }}
-                    disabled={paymentSubmitting || paymentAccountsLoading}
+                    disabled={paymentBusy || paymentAccountsLoading}
                     className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl bg-[#F59E0B]/20 border border-[#F59E0B]/50 hover:bg-[#F59E0B]/30 text-[#F59E0B] disabled:opacity-50"
                   >
                     <Wallet className="w-6 h-6" />
@@ -852,7 +816,7 @@ export function StudioOrderDetail({
                 </div>
                 <button
                   type="button"
-                  onClick={async () => {
+                  onClick={() => {
                     const cost =
                       parseFloat(paymentFinalCost) ||
                       (paymentDialogStage.expectedCost ??
@@ -863,27 +827,29 @@ export function StudioOrderDetail({
                       alert('Enter final cost');
                       return;
                     }
-                    setPaymentSubmitting(true);
-                    try {
-                      await Promise.resolve(
-                        onConfirmPayment(paymentDialogStage, { final_cost: cost, pay_now: false }),
-                      );
-                      setPaymentDialogStage(null);
-                    } finally {
-                      setPaymentSubmitting(false);
-                    }
+                    void postConfirmPayment(paymentDialogStage, {
+                      final_cost: cost,
+                      pay_now: false,
+                      notes: paymentRemarks.trim() || null,
+                    });
                   }}
-                  disabled={paymentSubmitting}
+                  disabled={paymentBusy}
                   className="w-full py-3 rounded-xl text-sm font-medium bg-[#374151] hover:bg-[#4B5563] text-white mb-2 disabled:opacity-50"
                 >
-                  Pay Later (record in ledger)
+                  {paymentBusy ? 'Posting…' : 'Pay Later (record in ledger)'}
                 </button>
               </>
             )}
             <button
               type="button"
-              onClick={() => setPaymentDialogStage(null)}
-              className="w-full py-2 rounded-lg text-sm text-[#9CA3AF] hover:bg-[#374151]"
+              onClick={() => {
+                setPaymentDialogStage(null);
+                setPaymentPayStep(1);
+                setPaymentPayMethod(null);
+                setPaymentRemarks('');
+              }}
+              disabled={paymentBusy}
+              className="w-full py-2 rounded-lg text-sm text-[#9CA3AF] hover:bg-[#374151] disabled:opacity-50"
             >
               Cancel
             </button>

@@ -429,6 +429,137 @@ export async function createJournalEntry(params: {
   return { data: { id: entry.id, entry_no: entry.entry_no }, error: null };
 }
 
+export interface JournalEntryEditPayload {
+  companyId: string;
+  journalEntryId: string;
+  entryDate: string;
+  description: string;
+  debitAccountId: string;
+  creditAccountId: string;
+  amount: number;
+}
+
+export interface JournalEntryEditRow {
+  id: string;
+  companyId: string;
+  entryNo: string;
+  entryDate: string;
+  description: string;
+  referenceType: string;
+  referenceId: string | null;
+  debitAccountId: string | null;
+  creditAccountId: string | null;
+  amount: number;
+}
+
+export async function getJournalEntryForEdit(
+  companyId: string,
+  journalEntryId: string
+): Promise<{ data: JournalEntryEditRow | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const { data: je, error: jeErr } = await supabase
+    .from('journal_entries')
+    .select('id, company_id, entry_no, entry_date, description, reference_type, reference_id')
+    .eq('company_id', companyId)
+    .eq('id', journalEntryId)
+    .maybeSingle();
+  if (jeErr || !je) return { data: null, error: jeErr?.message || 'Journal entry not found.' };
+
+  const { data: lines, error: linesErr } = await supabase
+    .from('journal_entry_lines')
+    .select('id, account_id, debit, credit')
+    .eq('journal_entry_id', journalEntryId);
+  if (linesErr || !lines?.length) return { data: null, error: linesErr?.message || 'Journal lines not found.' };
+
+  const debitLine = lines.find((l) => Number(l.debit || 0) > 0) || null;
+  const creditLine = lines.find((l) => Number(l.credit || 0) > 0) || null;
+  const amount = Number(debitLine?.debit || creditLine?.credit || 0) || 0;
+
+  return {
+    data: {
+      id: String(je.id),
+      companyId: String(je.company_id),
+      entryNo: String(je.entry_no ?? ''),
+      entryDate: String(je.entry_date ?? '').slice(0, 10),
+      description: String(je.description ?? ''),
+      referenceType: String(je.reference_type ?? ''),
+      referenceId: je.reference_id ? String(je.reference_id) : null,
+      debitAccountId: debitLine?.account_id ? String(debitLine.account_id) : null,
+      creditAccountId: creditLine?.account_id ? String(creditLine.account_id) : null,
+      amount,
+    },
+    error: null,
+  };
+}
+
+export async function updateJournalEntryInPlace(
+  payload: JournalEntryEditPayload
+): Promise<{ data: { id: string } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const amount = Number(payload.amount) || 0;
+  if (amount <= 0) return { data: null, error: 'Amount must be greater than zero.' };
+
+  const { data: je, error: jeErr } = await supabase
+    .from('journal_entries')
+    .select('id, reference_type, reference_id')
+    .eq('company_id', payload.companyId)
+    .eq('id', payload.journalEntryId)
+    .maybeSingle();
+  if (jeErr || !je) return { data: null, error: jeErr?.message || 'Journal entry not found.' };
+
+  const { data: lines, error: linesErr } = await supabase
+    .from('journal_entry_lines')
+    .select('id, debit, credit')
+    .eq('journal_entry_id', payload.journalEntryId);
+  if (linesErr || !lines?.length) return { data: null, error: linesErr?.message || 'Journal lines not found.' };
+  const debitLine = lines.find((l) => Number(l.debit || 0) > 0) || lines[0];
+  const creditLine = lines.find((l) => Number(l.credit || 0) > 0) || lines.find((l) => l.id !== debitLine.id) || lines[0];
+
+  const { error: entryErr } = await supabase
+    .from('journal_entries')
+    .update({
+      entry_date: payload.entryDate,
+      description: payload.description,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', payload.journalEntryId)
+    .eq('company_id', payload.companyId);
+  if (entryErr) return { data: null, error: entryErr.message };
+
+  const lineUpdates = [
+    { id: debitLine.id, account_id: payload.debitAccountId, debit: amount, credit: 0 },
+    { id: creditLine.id, account_id: payload.creditAccountId, debit: 0, credit: amount },
+  ];
+  for (const update of lineUpdates) {
+    const { error } = await supabase
+      .from('journal_entry_lines')
+      .update({
+        account_id: update.account_id,
+        debit: update.debit,
+        credit: update.credit,
+      })
+      .eq('id', update.id);
+    if (error) return { data: null, error: error.message };
+  }
+
+  // Keep expense header in sync when editing an expense journal in-place.
+  const refType = String(je.reference_type ?? '').toLowerCase();
+  if ((refType === 'expense' || refType === 'expense_payment') && je.reference_id) {
+    await supabase
+      .from('expenses')
+      .update({
+        amount,
+        expense_date: payload.entryDate,
+        description: payload.description,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', je.reference_id as string)
+      .eq('company_id', payload.companyId);
+  }
+
+  return { data: { id: payload.journalEntryId }, error: null };
+}
+
 export interface SupplierWithPayable {
   id: string;
   name: string;

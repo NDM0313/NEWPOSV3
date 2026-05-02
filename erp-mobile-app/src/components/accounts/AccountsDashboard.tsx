@@ -18,6 +18,7 @@ import {
 import type { User } from '../../types';
 import { useResponsive } from '../../hooks/useResponsive';
 import { getJournalEntries, getAccounts } from '../../api/accounts';
+import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
 
 export interface AccountEntry {
   id: string;
@@ -91,62 +92,94 @@ export function AccountsDashboard({
   const [stats, setStats] = useState({ todayEntries: 0, totalAmount: 0, cashBalance: 0, bankBalance: 0 });
   const [loading, setLoading] = useState(true);
 
+  const loadDashboardData = async () => {
+    if (!companyId) return;
+    setLoading(true);
+    const [jeRes, accRes] = await Promise.all([
+      getJournalEntries(companyId, branchId, 30),
+      getAccounts(companyId),
+    ]);
+    if (jeRes.error) {
+      setEntries([]);
+    } else {
+      const today = new Date().toISOString().slice(0, 10);
+      const mapped: AccountEntry[] = jeRes.data.map((e) => {
+        const debitLine = e.lines?.find((l) => (l.debit || 0) > 0);
+        const creditLine = e.lines?.find((l) => (l.credit || 0) > 0);
+        const amt = e.total_debit || e.total_credit || 0;
+        return {
+          id: e.id,
+          entryNumber: e.entry_no,
+          type: mapReferenceTypeToEntryType(e.reference_type),
+          date: e.entry_date,
+          description: e.description,
+          amount: amt,
+          debitAccount: debitLine?.account?.name ?? '—',
+          creditAccount: creditLine?.account?.name ?? '—',
+          addedBy: user.name,
+          addedByRole: user.role,
+          createdAt: e.entry_date,
+          status: 'posted' as const,
+          referenceType: e.reference_type,
+          referenceId: e.reference_id,
+          paymentId: e.payment_id ?? null,
+        };
+      });
+      setEntries(mapped);
+      setStats((s) => ({
+        ...s,
+        todayEntries: mapped.filter((e) => e.date === today).length,
+        totalAmount: mapped.reduce((sum, e) => sum + e.amount, 0),
+      }));
+    }
+    if (accRes.data?.length) {
+      const cash = accRes.data.find((a) => a.type === 'cash' || a.name.toLowerCase().includes('cash'));
+      const bank = accRes.data.find((a) => a.type === 'bank' || a.name.toLowerCase().includes('bank'));
+      setStats((s) => ({
+        ...s,
+        cashBalance: cash?.balance ?? 0,
+        bankBalance: bank?.balance ?? 0,
+      }));
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
     (async () => {
-      setLoading(true);
-      const [jeRes, accRes] = await Promise.all([
-        getJournalEntries(companyId, branchId, 30),
-        getAccounts(companyId),
-      ]);
+      await loadDashboardData();
       if (cancelled) return;
-      if (jeRes.error) {
-        setEntries([]);
-      } else {
-        const today = new Date().toISOString().slice(0, 10);
-        const mapped: AccountEntry[] = jeRes.data.map((e) => {
-          const debitLine = e.lines?.find((l) => (l.debit || 0) > 0);
-          const creditLine = e.lines?.find((l) => (l.credit || 0) > 0);
-          const amt = e.total_debit || e.total_credit || 0;
-          return {
-            id: e.id,
-            entryNumber: e.entry_no,
-            type: mapReferenceTypeToEntryType(e.reference_type),
-            date: e.entry_date,
-            description: e.description,
-            amount: amt,
-            debitAccount: debitLine?.account?.name ?? '—',
-            creditAccount: creditLine?.account?.name ?? '—',
-            addedBy: user.name,
-            addedByRole: user.role,
-            createdAt: e.entry_date,
-            status: 'posted' as const,
-            referenceType: e.reference_type,
-            referenceId: e.reference_id,
-            paymentId: e.payment_id ?? null,
-          };
-        });
-        setEntries(mapped);
-        setStats((s) => ({
-          ...s,
-          todayEntries: mapped.filter((e) => e.date === today).length,
-          totalAmount: mapped.reduce((sum, e) => sum + e.amount, 0),
-        }));
-      }
-      if (accRes.data?.length) {
-        const cash = accRes.data.find((a) => a.type === 'cash' || a.name.toLowerCase().includes('cash'));
-        const bank = accRes.data.find((a) => a.type === 'bank' || a.name.toLowerCase().includes('bank'));
-        setStats((s) => ({
-          ...s,
-          cashBalance: cash?.balance ?? 0,
-          bankBalance: bank?.balance ?? 0,
-        }));
-      }
-      setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [companyId, branchId, user.name, user.role]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onInvalidated = (event: Event) => {
+      const detail = (event as CustomEvent<MobileInvalidationDetail>).detail;
+      if (
+        !shouldAcceptMobileInvalidation(detail, {
+          domain: ['accounting', 'sales', 'purchases', 'contacts'],
+          companyId,
+          branchId: branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void loadDashboardData();
+      }, 240);
+    };
+    window.addEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    };
+  }, [branchId, companyId, user.name, user.role]);
 
   const getEntryTypeConfig = (type: AccountEntry['type']) => {
     switch (type) {

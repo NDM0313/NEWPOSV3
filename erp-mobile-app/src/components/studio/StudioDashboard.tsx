@@ -50,6 +50,8 @@ export interface StudioStage {
   completedDate?: string;
   sentDate?: string;
   receivedDate?: string;
+  /** Persisted studio_production_stages.notes (task / assignment / appended receive & payment lines). */
+  notes?: string | null;
 }
 
 interface StudioDashboardProps {

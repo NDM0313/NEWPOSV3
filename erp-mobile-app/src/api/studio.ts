@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { tryFinalizeStudioProductionAfterMobileInvoice } from './studioFinalizeAfterInvoice';
 
 /** Shown when PostgREST reports missing studio_productions.design_name (DB not migrated). */
 export const STUDIO_DESIGN_NAME_MIGRATION_HINT =
@@ -67,6 +68,7 @@ export interface StudioStageRow {
   assigned_at?: string | null;
   sent_date?: string | null;
   received_date?: string | null;
+  notes?: string | null;
   worker?: { id: string; name: string };
 }
 
@@ -321,7 +323,7 @@ export async function assignWorkerToStep(
   }
 }
 
-/** Shared workflow: Receive and finalize stage (STEP 2). Creates accounting entry. Uses RPC when available. */
+/** Shared workflow: Receive stage (STEP 2). Operational record only — GL/worker ledger post after studio bill (see web finalize). Uses RPC when available. */
 export async function receiveStepAndFinalizeCost(
   stageId: string,
   params: { final_cost: number; notes?: string | null }
@@ -348,6 +350,13 @@ export async function receiveStepAndFinalizeCost(
           cost: params.final_cost,
           completed_at: new Date().toISOString(),
         });
+        const frag = (params.notes ?? '').trim();
+        if (!error && frag) {
+          await supabase.rpc('rpc_append_receive_notes_fragment', {
+            p_stage_id: stageId,
+            p_notes: frag,
+          });
+        }
         return { data: updatedStage ?? null, error };
       }
       return { data: null, error: (rpcResult as unknown as { error?: string })?.error ?? rpcErr.message };
@@ -423,7 +432,12 @@ export async function receiveWork(stageId: string): Promise<{ error: string | nu
 /** Confirm payment: set cost + accounting. pay_now = true → Dr 5000 Cr Cash; false → Dr 5000 Cr 2010 + worker ledger unpaid */
 export async function confirmStagePayment(
   stageId: string,
-  params: { final_cost: number; pay_now: boolean; payment_account_id?: string | null }
+  params: {
+    final_cost: number;
+    pay_now: boolean;
+    payment_account_id?: string | null;
+    notes?: string | null;
+  }
 ): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
   try {
@@ -432,6 +446,7 @@ export async function confirmStagePayment(
       p_final_cost: params.final_cost,
       p_pay_now: params.pay_now,
       p_payment_account_id: params.pay_now && params.payment_account_id ? params.payment_account_id : null,
+      p_notes: params.notes ?? null,
     });
     if (e) return { error: (r as unknown as { error?: string })?.error ?? e.message };
     if (!(r as { ok?: boolean })?.ok) return { error: (r as unknown as { error?: string })?.error ?? 'Confirm payment failed' };
@@ -738,6 +753,14 @@ export async function updateStudioStage(
       .select('*')
       .single();
     if (error) return { data: null, error: error.message };
+    const row = data as { production_id?: string };
+    if (updates.status === 'completed' && row?.production_id) {
+      try {
+        await tryFinalizeStudioProductionAfterMobileInvoice({ productionId: row.production_id });
+      } catch (finErr: unknown) {
+        console.warn('[updateStudioStage] finalize after stage complete (non-fatal):', finErr);
+      }
+    }
     return { data: data as unknown as StudioStageRow, error: null };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error';

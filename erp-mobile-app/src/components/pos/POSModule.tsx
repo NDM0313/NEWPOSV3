@@ -8,6 +8,8 @@ import { supabase } from '../../lib/supabase';
 import { balanceFromMovements } from '../../utils/stockBalance';
 import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
 import { BarcodeScanner } from '../../features/barcode';
+import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
+import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
 
 interface POSModuleProps {
   onBack: () => void;
@@ -51,6 +53,7 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
   const [lastInvoiceNo, setLastInvoiceNo] = useState<string | null>(null);
   const [variationModalProduct, setVariationModalProduct] = useState<POSProduct | null>(null);
   const [showPaymentStep, setShowPaymentStep] = useState(false);
+  const { runSingleFlight, isRunning: isCheckoutSubmitRunning } = useSingleFlightAction();
   const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [scannerInput, setScannerInput] = useState(''); // keyboard wedge (Speed-X, Sunmi, CS60)
 
@@ -128,6 +131,33 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
     }
     loadProducts();
   }, [companyId, loadProducts]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onInvalidated = (event: Event) => {
+      const detail = (event as CustomEvent<MobileInvalidationDetail>).detail;
+      if (
+        !shouldAcceptMobileInvalidation(detail, {
+          domain: ['sales', 'purchases', 'accounting'],
+          companyId,
+          branchId: branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void loadProducts();
+      }, 260);
+    };
+    window.addEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    };
+  }, [branchId, companyId, loadProducts]);
 
   const list = products;
   const filtered = list.filter(
@@ -260,6 +290,7 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
   };
 
   const handlePaymentComplete = async (result: PaymentResult): Promise<void> => {
+    await runSingleFlight(async () => {
     if (cart.length === 0 || !companyId || !branchId || branchId === 'all' || !user?.id) {
       setCheckoutError('Select a specific branch.');
       return;
@@ -322,6 +353,7 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
     setLastInvoiceNo(data?.invoiceNo ?? null);
     setCart([]);
     setShowPaymentStep(false);
+    });
   };
 
   return (
@@ -553,7 +585,7 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
             totalAmount={total}
             companyId={companyId}
             onComplete={handlePaymentComplete}
-            saving={checkoutLoading}
+            saving={checkoutLoading || isCheckoutSubmitRunning}
             saveError={checkoutError}
           />
         </div>

@@ -21,6 +21,7 @@ import {
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { assertDomainEditSafetyTestMode, classifyPurchaseEdit } from '@/app/lib/accountingEditClassification';
 import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
+import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isValidBranchId(id: string | null): id is string {
@@ -241,6 +242,26 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
   const accounting = useAccountingOptional();
   const { formatCurrency } = useFormatCurrency();
   const { companyId, branchId, user } = useSupabase();
+
+  const emitPurchaseInvalidation = useCallback(
+    (reason: string, entityId?: string) => {
+      dispatchDataInvalidated({
+        domain: 'purchases',
+        companyId: companyId || null,
+        branchId: branchId || null,
+        entityId: entityId ?? null,
+        reason,
+      });
+      dispatchDataInvalidated({
+        domain: 'accounting',
+        companyId: companyId || null,
+        branchId: branchId || null,
+        entityId: entityId ?? null,
+        reason: `purchase:${reason}`,
+      });
+    },
+    [companyId, branchId]
+  );
 
   // Use exported convertFromSupabasePurchase function (no need for local callback)
 
@@ -573,6 +594,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       
       // 🔒 CRITICAL FIX: Dispatch event to refresh inventory (like Sale module)
       window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: newPurchase.id } }));
+      emitPurchaseInvalidation('created', newPurchase.id);
       if (newPurchase.supplier) {
         window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: newPurchase.supplier } }));
       }
@@ -1248,6 +1270,18 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
                 await sbPur.from('journal_entry_lines').insert(newLines);
               }
 
+              // Keep JE header totals aligned with in-place rebuilt lines.
+              const totalDebit = newLines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
+              const totalCredit = newLines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
+              await sbPur
+                .from('journal_entries')
+                .update({
+                  total_debit: totalDebit,
+                  total_credit: totalCredit,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', jeId);
+
               // Log edit — replace any prior [Edited...] tag to avoid accumulating stale history
               const ts = new Date().toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
               const editLog = `[Edited ${ts}: Total Rs ${oldPurchaseSnapshot.total.toLocaleString()} → Rs ${newSnapshot.total.toLocaleString()}]`;
@@ -1369,6 +1403,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       if (stockMovementDeltas.length > 0) {
         window.dispatchEvent(new CustomEvent('purchaseSaved', { detail: { purchaseId: id } }));
       }
+      emitPurchaseInvalidation('updated', id);
       pushAccountingEditTrace({
         traceId,
         ts: new Date().toISOString(),
@@ -1423,6 +1458,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       
       // CRITICAL: Dispatch event to refresh ledger views
       window.dispatchEvent(new CustomEvent('purchaseDeleted', { detail: { purchaseId: id } }));
+      emitPurchaseInvalidation('deleted', id);
       
       toast.success(`${purchase.purchaseNo} deleted successfully!`);
     } catch (error: any) {
@@ -1476,6 +1512,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       });
 
       // Accounting: purchaseService.recordPayment already creates 1 payment + 1 JE via canonical supplierPaymentService (do not call recordSupplierPayment – would create duplicate JE)
+      emitPurchaseInvalidation('payment_recorded', purchaseId);
 
       toast.success(`Payment of ${formatCurrency(amount)} recorded!`);
     } catch (error: any) {

@@ -94,7 +94,7 @@ export const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(func
     [onEnterPress, submitOnEnter, config.enterKeyBehavior]
   );
 
-  const displayValue = typeof value === 'number' ? String(value) : value;
+  const displayValue = typeof value === 'number' ? String(value) : (value ?? '');
   const inputMode = allowDecimal ? 'decimal' : 'numeric';
   const enterKeyHint = getEnterKeyHint(config.enterKeyBehavior, submitOnEnter);
 
@@ -114,20 +114,21 @@ export const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(func
           </div>
         )}
         <input
-        ref={ref}
-        type="text"
-        inputMode={inputMode}
-        enterKeyHint={enterKeyHint}
-        value={displayValue}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        placeholder={placeholder}
-        disabled={disabled}
-        min={min}
-        max={max}
-        className={inputClass}
-        {...rest}
-      />
+          ref={ref}
+          type="text"
+          inputMode={inputMode}
+          pattern={allowDecimal ? '[0-9.]*' : '[0-9]*'}
+          enterKeyHint={enterKeyHint}
+          value={displayValue}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={disabled}
+          min={min}
+          max={max}
+          className={inputClass}
+          {...rest}
+        />
       </div>
       {error && <p className="text-xs text-[#EF4444] mt-1">{error}</p>}
     </div>

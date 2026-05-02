@@ -417,3 +417,139 @@ export async function getTransactionDetail(
     error: null,
   };
 }
+
+export interface TransactionEditability {
+  editable: boolean;
+  kind: 'payment' | 'journal' | 'locked';
+  reason?: string;
+}
+export type TransactionEditSource = 'payment_row' | 'journal_entry' | 'unknown';
+
+const LOCKED_REFERENCE_TYPES = new Set(['sale', 'purchase', 'stock_movement', 'inventory']);
+const JOURNAL_EDITABLE_REFERENCE_TYPES = new Set(['general', 'transfer', 'expense', 'expense_payment']);
+
+export function canEditTransaction(referenceType: string, source: TransactionEditSource = 'unknown'): TransactionEditability {
+  const type = String(referenceType || '').toLowerCase();
+  // Transactions tab rows are always payment records; allow payment edit even when
+  // reference type points to source documents like sale/purchase.
+  if (source === 'payment_row') {
+    if (type === 'stock_movement' || type === 'inventory') {
+      return { editable: false, kind: 'locked', reason: 'Inventory source transaction is locked.' };
+    }
+    return { editable: true, kind: 'payment' };
+  }
+  if (LOCKED_REFERENCE_TYPES.has(type)) {
+    return { editable: false, kind: 'locked', reason: 'Source document controls this transaction.' };
+  }
+  if (type === 'payment' || type === 'rental' || type === 'worker_payment' || type === 'on_account' || type === 'manual_receipt') {
+    return { editable: true, kind: 'payment' };
+  }
+  if (JOURNAL_EDITABLE_REFERENCE_TYPES.has(type)) {
+    return { editable: true, kind: 'journal' };
+  }
+  return { editable: false, kind: 'locked', reason: `Editing not allowed for ${type || 'this'} transaction.` };
+}
+
+export interface PaymentTransactionUpdateInput {
+  companyId: string;
+  paymentId: string;
+  amount: number;
+  paymentDate: string;
+  paymentAccountId: string;
+  paymentMethod?: string;
+  notes?: string | null;
+  referenceNumber?: string | null;
+}
+
+export async function updatePaymentTransactionInPlace(
+  input: PaymentTransactionUpdateInput
+): Promise<{ data: { paymentId: string } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const amount = Number(input.amount) || 0;
+  if (amount <= 0) return { data: null, error: 'Amount must be greater than zero.' };
+
+  const { data: paymentRow, error: paymentReadErr } = await supabase
+    .from('payments')
+    .select('id, company_id, payment_account_id, payment_method, payment_date, notes, reference_number')
+    .eq('id', input.paymentId)
+    .eq('company_id', input.companyId)
+    .maybeSingle();
+  if (paymentReadErr || !paymentRow) return { data: null, error: paymentReadErr?.message || 'Payment not found.' };
+
+  const { data: jeRow, error: jeErr } = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('company_id', input.companyId)
+    .eq('payment_id', input.paymentId)
+    .limit(1)
+    .maybeSingle();
+  if (jeErr || !jeRow?.id) return { data: null, error: jeErr?.message || 'Linked journal entry not found.' };
+
+  const { data: jeLines, error: lineErr } = await supabase
+    .from('journal_entry_lines')
+    .select('id, account_id, debit, credit')
+    .eq('journal_entry_id', jeRow.id);
+  if (lineErr || !jeLines?.length) return { data: null, error: lineErr?.message || 'Journal lines not found.' };
+
+  const oldPaymentAccountId = String(paymentRow.payment_account_id || '');
+  const paymentLine = jeLines.find((l) => String(l.account_id) === oldPaymentAccountId);
+  if (!paymentLine) return { data: null, error: 'Payment account line not found in journal.' };
+  const counterLine = jeLines.find((l) => l.id !== paymentLine.id);
+  if (!counterLine) return { data: null, error: 'Counter journal line not found.' };
+
+  const payLineWasDebit = Number(paymentLine.debit || 0) > 0;
+  const updates = [
+    {
+      id: paymentLine.id,
+      account_id: input.paymentAccountId,
+      debit: payLineWasDebit ? amount : 0,
+      credit: payLineWasDebit ? 0 : amount,
+    },
+    {
+      id: counterLine.id,
+      account_id: counterLine.account_id,
+      debit: payLineWasDebit ? 0 : amount,
+      credit: payLineWasDebit ? amount : 0,
+    },
+  ];
+
+  for (const row of updates) {
+    const { error } = await supabase
+      .from('journal_entry_lines')
+      .update({
+        account_id: row.account_id,
+        debit: row.debit,
+        credit: row.credit,
+      })
+      .eq('id', row.id);
+    if (error) return { data: null, error: error.message };
+  }
+
+  const { error: paymentUpdateErr } = await supabase
+    .from('payments')
+    .update({
+      amount,
+      payment_date: input.paymentDate,
+      payment_account_id: input.paymentAccountId,
+      payment_method: input.paymentMethod || paymentRow.payment_method || 'cash',
+      notes: input.notes ?? null,
+      reference_number: input.referenceNumber ?? paymentRow.reference_number ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', input.paymentId)
+    .eq('company_id', input.companyId);
+  if (paymentUpdateErr) return { data: null, error: paymentUpdateErr.message };
+
+  const { error: jeUpdateErr } = await supabase
+    .from('journal_entries')
+    .update({
+      entry_date: input.paymentDate,
+      description: `Payment: ${input.referenceNumber || paymentRow.reference_number || input.paymentId}`,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', jeRow.id)
+    .eq('company_id', input.companyId);
+  if (jeUpdateErr) return { data: null, error: jeUpdateErr.message };
+
+  return { data: { paymentId: input.paymentId }, error: null };
+}

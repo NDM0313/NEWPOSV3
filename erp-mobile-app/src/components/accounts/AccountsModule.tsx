@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
 import {
   allowsDayBookUnifiedEdit,
@@ -13,7 +13,6 @@ import { WorkerPaymentFlow } from './WorkerPaymentFlow';
 import { ExpenseEntryFlow } from './ExpenseEntryFlow';
 import { ChartOfAccountsView } from './ChartOfAccountsView';
 import { AddAccountForm } from './AddAccountForm';
-import { EntryEditSheet } from './EntryEditSheet';
 import { ReportsHub, type LegacyReportKey } from './reports/ReportsHub';
 import { AccountLedgerReport } from './reports/AccountLedgerReport';
 import { PartyLedgerReport } from './reports/PartyLedgerReport';
@@ -26,6 +25,13 @@ import { ExpenseReport } from './reports/ExpenseReport';
 import { StudioReport } from './reports/StudioReport';
 import { RentalReport } from './reports/RentalReport';
 import { InventoryReport } from './reports/InventoryReport';
+import { EditTransactionSheet } from './reports/_shared/EditTransactionSheet';
+import {
+  MOBILE_DATA_INVALIDATED_EVENT,
+  dispatchMobileAccountingInvalidated,
+  shouldAcceptMobileInvalidation,
+  type MobileInvalidationDetail,
+} from '../../lib/dataInvalidationBus';
 
 interface AccountsModuleProps {
   onBack: () => void;
@@ -70,8 +76,35 @@ type View =
 export function AccountsModule({ onBack, user, companyId, branch, initialView, onNavigateToDocumentEdit }: AccountsModuleProps) {
   const [view, setView] = useState<View>(initialView === 'reports' ? 'reports' : 'dashboard');
   const [selectedEntry, setSelectedEntry] = useState<AccountEntry | null>(null);
+  const [showEditEntry, setShowEditEntry] = useState(false);
   const [ledgerInitialAccountId, setLedgerInitialAccountId] = useState<string | null>(null);
-  const [editSheetOpen, setEditSheetOpen] = useState(false);
+  const [reportRefreshEpoch, setReportRefreshEpoch] = useState(0);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onInvalidated = (event: Event) => {
+      const detail = (event as CustomEvent<MobileInvalidationDetail>).detail;
+      if (
+        !shouldAcceptMobileInvalidation(detail, {
+          domain: ['accounting', 'sales', 'purchases', 'contacts'],
+          companyId,
+        })
+      ) {
+        return;
+      }
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        setReportRefreshEpoch((v) => v + 1);
+      }, 220);
+    };
+    window.addEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    };
+  }, [companyId]);
 
   const backToReports = () => setView('reports');
   const backFromReportsHub = () => {
@@ -154,7 +187,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
     );
   }
   if (view === 'chart') {
-    return <ChartOfAccountsView onBack={() => setView('dashboard')} onAddAccount={() => setView('add-account')} companyId={companyId ?? null} />;
+    return <ChartOfAccountsView key={`chart-${reportRefreshEpoch}`} onBack={() => setView('dashboard')} onAddAccount={() => setView('add-account')} companyId={companyId ?? null} />;
   }
   if (view === 'add-account') {
     return <AddAccountForm companyId={companyId ?? null} onBack={() => setView('chart')} onSuccess={() => setView('chart')} />;
@@ -163,6 +196,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
   if (view === 'reports') {
     return (
       <ReportsHub
+        key={`reports-hub-${reportRefreshEpoch}`}
         onBack={backFromReportsHub}
         onOpenReport={openReport}
         companyId={companyId ?? null}
@@ -175,6 +209,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
   if (view === 'account-ledger') {
     return (
       <AccountLedgerReport
+        key={`account-ledger-${reportRefreshEpoch}`}
         onBack={() => {
           setLedgerInitialAccountId(null);
           backToReports();
@@ -189,6 +224,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
   if (view === 'customer-ledger') {
     return (
       <PartyLedgerReport
+        key={`customer-ledger-${reportRefreshEpoch}`}
         onBack={backToReports}
         kind="customer"
         companyId={companyId ?? null}
@@ -200,6 +236,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
   if (view === 'supplier-ledger') {
     return (
       <PartyLedgerReport
+        key={`supplier-ledger-${reportRefreshEpoch}`}
         onBack={backToReports}
         kind="supplier"
         companyId={companyId ?? null}
@@ -211,6 +248,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
   if (view === 'worker-ledger') {
     return (
       <PartyLedgerReport
+        key={`worker-ledger-${reportRefreshEpoch}`}
         onBack={backToReports}
         kind="worker"
         companyId={companyId ?? null}
@@ -220,11 +258,12 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
     );
   }
   if (view === 'daybook') {
-    return <DayBookReport onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+    return <DayBookReport key={`daybook-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
   }
   if (view === 'cash-summary') {
     return (
       <AccountSummaryReport
+        key={`cash-summary-${reportRefreshEpoch}`}
         onBack={backToReports}
         companyId={companyId ?? null}
         user={user}
@@ -237,6 +276,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
   if (view === 'bank-summary') {
     return (
       <AccountSummaryReport
+        key={`bank-summary-${reportRefreshEpoch}`}
         onBack={backToReports}
         companyId={companyId ?? null}
         user={user}
@@ -249,6 +289,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
   if (view === 'wallet-summary') {
     return (
       <AccountSummaryReport
+        key={`wallet-summary-${reportRefreshEpoch}`}
         onBack={backToReports}
         companyId={companyId ?? null}
         user={user}
@@ -259,31 +300,31 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
     );
   }
   if (view === 'payables') {
-    return <AgingReport onBack={backToReports} kind="payables" companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+    return <AgingReport key={`payables-${reportRefreshEpoch}`} onBack={backToReports} kind="payables" companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
   }
   if (view === 'receivables') {
-    return <AgingReport onBack={backToReports} kind="receivables" companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+    return <AgingReport key={`receivables-${reportRefreshEpoch}`} onBack={backToReports} kind="receivables" companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
   }
   if (view === 'sales-report') {
-    return <SalesReport onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+    return <SalesReport key={`sales-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
   }
   if (view === 'studio-sales') {
-    return <SalesReport onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} isStudio />;
+    return <SalesReport key={`studio-sales-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} isStudio />;
   }
   if (view === 'purchase-report') {
-    return <PurchaseReport onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+    return <PurchaseReport key={`purchase-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
   }
   if (view === 'expense-report') {
-    return <ExpenseReport onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+    return <ExpenseReport key={`expense-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
   }
   if (view === 'studio-report') {
-    return <StudioReport onBack={backToReports} companyId={companyId ?? null} user={user} />;
+    return <StudioReport key={`studio-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} user={user} />;
   }
   if (view === 'rental-report') {
-    return <RentalReport onBack={backToReports} companyId={companyId ?? null} user={user} />;
+    return <RentalReport key={`rental-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} user={user} />;
   }
   if (view === 'inventory-report') {
-    return <InventoryReport onBack={backToReports} companyId={companyId ?? null} user={user} />;
+    return <InventoryReport key={`inventory-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} user={user} />;
   }
 
   if (view === 'entry-detail' && selectedEntry) {
@@ -401,7 +442,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
             {canEditFromAccounts ? (
               <button
                 type="button"
-                onClick={() => setEditSheetOpen(true)}
+                onClick={() => setShowEditEntry(true)}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-[#4B5563] hover:bg-[#374151] rounded-lg text-white font-semibold text-sm mt-4"
               >
                 Edit Entry
@@ -437,14 +478,20 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
           </div>
         </div>
 
-        {editSheetOpen && companyId && (
-          <EntryEditSheet
-            entry={selectedEntry}
+        {showEditEntry && companyId && (
+          <EditTransactionSheet
+            open={true}
             companyId={companyId}
-            onClose={() => setEditSheetOpen(false)}
-            onSuccess={() => {
-              setEditSheetOpen(false);
-              // Optimistically set view back to dashboard to refresh
+            mode="journal"
+            targetId={selectedEntry.id}
+            onClose={() => setShowEditEntry(false)}
+            onSaved={() => {
+              setShowEditEntry(false);
+              dispatchMobileAccountingInvalidated({
+                companyId,
+                branchId: branch?.id ?? null,
+                reason: 'transaction-edited',
+              });
               setView('dashboard');
               setSelectedEntry(null);
             }}

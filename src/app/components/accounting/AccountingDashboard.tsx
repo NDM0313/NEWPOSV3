@@ -1280,8 +1280,13 @@ export const AccountingDashboard = () => {
                     </>
                   ) : (
                     <>
-                      <p className="text-gray-400 text-sm font-medium">No journal entries yet</p>
-                      <p className="text-gray-500 text-xs mt-1">Create a sale, record a payment, or add an entry to see transactions here.</p>
+                      <p className="text-gray-400 text-sm font-medium">No journal entries in this period</p>
+                      <p className="text-gray-500 text-xs mt-1 max-w-md mx-auto">
+                        The list follows the <span className="text-gray-400">date range in the top header</span>. Widen it (e.g. From
+                        start or Last 90 days) if you expect older data. Embedded previews can use different saved filters than your
+                        main browser.
+                      </p>
+                      <p className="text-gray-500 text-xs mt-2">If the range is already wide, create a sale, record a payment, or add a manual entry.</p>
                     </>
                   )}
                 </div>

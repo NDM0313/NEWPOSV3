@@ -51,6 +51,7 @@ import {
   Share2
 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { Checkbox } from '../ui/checkbox';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Badge } from '../ui/badge';
@@ -67,6 +68,7 @@ import { branchService } from '@/app/services/branchService';
 import { shipmentService, mapShipmentRowsToUi } from '@/app/services/shipmentService';
 import { productService } from '@/app/services/productService';
 import { documentNumberService } from '@/app/services/documentNumberService';
+import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { productCategoryService } from '@/app/services/productCategoryService';
 import { getStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
 import { uploadProductImages } from '@/app/utils/productImageUpload';
@@ -283,6 +285,8 @@ export const StudioSaleDetailNew = () => {
   const [createProductInvoiceImageFiles, setCreateProductInvoiceImageFiles] = useState<File[]>([]);
   const [createProductInvoiceCategories, setCreateProductInvoiceCategories] = useState<{ id: string; name: string }[]>([]);
   const [creatingProductAndInvoice, setCreatingProductAndInvoice] = useState(false);
+  /** After invoice line save, update studio_productions.design_name to match catalog product name */
+  const [syncReplicaTitleToProduct, setSyncReplicaTitleToProduct] = useState(true);
   // Product search state for the Create Product & Invoice modal
   const [productSearchQuery, setProductSearchQuery] = useState('');
   const [productSearchResults, setProductSearchResults] = useState<Array<{ id: string; name: string; category_id: string | null; category_name?: string; sku?: string; image_urls?: string[] }>>([]);
@@ -617,7 +621,11 @@ export const StudioSaleDetailNew = () => {
     const fabricCost = items.reduce((sum: number, item: any) => sum + (Number((item as any).total) || 0), 0);
     return {
       id: sale.id || '',
-      invoiceNo: sale.invoice_no || sale.invoiceNo || `STD-${sale.id?.slice(0, 8)}`,
+      invoiceNo:
+        getSaleDisplayNumber(sale) ||
+        sale.invoiceNo ||
+        sale.order_no ||
+        `STD-${sale.id?.slice(0, 8)}`,
       customerId: sale.customer_id || undefined,
       customerName: sale.customer_name || customer.name || 'Unknown',
       customerPhone: customer.phone || '',
@@ -797,30 +805,6 @@ export const StudioSaleDetailNew = () => {
     return () => window.removeEventListener('saleUpdated', handler as EventListener);
   }, [selectedStudioSaleId, loadStudioOrder]);
 
-  /** When every production stage is completed on the server, run the same finalization as "Final Complete" (sale status → final, ledger, inventory). */
-  const tryAutoFinalizeStudioProduction = useCallback(
-    async (prodId: string | null, saleIdForEvent: string | undefined) => {
-      if (!prodId || !saleIdForEvent) return;
-      try {
-        const prod = await studioProductionService.getProductionById(prodId);
-        if (!prod || prod.status === 'completed') return;
-        const stages = await studioProductionService.getStagesByProductionId(prodId);
-        if (stages.length === 0) return;
-        const allDone = stages.every((s: any) => String(s.status || '').toLowerCase() === 'completed');
-        if (!allDone) return;
-        await studioProductionService.changeProductionStatus(prodId, 'completed');
-        toast.success('Sale finalized for accounting.');
-        await loadStudioOrder();
-        window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: saleIdForEvent } }));
-        window.dispatchEvent(new CustomEvent('inventory-updated'));
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        if (import.meta.env?.DEV) console.warn('[StudioSaleDetail] auto-finalize:', msg);
-      }
-    },
-    [loadStudioOrder]
-  );
-
   /** Filter workers by task category: Dyeing → dyer/dyeing; Stitching → tailor/stitching-master/cutter; Handwork → hand-worker/helper/embroidery */
   const getWorkersForStageType = useCallback((stageType: 'dyer' | 'stitching' | 'handwork' | undefined, workerList: Worker[]): Worker[] => {
     if (!stageType) return workerList;
@@ -855,6 +839,10 @@ export const StudioSaleDetailNew = () => {
   }, [companyId]);
 
   useEffect(() => {
+    setSaleDetail(null);
+  }, [selectedStudioSaleId]);
+
+  useEffect(() => {
     loadStudioOrder();
     loadWorkers();
   }, [loadStudioOrder, loadWorkers]);
@@ -882,7 +870,6 @@ export const StudioSaleDetailNew = () => {
   const reloadProductionSteps = useCallback(async (): Promise<ProductionStep[] | undefined> => {
     if (!productionId || !saleDetail) return undefined;
     try {
-      await studioProductionService.syncWorkerLedgerEntriesForProduction(productionId);
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
       const stages = await studioProductionService.getStagesByProductionId(productionId);
       const stageIds = stages.map((s: any) => s.id);
@@ -1099,7 +1086,7 @@ export const StudioSaleDetailNew = () => {
       setSavingStage(true);
       try {
         await studioProductionService.reopenStage(stepId);
-        toast.success('Task reopened. Journal reversed, status reset to Pending.');
+        toast.success('Task reopened. Status reset (journal reversed if already posted).');
         await reloadProductionSteps();
         setReopenStepId(null);
         window.dispatchEvent(new CustomEvent('studio-production-saved'));
@@ -1148,7 +1135,7 @@ export const StudioSaleDetailNew = () => {
     setSavingStage(true);
     try {
       await studioProductionService.receiveStage(stageId, actual, receiveNotes.trim() || null, workerId || undefined);
-      toast.success('Received from worker. Stage completed & worker ledger updated.');
+      toast.success('Received from worker. Stage saved — worker accounting posts after studio invoice is generated.');
       setShowReceiveModal(null);
       setReceiveActualCost('');
       setReceiveNotes('');
@@ -1167,7 +1154,6 @@ export const StudioSaleDetailNew = () => {
       setPayChoiceAfterReceive({ stageId, workerId, workerName, amount: actual });
       // Auto-sync invoice if linked and still draft
       await autoSyncInvoiceAfterCostChange();
-      await tryAutoFinalizeStudioProduction(productionId, saleDetail?.id);
     } catch (e: any) {
       toast.error(e?.message || 'Receive failed');
     } finally {
@@ -1376,7 +1362,6 @@ export const StudioSaleDetailNew = () => {
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
       // Auto-sync invoice line if one is already linked and sale is still draft
       await autoSyncInvoiceAfterCostChange();
-      await tryAutoFinalizeStudioProduction(currentProductionId, saleDetail.id);
       if (!opts?.skipConfirmDialog) setShowSaveConfirmDialog(true);
     } catch (e: any) {
       const msg = e?.message ?? String(e);
@@ -1395,7 +1380,7 @@ export const StudioSaleDetailNew = () => {
     } finally {
       setSavingStage(false);
     }
-  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers, autoSyncInvoiceAfterCostChange, tryAutoFinalizeStudioProduction, profitMarginMode, profitMarginValue]);
+  }, [saleDetail, productionId, ensureProductionForSale, reloadProductionSteps, workers, autoSyncInvoiceAfterCostChange, profitMarginMode, profitMarginValue]);
 
   const handleSaveAndLeave = useCallback(async () => {
     const target = pendingLeaveTarget;
@@ -1774,6 +1759,18 @@ export const StudioSaleDetailNew = () => {
         }
       }
 
+      if (syncReplicaTitleToProduct && productionId && product.name?.trim()) {
+        try {
+          await supabase
+            .from('studio_productions')
+            .update({ design_name: product.name.trim(), updated_at: new Date().toISOString() })
+            .eq('id', productionId);
+          setSaleDetail((prev) => (prev ? { ...prev, studioProductName: product.name.trim() } : prev));
+        } catch (e) {
+          if (import.meta.env?.DEV) console.warn('[StudioSaleDetailNew] design_name sync:', e);
+        }
+      }
+
       // Reset all state
       setCreateProductInvoiceImageFiles([]);
       setProductSearchQuery('');
@@ -1804,12 +1801,50 @@ export const StudioSaleDetailNew = () => {
         } : prev;
       });
 
+      let productionFinalized = false;
+      if (productionId && saleDetail?.id) {
+        try {
+          const stagesAfterBill = await studioProductionService.getStagesByProductionId(productionId);
+          const allStagesDone =
+            stagesAfterBill.length > 0 &&
+            stagesAfterBill.every((s: any) => String(s.status || '').toLowerCase() === 'completed');
+          if (allStagesDone) {
+            await studioProductionService.changeProductionStatus(productionId, 'completed');
+            productionFinalized = true;
+            await loadStudioOrder();
+            window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: saleDetail.id } }));
+            window.dispatchEvent(new CustomEvent('inventory-updated'));
+          }
+        } catch (finErr: unknown) {
+          const msg = finErr instanceof Error ? finErr.message : String(finErr);
+          toast.error(msg || 'Could not finalize production after invoice.');
+          console.warn('[StudioSaleDetailNew] finalize after bill:', finErr);
+        }
+      }
+
+      try {
+        const { canPostAccountingForSaleStatus } = await import('@/app/lib/postingStatusGate');
+        const { rebuildSaleDocumentAccounting } = await import('@/app/services/documentPostingEngine');
+        const { data: stRow } = await supabase.from('sales').select('status').eq('id', saleDetail.id).maybeSingle();
+        const st = (stRow as { status?: string } | null)?.status;
+        if (st && canPostAccountingForSaleStatus(st)) {
+          await rebuildSaleDocumentAccounting(saleDetail.id);
+        }
+      } catch (rebuildErr) {
+        console.warn('[StudioSaleDetailNew] rebuild sale document JE (non-fatal):', rebuildErr);
+      }
+
       const wasUpdate = !!generatedInvoiceItemId || false;
-      const successMsg = productUseMode === 'variation'
+      let successMsg = productUseMode === 'variation'
         ? `Variation ${invoiceSku} ${wasUpdate ? 'updated' : 'created'} and invoice synced.`
         : selectedExistingProduct
           ? wasUpdate ? 'Invoice line updated with selected product.' : 'Invoice updated with existing product.'
           : wasUpdate ? 'Invoice line updated with new product.' : 'Product created and invoice updated.';
+      if (productionFinalized) {
+        successMsg = wasUpdate
+          ? 'Invoice updated — production finalized (worker costs, inventory, accounting).'
+          : 'Product and invoice saved — production finalized (worker costs, inventory, accounting).';
+      }
       toast.success(successMsg);
       if (setOpenSaleIdForView) setOpenSaleIdForView(saleDetail.id);
       setCurrentView('sales');
@@ -2551,10 +2586,16 @@ export const StudioSaleDetailNew = () => {
             {productionId && headerStatus !== 'Completed' && (
               <Button
                 size="sm"
-                disabled={!allTasksCompleted || savingStage}
-                title={!allTasksCompleted ? 'Complete all production stages first' : undefined}
+                disabled={!allTasksCompleted || savingStage || !invoiceLinked}
+                title={
+                  !invoiceLinked
+                    ? 'Generate studio invoice (Product & Invoice) first — then finalize production and accounting.'
+                    : !allTasksCompleted
+                      ? 'Complete all production stages first'
+                      : undefined
+                }
                 onClick={async () => {
-                  if (!allTasksCompleted || !productionId) return;
+                  if (!allTasksCompleted || !productionId || !invoiceLinked) return;
                   setSavingStage(true);
                   try {
                     await studioProductionService.changeProductionStatus(productionId, 'completed');
@@ -2649,7 +2690,26 @@ export const StudioSaleDetailNew = () => {
                             }
                           }
                         } catch { /* silently ignore — form stays empty */ }
+                      } else {
+                        const seed = saleDetail.studioProductName?.trim();
+                        if (seed && companyId) {
+                          setProductSearchQuery(seed);
+                          setCreateProductInvoiceForm((prev) => ({ ...prev, productName: seed }));
+                          void productService.searchStudioProducts(companyId, seed).then((results) => {
+                            setProductSearchResults(
+                              (results || []).map((p: any) => ({
+                                id: p.id,
+                                name: p.name,
+                                category_id: p.category_id ?? null,
+                                category_name: p.category_name ?? '',
+                                sku: p.sku ?? '',
+                                image_urls: p.image_urls ?? [],
+                              }))
+                            );
+                          });
+                        }
                       }
+                      setSyncReplicaTitleToProduct(true);
                       setShowCreateProductInvoiceModal(true);
                     }}
                   >
@@ -2879,6 +2939,14 @@ export const StudioSaleDetailNew = () => {
                                         {stepLocked ? "🔒 Locked - Complete previous step" : "Not assigned"}
                                       </p>
                                     )}
+                                    {step.notes?.trim() ? (
+                                      <p
+                                        className="text-xs text-gray-400 mt-2 leading-snug line-clamp-2 whitespace-pre-wrap"
+                                        title={step.notes}
+                                      >
+                                        {step.notes}
+                                      </p>
+                                    ) : null}
                                   </div>
 
                                   {/* Action Buttons */}
@@ -2905,7 +2973,7 @@ export const StudioSaleDetailNew = () => {
                                             return;
                                           }
                                           setReceiveActualCost(String(step.workerCost || ''));
-                                          setReceiveNotes(step.notes || '');
+                                          setReceiveNotes('');
                                           setShowReceiveModal(step.id);
                                         }}
                                         className="text-xs h-8 bg-green-600 hover:bg-green-700"
@@ -4031,8 +4099,8 @@ export const StudioSaleDetailNew = () => {
               {/* ── Step indicators ── */}
               <div className="px-5 pt-3 pb-2 flex items-center gap-2 shrink-0 border-b border-gray-800/60">
                 {[
-                  { label: 'Search', done: !!selectedExistingProduct || (productSearchQuery.trim().length >= 2 && !showProductDropdown) },
-                  { label: 'Choose Mode', done: !!productUseMode || (!selectedExistingProduct && productSearchQuery.trim().length >= 2) },
+                  { label: 'Search', done: !!selectedExistingProduct || (productSearchQuery.trim().length >= 1 && !showProductDropdown) },
+                  { label: 'Choose Mode', done: !!productUseMode || (!selectedExistingProduct && productSearchQuery.trim().length >= 1) },
                   { label: 'Set Price', done: parseFloat(createProductInvoiceForm.salePrice) > 0 },
                 ].map((step, i) => (
                   <React.Fragment key={step.label}>
@@ -4059,12 +4127,15 @@ export const StudioSaleDetailNew = () => {
                         ✓ Existing product
                       </span>
                     )}
-                    {!selectedExistingProduct && productSearchQuery.trim().length >= 2 && !showProductDropdown && (
+                    {!selectedExistingProduct && productSearchQuery.trim().length >= 1 && !showProductDropdown && (
                       <span className="text-[10px] bg-amber-600/20 text-amber-400 border border-amber-600/30 rounded px-1.5 py-0.5">
                         + Will create new
                       </span>
                     )}
                   </Label>
+                  {saleDetail.studioProductName?.trim() ? (
+                    <p className="text-[10px] text-gray-500 mt-1">Prefilled from replica title — edit before creating.</p>
+                  ) : null}
                   <div className="relative mt-1">
                     <Input
                       className={cn(
@@ -4405,6 +4476,18 @@ export const StudioSaleDetailNew = () => {
                       : <>New product will be created with code <strong className="text-white">STD-PROD-XXXXX</strong> and linked to <strong className="text-white">{saleDetail.invoiceNo}</strong>.</>
                   }
                 </p>
+
+                <label className="flex items-start gap-2.5 cursor-pointer text-[11px] text-gray-400">
+                  <Checkbox
+                    checked={syncReplicaTitleToProduct}
+                    onCheckedChange={(v) => setSyncReplicaTitleToProduct(v === true)}
+                    className="mt-0.5 border-gray-600"
+                  />
+                  <span>
+                    Update replica title on this order to match the catalog product name after save (keeps studio card label in
+                    sync).
+                  </span>
+                </label>
               </div>
 
               {/* ── Footer ── */}
@@ -4710,7 +4793,10 @@ export const StudioSaleDetailNew = () => {
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
             <h3 className="text-lg font-bold text-white mb-1">Receive from Worker</h3>
-            <p className="text-sm text-gray-400 mb-4">Enter actual cost (Rs) and remarks. On confirm: stage → Completed, ledger entry (unpaid) created. No payment until you choose Pay Now or Pay Later.</p>
+            <p className="text-sm text-gray-400 mb-4">
+              Enter actual cost (Rs) and optional remarks for this receive only. Remarks are appended to stage notes as{' '}
+              <span className="text-gray-300">[Receive]:</span>. Stage is marked completed operationally; worker journal entries post after you generate the studio invoice (bill).
+            </p>
             <div className="space-y-4">
               <div>
                 <label className="text-sm text-gray-400 mb-1 block">Actual Cost (Rs) *</label>
@@ -4756,6 +4842,13 @@ export const StudioSaleDetailNew = () => {
             <p className="text-sm text-gray-400 mb-4">
               Is stage ka kaam receive ho gaya hai. Kya aap abhi worker ko payment karna chahte hain?
             </p>
+            {(!invoiceLinked || !allTasksCompleted) && (
+              <p className="text-xs text-amber-400/90 mb-4">
+                {!invoiceLinked
+                  ? 'Studio invoice (bill) generate karein aur production finalize ho — phir worker ko Pay Now se ada kar sakte hain.'
+                  : 'Tamam stages complete hon — phir bill ke baad worker ledger par payment.'}
+              </p>
+            )}
             <div className="flex gap-3 mt-6">
               <Button
                 variant="outline"
@@ -4768,8 +4861,16 @@ export const StudioSaleDetailNew = () => {
                 No, Pay Later
               </Button>
               <Button
-                className="flex-1 bg-green-600 hover:bg-green-700"
-                onClick={() => setShowWorkerPaymentDialog(true)}
+                className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={!invoiceLinked || !allTasksCompleted}
+                title={
+                  !invoiceLinked || !allTasksCompleted
+                    ? 'Pehle studio invoice + saari stages complete / production finalize — tab worker payment ledger par.'
+                    : undefined
+                }
+                onClick={() =>
+                  invoiceLinked && allTasksCompleted && setShowWorkerPaymentDialog(true)
+                }
               >
                 Yes, Pay Now
               </Button>

@@ -672,7 +672,9 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
                     <p className="text-xs text-[#9CA3AF]">Qty: {item.quantity}</p>
                   </div>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9.]*"
                     min="0"
                     step="1"
                     value={lineRateMap[item.key] ?? String(item.product.rentPricePerDay || 0)}
@@ -692,8 +694,9 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           <div>
             <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Extra Expenses (Rs.)</label>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
+              pattern="[0-9.]*"
               min="0"
               step="1"
               value={extraExpenseAmount}
@@ -789,8 +792,9 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           <div>
             <label className="block text-sm text-[#9CA3AF] mb-2">Commission %</label>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
+              pattern="[0-9.]*"
               min="0"
               max="100"
               step="0.01"
@@ -856,7 +860,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           <div>
             <label className="block text-sm text-[#9CA3AF] mb-2">Advance (Rs.) — optional</label>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
               pattern="[0-9.]*"
               min="0"

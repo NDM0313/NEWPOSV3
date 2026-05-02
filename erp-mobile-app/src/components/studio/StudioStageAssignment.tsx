@@ -312,7 +312,7 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9CA3AF]">Rs.</span>
                   <input
-                    type="number"
+                    type="text"
                     inputMode="decimal"
                     pattern="[0-9.]*"
                     value={internalCost}
@@ -354,7 +354,7 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9CA3AF]">Rs.</span>
                       <input
-                        type="number"
+                        type="text"
                         inputMode="decimal"
                         pattern="[0-9.]*"
                         value={customerCharge}

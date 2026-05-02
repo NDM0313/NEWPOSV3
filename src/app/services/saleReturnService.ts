@@ -656,7 +656,7 @@ export const saleReturnService = {
       await supabase.rpc('recalc_sale_payment_totals', { p_sale_id: saleReturn.original_sale_id });
     }
 
-    // Post inventory/COGS reversal JE: Dr Inventory (1200) / Cr COGS (5000).
+    // Post inventory/COGS reversal JE: Dr Inventory (1200) / Cr COGS - Inventory (5010).
     // This is the second half of the complete sale-return double-entry.
     // The first half (Dr Sales Revenue / Cr AR or Cash/Bank) is handled separately
     // by accounting.recordSaleReturn() called from the UI after finalize.

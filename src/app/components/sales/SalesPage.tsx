@@ -2278,10 +2278,21 @@ export const SalesPage = () => {
                     <p className="text-gray-400 text-sm">Loading sales...</p>
                   </div>
                 ) : paginatedSales.length === 0 ? (
-                  <div className="py-12 text-center">
+                  <div className="py-12 text-center px-4">
                     <ShoppingCart size={48} className="mx-auto text-gray-600 mb-3" />
                     <p className="text-gray-400 text-sm">No sales found</p>
-                    <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
+                    {sales.length > 0 ? (
+                      <p className="text-gray-500 text-xs mt-2 max-w-lg mx-auto">
+                        {totalFilteredCount === 0
+                          ? 'This company has sales, but none match the current filters. Widen the header date range, set branch to All where applicable, or clear search and column filters.'
+                          : 'Try another page or adjust filters.'}
+                      </p>
+                    ) : (
+                      <p className="text-gray-600 text-xs mt-1 max-w-lg mx-auto">
+                        Try adjusting search or filters. If you use another browser or an embedded preview, check the{' '}
+                        <span className="text-gray-400">header date range</span> — it is saved per browser profile.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   paginatedSales.map((sale) => (

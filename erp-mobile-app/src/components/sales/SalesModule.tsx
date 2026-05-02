@@ -16,6 +16,7 @@ import { StudioDetailsStep, type StudioDetailsData } from './StudioDetailsStep';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 import { getMobilePrinterSettings } from '../../api/settings';
 import { formatPlainReceiptLines, printThermalReceiptLines } from '../../services/thermalPrint';
+import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 
 export type SalesStep = 'home' | 'customer' | 'products' | 'studioDetails' | 'summary' | 'payment' | 'confirmation';
 
@@ -87,6 +88,7 @@ export function SalesModule({
   const [createdInvoiceNo, setCreatedInvoiceNo] = useState<string | null>(null);
   const [createdSaleId, setCreatedSaleId] = useState<string | null>(null);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
+  const { runSingleFlight, isRunning: isPaymentSubmitRunning } = useSingleFlightAction();
   const todayStr = () => new Date().toISOString().split('T')[0];
   const todayPlus7Str = () => {
     const d = new Date();
@@ -148,6 +150,7 @@ export function SalesModule({
     setStep('payment');
   };
   const handlePaymentComplete = async (result: { paymentMethod: string; paidAmount?: number; dueAmount?: number; accountId?: string | null; accountName?: string | null }) => {
+    await runSingleFlight(async () => {
     if (!companyId || !user?.id) {
       setSaveError('Company or user missing.');
       return;
@@ -248,6 +251,7 @@ export function SalesModule({
     } finally {
       setSaving(false);
     }
+  });
   };
   const handleNewSaleFromConfirmation = () => {
     setCreatedInvoiceNo(null);
@@ -427,7 +431,7 @@ export function SalesModule({
               totalAmount={saleData.total}
               companyId={companyId}
               onComplete={handlePaymentComplete}
-              saving={saving}
+              saving={saving || isPaymentSubmitRunning}
               saveError={saveError}
               hasCustomer={!!saleData.customer?.id}
             />

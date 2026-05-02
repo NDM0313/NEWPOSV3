@@ -46,7 +46,7 @@ export const DEFAULT_COA_SEED_JSON = {
     },
     expenses: {
       '6090_OperatingExpenses_group': {
-        children: ['5000_CostOfProduction', '6100_OperatingExpense', '6110_SalaryExpense', '6120_MarketingExpense'],
+        children: ['5000_CostOfProduction', '5010_COGSInventory', '6100_OperatingExpense', '6110_SalaryExpense', '6120_MarketingExpense'],
       },
     },
   },

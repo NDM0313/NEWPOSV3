@@ -73,6 +73,11 @@ import {
   type PurchaseLifecycleAction,
 } from '@/app/components/purchases/PurchaseLifecycleMenuBlock';
 import { isPurchaseNonPostedCommercial } from '@/app/lib/postingStatusGate';
+import {
+  DATA_INVALIDATED_EVENT,
+  shouldAcceptInvalidation,
+  type DataInvalidationDetail,
+} from '@/app/lib/dataInvalidationBus';
 
 type PurchaseStatus = 'received' | 'ordered' | 'pending' | 'final' | 'draft' | 'cancelled';
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
@@ -601,6 +606,34 @@ export const PurchasesPage = () => {
       window.removeEventListener('paymentAdded', handlePaymentAdded);
     };
   }, [loadPurchases, refreshPurchases]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onInvalidated = (event: Event) => {
+      const detail = (event as CustomEvent<DataInvalidationDetail>).detail;
+      if (
+        !shouldAcceptInvalidation(detail, {
+          domain: ['purchases', 'accounting', 'contacts'],
+          companyId,
+          branchId: branchId === 'all' ? null : branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void refreshPurchases();
+        void loadPurchases();
+      }, 220);
+    };
+    window.addEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    };
+  }, [branchId, companyId, loadPurchases, refreshPurchases]);
   
   // Load purchase returns list when Returns tab is active
   useEffect(() => {

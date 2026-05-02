@@ -384,6 +384,58 @@ async function createProductionCostReversalEntry(params: {
   return (result as any)?.id ?? null;
 }
 
+/**
+ * Post-bill backflush: for each completed stage with cost and worker, create Dr 5000 / Cr payable JE + worker_ledger
+ * only when `journal_entry_id` is NULL. Stages that already have a posted JE (legacy mid-flight) are skipped to avoid double-posting.
+ */
+async function postPendingStageCostsAndLedgersForProduction(
+  productionId: string,
+  ensureWorkerLedger: (stageId: string, cost: number, workerId: string) => Promise<void>,
+  performedBy?: string | null
+): Promise<void> {
+  const { data: prodRow, error: prodErr } = await supabase
+    .from('studio_productions')
+    .select('id, company_id, branch_id, production_no, sale_id')
+    .eq('id', productionId)
+    .single();
+  if (prodErr || !prodRow) throw new Error('Production not found');
+  const production = prodRow as any;
+  const { data: stageRows, error: stErr } = await supabase
+    .from('studio_production_stages')
+    .select('id, status, cost, assigned_worker_id, stage_type, journal_entry_id')
+    .eq('production_id', productionId);
+  if (stErr) throw stErr;
+  for (const s of (stageRows || []) as any[]) {
+    if (String(s.status || '').toLowerCase() !== 'completed') continue;
+    const cost = Number(s.cost) || 0;
+    const workerId = s.assigned_worker_id as string | null;
+    if (cost <= 0 || !workerId) continue;
+    if (s.journal_entry_id) continue;
+    const stageId = s.id as string;
+    const journalId = await createProductionCostJournalEntry({
+      companyId: production.company_id,
+      branchId: production.branch_id || null,
+      stageId,
+      workerId,
+      productionNo: production.production_no,
+      saleId: production.sale_id ?? null,
+      amount: cost,
+      stageType: s.stage_type || 'stage',
+      performedBy: performedBy ?? null,
+    });
+    if (!journalId) {
+      console.warn('[studioProductionService] postPending: could not create JE for stage', stageId);
+      continue;
+    }
+    const { error: upErr } = await supabase
+      .from('studio_production_stages')
+      .update({ journal_entry_id: journalId })
+      .eq('id', stageId);
+    if (upErr) throw new Error(`Failed to link journal to stage: ${upErr.message}`);
+    await ensureWorkerLedger(stageId, cost, workerId);
+  }
+}
+
 /** Backfill: create studio_production + stages for studio sales that don't have one (so they show on Studio dashboard). Exported for call from StudioDashboardNew. */
 export async function ensureStudioProductionsForCompany(companyId: string): Promise<void> {
   try {
@@ -882,6 +934,17 @@ export const studioProductionService = {
       if (oldStatus === 'cancelled') throw new Error('Cancelled production cannot be completed');
       const saleId = existing.sale_id;
       if (!saleId) throw new Error('Production must be linked to a sale to complete. Link this production to a sale first.');
+      if (!(existing as any).generated_invoice_item_id) {
+        throw new Error(
+          'Generate the studio invoice (Product & Invoice) before completing production. Worker costs and inventory post after the bill is linked.'
+        );
+      }
+
+      await postPendingStageCostsAndLedgersForProduction(
+        id,
+        this.ensureWorkerLedgerEntryForStage.bind(this),
+        performedBy ?? null
+      );
 
       const stages = await this.getStagesByProductionId(id);
       let studioCharges = 0;
@@ -1412,20 +1475,11 @@ export const studioProductionService = {
 
   /** Update stage (worker, cost, status, etc.). Completed stages: only notes allowed (cost lock). */
   /**
-   * Sync worker_ledger_entries for a production: create missing entries for completed stages.
-   * Call when loading production to fix stages that were completed via Save (not Receive).
+   * Legacy hook (pre–post-bill): used to backfill worker_ledger from completed stages.
+   * Worker ledger rows are created only after studio invoice + production completion (backflush). No-op.
    */
-  async syncWorkerLedgerEntriesForProduction(productionId: string): Promise<void> {
-    const { data: stages } = await supabase
-      .from('studio_production_stages')
-      .select('id, cost, assigned_worker_id, status')
-      .eq('production_id', productionId);
-    if (!stages?.length) return;
-    for (const s of stages as any[]) {
-      if (s.status === 'completed' && s.assigned_worker_id && Number(s.cost || 0) > 0) {
-        await this.ensureWorkerLedgerEntryForStage(s.id, Number(s.cost), s.assigned_worker_id);
-      }
-    }
+  async syncWorkerLedgerEntriesForProduction(_productionId: string): Promise<void> {
+    return;
   },
 
   /**
@@ -1536,35 +1590,18 @@ export const studioProductionService = {
       }
     }
 
-    // PHASE 3: When marking completed – create journal FIRST (transactional integrity), then single update. No completed stage without accounting entry.
+    // Post-bill model: completing a stage is operational only (cost/worker). JE + worker_ledger post when bill finalizes (see postPendingStageCostsAndLedgersForProduction).
     if (updates.status === 'completed') {
       const cost = Number(updates.cost ?? 0) || 0;
       const workerId = updates.assigned_worker_id ?? null;
       if (cost > 0 && !workerId)
         throw new Error('Assign a worker before marking this stage complete (required for accounting).');
-      const { data: prodRow } = await supabase.from('studio_productions').select('id, company_id, branch_id, production_no, sale_id').eq('id', (existingRow as any).production_id).single();
-      if (!prodRow) throw new Error('Production not found');
-      const prod = prodRow as any;
-      let journalId: string | null = null;
-      if (workerId && cost > 0) {
-        journalId = await createProductionCostJournalEntry({
-          companyId: prod.company_id,
-          branchId: prod.branch_id || null,
-          stageId,
-          workerId,
-          productionNo: prod.production_no,
-          saleId: prod.sale_id ?? null,
-          amount: cost,
-          stageType: (existingRow as any).stage_type || 'stage',
-        });
-        if (!journalId) throw new Error('Failed to create production cost journal entry. Stage not updated.');
-      }
       const completedAt = updates.completed_at ?? new Date().toISOString();
       const payload: Record<string, unknown> = {
         status: 'completed',
         completed_at: completedAt,
         cost,
-        journal_entry_id: journalId,
+        journal_entry_id: null,
         notes: updates.notes ?? null,
         ...(updates.assigned_worker_id !== undefined ? { assigned_worker_id: updates.assigned_worker_id } : {}),
       };
@@ -1577,7 +1614,6 @@ export const studioProductionService = {
       if (error) throw error;
       const result = updated as StudioProductionStage;
       await resolveStageWorker(result);
-      if (workerId && cost > 0) await this.ensureWorkerLedgerEntryForStage(stageId, cost, workerId);
       return result;
     }
 
@@ -1664,9 +1700,18 @@ export const studioProductionService = {
         status: 'completed',
         cost: actualCost,
         completed_at: new Date().toISOString(),
-        notes: notes ?? null,
         assigned_worker_id: effectiveWorkerId,
       });
+      const frag = (notes ?? '').trim();
+      if (frag) {
+        const { error: fragErr } = await supabase.rpc('rpc_append_receive_notes_fragment', {
+          p_stage_id: stageId,
+          p_notes: frag,
+        });
+        if (fragErr && import.meta.env?.DEV) {
+          console.warn('[studioProductionService] rpc_append_receive_notes_fragment:', fragErr.message);
+        }
+      }
       let ledgerEntryId: string | null = null;
       const { data: ledgerRow } = await supabase
         .from('worker_ledger_entries')
@@ -1713,7 +1758,7 @@ export const studioProductionService = {
         .single();
       if (!prodRow) throw new Error('Production not found');
       const production = prodRow as any;
-      if (cost > 0) {
+      if (cost > 0 && stage.journal_entry_id) {
         await createProductionCostReversalEntry({
           companyId: production.company_id,
           branchId: production.branch_id || null,
@@ -1724,20 +1769,17 @@ export const studioProductionService = {
           stageType: stage.stage_type || 'stage',
           performedBy: _performedBy,
         });
-        const { data: ledgerRow } = await supabase
-          .from('worker_ledger_entries')
-          .select('id, worker_id, amount, status')
-          .eq('reference_type', 'studio_production_stage')
-          .eq('reference_id', stageId)
-          .limit(1)
-          .maybeSingle();
-        if (ledgerRow) {
-          const entry = ledgerRow as { id: string; worker_id: string; amount: number; status?: string };
-          await supabase.from('worker_ledger_entries').delete().eq('id', entry.id);
-          if (entry.status !== 'paid' && entry.worker_id) {
-            // P1-3: balance is derived from GL — do not write workers.current_balance
-          }
-        }
+      }
+      const { data: ledgerRow } = await supabase
+        .from('worker_ledger_entries')
+        .select('id, worker_id, amount, status')
+        .eq('reference_type', 'studio_production_stage')
+        .eq('reference_id', stageId)
+        .limit(1)
+        .maybeSingle();
+      if (ledgerRow) {
+        const entry = ledgerRow as { id: string; worker_id: string; amount: number; status?: string };
+        await supabase.from('worker_ledger_entries').delete().eq('id', entry.id);
       }
       const { data: updated, error: updateErr } = await supabase
         .from('studio_production_stages')
@@ -1771,7 +1813,7 @@ export const studioProductionService = {
     if (newCost < 0) throw new Error('Cost cannot be negative.');
     const { data: stageRow, error: stageErr } = await supabase
       .from('studio_production_stages')
-      .select('id, production_id, status, cost, assigned_worker_id, stage_type')
+      .select('id, production_id, status, cost, assigned_worker_id, stage_type, journal_entry_id')
       .eq('id', stageId)
       .single();
     if (stageErr || !stageRow) throw new Error('Stage not found');
@@ -1783,6 +1825,27 @@ export const studioProductionService = {
       if (d) {
         await resolveStageWorker(d);
         return d as StudioProductionStage;
+      }
+      throw new Error('Stage not found');
+    }
+    if (!stage.journal_entry_id) {
+      const { data: upd, error: upCostErr } = await supabase
+        .from('studio_production_stages')
+        .update({ cost: newCost })
+        .eq('id', stageId)
+        .select('*')
+        .single();
+      if (upCostErr) throw upCostErr;
+      await logAction(
+        stage.production_id,
+        'stage_cost_changed',
+        { stage_id: stageId, old_cost: oldCost },
+        { stage_id: stageId, new_cost: newCost },
+        performedBy ?? null
+      ).then(({ error: logErr }) => { if (logErr) console.warn('[studio_production_logs]', logErr); });
+      if (upd) {
+        await resolveStageWorker(upd);
+        return upd as StudioProductionStage;
       }
       throw new Error('Stage not found');
     }
@@ -1852,7 +1915,11 @@ export const studioProductionService = {
       .eq('reference_id', stageId)
       .limit(1)
       .maybeSingle();
-    if (ledgerFindErr || !ledgerRow) throw new Error('Ledger entry for this stage not found');
+    if (ledgerFindErr || !ledgerRow) {
+      throw new Error(
+        'No worker payable for this stage yet. Generate the studio invoice and complete production (or use Final Complete) so costs post to the ledger, then pay the worker.'
+      );
+    }
     const entry = ledgerRow as { id: string; worker_id: string; amount: number; status?: string };
     if (entry.status === 'paid') return; // already paid
     const amount = Number(entry.amount) || 0;

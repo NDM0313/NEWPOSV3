@@ -29,6 +29,12 @@ if (typeof window !== 'undefined') {
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ||
                         import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
                         import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY || '').trim();
+const UPSTREAM_DEMO_ANON_SIGNATURE = 'uPWERzbv9FtmRpl0cBPDPox08YhjW_zTOXtwYNLWmuo';
+function isDemoSupabaseAnonKey(key: string): boolean {
+  const parts = key.split('.');
+  if (parts.length !== 3) return false;
+  return parts[2] === UPSTREAM_DEMO_ANON_SIGNATURE;
+}
 
 /** Decode JWT payload `iss` without verifying signature (client-side hint only). */
 function decodeJwtIss(token: string): string | null {
@@ -62,6 +68,25 @@ if (!supabaseUrl || !isValidSupabaseUrl || !supabaseAnonKey) {
   throw new Error(msg);
 }
 
+const isDemoAnonKey = isDemoSupabaseAnonKey(supabaseAnonKey);
+const isPlaceholderUrl = /placeholder/i.test(supabaseUrl);
+const isRealtimeDisabledByEnv = import.meta.env.VITE_DISABLE_REALTIME === 'true';
+const canUseRealtime = !isPlaceholderUrl && !isDemoAnonKey && !isRealtimeDisabledByEnv;
+
+export const webRealtimeHealth = {
+  configured: Boolean(supabaseUrl && supabaseAnonKey && !isPlaceholderUrl),
+  canUseRealtime,
+  reason: !supabaseUrl || !isValidSupabaseUrl || !supabaseAnonKey
+    ? 'missing-env'
+    : isPlaceholderUrl
+      ? 'placeholder-url'
+      : isDemoAnonKey
+        ? 'demo-anon-key'
+        : isRealtimeDisabledByEnv
+          ? 'disabled-by-env'
+          : 'ok',
+} as const;
+
 // Self-hosted stack / local dev: demo anon key → Realtime WS and auth refresh often fail while REST via proxy may work.
 if (typeof window !== 'undefined' && isPlaceholderSupabaseAnonKey) {
   const msg =
@@ -71,6 +96,35 @@ if (typeof window !== 'undefined' && isPlaceholderSupabaseAnonKey) {
   } else if (import.meta.env.DEV) {
     console.warn(msg);
   }
+}
+
+// Self-hosted stack: if the SPA was built without a real project anon key, JWT iss stays "supabase-demo"
+// → realtime WebSocket and /auth/v1/token refresh often fail with 502/HTML while REST may still work.
+if (typeof window !== 'undefined' && /dincouture\.pk$/i.test(window.location.hostname)) {
+  try {
+    const parts = supabaseAnonKey.split('.');
+    if (parts.length === 3) {
+      const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const pad = (4 - (b64.length % 4)) % 4;
+      const json = atob(b64 + '='.repeat(pad));
+      const payload = JSON.parse(json) as { iss?: string };
+      if (payload?.iss === 'supabase-demo') {
+        console.warn(
+          '[Supabase] VITE_SUPABASE_ANON_KEY decodes to iss=supabase-demo. Rebuild the ERP image with your project anon JWT; otherwise Realtime and auth refresh will fail on erp.dincouture.pk.'
+        );
+      }
+    }
+  } catch {
+    /* ignore decode errors */
+  }
+}
+if (typeof window !== 'undefined' && isDemoAnonKey) {
+  console.warn(
+    '[Supabase] Realtime disabled: anon key matches public demo signature. Rebuild with real VITE_SUPABASE_ANON_KEY from VPS .env.production.'
+  );
+}
+if (import.meta.env?.DEV) {
+  console.info('[Supabase] Realtime health:', webRealtimeHealth);
 }
 
 // ============================================

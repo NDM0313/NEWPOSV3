@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import * as accountsApi from '../../api/accounts';
 import { ACCOUNT_TYPES } from '../../api/accounts';
+import { dispatchMobileAccountingInvalidated } from '../../lib/dataInvalidationBus';
 
 type AccountTypeValue = (typeof ACCOUNT_TYPES)[number]['value'];
 
@@ -44,7 +45,13 @@ export function AddAccountForm({ onBack, onSuccess, companyId }: AddAccountFormP
       setError(err);
       return;
     }
-    if (data) onSuccess();
+    if (data) {
+      dispatchMobileAccountingInvalidated({
+        companyId,
+        reason: 'account-created',
+      });
+      onSuccess();
+    }
   };
 
   return (

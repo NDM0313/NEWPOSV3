@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Banknote, Building2, Smartphone, CreditCard, AlertCircle, Loader2, Receipt } from 'lucide-react';
 import { getPaymentAccounts } from '../../api/accounts';
+import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 
 export interface PaymentResult {
   paymentMethod: string;
@@ -53,6 +54,8 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
   const [allAccounts, setAllAccounts] = useState<Account[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [accountsError, setAccountsError] = useState<string | null>(null);
+  const { runSingleFlight, isRunning } = useSingleFlightAction();
+  const isBusy = Boolean(saving) || isRunning;
 
   useEffect(() => {
     if (!companyId) {
@@ -76,22 +79,23 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
   };
 
   const handleMethodSelect = async (method: PaymentMethod) => {
+    if (isBusy) return;
     setPaymentMethod(method);
     setSelectedAccount(null);
     if (method === 'credit') {
-      try {
-        await Promise.resolve(
-          onComplete({
+      await runSingleFlight(async () => {
+        try {
+          await onComplete({
             paymentMethod: 'Credit',
             paidAmount: 0,
             dueAmount: totalAmount,
             accountId: null,
             accountName: null,
-          })
-        );
-      } catch (e) {
-        console.error('[PaymentDialog] Credit onComplete failed:', e);
-      }
+          });
+        } catch (e) {
+          console.error('[PaymentDialog] Credit onComplete failed:', e);
+        }
+      });
       return;
     }
     setStep(2);
@@ -103,6 +107,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
   };
 
   const handleProceedToAmount = () => {
+    if (isBusy) return;
     if (!selectedAccount) {
       setShowAccountError(true);
       return;
@@ -123,6 +128,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
   };
 
   const handleConfirmPayment = async () => {
+    if (isBusy) return;
     if (!selectedAccount) {
       setShowAccountError(true);
       return;
@@ -149,7 +155,9 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
       accountId: paymentMode === 'skip' ? null : selectedAccount?.id ?? null,
       accountName: paymentMode === 'skip' ? null : selectedAccount?.name ?? null,
     };
-    await onComplete(result);
+    await runSingleFlight(async () => {
+      await onComplete(result);
+    });
   };
 
   // Round-figure quick amounts (500, 1K, 2K, 5K, …) adjusted to due/total; max 6 buttons
@@ -192,7 +200,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
                 else if (step === 2) setStep(1);
                 else setStep(2);
               }}
-              disabled={saving}
+              disabled={isBusy}
               className="p-2 hover:bg-[#374151] rounded-lg transition-colors active:scale-95 text-white"
             >
               <ArrowLeft className="w-5 h-5" />
@@ -202,11 +210,11 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
           {step === 3 && (
             <button
               onClick={handleConfirmPayment}
-              disabled={saving}
+              disabled={isBusy}
               className="px-4 py-2 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] rounded-lg font-medium transition-colors active:scale-95 text-white flex items-center gap-2"
             >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              {saving ? 'Posting...' : 'Post'}
+              {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {isBusy ? 'Posting...' : 'Post'}
             </button>
           )}
         </div>
@@ -247,9 +255,9 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
 
           <button
             type="button"
-            disabled={saving}
+            disabled={isBusy}
             onClick={() => void handleMethodSelect('cash')}
-            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left disabled:opacity-50 disabled:pointer-events-none"
+            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left disabled:opacity-60 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-[#10B981]/10 rounded-xl flex items-center justify-center">
@@ -264,9 +272,9 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
 
           <button
             type="button"
-            disabled={saving}
+            disabled={isBusy}
             onClick={() => void handleMethodSelect('bank')}
-            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left disabled:opacity-50 disabled:pointer-events-none"
+            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left disabled:opacity-60 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-[#3B82F6]/10 rounded-xl flex items-center justify-center">
@@ -281,9 +289,9 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
 
           <button
             type="button"
-            disabled={saving}
+            disabled={isBusy}
             onClick={() => void handleMethodSelect('wallet')}
-            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left disabled:opacity-50 disabled:pointer-events-none"
+            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left disabled:opacity-60 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-[#8B5CF6]/10 rounded-xl flex items-center justify-center">
@@ -298,9 +306,9 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
 
           <button
             type="button"
-            disabled={saving}
+            disabled={isBusy}
             onClick={() => void handleMethodSelect('card')}
-            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left disabled:opacity-50 disabled:pointer-events-none"
+            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#3B82F6] transition-all active:scale-[0.98] text-left disabled:opacity-60 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 bg-[#F59E0B]/10 rounded-xl flex items-center justify-center">
@@ -316,9 +324,9 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
           {(showCredit) && (
             <button
               type="button"
-              disabled={saving}
+              disabled={isBusy}
               onClick={() => void handleMethodSelect('credit')}
-              className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#F59E0B] transition-all active:scale-[0.98] text-left disabled:opacity-50 disabled:pointer-events-none"
+              className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-6 hover:border-[#F59E0B] transition-all active:scale-[0.98] text-left disabled:opacity-60 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-[#F59E0B]/10 rounded-xl flex items-center justify-center">
@@ -375,7 +383,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
               <button
                 type="button"
                 key={account.id}
-                disabled={saving}
+                disabled={isBusy}
                 onClick={() => handleAccountSelect(account)}
                 className={`w-full bg-[#1F2937] border-2 rounded-xl p-4 transition-all active:scale-[0.98] text-left disabled:opacity-50 disabled:pointer-events-none ${
                   selectedAccount?.id === account.id
@@ -402,7 +410,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
           <button
             type="button"
             onClick={handleProceedToAmount}
-            disabled={!selectedAccount || accountsLoading || saving}
+            disabled={!selectedAccount || accountsLoading || isBusy}
             className="w-full mt-6 h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] disabled:text-[#6B7280] rounded-lg font-medium transition-colors active:scale-[0.98] text-white"
           >
             Next →
@@ -427,8 +435,9 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
 
             <button
               type="button"
-              disabled={saving}
+              disabled={isBusy}
               onClick={() => {
+                if (isBusy) return;
                 setPaymentMode('full');
                 setAmount(totalAmount.toString());
               }}
@@ -448,7 +457,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
 
             <button
               type="button"
-              disabled={saving}
+              disabled={isBusy}
               onClick={() => setPaymentMode('partial')}
               className={`w-full p-4 rounded-xl text-left transition-all disabled:opacity-50 disabled:pointer-events-none ${
                 paymentMode === 'partial'
@@ -467,7 +476,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="Enter amount"
-                  disabled={saving}
+                  disabled={isBusy}
                   className="w-full max-w-full min-w-0 mt-3 h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm focus:outline-none focus:border-[#3B82F6] text-white box-border disabled:opacity-50"
                   onClick={(e) => e.stopPropagation()}
                 />
@@ -476,8 +485,9 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
 
             <button
               type="button"
-              disabled={saving}
+              disabled={isBusy}
               onClick={() => {
+                if (isBusy) return;
                 setPaymentMode('skip');
                 setAmount('0');
               }}
@@ -500,7 +510,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
                   <button
                     type="button"
                     key={qa}
-                    disabled={saving}
+                    disabled={isBusy}
                     onClick={() => setAmount(qa.toString())}
                     className="h-10 bg-[#1F2937] border border-[#374151] hover:border-[#3B82F6] rounded-lg text-sm font-medium transition-colors text-white disabled:opacity-50"
                   >
@@ -535,11 +545,11 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
 
           <button
             onClick={handleConfirmPayment}
-            disabled={saving}
+            disabled={isBusy}
             className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] rounded-lg font-medium transition-colors active:scale-[0.98] text-white flex items-center justify-center gap-2"
           >
-            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-            {saving ? 'Posting...' : 'Confirm Payment'}
+            {isBusy ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+            {isBusy ? 'Posting...' : 'Confirm Payment'}
           </button>
         </div>
       )}

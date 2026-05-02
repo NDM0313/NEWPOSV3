@@ -279,11 +279,10 @@ pg_restore --clean --if-exists \
   backups/<filename>.dump
 ```
 
-<<<<<<< Updated upstream
 - `<filename>` = woh dump file jo run se pehle bani thi, e.g. `erp_backup_20260226_143022.dump`.
 - `--clean --if-exists` = existing objects drop karke restore (conflicts kam).
 - Restore ke baad phir se validation chala lo; fix karke migration dobara run karna ho to backup pehle hi bann chuka hoga.
-=======
+
 ### Option D – Immutable runner (Mac/Linux; agar repo mein ho)
 
 Agar **`scripts/run-migrations-immutable.sh`** maujood ho to ye migration_history + production guard use karta hai; backup/rollback bhi ho sakta hai. Run from repo root:
@@ -295,7 +294,6 @@ bash scripts/run-migrations-immutable.sh
 Pehle migrations `migration_history_table.sql` aur `migration_history_and_production_guard.sql` (aur agar ho to `erp_production_mode_table.sql`) run karna pad sakta hai – script ya docs mein diya order follow karein.
 
 ---
->>>>>>> Stashed changes
 
 **Summary:** Pre-run backup → migrations → validation; FAIL → restore from last backup; backups retain for rollback.
 

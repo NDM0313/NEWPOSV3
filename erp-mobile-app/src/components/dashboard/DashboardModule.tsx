@@ -14,6 +14,7 @@ import * as inventoryApi from '../../api/inventory';
 import { getJournalEntries } from '../../api/accounts';
 import { getFinancialDashboardMetrics, sumTrendTail } from '../../api/financialDashboard';
 import { supabase } from '../../lib/supabase';
+import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
 
 interface DashboardModuleProps {
   onBack: () => void;
@@ -190,6 +191,33 @@ export function DashboardModule({ onBack, user: _user, companyId, branchId, onNe
   useEffect(() => {
     loadData();
   }, [companyId, branchId, timeRange]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onInvalidated = (event: Event) => {
+      const detail = (event as CustomEvent<MobileInvalidationDetail>).detail;
+      if (
+        !shouldAcceptMobileInvalidation(detail, {
+          domain: ['sales', 'purchases', 'accounting', 'contacts'],
+          companyId,
+          branchId: branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void loadData();
+      }, 250);
+    };
+    window.addEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    };
+  }, [branchId, companyId, timeRange]);
 
   return (
     <div className="min-h-screen pb-24 bg-[#111827]">

@@ -16,32 +16,38 @@ Date: 2026-04-29
 
 ## Remaining tasks
 
-1. **JE allocator unification**
+1. **JE allocator unification** ✅
    - Move ad-hoc `JE-*` generation to one canonical sequence path where required.
    - Target files:
      - `src/app/services/documentNumberService.ts`
      - `src/app/context/PurchaseContext.tsx`
      - `src/app/context/SalesContext.tsx`
 
-2. **Mobile create flow attachment input UI**
+2. **Mobile create flow attachment input UI** ✅
    - Add purchase attachment picker/uploader in mobile purchase create flow and send to API payload.
    - Target file:
      - `erp-mobile-app/src/components/purchase/CreatePurchaseFlow.tsx`
 
-3. **Purchase accounting service defensive fallback parity**
+3. **Purchase accounting service defensive fallback parity** ✅
    - Add/confirm fallback in purchase accounting service for legacy rows where discount charge may be absent.
    - Target file:
      - `src/app/services/purchaseAccountingService.ts`
 
-4. **Mutation invalidation standardization**
+4. **Mutation invalidation standardization** ✅
    - Standardize mutation emitters so same-tab and cross-client behavior remain consistent without duplicate refresh storms.
    - Target files:
      - `src/app/lib/dataInvalidationBus.ts`
      - related purchase/payment mutation call-sites.
 
-5. **Post-deploy verification**
-   - Validate on live DB after running migrations:
-     - first POR/PUR/Sale/JE starts at `001` for reset company,
-     - discount JE reflects correctly (e.g., 500),
-     - mobile purchase attachments visible in details,
-     - web auto-refresh works after mobile create/payment.
+5. **Post-deploy verification** 🟨 Partial (automated done, UI checks pending)
+   - ✅ Automated live DB verification script run:
+     - `COMPANY_ID=595c08c2-1e47-4581-89c9-1f78de51c613 npm run verify:final`
+     - Output: `docs/accounting/RESET COMPANY/FINAL_ACCEPTANCE_RESULT.md`
+     - Trial balance = 0, AR/AP reconciled, no unbalanced JE.
+   - ✅ Build/type safety:
+     - `npm run typecheck:mobile`
+     - `npm run build`
+     - `npm --prefix erp-mobile-app run build`
+   - ⏳ Manual UI validation still required on device/web session:
+     - mobile purchase attachments visible in purchase detail screen,
+     - web auto-refresh triggers after mobile create/payment in another client tab.

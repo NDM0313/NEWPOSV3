@@ -35,6 +35,7 @@ import { convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { ViewSaleDetailsDrawer } from '@/app/components/sales/ViewSaleDetailsDrawer';
 import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { getStudioDeadlineFromNotes, parseStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
+import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { toast } from 'sonner';
 
 function formatDateSafe(value: string | undefined | null, formatStr: string): string {
@@ -147,7 +148,11 @@ export const StudioSalesListNew = () => {
     const deliveryDeadline = sale.deadline || getStudioDeadlineFromNotes(sale.notes) || '';
     return {
       id: sale.id || '',
-      invoiceNo: sale.invoice_no || sale.invoiceNo || `STD-${sale.id?.slice(0, 8)}`,
+      invoiceNo:
+        getSaleDisplayNumber(sale) ||
+        sale.invoiceNo ||
+        sale.order_no ||
+        `STD-${sale.id?.slice(0, 8)}`,
       customerName: sale.customer_name || customer.name || 'Unknown',
       customerPhone: customer.phone || '',
       fabricSummary,

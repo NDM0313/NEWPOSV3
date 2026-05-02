@@ -18,7 +18,7 @@ interface EntryData {
   debitAccountName: string;
   creditAccountId: string;
   creditAccountName: string;
-  amount: number;
+  amount: string;
   date: string;
   description: string;
   reference?: string;
@@ -35,7 +35,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
     debitAccountName: '',
     creditAccountId: '',
     creditAccountName: '',
-    amount: 0,
+    amount: '',
     date: new Date().toISOString().split('T')[0],
     description: '',
     reference: '',
@@ -63,7 +63,8 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
   };
 
   const handleSubmit = async () => {
-    if (!companyId || !entryData.debitAccountId || !entryData.creditAccountId || entryData.amount <= 0 || !entryData.description.trim()) return;
+    const amountNum = parseFloat(entryData.amount || '0');
+    if (!companyId || !entryData.debitAccountId || !entryData.creditAccountId || amountNum <= 0 || !entryData.description.trim()) return;
     setSubmitting(true);
     setError(null);
     const payload = {
@@ -73,8 +74,8 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
       description: entryData.description.trim(),
       referenceType: 'general',
       lines: [
-        { accountId: entryData.debitAccountId, debit: entryData.amount, credit: 0 },
-        { accountId: entryData.creditAccountId, debit: 0, credit: entryData.amount },
+        { accountId: entryData.debitAccountId, debit: amountNum, credit: 0 },
+        { accountId: entryData.creditAccountId, debit: 0, credit: amountNum },
       ],
       userId: user.id,
     };
@@ -105,7 +106,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
       case 2:
         return entryData.creditAccountId !== '' && entryData.creditAccountId !== entryData.debitAccountId;
       case 3:
-        return entryData.amount > 0 && entryData.description.trim() !== '';
+        return parseFloat(entryData.amount || '0') > 0 && entryData.description.trim() !== '';
       default:
         return false;
     }
@@ -254,13 +255,18 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
               <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Amount (Rs.) *</label>
               <input
-                type="number"
+                type="text"
                 inputMode="decimal"
                 pattern="[0-9.]*"
                 min="0"
                 step="0.01"
-                value={entryData.amount || ''}
-                onChange={(e) => setEntryData({ ...entryData, amount: parseFloat(e.target.value) || 0 })}
+                value={entryData.amount}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '' || /^[0-9]*\.?[0-9]*$/.test(raw)) {
+                    setEntryData({ ...entryData, amount: raw });
+                  }
+                }}
                 placeholder="0.00"
                 className="w-full max-w-full min-w-0 px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white text-lg font-semibold placeholder-[#6B7280] focus:outline-none focus:border-[#8B5CF6] box-border"
               />
