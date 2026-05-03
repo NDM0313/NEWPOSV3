@@ -233,6 +233,14 @@ export async function getPaymentAccounts(companyId: string): Promise<{ data: Acc
   return { data: rows, error: null };
 }
 
+export interface JournalEntryLineRow {
+  account_id: string;
+  debit: number;
+  credit: number;
+  description?: string | null;
+  account?: { name: string; code?: string | null };
+}
+
 export interface JournalEntryRow {
   id: string;
   entry_no: string;
@@ -243,7 +251,26 @@ export interface JournalEntryRow {
   payment_id?: string | null;
   total_debit: number;
   total_credit: number;
-  lines?: { account_id: string; debit: number; credit: number; account?: { name: string } }[];
+  posted_at?: string | null;
+  created_at?: string | null;
+  lines?: JournalEntryLineRow[];
+}
+
+function normalizeJeLines(raw: unknown): JournalEntryLineRow[] {
+  const lines = (raw as Record<string, unknown>[] | null) || [];
+  return lines.map((line) => {
+    let acc = line.account as { name?: string; code?: string | null } | { name?: string; code?: string | null }[] | undefined;
+    if (Array.isArray(acc)) acc = acc[0];
+    return {
+      account_id: String(line.account_id ?? ''),
+      debit: Number(line.debit ?? 0),
+      credit: Number(line.credit ?? 0),
+      description: line.description != null ? String(line.description) : null,
+      account: acc?.name
+        ? { name: String(acc.name), code: acc.code != null ? String(acc.code) : null }
+        : undefined,
+    };
+  });
 }
 
 export async function getJournalEntries(
@@ -256,7 +283,8 @@ export async function getJournalEntries(
     .from('journal_entries')
     .select(`
       id, entry_no, entry_date, description, reference_type, reference_id, payment_id,
-      lines:journal_entry_lines(account_id, debit, credit, account:accounts(name))
+      posted_at, created_at,
+      lines:journal_entry_lines(account_id, debit, credit, description, account:accounts(name, code))
     `)
     .eq('company_id', companyId)
     .or('is_void.is.null,is_void.eq.false')
@@ -267,7 +295,7 @@ export async function getJournalEntries(
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   const rows = (data || []).map((e: Record<string, unknown>) => {
-    const lines = (e.lines as Record<string, unknown>[] || []) as { account_id: string; debit: number; credit: number; account?: { name: string } }[];
+    const lines = normalizeJeLines(e.lines);
     const totalDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
     return {
@@ -280,10 +308,59 @@ export async function getJournalEntries(
       payment_id: e.payment_id != null && e.payment_id !== '' ? String(e.payment_id) : null,
       total_debit: totalDebit,
       total_credit: totalCredit,
+      posted_at: (e as { posted_at?: string }).posted_at
+        ? String((e as { posted_at?: string }).posted_at)
+        : null,
+      created_at: (e as { created_at?: string }).created_at
+        ? String((e as { created_at?: string }).created_at)
+        : null,
       lines,
     };
   });
   return { data: rows, error: null };
+}
+
+
+/** Full journal entry with lines (for detail sheet). */
+export async function getJournalEntryById(
+  companyId: string,
+  journalEntryId: string
+): Promise<{ data: JournalEntryRow | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const { data: e, error } = await supabase
+    .from('journal_entries')
+    .select(
+      `
+      id, entry_no, entry_date, description, reference_type, reference_id, payment_id,
+      posted_at, created_at,
+      lines:journal_entry_lines(account_id, debit, credit, description, account:accounts(name, code))
+    `
+    )
+    .eq('company_id', companyId)
+    .eq('id', journalEntryId)
+    .maybeSingle();
+  if (error) return { data: null, error: error.message };
+  if (!e) return { data: null, error: null };
+  const lines = normalizeJeLines(e.lines);
+  const totalDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
+  const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+  return {
+    data: {
+      id: String(e.id ?? ''),
+      entry_no: String(e.entry_no ?? ''),
+      entry_date: e.entry_date ? new Date(e.entry_date as string).toISOString().slice(0, 10) : '',
+      description: String(e.description ?? ''),
+      reference_type: String(e.reference_type ?? ''),
+      reference_id: e.reference_id != null && e.reference_id !== '' ? String(e.reference_id) : null,
+      payment_id: e.payment_id != null && e.payment_id !== '' ? String(e.payment_id) : null,
+      total_debit: totalDebit,
+      total_credit: totalCredit,
+      posted_at: (e as { posted_at?: string }).posted_at ? String((e as { posted_at?: string }).posted_at) : null,
+      created_at: (e as { created_at?: string }).created_at ? String((e as { created_at?: string }).created_at) : null,
+      lines,
+    },
+    error: null,
+  };
 }
 
 /** Account ledger entry for one account (date, voucher, description, debit, credit, running balance) */

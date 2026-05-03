@@ -56,9 +56,7 @@ async function setGeneratedInvoiceItemForMobile(
 ): Promise<void> {
   const { data: existing, error: fetchErr } = await supabase
     .from('studio_productions')
-    .select(
-      'id, status, quantity, actual_cost, company_id, branch_id, product_id, production_no'
-    )
+    .select('id, status, sale_id, company_id, branch_id, product_id, production_no')
     .eq('id', productionId)
     .maybeSingle();
   if (fetchErr) throw new Error(fetchErr.message);
@@ -72,58 +70,13 @@ async function setGeneratedInvoiceItemForMobile(
     .eq('id', productionId);
   if (error) throw new Error(error.message);
   if (!existing || String((existing as { status?: string }).status || '') !== 'completed') return;
-  const qty = Number((existing as { quantity?: number }).quantity) || 0;
-  if (qty <= 0) return;
-  const { data: existingMov } = await supabase
-    .from('stock_movements')
-    .select('id')
-    .eq('reference_type', 'studio_production')
-    .eq('reference_id', productionId)
-    .eq('movement_type', 'PRODUCTION_IN')
-    .eq('product_id', generatedProductId)
-    .limit(1)
-    .maybeSingle();
-  if (existingMov) return;
-  const ex = existing as {
-    company_id: string;
-    branch_id: string | null;
-    actual_cost?: number | null;
-    product_id?: string | null;
-    production_no?: string | null;
-  };
-  const movementPayload: Record<string, unknown> = {
-    company_id: ex.company_id,
-    branch_id: ex.branch_id,
-    product_id: generatedProductId,
-    movement_type: 'PRODUCTION_IN',
-    quantity: qty,
-    unit_cost: ex.actual_cost ? Number(ex.actual_cost) / qty : 0,
-    total_cost: ex.actual_cost ?? 0,
-    reference_type: 'studio_production',
-    reference_id: productionId,
-    notes: `Production ${ex.production_no ?? ''} completed (studio line linked)`,
-    created_by: null,
-  };
-  const { error: movErr } = await supabase.from('stock_movements').insert(movementPayload);
-  if (movErr) {
-    console.warn('[studioInvoiceLine] PRODUCTION_IN insert failed:', movErr.message);
-    return;
-  }
-  const fabricProductId = ex.product_id;
-  if (fabricProductId && fabricProductId !== generatedProductId) {
-    await supabase.from('stock_movements').insert({
-      company_id: ex.company_id,
-      branch_id: ex.branch_id,
-      product_id: fabricProductId,
-      movement_type: 'adjustment',
-      quantity: -qty,
-      unit_cost: 0,
-      total_cost: 0,
-      reference_type: 'studio_production',
-      reference_id: productionId,
-      notes: `Reclass: stock moved to studio product (${ex.production_no ?? ''})`,
-      created_by: null,
-    });
+  const saleId = (existing as { sale_id?: string | null }).sale_id;
+  if (!saleId) return;
+  try {
+    const { ensureStudioProductionInForSale } = await import('./studioStockLifecycle');
+    await ensureStudioProductionInForSale(saleId);
+  } catch (e) {
+    console.warn('[studioInvoiceLine] ensureStudioProductionInForSale:', e);
   }
 }
 

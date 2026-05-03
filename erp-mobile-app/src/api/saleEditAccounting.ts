@@ -114,7 +114,7 @@ export async function syncSaleDocumentJournalInPlaceMobile(params: {
 
   const { data: saleRow, error: saleErr } = await supabase
     .from('sales')
-    .select('id, status, invoice_no')
+    .select('id, status, invoice_no, order_no')
     .eq('id', saleId)
     .maybeSingle();
   if (saleErr || !saleRow) return { updated: false, error: null, skipReason: 'sale_row_missing' };
@@ -122,7 +122,8 @@ export async function syncSaleDocumentJournalInPlaceMobile(params: {
   const status = String((saleRow as { status?: string }).status || '').toLowerCase();
   if (status !== 'final') return { updated: false, error: null, skipReason: 'sale_not_final' };
 
-  const inv = String((saleRow as { invoice_no?: string }).invoice_no ?? invoiceNo ?? '').trim();
+  const rowInv = saleRow as { invoice_no?: string | null; order_no?: string | null };
+  const inv = String(rowInv.invoice_no ?? rowInv.order_no ?? invoiceNo ?? '').trim();
   if (!inv) return { updated: false, error: null, skipReason: 'no_invoice_no' };
 
   const jeId = docJe.id;

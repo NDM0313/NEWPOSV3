@@ -42,6 +42,7 @@ export function registerAllSyncHandlers(): void {
       userId: string;
       orderDate?: string;
       deadline?: string;
+      studioDesignName?: string;
     };
     const { data, error } = await salesApi.createSale({
       companyId: p.companyId,
@@ -64,6 +65,7 @@ export function registerAllSyncHandlers(): void {
       userId: p.userId,
       orderDate: p.orderDate,
       deadline: p.deadline,
+      studioDesignName: p.studioDesignName,
     });
     if (error) return { error };
     return { serverId: data!.id };

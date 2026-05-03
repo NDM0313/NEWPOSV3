@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   ArrowLeft,
@@ -103,7 +103,7 @@ function safeFormatDate(value: string | null | undefined, fmt: string): string {
   return isNaN(d.getTime()) ? '—' : format(d, fmt);
 }
 
-type SaleStatus = 'Draft' | 'In Progress' | 'Completed';
+type SaleStatus = 'Draft' | 'In Progress' | 'Completed' | 'Cancelled';
 type StepStatus = 'Pending' | 'Assigned' | 'In Progress' | 'Completed';
 
 interface Worker {
@@ -307,8 +307,14 @@ export const StudioSaleDetailNew = () => {
   /** The sale_items.id that is the current studio invoice line for this production (null = not created yet). */
   const [generatedInvoiceItemId, setGeneratedInvoiceItemId] = useState<string | null>(null);
   const [pendingLeaveTarget, setPendingLeaveTarget] = useState<'studio' | 'studio-sales-list-new' | null>(null);
+  const [studioProductNameConflict, setStudioProductNameConflict] = useState<{
+    candidates: Array<{ id: string; name: string; sku: string }>;
+    typedName: string;
+  } | null>(null);
 
   const savedSuccessfullyRef = useRef(false);
+  /** User confirmed creating a new catalog row despite similar product names (Phase B). */
+  const forceCreateNewStudioProductRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const qrScannerRef = useRef<HTMLInputElement>(null);
@@ -473,7 +479,7 @@ export const StudioSaleDetailNew = () => {
       'pending': 'Draft',
       'in_progress': 'In Progress',
       'completed': 'Completed',
-      'cancelled': 'Draft'
+      'cancelled': 'Cancelled',
     };
 
     const stepStatusMap: Record<string, StepStatus> = {
@@ -631,7 +637,14 @@ export const StudioSaleDetailNew = () => {
       customerPhone: customer.phone || '',
       saleDate: sale.invoice_date || sale.invoiceDate || new Date().toISOString().split('T')[0],
       expectedDeliveryDate: sale.deadline || getStudioDeadlineFromNotes(sale.notes) || '',
-      saleStatus: sale.status === 'final' ? 'Completed' : sale.status === 'in_progress' ? 'In Progress' : 'Draft',
+      saleStatus:
+        sale.status === 'cancelled'
+          ? 'Cancelled'
+          : sale.status === 'final'
+            ? 'Completed'
+            : sale.status === 'in_progress'
+              ? 'In Progress'
+              : 'Draft',
       fabricName,
       meters,
       fabricCost,
@@ -838,7 +851,13 @@ export const StudioSaleDetailNew = () => {
     }
   }, [companyId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!selectedStudioSaleId) {
+      setSaleDetail(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     setSaleDetail(null);
   }, [selectedStudioSaleId]);
 
@@ -946,6 +965,9 @@ export const StudioSaleDetailNew = () => {
 
   /** Invoice is finalized (sale.status = 'final') — cost editing must be locked. */
   const saleIsFinalized = saleDetail?.saleStatus === 'Completed';
+  const saleIsCancelled = saleDetail?.saleStatus === 'Cancelled';
+  /** No structural edits when invoice final or sale cancelled. */
+  const saleLockedForEditing = saleIsFinalized || saleIsCancelled;
   const roundInt = (n: number) => Math.round(n);
   const completedStepKey = completedProductionSteps.map((s) => s.id).join(',');
   // Sync profit distribution: round figures only (no decimals)
@@ -1034,16 +1056,18 @@ export const StudioSaleDetailNew = () => {
   /** Invoice is generated when studio product line exists (Create Product + Add to Sale). Shipment Add requires this. */
   const hasInvoiceGenerated = (saleDetail?.items ?? []).some((i) => i.isStudioProduct === true);
 
-  /** Header status: ONLY from production stages. Completed = all stages completed; else In Progress / Pending. */
-  const headerStatus: SaleStatus = !saleDetail
+  /** Header status: cancelled sale first; else from production stages. */
+  const headerStatus: SaleStatus | 'Pending' = !saleDetail
     ? 'Draft'
-    : saleDetail.productionSteps.length === 0
-      ? 'Draft'
-      : allTasksCompleted
-        ? 'Completed'
-        : saleDetail.productionSteps.some(s => s.status === 'Assigned' || s.status === 'In Progress' || isStepCompleted(s))
-          ? 'In Progress'
-          : 'Pending';
+    : saleDetail.saleStatus === 'Cancelled'
+      ? 'Cancelled'
+      : saleDetail.productionSteps.length === 0
+        ? 'Draft'
+        : allTasksCompleted
+          ? 'Completed'
+          : saleDetail.productionSteps.some(s => s.status === 'Assigned' || s.status === 'In Progress' || isStepCompleted(s))
+            ? 'In Progress'
+            : 'Pending';
 
   const isStepLocked = (stepOrder: number): boolean => {
     if (!saleDetail || stepOrder === 1) return false;
@@ -1168,7 +1192,7 @@ export const StudioSaleDetailNew = () => {
    */
   const autoSyncInvoiceAfterCostChange = useCallback(async () => {
     if (!saleDetail?.id || !invoiceLinked) return;
-    if (saleDetail.saleStatus === 'Completed') return; // invoice finalized — never auto-edit
+    if (saleDetail.saleStatus === 'Completed' || saleDetail.saleStatus === 'Cancelled') return;
     try {
       const marginVal = parseFloat(profitMarginValue) || 0;
       const syncParams = profitMarginMode === 'fixed'
@@ -1548,7 +1572,9 @@ export const StudioSaleDetailNew = () => {
       toast.error('Sale or company context missing.');
       return;
     }
-    const name = (createProductInvoiceForm.productName || '').trim() || `Studio – ${saleDetail.invoiceNo}`;
+    /** Invoice line label — always what the user typed (never overwritten by reused catalog name). */
+    const displayLineName = (createProductInvoiceForm.productName || '').trim() || `Studio – ${saleDetail.invoiceNo}`;
+    const name = displayLineName;
     const salePriceNum = parseFloat(createProductInvoiceForm.salePrice) || 0;
     if (salePriceNum <= 0) {
       toast.error('Enter a valid sale price.');
@@ -1607,49 +1633,55 @@ export const StudioSaleDetailNew = () => {
         invoiceSku = product.sku;
 
       } else {
-        // ── CREATE NEW PRODUCT ────────────────────────────────────────────────
-        const { data: existingRows } = await supabase
-          .from('products')
-          .select('id, name, sku')
-          .eq('company_id', companyId)
-          .ilike('name', name)
-          .limit(1);
-        if (existingRows && existingRows.length > 0) {
-          product = existingRows[0] as { id: string; name: string; sku: string };
-          toast.info(`Reusing existing product "${product.name}".`);
-        } else {
-          const productCode = await documentNumberService.getNextProductionProductSKU(companyId).catch(
-            () => `STD-PROD-${Date.now().toString(36).toUpperCase()}`
-          );
-          const created = await productService.createProduct({
-            company_id: companyId,
-            name,
-            sku: productCode,
-            category_id: createProductInvoiceForm.categoryId || (null as any),
-            cost_price: 0,
-            retail_price: salePriceNum,
-            wholesale_price: salePriceNum,
-            current_stock: 0,
-            min_stock: 0,
-            max_stock: 1000,
-            has_variations: false,
-            is_rentable: false,
-            is_sellable: true,
-            track_stock: false,
-            is_active: true,
-            description: createProductInvoiceForm.description || undefined,
-            source_type: 'studio',
-            product_type: 'production',
-          } as any) as { id: string; name: string; sku: string };
-          product = created;
-          // Upload product image
-          if (createProductInvoiceImageFiles.length > 0 && product?.id) {
-            try {
-              const imageUrls = await uploadProductImages(companyId, product.id, createProductInvoiceImageFiles);
-              await productService.updateProduct(product.id, { image_urls: imageUrls });
-            } catch (uploadErr: any) {
-              console.error('[StudioSaleDetailNew] Product image upload failed:', uploadErr);
-            }
+        // ── CREATE NEW PRODUCT (no silent ilike reuse — user must confirm or pick from search) ──
+        if (!forceCreateNewStudioProductRef.current && name.trim()) {
+          const escLike = (s: string) => s.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+          const { data: nameCandidates } = await supabase
+            .from('products')
+            .select('id, name, sku')
+            .eq('company_id', companyId)
+            .ilike('name', `%${escLike(name)}%`)
+            .limit(15);
+          if (nameCandidates && nameCandidates.length > 0) {
+            setStudioProductNameConflict({
+              candidates: nameCandidates as Array<{ id: string; name: string; sku: string }>,
+              typedName: name,
+            });
+            setCreatingProductAndInvoice(false);
+            return;
+          }
+        }
+
+        const productCode = await documentNumberService.getNextProductionProductSKU(companyId).catch(
+          () => `STD-PROD-${Date.now().toString(36).toUpperCase()}`
+        );
+        const created = await productService.createProduct({
+          company_id: companyId,
+          name,
+          sku: productCode,
+          category_id: createProductInvoiceForm.categoryId || (null as any),
+          cost_price: 0,
+          retail_price: salePriceNum,
+          wholesale_price: salePriceNum,
+          current_stock: 0,
+          min_stock: 0,
+          max_stock: 1000,
+          has_variations: false,
+          is_rentable: false,
+          is_sellable: true,
+          track_stock: true,
+          is_active: true,
+          description: createProductInvoiceForm.description || undefined,
+          source_type: 'studio',
+          product_type: 'production',
+        } as any) as { id: string; name: string; sku: string };
+        product = created;
+        if (createProductInvoiceImageFiles.length > 0 && product?.id) {
+          try {
+            const imageUrls = await uploadProductImages(companyId, product.id, createProductInvoiceImageFiles);
+            await productService.updateProduct(product.id, { image_urls: imageUrls });
+          } catch (uploadErr: any) {
+            console.error('[StudioSaleDetailNew] Product image upload failed:', uploadErr);
           }
         }
         invoiceSku = product.sku;
@@ -1659,7 +1691,7 @@ export const StudioSaleDetailNew = () => {
       // ERP rule: 1 production → 1 invoice line. Always UPDATE if line exists.
       const itemUpdatePayload: Record<string, unknown> = {
         product_id: product.id,
-        product_name: product.name,
+        product_name: displayLineName,
         sku: invoiceSku,
         unit_price: salePriceNum,
         total: salePriceNum,
@@ -1723,7 +1755,7 @@ export const StudioSaleDetailNew = () => {
             sale_id: saleDetail.id,
             quantity: 1,
             product_id: product.id,
-            product_name: product.name,
+            product_name: displayLineName,
             sku: invoiceSku,
             unit_price: salePriceNum,
             total: salePriceNum,
@@ -1759,13 +1791,13 @@ export const StudioSaleDetailNew = () => {
         }
       }
 
-      if (syncReplicaTitleToProduct && productionId && product.name?.trim()) {
+      if (syncReplicaTitleToProduct && productionId && displayLineName.trim()) {
         try {
           await supabase
             .from('studio_productions')
-            .update({ design_name: product.name.trim(), updated_at: new Date().toISOString() })
+            .update({ design_name: displayLineName.trim(), updated_at: new Date().toISOString() })
             .eq('id', productionId);
-          setSaleDetail((prev) => (prev ? { ...prev, studioProductName: product.name.trim() } : prev));
+          setSaleDetail((prev) => (prev ? { ...prev, studioProductName: displayLineName.trim() } : prev));
         } catch (e) {
           if (import.meta.env?.DEV) console.warn('[StudioSaleDetailNew] design_name sync:', e);
         }
@@ -1791,13 +1823,13 @@ export const StudioSaleDetailNew = () => {
           return {
             ...prev,
             items: (prev.items || []).map((i: any) =>
-              i.id === finalItemId ? { ...i, productId: product.id, productName: product.name, isStudioProduct: true } : i
+              i.id === finalItemId ? { ...i, productId: product.id, productName: displayLineName, isStudioProduct: true } : i
             ),
           };
         }
         return finalItemId ? {
           ...prev,
-          items: [...(prev.items || []), { id: finalItemId, productId: product.id, productName: product.name, isStudioProduct: true }],
+          items: [...(prev.items || []), { id: finalItemId, productId: product.id, productName: displayLineName, isStudioProduct: true }],
         } : prev;
       });
 
@@ -1853,6 +1885,7 @@ export const StudioSaleDetailNew = () => {
       toast.error(e?.message || 'Failed to create product or update invoice');
     } finally {
       setCreatingProductAndInvoice(false);
+      forceCreateNewStudioProductRef.current = false;
     }
   };
 
@@ -2366,7 +2399,10 @@ export const StudioSaleDetailNew = () => {
     return !saleDetail.productionSteps.some(step => step.status === 'Assigned' || step.status === 'In Progress' || step.status === 'Completed');
   };
 
-  if (loading) {
+  const saleDetailStale =
+    !!selectedStudioSaleId && !!saleDetail && saleDetail.id !== selectedStudioSaleId;
+
+  if (loading || saleDetailStale) {
     return (
       <div className="flex items-center justify-center h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
@@ -2415,10 +2451,10 @@ export const StudioSaleDetailNew = () => {
           <div className="flex items-center gap-3">
             <Button
               size="sm"
-              disabled={savingStage || saleIsFinalized}
+              disabled={savingStage || saleLockedForEditing}
               onClick={() => persistAllStagesToBackend()}
               className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
-              title={saleIsFinalized ? 'Invoice finalized – cost editing locked' : undefined}
+              title={saleIsFinalized ? 'Invoice finalized – cost editing locked' : saleIsCancelled ? 'Sale cancelled – editing locked' : undefined}
             >
               {savingStage ? <Loader2 size={14} className="animate-spin mr-1.5" /> : <Save size={14} className="mr-1.5" />}
               Save
@@ -2456,13 +2492,14 @@ export const StudioSaleDetailNew = () => {
             })()}
             <Badge 
               variant="outline" 
-              title="Status from production stages (reactive)"
+              title="Sale / production status"
               className={cn(
                 "text-xs px-3 py-1.5",
                 headerStatus === 'Draft' && "bg-gray-500/20 text-gray-400 border-gray-700",
                 headerStatus === 'Pending' && "bg-gray-500/20 text-gray-400 border-gray-700",
                 headerStatus === 'In Progress' && "bg-blue-500/20 text-blue-400 border-blue-700",
-                headerStatus === 'Completed' && "bg-green-500/20 text-green-400 border-green-700"
+                headerStatus === 'Completed' && "bg-green-500/20 text-green-400 border-green-700",
+                headerStatus === 'Cancelled' && "bg-red-500/20 text-red-400 border-red-500/30"
               )}
             >
               {headerStatus}
@@ -2470,7 +2507,7 @@ export const StudioSaleDetailNew = () => {
             {hasUnsavedChanges && !showWorkerEditModal && (
               <Button
                 size="sm"
-                disabled={savingStage}
+                disabled={savingStage || saleLockedForEditing}
                 onClick={() => persistAllStagesToBackend()}
                 className="bg-green-600 hover:bg-green-700"
               >
@@ -2583,7 +2620,7 @@ export const StudioSaleDetailNew = () => {
             </div>
             
             {/* Final Complete: only when all stages completed; visibility reactive from headerStatus */}
-            {productionId && headerStatus !== 'Completed' && (
+            {productionId && headerStatus !== 'Completed' && headerStatus !== 'Cancelled' && (
               <Button
                 size="sm"
                 disabled={!allTasksCompleted || savingStage || !invoiceLinked}
@@ -2888,13 +2925,13 @@ export const StudioSaleDetailNew = () => {
                                           <DollarSign size={14} className="text-orange-500" />
                                           <button
                                             type="button"
-                                            onClick={() => !stepLocked && !saleIsFinalized && handleOpenWorkerEdit(step.id)}
+                                            onClick={() => !stepLocked && !saleLockedForEditing && handleOpenWorkerEdit(step.id)}
                                             className={cn(
                                               "text-orange-400 font-medium rounded px-1 -mx-1",
-                                              !stepLocked && !saleIsFinalized && "hover:bg-orange-500/20 hover:text-orange-300 cursor-pointer",
-                                              (stepLocked || saleIsFinalized) && "cursor-default opacity-60"
+                                              !stepLocked && !saleLockedForEditing && "hover:bg-orange-500/20 hover:text-orange-300 cursor-pointer",
+                                              (stepLocked || saleLockedForEditing) && "cursor-default opacity-60"
                                             )}
-                                            title={saleIsFinalized ? 'Invoice finalized – cost locked' : stepLocked ? undefined : 'Click to edit worker / cost'}
+                                            title={saleIsFinalized ? 'Invoice finalized – cost locked' : saleIsCancelled ? 'Sale cancelled' : stepLocked ? undefined : 'Click to edit worker / cost'}
                                           >
                                             {formatCurrency(step.workerCost)}
                                           </button>
@@ -3570,6 +3607,17 @@ export const StudioSaleDetailNew = () => {
                               </div>
                             </div>
                           )}
+                          {saleIsCancelled && (
+                            <div className="flex items-start gap-2 rounded-lg bg-red-900/20 border border-red-700/40 px-3 py-2.5">
+                              <AlertTriangle size={13} className="text-red-400 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs text-red-300 font-medium">Sale Cancelled</p>
+                                <p className="text-[11px] text-red-400/80 mt-0.5">
+                                  This studio sale was cancelled. Production and pricing cannot be changed.
+                                </p>
+                              </div>
+                            </div>
+                          )}
                           {invoiceLinked && !saleIsFinalized && (
                             <div className="flex items-start gap-2 rounded-lg bg-blue-900/20 border border-blue-700/30 px-3 py-2.5">
                               <AlertCircle size={13} className="text-blue-400 shrink-0 mt-0.5" />
@@ -3582,7 +3630,7 @@ export const StudioSaleDetailNew = () => {
                             </div>
                           )}
                           {/* ── Manual Sync Button (fallback / override) ── */}
-                          {!saleIsFinalized && (
+                          {!saleIsFinalized && !saleIsCancelled && (
                             <>
                               <p className="text-xs text-gray-500">
                                 {invoiceLinked
@@ -5270,6 +5318,76 @@ export const StudioSaleDetailNew = () => {
           </div>
         </div>
       )}
+
+      {/* Phase B: similar product names — pick catalog row or force-create */}
+      <AlertDialog
+        open={!!studioProductNameConflict}
+        onOpenChange={(open) => {
+          if (!open) setStudioProductNameConflict(null);
+        }}
+      >
+        <AlertDialogContent className="bg-gray-900 border-gray-800 text-white max-w-lg max-h-[85vh] flex flex-col">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Similar products found</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              Your label matches existing catalog names. Choose one to link to this invoice line, or create a new catalog product anyway.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {studioProductNameConflict ? (
+            <>
+              <p className="text-sm text-gray-300 -mt-1 mb-2">
+                Typed label: <span className="font-medium text-white">&quot;{studioProductNameConflict.typedName}&quot;</span>
+              </p>
+              <div className="overflow-y-auto max-h-[min(40vh,280px)] space-y-2 pr-1">
+                {studioProductNameConflict.candidates.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-gray-700 bg-gray-950 p-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-white truncate">{c.name}</p>
+                      <p className="text-xs text-gray-500 font-mono">{c.sku || '—'}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="shrink-0 bg-cyan-600 hover:bg-cyan-700 w-full sm:w-auto"
+                      onClick={() => {
+                        setSelectedExistingProduct({
+                          id: c.id,
+                          name: c.name,
+                          sku: c.sku ?? undefined,
+                          category_id: null,
+                        });
+                        setProductUseMode('exact');
+                        setStudioProductNameConflict(null);
+                        toast.info('Product selected. Click Create Product & Invoice again to continue.');
+                      }}
+                    >
+                      Use this product
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:justify-between">
+            <AlertDialogCancel className="border-gray-700 m-0">Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-amber-600 text-amber-400 hover:bg-amber-900/30 w-full sm:w-auto"
+              onClick={() => {
+                forceCreateNewStudioProductRef.current = true;
+                setStudioProductNameConflict(null);
+                void handleCreateProductAndInvoice();
+              }}
+            >
+              Create new anyway
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Save confirmation: Yes → Studio Dashboard, No → stay on page */}
       <AlertDialog open={showSaveConfirmDialog} onOpenChange={setShowSaveConfirmDialog}>

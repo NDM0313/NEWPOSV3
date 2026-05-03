@@ -510,8 +510,9 @@ export const productService = {
         query = query.eq('variation_id', variationId);
       }
 
+      // Include company-wide rows (branch_id null) when filtering by branch — matches inventory rollups.
       if (branchId && branchId !== 'all') {
-        query = query.eq('branch_id', branchId);
+        query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
       }
 
       const { data, error } = await query;
@@ -520,12 +521,16 @@ export const productService = {
         // If columns are missing (schema mismatch), fall back to a minimal query
         if (error.code === '42703') {
           console.warn('[Stock Movements] Column mismatch, retrying with minimal select:', error.message);
-          const { data: fallback, error: fallbackError } = await supabase
+          let fb = supabase
             .from('stock_movements')
             .select('*')
             .eq('product_id', productId)
             .eq('company_id', companyId)
             .order('created_at', { ascending: false });
+          if (branchId && branchId !== 'all') {
+            fb = fb.or(`branch_id.eq.${branchId},branch_id.is.null`);
+          }
+          const { data: fallback, error: fallbackError } = await fb;
           if (fallbackError) {
             console.warn('[Stock Movements] Fallback also failed, returning []');
             return [];

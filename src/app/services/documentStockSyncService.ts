@@ -137,6 +137,13 @@ export async function syncSaleStockForDocument(saleId: string): Promise<Document
     return { saleId, adjustmentsInserted: 0, keysAdjusted: [] };
   }
 
+  try {
+    const { ensureStudioProductionInForSale } = await import('@/app/services/studioStockLifecycleService');
+    await ensureStudioProductionInForSale(saleId);
+  } catch (e) {
+    console.warn('[documentStockSyncService] ensureStudioProductionInForSale:', e);
+  }
+
   const movMap = new Map<string, number>();
   for (const m of movements || []) {
     if (normMovType((m as any).movement_type) !== 'sale') continue;

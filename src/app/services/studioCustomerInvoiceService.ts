@@ -313,7 +313,7 @@ export async function createProductFromProductionOrder(params: {
     company_id: companyId,
     branch_id: branchId ?? (order as { branch_id?: string }).branch_id ?? undefined,
     product_id: created.id,
-    movement_type: 'production',
+    movement_type: 'PRODUCTION_IN',
     quantity: 1,
     unit_cost: productionCost,
     reference_type: 'studio_production',

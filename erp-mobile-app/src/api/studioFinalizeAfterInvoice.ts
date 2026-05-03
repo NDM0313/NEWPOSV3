@@ -13,6 +13,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { createJournalEntry } from './accounts';
 import { getNextDocumentNumber } from './documentNumber';
+import { ensureStudioProductionInForSale } from './studioStockLifecycle';
 
 async function accountIdByCode(companyId: string, code: string): Promise<string | null> {
   const { data, error } = await supabase
@@ -157,56 +158,6 @@ async function postPendingStageCosts(params: {
   }
 }
 
-async function ensureProductionStockMovement(params: {
-  production: Record<string, unknown>;
-  productionId: string;
-  studioCharges: number;
-}): Promise<void> {
-  const existing = params.production as {
-    company_id: string;
-    branch_id: string | null;
-    quantity?: number | null;
-    generated_product_id?: string | null;
-    product_id?: string | null;
-    production_no?: string | null;
-    actual_cost?: number | null;
-  };
-  const qty = Number(existing.quantity) || 0;
-  if (qty <= 0) return;
-
-  const productIdForStock = (existing.generated_product_id || existing.product_id) as string | null;
-  if (!productIdForStock) return;
-
-  const { data: existingMovement } = await supabase
-    .from('stock_movements')
-    .select('id')
-    .eq('reference_type', 'studio_production')
-    .eq('reference_id', params.productionId)
-    .eq('movement_type', 'PRODUCTION_IN')
-    .limit(1)
-    .maybeSingle();
-  if (existingMovement) return;
-
-  const totalCost =
-    Number(existing.actual_cost) || params.studioCharges || 0;
-
-  const insertPayload: Record<string, unknown> = {
-    company_id: existing.company_id,
-    branch_id: existing.branch_id,
-    product_id: productIdForStock,
-    movement_type: 'PRODUCTION_IN',
-    quantity: qty,
-    unit_cost: qty > 0 ? totalCost / qty : 0,
-    total_cost: totalCost,
-    reference_type: 'studio_production',
-    reference_id: params.productionId,
-    notes: `Production ${existing.production_no ?? ''} completed`,
-    created_by: null,
-  };
-  const { error: movErr } = await supabase.from('stock_movements').insert(insertPayload);
-  if (movErr) console.warn('[studioFinalizeAfterInvoice] PRODUCTION_IN:', movErr.message);
-}
-
 async function hasActiveSaleDocumentJe(companyId: string, saleId: string): Promise<boolean> {
   const { data, error } = await supabase
     .from('journal_entries')
@@ -337,11 +288,11 @@ export async function tryFinalizeStudioProductionAfterMobileInvoice(params: {
       });
     }
 
-    await ensureProductionStockMovement({
-      production: existing,
-      productionId,
-      studioCharges,
-    });
+    try {
+      await ensureStudioProductionInForSale(saleId);
+    } catch (e) {
+      console.warn('[studioFinalizeAfterInvoice] ensureStudioProductionInForSale:', e);
+    }
 
     const saleData = saleRow as {
       total?: number;

@@ -211,12 +211,15 @@ export const StudioWorkflowPage: React.FC = () => {
     }, 100);
   };
 
+  /** Treat sub-rupee residual as cleared (matches studioCostsService rounding). */
+  const displayPending = (n: number) => (n <= 0.5 ? 0 : n);
+
   // Summary stats
   const stats = useMemo(() => ({
     totalWorkers: workers.length,
     activeWorkers: workers.filter(w => w.activeJobs > 0).length,
     availableWorkers: workers.filter(w => w.status === 'Available').length,
-    totalPendingAmount: workers.reduce((sum, w) => sum + w.pendingAmount, 0)
+    totalPendingAmount: workers.reduce((sum, w) => sum + displayPending(w.pendingAmount), 0)
   }), [workers]);
 
   // Active filter count
@@ -334,7 +337,7 @@ export const StudioWorkflowPage: React.FC = () => {
                 Rs {stats.totalPendingAmount.toLocaleString()}
               </p>
               <p className="text-[10px] text-gray-500 mt-1 max-w-[220px] leading-snug">
-                Sum of unpaid <span className="text-gray-600">worker_ledger_entries</span> (studio operational). Not GL 2010 / not Contacts payables — use Worker ledger or party GL for journal tie-out.
+                Same method as Studio Costs and Worker Detail: journal + worker payments (FIFO) when data exists. Otherwise legacy operational ledger. Not the same as Contacts / party GL 2010 unless you tie out in accounting.
               </p>
             </div>
             <div className="h-12 w-12 rounded-lg bg-orange-500/10 flex items-center justify-center">
@@ -539,10 +542,10 @@ export const StudioWorkflowPage: React.FC = () => {
 
                     {/* Due Balance (amount we owe to worker) */}
                     <td className="px-6 py-4 text-right">
-                      {worker.pendingAmount > 0 ? (
+                      {displayPending(worker.pendingAmount) > 0 ? (
                         <div className="flex flex-col items-end">
                           <span className="font-bold text-orange-400">
-                            Rs {worker.pendingAmount.toLocaleString()}
+                            Rs {displayPending(worker.pendingAmount).toLocaleString()}
                           </span>
                           <button 
                             className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 mt-1 group/link"

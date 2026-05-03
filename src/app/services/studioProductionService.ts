@@ -357,8 +357,10 @@ async function createProductionCostReversalEntry(params: {
   amount: number;
   stageType: string;
   performedBy?: string | null;
+  /** Defaults to stage-reopen wording; use for sale-cancel reversals. */
+  description?: string | null;
 }): Promise<string | null> {
-  const { companyId, branchId, stageId, workerId, productionNo, amount, stageType, performedBy } = params;
+  const { companyId, branchId, stageId, workerId, productionNo, amount, stageType, performedBy, description } = params;
   if (amount <= 0) return null;
   const costAccount = await accountHelperService.getAccountByCode('5000', companyId);
   const workerPayableAccountId = await resolveWorkerPayablePostingAccountId(companyId, workerId ?? null);
@@ -371,7 +373,9 @@ async function createProductionCostReversalEntry(params: {
     branch_id: branchId || undefined,
     entry_no: entryNo,
     entry_date: entryDate,
-    description: `Reversal: Studio ${productionNo} – ${stageType} stage reopened`,
+    description:
+      description?.trim() ||
+      `Reversal: Studio ${productionNo} – ${stageType} stage reopened`,
     reference_type: 'studio_production_stage_reversal',
     reference_id: stageId,
     created_by: performedBy || undefined,
@@ -663,56 +667,14 @@ export const studioProductionService = {
       .eq('id', productionId);
     if (error) throw error;
     if (!existing || (existing as any).status !== 'completed') return;
-    const qty = Number(existing.quantity) || 0;
-    if (qty <= 0) return;
-    // Idempotency: skip if PRODUCTION_IN already exists for this production + product
-    const { data: existingMov } = await supabase
-      .from('stock_movements')
-      .select('id')
-      .eq('reference_type', 'studio_production')
-      .eq('reference_id', productionId)
-      .eq('movement_type', 'PRODUCTION_IN')
-      .eq('product_id', generatedProductId)
-      .limit(1)
-      .maybeSingle();
-    if (existingMov) return; // already posted, skip
-    const fabricProductId = existing.product_id;
-    const movementType = 'PRODUCTION_IN';
-    const insertPayload: Record<string, unknown> = {
-      company_id: existing.company_id,
-      branch_id: existing.branch_id,
-      product_id: generatedProductId,
-      movement_type: movementType,
-      quantity: qty,
-      unit_cost: existing.actual_cost ? Number(existing.actual_cost) / qty : 0,
-      total_cost: existing.actual_cost ?? 0,
-      reference_type: 'studio_production',
-      reference_id: productionId,
-      notes: `Production ${existing.production_no} completed (studio line linked)`,
-      created_by: null,
-    };
-    const { error: movErr } = await supabase.from('stock_movements').insert(insertPayload);
-    if (movErr) {
-      console.warn('[studio_production] Backfill stock movement for generated product failed:', movErr.message);
-      return;
-    }
-    // Stock is updated by trigger_update_stock_from_movement; do not update products.current_stock here.
-    if (fabricProductId && fabricProductId !== generatedProductId) {
-      const reversePayload: Record<string, unknown> = {
-        company_id: existing.company_id,
-        branch_id: existing.branch_id,
-        product_id: fabricProductId,
-        movement_type: 'adjustment',
-        quantity: -qty,
-        unit_cost: 0,
-        total_cost: 0,
-        reference_type: 'studio_production',
-        reference_id: productionId,
-        notes: `Reclass: stock moved to studio product (${existing.production_no})`,
-        created_by: null,
-      };
-      await supabase.from('stock_movements').insert(reversePayload);
-      // Trigger updates products.current_stock; no direct update.
+    const saleId = (existing as { sale_id?: string | null }).sale_id;
+    if (saleId) {
+      const { ensureStudioProductionInForSale } = await import('./studioStockLifecycleService');
+      try {
+        await ensureStudioProductionInForSale(saleId);
+      } catch (e) {
+        console.warn('[studio_production] ensureStudioProductionInForSale (linked invoice):', e);
+      }
     }
   },
 
@@ -1001,38 +963,12 @@ export const studioProductionService = {
         }
       }
 
-      // 2. Inventory – post to generated product (STD-PROD) so Stock Ledger shows history; fallback to product_id
-      //    Idempotency: skip if PRODUCTION_IN already exists (guards against race conditions / duplicate calls)
-      const qty = Number(existing.quantity) || 0;
-      if (qty > 0) {
-        const productIdForStock = (existing as any).generated_product_id || existing.product_id;
-        const { data: existingMovement } = await supabase
-          .from('stock_movements')
-          .select('id')
-          .eq('reference_type', 'studio_production')
-          .eq('reference_id', id)
-          .eq('movement_type', 'PRODUCTION_IN')
-          .limit(1)
-          .maybeSingle();
-        if (!existingMovement) {
-          const movementType = 'PRODUCTION_IN';
-          const insertPayload: Record<string, unknown> = {
-            company_id: existing.company_id,
-            branch_id: existing.branch_id,
-            product_id: productIdForStock,
-            movement_type: movementType,
-            quantity: qty,
-            unit_cost: existing.actual_cost ? Number(existing.actual_cost) / qty : 0,
-            total_cost: existing.actual_cost ?? 0,
-            reference_type: 'studio_production',
-            reference_id: id,
-            notes: `Production ${existing.production_no} completed`,
-            created_by: performedBy ?? null,
-          };
-          const { error: movErr } = await supabase.from('stock_movements').insert(insertPayload);
-          if (movErr) throw new Error(`Inventory update failed: ${movErr.message}`);
-          // Stock is updated by trigger_update_stock_from_movement; do not update products.current_stock here.
-        }
+      // 2. Inventory — single PRODUCTION_IN (+1) via studioStockLifecycleService (stage-cost basis)
+      try {
+        const { ensureStudioProductionInForSale } = await import('./studioStockLifecycleService');
+        await ensureStudioProductionInForSale(saleId);
+      } catch (invErr: unknown) {
+        console.warn('[studioProductionService] ensureStudioProductionInForSale:', invErr);
       }
 
       // 3. Sale: studio_charges (metadata) and due_amount
@@ -2197,6 +2133,101 @@ export const studioProductionService = {
     } catch (e: any) {
       if (e?.code === 'PGRST116' || e?.message?.includes('does not exist')) return empty;
       throw e;
+    }
+  },
+
+  /**
+   * Sale cancelled: reverse **unpaid** studio stage bill JEs (Dr 5000 / Cr 2010) with an opposing reversal.
+   * Deletes unpaid worker_ledger rows for those stages and clears stage cost / journal link.
+   * If any stage cost was **paid**, sets `cancel_gl_review_needed` on the production (migration column).
+   */
+  async reverseUnpaidStudioStagesAfterSaleCancel(saleId: string, performedBy?: string | null): Promise<void> {
+    if (!saleId) return;
+    const { data: prod, error: pErr } = await supabase
+      .from('studio_productions')
+      .select('id, company_id, branch_id, production_no, status')
+      .eq('sale_id', saleId)
+      .maybeSingle();
+    if (pErr || !prod) return;
+
+    const production = prod as {
+      id: string;
+      company_id: string;
+      branch_id: string | null;
+      production_no: string;
+      status?: string;
+    };
+
+    const { data: stageRows } = await supabase
+      .from('studio_production_stages')
+      .select('id, journal_entry_id, cost, assigned_worker_id, stage_type, status')
+      .eq('production_id', production.id);
+
+    let needsPaidReview = false;
+
+    for (const st of stageRows || []) {
+      const row = st as {
+        id: string;
+        journal_entry_id: string | null;
+        cost: number;
+        assigned_worker_id: string | null;
+        stage_type: string;
+      };
+      const cost = Number(row.cost) || 0;
+      if (!row.journal_entry_id || cost <= 0) continue;
+
+      const { data: existingRev } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('reference_type', 'studio_production_stage_reversal')
+        .eq('reference_id', row.id)
+        .ilike('description', '%Sale cancelled – reverse%')
+        .maybeSingle();
+      if (existingRev?.id) continue;
+
+      const { data: led } = await supabase
+        .from('worker_ledger_entries')
+        .select('id, status')
+        .eq('reference_type', 'studio_production_stage')
+        .eq('reference_id', row.id)
+        .maybeSingle();
+      const paid = String((led as { status?: string } | null)?.status || '').toLowerCase() === 'paid';
+
+      if (paid) {
+        needsPaidReview = true;
+        continue;
+      }
+
+      await createProductionCostReversalEntry({
+        companyId: production.company_id,
+        branchId: production.branch_id,
+        stageId: row.id,
+        workerId: row.assigned_worker_id,
+        productionNo: production.production_no,
+        amount: cost,
+        stageType: row.stage_type || 'stage',
+        performedBy,
+        description: `Sale cancelled – reverse stage accrual (${production.production_no}) – ${row.stage_type || 'stage'}`,
+      });
+
+      if ((led as { id?: string } | null)?.id) {
+        await supabase.from('worker_ledger_entries').delete().eq('id', (led as { id: string }).id);
+      }
+
+      await supabase
+        .from('studio_production_stages')
+        .update({ journal_entry_id: null, cost: 0 })
+        .eq('id', row.id);
+    }
+
+    const prodPatch: Record<string, unknown> = { status: 'cancelled' };
+    if (needsPaidReview) {
+      prodPatch.cancel_gl_review_needed = true;
+    }
+
+    const { error: upProdErr } = await supabase.from('studio_productions').update(prodPatch).eq('id', production.id);
+    if (upProdErr && /cancel_gl_review_needed|does not exist/i.test(upProdErr.message || '')) {
+      await supabase.from('studio_productions').update({ status: 'cancelled' }).eq('id', production.id);
     }
   },
 };

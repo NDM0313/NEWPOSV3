@@ -19,6 +19,13 @@ import {
   type SaleLedgerSyncSkipReason,
 } from '../../api/saleEditAccounting';
 
+/** STD lives on order_no until finalized (matches web); invoice_no may be null pre-bill. */
+function saleDocumentDisplayNo(row: Record<string, unknown>): string {
+  const inv = row.invoice_no != null ? String(row.invoice_no).trim() : '';
+  const ord = row.order_no != null ? String(row.order_no).trim() : '';
+  return inv || ord || '';
+}
+
 function saleLedgerSkipHint(reason: SaleLedgerSyncSkipReason | undefined): string {
   if (!reason || reason === 'snap_unchanged' || reason === 'not_configured') return '';
   const map: Record<SaleLedgerSyncSkipReason, string> = {
@@ -78,7 +85,7 @@ function mapEnrichedRowToSaleRecord(s: Record<string, unknown>): SaleRecord {
   const grandTotal = Number(s.grand_total ?? totalAmount);
   return {
     raw: s,
-    id: (s.invoice_no as string) || (s.id as string) || '—',
+    id: saleDocumentDisplayNo(s) || (s.id as string) || '—',
     customer: (cust?.name as string) || (s.customer_name as string) || 'Walk-in',
     amount: totalAmount,
     total_received: totalReceived,
@@ -177,7 +184,7 @@ export function SalesHome({
           const grandTotal = Number(s.grand_total ?? totalAmount);
           return {
             raw: s,
-            id: (s.invoice_no as string) || (s.id as string) || '—',
+            id: saleDocumentDisplayNo(s) || (s.id as string) || '—',
             customer: (cust?.name as string) || (s.customer_name as string) || 'Walk-in',
             amount: totalAmount,
             total_received: totalReceived,
@@ -351,7 +358,7 @@ export function SalesHome({
         const grandTotal = Number(s.grand_total ?? totalAmount);
         return {
           raw: s,
-          id: (s.invoice_no as string) || (s.id as string) || '—',
+          id: saleDocumentDisplayNo(s) || (s.id as string) || '—',
           customer: (cust?.name as string) || (s.customer_name as string) || 'Walk-in',
           amount: totalAmount,
           total_received: totalReceived,
@@ -639,7 +646,7 @@ export function SalesHome({
               companyId: String(raw.company_id ?? companyId ?? ''),
               saleId: String(raw.id),
               customerId: editCustomerId ?? (raw.customer_id as string) ?? null,
-              invoiceNo: String((raw.invoice_no as string) || editSale.id),
+              invoiceNo: String(saleDocumentDisplayNo(raw) || editSale.id),
               oldSnapshot: oldSnap,
               newSnapshot: newSnap,
             });
@@ -711,7 +718,7 @@ export function SalesHome({
           companyId: String(raw.company_id ?? companyId ?? ''),
           saleId: String(raw.id),
           customerId: editCustomerId ?? (raw.customer_id as string) ?? null,
-          invoiceNo: String((raw.invoice_no as string) || editSale.id),
+          invoiceNo: String(saleDocumentDisplayNo(raw) || editSale.id),
           oldSnapshot: oldAcctSnap,
           newSnapshot: newAcctSnap,
         });

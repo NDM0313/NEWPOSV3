@@ -232,17 +232,26 @@ async function ensureStudioServiceRevenueAccount(companyId: string): Promise<{ i
 
 /**
  * Split product revenue credit between merchandise (4000) and studio service (4010) using sales_items line totals as weights.
+ * Studio line = is_studio_product OR linked product product_type production (RPC parity when flag missing).
  */
 async function computeProductRevenueCreditSplit(
   saleId: string,
   revenueCreditTotal: number
 ): Promise<{ merchandiseCredit: number; studioServiceCredit: number }> {
-  const { data: rows } = await supabase.from('sales_items').select('total, is_studio_product').eq('sale_id', saleId);
+  const { data: rows } = await supabase
+    .from('sales_items')
+    .select('total, is_studio_product, product:products(product_type)')
+    .eq('sale_id', saleId);
   let merchSum = 0;
   let studioSum = 0;
   for (const r of rows || []) {
     const t = Number((r as { total?: number }).total) || 0;
-    if ((r as { is_studio_product?: boolean | null }).is_studio_product === true) studioSum += t;
+    const pt = String(
+      (r as { product?: { product_type?: string | null } | null }).product?.product_type || ''
+    ).toLowerCase();
+    const isStudioLine =
+      (r as { is_studio_product?: boolean | null }).is_studio_product === true || pt === 'production';
+    if (isStudioLine) studioSum += t;
     else merchSum += t;
   }
   const sum = merchSum + studioSum;
@@ -256,12 +265,8 @@ async function computeProductRevenueCreditSplit(
     return { merchandiseCredit: 0, studioServiceCredit: revenueCreditTotal };
   }
   const wStudio = studioSum / sum;
-  let studioCredit = Math.round(revenueCreditTotal * wStudio * 100) / 100;
-  let merchCredit = Math.round((revenueCreditTotal - studioCredit) * 100) / 100;
-  const drift = Math.round((revenueCreditTotal - merchCredit - studioCredit) * 100) / 100;
-  if (drift !== 0) {
-    merchCredit = Math.round((merchCredit + drift) * 100) / 100;
-  }
+  const studioCredit = Math.round(revenueCreditTotal * wStudio * 100) / 100;
+  const merchCredit = Math.round((revenueCreditTotal - studioCredit) * 100) / 100;
   return { merchandiseCredit: merchCredit, studioServiceCredit: studioCredit };
 }
 
@@ -427,7 +432,7 @@ async function getSaleCogs(saleId: string): Promise<number> {
   }[] = [];
   const { data: fromSalesItems, error: err1 } = await supabase
     .from('sales_items')
-    .select('product_id, quantity, is_studio_product, product:products(cost_price, company_id)')
+    .select('product_id, quantity, is_studio_product, product:products(cost_price, company_id, product_type)')
     .eq('sale_id', saleId);
   if (!err1 && fromSalesItems?.length) {
     items = fromSalesItems as typeof items;
@@ -436,7 +441,8 @@ async function getSaleCogs(saleId: string): Promise<number> {
   let total = 0;
   for (const row of items) {
     /** Labor for studio lines is expensed via studio_production_stage JEs (Dr 5000); do not duplicate in sale COGS. */
-    if ((row as { is_studio_product?: boolean | null }).is_studio_product === true) continue;
+    const pt = String((row.product as { product_type?: string | null } | null)?.product_type || '').toLowerCase();
+    if ((row as { is_studio_product?: boolean | null }).is_studio_product === true || pt === 'production') continue;
     const qty = Number(row.quantity) || 0;
     if (qty <= 0 || !row.product_id) continue;
 
@@ -449,7 +455,7 @@ async function getSaleCogs(saleId: string): Promise<number> {
         .select('quantity, unit_cost, total_cost')
         .eq('product_id', row.product_id)
         .eq('company_id', companyId)
-        .in('movement_type', ['purchase', 'opening_stock']);
+        .in('movement_type', ['purchase', 'opening_stock', 'opening']);
       if (movements?.length) {
         let costSum = 0;
         let costQty = 0;

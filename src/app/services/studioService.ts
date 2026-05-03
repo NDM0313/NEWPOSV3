@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { studioCostsService } from './studioCostsService';
 
 export interface StudioOrder {
   id?: string;
@@ -346,9 +347,10 @@ export const studioService = {
   },
 
   /**
-   * Workers with real stats: active/pending/completed from studio_production_stages,
-   * total earnings from worker_ledger_entries (all), due balance from UNPAID ledger entries only.
-   * Due balance = sum of worker_ledger_entries.amount where status = 'unpaid' (ledger-driven, not workers.current_balance).
+   * Workers with real stats: active/pending/completed from studio_production_stages.
+   * Financials: same source as Studio Costs / Worker Detail — `studioCostsService.getWorkerCostSummaries`
+   * (journal + payments FIFO when available). On failure, falls back to raw `worker_ledger_entries` sums
+   * (excludes `paid` and `cancelled` from pending; not `workers.current_balance`).
    */
   async getWorkersWithStats(companyId: string): Promise<Array<Worker & {
     activeJobs: number;
@@ -391,31 +393,47 @@ export const studioService = {
         });
       }
 
-      // Ledger: total earnings (all entries) + due balance (unpaid entries only)
-      let ledgerRows: Array<{ worker_id: string; amount: number; status?: string }> = [];
-      const { data: withStatus, error: errStatus } = await supabase
-        .from('worker_ledger_entries')
-        .select('worker_id, amount, status')
-        .eq('company_id', companyId);
-      if (errStatus && (errStatus.code === '42703' || errStatus.message?.includes('status'))) {
-        const { data: noStatus } = await supabase
-          .from('worker_ledger_entries')
-          .select('worker_id, amount')
-          .eq('company_id', companyId);
-        ledgerRows = (noStatus || []).map((r: any) => ({ ...r, status: 'unpaid' }));
-      } else {
-        ledgerRows = withStatus || [];
+      let usedCostSummaries = false;
+      try {
+        const summaries = await studioCostsService.getWorkerCostSummaries(companyId, null);
+        usedCostSummaries = true;
+        const roundMoney = (n: number) => Math.round(n * 100) / 100;
+        summaries.forEach((s) => {
+          const wid = s.workerId;
+          totalEarningsByWorker[wid] = roundMoney(Number(s.totalCost) || 0);
+          const rawUnpaid = Number(s.unpaidAmount) || 0;
+          dueBalanceByWorker[wid] = rawUnpaid <= 0.5 ? 0 : roundMoney(rawUnpaid);
+        });
+      } catch (costErr) {
+        console.warn('[studioService] getWorkerCostSummaries failed, falling back to raw worker_ledger:', costErr);
       }
 
-      ledgerRows.forEach((row: { worker_id: string; amount: number; status?: string }) => {
-        const wid = row.worker_id;
-        const amt = Number(row.amount) || 0;
-        totalEarningsByWorker[wid] = (totalEarningsByWorker[wid] || 0) + amt;
-        const status = (row.status || '').toLowerCase();
-        if (status !== 'paid') {
-          dueBalanceByWorker[wid] = (dueBalanceByWorker[wid] || 0) + amt;
+      if (!usedCostSummaries) {
+        let ledgerRows: Array<{ worker_id: string; amount: number; status?: string }> = [];
+        const { data: withStatus, error: errStatus } = await supabase
+          .from('worker_ledger_entries')
+          .select('worker_id, amount, status')
+          .eq('company_id', companyId);
+        if (errStatus && (errStatus.code === '42703' || errStatus.message?.includes('status'))) {
+          const { data: noStatus } = await supabase
+            .from('worker_ledger_entries')
+            .select('worker_id, amount')
+            .eq('company_id', companyId);
+          ledgerRows = (noStatus || []).map((r: any) => ({ ...r, status: 'unpaid' }));
+        } else {
+          ledgerRows = withStatus || [];
         }
-      });
+
+        ledgerRows.forEach((row: { worker_id: string; amount: number; status?: string }) => {
+          const wid = row.worker_id;
+          const amt = Number(row.amount) || 0;
+          totalEarningsByWorker[wid] = (totalEarningsByWorker[wid] || 0) + amt;
+          const st = (row.status || '').toLowerCase();
+          if (st !== 'paid' && st !== 'cancelled') {
+            dueBalanceByWorker[wid] = (dueBalanceByWorker[wid] || 0) + amt;
+          }
+        });
+      }
     } catch (e: any) {
       if (e?.code !== 'PGRST205' && !e?.message?.includes('Could not find')) throw e;
     }
@@ -576,7 +594,8 @@ export const studioService = {
         (ledger || []).forEach((r: any) => {
           const amt = Number(r.amount) || 0;
           totalEarnings += amt;
-          if ((r.status || '').toLowerCase() !== 'paid') pendingAmount += amt;
+          const st = (r.status || '').toLowerCase();
+          if (st !== 'paid' && st !== 'cancelled') pendingAmount += amt;
         });
       } catch (_) {}
 

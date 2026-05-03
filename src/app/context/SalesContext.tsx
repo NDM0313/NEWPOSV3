@@ -5,7 +5,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
-import { useAccounting } from '@/app/context/AccountingContext';
+import { useAccountingOptional } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import {
   saleService,
@@ -426,7 +426,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const [page, setPageState] = useState(0);
   const [pageSize] = useState(DEFAULT_PAGE_SIZE);
   const { generateDocumentNumber, incrementNextNumber, getNumberingConfig } = useDocumentNumbering();
-  const accounting = useAccounting();
+  const accounting = useAccountingOptional();
   const { companyId, branchId, user } = useSupabase();
   const { modules, inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
@@ -877,7 +877,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   undefined
                 );
                 // Create separate journal entry for this payment
-                accounting.recordSalePayment({
+                accounting?.recordSalePayment({
                   saleId: newSale.id,
                   invoiceNo: newSale.invoiceNo,
                   customerName: newSale.customerName,
@@ -936,7 +936,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             
             // Create journal entry for initial payment (whether payment existed or was just created)
             if (paymentAccountId) {
-              accounting.recordSalePayment({
+              accounting?.recordSalePayment({
                 saleId: newSale.id,
                 invoiceNo: newSale.invoiceNo,
                 customerName: newSale.customerName,
@@ -1174,7 +1174,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // Payment JE only for posted (final) sales — draft/quotation/order must not hit GL or AR payment postings
       if (canPostAccountingForSaleStatus(newSale.status) && newSale.paid > 0) {
         try {
-          await accounting.recordSalePayment({
+          await accounting?.recordSalePayment({
           saleId: newSale.id,
           invoiceNo: newSale.invoiceNo,
           customerName: newSale.customerName,
@@ -1797,31 +1797,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               if (qty <= 0) continue;
               const productId = item.product_id;
               const variationId = item.variation_id || undefined;
-              const { data: prod } = await sb.from('products').select('id, product_type').eq('id', productId).maybeSingle();
-              if ((prod as any)?.product_type === 'production') {
-                const { data: existingProd } = await sb
-                  .from('stock_movements')
-                  .select('id')
-                  .eq('product_id', productId)
-                  .eq('company_id', effectiveCompanyId)
-                  .eq('movement_type', 'production')
-                  .limit(1);
-                if (!existingProd?.length) {
-                  await productService.createStockMovement({
-                    company_id: effectiveCompanyId,
-                    branch_id: effectiveBranchId ?? undefined,
-                    product_id: productId,
-                    variation_id: variationId,
-                    movement_type: 'production',
-                    quantity: 1,
-                    unit_cost: 0,
-                    reference_type: 'sale',
-                    reference_id: id,
-                    notes: `Studio sale ${saleInvoiceNo} – production product (backfill)`,
-                    created_by: updateCreatedByAuthId ?? undefined,
-                  });
-                }
-              }
               await productService.createStockMovement({
                 company_id: effectiveCompanyId,
                 branch_id: effectiveBranchId ?? undefined,
@@ -2212,7 +2187,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   undefined
                 );
                 // Create separate journal entry for this payment
-                accounting.recordSalePayment({
+                accounting?.recordSalePayment({
                   saleId: id,
                   invoiceNo: sale?.invoiceNo || '',
                   customerName: sale?.customerName || '',
@@ -2455,7 +2430,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
       // CRITICAL FIX: Create journal entry ONLY (payment already recorded above)
       // DO NOT call recordPayment again - it's already done
-      accounting.recordSalePayment({
+      accounting?.recordSalePayment({
         saleId: sale.id, // CRITICAL FIX: UUID for reference_id
         invoiceNo: sale.invoiceNo, // Invoice number for referenceNo
         customerName: sale.customerName,

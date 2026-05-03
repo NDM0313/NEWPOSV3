@@ -6,6 +6,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { studioProductionService } from '@/app/services/studioProductionService';
+import { ensureStudioProductionInForSale } from '@/app/services/studioStockLifecycleService';
 
 export interface SyncInvoiceParams {
   /** Profit margin percent (e.g. 20 => 20%). Profit = productionCost * (profitMarginPercent / 100). */
@@ -160,6 +161,12 @@ export async function syncInvoiceWithProductionPricing(
     const studioItemProductId = studioItem.product_id;
     if (studioItemProductId && productionCost > 0) {
       await supabase.from('products').update({ cost_price: productionCost }).eq('id', studioItemProductId);
+    }
+
+    try {
+      await ensureStudioProductionInForSale(saleId);
+    } catch (e) {
+      console.warn('[syncInvoiceWithProductionPricing] PRODUCTION_IN ensure:', e);
     }
 
     const needsBackfill =

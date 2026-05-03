@@ -5,7 +5,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import { documentNumberService } from '@/app/services/documentNumberService';
-import { useAccounting } from '@/app/context/AccountingContext';
+import { useAccountingOptional } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { expenseService, Expense as SupabaseExpense } from '@/app/services/expenseService';
 import { accountingService } from '@/app/services/accountingService';
@@ -120,7 +120,7 @@ export const useExpenses = () => {
 export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
-  const accounting = useAccounting();
+  const accounting = useAccountingOptional();
   const { companyId, branchId, user, requiresBranchSelection } = useSupabase();
   /** Serialize updates per expense so two saves cannot both reverse+repost the same JE. */
   const expenseUpdateChainRef = useRef<Map<string, Promise<unknown>>>(new Map());
@@ -271,7 +271,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
 
       // Auto-post to accounting if paid
       if (newExpense.status === 'paid') {
-        accounting.recordExpense({
+        accounting?.recordExpense({
           expenseId: newExpense.id,
           category: newExpense.category,
           amount: newExpense.amount,
@@ -645,7 +645,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       );
 
       if (!options?.silent) toast.success('Expense updated successfully!');
-      void accounting.refreshEntries();
+      void accounting?.refreshEntries();
       pushExpenseEditTrace({
         traceId,
         ts: new Date().toISOString(),
@@ -744,21 +744,21 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         { silent: true }
       );
 
-      const ok = await accounting.recordExpense({
+      const ok = await (accounting?.recordExpense({
         expenseId: expense.id,
         category: String(expense.category),
         description: expense.description,
         amount: expense.amount,
         paymentMethod: paymentMethod as any,
         date: expense.date,
-      });
+      }) ?? Promise.resolve(false));
 
       if (!ok) {
         toast.error('Expense marked paid but accounting post failed. Check Chart of Accounts.');
       } else {
         toast.success(`${expense.expenseNo} marked as paid and posted to accounting!`);
       }
-      void accounting.refreshEntries();
+      void accounting?.refreshEntries();
     } catch (error) {
       throw error;
     }

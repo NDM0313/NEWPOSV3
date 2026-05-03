@@ -685,10 +685,11 @@ export const saleService = {
   async getStudioSales(
     companyId: string,
     branchId?: string,
-    opts?: { limit?: number; offset?: number }
+    opts?: { limit?: number; offset?: number; includeCancelled?: boolean }
   ): Promise<any[] | { data: any[]; total: number }> {
     const limit = opts?.limit ?? 50;
     const offset = opts?.offset ?? 0;
+    const includeCancelled = opts?.includeCancelled === true;
     const schemaFlags = await getDocumentConversionSchemaFlags();
     const selectWithItems = (itemsTable: 'sales_items' | 'sale_items') =>
       `*, customer:contacts(name, phone), items:${itemsTable}(*)`;
@@ -703,8 +704,10 @@ export const saleService = {
         .select(selectWithItems(itemsTable), useRange ? { count: 'exact' } : undefined)
         .eq('company_id', companyId)
         // Studio identity can be on is_studio flag or order/invoice prefixes depending on lifecycle stage.
-        .or('is_studio.eq.true,order_no.ilike.STD-%,order_no.ilike.ST-%,invoice_no.ilike.STD-%,invoice_no.ilike.ST-%')
-        .neq('status', 'cancelled');
+        .or('is_studio.eq.true,order_no.ilike.STD-%,order_no.ilike.ST-%,invoice_no.ilike.STD-%,invoice_no.ilike.ST-%');
+      if (!includeCancelled) {
+        q = q.neq('status', 'cancelled');
+      }
       if (hideConverted && schemaFlags.salesConvertedColumn) q = q.eq('converted', false);
       if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
       q = q.order(orderBy, { ascending: false });
@@ -896,6 +899,13 @@ export const saleService = {
         reverseSaleDocumentAccounting(id).catch((err: any) =>
           console.warn('[saleService] Document accounting reversal failed (non-critical):', err?.message)
         );
+        import('./studioProductionService')
+          .then(({ studioProductionService }) =>
+            studioProductionService.reverseUnpaidStudioStagesAfterSaleCancel(id, (saleRow as { created_by?: string }).created_by ?? null)
+          )
+          .catch((err: unknown) =>
+            console.warn('[saleService] Studio stage reversal on cancel (non-critical):', err instanceof Error ? err.message : err)
+          );
       }
 
       // Refresh customer balance so cancelled sale reflects in customer ledger immediately

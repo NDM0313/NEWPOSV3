@@ -529,17 +529,34 @@ export const WorkerDetailPage: React.FC = () => {
                                     status: 'completed',
                                     assignedDate: new Date(),
                                     paymentAmount: entry.amount,
-                                    paymentStatus: (entry.status || 'unpaid') === 'paid' ? 'paid' : 'unpaid',
+                                    paymentStatus:
+                                      (entry.status || 'unpaid') === 'paid'
+                                        ? 'paid'
+                                        : (entry.status || '') === 'cancelled'
+                                          ? 'paid'
+                                          : 'unpaid',
                                   });
                                 }
                               }}
                               className="cursor-pointer"
                             >
                               <Badge variant="outline" className={cn(
-                                entry.status === 'paid' ? 'bg-green-500/20 text-green-400 border-green-700' : 'bg-orange-500/20 text-orange-400 border-orange-700',
+                                entry.status === 'paid'
+                                  ? 'bg-green-500/20 text-green-400 border-green-700'
+                                  : entry.status === 'partial'
+                                    ? 'bg-yellow-500/20 text-yellow-300 border-yellow-700'
+                                    : entry.status === 'cancelled'
+                                      ? 'bg-gray-600/30 text-gray-400 border-gray-600'
+                                      : 'bg-orange-500/20 text-orange-400 border-orange-700',
                                 'cursor-pointer hover:opacity-80'
                               )}>
-                                {entry.status === 'paid' ? 'Paid' : 'Payable'}
+                                {entry.status === 'paid'
+                                  ? 'Paid'
+                                  : entry.status === 'partial'
+                                    ? 'Partial'
+                                    : entry.status === 'cancelled'
+                                      ? 'Cancelled'
+                                      : 'Payable'}
                               </Badge>
                             </button>
                           </td>

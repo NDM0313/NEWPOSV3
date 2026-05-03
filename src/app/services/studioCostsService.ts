@@ -27,7 +27,7 @@ export interface WorkerCostSummary {
 export interface WorkerLedgerEntry {
   id: string;
   amount: number;
-  status: 'paid' | 'unpaid' | 'partial';
+  status: 'paid' | 'unpaid' | 'partial' | 'cancelled';
   referenceType: string;
   referenceId: string;
   documentNo: string | null;
@@ -47,6 +47,10 @@ export interface ProductionCostSummary {
   productionNo: string;
   saleId: string | null;
   saleInvoice: string | null;
+  /** Linked sale lifecycle status when sale_id is set. */
+  saleStatus: string | null;
+  /** Requires accountant review (paid stage costs when sale cancelled). */
+  cancelGlReviewNeeded: boolean;
   customerName: string | null;
   productName: string | null;
   /** From `products.product_type`: production = STD-PROD / studio flow; else catalog line on invoice. */
@@ -358,13 +362,18 @@ export const studioCostsService = {
             workerSum.ledgerEntries.forEach((entry) => {
               const ledger = ledgerStatusMap.get(entry.referenceId);
               if (ledger) {
-                entry.status = ledger.status === 'paid' ? 'paid' : 'unpaid';
+                const ls = (ledger.status || 'unpaid').toLowerCase();
+                if (ls === 'paid') entry.status = 'paid';
+                else if (ls === 'cancelled') entry.status = 'cancelled';
+                else entry.status = 'unpaid';
                 entry.documentNo = ledger.documentNo;
                 entry.paidAt = ledger.paidAt;
                 entry.paymentReference = ledger.paymentRef;
               }
               if (entry.status === 'paid') paidTotal += entry.amount;
-              else unpaidTotal += entry.amount;
+              else if (entry.status === 'cancelled') {
+                /* no payable */
+              } else unpaidTotal += entry.amount;
             });
             workerSum.paidAmount = paidTotal;
             workerSum.unpaidAmount = unpaidTotal;
@@ -400,6 +409,7 @@ export const studioCostsService = {
             );
             let pool = paidCap;
             sorted.forEach((entry) => {
+              if (entry.status === 'cancelled') return;
               const amt = entry.amount;
               const ap = Math.min(amt, pool);
               pool -= ap;
@@ -494,8 +504,8 @@ export const studioCostsService = {
     let query = supabase
       .from('studio_productions')
       .select(`
-        id, production_no, sale_id, actual_cost, status, product_id,
-        sale:sales(invoice_no)
+        id, production_no, sale_id, actual_cost, status, product_id, cancel_gl_review_needed,
+        sale:sales(invoice_no, status)
       `)
       .eq('company_id', companyId)
       .order('created_at', { ascending: false });
@@ -603,18 +613,22 @@ export const studioCostsService = {
         };
       });
       const totalStageCost = stagesDetail.reduce((sum, s) => sum + s.cost, 0);
-      const sale = p.sale as { invoice_no?: string } | null;
+      const saleRaw = p.sale as { invoice_no?: string; status?: string } | { invoice_no?: string; status?: string }[] | null;
+      const sale = Array.isArray(saleRaw) ? saleRaw[0] ?? null : saleRaw;
       const meta = p.product_id ? productMetaById.get(p.product_id) : undefined;
       const productSourceKind: ProductionProductSourceKind = !p.product_id
         ? 'none'
         : (meta?.product_type || '').toLowerCase() === 'production'
           ? 'studio_created'
           : 'sale_line';
+      const cancelReview = Boolean((p as { cancel_gl_review_needed?: boolean }).cancel_gl_review_needed);
       return {
         productionId: p.id,
         productionNo: p.production_no || '',
         saleId: p.sale_id || null,
         saleInvoice: sale?.invoice_no || null,
+        saleStatus: sale?.status ? String(sale.status) : null,
+        cancelGlReviewNeeded: cancelReview,
         customerName: null,
         productName: meta?.name || null,
         productSourceKind,
@@ -732,7 +746,9 @@ export const studioCostsService = {
       const wid = e.worker_id;
       if (!wid) return;
       const amt = Number(e.amount) || 0;
-      const status = ((e.status || 'unpaid') as string).toLowerCase() === 'paid' ? 'paid' : 'unpaid';
+      const rawSt = ((e.status || 'unpaid') as string).toLowerCase();
+      const status: 'paid' | 'unpaid' | 'cancelled' =
+        rawSt === 'paid' ? 'paid' : rawSt === 'cancelled' ? 'cancelled' : 'unpaid';
       const stage = stageMap.get(e.reference_id || '');
       const prod = stage?.production_id ? prodMap.get(stage.production_id) : undefined;
       const saleInvoice = prod?.sale_id ? saleMap.get(prod.sale_id) : undefined;
@@ -740,7 +756,7 @@ export const studioCostsService = {
       const ledgerEntry: WorkerLedgerEntry = {
         id: e.id,
         amount: amt,
-        status: status as 'paid' | 'unpaid',
+        status: status as WorkerLedgerEntry['status'],
         referenceType: e.reference_type || '',
         referenceId: e.reference_id || '',
         documentNo: e.document_no || null,
@@ -768,7 +784,9 @@ export const studioCostsService = {
       const sum = byWorker.get(wid)!;
       sum.totalCost += amt;
       if (status === 'paid') sum.paidAmount += amt;
-      else sum.unpaidAmount += amt;
+      else if (status === 'cancelled') {
+        /* no payable */
+      } else sum.unpaidAmount += amt;
       sum.jobsCount += 1;
       sum.ledgerEntries.push(ledgerEntry);
     });
@@ -796,10 +814,11 @@ export const studioCostsService = {
         if (filteredEntries.length === 0) return null;
         const paid = filteredEntries.filter((e) => e.status === 'paid').reduce((s, e) => s + e.amount, 0);
         const unpaid = filteredEntries.filter((e) => e.status === 'unpaid').reduce((s, e) => s + e.amount, 0);
+        const totalCost = filteredEntries.reduce((s, e) => s + e.amount, 0);
         return {
           ...w,
           ledgerEntries: filteredEntries,
-          totalCost: paid + unpaid,
+          totalCost,
           paidAmount: paid,
           unpaidAmount: unpaid,
           jobsCount: filteredEntries.length,

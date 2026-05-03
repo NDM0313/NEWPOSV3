@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Users,
   Package,
@@ -75,6 +75,8 @@ export const StudioCostsTab: React.FC = () => {
   const [expandedProduction, setExpandedProduction] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'workers' | 'productions'>('workers');
   const [ensuringAccounts, setEnsuringAccounts] = useState(false);
+  /** Hide rows whose linked sale is cancelled (document JE reversed; stage lines may differ). */
+  const [hideCancelledSales, setHideCancelledSales] = useState(false);
 
   const load = useCallback(async () => {
     if (!companyId) {
@@ -105,6 +107,11 @@ export const StudioCostsTab: React.FC = () => {
       setLoading(false);
     }
   }, [companyId, selectedBranchId]);
+
+  const visibleProductions = useMemo(() => {
+    if (!hideCancelledSales) return productions;
+    return productions.filter((p) => String(p.saleStatus || '').toLowerCase() !== 'cancelled');
+  }, [productions, hideCancelledSales]);
 
   const ensureDefaultAccounts = useCallback(async () => {
     setEnsuringAccounts(true);
@@ -487,11 +494,25 @@ export const StudioCostsTab: React.FC = () => {
       {/* Productions View */}
       {viewMode === 'productions' && (
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-800">
-            <h4 className="text-sm font-semibold text-white">Production-wise Cost Breakdown</h4>
-            <p className="text-xs text-gray-500 mt-0.5">Each production with stages and worker costs</p>
+          <div className="px-4 py-3 border-b border-gray-800 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-white">Production-wise Cost Breakdown</h4>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Each production with stages and worker costs. Cancelled-sale document reversals run automatically; unpaid stage
+                bills reverse on cancel — paid stages may need manual GL review (badge).
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={hideCancelledSales}
+                onChange={(e) => setHideCancelledSales(e.target.checked)}
+                className="rounded border-gray-600 bg-gray-800"
+              />
+              Hide cancelled sales
+            </label>
           </div>
-          {productions.length === 0 ? (
+          {visibleProductions.length === 0 ? (
             <div className="text-center py-12">
               <Package size={48} className="mx-auto text-gray-600 mb-3" />
               <p className="text-gray-400 text-sm">No productions found</p>
@@ -512,7 +533,7 @@ export const StudioCostsTab: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {productions.map((p) => (
+                  {visibleProductions.map((p) => (
                     <React.Fragment key={p.productionId}>
                       <tr
                         className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors"
@@ -530,7 +551,25 @@ export const StudioCostsTab: React.FC = () => {
                           ) : null}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-sm font-medium text-white">{p.productionNo}</span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-sm font-medium text-white">{p.productionNo}</span>
+                            {String(p.saleStatus || '').toLowerCase() === 'cancelled' && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-normal border-rose-500/50 text-rose-300 bg-rose-500/10"
+                              >
+                                Sale cancelled
+                              </Badge>
+                            )}
+                            {p.cancelGlReviewNeeded && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-normal border-amber-500/50 text-amber-200 bg-amber-500/15"
+                              >
+                                Manual GL review
+                              </Badge>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="text-sm">

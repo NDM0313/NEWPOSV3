@@ -92,12 +92,20 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
   const totalNum = Number(total) || 0;
   const isCredit = String(paymentMethod || '').toLowerCase() === 'credit';
   const isSplit = paidAmount != null && dueAmount != null;
-  const paid = isSplit ? Number(paidAmount) : (isCredit ? 0 : totalNum);
-  const due = isSplit ? Number(dueAmount) : (isCredit ? totalNum : 0);
-  const isDuplicateInvoiceError = (err: { code?: string; message?: string } | null) =>
-    err?.code === '23505' || (err?.message != null && String(err.message).includes('sales_company_branch_invoice_unique'));
+  const paidNonStudio = isSplit ? Number(paidAmount) : (isCredit ? 0 : totalNum);
+  const dueNonStudio = isSplit ? Number(dueAmount) : (isCredit ? totalNum : 0);
+  /** Web parity: new studio sale is customer order only — no payments, no GL/stock until finalize (Generate Bill). */
+  const paid = isStudio ? 0 : paidNonStudio;
+  const due = isStudio ? totalNum : dueNonStudio;
 
-  const saleRowBase = {
+  const isDuplicateDocNumberError = (err: { code?: string; message?: string } | null) =>
+    err?.code === '23505' ||
+    (err?.message != null &&
+      (String(err.message).includes('sales_company_branch_invoice_unique') ||
+        String(err.message).includes('order_no') ||
+        String(err.message).includes('invoice_no')));
+
+  const saleRowBaseRegular = {
     company_id: companyId,
     branch_id: effectiveBranchId,
     invoice_date: new Date().toISOString(),
@@ -116,12 +124,39 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     paid_amount: paid,
     due_amount: due,
     created_by: userId,
-    is_studio: !!isStudio,
+    is_studio: false,
     notes: notes || null,
     ...(deadline != null && deadline !== '' && { deadline: deadline }),
   };
 
-  let saleRow: Record<string, unknown> = { ...saleRowBase, invoice_no: invoiceNo };
+  const saleRowBaseStudio = {
+    company_id: companyId,
+    branch_id: effectiveBranchId,
+    invoice_date: new Date().toISOString(),
+    customer_id: customerId || null,
+    customer_name: customerName || 'Walk-in',
+    contact_number: contactNumber || null,
+    type: 'quotation' as const,
+    status: 'order' as const,
+    payment_status: 'unpaid' as const,
+    payment_method: paymentMethod || 'Credit',
+    subtotal: Number(subtotal) || 0,
+    discount_amount: Number(discountAmount) || 0,
+    tax_amount: Number(taxAmount) || 0,
+    expenses: Number(expenses) || 0,
+    total: totalNum,
+    paid_amount: 0,
+    due_amount: totalNum,
+    created_by: userId,
+    is_studio: true,
+    notes: notes || null,
+    ...(deadline != null && deadline !== '' && { deadline: deadline }),
+  };
+
+  let docNo = invoiceNo;
+  let saleRow: Record<string, unknown> = isStudio
+    ? { ...saleRowBaseStudio, order_no: docNo }
+    : { ...saleRowBaseRegular, invoice_no: docNo };
   let saleData: { id: string } | null = null;
   let saleError: { code?: string; message?: string } | null = null;
 
@@ -130,10 +165,10 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     saleData = result.data as { id: string } | null;
     saleError = result.error;
     if (!saleError) break;
-    if (attempt === 0 && isDuplicateInvoiceError(saleError)) {
+    if (attempt === 0 && isDuplicateDocNumberError(saleError)) {
       try {
-        invoiceNo = await getNextInvoiceNumber(companyId, effectiveBranchId, !!isStudio);
-        saleRow = { ...saleRowBase, invoice_no: invoiceNo };
+        docNo = await getNextInvoiceNumber(companyId, effectiveBranchId, !!isStudio);
+        saleRow = isStudio ? { ...saleRowBaseStudio, order_no: docNo } : { ...saleRowBaseRegular, invoice_no: docNo };
       } catch {
         break;
       }
@@ -182,40 +217,43 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: `Failed to save items: ${itemsError.message}` };
   }
 
-  // Packing: inventory decrement via stock_movements (sale = stock OUT)
-  const movementRows = items
-    .filter((item) => item.productId && item.quantity > 0)
-    .map((item) => {
-      const packing = item.packingDetails;
-      const boxOut = packing?.total_boxes != null ? Math.round(Number(packing.total_boxes)) : 0;
-      const pieceOut = packing?.total_pieces != null ? Math.round(Number(packing.total_pieces)) : 0;
-      return {
-        company_id: companyId,
-        branch_id: effectiveBranchId,
-        product_id: item.productId,
-        variation_id: item.variationId || null,
-        movement_type: 'sale' as const,
-        quantity: -item.quantity,
-        unit_cost: item.unitPrice || 0,
-        total_cost: -((item.unitPrice || 0) * item.quantity),
-        reference_type: 'sale' as const,
-        reference_id: saleId,
-        notes: `Sale ${invoiceNo} - ${item.productName}`,
-        created_by: userId,
-        ...(boxOut !== 0 && { box_change: -boxOut }),
-        ...(pieceOut !== 0 && { piece_change: -pieceOut }),
-      };
-    });
-  if (movementRows.length > 0) {
-    const { error: movErr } = await supabase.from('stock_movements').insert(movementRows);
-    if (movErr) {
-      await supabase.from('sales').delete().eq('id', saleId);
-      return { data: null, error: `Inventory update failed: ${movErr.message}` };
+  // Packing: inventory decrement via stock_movements (posted/final sales only — matches web).
+  // Studio orders stay non-final until Generate Bill / finalize; no stock OUT on create.
+  if (!isStudio) {
+    const movementRows = items
+      .filter((item) => item.productId && item.quantity > 0)
+      .map((item) => {
+        const packing = item.packingDetails;
+        const boxOut = packing?.total_boxes != null ? Math.round(Number(packing.total_boxes)) : 0;
+        const pieceOut = packing?.total_pieces != null ? Math.round(Number(packing.total_pieces)) : 0;
+        return {
+          company_id: companyId,
+          branch_id: effectiveBranchId,
+          product_id: item.productId,
+          variation_id: item.variationId || null,
+          movement_type: 'sale' as const,
+          quantity: -item.quantity,
+          unit_cost: item.unitPrice || 0,
+          total_cost: -((item.unitPrice || 0) * item.quantity),
+          reference_type: 'sale' as const,
+          reference_id: saleId,
+          notes: `Sale ${docNo} - ${item.productName}`,
+          created_by: userId,
+          ...(boxOut !== 0 && { box_change: -boxOut }),
+          ...(pieceOut !== 0 && { piece_change: -pieceOut }),
+        };
+      });
+    if (movementRows.length > 0) {
+      const { error: movErr } = await supabase.from('stock_movements').insert(movementRows);
+      if (movErr) {
+        await supabase.from('sales').delete().eq('id', saleId);
+        return { data: null, error: `Inventory update failed: ${movErr.message}` };
+      }
     }
   }
 
   // Create payment record when paid > 0 (for payment history). Let DB trigger set reference_number to avoid duplicate key.
-  if (paid > 0) {
+  if (!isStudio && paid > 0) {
     const payMethod = (paymentMethod || 'Cash').toLowerCase();
     let enumMethod: 'cash' | 'bank' | 'card' | 'other' = 'cash';
     if (payMethod.includes('bank') || payMethod.includes('transfer')) enumMethod = 'bank';
@@ -246,7 +284,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       company_id: companyId,
       branch_id: effectiveBranchId,
       sale_id: saleId,
-      production_no: invoiceNo,
+      production_no: docNo,
       production_date: productionDate,
       product_id: first.productId,
       variation_id: first.variationId || null,
@@ -260,26 +298,27 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     }
   }
 
-  // Accounting: post journal entry for the sale (Dr AR customer sub-account,
-  // Cr Revenue/Tax/Discount, Dr COGS, Cr Inventory). Soft-warn on failure so
-  // a transient accounting glitch does not destroy the sale document.
-  try {
-    const { data: postData, error: postErr } = await supabase.rpc(
-      'record_sale_with_accounting',
-      { p_sale_id: saleId },
-    );
-    if (postErr) {
-      console.warn('[SALES API] record_sale_with_accounting failed:', postErr);
-    } else if (postData && typeof postData === 'object' && (postData as { success?: boolean }).success === false) {
-      console.warn('[SALES API] record_sale_with_accounting returned error:', postData);
+  // Accounting: only for posted (final) regular sales. Studio document JE runs after Generate Bill / finalize (see studioFinalizeAfterInvoice).
+  if (!isStudio) {
+    try {
+      const { data: postData, error: postErr } = await supabase.rpc(
+        'record_sale_with_accounting',
+        { p_sale_id: saleId },
+      );
+      if (postErr) {
+        console.warn('[SALES API] record_sale_with_accounting failed:', postErr);
+      } else if (postData && typeof postData === 'object' && (postData as { success?: boolean }).success === false) {
+        console.warn('[SALES API] record_sale_with_accounting returned error:', postData);
+      }
+    } catch (err) {
+      console.warn('[SALES API] record_sale_with_accounting threw:', err);
     }
-  } catch (err) {
-    console.warn('[SALES API] record_sale_with_accounting threw:', err);
   }
 
-  const insertedInvoiceNo = (saleRow.invoice_no as string) ?? invoiceNo;
+  const displayDocNo =
+    isStudio ? String((saleRow.order_no as string) ?? docNo) : String((saleRow.invoice_no as string) ?? docNo);
   return {
-    data: { id: saleId, invoiceNo: insertedInvoiceNo },
+    data: { id: saleId, invoiceNo: displayDocNo },
     error: null,
   };
 }

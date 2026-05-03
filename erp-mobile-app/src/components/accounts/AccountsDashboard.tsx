@@ -14,11 +14,31 @@ import {
   BookMarked,
   ArrowUpRight,
   ArrowDownLeft,
+  type LucideIcon,
 } from 'lucide-react';
 import type { User } from '../../types';
 import { useResponsive } from '../../hooks/useResponsive';
-import { getJournalEntries, getAccounts } from '../../api/accounts';
+import { getJournalEntries, getAccounts, type JournalEntryLineRow } from '../../api/accounts';
 import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
+
+/** Derived from journal_entries.reference_type (+ payment_id) for badges and filters. */
+export type EntrySourceKind =
+  | 'sale'
+  | 'sale_reversal'
+  | 'purchase'
+  | 'purchase_reversal'
+  | 'payment_supplier'
+  | 'payment_worker'
+  | 'payment_customer'
+  | 'studio_stage'
+  | 'studio_stage_reversal'
+  | 'rental'
+  | 'expense'
+  | 'transfer'
+  | 'opening_balance'
+  | 'sale_return'
+  | 'journal_manual'
+  | 'general';
 
 export interface AccountEntry {
   id: string;
@@ -29,6 +49,12 @@ export interface AccountEntry {
   amount: number;
   debitAccount: string;
   creditAccount: string;
+  /** Single-line summary for list rows (handles multi-line document JEs). */
+  accountsSummary?: string;
+  lineCount?: number;
+  sourceKind?: EntrySourceKind;
+  sourceLabel?: string;
+  postedAt?: string | null;
   addedBy: string;
   addedByRole: string;
   createdAt: string;
@@ -61,16 +87,152 @@ function mapReferenceTypeToEntryType(ref: string): AccountEntry['type'] {
   return 'general';
 }
 
+export function classifySource(referenceType: string, paymentId: string | null | undefined): EntrySourceKind {
+  const r = (referenceType || '').toLowerCase();
+  const hasPay = Boolean(paymentId);
+  if (r === 'sale') return 'sale';
+  if (r === 'sale_reversal') return 'sale_reversal';
+  if (r === 'purchase' || r === 'purchase_order') return 'purchase';
+  if (r === 'purchase_reversal' || r === 'purchase_cancel') return 'purchase_reversal';
+  if (r === 'worker_payment') return 'payment_worker';
+  if (r === 'payment' || r === 'manual_payment' || r === 'supplier_payment') return hasPay ? 'payment_supplier' : 'general';
+  if (r === 'customer_payment' || r === 'receipt' || r === 'sale_payment') return 'payment_customer';
+  if (r === 'studio_production_stage') return 'studio_stage';
+  if (r === 'studio_production_stage_reversal') return 'studio_stage_reversal';
+  if (r === 'rental' || r === 'rental_payment') return 'rental';
+  if (r === 'expense' || r === 'expense_payment') return 'expense';
+  if (r === 'transfer') return 'transfer';
+  if (r === 'opening_balance' || r === 'opening_stock') return 'opening_balance';
+  if (r === 'sale_return') return 'sale_return';
+  if (r === 'journal' || r === 'manual_journal' || r === 'general_journal') return 'journal_manual';
+  return 'general';
+}
+
+export function sourceLabel(kind: EntrySourceKind): string {
+  const labels: Record<EntrySourceKind, string> = {
+    sale: 'Sale',
+    sale_reversal: 'Sale cancel',
+    purchase: 'Purchase',
+    purchase_reversal: 'Purchase cancel',
+    payment_supplier: 'Supplier payment',
+    payment_worker: 'Worker payment',
+    payment_customer: 'Customer receipt',
+    studio_stage: 'Studio stage',
+    studio_stage_reversal: 'Studio reversal',
+    rental: 'Rental',
+    expense: 'Expense',
+    transfer: 'Transfer',
+    opening_balance: 'Opening balance',
+    sale_return: 'Sale return',
+    journal_manual: 'Manual JE',
+    general: 'Journal',
+  };
+  return labels[kind] ?? 'Journal';
+}
+
+function summarizeJournalLines(lines: JournalEntryLineRow[] | undefined): {
+  lineCount: number;
+  debitAccount: string;
+  creditAccount: string;
+  accountsSummary: string;
+} {
+  const raw = lines ?? [];
+  const lineCount = raw.length;
+  if (lineCount === 0) {
+    return { lineCount: 0, debitAccount: '—', creditAccount: '—', accountsSummary: 'No lines' };
+  }
+
+  const named = (l: JournalEntryLineRow) =>
+    l.account?.name?.trim() ||
+    (l.account && typeof (l.account as { code?: string }).code === 'string'
+      ? String((l.account as { code?: string }).code)
+      : 'Account');
+
+  if (lineCount <= 2) {
+    const debitLine = raw.find((l) => Number(l.debit || 0) > 0);
+    const creditLine = raw.find((l) => Number(l.credit || 0) > 0);
+    const d = debitLine ? named(debitLine) : '—';
+    const c = creditLine ? named(creditLine) : '—';
+    return {
+      lineCount,
+      debitAccount: d,
+      creditAccount: c,
+      accountsSummary: `${d} → ${c}`,
+    };
+  }
+
+  let maxDr = 0;
+  let maxCr = 0;
+  let maxDrName = '—';
+  let maxCrName = '—';
+  for (const l of raw) {
+    const dr = Number(l.debit || 0);
+    const cr = Number(l.credit || 0);
+    if (dr > maxDr) {
+      maxDr = dr;
+      maxDrName = named(l);
+    }
+    if (cr > maxCr) {
+      maxCr = cr;
+      maxCrName = named(l);
+    }
+  }
+  return {
+    lineCount,
+    debitAccount: maxDrName,
+    creditAccount: maxCrName,
+    accountsSummary: `${lineCount} lines · ${maxDrName} / ${maxCrName} (largest)`,
+  };
+}
+
 /**
  * Classify an entry as cash-in (green) vs cash-out (red) using the broad reference type
  * semantics. Supplier / worker payments and expenses flow OUT; transfers are neutral; a
  * general entry is best classified by comparing cash/bank account movement, but since
  * the dashboard row only surfaces the summed amount we infer direction from type.
  */
-function entryDirection(type: AccountEntry['type']): 'in' | 'out' | 'neutral' {
+function entryDirection(type: AccountEntry['type'], sourceKind?: EntrySourceKind): 'in' | 'out' | 'neutral' {
+  if (sourceKind === 'sale_reversal' || sourceKind === 'purchase_reversal' || sourceKind === 'studio_stage_reversal') {
+    return 'neutral';
+  }
   if (type === 'supplier-payment' || type === 'worker-payment' || type === 'expense') return 'out';
   if (type === 'transfer') return 'neutral';
   return 'in';
+}
+
+type EntryDisplayConfig = { label: string; color: string; bg: string; icon: LucideIcon };
+
+/** Shared with AccountsModule entry detail header. */
+export function getAccountEntryDisplayConfig(entry: AccountEntry): EntryDisplayConfig {
+  const k = entry.sourceKind ?? classifySource(String(entry.referenceType || ''), entry.paymentId ?? null);
+  const lbl = entry.sourceLabel ?? sourceLabel(k);
+  if (k === 'sale') return { label: lbl, color: 'text-[#60A5FA]', bg: 'bg-[#3B82F6]/15', icon: BookOpen };
+  if (k === 'sale_reversal') return { label: lbl, color: 'text-[#FBBF24]', bg: 'bg-[#D97706]/20', icon: BookOpen };
+  if (k === 'purchase' || k === 'purchase_reversal') return { label: lbl, color: 'text-[#FB923C]', bg: 'bg-[#EA580C]/15', icon: Receipt };
+  if (k === 'studio_stage' || k === 'studio_stage_reversal') {
+    return { label: lbl, color: 'text-[#C4B5FD]', bg: 'bg-[#7C3AED]/20', icon: BookOpen };
+  }
+  if (k === 'payment_customer') return { label: lbl, color: 'text-[#34D399]', bg: 'bg-[#059669]/20', icon: Wallet };
+  if (k === 'payment_worker') return { label: lbl, color: 'text-[#10B981]', bg: 'bg-[#10B981]/10', icon: Wrench };
+  if (k === 'payment_supplier') return { label: lbl, color: 'text-[#F59E0B]', bg: 'bg-[#F59E0B]/10', icon: Users };
+  if (k === 'rental') return { label: lbl, color: 'text-[#A78BFA]', bg: 'bg-[#6D28D9]/20', icon: BookOpen };
+  if (k === 'expense') return { label: lbl, color: 'text-[#EF4444]', bg: 'bg-[#EF4444]/10', icon: Receipt };
+  if (k === 'transfer') return { label: lbl, color: 'text-[#3B82F6]', bg: 'bg-[#3B82F6]/10', icon: ArrowLeftRight };
+  if (k === 'opening_balance' || k === 'journal_manual') {
+    return { label: lbl, color: 'text-[#8B5CF6]', bg: 'bg-[#8B5CF6]/10', icon: BookOpen };
+  }
+  switch (entry.type) {
+    case 'transfer':
+      return { label: 'Transfer', color: 'text-[#3B82F6]', bg: 'bg-[#3B82F6]/10', icon: ArrowLeftRight };
+    case 'supplier-payment':
+      return { label: 'Supplier Payment', color: 'text-[#F59E0B]', bg: 'bg-[#F59E0B]/10', icon: Users };
+    case 'worker-payment':
+      return { label: 'Worker Payment', color: 'text-[#10B981]', bg: 'bg-[#10B981]/10', icon: Wrench };
+    case 'expense':
+      return { label: 'Expense', color: 'text-[#EF4444]', bg: 'bg-[#EF4444]/10', icon: Receipt };
+      default:
+        return { label: lbl, color: 'text-[#8B5CF6]', bg: 'bg-[#8B5CF6]/10', icon: BookOpen };
+  }
 }
 
 export function AccountsDashboard({
@@ -104,9 +266,12 @@ export function AccountsDashboard({
     } else {
       const today = new Date().toISOString().slice(0, 10);
       const mapped: AccountEntry[] = jeRes.data.map((e) => {
-        const debitLine = e.lines?.find((l) => (l.debit || 0) > 0);
-        const creditLine = e.lines?.find((l) => (l.credit || 0) > 0);
+        const sourceKind = classifySource(e.reference_type, e.payment_id);
+        const { lineCount, debitAccount, creditAccount, accountsSummary } = summarizeJournalLines(
+          e.lines as JournalEntryLineRow[] | undefined
+        );
         const amt = e.total_debit || e.total_credit || 0;
+        const postedAt = e.posted_at || e.created_at || null;
         return {
           id: e.id,
           entryNumber: e.entry_no,
@@ -114,11 +279,16 @@ export function AccountsDashboard({
           date: e.entry_date,
           description: e.description,
           amount: amt,
-          debitAccount: debitLine?.account?.name ?? '—',
-          creditAccount: creditLine?.account?.name ?? '—',
+          debitAccount,
+          creditAccount,
+          accountsSummary,
+          lineCount,
+          sourceKind,
+          sourceLabel: sourceLabel(sourceKind),
+          postedAt,
           addedBy: user.name,
           addedByRole: user.role,
-          createdAt: e.entry_date,
+          createdAt: postedAt || e.entry_date,
           status: 'posted' as const,
           referenceType: e.reference_type,
           referenceId: e.reference_id,
@@ -181,20 +351,7 @@ export function AccountsDashboard({
     };
   }, [branchId, companyId, user.name, user.role]);
 
-  const getEntryTypeConfig = (type: AccountEntry['type']) => {
-    switch (type) {
-      case 'general':
-        return { label: 'General Entry', color: 'text-[#8B5CF6]', bg: 'bg-[#8B5CF6]/10', icon: BookOpen };
-      case 'transfer':
-        return { label: 'Transfer', color: 'text-[#3B82F6]', bg: 'bg-[#3B82F6]/10', icon: ArrowLeftRight };
-      case 'supplier-payment':
-        return { label: 'Supplier Payment', color: 'text-[#F59E0B]', bg: 'bg-[#F59E0B]/10', icon: Users };
-      case 'worker-payment':
-        return { label: 'Worker Payment', color: 'text-[#10B981]', bg: 'bg-[#10B981]/10', icon: Wrench };
-      case 'expense':
-        return { label: 'Expense', color: 'text-[#EF4444]', bg: 'bg-[#EF4444]/10', icon: Receipt };
-    }
-  };
+  const getEntryTypeConfig = (entry: AccountEntry) => getAccountEntryDisplayConfig(entry);
 
   const filteredEntries = useMemo(
     () =>
@@ -202,6 +359,8 @@ export function AccountsDashboard({
         (entry) =>
           entry.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
           entry.entryNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (entry.sourceLabel || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (entry.accountsSummary || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
           entry.debitAccount.toLowerCase().includes(searchQuery.toLowerCase()) ||
           entry.creditAccount.toLowerCase().includes(searchQuery.toLowerCase()),
       ),
@@ -306,11 +465,19 @@ export function AccountsDashboard({
         ) : (
           <div className="space-y-2">
             {filteredEntries.map((entry) => {
-              const typeConfig = getEntryTypeConfig(entry.type);
+              const typeConfig = getEntryTypeConfig(entry);
               const TypeIcon = typeConfig.icon;
-              const direction = entryDirection(entry.type);
+              const direction = entryDirection(entry.type, entry.sourceKind);
               const DirIcon = direction === 'out' ? ArrowUpRight : direction === 'in' ? ArrowDownLeft : ArrowLeftRight;
               const dirColor = direction === 'out' ? 'text-[#EF4444]' : direction === 'in' ? 'text-[#10B981]' : 'text-[#93C5FD]';
+              const postedShort = entry.postedAt
+                ? new Date(entry.postedAt).toLocaleString('en-PK', {
+                    day: '2-digit',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : '';
               return (
                 <button
                   key={entry.id}
@@ -323,15 +490,23 @@ export function AccountsDashboard({
                       <TypeIcon size={18} className={typeConfig.color} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
+                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                         <p className="text-sm font-semibold text-white truncate">{entry.entryNumber}</p>
                         <span className={`px-2 py-0.5 ${typeConfig.bg} ${typeConfig.color} rounded text-[10px] font-medium shrink-0`}>
                           {typeConfig.label}
                         </span>
                       </div>
                       <p className="text-xs text-[#D1D5DB] truncate">{entry.description}</p>
-                      <p className="text-[10px] text-[#6B7280] mt-0.5">
-                        {entry.debitAccount} → {entry.creditAccount} • {entry.date}
+                      <p className="text-[10px] text-[#6B7280] mt-0.5 break-words">
+                        {entry.accountsSummary}
+                        {' · '}
+                        <span className="text-[#9CA3AF]">Entry date {entry.date}</span>
+                        {postedShort ? (
+                          <>
+                            {' · '}
+                            <span className="text-[#9CA3AF]">Posted {postedShort}</span>
+                          </>
+                        ) : null}
                       </p>
                     </div>
                     <div className="text-right shrink-0">
@@ -340,7 +515,7 @@ export function AccountsDashboard({
                         <p className="text-sm font-bold">Rs. {entry.amount.toLocaleString()}</p>
                       </div>
                       <p className="text-[10px] text-[#6B7280] mt-0.5">
-                        {direction === 'out' ? 'Out' : direction === 'in' ? 'In' : 'Transfer'}
+                        {direction === 'out' ? 'Out' : direction === 'in' ? 'In' : 'Net'}
                       </p>
                     </div>
                   </div>

@@ -368,7 +368,13 @@ export const inventoryService = {
           ) || [];
           const movementSummary = {
             purchases: productMovements.filter((m: any) => m.movement_type === 'purchase').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
-            production: productMovements.filter((m: any) => m.movement_type === 'production').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
+            production: productMovements
+              .filter(
+                (m: any) =>
+                  m.movement_type === 'production' ||
+                  String(m.movement_type || '') === 'PRODUCTION_IN'
+              )
+              .reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
             sales: productMovements.filter((m: any) => m.movement_type === 'sale').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
             adjustments: productMovements.filter((m: any) => m.movement_type === 'adjustment').reduce((sum: number, m: any) => sum + (Number(m.quantity) || 0), 0),
             totalMovements: productMovements.length

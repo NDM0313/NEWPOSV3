@@ -49,7 +49,7 @@ function formatDateSafe(value: string | undefined | null, formatStr: string): st
   }
 }
 
-type ProductionStatus = 'Not Started' | 'In Progress' | 'Completed';
+type ProductionStatus = 'Not Started' | 'In Progress' | 'Completed' | 'Cancelled';
 
 interface StudioSale {
   id: string;
@@ -65,6 +65,8 @@ interface StudioSale {
   paidAmount: number;
   balanceDue: number;
   productionStatus: ProductionStatus;
+  /** Raw `sales.status` (e.g. cancelled) for badges */
+  saleStatus?: string | null;
   source?: 'studio_order' | 'sale';
 }
 
@@ -89,7 +91,7 @@ export const StudioSalesListNew = () => {
       'pending': 'Not Started',
       'in_progress': 'In Progress',
       'completed': 'Completed',
-      'cancelled': 'Not Started'
+      'cancelled': 'Cancelled',
     };
 
     // Get customer info
@@ -117,7 +119,8 @@ export const StudioSalesListNew = () => {
       totalAmount: order.total_cost || 0,
       paidAmount: order.advance_paid || 0,
       balanceDue: order.balance_due || 0,
-      productionStatus: statusMap[order.status] || 'Not Started',
+      productionStatus: order.status === 'cancelled' ? 'Cancelled' : (statusMap[order.status] || 'Not Started'),
+      saleStatus: order.status || null,
       source: 'studio_order' as const
     };
   }, []);
@@ -143,7 +146,13 @@ export const StudioSalesListNew = () => {
       dn ||
       (items.length > 0 ? (items[0].product_name || items[0].item_description || 'N/A') : 'N/A');
     const meters = items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0);
-    const productionStatus = stages ? deriveProductionStatus(stages) : 'Not Started';
+    const rawStatus = String(sale.status || '').toLowerCase();
+    const productionStatus: ProductionStatus =
+      rawStatus === 'cancelled'
+        ? 'Cancelled'
+        : stages
+          ? deriveProductionStatus(stages)
+          : 'Not Started';
     const { notesWithoutDeadline } = parseStudioDeadlineFromNotes(sale.notes);
     const deliveryDeadline = sale.deadline || getStudioDeadlineFromNotes(sale.notes) || '';
     return {
@@ -164,6 +173,7 @@ export const StudioSalesListNew = () => {
       paidAmount: Number(sale.paid_amount) || 0,
       balanceDue: Number(sale.due_amount) ?? (Number(sale.total) || 0) - (Number(sale.paid_amount) || 0),
       productionStatus,
+      saleStatus: sale.status ?? null,
       source: 'sale' as const
     };
   }, [deriveProductionStatus]);
@@ -181,7 +191,11 @@ export const StudioSalesListNew = () => {
       const effectiveBranchId = branchId === 'all' ? undefined : branchId || undefined;
       const offset = (serverPage - 1) * serverPageSize;
       const result = await saleService
-        .getStudioSales(companyId, effectiveBranchId, { limit: serverPageSize, offset })
+        .getStudioSales(companyId, effectiveBranchId, {
+          limit: serverPageSize,
+          offset,
+          includeCancelled: true,
+        })
         .catch(() => ({ data: [], total: 0 }));
       const studioSalesFromSales = (result && typeof result === 'object' && 'data' in result ? (result as { data: any[] }).data : result) || [];
       const total = result && typeof result === 'object' && 'total' in result ? (result as { total: number }).total : studioSalesFromSales.length;
@@ -242,7 +256,7 @@ export const StudioSalesListNew = () => {
 
   // Calculate deadline alerts
   const getDeadlineAlert = (deadline: string, status: ProductionStatus) => {
-    if (status === 'Completed') return null;
+    if (status === 'Completed' || status === 'Cancelled') return null;
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -311,6 +325,10 @@ export const StudioSalesListNew = () => {
   };
 
   const handleEdit = async (sale: StudioSale) => {
+    if (sale.saleStatus === 'cancelled' || sale.productionStatus === 'Cancelled') {
+      toast.error('This invoice is cancelled and cannot be edited.');
+      return;
+    }
     if (sale.source !== 'sale') {
       toast.error('Studio orders cannot be edited from here. Open Production to manage.');
       return;
@@ -338,6 +356,7 @@ export const StudioSalesListNew = () => {
       case 'Not Started': return 'bg-gray-500/20 text-gray-400 border-gray-700';
       case 'In Progress': return 'bg-blue-500/20 text-blue-400 border-blue-700';
       case 'Completed': return 'bg-green-500/20 text-green-400 border-green-700';
+      case 'Cancelled': return 'bg-red-500/20 text-red-400 border-red-500/30';
       default: return 'bg-gray-500/20 text-gray-400 border-gray-700';
     }
   };
@@ -462,6 +481,7 @@ export const StudioSalesListNew = () => {
                     <option value="Not Started">Not Started</option>
                     <option value="In Progress">In Progress</option>
                     <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
                   </select>
                 </div>
               </div>
@@ -535,10 +555,15 @@ export const StudioSalesListNew = () => {
                   >
                     {/* Invoice No */}
                     <td className="p-4">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <p className="font-mono font-bold text-white hover:text-blue-400 transition-colors">
                           {sale.invoiceNo}
                         </p>
+                        {(sale.saleStatus === 'cancelled' || sale.productionStatus === 'Cancelled') && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-red-500/15 text-red-400 border-red-500/35">
+                            Cancelled
+                          </Badge>
+                        )}
                         <ExternalLink size={14} className="text-gray-500" />
                       </div>
                     </td>

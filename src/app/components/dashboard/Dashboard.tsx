@@ -5,7 +5,7 @@ import { useNavigation } from '../../context/NavigationContext';
 import { useSales } from '../../context/SalesContext';
 import { usePurchases } from '../../context/PurchaseContext';
 import { useExpenses } from '../../context/ExpenseContext';
-import { useAccounting } from '../../context/AccountingContext';
+import { useAccountingOptional } from '../../context/AccountingContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -165,7 +165,7 @@ export const Dashboard = () => {
   const sales = useSales();
   const purchases = usePurchases();
   const expenses = useExpenses();
-  const accounting = useAccounting();
+  const accounting = useAccountingOptional();
   const { companyId, signOut, profileLoadComplete } = useSupabase();
   const { modules: settingsModules } = useSettings();
   const { hasPermission } = useCheckPermission();
@@ -355,16 +355,16 @@ export const Dashboard = () => {
   const displayMetricsWithCashBank = useMemo(() => {
     let cash = 0;
     let bank = 0;
-    for (const a of accounting.accounts || []) {
+    for (const a of accounting?.accounts ?? []) {
       const t = String(a.type || a.accountType || '').toLowerCase();
       if (t === 'cash') cash += Number(a.balance) || 0;
       if (t === 'bank') bank += Number(a.balance) || 0;
     }
-    if ((accounting.accounts?.length ?? 0) > 0) {
+    if ((accounting?.accounts?.length ?? 0) > 0) {
       return { ...displayMetrics, cash_balance: cash, bank_balance: bank };
     }
     return displayMetrics;
-  }, [displayMetrics, accounting.accounts]);
+  }, [displayMetrics, accounting?.accounts]);
 
   const ymdToday = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const dashboardRangeLabel = useMemo(() => {

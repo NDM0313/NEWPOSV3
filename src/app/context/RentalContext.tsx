@@ -4,7 +4,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { useAccounting } from '@/app/context/AccountingContext';
+import { useAccountingOptional } from '@/app/context/AccountingContext';
 import { supabase, isPlaceholderSupabaseAnonKey } from '@/lib/supabase';
 import { rentalService, RentalStatus } from '@/app/services/rentalService';
 import { toast } from 'sonner';
@@ -172,7 +172,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
   const [rentals, setRentals] = useState<RentalUI[]>([]);
   const [loading, setLoading] = useState(true);
   const { companyId, branchId, user, requiresBranchSelection } = useSupabase();
-  const accounting = useAccounting();
+  const accounting = useAccountingOptional();
 
   const loadRentals = useCallback(async () => {
     if (!companyId) return;
@@ -322,33 +322,33 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
       if (payload.penaltyPaid) {
         // Pay now: Dr Cash/Bank, Cr Rental Income (skip if UnifiedPaymentDialog already posted payment + JE)
         if (!payload.penaltyPaymentPreRecorded) {
-          accounting.recordRentalReturn({
+          accounting?.recordRentalReturn({
             bookingId: id,
             customerName: rental.customerName,
             customerId: rental.customerId || '',
             securityDepositAmount: 0,
             damageCharge: payload.penaltyAmount,
             paymentMethod: (payload.penaltyPaymentMethod || 'Cash') as any,
-          }).catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
+          })?.catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
         }
       } else {
         // Credit mode: Dr AR (customer owes), Cr Rental Income
-        accounting.recordRentalCreditDelivery({
+        accounting?.recordRentalCreditDelivery({
           bookingId: id,
           customerName: rental.customerName,
           customerId: rental.customerId || '',
           remainingAmount: payload.penaltyAmount,
           paymentMethod: 'Cash',
-        }).catch((err) => console.warn('[RentalContext] Penalty credit posting:', err));
+        })?.catch((err) => console.warn('[RentalContext] Penalty credit posting:', err));
       }
     }
     // Always recognize any unreleased advance as income on return (handles fully advance-paid rentals)
     if (rental) {
-      accounting.recognizeRentalAdvance({
+      accounting?.recognizeRentalAdvance({
         bookingId: id,
         customerName: rental.customerName,
         customerId: rental.customerId || '',
-      }).catch((err) => console.warn('[RentalContext] Advance recognition on return:', err));
+      })?.catch((err) => console.warn('[RentalContext] Advance recognition on return:', err));
     }
     await loadRentals();
     toast.success(payload.penaltyPaid ? 'Return received – penalty collected' : 'Return received – penalty added to customer credit');
@@ -368,14 +368,14 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     const rental = getRentalById(rentalId);
     if (rental && amount > 0) {
       const paymentMethod = method === 'bank' ? 'Bank' : method === 'other' ? 'Mobile Wallet' : 'Cash';
-      accounting.recordRentalDelivery({
+      accounting?.recordRentalDelivery({
         bookingId: rentalId,
         customerName: rental.customerName,
         customerId: rental.customerId || '',
         remainingAmount: amount,
         paymentMethod,
         rentalPaymentId: payRow?.id,
-      }).catch((err) => {
+      })?.catch((err) => {
         console.warn('[RentalContext] Ledger posting failed (payment already recorded):', err);
       });
     }
@@ -441,11 +441,11 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     await rentalService.markAsPickedUp(rentalId, companyId, payload, user?.id);
     // Legacy 2020 → 4200 recognition (no-op when party AR model used)
     if (rental) {
-      accounting.recognizeRentalAdvance({
+      accounting?.recognizeRentalAdvance({
         bookingId: rentalId,
         customerName: rental.customerName,
         customerId: rental.customerId || '',
-      }).catch((err) => console.warn('[RentalContext] Advance recognition on pickup:', err));
+      })?.catch((err) => console.warn('[RentalContext] Advance recognition on pickup:', err));
     }
     await loadRentals();
     toast.success(payload.deliverOnCredit ? 'Rental delivered on credit' : 'Rental marked as picked up');
