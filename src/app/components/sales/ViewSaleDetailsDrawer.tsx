@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSales, Sale, convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
@@ -160,6 +160,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'payments' | 'history'>('details');
   const { getSaleById } = useSales();
+  const getSaleByIdRef = useRef(getSaleById);
+  getSaleByIdRef.current = getSaleById;
   const { companyId, user } = useSupabase();
   const { company, inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
@@ -354,7 +356,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
             loadActivityLogs(saleId);
           } else {
             // Fallback to context
-            const contextSale = getSaleById(saleId);
+            const contextSale = getSaleByIdRef.current(saleId);
             if (contextSale) {
               setSale(contextSale);
               loadPayments(saleId);
@@ -363,8 +365,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
           }
         } catch (error: any) {
           console.error('[VIEW SALE] Error loading sale:', error?.message || error);
-          // Fallback to context
-          const contextSale = getSaleById(saleId);
+          // Fallback to context (ref avoids re-running this effect when only getSaleById identity changes)
+          const contextSale = getSaleByIdRef.current(saleId);
           if (contextSale) {
             setSale(contextSale);
             loadPayments(saleId);
@@ -382,7 +384,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
     } else {
       setLoading(false);
     }
-  }, [isOpen, saleId, getSaleById, companyId, loadPayments, loadActivityLogs]);
+  }, [isOpen, saleId, companyId, loadPayments, loadActivityLogs]);
 
   // Load studio summary for this sale (real-time sync: productions + stages)
   useEffect(() => {

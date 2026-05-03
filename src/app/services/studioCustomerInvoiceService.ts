@@ -7,6 +7,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { dispatchSaleLifecycleInvalidated, dispatchStudioDataInvalidated } from '@/app/lib/dataInvalidationBus';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { saleService, type Sale, type SaleItem } from '@/app/services/saleService';
 import { productService } from '@/app/services/productService';
@@ -257,6 +258,19 @@ export async function generateCustomerInvoiceFromProduction(params: {
     console.warn('[studioCustomerInvoiceService] Sale accounting entry failed (sale already created):', accountingErr?.message);
   }
 
+  dispatchSaleLifecycleInvalidated({
+    companyId: saleInfo.company_id,
+    branchId: saleInfo.branch_id,
+    customerId: saleInfo.customer_id || null,
+    saleId: created.id,
+    reason: 'studio-customer-invoice-generated',
+  });
+  dispatchStudioDataInvalidated({
+    companyId: saleInfo.company_id,
+    branchId: saleInfo.branch_id,
+    reason: 'studio-customer-invoice-generated',
+  });
+
   return { saleId: created.id, invoiceNo: created.invoice_no || invoiceNo };
 }
 
@@ -309,18 +323,40 @@ export async function createProductFromProductionOrder(params: {
     .update({ product_id: created.id })
     .eq('id', productionOrderId);
 
-  await productService.createStockMovement({
-    company_id: companyId,
-    branch_id: branchId ?? (order as { branch_id?: string }).branch_id ?? undefined,
-    product_id: created.id,
-    movement_type: 'PRODUCTION_IN',
-    quantity: 1,
-    unit_cost: productionCost,
-    reference_type: 'studio_production',
-    reference_id: productionOrderId,
-    notes: `Studio production ${order.production_no}`,
-    created_by: createdBy ?? undefined,
-  });
+  const saleId = order.sale_id;
+  const { data: spRow } = await supabase
+    .from('studio_productions')
+    .select('id')
+    .eq('sale_id', saleId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const studioProductionId = (spRow as { id?: string } | null)?.id ?? null;
+
+  if (studioProductionId) {
+    await productService.createStockMovement({
+      company_id: companyId,
+      branch_id: branchId ?? (order as { branch_id?: string }).branch_id ?? undefined,
+      product_id: created.id,
+      movement_type: 'PRODUCTION_IN',
+      quantity: 1,
+      unit_cost: productionCost,
+      reference_type: 'studio_production',
+      reference_id: studioProductionId,
+      notes: `Studio production ${order.production_no}`,
+      created_by: createdBy ?? undefined,
+    });
+  } else {
+    const { ensureStudioProductionInForSale } = await import('@/app/services/studioStockLifecycleService');
+    const ensured = await ensureStudioProductionInForSale(saleId);
+    if (!ensured.inserted) {
+      console.warn(
+        '[createProductFromProductionOrder] PRODUCTION_IN not created yet:',
+        ensured.skippedReason,
+        '(will appear after studio_productions row + studio line exist)'
+      );
+    }
+  }
 
   // Accounting: Dr Finished Goods Inventory (1200) Cr Production Cost (5000)
   if (productionCost > 0) {
@@ -336,7 +372,7 @@ export async function createProductFromProductionOrder(params: {
         entry_date: new Date().toISOString().split('T')[0],
         description: `Finished goods from studio production ${order.production_no}`,
         reference_type: 'studio_production',
-        reference_id: productionOrderId,
+        reference_id: studioProductionId ?? productionOrderId,
         created_by: createdBy ?? undefined,
       };
       const lines: JournalEntryLine[] = [

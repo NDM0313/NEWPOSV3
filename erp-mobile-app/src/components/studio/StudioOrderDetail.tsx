@@ -68,6 +68,8 @@ export function StudioOrderDetail({
   const [paymentAccountsError, setPaymentAccountsError] = useState<string | null>(null);
   const [paymentRemarks, setPaymentRemarks] = useState('');
   const [stageDetailSheet, setStageDetailSheet] = useState<StudioStage | null>(null);
+  /** After receive with zero internal cost: web-parity gate before opening Confirm Payment (no accrual until invoice + all stages). */
+  const [workerPaymentChoiceStage, setWorkerPaymentChoiceStage] = useState<StudioStage | null>(null);
   const { isLoading } = useLoading();
   const { runSingleFlight, isRunning: isConfirmPaymentRunning } = useSingleFlightAction();
 
@@ -99,6 +101,11 @@ export function StudioOrderDetail({
   }, [paymentAccounts, paymentPayMethod]);
 
   const paymentBusy = paymentSubmitting || isConfirmPaymentRunning;
+
+  const invoiceLinked = order.customerInvoiceGenerated;
+  const allTasksCompleted =
+    order.stages.length > 0 && order.stages.every((s) => s.status === 'completed');
+  const workerPaymentEligible = invoiceLinked && allTasksCompleted;
 
   const postConfirmPayment = async (
     stage: StudioStage,
@@ -479,7 +486,7 @@ export function StudioOrderDetail({
                               setPaymentPayStep(1);
                               setPaymentPayMethod(null);
                               setPaymentRemarks('');
-                              setPaymentDialogStage(stage);
+                              setWorkerPaymentChoiceStage(stage);
                               return;
                             }
                             if (onCompleteStage) {
@@ -508,7 +515,7 @@ export function StudioOrderDetail({
                                 ? 'Receive Work'
                                 : stage.status === 'received'
                                   ? (stage.internalCost ?? 0) <= 0
-                                    ? 'Confirm Payment'
+                                    ? 'Worker payment'
                                     : 'Complete Stage'
                                   : 'Update'}
                       </button>
@@ -635,9 +642,73 @@ export function StudioOrderDetail({
         </div>
       )}
 
+      {workerPaymentChoiceStage && onConfirmPayment && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[55] p-4">
+          <div
+            className="bg-[#1F2937] border border-[#374151] rounded-lg p-5 w-full max-w-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-white mb-1">Worker payment</h3>
+            <p className="text-sm text-[#9CA3AF] mb-3">
+              This stage is received. Do you want to pay the worker now?
+            </p>
+            {!workerPaymentEligible && (
+              <p className="text-xs text-amber-400/90 mb-4">
+                {!invoiceLinked
+                  ? 'Generate the studio invoice (bill) and finalize production first — then you can pay the worker from Pay Now.'
+                  : 'Complete every stage on this order first — then pay the worker after the bill is ready.'}
+              </p>
+            )}
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                className="flex-1 py-3 rounded-xl text-sm font-medium border border-[#4B5563] text-[#E5E7EB] hover:bg-[#374151] disabled:opacity-50"
+                disabled={isLoading}
+                onClick={() => {
+                  const stage = workerPaymentChoiceStage;
+                  setWorkerPaymentChoiceStage(null);
+                  if (stage && onCompleteStage) {
+                    void Promise.resolve(onCompleteStage(stage));
+                  }
+                }}
+              >
+                No, pay later
+              </button>
+              <button
+                type="button"
+                disabled={!workerPaymentEligible}
+                title={
+                  !workerPaymentEligible
+                    ? 'Studio invoice + all stages complete / production ready — then worker payment.'
+                    : undefined
+                }
+                className="flex-1 py-3 rounded-xl text-sm font-medium bg-[#10B981] text-white hover:bg-[#059669] disabled:opacity-40 disabled:cursor-not-allowed"
+                onClick={() => {
+                  if (!workerPaymentEligible) return;
+                  const s = workerPaymentChoiceStage;
+                  setWorkerPaymentChoiceStage(null);
+                  setPaymentDialogStage(s);
+                }}
+              >
+                Yes, pay now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {paymentDialogStage && onConfirmPayment && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1F2937] border border-[#374151] rounded-lg p-5 w-full max-w-sm max-h-[90vh] flex flex-col">
+          <div className="relative bg-[#1F2937] border border-[#374151] rounded-lg p-5 w-full max-w-sm max-h-[90vh] flex flex-col">
+            {paymentBusy ? (
+              <div
+                className="absolute inset-0 z-[60] rounded-lg bg-black/55 flex flex-col items-center justify-center gap-2 pointer-events-auto"
+                aria-busy
+              >
+                <Loader2 className="w-8 h-8 animate-spin text-[#A78BFA]" />
+                <span className="text-xs text-[#D1D5DB]">Processing…</span>
+              </div>
+            ) : null}
             {paymentPayStep === 2 && paymentPayMethod ? (
               <>
                 <button
@@ -730,7 +801,10 @@ export function StudioOrderDetail({
                   rows={2}
                   className="w-full bg-[#374151] border border-[#4B5563] rounded-lg px-3 py-2 text-white text-sm mb-4 resize-none focus:outline-none focus:border-[#8B5CF6]"
                 />
-                <p className="text-xs text-[#6B7280] mb-3">Pay Now (pick method, then account) or Pay Later</p>
+                <p className="text-xs text-[#6B7280] mb-3">
+                  Pay now (pick method, then account)
+                  {workerPaymentEligible ? ' or record accrual in the worker ledger.' : '.'}
+                </p>
                 {!companyId ? (
                   <p className="text-xs text-amber-400 mb-3">Company context missing — Pay Now requires account selection.</p>
                 ) : null}
@@ -814,30 +888,32 @@ export function StudioOrderDetail({
                     <span className="text-xs font-medium">Wallet</span>
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const cost =
-                      parseFloat(paymentFinalCost) ||
-                      (paymentDialogStage.expectedCost ??
-                        paymentDialogStage.internalCost ??
-                        paymentDialogStage.customerCharge ??
-                        0);
-                    if (cost <= 0) {
-                      alert('Enter final cost');
-                      return;
-                    }
-                    void postConfirmPayment(paymentDialogStage, {
-                      final_cost: cost,
-                      pay_now: false,
-                      notes: paymentRemarks.trim() || null,
-                    });
-                  }}
-                  disabled={paymentBusy}
-                  className="w-full py-3 rounded-xl text-sm font-medium bg-[#374151] hover:bg-[#4B5563] text-white mb-2 disabled:opacity-50"
-                >
-                  {paymentBusy ? 'Posting…' : 'Pay Later (record in ledger)'}
-                </button>
+                {workerPaymentEligible ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cost =
+                        parseFloat(paymentFinalCost) ||
+                        (paymentDialogStage.expectedCost ??
+                          paymentDialogStage.internalCost ??
+                          paymentDialogStage.customerCharge ??
+                          0);
+                      if (cost <= 0) {
+                        alert('Enter final cost');
+                        return;
+                      }
+                      void postConfirmPayment(paymentDialogStage, {
+                        final_cost: cost,
+                        pay_now: false,
+                        notes: paymentRemarks.trim() || null,
+                      });
+                    }}
+                    disabled={paymentBusy}
+                    className="w-full py-3 rounded-xl text-sm font-medium bg-[#374151] hover:bg-[#4B5563] text-white mb-2 disabled:opacity-50"
+                  >
+                    {paymentBusy ? 'Posting…' : 'Record in worker ledger (accrual)'}
+                  </button>
+                ) : null}
               </>
             )}
             <button

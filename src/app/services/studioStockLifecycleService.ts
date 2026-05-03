@@ -51,16 +51,25 @@ export async function ensureStudioProductionInForSale(saleId: string): Promise<{
   const productId = String(studioItem.product_id);
   const qty = STUDIO_FINISHED_GOODS_QTY;
 
-  const { data: existing } = await supabase
+  // Treat as duplicate if PRODUCTION_IN already exists for this product tied to this production
+  // OR legacy rows keyed by studio_production_orders_v2.id (same sale) — avoids double IN.
+  const { data: v2OrderRows } = await supabase
+    .from('studio_production_orders_v2')
+    .select('id')
+    .eq('sale_id', saleId);
+  const refIdsForDupCheck = Array.from(
+    new Set([production.id, ...((v2OrderRows || []) as { id: string }[]).map((r) => r.id)])
+  );
+  const { data: existingRows } = await supabase
     .from('stock_movements')
     .select('id')
     .eq('reference_type', 'studio_production')
-    .eq('reference_id', production.id)
     .eq('movement_type', 'PRODUCTION_IN')
     .eq('product_id', productId)
-    .limit(1)
-    .maybeSingle();
-  if (existing) return { inserted: false, skippedReason: 'already_exists' };
+    .in('reference_id', refIdsForDupCheck);
+  if (existingRows && existingRows.length > 0) {
+    return { inserted: false, skippedReason: 'already_exists' };
+  }
 
   const stages = await studioProductionService.getStagesByProductionId(production.id);
   let productionCost = sumProductionCostFromStages(stages || []);

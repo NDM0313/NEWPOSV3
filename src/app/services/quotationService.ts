@@ -3,6 +3,7 @@
  */
 import { supabase } from '@/lib/supabase';
 import { saleService } from '@/app/services/saleService';
+import { dispatchSaleLifecycleInvalidated } from '@/app/lib/dataInvalidationBus';
 
 export interface QuotationItemRow {
   id: string;
@@ -258,6 +259,14 @@ export const quotationService = {
       .from('quotations')
       .update({ status: 'converted', converted_sale_id: saleId, updated_at: new Date().toISOString() })
       .eq('id', quotationId);
+
+    dispatchSaleLifecycleInvalidated({
+      companyId: q.company_id,
+      branchId: branchId,
+      customerId: q.customer_id,
+      saleId,
+      reason: 'quotation-converted-to-sale',
+    });
 
     return { saleId, invoiceNo };
   },

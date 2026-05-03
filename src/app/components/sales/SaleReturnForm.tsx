@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Save, AlertCircle, Package, Loader2, DollarSign, Building2, Lock, Ruler, TrendingUp, Undo2, RefreshCw, Box, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { Button } from '../ui/button';
@@ -70,6 +70,8 @@ interface ReturnItem {
 }
 
 export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId, onClose, onSuccess }) => {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const { companyId, branchId: contextBranchId, user } = useSupabase();
   const accounting = useAccounting();
   const { inventorySettings } = useSettings();
@@ -142,7 +144,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
           existingReturn = await saleReturnService.getSaleReturnById(returnId, companyId);
           if (existingReturn.status === 'final') {
             toast.error('Cannot edit a finalized sale return. It is locked.');
-            onClose();
+            onCloseRef.current();
             return;
           }
         }
@@ -154,7 +156,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
         // Validate: Cannot return Draft/Quotation
         if (sale.status === 'draft' || sale.status === 'quotation') {
           toast.error('Cannot return Draft or Quotation sales. Only Final sales can be returned.');
-          onClose();
+          onCloseRef.current();
           return;
         }
 
@@ -200,7 +202,7 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
         
         if (!items || items.length === 0) {
           toast.error('No items found in the original sale. Cannot create return.');
-          onClose();
+          onCloseRef.current();
           return;
         }
 
@@ -250,14 +252,14 @@ export const SaleReturnForm: React.FC<SaleReturnFormProps> = ({ saleId, returnId
       } catch (error: any) {
         console.error('[SALE RETURN FORM] Error loading data:', error);
         toast.error(error.message || 'Failed to load sale data');
-        onClose();
+        onCloseRef.current();
       } finally {
         setLoading(false);
       }
     };
 
     loadData();
-  }, [companyId, saleId, returnId, onClose]);
+  }, [companyId, saleId, returnId]);
 
   const handleQuantityChange = (index: number, quantity: number) => {
     const item = returnItems[index];

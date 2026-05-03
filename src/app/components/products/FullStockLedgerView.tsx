@@ -656,7 +656,16 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
       )}
       {!showClassicPrintView && (
       <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-[#0B0F17] rounded-xl border border-gray-800 w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
+      <div className="relative bg-[#0B0F17] rounded-xl border border-gray-800 w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom-4 duration-300">
+        {loading ? (
+          <div
+            className="absolute inset-0 z-[80] bg-black/50 backdrop-blur-[1px] flex flex-col items-center justify-center gap-3 pointer-events-auto"
+            aria-busy
+          >
+            <Loader2 size={40} className="text-blue-400 animate-spin" />
+            <span className="text-sm text-gray-300">Loading ledger…</span>
+          </div>
+        ) : null}
         {/* Header */}
         <div className="px-6 py-5 border-b border-gray-800 bg-[#111827] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -675,7 +684,8 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="text-gray-400 hover:text-white hover:bg-gray-800"
+            disabled={loading}
+            className="text-gray-400 hover:text-white hover:bg-gray-800 disabled:opacity-40 disabled:pointer-events-none"
           >
             <X size={20} />
           </Button>

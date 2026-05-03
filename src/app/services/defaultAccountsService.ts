@@ -149,6 +149,21 @@ async function repairLegacyOperatingExpense6100Name(companyId: string): Promise<
   }
 }
 
+/** Legacy bootstrap used "Operating Expense" on 5000; studio posting expects Cost of Production (direct labor / production). */
+async function repairLegacy5000CostOfProductionName(companyId: string): Promise<void> {
+  const list = await accountService.getAllAccounts(companyId);
+  const a = findByCode(list, '5000');
+  if (!a?.id) return;
+  const n = String(a.name || '').trim().toLowerCase();
+  if (n === 'operating expense' || n === 'operating expenses') {
+    try {
+      await accountService.updateAccount(a.id, { name: 'Cost of Production' });
+    } catch (e) {
+      console.warn('[DEFAULT ACCOUNTS] rename 5000:', e);
+    }
+  }
+}
+
 async function repairParents(companyId: string): Promise<void> {
   let list = await accountService.getAllAccounts(companyId);
   for (const { code, parentCode } of REPAIR_PARENT_BY_CODE) {
@@ -194,6 +209,7 @@ export const defaultAccountsService = {
 
       await repairParents(companyId);
       await repairLegacyOperatingExpense6100Name(companyId);
+      await repairLegacy5000CostOfProductionName(companyId);
       list = await accountService.getAllAccounts(companyId);
 
       for (const code of CORE_PAYMENT_CODES) {

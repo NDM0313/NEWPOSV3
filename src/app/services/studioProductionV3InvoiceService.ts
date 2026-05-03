@@ -5,6 +5,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { dispatchSaleLifecycleInvalidated, dispatchStudioDataInvalidated } from '@/app/lib/dataInvalidationBus';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { saleService, type Sale, type SaleItem } from '@/app/services/saleService';
 import { productService } from '@/app/services/productService';
@@ -320,6 +321,19 @@ export async function generateSalesInvoiceFromProductionV3(params: {
     final_price: finalPrice,
     profit_amount: profitAmount,
     profit_percent: profitPercent,
+  });
+
+  dispatchSaleLifecycleInvalidated({
+    companyId: saleInfo.company_id,
+    branchId: saleInfo.branch_id,
+    customerId: saleInfo.customer_id,
+    saleId: created.id,
+    reason: 'studio-v3-invoice-generated',
+  });
+  dispatchStudioDataInvalidated({
+    companyId: saleInfo.company_id,
+    branchId: saleInfo.branch_id,
+    reason: 'studio-v3-invoice-generated',
   });
 
   return { saleId: created.id, invoiceNo: (created as { invoice_no?: string }).invoice_no || invoiceNo };

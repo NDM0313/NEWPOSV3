@@ -60,7 +60,6 @@ import { toast } from 'sonner';
 import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
-import { supabase } from '@/lib/supabase';
 import { getEffectivePurchaseStatus, getPurchaseStatusBadgeConfig, DEFAULT_PURCHASE_BADGE, isPaymentClosedForPurchase, canAddPaymentToPurchase } from '@/app/utils/statusHelpers';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import {
@@ -120,6 +119,12 @@ export const PurchasesPage = () => {
   }, [setCurrentModule]);
 
   const { purchases: contextPurchases, loading: contextLoading, refreshPurchases, deletePurchase } = usePurchases();
+  /** Stable key so sync effect does not re-run when PurchaseContext recreates the same purchases array reference. */
+  const contextPurchasesSyncKey = useMemo(() => {
+    return `${contextLoading ? '1' : '0'}:${contextPurchases.length}:${contextPurchases
+      .map((p: any) => `${p.id}:${p.status ?? ''}:${p.total ?? ''}:${p.updatedAt ?? ''}`)
+      .join('|')}`;
+  }, [contextPurchases, contextLoading]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -128,28 +133,8 @@ export const PurchasesPage = () => {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
 
-  // Cross-client sync (mobile/web): pull latest purchases without manual refresh.
-  useEffect(() => {
-    if (!companyId) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const queueRefresh = () => {
-      if (timer) return;
-      timer = setTimeout(() => {
-        timer = null;
-        void refreshPurchases();
-      }, 220);
-    };
-    const channel = supabase
-      .channel(`purchases-live-${companyId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases', filter: `company_id=eq.${companyId}` }, queueRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `company_id=eq.${companyId}` }, queueRefresh)
-      .subscribe();
-    return () => {
-      if (timer) clearTimeout(timer);
-      void supabase.removeChannel(channel);
-    };
-  }, [companyId, refreshPurchases]);
-  
+  // Realtime refresh: WebRealtimeBridge + PurchaseContext invalidation (avoid duplicate channels that double-fetch).
+
   // Load branches for location display
   useEffect(() => {
     const loadBranches = async () => {
@@ -307,7 +292,7 @@ export const PurchasesPage = () => {
   const handlePaymentComplete = async () => {
     setIsPaymentDialogOpen(false);
     setSelectedPurchase(null);
-    await loadPurchases(); // Refresh purchases list
+    await refreshPurchases();
   };
 
   const handlePrintPO = (purchase: Purchase) => {
@@ -335,15 +320,11 @@ export const PurchasesPage = () => {
       setDeleteDialogOpen(false);
       setSelectedPurchase(null);
       
-      // CRITICAL: Refresh both context and local state
       await refreshPurchases();
-      await loadPurchases();
     } catch (error: any) {
       console.error('[PURCHASES PAGE] Error deleting purchase:', error);
       toast.error('Failed to delete purchase: ' + (error.message || 'Unknown error'));
-      // Refresh on error to ensure UI consistency
       await refreshPurchases();
-      await loadPurchases();
     }
   };
 
@@ -357,7 +338,6 @@ export const PurchasesPage = () => {
       setSelectedPurchase(null);
       setViewDetailsOpen(false);
       await refreshPurchases();
-      await loadPurchases();
     } catch (error: any) {
       toast.error(error?.message || 'Failed to cancel purchase order');
     } finally {
@@ -381,7 +361,6 @@ export const PurchasesPage = () => {
         await restorePurchaseFromCancelled(purchase.uuid, t, companyId);
         toast.success('Purchase restored — you can edit and post when ready.');
         await refreshPurchases();
-        await loadPurchases();
       } catch (e: unknown) {
         toast.error(e instanceof Error ? e.message : 'Restore failed');
       }
@@ -407,7 +386,6 @@ export const PurchasesPage = () => {
       await transitionPurchaseLifecycle(purchase.uuid, target, companyId);
       toast.success('Purchase status updated');
       await refreshPurchases();
-      await loadPurchases();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not update status';
       toast.error(msg);
@@ -579,25 +557,15 @@ export const PurchasesPage = () => {
     } else {
       setLoading(contextLoading);
     }
-  }, [contextPurchases, contextLoading, companyId, loadPurchases, branchMap]);
-
-  // TASK 1 FIX - Ensure initial load happens even if context is empty
-  useEffect(() => {
-    if (companyId && purchases.length === 0 && !loading && !contextLoading) {
-      // Force load if no data and not loading
-      loadPurchases();
-    }
-  }, [companyId, purchases.length, loading, contextLoading, loadPurchases]);
+  }, [contextPurchasesSyncKey, contextLoading, companyId, loadPurchases, branchMap]);
 
   // Listen for purchase saved event to refresh list
   useEffect(() => {
     const handlePurchaseSaved = () => {
-      loadPurchases();
-      if (refreshPurchases) refreshPurchases();
+      void refreshPurchases();
     };
     const handlePaymentAdded = () => {
-      loadPurchases();
-      if (refreshPurchases) refreshPurchases();
+      void refreshPurchases();
     };
     window.addEventListener('purchaseSaved', handlePurchaseSaved);
     window.addEventListener('paymentAdded', handlePaymentAdded);
@@ -625,7 +593,6 @@ export const PurchasesPage = () => {
       timer = setTimeout(() => {
         timer = null;
         void refreshPurchases();
-        void loadPurchases();
       }, 220);
     };
     window.addEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
@@ -633,7 +600,7 @@ export const PurchasesPage = () => {
       if (timer) clearTimeout(timer);
       window.removeEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
     };
-  }, [branchId, companyId, loadPurchases, refreshPurchases]);
+  }, [branchId, companyId, refreshPurchases]);
   
   // Load purchase returns list when Returns tab is active
   useEffect(() => {
@@ -713,8 +680,7 @@ export const PurchasesPage = () => {
         // finalizePurchaseReturn already posts the GL entry (DR AP / CR Inventory)
         toast.success(`Return ${full.return_no || full.id} finalized.`);
         await reloadPurchaseReturnsTable();
-        loadPurchases();
-        if (refreshPurchases) refreshPurchases();
+        await refreshPurchases();
         const updated = await purchaseReturnService.getPurchaseReturnById(ret.id, companyId);
         setSelectedPurchaseReturn((prev: any) => (prev?.id === ret.id ? updated : prev));
       } catch (e: any) {
@@ -723,7 +689,7 @@ export const PurchasesPage = () => {
         setFinalizeDraftReturnBusyId(null);
       }
     },
-    [companyId, branchId, user?.id, accounting, reloadPurchaseReturnsTable, loadPurchases, refreshPurchases]
+    [companyId, branchId, user?.id, accounting, reloadPurchaseReturnsTable, refreshPurchases]
   );
 
   // 🔒 CLONE FROM SALE PAGE: Re-resolve locations when branchMap is updated
@@ -1937,7 +1903,7 @@ export const PurchasesPage = () => {
             }
             try {
               await purchaseService.deletePayment(paymentId, selectedPurchase.uuid);
-              await loadPurchases();
+              await refreshPurchases();
               window.dispatchEvent(new CustomEvent('paymentAdded'));
             } catch (error: any) {
               console.error('[PURCHASES PAGE] Error deleting payment:', error);
@@ -1945,7 +1911,7 @@ export const PurchasesPage = () => {
             }
           }}
           onRefresh={async () => {
-            await loadPurchases();
+            await refreshPurchases();
           }}
         />
       )}
@@ -2030,8 +1996,7 @@ export const PurchasesPage = () => {
               }
             }
             
-            // Reload all purchases list
-            await loadPurchases();
+            await refreshPurchases();
             setIsPaymentDialogOpen(false);
             setPurchasePaymentToEdit(null);
 
@@ -2502,7 +2467,7 @@ export const PurchasesPage = () => {
           onClose={() => {
             setPurchaseReturnFormOpen(false);
             setSelectedPurchaseForReturn(null);
-            loadPurchases();
+            void refreshPurchases();
             // Reload purchase returns list
             if (companyId) {
               purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId)
@@ -2516,7 +2481,7 @@ export const PurchasesPage = () => {
             }
           }}
           onSuccess={() => {
-            loadPurchases();
+            void refreshPurchases();
             if (companyId) {
               purchaseReturnService.getPurchaseReturns(companyId, branchId === 'all' ? undefined : branchId)
                 .then((list) => {
@@ -2641,8 +2606,7 @@ export const PurchasesPage = () => {
                   const rid = returnToRestoreDraft.id;
                   setReturnToRestoreDraft(null);
                   await reloadPurchaseReturnsTable();
-                  loadPurchases();
-                  if (refreshPurchases) refreshPurchases();
+                  await refreshPurchases();
                   try {
                     const refreshed = await purchaseReturnService.getPurchaseReturnById(rid, companyId);
                     setSelectedPurchaseReturn((prev) => (prev?.id === rid ? refreshed : prev));

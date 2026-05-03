@@ -66,6 +66,43 @@ async function resolveArAccountId(companyId: string, customerId: string | null |
   return (sub as { id?: string } | null)?.id ?? control;
 }
 
+/** Same weights as web `saleAccountingService.computeProductRevenueCreditSplit` (mobile bundle cannot import web services). */
+async function computeProductRevenueCreditSplitMobile(
+  saleId: string,
+  revenueCreditTotal: number
+): Promise<{ merchandiseCredit: number; studioServiceCredit: number }> {
+  const { data: rows } = await supabase
+    .from('sales_items')
+    .select('total, is_studio_product, product:products(product_type)')
+    .eq('sale_id', saleId);
+  let merchSum = 0;
+  let studioSum = 0;
+  for (const r of rows || []) {
+    const t = Number((r as { total?: number }).total) || 0;
+    const pt = String(
+      (r as { product?: { product_type?: string | null } | null }).product?.product_type || ''
+    ).toLowerCase();
+    const isStudioLine =
+      (r as { is_studio_product?: boolean | null }).is_studio_product === true || pt === 'production';
+    if (isStudioLine) studioSum += t;
+    else merchSum += t;
+  }
+  const sum = merchSum + studioSum;
+  if (sum <= 0 || revenueCreditTotal <= 0) {
+    return { merchandiseCredit: revenueCreditTotal, studioServiceCredit: 0 };
+  }
+  if (studioSum <= 0) {
+    return { merchandiseCredit: revenueCreditTotal, studioServiceCredit: 0 };
+  }
+  if (merchSum <= 0) {
+    return { merchandiseCredit: 0, studioServiceCredit: revenueCreditTotal };
+  }
+  const wStudio = studioSum / sum;
+  const studioCredit = Math.round(revenueCreditTotal * wStudio * 100) / 100;
+  const merchCredit = Math.round((revenueCreditTotal - studioCredit) * 100) / 100;
+  return { merchandiseCredit: merchCredit, studioServiceCredit: studioCredit };
+}
+
 async function findCanonicalSaleDocumentJe(companyId: string, saleId: string): Promise<{ id: string; description: string } | null> {
   const { data, error } = await supabase
     .from('journal_entries')
@@ -133,7 +170,8 @@ export async function syncSaleDocumentJournalInPlaceMobile(params: {
     if (!arAccountId) return { updated: false, error: null, skipReason: 'missing_ar_account' };
 
     const getAccId = async (code: string) => accountIdByCode(companyId, code);
-    const revenueId = (await getAccId('4100')) || (await getAccId('4000'));
+    const merchandiseRevenueId = (await getAccId('4000')) || (await getAccId('4100'));
+    const studioRevenueId = await getAccId('4010');
     const discountId = await getAccId('5200');
     const shippingIncomeId = await getAccId('4110');
     const cogs5010 = await getAccId('5010');
@@ -146,6 +184,7 @@ export async function syncSaleDocumentJournalInPlaceMobile(params: {
     const newDiscount = newSnapshot.discount;
     const newShipping = newSnapshot.shippingCharges || 0;
     const newRevenue = newGross - newShipping;
+    const revenueSplit = await computeProductRevenueCreditSplitMobile(saleId, Math.max(0, newRevenue));
 
     const { data: jeLines } = await supabase.from('journal_entry_lines').select('id, account_id, debit, credit').eq('journal_entry_id', jeId);
     const lineRows = (jeLines || []) as { id: string; account_id: string; debit: number; credit: number }[];
@@ -162,19 +201,28 @@ export async function syncSaleDocumentJournalInPlaceMobile(params: {
       const accId = line.account_id;
       let newDebit = 0;
       let newCredit = 0;
+      let didMatch = false;
 
       if (accId === arTargetId) {
         newDebit = newTotal;
         newCredit = 0;
-      } else if (revenueId && accId === revenueId) {
+        didMatch = true;
+      } else if (merchandiseRevenueId && accId === merchandiseRevenueId) {
         newDebit = 0;
-        newCredit = newRevenue > 0 ? newRevenue : 0;
+        newCredit = revenueSplit.merchandiseCredit;
+        didMatch = true;
+      } else if (studioRevenueId && accId === studioRevenueId) {
+        newDebit = 0;
+        newCredit = revenueSplit.studioServiceCredit;
+        didMatch = true;
       } else if (discountId && accId === discountId && newDiscount > 0) {
         newDebit = newDiscount;
         newCredit = 0;
+        didMatch = true;
       } else if (shippingIncomeId && accId === shippingIncomeId) {
         newDebit = 0;
         newCredit = newShipping;
+        didMatch = true;
       } else if (
         ((cogs5010 && accId === cogs5010) || (cogs5000 && accId === cogs5000)) &&
         line.debit > 0
@@ -200,13 +248,14 @@ export async function syncSaleDocumentJournalInPlaceMobile(params: {
         }
         newDebit = Math.round(totalCogs * 100) / 100;
         newCredit = 0;
+        didMatch = true;
       } else if (inventoryId && accId === inventoryId && line.credit > 0) {
         continue;
       } else {
         continue;
       }
 
-      if (newDebit > 0 || newCredit > 0) {
+      if (didMatch) {
         await supabase.from('journal_entry_lines').update({ debit: newDebit, credit: newCredit }).eq('id', line.id);
       }
     }

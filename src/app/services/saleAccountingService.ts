@@ -233,8 +233,9 @@ async function ensureStudioServiceRevenueAccount(companyId: string): Promise<{ i
 /**
  * Split product revenue credit between merchandise (4000) and studio service (4010) using sales_items line totals as weights.
  * Studio line = is_studio_product OR linked product product_type production (RPC parity when flag missing).
+ * Exported for PF-14 sale-edit in-place JE updates (must match createSaleJournalEntry).
  */
-async function computeProductRevenueCreditSplit(
+export async function computeProductRevenueCreditSplit(
   saleId: string,
   revenueCreditTotal: number
 ): Promise<{ merchandiseCredit: number; studioServiceCredit: number }> {

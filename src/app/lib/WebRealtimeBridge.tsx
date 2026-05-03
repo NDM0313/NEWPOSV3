@@ -29,13 +29,23 @@ export function WebRealtimeBridge() {
     const cleanup = subscribeRealtimeDomains({
       companyId,
       branchId,
-      domains: ['sales', 'purchases', 'accounting', 'contacts'],
+      domains: ['sales', 'purchases', 'accounting', 'contacts', 'inventory', 'rentals', 'studio'],
       channelKey: 'global',
       onChange: (domain) => queueFor(domain),
     });
     if (!cleanup || !webRealtimeHealth.canUseRealtime) {
       const fallback = setInterval(() => {
-        (['sales', 'purchases', 'accounting', 'contacts'] as RealtimeDomain[]).forEach((domain) =>
+        (
+          [
+            'sales',
+            'purchases',
+            'accounting',
+            'contacts',
+            'inventory',
+            'rentals',
+            'studio',
+          ] as RealtimeDomain[]
+        ).forEach((domain) =>
           dispatchDataInvalidated({
             domain,
             companyId,

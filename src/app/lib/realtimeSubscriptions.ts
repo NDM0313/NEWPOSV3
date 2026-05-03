@@ -1,12 +1,42 @@
 import { supabase, webRealtimeHealth } from '@/lib/supabase';
 
-export type RealtimeDomain = 'sales' | 'purchases' | 'accounting' | 'contacts';
+export type RealtimeDomain =
+  | 'sales'
+  | 'purchases'
+  | 'accounting'
+  | 'contacts'
+  | 'inventory'
+  | 'rentals'
+  | 'studio';
 
-const DOMAIN_TABLES: Record<RealtimeDomain, string[]> = {
-  sales: ['sales', 'payments'],
-  purchases: ['purchases', 'payments'],
-  accounting: ['journal_entries', 'payments'],
-  contacts: ['contacts', 'payments'],
+/** Tables per domain. `branchScoped: false` = filter company_id only (column may lack branch_id). */
+const DOMAIN_TABLE_CONFIG: Record<RealtimeDomain, { table: string; branchScoped: boolean }[]> = {
+  sales: [
+    { table: 'sales', branchScoped: true },
+    { table: 'payments', branchScoped: true },
+  ],
+  purchases: [
+    { table: 'purchases', branchScoped: true },
+    { table: 'payments', branchScoped: true },
+  ],
+  accounting: [
+    { table: 'journal_entries', branchScoped: true },
+    { table: 'payments', branchScoped: true },
+  ],
+  contacts: [
+    { table: 'contacts', branchScoped: false },
+    { table: 'payments', branchScoped: true },
+  ],
+  inventory: [
+    { table: 'products', branchScoped: false },
+    { table: 'stock_movements', branchScoped: true },
+  ],
+  rentals: [{ table: 'rentals', branchScoped: true }],
+  studio: [
+    { table: 'studio_production_orders_v2', branchScoped: true },
+    { table: 'studio_production_orders_v3', branchScoped: true },
+    { table: 'studio_productions', branchScoped: true },
+  ],
 };
 
 export interface RealtimeScope {
@@ -35,10 +65,10 @@ export function subscribeRealtimeDomains(scope: RealtimeScope): (() => void) | n
   const domainSet = new Set(scope.domains);
 
   for (const domain of domainSet) {
-    const tables = DOMAIN_TABLES[domain] || [];
-    for (const table of tables) {
+    const configs = DOMAIN_TABLE_CONFIG[domain] || [];
+    for (const { table, branchScoped } of configs) {
       const filters = [`company_id=eq.${scope.companyId}`];
-      if (branchFilter) filters.push(`branch_id=eq.${branchFilter}`);
+      if (branchFilter && branchScoped) filters.push(`branch_id=eq.${branchFilter}`);
       channel.on(
         'postgres_changes',
         { event: '*', schema: 'public', table, filter: filters.join(',') },

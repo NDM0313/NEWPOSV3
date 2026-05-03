@@ -882,7 +882,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
       if (
         !shouldAcceptInvalidation(detail, {
-          domain: ['accounting', 'sales', 'purchases', 'contacts'],
+          domain: ['accounting', 'sales', 'purchases', 'contacts', 'rentals', 'inventory', 'studio'],
           companyId,
           branchId: branchId === 'all' ? null : branchId ?? null,
         })

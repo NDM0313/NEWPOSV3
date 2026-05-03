@@ -37,6 +37,11 @@ import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/
 import { getStudioDeadlineFromNotes, parseStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
 import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { toast } from 'sonner';
+import {
+  DATA_INVALIDATED_EVENT,
+  shouldAcceptInvalidation,
+  type DataInvalidationDetail,
+} from '@/app/lib/dataInvalidationBus';
 
 function formatDateSafe(value: string | undefined | null, formatStr: string): string {
   if (value == null || String(value).trim() === '') return '—';
@@ -253,6 +258,33 @@ export const StudioSalesListNew = () => {
     window.addEventListener('saleUpdated', handler);
     return () => window.removeEventListener('saleUpdated', handler);
   }, [loadStudioOrders]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onInvalidated = (ev: Event) => {
+      const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      if (
+        !shouldAcceptInvalidation(detail, {
+          domain: ['studio', 'sales', 'inventory'],
+          companyId,
+          branchId: branchId === 'all' ? null : branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void loadStudioOrders();
+      }, 220);
+    };
+    window.addEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    };
+  }, [companyId, branchId, loadStudioOrders]);
 
   // Calculate deadline alerts
   const getDeadlineAlert = (deadline: string, status: ProductionStatus) => {

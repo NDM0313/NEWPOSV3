@@ -1037,8 +1037,20 @@ export const SalesPage = () => {
       // Shipping status filter
       if (shippingStatusFilter !== 'all' && sale.shippingStatus !== shippingStatusFilter) return false;
 
-      // Branch filter
-      if (branchFilter !== 'all' && sale.location !== branchFilter) return false;
+      // Branch filter (value = branch UUID from loaded branches; fallback match display name)
+      if (branchFilter !== 'all') {
+        const saleBranchId = salesBranchIdMap.get(sale.id);
+        if (saleBranchId) {
+          if (saleBranchId !== branchFilter) return false;
+        } else {
+          const named = branches.find((b) => b.name === sale.location);
+          if (named) {
+            if (named.id !== branchFilter) return false;
+          } else if (sale.location !== branchFilter) {
+            return false;
+          }
+        }
+      }
 
       // Payment method filter
       if (paymentMethodFilter !== 'all' && sale.paymentMethod !== paymentMethodFilter) return false;
@@ -1059,6 +1071,8 @@ export const SalesPage = () => {
     shippingStatusFilter,
     branchFilter,
     paymentMethodFilter,
+    branches,
+    salesBranchIdMap,
   ]);
 
   // Sort state: default createdAt descending so newest-created sales appear first
@@ -1883,12 +1897,7 @@ export const SalesPage = () => {
                 <div>
                   <label className="text-xs text-gray-400 mb-2 block font-medium">Branch</label>
                   <div className="space-y-2">
-                    {[
-                      { value: 'all', label: 'All Branches' },
-                      { value: 'Main Branch (HQ)', label: 'Main Branch (HQ)' },
-                      { value: 'Mall Outlet', label: 'Mall Outlet' },
-                      { value: 'Warehouse', label: 'Warehouse' },
-                    ].map(opt => (
+                    {[{ value: 'all' as const, label: 'All Branches' }, ...branches.map((b) => ({ value: b.id, label: b.name }))].map((opt) => (
                       <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="radio"

@@ -8,6 +8,12 @@ import { useAccountingOptional } from '@/app/context/AccountingContext';
 import { supabase, isPlaceholderSupabaseAnonKey } from '@/lib/supabase';
 import { rentalService, RentalStatus } from '@/app/services/rentalService';
 import { toast } from 'sonner';
+import {
+  DATA_INVALIDATED_EVENT,
+  dispatchRentalLifecycleInvalidated,
+  shouldAcceptInvalidation,
+  type DataInvalidationDetail,
+} from '@/app/lib/dataInvalidationBus';
 
 export interface RentalItemUI {
   id: string;
@@ -229,6 +235,36 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [companyId, loadRentals]);
 
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queue = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void loadRentals();
+      }, 220);
+    };
+    const onDataInvalidated = (ev: Event) => {
+      const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      if (
+        !shouldAcceptInvalidation(detail, {
+          domain: ['rentals', 'accounting'],
+          companyId,
+          branchId: branchId === 'all' ? null : branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      queue();
+    };
+    window.addEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
+    };
+  }, [branchId, companyId, loadRentals]);
+
   const getRentalById = (id: string) => rentals.find((r) => r.id === id);
 
   const createRental = async (
@@ -273,6 +309,13 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
       }))
     );
     await loadRentals();
+    dispatchRentalLifecycleInvalidated({
+      companyId,
+      branchId: data.branchId,
+      customerId: data.customerId || null,
+      rentalId: (created as any).id as string,
+      reason: 'rental-created',
+    });
     toast.success(`Rental ${(created as any).rental_no} created`);
     return convertFromSupabaseRental(created as any);
   };
@@ -302,15 +345,31 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
           pieces: i.pieces ?? null,
         }))
       : null;
+    const before = getRentalById(id);
     await rentalService.updateRental(id, companyId, payload, itemPayload);
     await loadRentals();
+    dispatchRentalLifecycleInvalidated({
+      companyId,
+      branchId: before?.branchId ?? null,
+      customerId: (updates.customerId !== undefined ? updates.customerId : before?.customerId) ?? null,
+      rentalId: id,
+      reason: 'rental-updated',
+    });
     toast.success('Rental updated');
   };
 
   const finalizeRental = async (id: string) => {
     if (!companyId) return;
+    const before = getRentalById(id);
     await rentalService.finalizeRental(id, companyId, user?.id);
     await loadRentals();
+    dispatchRentalLifecycleInvalidated({
+      companyId,
+      branchId: before?.branchId ?? null,
+      customerId: before?.customerId ?? null,
+      rentalId: id,
+      reason: 'rental-finalized',
+    });
     toast.success('Rental finalized – stock out');
   };
 
@@ -351,13 +410,28 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
       })?.catch((err) => console.warn('[RentalContext] Advance recognition on return:', err));
     }
     await loadRentals();
+    dispatchRentalLifecycleInvalidated({
+      companyId,
+      branchId: rental?.branchId ?? null,
+      customerId: rental?.customerId ?? null,
+      rentalId: id,
+      reason: 'rental-return',
+    });
     toast.success(payload.penaltyPaid ? 'Return received – penalty collected' : 'Return received – penalty added to customer credit');
   };
 
   const cancelRental = async (id: string) => {
     if (!companyId) return;
+    const r = getRentalById(id);
     await rentalService.cancelRental(id, companyId, user?.id);
     await loadRentals();
+    dispatchRentalLifecycleInvalidated({
+      companyId,
+      branchId: r?.branchId ?? null,
+      customerId: r?.customerId ?? null,
+      rentalId: id,
+      reason: 'rental-cancelled',
+    });
     toast.success('Rental cancelled');
   };
 
@@ -380,20 +454,43 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
       });
     }
     await loadRentals();
+    dispatchRentalLifecycleInvalidated({
+      companyId,
+      branchId: rental?.branchId ?? null,
+      customerId: rental?.customerId ?? null,
+      rentalId,
+      reason: 'rental-payment',
+    });
     toast.success('Payment recorded');
   };
 
   const deletePayment = async (rentalId: string, paymentId: string) => {
     if (!companyId) return;
+    const rental = getRentalById(rentalId);
     await rentalService.deletePayment(paymentId, rentalId, companyId, user?.id);
     await loadRentals();
+    dispatchRentalLifecycleInvalidated({
+      companyId,
+      branchId: rental?.branchId ?? null,
+      customerId: rental?.customerId ?? null,
+      rentalId,
+      reason: 'rental-payment-deleted',
+    });
     toast.success('Payment deleted');
   };
 
   const deleteRental = async (id: string) => {
     if (!companyId) return;
+    const r = getRentalById(id);
     await rentalService.deleteRental(id, companyId, user?.id);
     await loadRentals();
+    dispatchRentalLifecycleInvalidated({
+      companyId,
+      branchId: r?.branchId ?? null,
+      customerId: r?.customerId ?? null,
+      rentalId: id,
+      reason: 'rental-deleted',
+    });
     toast.success('Rental deleted');
   };
 
@@ -448,6 +545,13 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
       })?.catch((err) => console.warn('[RentalContext] Advance recognition on pickup:', err));
     }
     await loadRentals();
+    dispatchRentalLifecycleInvalidated({
+      companyId,
+      branchId: rental?.branchId ?? null,
+      customerId: rental?.customerId ?? null,
+      rentalId,
+      reason: 'rental-picked-up',
+    });
     toast.success(payload.deliverOnCredit ? 'Rental delivered on credit' : 'Rental marked as picked up');
   };
 

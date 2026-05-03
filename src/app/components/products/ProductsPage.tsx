@@ -46,6 +46,11 @@ import {
   AlertDialogTitle,
 } from "@/app/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogTitle } from "@/app/components/ui/dialog";
+import {
+  DATA_INVALIDATED_EVENT,
+  shouldAcceptInvalidation,
+  type DataInvalidationDetail,
+} from '@/app/lib/dataInvalidationBus';
 
 type ProductType = 'simple' | 'variable' | 'combo';
 type StockStatus = 'in-stock' | 'low-stock' | 'out-of-stock';
@@ -142,7 +147,34 @@ export const ProductsPage = () => {
     window.addEventListener('products-updated', onProductsUpdated);
     return () => window.removeEventListener('products-updated', onProductsUpdated);
   }, [loadProducts]);
-  
+
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onInvalidated = (ev: Event) => {
+      const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      if (
+        !shouldAcceptInvalidation(detail, {
+          domain: ['inventory', 'studio', 'sales', 'purchases'],
+          companyId,
+          branchId: null,
+        })
+      ) {
+        return;
+      }
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void loadProducts();
+      }, 220);
+    };
+    window.addEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    };
+  }, [companyId, loadProducts]);
+
   // 🎯 NEW: Action States
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);

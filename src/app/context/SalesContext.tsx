@@ -31,6 +31,7 @@ import { assertDomainEditSafetyTestMode, classifySalesEdit } from '@/app/lib/acc
 import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
 import {
   DATA_INVALIDATED_EVENT,
+  dispatchSaleLifecycleInvalidated,
   shouldAcceptInvalidation,
   type DataInvalidationDetail,
 } from '@/app/lib/dataInvalidationBus';
@@ -488,7 +489,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
       if (
         !shouldAcceptInvalidation(detail, {
-          domain: ['sales', 'accounting', 'contacts'],
+          domain: ['sales', 'accounting', 'contacts', 'studio'],
           companyId,
           branchId: branchId === 'all' ? null : branchId ?? null,
         })
@@ -506,10 +507,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
   // When page changes we do not refetch; SalesPage slices the loaded sales for display
 
-  // Get sale by ID
-  const getSaleById = (id: string): Sale | undefined => {
-    return sales.find(s => s.id === id);
-  };
+  // Get sale by ID (stable ref — avoids consumer useEffect loops when only unrelated context fields change)
+  const getSaleById = useCallback((id: string): Sale | undefined => {
+    return sales.find((s) => s.id === id);
+  }, [sales]);
 
   // Create new sale
   const createSale = async (
@@ -812,8 +813,17 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       }
       // Document number comes from DB (get_next_document_number_global); do not increment frontend counter
       
-      // Convert back to app format
-      const newSale = convertFromSupabaseSale(result);
+      // Convert back to app format (branch join missing on insert row — resolve name for list filters)
+      let newSale = convertFromSupabaseSale(result);
+      if ((!newSale.location || !String(newSale.location).trim()) && companyId && effectiveBranchId) {
+        try {
+          const branches = await branchService.getAllBranches(companyId);
+          const bn = branches.find((b) => b.id === effectiveBranchId)?.name;
+          if (bn) newSale = { ...newSale, location: bn };
+        } catch {
+          /* keep as-is */
+        }
+      }
       
       // Activity timeline: log sale creation (non-blocking)
       if (companyId && user?.id) {
@@ -1193,10 +1203,20 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       
       // Dispatch event to refresh inventory
       window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: newSale.id } }));
-      if (newSale.customerId) {
-        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: newSale.customerId } }));
+      if (newSale.customer) {
+        window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: newSale.customer } }));
       }
-      
+
+      if (companyId) {
+        dispatchSaleLifecycleInvalidated({
+          companyId,
+          branchId: effectiveBranchId,
+          customerId: newSale.customer || null,
+          saleId: newSale.id,
+          reason: 'sales-context-create',
+        });
+      }
+
       return newSale;
     } catch (error: any) {
       console.error('[SALES CONTEXT] Error creating sale:', error);
@@ -1911,16 +1931,21 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               arAccountId = arAcct?.id as string | null;
             }
 
-            // Get account IDs for Revenue, Discount, Shipping, COGS, Inventory
+            // Account IDs must match saleAccountingService.createSaleJournalEntry (4000 revenue, 5010 COGS, optional 4010 studio).
             const getAccId = async (code: string) => {
               const { data } = await sbEdit.from('accounts').select('id').eq('code', code).eq('company_id', companyId).eq('is_active', true).maybeSingle();
               return data?.id as string | null;
             };
-            const revenueId = await getAccId('4100');
+            const { computeProductRevenueCreditSplit } = await import('@/app/services/saleAccountingService');
+            const revenueSplit = await computeProductRevenueCreditSplit(id, Math.max(0, newRevenue));
+            const merchandiseRevenueId = (await getAccId('4000')) || (await getAccId('4100'));
+            const studioRevenueId = await getAccId('4010');
             const discountId = await getAccId('5200');
             const shippingIncomeId = await getAccId('4110');
-            const cogsId = await getAccId('5000');
+            const cogs5010 = await getAccId('5010');
+            const cogs5000 = await getAccId('5000');
             const inventoryId = await getAccId('1200');
+            const ar1100Id = await getAccId('1100');
 
             // Fetch current JE lines
             const { data: jeLines } = await sbEdit.from('journal_entry_lines').select('id, account_id, debit, credit').eq('journal_entry_id', jeId);
@@ -1928,54 +1953,76 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             // Update each line based on its account
             for (const line of (jeLines || []) as any[]) {
               const accId = line.account_id;
-              let newDebit = 0, newCredit = 0;
+              let newDebit = 0;
+              let newCredit = 0;
+              let didMatch = false;
 
-              if (accId === arAccountId || accId === (await getAccId('1100'))) {
+              if (accId === arAccountId || (ar1100Id && accId === ar1100Id)) {
                 // AR line = net total (what customer owes)
-                newDebit = newTotal; newCredit = 0;
-              } else if (accId === revenueId) {
-                // Revenue = gross (before discount, after shipping deducted)
-                newDebit = 0; newCredit = newRevenue > 0 ? newRevenue : 0;
-              } else if (accId === discountId && newDiscount > 0) {
-                // Discount Allowed
-                newDebit = newDiscount; newCredit = 0;
-              } else if (accId === shippingIncomeId) {
-                // Shipping Income
-                newDebit = 0; newCredit = newShipping;
-              } else if (accId === cogsId && line.debit > 0) {
-                // COGS — recalculate from weighted avg cost
+                newDebit = newTotal;
+                newCredit = 0;
+                didMatch = true;
+              } else if (merchandiseRevenueId && accId === merchandiseRevenueId) {
+                newDebit = 0;
+                newCredit = revenueSplit.merchandiseCredit;
+                didMatch = true;
+              } else if (studioRevenueId && accId === studioRevenueId) {
+                newDebit = 0;
+                newCredit = revenueSplit.studioServiceCredit;
+                didMatch = true;
+              } else if (discountId && accId === discountId && newDiscount > 0) {
+                newDebit = newDiscount;
+                newCredit = 0;
+                didMatch = true;
+              } else if (shippingIncomeId && accId === shippingIncomeId) {
+                newDebit = 0;
+                newCredit = newShipping;
+                didMatch = true;
+              } else if (
+                ((cogs5010 && accId === cogs5010) || (cogs5000 && accId === cogs5000)) &&
+                line.debit > 0
+              ) {
+                // COGS — recalculate from weighted avg cost (5010 merchandise COGS; 5000 legacy studio production)
                 const { data: saleItems } = await sbEdit.from('sales_items').select('product_id, quantity').eq('sale_id', id);
                 let totalCogs = 0;
                 for (const si of (saleItems || []) as any[]) {
                   const qty = Number(si.quantity) || 0;
                   const { data: movements } = await sbEdit.from('stock_movements').select('quantity, unit_cost, total_cost').eq('product_id', si.product_id).eq('company_id', companyId).in('movement_type', ['purchase', 'opening_stock']);
-                  let costSum = 0, costQty = 0;
+                  let costSum = 0,
+                    costQty = 0;
                   for (const m of (movements || []) as any[]) {
                     costQty += Math.abs(Number(m.quantity) || 0);
-                    costSum += Math.abs(Number(m.total_cost) || (Math.abs(Number(m.quantity) || 0) * (Number(m.unit_cost) || 0)));
+                    costSum += Math.abs(Number(m.total_cost) || Math.abs(Number(m.quantity) || 0) * (Number(m.unit_cost) || 0));
                   }
                   const avgCost = costQty > 0 ? costSum / costQty : 0;
                   totalCogs += qty * avgCost;
                 }
-                newDebit = Math.round(totalCogs * 100) / 100; newCredit = 0;
-              } else if (accId === inventoryId && line.credit > 0) {
-                // Inventory (credit side = same as COGS)
-                // Will be set to same as COGS debit
-                continue; // Handle after COGS
+                newDebit = Math.round(totalCogs * 100) / 100;
+                newCredit = 0;
+                didMatch = true;
+              } else if (inventoryId && accId === inventoryId && line.credit > 0) {
+                continue;
               } else {
-                continue; // Unknown line, skip
+                continue;
               }
 
-              if (newDebit > 0 || newCredit > 0) {
+              if (didMatch) {
                 await sbEdit.from('journal_entry_lines').update({ debit: newDebit, credit: newCredit }).eq('id', line.id);
               }
             }
 
-            // Update inventory line (credit) to match COGS (debit)
-            if (cogsId && inventoryId) {
-              const { data: cogsLine } = await sbEdit.from('journal_entry_lines').select('debit').eq('journal_entry_id', jeId).eq('account_id', cogsId).maybeSingle();
-              if (cogsLine) {
-                await sbEdit.from('journal_entry_lines').update({ credit: cogsLine.debit }).eq('journal_entry_id', jeId).eq('account_id', inventoryId);
+            const cogsIds = [cogs5010, cogs5000].filter(Boolean) as string[];
+            if (cogsIds.length > 0 && inventoryId) {
+              const { data: cogsRows } = await sbEdit
+                .from('journal_entry_lines')
+                .select('debit')
+                .eq('journal_entry_id', jeId)
+                .in('account_id', cogsIds)
+                .gt('debit', 0)
+                .limit(1);
+              const cogsDebit = cogsRows?.[0] ? Number((cogsRows[0] as { debit?: number }).debit) : 0;
+              if (cogsDebit > 0) {
+                await sbEdit.from('journal_entry_lines').update({ credit: cogsDebit }).eq('journal_entry_id', jeId).eq('account_id', inventoryId);
               }
             }
 
@@ -2233,6 +2280,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           : sale
       ));
       }
+      if (companyId && updatedSaleData) {
+        dispatchSaleLifecycleInvalidated({
+          companyId,
+          branchId: (updatedSaleData as any).branch_id ?? null,
+          customerId: (updatedSaleData as any).customer_id ?? sale?.customer ?? null,
+          saleId: id,
+          reason: 'sales-context-update',
+        });
+      }
       // Activity log: detail of what changed (use sale from start of update, before state refresh)
       if (companyId && user?.id && sale) {
         const changes: string[] = [];
@@ -2365,12 +2421,23 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
+      const rowBefore = await saleService.getSaleById(id);
       // CRITICAL FIX: Use hard delete since 'cancelled' status doesn't exist in enum
       // sale_status enum only supports: draft, quotation, order, final
       await saleService.deleteSale(id);
       
       // Update local state
       setSales(prev => prev.filter(s => s.id !== id));
+
+      if (companyId) {
+        dispatchSaleLifecycleInvalidated({
+          companyId,
+          branchId: (rowBefore as any)?.branch_id ?? null,
+          customerId: (rowBefore as any)?.customer_id ?? sale.customer ?? null,
+          saleId: id,
+          reason: 'sales-context-delete',
+        });
+      }
       
       // CRITICAL: Dispatch event to refresh ledger views and accounting
       window.dispatchEvent(new CustomEvent('saleDeleted', { detail: { saleId: id } }));
@@ -2426,6 +2493,16 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (updatedSaleData) {
         const updatedSale = convertFromSupabaseSale(updatedSaleData);
         setSales(prev => prev.map(s => s.id === saleId ? updatedSale : s));
+      }
+
+      if (companyId && updatedSaleData) {
+        dispatchSaleLifecycleInvalidated({
+          companyId,
+          branchId: (updatedSaleData as any).branch_id ?? null,
+          customerId: (updatedSaleData as any).customer_id ?? sale.customer ?? null,
+          saleId,
+          reason: 'sales-context-payment',
+        });
       }
 
       // CRITICAL FIX: Create journal entry ONLY (payment already recorded above)

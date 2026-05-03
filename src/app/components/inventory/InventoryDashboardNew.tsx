@@ -21,6 +21,11 @@ import { ListToolbar } from '../ui/list-toolbar';
 import { DatePicker } from '../ui/DatePicker';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 import { groupStockMovements, ViewMode, GroupedMovementRow } from '../../utils/stockMovementGrouping';
+import {
+  DATA_INVALIDATED_EVENT,
+  shouldAcceptInvalidation,
+  type DataInvalidationDetail,
+} from '@/app/lib/dataInvalidationBus';
 
 type InventoryTab = 'overview' | 'analytics';
 
@@ -216,6 +221,37 @@ export const InventoryDashboardNew = () => {
     // These functions are stable (useCallback), but including them causes unnecessary re-renders
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]); // Only depend on activeTab, functions are stable
+
+  useEffect(() => {
+    if (!companyId) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const bump = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void loadOverview();
+        if (activeTab === 'analytics') void loadMovements();
+      }, 220);
+    };
+    const onInvalidated = (ev: Event) => {
+      const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      if (
+        !shouldAcceptInvalidation(detail, {
+          domain: ['inventory', 'sales', 'purchases', 'accounting', 'rentals', 'studio'],
+          companyId,
+          branchId: branchId === 'all' ? null : branchId ?? null,
+        })
+      ) {
+        return;
+      }
+      bump();
+    };
+    window.addEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
+    };
+  }, [companyId, branchId, activeTab, loadOverview, loadMovements]);
 
   useEffect(() => {
     if (companyId && activeTab === 'analytics') loadMovements();
