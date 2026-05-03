@@ -417,7 +417,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-[#111827] relative">
+    <div className="fixed inset-0 z-[70] flex flex-col bg-[#111827]">
       {submitting && (
         <div
           className="absolute inset-0 z-[100] bg-black/55 flex flex-col items-center justify-center gap-2 pointer-events-auto rounded-none"
