@@ -130,6 +130,39 @@ export function StudioOrderDetail({
     });
   };
 
+  /** Accrual (pay later) then complete — DB requires cost > 0 before rpc_complete_stage. */
+  const postPayLaterAccrualAndComplete = async (stage: StudioStage) => {
+    if (!onConfirmPayment) return;
+    const final_cost =
+      parseFloat(paymentFinalCost) ||
+      (stage.expectedCost ?? stage.internalCost ?? stage.customerCharge ?? 0);
+    if (final_cost <= 0) {
+      setWorkerPaymentChoiceStage(null);
+      setPaymentPayStep(1);
+      setPaymentPayMethod(null);
+      setPaymentRemarks('');
+      setPaymentDialogStage(stage);
+      return;
+    }
+    if (!onCompleteStage) return;
+    await runSingleFlight(async () => {
+      setPaymentSubmitting(true);
+      try {
+        await Promise.resolve(
+          onConfirmPayment(stage, {
+            final_cost,
+            pay_now: false,
+            notes: null,
+          }),
+        );
+        await Promise.resolve(onCompleteStage(stage));
+        setWorkerPaymentChoiceStage(null);
+      } finally {
+        setPaymentSubmitting(false);
+      }
+    });
+  };
+
   const getStageStatusConfig = (status: string) => {
     switch (status) {
       case 'pending':
@@ -645,9 +678,18 @@ export function StudioOrderDetail({
       {workerPaymentChoiceStage && onConfirmPayment && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[55] p-4">
           <div
-            className="bg-[#1F2937] border border-[#374151] rounded-lg p-5 w-full max-w-sm"
+            className="relative bg-[#1F2937] border border-[#374151] rounded-lg p-5 w-full max-w-sm"
             onClick={(e) => e.stopPropagation()}
           >
+            {paymentBusy && workerPaymentChoiceStage ? (
+              <div
+                className="absolute inset-0 z-[60] rounded-lg bg-black/55 flex flex-col items-center justify-center gap-2 pointer-events-auto"
+                aria-busy
+              >
+                <Loader2 className="w-8 h-8 animate-spin text-[#A78BFA]" />
+                <span className="text-xs text-[#D1D5DB]">Processing…</span>
+              </div>
+            ) : null}
             <h3 className="text-lg font-semibold text-white mb-1">Worker payment</h3>
             <p className="text-sm text-[#9CA3AF] mb-3">
               This stage is received. Do you want to pay the worker now?
@@ -663,20 +705,18 @@ export function StudioOrderDetail({
               <button
                 type="button"
                 className="flex-1 py-3 rounded-xl text-sm font-medium border border-[#4B5563] text-[#E5E7EB] hover:bg-[#374151] disabled:opacity-50"
-                disabled={isLoading}
+                disabled={isLoading || paymentBusy}
                 onClick={() => {
                   const stage = workerPaymentChoiceStage;
-                  setWorkerPaymentChoiceStage(null);
-                  if (stage && onCompleteStage) {
-                    void Promise.resolve(onCompleteStage(stage));
-                  }
+                  if (!stage) return;
+                  void postPayLaterAccrualAndComplete(stage);
                 }}
               >
                 No, pay later
               </button>
               <button
                 type="button"
-                disabled={!workerPaymentEligible}
+                disabled={!workerPaymentEligible || paymentBusy}
                 title={
                   !workerPaymentEligible
                     ? 'Studio invoice + all stages complete / production ready — then worker payment.'
