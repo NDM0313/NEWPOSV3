@@ -38,7 +38,7 @@ Confirm:
 Run:
 
 git add .
-git commit -m "studio edit8 "
+git commit -m "Fixed rental expense issue and updated graphics "
 git push origin main
 
 Examples:

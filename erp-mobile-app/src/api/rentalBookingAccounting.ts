@@ -1,6 +1,6 @@
 /**
  * Mobile rental booking → GL parity with web (rentalService + AccountingContext advance path).
- * Dr payment account / Cr Rental Advance (2020); dress devaluation: Dr Rental Income (4200) / Cr party AR when customerId set, else legacy Dr 5300 / Cr cash.
+ * Dr payment account / Cr Rental Advance (2020); dress devaluation: `record_rental_expense_devaluation_journal` (Dr 5300 / Cr 1000) when customerId set, else legacy Dr 5300 / Cr cash.
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { createJournalEntry } from './accounts';
@@ -301,7 +301,7 @@ export interface PostRentalExpenseJournalParams {
   expenses: Array<{ description: string; amount: number }>;
   entryDate: string;
   userId: string | null;
-  /** Named customer: Dr Rental Income / Cr party AR (same as web). Omit for walk-in → legacy Dr 5300 / Cr cash. */
+  /** Named customer: rental expense journal via DB RPC (same as web). Omit for walk-in → legacy Dr 5300 / Cr cash. */
   customerId?: string | null;
   customerName?: string | null;
 }
@@ -325,29 +325,32 @@ export async function postRentalExpenseJournalMobile(
         .maybeSingle();
       return { journalEntryId: (existing as { id?: string } | null)?.id ?? null, error: null };
     }
-    const arId = await resolveReceivablePostingAccountIdMobile(params.companyId, params.customerId);
-    const incId = await resolveRentalIncomeAccountIdMobile(params.companyId);
-    if (!arId || !incId) {
-      return { journalEntryId: null, error: 'Customer receivable or Rental Income (4200) not found for devaluation JE.' };
-    }
     const expDesc = params.expenses.map((e) => `${e.description}: Rs ${e.amount}`).join(', ');
     const cust = String(params.customerName || '').trim() || 'Customer';
     const desc = `Rental devaluation (wear) — ${params.bookingNo} (${cust}) (${expDesc})`;
-    const res = await createJournalEntry({
-      companyId: params.companyId,
-      branchId: params.branchId === 'all' ? null : params.branchId,
-      entryDate: params.entryDate.slice(0, 10),
-      description: desc,
-      referenceType: 'rental',
-      referenceId: params.rentalId,
-      actionFingerprint: fp,
-      userId: params.userId,
-      lines: [
-        { accountId: incId, debit: total, credit: 0, description: desc },
-        { accountId: arId, debit: 0, credit: total, description: desc },
-      ],
+    const { data: rpcData, error: rpcErr } = await supabase.rpc('record_rental_expense_devaluation_journal', {
+      p_rental_id: params.rentalId,
+      p_amount: total,
+      p_action_fingerprint: fp,
+      p_entry_date: params.entryDate.slice(0, 10),
+      p_created_by: params.userId,
+      p_line_description: desc,
+      p_debit_account_code: '5300',
+      p_credit_account_code: '1000',
     });
-    return { journalEntryId: res.data?.id ?? null, error: res.error };
+    if (rpcErr) {
+      return { journalEntryId: null, error: rpcErr.message };
+    }
+    const row = rpcData as {
+      success?: boolean;
+      skipped?: boolean;
+      journal_entry_id?: string;
+      error?: string;
+    } | null;
+    if (!row || row.success === false) {
+      return { journalEntryId: null, error: row?.error ?? 'record_rental_expense_devaluation_journal failed' };
+    }
+    return { journalEntryId: row.journal_entry_id ?? null, error: null };
   }
 
   const expAcc = await resolveRentalExpenseAccountId(params.companyId);
