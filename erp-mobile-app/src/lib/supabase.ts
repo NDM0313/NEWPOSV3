@@ -23,13 +23,10 @@ if (isViteDevLocal || isViteDevLan) {
   supabaseUrl = origin;
 }
 
-// Production: when app is served from erp.dincouture.pk/m, always use Supabase API at supabase.dincouture.pk (fixes localhost works / production fails)
+// Production: keep /m same-origin with web app so ERP nginx can proxy /auth|/rest|/storage|/realtime.
+// This avoids cross-origin CORS preflight issues on mobile web.
 if (origin.includes('erp.dincouture.pk')) {
-  supabaseUrl = 'https://supabase.dincouture.pk';
-}
-// Build had wrong URL (e.g. erp proxy): replace so auth gets JSON not redirect
-if (supabaseUrl.includes('erp.dincouture.pk')) {
-  supabaseUrl = 'https://supabase.dincouture.pk';
+  supabaseUrl = origin;
 }
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
