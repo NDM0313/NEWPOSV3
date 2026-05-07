@@ -357,7 +357,7 @@ export const rentalPartyDevaluationRepairFingerprint = (companyId: string, origi
   `rental_party_devaluation_repair:${companyId}:${originalJournalEntryId}`;
 
 /**
- * Dress devaluation (wear): Dr Rental Income 4200 (reduces revenue), Cr party AR.
+ * Dress devaluation (wear): Dr expense (5300 / 6100), Cr cash/asset (1000 / 1010) via DB RPC — does not touch AR or 4200.
  * Walk-in (no customerId): use legacy Dr 5300 / Cr cash in the caller instead.
  * `reference_type` = rental, `reference_id` = rental id.
  */
@@ -403,33 +403,55 @@ export async function postRentalPartyDevaluationIfNeeded(params: {
     .maybeSingle();
   if (dup?.id) return { journalEntryId: String((dup as { id: string }).id), skipped: true };
 
-  const arId = await resolveReceivablePostingAccountId(companyId, customerId);
-  const incId = await resolveRentalIncomeAccountId(companyId);
-  if (!arId || !incId) {
-    return { journalEntryId: null, skipped: false, reason: 'missing_gl_accounts' };
-  }
-
-  const entryNo = await nextJournalEntryNo(companyId, branchId ?? null);
   const expDesc = expenses.map((e) => `${e.description}: Rs ${e.amount}`).join(', ');
   const desc = repairSourceJournalEntryId
     ? `Rental devaluation (wear) — repair — ${bookingNo} (${expDesc})`
     : `Rental devaluation (wear) — ${bookingNo} (${expDesc})`;
-  const lines: JournalEntryLine[] = [
-    { id: '', journal_entry_id: '', account_id: incId, debit: amount, credit: 0, description: desc },
-    { id: '', journal_entry_id: '', account_id: arId, debit: 0, credit: amount, description: desc },
-  ];
-  const entry: JournalEntry = {
-    id: '',
-    company_id: companyId,
-    branch_id: branchId && branchId !== 'all' ? branchId : undefined,
-    entry_no: entryNo,
-    entry_date: entryDate.slice(0, 10),
-    description: desc,
-    reference_type: 'rental',
-    reference_id: rentalId,
-    created_by: createdBy ?? null,
-    action_fingerprint: fp,
+
+  const { data: rpcData, error: rpcErr } = await supabase.rpc('record_rental_expense_devaluation_journal', {
+    p_rental_id: rentalId,
+    p_amount: amount,
+    p_action_fingerprint: fp,
+    p_entry_date: entryDate.slice(0, 10),
+    p_created_by: createdBy ?? null,
+    p_line_description: desc,
+    p_debit_account_code: '5300',
+    p_credit_account_code: '1000',
+  });
+
+  if (rpcErr) {
+    return { journalEntryId: null, skipped: false, reason: rpcErr.message || 'rpc_error' };
+  }
+
+  const row = rpcData as {
+    success?: boolean;
+    skipped?: boolean;
+    journal_entry_id?: string;
+    error?: string;
+    reason?: string;
+  } | null;
+
+  if (!row || row.success === false) {
+    return {
+      journalEntryId: null,
+      skipped: false,
+      reason: row?.error || 'rpc_failed',
+    };
+  }
+
+  if (row.skipped && row.reason === 'no_customer') {
+    return { journalEntryId: null, skipped: true, reason: 'walk_in_or_zero' };
+  }
+
+  if (row.skipped) {
+    return {
+      journalEntryId: row.journal_entry_id ? String(row.journal_entry_id) : null,
+      skipped: true,
+    };
+  }
+
+  return {
+    journalEntryId: row.journal_entry_id ? String(row.journal_entry_id) : null,
+    skipped: false,
   };
-  const saved = await accountingService.createEntry(entry, lines);
-  return { journalEntryId: (saved as { id?: string } | null)?.id ?? null, skipped: false };
 }

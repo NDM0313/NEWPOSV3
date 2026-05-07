@@ -456,8 +456,8 @@ export const rentalService = {
               entryDate: bookingDate,
               createdBy: createdBy || null,
             });
-            if (!res.skipped && !res.journalEntryId && res.reason === 'missing_gl_accounts') {
-              console.warn('[rentalService] Rental devaluation JE skipped: AR or Rental Income (4200) not resolved.');
+            if (!res.skipped && !res.journalEntryId && res.reason && res.reason !== 'rpc_error') {
+              console.warn('[rentalService] Rental devaluation JE failed:', res.reason);
             }
           } else {
             const { accountingService } = await import('./accountingService');
