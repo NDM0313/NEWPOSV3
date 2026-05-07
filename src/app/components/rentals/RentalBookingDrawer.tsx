@@ -414,10 +414,6 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
       toast.error('Please select pickup and return dates');
       return;
     }
-    if (hasConflict) {
-      toast.error('Selected dates conflict with an existing booking');
-      return;
-    }
     // Build items from cart + current selected product (if any)
     const allCartItems = [...cartItems];
     if (selectedProduct && currentItemPrice > 0) {
@@ -1067,7 +1063,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                     </div>
                   )}
 
-                  {/* Dress devaluation (wear) — nets vs rental income + party AR for named customers */}
+                  {/* Dress devaluation (wear) — posts Dr Rental Expense / Cr Rental Income */}
                   <div className="space-y-2">
                     <Label className="text-xs text-gray-500 uppercase">Dress devaluation (wear / upkeep)</Label>
                     <div className="flex gap-2">
@@ -1170,10 +1166,10 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                   
                   <Button 
                     className="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold h-12 text-lg shadow-lg shadow-pink-600/20"
-                    disabled={(cartItems.length === 0 && !selectedProduct) || !!hasConflict || saving}
+                    disabled={(cartItems.length === 0 && !selectedProduct) || saving}
                     onClick={handleBookOrder}
                   >
-                      {saving ? "Saving..." : hasConflict ? "Date Conflict" : "Book Order"} <ArrowRight className="ml-2" size={18} />
+                      {saving ? "Saving..." : "Book Order"} <ArrowRight className="ml-2" size={18} />
                   </Button>
               </div>
           </div>

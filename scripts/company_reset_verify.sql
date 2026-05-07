@@ -30,6 +30,21 @@ SELECT * FROM (
   UNION ALL SELECT 'sales', COUNT(*) FROM sales WHERE company_id = 'c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee'::uuid
 ) t ORDER BY tbl;
 
+-- Sequence engines should also be empty after reset
+SELECT * FROM (
+  SELECT 'document_sequences_global' AS tbl, COUNT(*)::bigint AS cnt
+  FROM document_sequences_global
+  WHERE company_id = 'c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee'::uuid
+  UNION ALL
+  SELECT 'erp_document_sequences' AS tbl, COUNT(*)::bigint
+  FROM erp_document_sequences
+  WHERE company_id = 'c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee'::uuid
+  UNION ALL
+  SELECT 'document_sequences' AS tbl, COUNT(*)::bigint
+  FROM document_sequences
+  WHERE company_id = 'c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee'::uuid
+) s ORDER BY tbl;
+
 -- Preserved: company, accounts, branches, users, products, contacts
 SELECT 'companies' AS preserved, COUNT(*) AS cnt FROM companies WHERE id = 'c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee'::uuid
 UNION ALL SELECT 'accounts', COUNT(*) FROM accounts WHERE company_id = 'c37b77cc-6eb9-4fc0-af7d-3e1eaaeaeaee'::uuid

@@ -373,6 +373,13 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
           ),
         }}
       />
+      {(startDate || endDate) && (
+        <div className="px-6 pb-2">
+          <p className="text-xs text-amber-300/80">
+            Active date filter is hiding older rentals. Availability checks still include overlapping booked/active rentals outside current date window.
+          </p>
+        </div>
+      )}
 
       <div className="flex-1 overflow-auto px-6 py-4">
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">

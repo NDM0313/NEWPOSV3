@@ -264,6 +264,8 @@ export const rentalService = {
 
     const durationDays = Math.ceil((ret.getTime() - pickup.getTime()) / (1000 * 60 * 60 * 24)) || 1;
     const totalAmount = rentalCharges + securityDeposit;
+    const normalizedExpenses =
+      expenses && expenses.length > 0 ? expenses : [{ description: 'Dress devaluation (wear)', amount: 5000 }];
     // Capture advance payment if provided (collected at booking time)
     const effectivePaid = Math.max(0, Number(advanceAmount) || 0);
     const dueAmount = Math.max(0, totalAmount - effectivePaid);
@@ -294,7 +296,7 @@ export const rentalService = {
         due_amount: dueAmount,
         notes: notes || null,
         created_by: createdBy || null,
-        ...(expenses && expenses.length > 0 ? { rental_expenses: expenses } : {}),
+        ...(normalizedExpenses && normalizedExpenses.length > 0 ? { rental_expenses: normalizedExpenses } : {}),
         ...(salesmanId ? {
           salesman_id: salesmanId,
           commission_amount: commissionAmount || 0,
@@ -437,9 +439,9 @@ export const rentalService = {
       });
     }
 
-    // Dress devaluation (wear): named customer → Dr Rental Income 4200 / Cr party AR (not cash). Walk-in → legacy Dr 5300 / Cr cash.
-    if (expenses && expenses.length > 0) {
-      const totalExpense = expenses.reduce((sum: number, e: { amount: number }) => sum + (Number(e.amount) || 0), 0);
+    // Dress devaluation (wear): Dr Rental Expense (5300/6100) / Cr Rental Income (4200).
+    if (normalizedExpenses && normalizedExpenses.length > 0) {
+      const totalExpense = normalizedExpenses.reduce((sum: number, e: { amount: number }) => sum + (Number(e.amount) || 0), 0);
       if (totalExpense > 0) {
         try {
           if (customerId) {
@@ -451,7 +453,7 @@ export const rentalService = {
               customerId,
               customerName,
               amount: totalExpense,
-              expenses: expenses as { description: string; amount: number }[],
+              expenses: normalizedExpenses as { description: string; amount: number }[],
               bookingNo,
               entryDate: bookingDate,
               createdBy: createdBy || null,
@@ -474,7 +476,7 @@ export const rentalService = {
             const expAccId = await getAccId('5300') || await getAccId('6100');
             const cashAccId = await getAccId('1000');
             if (expAccId && cashAccId) {
-              const expDesc = expenses
+              const expDesc = normalizedExpenses
                 .map((e: { description: string; amount: number }) => `${e.description}: Rs ${e.amount}`)
                 .join(', ');
               await accountingService.createEntry(

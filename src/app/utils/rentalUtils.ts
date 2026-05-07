@@ -25,22 +25,23 @@ export const checkDateConflict = (
   existingBookings: RentalBooking[],
   excludeBookingId?: string
 ): DateConflict => {
-  // Filter bookings for this product that are active
+  // Filter bookings for this product that are active in current status model
   const activeBookings = existingBookings.filter(
     booking => 
       booking.productId === productId &&
       booking.id !== excludeBookingId &&
-      (booking.status === 'reserved' || booking.status === 'picked_up')
+      (booking.status === 'booked' ||
+        booking.status === 'picked_up' ||
+        booking.status === 'active' ||
+        booking.status === 'overdue' ||
+        // Backward compatibility for legacy records
+        booking.status === 'reserved')
   );
 
   // Check for date overlap
   for (const booking of activeBookings) {
-    const hasOverlap = 
-      (isAfter(pickupDate, booking.pickupDate) && isBefore(pickupDate, booking.returnDate)) ||
-      (isAfter(returnDate, booking.pickupDate) && isBefore(returnDate, booking.returnDate)) ||
-      (isBefore(pickupDate, booking.pickupDate) && isAfter(returnDate, booking.returnDate)) ||
-      (pickupDate.getTime() === booking.pickupDate.getTime()) ||
-      (returnDate.getTime() === booking.returnDate.getTime());
+    // Half-open range overlap [pickup, return): consistent with service-layer check.
+    const hasOverlap = pickupDate < booking.returnDate && returnDate > booking.pickupDate;
 
     if (hasOverlap) {
       return {

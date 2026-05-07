@@ -1,5 +1,5 @@
--- Rental booking wear/devaluation: Dr expense (5300 / fallback 6100), Cr asset (default 1000 / fallback 1010).
--- Does NOT touch party AR or Rental Income — avoids netting expenses against receivables.
+-- Rental booking wear/devaluation: Dr expense (5300 / fallback 6100), Cr Rental Income (default 4200).
+-- Does NOT touch cash/asset accounts or party AR.
 -- Idempotent via caller-supplied action_fingerprint (same keys as rental_party_devaluation:* in app).
 
 SET search_path = public;
@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION public.record_rental_expense_devaluation_journal(
   p_created_by            UUID DEFAULT NULL,
   p_line_description      TEXT DEFAULT NULL,
   p_debit_account_code    TEXT DEFAULT '5300',
-  p_credit_account_code   TEXT DEFAULT '1000'
+  p_credit_account_code   TEXT DEFAULT '4200'
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -106,15 +106,6 @@ BEGIN
     AND COALESCE(a.is_active, true)
   LIMIT 1;
 
-  IF v_credit_id IS NULL AND v_primary_credit = '1000' THEN
-    SELECT a.id, a.name INTO v_credit_id, v_credit_name
-    FROM public.accounts a
-    WHERE a.company_id = v_company_id
-      AND trim(a.code) = '1010'
-      AND COALESCE(a.is_active, true)
-    LIMIT 1;
-  END IF;
-
   IF v_debit_id IS NULL THEN
     RETURN jsonb_build_object(
       'success', false,
@@ -131,7 +122,7 @@ BEGIN
       'skipped', false,
       'error',
       'credit account not found for codes ' || v_primary_credit ||
-        CASE WHEN v_primary_credit = '1000' THEN ' / 1010' ELSE '' END
+        CASE WHEN v_primary_credit = '4200' THEN ' (Rental Income)' ELSE '' END
     );
   END IF;
 
@@ -239,7 +230,7 @@ $$;
 COMMENT ON FUNCTION public.record_rental_expense_devaluation_journal(
   UUID, NUMERIC, TEXT, DATE, UUID, TEXT, TEXT, TEXT
 ) IS
-  'Rental wear expense JE: Dr expense (5300↔6100), Cr cash/asset (1000↔1010). Idempotent via p_action_fingerprint. Does not post to AR or 4200.';
+  'Rental wear expense JE: Dr expense (5300↔6100), Cr Rental Income (4200). Idempotent via p_action_fingerprint. Does not post to cash or AR.';
 
 GRANT EXECUTE ON FUNCTION public.record_rental_expense_devaluation_journal(
   UUID, NUMERIC, TEXT, DATE, UUID, TEXT, TEXT, TEXT

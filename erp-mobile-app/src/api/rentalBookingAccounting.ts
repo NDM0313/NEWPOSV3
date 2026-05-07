@@ -1,6 +1,6 @@
 /**
  * Mobile rental booking → GL parity with web (rentalService + AccountingContext advance path).
- * Dr payment account / Cr Rental Advance (2020); dress devaluation: `record_rental_expense_devaluation_journal` (Dr 5300 / Cr 1000) when customerId set, else legacy Dr 5300 / Cr cash.
+ * Dr payment account / Cr Rental Advance (2020); dress devaluation posts Dr 5300 / Cr 4200 (Rental Income).
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { createJournalEntry } from './accounts';
@@ -45,11 +45,6 @@ export async function resolveRentalAdvanceAccountId(companyId: string): Promise<
 
 export async function resolveRentalExpenseAccountId(companyId: string): Promise<string | null> {
   return (await getAccountIdByCodes(companyId, ['5300'])) || (await getAccountIdByCodes(companyId, ['6100']));
-}
-
-/** Default cash for expense credit side (matches web rentalService.createBooking). */
-export async function resolveDefaultCashAccountId(companyId: string): Promise<string | null> {
-  return (await getAccountIdByCodes(companyId, ['1000'])) || (await getAccountIdByCodes(companyId, ['1010']));
 }
 
 /** Same fingerprints as web [`rentalPartyArAccounting`](src/app/services/rentalPartyArAccounting.ts). */
@@ -301,7 +296,7 @@ export interface PostRentalExpenseJournalParams {
   expenses: Array<{ description: string; amount: number }>;
   entryDate: string;
   userId: string | null;
-  /** Named customer: rental expense journal via DB RPC (same as web). Omit for walk-in → legacy Dr 5300 / Cr cash. */
+  /** Rental expense journal via DB RPC (same as web). */
   customerId?: string | null;
   customerName?: string | null;
 }
@@ -313,67 +308,64 @@ export async function postRentalExpenseJournalMobile(
   const total = params.expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   if (total <= 0) return { journalEntryId: null, error: null };
 
-  if (params.customerId) {
-    const expenseKey = rentalDevaluationExpenseStableKey(params.expenses);
-    const fp = rentalPartyDevaluationFingerprint(params.companyId, params.rentalId, expenseKey);
-    if (await journalFingerprintExists(params.companyId, fp)) {
-      const { data: existing } = await supabase
-        .from('journal_entries')
-        .select('id')
-        .eq('company_id', params.companyId)
-        .eq('action_fingerprint', fp)
-        .maybeSingle();
-      return { journalEntryId: (existing as { id?: string } | null)?.id ?? null, error: null };
-    }
-    const expDesc = params.expenses.map((e) => `${e.description}: Rs ${e.amount}`).join(', ');
-    const cust = String(params.customerName || '').trim() || 'Customer';
-    const desc = `Rental devaluation (wear) — ${params.bookingNo} (${cust}) (${expDesc})`;
-    const { data: rpcData, error: rpcErr } = await supabase.rpc('record_rental_expense_devaluation_journal', {
-      p_rental_id: params.rentalId,
-      p_amount: total,
-      p_action_fingerprint: fp,
-      p_entry_date: params.entryDate.slice(0, 10),
-      p_created_by: params.userId,
-      p_line_description: desc,
-      p_debit_account_code: '5300',
-      p_credit_account_code: '1000',
-    });
-    if (rpcErr) {
-      return { journalEntryId: null, error: rpcErr.message };
-    }
-    const row = rpcData as {
-      success?: boolean;
-      skipped?: boolean;
-      journal_entry_id?: string;
-      error?: string;
-    } | null;
-    if (!row || row.success === false) {
-      return { journalEntryId: null, error: row?.error ?? 'record_rental_expense_devaluation_journal failed' };
-    }
-    return { journalEntryId: row.journal_entry_id ?? null, error: null };
+  const expenseKey = rentalDevaluationExpenseStableKey(params.expenses);
+  const fp = rentalPartyDevaluationFingerprint(params.companyId, params.rentalId, expenseKey);
+  if (await journalFingerprintExists(params.companyId, fp)) {
+    const { data: existing } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', params.companyId)
+      .eq('action_fingerprint', fp)
+      .maybeSingle();
+    return { journalEntryId: (existing as { id?: string } | null)?.id ?? null, error: null };
   }
-
-  const expAcc = await resolveRentalExpenseAccountId(params.companyId);
-  const cashAcc = await resolveDefaultCashAccountId(params.companyId);
-  if (!expAcc || !cashAcc) return { journalEntryId: null, error: 'Expense or cash account not found (5300/6100, 1000).' };
   const expDesc = params.expenses.map((e) => `${e.description}: Rs ${e.amount}`).join(', ');
-  const desc = `Rental expense (walk-in / no party AR) — ${params.bookingNo} (${expDesc})`;
-  const fingerprint = `rental_booking_expense:${params.companyId}:${params.rentalId}`;
-  const res = await createJournalEntry({
-    companyId: params.companyId,
-    branchId: params.branchId === 'all' ? null : params.branchId,
-    entryDate: params.entryDate.slice(0, 10),
-    description: desc,
-    referenceType: 'expense',
-    referenceId: params.rentalId,
-    actionFingerprint: fingerprint,
-    userId: params.userId,
-    lines: [
-      { accountId: expAcc, debit: total, credit: 0, description: desc },
-      { accountId: cashAcc, debit: 0, credit: total, description: desc },
-    ],
+  const cust = String(params.customerName || '').trim() || 'Customer';
+  const desc = `Rental devaluation (wear) — ${params.bookingNo} (${cust}) (${expDesc})`;
+  const { data: rpcData, error: rpcErr } = await supabase.rpc('record_rental_expense_devaluation_journal', {
+    p_rental_id: params.rentalId,
+    p_amount: total,
+    p_action_fingerprint: fp,
+    p_entry_date: params.entryDate.slice(0, 10),
+    p_created_by: params.userId,
+    p_line_description: desc,
+    p_debit_account_code: '5300',
+    p_credit_account_code: '4200',
   });
-  return { journalEntryId: res.data?.id ?? null, error: res.error };
+  if (rpcErr) {
+    return { journalEntryId: null, error: rpcErr.message };
+  }
+  const row = rpcData as {
+    success?: boolean;
+    skipped?: boolean;
+    journal_entry_id?: string;
+    error?: string;
+  } | null;
+  if (!row || row.success === false) {
+    return { journalEntryId: null, error: row?.error ?? 'record_rental_expense_devaluation_journal failed' };
+  }
+  if (row.skipped) {
+    // Fallback for no-customer/schema-variant cases: enforce Dr Expense / Cr Rental Income for all mobile flows.
+    const expAcc = await resolveRentalExpenseAccountId(params.companyId);
+    const incAcc = await resolveRentalIncomeAccountIdMobile(params.companyId);
+    if (!expAcc || !incAcc) return { journalEntryId: null, error: 'Expense or rental income account not found (5300/6100, 4200).' };
+    const fallbackRes = await createJournalEntry({
+      companyId: params.companyId,
+      branchId: params.branchId === 'all' ? null : params.branchId,
+      entryDate: params.entryDate.slice(0, 10),
+      description: desc,
+      referenceType: 'rental',
+      referenceId: params.rentalId,
+      actionFingerprint: fp,
+      userId: params.userId,
+      lines: [
+        { accountId: expAcc, debit: total, credit: 0, description: desc },
+        { accountId: incAcc, debit: 0, credit: total, description: desc },
+      ],
+    });
+    return { journalEntryId: fallbackRes.data?.id ?? null, error: fallbackRes.error };
+  }
+  return { journalEntryId: row.journal_entry_id ?? null, error: null };
 }
 
 export async function linkRentalPaymentJournalEntry(

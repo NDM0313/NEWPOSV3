@@ -371,7 +371,7 @@ export async function getRentals(companyId: string, branchId?: string | null): P
     .select('id, booking_no, document_number, customer_name, pickup_date, return_date, status, total_amount, paid_amount, due_amount')
     .eq('company_id', companyId)
     .order('booking_date', { ascending: false })
-    .limit(100);
+    .limit(500);
   if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };

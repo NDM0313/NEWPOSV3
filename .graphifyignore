@@ -1,7 +1,6 @@
-build/
-.dart_tool/
-node_modules/
-.vscode/
-ios/Pods/
-android/.gradle/
-.git/
+**/node_modules/**
+**/build/**
+**/.dart_tool/**
+**/.vscode/**
+**/ios/Pods/**
+**/android/.gradle/**

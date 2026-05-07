@@ -65,8 +65,16 @@ UPDATE branches SET default_cash_account_id = NULL, default_bank_account_id = NU
 UPDATE settings SET default_cash_account_id = NULL, default_bank_account_id = NULL WHERE 1=1;
 DELETE FROM accounts;
 
--- Phase E: Reset document sequences
-UPDATE document_sequences SET current_number = 0 WHERE 1=1;
+-- Phase E: Reset all document numbering engines
+DO $$ BEGIN
+  DELETE FROM document_sequences_global;
+EXCEPTION WHEN undefined_table THEN NULL; END $$;
+DO $$ BEGIN
+  DELETE FROM erp_document_sequences;
+EXCEPTION WHEN undefined_table THEN NULL; END $$;
+DO $$ BEGIN
+  DELETE FROM document_sequences;
+EXCEPTION WHEN undefined_table THEN NULL; END $$;
 
 -- Phase F: numbering_rules (if exists)
 DO $$ BEGIN

@@ -8,7 +8,6 @@ import { supabase } from '@/lib/supabase';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { accountingService } from '@/app/services/accountingService';
 import type { JournalEntry, JournalEntryLine } from '@/app/services/accountingService';
-import { generatePaymentReference } from '@/app/utils/paymentUtils';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 import { resolvePayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
 import { logPaymentCreated } from '@/app/services/auditLogService';
@@ -95,12 +94,7 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
   const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
 
   // 1) Payment reference from canonical source only
-  let referenceNumber: string;
-  try {
-    referenceNumber = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment');
-  } catch (e) {
-    referenceNumber = generatePaymentReference(null);
-  }
+  const referenceNumber = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment');
 
   const { data: { user: authUser } } = await supabase.auth.getUser();
   const authUserId = authUser?.id ?? null;
@@ -156,7 +150,7 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
   const description = isOnAccount
     ? `On-account payment to supplier ${supplierName || contactId}`
     : `Payment for purchase ${purchaseId}`;
-  const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+  const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, validBranchId);
   const journalEntry: JournalEntry = {
     company_id: companyId,
     branch_id: validBranchId ?? undefined,

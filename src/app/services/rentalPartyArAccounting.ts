@@ -357,8 +357,8 @@ export const rentalPartyDevaluationRepairFingerprint = (companyId: string, origi
   `rental_party_devaluation_repair:${companyId}:${originalJournalEntryId}`;
 
 /**
- * Dress devaluation (wear): Dr expense (5300 / 6100), Cr cash/asset (1000 / 1010) via DB RPC — does not touch AR or 4200.
- * Walk-in (no customerId): use legacy Dr 5300 / Cr cash in the caller instead.
+ * Dress devaluation (wear): Dr expense (5300 / 6100), Cr Rental Income (4200) via DB RPC.
+ * Walk-in (no customerId): service caller may still skip posting if no party context exists in schema variants.
  * `reference_type` = rental, `reference_id` = rental id.
  */
 export async function postRentalPartyDevaluationIfNeeded(params: {
@@ -416,7 +416,7 @@ export async function postRentalPartyDevaluationIfNeeded(params: {
     p_created_by: createdBy ?? null,
     p_line_description: desc,
     p_debit_account_code: '5300',
-    p_credit_account_code: '1000',
+    p_credit_account_code: '4200',
   });
 
   if (rpcErr) {

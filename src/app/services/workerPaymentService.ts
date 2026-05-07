@@ -9,7 +9,6 @@ import { documentNumberService } from '@/app/services/documentNumberService';
 import { accountingService } from '@/app/services/accountingService';
 import type { JournalEntry, JournalEntryLine } from '@/app/services/accountingService';
 import { studioProductionService } from '@/app/services/studioProductionService';
-import { generatePaymentReference } from '@/app/utils/paymentUtils';
 import {
   getWorkerAdvanceAccountId,
   shouldDebitWorkerPayableForPayment,
@@ -75,12 +74,7 @@ export async function createWorkerPayment(params: CreateWorkerPaymentParams): Pr
   const paymentDate = new Date().toISOString().split('T')[0];
 
   // 1) Payment reference from canonical source only
-  let referenceNumber: string;
-  try {
-    referenceNumber = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment');
-  } catch (e) {
-    referenceNumber = generatePaymentReference(null);
-  }
+  const referenceNumber = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment');
 
   const { data: { user: authUser } } = await supabase.auth.getUser();
   const authUserId = authUser?.id ?? null;
@@ -122,7 +116,7 @@ export async function createWorkerPayment(params: CreateWorkerPaymentParams): Pr
   }
 
   const debitLabel = payToPayable ? 'Worker payable' : 'Worker advance (pre-bill)';
-  const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+  const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, validBranchId);
   const journalEntry: JournalEntry = {
     company_id: companyId,
     branch_id: validBranchId ?? undefined,

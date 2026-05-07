@@ -57,5 +57,16 @@ BEGIN
   -- 9. Final pass: activity_logs (in case triggers re-inserted during deletes)
   DELETE FROM activity_logs WHERE company_id = cid;
 
+  -- 10. Reset all document numbering engines for this company
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'document_sequences_global') THEN
+    DELETE FROM document_sequences_global WHERE company_id = cid;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'erp_document_sequences') THEN
+    DELETE FROM erp_document_sequences WHERE company_id = cid;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'document_sequences') THEN
+    DELETE FROM document_sequences WHERE company_id = cid;
+  END IF;
+
   RAISE NOTICE 'Company transaction reset completed for %.', cid;
 END $$;

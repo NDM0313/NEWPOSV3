@@ -103,7 +103,7 @@ export async function checkRentalAvailability(params: {
   }
 
   const first = conflicts[0];
-  const msg = `Product is already booked from ${first.pickupDate} to ${first.returnDate} (${first.bookingNo} - ${first.customerName})`;
+  const msg = `Product is already booked from ${first.pickupDate} to ${first.returnDate} (${first.bookingNo || first.rentalId} - ${first.customerName})`;
 
   return {
     available: false,

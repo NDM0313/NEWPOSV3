@@ -200,7 +200,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     return sum + lineRate * item.quantity;
   }, 0);
   const extraExpense = parseFloat(extraExpenseAmount) || 0;
-  /** Line rent only (posted as rental_charges); devaluation is Dr rental income / Cr party AR (named customer), not added into rental_charges. */
+  /** Line rent only (posted as rental_charges); devaluation posts Dr Rental Expense / Cr Rental Income, not added into rental_charges. */
   const customerRentTotal = Math.max(0, itemsRentAmount);
   const paidAmount = parseFloat(advancePaid) || 0;
   const balanceDue = Math.max(0, customerRentTotal - paidAmount);
