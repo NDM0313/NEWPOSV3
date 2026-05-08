@@ -35,11 +35,6 @@ export interface User {
   default_commission_percent?: number | null;
   auth_user_id?: string | null; // Links to auth.users.id. Null = no login yet.
   last_login_at?: string | null;
-  permissions?: {
-    canCreateSale?: boolean;
-    canBeAssignedAsSalesman?: boolean;
-    [key: string]: boolean | undefined;
-  };
   created_at?: string;
   updated_at?: string;
 }
@@ -73,14 +68,11 @@ export const userService = {
     // Filter by salesman permission if specified
     if (options?.canBeSalesman) {
       return (data || []).filter(user => {
-        // Check if user has salesman permission
-        const permissions = user.permissions || {};
         return (
-          permissions.canBeAssignedAsSalesman === true ||
           user.can_be_assigned_as_salesman === true ||
           user.role === 'salesman' ||
           user.role === 'admin' ||
-          permissions.canCreateSale === true
+          user.role === 'owner'
         );
       });
     }
@@ -183,9 +175,7 @@ export const userService = {
     if (!insertPayload.user_code && insertPayload.company_id) {
       insertPayload.user_code = await this.generateUserCode(insertPayload.company_id);
     }
-    if (insertPayload.permissions && typeof insertPayload.permissions === 'object') {
-      insertPayload.permissions = insertPayload.permissions;
-    }
+    delete insertPayload.permissions;
     const { data, error } = await supabase.from('users').insert(insertPayload).select().single();
     if (error) throw error;
     return data;
@@ -196,14 +186,9 @@ export const userService = {
     console.log('[USER SERVICE] Updating user:', id, 'with payload:', JSON.stringify(updates, null, 2));
     
     try {
-      // Prepare update payload - ensure permissions is properly formatted for JSONB
+      // Prepare update payload
       const updatePayload: any = { ...updates };
-      
-      // If permissions is an object, ensure it's properly formatted
-      if (updatePayload.permissions && typeof updatePayload.permissions === 'object') {
-        // Supabase handles JSONB automatically, but we ensure it's a plain object
-        updatePayload.permissions = updatePayload.permissions;
-      }
+      delete updatePayload.permissions;
       
       const { data, error } = await supabase
         .from('users')

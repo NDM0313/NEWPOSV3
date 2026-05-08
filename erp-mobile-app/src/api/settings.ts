@@ -6,6 +6,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 const MOBILE_SYNC_KEY = 'mobile_sync_status';
+const DEFAULT_DRESS_DEVALUATION_KEY = 'default_dress_devaluation';
 
 export interface MobileSyncStatus {
   last_sync_at: string | null; // ISO timestamp
@@ -55,6 +56,41 @@ export async function setMobileSyncStatus(
       },
       category: 'mobile',
       description: 'Last sync time and counts for mobile app',
+    },
+    { onConflict: 'company_id,key' }
+  );
+  return { error: error?.message ?? null };
+}
+
+export async function getDefaultDressDevaluation(
+  companyId: string | null
+): Promise<{ data: number; error: string | null }> {
+  if (!isSupabaseConfigured || !companyId) return { data: 5000, error: null };
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('company_id', companyId)
+    .eq('key', DEFAULT_DRESS_DEVALUATION_KEY)
+    .maybeSingle();
+  if (error) return { data: 5000, error: error.message };
+  const raw = data?.value;
+  const value = typeof raw === 'number' ? raw : Number(raw);
+  return { data: Number.isFinite(value) && value >= 0 ? value : 5000, error: null };
+}
+
+export async function setDefaultDressDevaluation(
+  companyId: string | null,
+  amount: number
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured || !companyId) return { error: null };
+  const normalized = Math.max(0, Math.round(Number(amount) || 0));
+  const { error } = await supabase.from('settings').upsert(
+    {
+      company_id: companyId,
+      key: DEFAULT_DRESS_DEVALUATION_KEY,
+      value: normalized,
+      category: 'rental',
+      description: 'Default dress devaluation amount auto-posted on rental booking',
     },
     { onConflict: 'company_id,key' }
   );

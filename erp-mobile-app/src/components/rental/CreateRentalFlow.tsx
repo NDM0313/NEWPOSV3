@@ -9,12 +9,14 @@ import * as branchesApi from '../../api/branches';
 import * as accountsApi from '../../api/accounts';
 import * as usersApi from '../../api/users';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
+import { localNowDateString, formatLocalDateTimeDisplay } from '../../utils/localDate';
+import type { User } from '../../types';
 
 interface CreateRentalFlowProps {
   companyId: string | null;
   branchId: string | null;
   userId: string | null;
-  userRole?: 'admin' | 'manager' | 'staff' | 'viewer';
+  userRole?: User['role'];
   onBack: () => void;
   onSuccess: () => void;
 }
@@ -42,7 +44,6 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const [selectedCustomer, setSelectedCustomer] = useState<{ id: string; name: string; phone: string } | null>(null);
   const [selectedItems, setSelectedItems] = useState<SelectedRentalItem[]>([]);
   const [lineRateMap, setLineRateMap] = useState<Record<string, string>>({});
-  const [extraExpenseAmount, setExtraExpenseAmount] = useState('');
   const [pickupDate, setPickupDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
   const [advancePaid, setAdvancePaid] = useState('');
@@ -61,7 +62,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
-  const today = new Date().toISOString().slice(0, 10);
+  /** Local calendar "today" for date pickers (not UTC). */
+  const today = localNowDateString();
 
   const needsBranchSelection = !branchId || branchId === 'all';
   const effectiveBranchId = needsBranchSelection ? selectedBranchId : branchId;
@@ -130,7 +132,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   useEffect(() => {
     if (step !== 'salesman') return;
     if (salesmanId) return;
-    if (!userId || userRole === 'admin') return;
+    if (!userId || userRole === 'admin' || userRole === 'owner') return;
     const me = salesmen.find((s) => s.id === userId);
     if (!me) return;
     setSalesmanId(me.id);
@@ -199,7 +201,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     const lineRate = Number(lineRateMap[item.key] ?? item.product.rentPricePerDay ?? 0) || 0;
     return sum + lineRate * item.quantity;
   }, 0);
-  const extraExpense = parseFloat(extraExpenseAmount) || 0;
+  const extraExpense = 0;
   /** Line rent only (posted as rental_charges); devaluation posts Dr Rental Expense / Cr Rental Income, not added into rental_charges. */
   const customerRentTotal = Math.max(0, itemsRentAmount);
   const paidAmount = parseFloat(advancePaid) || 0;
@@ -257,19 +259,15 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       userId,
       customerId: selectedCustomer.id,
       customerName: selectedCustomer.name,
-      bookingDate: today,
+      bookingDate: localNowDateString(),
       pickupDate,
       returnDate,
       rentalCharges: customerRentTotal,
       paidAmount,
       advancePaymentAccountId: paidAmount > 0 ? advancePaymentAccountId ?? undefined : undefined,
-      notes: [notes.trim(), extraExpense > 0 ? `Shop expense / devaluation: Rs. ${extraExpense.toLocaleString()}` : '']
+      notes: [notes.trim()]
         .filter(Boolean)
         .join(' | ') || null,
-      expenses:
-        extraExpense > 0
-          ? [{ description: 'Dress devaluation (wear)', amount: extraExpense }]
-          : undefined,
       salesmanId: salesmanId || null,
       commissionPercent: Number.isFinite(commissionPctNum) ? commissionPctNum : null,
       securityDocumentType: securityDocType || null,
@@ -294,7 +292,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       transactionNo: createResult?.booking_no ?? null,
       amount: customerRentTotal,
       partyName: selectedCustomer.name,
-      date: new Date().toISOString(),
+      date: undefined,
+      dateDisplay: formatLocalDateTimeDisplay(new Date()),
       branch: branchName ?? undefined,
       entityId: createResult?.id ?? null,
     });
@@ -691,20 +690,6 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               </div>
             ))}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Extra Expenses (Rs.)</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              pattern="[0-9.]*"
-              min="0"
-              step="1"
-              value={extraExpenseAmount}
-              onChange={(e) => setExtraExpenseAmount(e.target.value)}
-              placeholder="Optional: ironing, transport, misc."
-              className="w-full max-w-full min-w-0 h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white font-medium box-border"
-            />
-          </div>
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-[#9CA3AF]">Items rent</span>
@@ -712,7 +697,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-[#9CA3AF]">Dress devaluation (wear)</span>
-              <span className="text-white">Rs. {extraExpense.toLocaleString()}</span>
+              <span className="text-white">Auto (from Settings)</span>
             </div>
             <div className="flex justify-between text-sm pt-2 border-t border-[#374151]">
               <span className="text-[#9CA3AF]">Customer rent (ledger)</span>

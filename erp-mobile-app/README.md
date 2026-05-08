@@ -56,3 +56,15 @@ npm run build
 ```
 
 Output: `dist/`. PWA ya Capacitor ke liye same steps jo **docs/TASK_MOBILE_AND_PRODUCTION.md** mein hain.
+
+## Settings module (permissions)
+
+The **Settings** screen is gated like other modules: with permission V2, the role needs **`settings.view`** on the `settings` module (and **`settings.modify`** to edit printer/sync-related prefs where enforced). If users cannot see Settings in the grid or header shortcut, assign these permissions in the web ERP **Role / Permissions** UI for their role.
+
+Production builds should use `npm run build` so developer-only panels stay hidden (`import.meta.env.DEV` is false).
+
+For **connection debug** (Settings footer) and **verbose `[sync]` console logs** during local development, add to `erp-mobile-app/.env`:
+
+`VITE_SHOW_ERP_DEV_TOOLS=true`
+
+Both `npm run dev` and that flag are required; production users never see those tools.

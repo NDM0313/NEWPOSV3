@@ -22,6 +22,10 @@ export type ErpDocumentType =
   | 'stock'
   | 'stock_adjustment'
   | 'journal'
+  /** Journal page / pure JE: JV-000001 (mirrored on journal_entries.document_no). */
+  | 'manual_journal'
+  /** Account-to-account fund transfer: FT-000001. */
+  | 'fund_transfer'
   | 'product'
   | 'studio'
   | 'job'

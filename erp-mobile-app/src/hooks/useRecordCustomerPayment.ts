@@ -10,6 +10,8 @@ export interface RecordCustomerPaymentParams {
   paymentMethod: string;
   paymentDate: string;
   notes?: string | null;
+  /** Optional user reference (cheque / external doc no); server allocates if omitted. */
+  referenceNumber?: string | null;
   createdBy?: string | null;
 }
 
@@ -42,6 +44,7 @@ export function useRecordCustomerPayment(): UseRecordCustomerPaymentResult {
         paymentMethod: params.paymentMethod,
         paymentDate: params.paymentDate,
         notes: params.notes,
+        referenceNumber: params.referenceNumber,
         createdBy: params.createdBy,
       });
       if (error) return { success: false, error };

@@ -1,0 +1,274 @@
+-- Transactional company restore RPC with trigger-safe controls.
+-- Restores operational + accounting rows from a company-scoped backup JSON payload.
+
+create or replace function public.restore_company_backup_rpc(
+  p_company_id uuid,
+  p_backup jsonb,
+  p_confirmation text default null
+)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_request_role text := lower(coalesce(current_setting('request.jwt.claim.role', true), ''));
+  v_user_role text := '';
+  v_prev_replication_role text := null;
+
+  v_meta_company_id uuid;
+  v_data jsonb := coalesce(p_backup -> 'data', '{}'::jsonb);
+
+  v_current_sales_ids uuid[];
+  v_current_purchase_ids uuid[];
+  v_current_rental_ids uuid[];
+  v_current_product_ids uuid[];
+  v_current_journal_ids uuid[];
+  v_current_sale_return_ids uuid[];
+  v_current_purchase_return_ids uuid[];
+  v_rows bigint := 0;
+
+  v_restored jsonb := '{}'::jsonb;
+begin
+  if p_company_id is null then
+    return jsonb_build_object('success', false, 'error', 'company_id is required');
+  end if;
+
+  if coalesce(nullif(trim(p_confirmation), ''), '') <> 'RESTORE' then
+    return jsonb_build_object('success', false, 'error', 'Confirmation phrase must be RESTORE');
+  end if;
+
+  begin
+    v_meta_company_id := nullif(p_backup #>> '{meta,company_id}', '')::uuid;
+  exception when others then
+    return jsonb_build_object('success', false, 'error', 'Invalid backup meta.company_id');
+  end;
+
+  if v_meta_company_id is distinct from p_company_id then
+    return jsonb_build_object('success', false, 'error', 'Backup company_id does not match active company');
+  end if;
+
+  if v_request_role <> 'service_role' then
+    if v_user_id is null then
+      return jsonb_build_object('success', false, 'error', 'Not authenticated');
+    end if;
+
+    select lower(coalesce(u.role::text, ''))
+    into v_user_role
+    from public.users u
+    where (u.id = v_user_id or u.auth_user_id = v_user_id)
+      and u.company_id = p_company_id
+    limit 1;
+
+    if v_user_role not in ('owner', 'admin', 'super admin', 'superadmin', 'super_admin') then
+      return jsonb_build_object('success', false, 'error', 'Only owner/admin can restore company backup');
+    end if;
+  end if;
+
+  v_prev_replication_role := current_setting('session_replication_role', true);
+  perform set_config('session_replication_role', 'replica', true);
+
+  select coalesce(array_agg(id), '{}'::uuid[]) into v_current_sales_ids from public.sales where company_id = p_company_id;
+  select coalesce(array_agg(id), '{}'::uuid[]) into v_current_purchase_ids from public.purchases where company_id = p_company_id;
+  select coalesce(array_agg(id), '{}'::uuid[]) into v_current_rental_ids from public.rentals where company_id = p_company_id;
+  select coalesce(array_agg(id), '{}'::uuid[]) into v_current_product_ids from public.products where company_id = p_company_id;
+  select coalesce(array_agg(id), '{}'::uuid[]) into v_current_journal_ids from public.journal_entries where company_id = p_company_id;
+  select coalesce(array_agg(id), '{}'::uuid[]) into v_current_sale_return_ids from public.sale_returns where company_id = p_company_id;
+  select coalesce(array_agg(id), '{}'::uuid[]) into v_current_purchase_return_ids from public.purchase_returns where company_id = p_company_id;
+
+  -- Child rows first.
+  delete from public.journal_entry_lines where journal_entry_id = any(v_current_journal_ids);
+  delete from public.rental_payments where rental_id = any(v_current_rental_ids);
+  delete from public.rental_items where rental_id = any(v_current_rental_ids);
+  delete from public.purchase_return_items where purchase_return_id = any(v_current_purchase_return_ids);
+  delete from public.sale_return_items where sale_return_id = any(v_current_sale_return_ids);
+  delete from public.purchase_items where purchase_id = any(v_current_purchase_ids);
+  delete from public.sales_items where sale_id = any(v_current_sales_ids);
+  delete from public.product_variations where product_id = any(v_current_product_ids);
+  delete from public.stock_movements where company_id = p_company_id;
+
+  if exists (
+    select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_production_stages'
+  ) then
+    delete from public.studio_production_stages
+    where production_id in (
+      select id from public.studio_productions where company_id = p_company_id
+    );
+  end if;
+
+  if exists (
+    select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_productions'
+  ) then
+    delete from public.studio_productions where company_id = p_company_id;
+  end if;
+
+  -- Parent rows.
+  delete from public.ledger_entries where company_id = p_company_id;
+  delete from public.journal_entries where company_id = p_company_id;
+  delete from public.payments where company_id = p_company_id;
+  delete from public.expenses where company_id = p_company_id;
+  delete from public.purchase_returns where company_id = p_company_id;
+  delete from public.sale_returns where company_id = p_company_id;
+  delete from public.rentals where company_id = p_company_id;
+  delete from public.purchases where company_id = p_company_id;
+  delete from public.sales where company_id = p_company_id;
+  delete from public.products where company_id = p_company_id;
+  delete from public.contacts
+  where company_id = p_company_id
+    and not (is_system_generated = true and lower(coalesce(system_type, '')) = 'walking_customer');
+  delete from public.branches where company_id = p_company_id;
+
+  -- Insert parent -> child from backup payload.
+  insert into public.branches
+  select * from jsonb_populate_recordset(null::public.branches, coalesce(v_data -> 'branches', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('branches', v_rows);
+
+  insert into public.contacts
+  select *
+  from jsonb_populate_recordset(null::public.contacts, coalesce(v_data -> 'contacts', '[]'::jsonb))
+  where not (is_system_generated = true and lower(coalesce(system_type, '')) = 'walking_customer');
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('contacts', v_rows);
+
+  insert into public.accounts
+  select * from jsonb_populate_recordset(null::public.accounts, coalesce(v_data -> 'accounts', '[]'::jsonb))
+  on conflict (company_id, code) do update
+    set
+      name = excluded.name,
+      account_type = excluded.account_type,
+      subtype = excluded.subtype,
+      parent_id = excluded.parent_id,
+      normal_side = excluded.normal_side,
+      is_active = excluded.is_active,
+      is_system = excluded.is_system,
+      cash_flow_category = excluded.cash_flow_category,
+      updated_at = excluded.updated_at;
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('accounts', v_rows);
+
+  insert into public.products
+  select * from jsonb_populate_recordset(null::public.products, coalesce(v_data -> 'products', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('products', v_rows);
+
+  insert into public.product_variations
+  select * from jsonb_populate_recordset(null::public.product_variations, coalesce(v_data -> 'product_variations', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('product_variations', v_rows);
+
+  insert into public.sales
+  select * from jsonb_populate_recordset(null::public.sales, coalesce(v_data -> 'sales', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('sales', v_rows);
+
+  insert into public.sale_returns
+  select * from jsonb_populate_recordset(null::public.sale_returns, coalesce(v_data -> 'sale_returns', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('sale_returns', v_rows);
+
+  insert into public.purchases
+  select * from jsonb_populate_recordset(null::public.purchases, coalesce(v_data -> 'purchases', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('purchases', v_rows);
+
+  insert into public.purchase_returns
+  select * from jsonb_populate_recordset(null::public.purchase_returns, coalesce(v_data -> 'purchase_returns', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('purchase_returns', v_rows);
+
+  insert into public.rentals
+  select * from jsonb_populate_recordset(null::public.rentals, coalesce(v_data -> 'rentals', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('rentals', v_rows);
+
+  insert into public.expenses
+  select * from jsonb_populate_recordset(null::public.expenses, coalesce(v_data -> 'expenses', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('expenses', v_rows);
+
+  insert into public.payments
+  select * from jsonb_populate_recordset(null::public.payments, coalesce(v_data -> 'payments', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('payments', v_rows);
+
+  insert into public.journal_entries
+  select * from jsonb_populate_recordset(null::public.journal_entries, coalesce(v_data -> 'journal_entries', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('journal_entries', v_rows);
+
+  insert into public.journal_entry_lines
+  select * from jsonb_populate_recordset(null::public.journal_entry_lines, coalesce(v_data -> 'journal_entry_lines', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('journal_entry_lines', v_rows);
+
+  insert into public.ledger_entries
+  select * from jsonb_populate_recordset(null::public.ledger_entries, coalesce(v_data -> 'ledger_entries', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('ledger_entries', v_rows);
+
+  insert into public.sales_items
+  select * from jsonb_populate_recordset(null::public.sales_items, coalesce(v_data -> 'sales_items', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('sales_items', v_rows);
+
+  insert into public.sale_return_items
+  select * from jsonb_populate_recordset(null::public.sale_return_items, coalesce(v_data -> 'sale_return_items', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('sale_return_items', v_rows);
+
+  insert into public.purchase_items
+  select * from jsonb_populate_recordset(null::public.purchase_items, coalesce(v_data -> 'purchase_items', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('purchase_items', v_rows);
+
+  insert into public.purchase_return_items
+  select * from jsonb_populate_recordset(null::public.purchase_return_items, coalesce(v_data -> 'purchase_return_items', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('purchase_return_items', v_rows);
+
+  insert into public.rental_items
+  select * from jsonb_populate_recordset(null::public.rental_items, coalesce(v_data -> 'rental_items', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('rental_items', v_rows);
+
+  insert into public.rental_payments
+  select * from jsonb_populate_recordset(null::public.rental_payments, coalesce(v_data -> 'rental_payments', '[]'::jsonb));
+  get diagnostics v_rows = row_count;
+  v_restored := v_restored || jsonb_build_object('rental_payments', v_rows);
+
+  if exists (
+    select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_productions'
+  ) then
+    insert into public.studio_productions
+    select * from jsonb_populate_recordset(null::public.studio_productions, coalesce(v_data -> 'studio_productions', '[]'::jsonb));
+    get diagnostics v_rows = row_count;
+    v_restored := v_restored || jsonb_build_object('studio_productions', v_rows);
+  end if;
+
+  if exists (
+    select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_production_stages'
+  ) then
+    insert into public.studio_production_stages
+    select * from jsonb_populate_recordset(null::public.studio_production_stages, coalesce(v_data -> 'studio_production_stages', '[]'::jsonb));
+    get diagnostics v_rows = row_count;
+    v_restored := v_restored || jsonb_build_object('studio_production_stages', v_rows);
+  end if;
+
+  perform set_config('session_replication_role', coalesce(nullif(v_prev_replication_role, ''), 'origin'), true);
+
+  return jsonb_build_object(
+    'success', true,
+    'restored', v_restored
+  );
+exception when others then
+  begin
+    perform set_config('session_replication_role', coalesce(nullif(v_prev_replication_role, ''), 'origin'), true);
+  exception when others then
+    null;
+  end;
+  return jsonb_build_object('success', false, 'error', sqlerrm);
+end;
+$$;
+
+grant execute on function public.restore_company_backup_rpc(uuid, jsonb, text) to authenticated;

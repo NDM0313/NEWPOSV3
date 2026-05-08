@@ -264,8 +264,11 @@ export const rentalService = {
 
     const durationDays = Math.ceil((ret.getTime() - pickup.getTime()) / (1000 * 60 * 60 * 24)) || 1;
     const totalAmount = rentalCharges + securityDeposit;
+    const defaultDevaluation = await settingsService.getDefaultDressDevaluation(companyId).catch(() => 5000);
     const normalizedExpenses =
-      expenses && expenses.length > 0 ? expenses : [{ description: 'Dress devaluation (wear)', amount: 5000 }];
+      expenses && expenses.length > 0
+        ? expenses
+        : [{ description: 'Dress devaluation (wear)', amount: defaultDevaluation }];
     // Capture advance payment if provided (collected at booking time)
     const effectivePaid = Math.max(0, Number(advanceAmount) || 0);
     const dueAmount = Math.max(0, totalAmount - effectivePaid);
@@ -439,77 +442,26 @@ export const rentalService = {
       });
     }
 
-    // Dress devaluation (wear): Dr Rental Expense (5300/6100) / Cr Rental Income (4200).
+    // Dress devaluation (wear): Dr Rental Income (4200) / Cr expense (5300/6100) via RPC for named customers.
     if (normalizedExpenses && normalizedExpenses.length > 0) {
       const totalExpense = normalizedExpenses.reduce((sum: number, e: { amount: number }) => sum + (Number(e.amount) || 0), 0);
       if (totalExpense > 0) {
         try {
-          if (customerId) {
-            const { postRentalPartyDevaluationIfNeeded } = await import('./rentalPartyArAccounting');
-            const res = await postRentalPartyDevaluationIfNeeded({
-              companyId,
-              branchId,
-              rentalId: rentalData.id,
-              customerId,
-              customerName,
-              amount: totalExpense,
-              expenses: normalizedExpenses as { description: string; amount: number }[],
-              bookingNo,
-              entryDate: bookingDate,
-              createdBy: createdBy || null,
-            });
-            if (!res.skipped && !res.journalEntryId && res.reason && res.reason !== 'rpc_error') {
-              console.warn('[rentalService] Rental devaluation JE failed:', res.reason);
-            }
-          } else {
-            const { accountingService } = await import('./accountingService');
-            const getAccId = async (code: string) => {
-              const { data } = await supabase
-                .from('accounts')
-                .select('id')
-                .eq('code', code)
-                .eq('company_id', companyId)
-                .eq('is_active', true)
-                .maybeSingle();
-              return data?.id as string | null;
-            };
-            const expAccId = await getAccId('5300') || await getAccId('6100');
-            const cashAccId = await getAccId('1000');
-            if (expAccId && cashAccId) {
-              const expDesc = normalizedExpenses
-                .map((e: { description: string; amount: number }) => `${e.description}: Rs ${e.amount}`)
-                .join(', ');
-              await accountingService.createEntry(
-                {
-                  id: '',
-                  company_id: companyId,
-                  entry_no: `JE-REXP-${Date.now()}`,
-                  entry_date: bookingDate,
-                  description: `Rental expense (walk-in / no party AR) — ${bookingNo} (${expDesc})`,
-                  reference_type: 'expense',
-                  reference_id: rentalData.id,
-                  created_by: createdBy || undefined,
-                },
-                [
-                  {
-                    id: '',
-                    journal_entry_id: '',
-                    account_id: expAccId,
-                    debit: totalExpense,
-                    credit: 0,
-                    description: `Rental expense — ${bookingNo}`,
-                  },
-                  {
-                    id: '',
-                    journal_entry_id: '',
-                    account_id: cashAccId,
-                    debit: 0,
-                    credit: totalExpense,
-                    description: `Cash — rental expense ${bookingNo}`,
-                  },
-                ]
-              );
-            }
+          const { postRentalPartyDevaluationIfNeeded } = await import('./rentalPartyArAccounting');
+          const res = await postRentalPartyDevaluationIfNeeded({
+            companyId,
+            branchId,
+            rentalId: rentalData.id,
+            customerId,
+            customerName,
+            amount: totalExpense,
+            expenses: normalizedExpenses as { description: string; amount: number }[],
+            bookingNo,
+            entryDate: bookingDate,
+            createdBy: createdBy || null,
+          });
+          if (!res.skipped && !res.journalEntryId && res.reason && res.reason !== 'rpc_error') {
+            console.warn('[rentalService] Rental devaluation JE failed:', res.reason);
           }
         } catch (expErr) {
           console.warn('[rentalService] Rental devaluation / expense JE failed:', expErr);

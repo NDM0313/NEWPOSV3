@@ -15,6 +15,7 @@ import { productService } from '@/app/services/productService';
 import { postSaleDocumentAccounting, reverseSaleDocumentAccounting } from './documentPostingEngine';
 import { auditLogService } from './auditLogService';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import { contactService } from '@/app/services/contactService';
 import {
   syncJournalEntryDateByDocumentRefs,
   syncJournalEntryDateByPaymentId,
@@ -1349,13 +1350,19 @@ export const saleService = {
         uniqueRef = generatePaymentReference(null);
       }
     }
+    let resolvedContactId = (saleRow as any)?.customer_id || null;
+    if (!resolvedContactId) {
+      const walkIn = await contactService.getWalkingCustomer(companyId);
+      resolvedContactId = walkIn?.id ?? null;
+    }
+
     const paymentData: any = {
       company_id: companyId,
       branch_id: branchId,
       payment_type: 'received',
       reference_type: 'sale',
       reference_id: saleId,
-      contact_id: (saleRow as any)?.customer_id || null,
+      contact_id: resolvedContactId,
       amount,
       payment_method: enumPaymentMethod,
       payment_date: paymentDateValue,

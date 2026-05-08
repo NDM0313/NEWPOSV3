@@ -87,7 +87,8 @@ export function UnifiedPaymentSheet({
         accountId: payload.accountId,
         paymentMethod: payload.method === 'wallet' ? 'wallet' : payload.method,
         paymentDate: payload.paymentDate,
-        notes: payload.notes || null,
+        notes: payload.notes?.trim() ? payload.notes.trim() : null,
+        referenceNumber: payload.reference?.trim() ? payload.reference.trim() : null,
         createdBy: userId ?? null,
       });
       if (success && paymentId && payload.attachments.length > 0) {

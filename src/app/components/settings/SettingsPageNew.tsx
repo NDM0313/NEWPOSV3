@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock,   Key, Settings as SettingsIcon, AlertCircle, UserCog,
@@ -22,7 +22,7 @@ import { useAccounting } from '@/app/context/AccountingContext';
 import { toast } from 'sonner';
 import { AddUserModal } from '../users/AddUserModal';
 import { AddBranchModal } from '../branches/AddBranchModal';
-import { exportAndDownloadBackup } from '@/app/services/backupService';
+import { exportAndDownloadBackup, restoreCompanyBackup, type CompanyBackupData } from '@/app/services/backupService';
 import { companyResetService, type CompanyResetPreview } from '@/app/services/companyResetService';
 import { InventoryMasters, type InventoryMasterTab } from './inventory/InventoryMasters';
 import { LeadTools } from './LeadTools';
@@ -35,6 +35,8 @@ import { PrintingSettingsPanel } from './PrintingSettingsPanel';
 import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthService';
 import { EmployeesTab } from './EmployeesTab';
 import { ErpPermissionArchitecturePage } from '@/app/components/erp-permissions/ErpPermissionArchitecturePage';
+import { canAccessTechnicalDeveloperSettings } from '@/app/lib/developerAccountingAccess';
+import { settingsService } from '@/app/services/settingsService';
 import { NumberingPanel } from './NumberingPanel';
 import type { NumberingInnerTab } from './NumberingPanel';
 
@@ -363,6 +365,11 @@ export const SettingsPageNew = () => {
     const r = userRole.toLowerCase().trim();
     return r === 'admin' || r === 'owner' || r === 'super admin' || r === 'superadmin';
   })();
+  const isOwner = (() => {
+    if (!userRole) return false;
+    const r = userRole.toLowerCase().trim();
+    return r === 'owner';
+  })();
   useEffect(() => {
     // #region agent log
     fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H1',location:'SettingsPageNew.tsx:roleCheck',message:'reset panel role gate evaluated',data:{userRole:userRole||null,isAdminOrOwner},timestamp:Date.now()})}).catch(()=>{});
@@ -399,6 +406,7 @@ export const SettingsPageNew = () => {
   const [purchaseForm, setPurchaseForm] = useState(settings.purchaseSettings);
   const [inventoryForm, setInventoryForm] = useState(settings.inventorySettings);
   const [rentalForm, setRentalForm] = useState(settings.rentalSettings);
+  const [defaultDressDevaluation, setDefaultDressDevaluation] = useState<number>(5000);
   const [accountingForm, setAccountingForm] = useState(settings.accountingSettings);
   const [accountsForm, setAccountsForm] = useState(settings.defaultAccounts);
   const [numberingForm, setNumberingForm] = useState(settings.numberingRules);
@@ -423,6 +431,14 @@ export const SettingsPageNew = () => {
   const [printingSettings, setPrintingSettings] = useState<CompanyPrintingSettings | null>(null);
   const [loadingPrinting, setLoadingPrinting] = useState(false);
   const [savingPrinting, setSavingPrinting] = useState(false);
+  const [backupRestoreConfirmation, setBackupRestoreConfirmation] = useState('');
+  const [backupRestoreLoading, setBackupRestoreLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!companyId) return;
+    settingsService.getDefaultDressDevaluation(companyId).then(setDefaultDressDevaluation).catch(() => setDefaultDressDevaluation(5000));
+  }, [companyId]);
 
   // Load users function
   const loadUsers = useCallback(async () => {
@@ -519,6 +535,58 @@ export const SettingsPageNew = () => {
       setExecutingReset(false);
     }
   }, [companyId, formatResetError, loadResetPreview, resetConfirmation]);
+
+  const parseBackupFile = async (file: File): Promise<CompanyBackupData> => {
+    const text = await file.text();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error('Invalid JSON file.');
+    }
+    const backup = parsed as CompanyBackupData;
+    if (!backup?.meta?.company_id || !backup?.data) {
+      throw new Error('Invalid backup format.');
+    }
+    return backup;
+  };
+
+  const handleRestoreBackupFile = useCallback(
+    async (file: File | null) => {
+      if (!file || !companyId) return;
+      if (!isOwner) {
+        toast.error('Backup restore is restricted to Owner role.');
+        return;
+      }
+      if (backupRestoreConfirmation.trim().toUpperCase() !== 'RESTORE') {
+        toast.error('Type RESTORE before importing backup.');
+        return;
+      }
+      setBackupRestoreLoading(true);
+      try {
+        const backup = await parseBackupFile(file);
+        if (backup.meta.company_id !== companyId) {
+          throw new Error('Backup company_id does not match active company.');
+        }
+        const confirmed = window.confirm(
+          'This will overwrite current company data for supported modules. Continue restore?'
+        );
+        if (!confirmed) return;
+        const result = await restoreCompanyBackup(companyId, backup);
+        toast.success(
+          `Restore complete. Contacts: ${result.restored.contacts}, Products: ${result.restored.products}, Sales: ${result.restored.sales}`
+        );
+        setBackupRestoreConfirmation('');
+        setTimeout(() => window.location.reload(), 700);
+      } catch (error: any) {
+        toast.error(error?.message || 'Restore failed');
+      } finally {
+        setBackupRestoreLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    },
+    [backupRestoreConfirmation, companyId, isOwner]
+  );
 
   // Phase B: Load invoice templates (A4 & Thermal) when opening the tab
   const loadInvoiceTemplates = useCallback(async () => {
@@ -822,6 +890,9 @@ export const SettingsPageNew = () => {
           break;
         case 'rental':
           await settings.updateRentalSettings(rentalForm);
+          if (companyId) {
+            await settingsService.setDefaultDressDevaluation(companyId, defaultDressDevaluation);
+          }
           break;
         case 'accounting':
           await settings.updateAccountingSettings(accountingForm);
@@ -1739,6 +1810,21 @@ export const SettingsPageNew = () => {
                       placeholder="5000"
                     />
                   </div>
+
+                  <div>
+                    <Label className="text-gray-300 mb-2 block">Default Dress Devaluation (Rs)</Label>
+                    <Input
+                      type="number"
+                      value={defaultDressDevaluation || ''}
+                      onFocus={(e) => e.target.value === '0' && (e.target.value = '')}
+                      onChange={(e) => {
+                        setDefaultDressDevaluation(Math.max(0, Number(e.target.value) || 0));
+                        setHasUnsavedChanges(true);
+                      }}
+                      className="bg-gray-950 border-gray-700 text-white"
+                      placeholder="5000"
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-3 pt-4 border-t border-gray-800">
@@ -2472,7 +2558,8 @@ export const SettingsPageNew = () => {
                   </p>
                 </div>
 
-                {/* Developer / Feature flags (Safe Zone) */}
+                {/* Developer / Feature flags — developer role only (or VITE_ACCOUNTING_DIAGNOSTICS). */}
+                {canAccessTechnicalDeveloperSettings(userRole) && (
                 <div className="mt-8 pt-6 border-t border-gray-700">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="p-3 bg-amber-500/10 rounded-lg">
@@ -2529,6 +2616,7 @@ export const SettingsPageNew = () => {
                     />
                   </div>
                 </div>
+                )}
               </div>
             )}
 
@@ -2584,20 +2672,57 @@ export const SettingsPageNew = () => {
                 <div className="bg-gray-950 p-6 rounded-lg border border-gray-800">
                   <h4 className="text-white font-medium mb-2">Company Backup (JSON)</h4>
                   <p className="text-sm text-gray-400 mb-4">
-                    Export contacts, products, sales, purchases, expenses, and branches as a single JSON file.
+                    Owner-only export. Data is strictly filtered by active company_id and includes tenant-safe tables.
                   </p>
                   <Button
                     onClick={async () => {
                       if (!companyId) return;
+                      if (!isOwner) {
+                        toast.error('Backup export is restricted to Owner role.');
+                        return;
+                      }
                       const ok = await exportAndDownloadBackup(companyId);
                       if (ok) toast.success('Backup downloaded');
                     }}
-                    disabled={!companyId}
+                    disabled={!companyId || !isOwner}
                     className="bg-emerald-600 hover:bg-emerald-500 text-white gap-2"
                   >
                     <Download size={16} />
                     Export Backup
                   </Button>
+                  {!isOwner && (
+                    <p className="text-xs text-amber-400 mt-2">Only Owner can export company backup.</p>
+                  )}
+                </div>
+
+                <div className="bg-gray-950 p-6 rounded-lg border border-amber-700/50">
+                  <h4 className="text-white font-medium mb-2">Restore Company Backup (Owner Only)</h4>
+                  <p className="text-sm text-gray-400 mb-3">
+                    Restore validates `meta.company_id`, clears current tenant data in FK-safe order, then imports backup data hierarchically.
+                  </p>
+                  <div className="space-y-3">
+                    <Input
+                      value={backupRestoreConfirmation}
+                      onChange={(e) => setBackupRestoreConfirmation(e.target.value)}
+                      placeholder="Type RESTORE to enable import"
+                      className="bg-gray-900 border-gray-700 text-white"
+                      disabled={!isOwner || backupRestoreLoading}
+                    />
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".json,application/json"
+                      disabled={!isOwner || backupRestoreLoading || backupRestoreConfirmation.trim().toUpperCase() !== 'RESTORE'}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        void handleRestoreBackupFile(file);
+                      }}
+                      className="block w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-amber-600/20 file:text-amber-300 hover:file:bg-amber-600/30"
+                    />
+                    {!isOwner && (
+                      <p className="text-xs text-amber-400">Only Owner can restore backup.</p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="bg-gray-950 p-6 rounded-lg border border-gray-800">

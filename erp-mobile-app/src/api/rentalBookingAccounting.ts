@@ -1,6 +1,6 @@
 /**
  * Mobile rental booking → GL parity with web (rentalService + AccountingContext advance path).
- * Dr payment account / Cr Rental Advance (2020); dress devaluation posts Dr 5300 / Cr 4200 (Rental Income).
+ * Dr payment account / Cr Rental Advance (2020); dress devaluation RPC posts Dr Rental Income (4200) / Cr expense (5300).
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { createJournalEntry } from './accounts';
@@ -329,8 +329,8 @@ export async function postRentalExpenseJournalMobile(
     p_entry_date: params.entryDate.slice(0, 10),
     p_created_by: params.userId,
     p_line_description: desc,
-    p_debit_account_code: '5300',
-    p_credit_account_code: '4200',
+    p_debit_account_code: '4200',
+    p_credit_account_code: '5300',
   });
   if (rpcErr) {
     return { journalEntryId: null, error: rpcErr.message };
@@ -344,26 +344,11 @@ export async function postRentalExpenseJournalMobile(
   if (!row || row.success === false) {
     return { journalEntryId: null, error: row?.error ?? 'record_rental_expense_devaluation_journal failed' };
   }
+  if (row.skipped && row.journal_entry_id) {
+    return { journalEntryId: row.journal_entry_id, error: null };
+  }
   if (row.skipped) {
-    // Fallback for no-customer/schema-variant cases: enforce Dr Expense / Cr Rental Income for all mobile flows.
-    const expAcc = await resolveRentalExpenseAccountId(params.companyId);
-    const incAcc = await resolveRentalIncomeAccountIdMobile(params.companyId);
-    if (!expAcc || !incAcc) return { journalEntryId: null, error: 'Expense or rental income account not found (5300/6100, 4200).' };
-    const fallbackRes = await createJournalEntry({
-      companyId: params.companyId,
-      branchId: params.branchId === 'all' ? null : params.branchId,
-      entryDate: params.entryDate.slice(0, 10),
-      description: desc,
-      referenceType: 'rental',
-      referenceId: params.rentalId,
-      actionFingerprint: fp,
-      userId: params.userId,
-      lines: [
-        { accountId: expAcc, debit: total, credit: 0, description: desc },
-        { accountId: incAcc, debit: 0, credit: total, description: desc },
-      ],
-    });
-    return { journalEntryId: fallbackRes.data?.id ?? null, error: fallbackRes.error };
+    return { journalEntryId: null, error: null };
   }
   return { journalEntryId: row.journal_entry_id ?? null, error: null };
 }

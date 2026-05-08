@@ -158,6 +158,8 @@ export interface AccountingEntry {
     attachments?: { url: string; name: string }[];
     /** Optional user reference (e.g. voucher no); saved with description, primary reference is always entry_no. */
     optionalReference?: string;
+    /** Operational document no when enriched (invoice / PO / payment ref) — mirrors Journal primary reference for search. */
+    documentNo?: string;
     /** Journal entry created_at for date+time display (ISO string). */
     createdAt?: string;
     /** PF-14.3B: Root document for grouping (e.g. sale_id so sale + sale_adjustment + payment_adjustment show as one row). */
@@ -533,8 +535,13 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       .replace(/\s+/g, '_');
     const source = sourceMap[rtNorm] || sourceMap[journalEntry.reference_type || 'manual'] || 'Manual';
 
-    // Payment reference: no longer embedded in main query; use entry_no as primary
-    const paymentRef = (journalEntry as any).payment ? (Array.isArray((journalEntry as any).payment) ? (journalEntry as any).payment[0]?.reference_number : (journalEntry as any).payment?.reference_number) : undefined;
+    // Payment reference: enriched on list fetch via _payment_reference_number; embedded payment join is rare
+    const embeddedPaymentRef = (journalEntry as any).payment
+      ? Array.isArray((journalEntry as any).payment)
+        ? (journalEntry as any).payment[0]?.reference_number
+        : (journalEntry as any).payment?.reference_number
+      : undefined;
+    const listPaymentRef = (journalEntry as { _payment_reference_number?: string })._payment_reference_number;
     const paymentMethod = (journalEntry as any).payment ? (Array.isArray((journalEntry as any).payment) ? (journalEntry as any).payment[0]?.payment_method : (journalEntry as any).payment?.payment_method) : undefined;
 
     const drCount = activeLines.filter((l: any) => Number(l.debit || 0) > 0).length;
@@ -617,8 +624,13 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       if (source === 'Expense') metadata.expenseId = journalEntry.reference_id;
     }
 
-    // Get reference number - prefer entry_no, then payment reference, then id
-    const referenceNo = journalEntry.entry_no || paymentRef || journalEntry.id?.substring(0, 8) || 'N/A';
+    const saleInvDisplay = (journalEntry as { _display_sale_invoice_no?: string })._display_sale_invoice_no;
+    const purPoDisplay = (journalEntry as { _display_purchase_po_no?: string })._display_purchase_po_no;
+    const operationalRef =
+      listPaymentRef || saleInvDisplay || purPoDisplay || embeddedPaymentRef || undefined;
+    const referenceNo =
+      operationalRef || journalEntry.entry_no || journalEntry.id?.substring(0, 8) || 'N/A';
+    if (operationalRef) metadata.documentNo = operationalRef;
 
     const module =
       source === 'Sale'
@@ -1000,6 +1012,18 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
 
     // CRITICAL FIX: Validate branchId - must be valid UUID or null, not "all"
     const validBranchId = (branchId && branchId !== 'all') ? branchId : null;
+
+    const allocateEntryNo = async (): Promise<string> => {
+      if (entry.source === 'Manual') {
+        try {
+          return await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'manual_journal');
+        } catch (e) {
+          console.warn('[ACCOUNTING] manual_journal number failed, using fallback', e);
+          return `JV-${Date.now()}`;
+        }
+      }
+      return `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+    };
     
     if (!companyId) {
       console.error('[ACCOUNTING] Cannot create entry: companyId missing');
@@ -1046,8 +1070,6 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
 
       normalizedDebitAccount = accountNameMap[entry.debitAccount] || entry.debitAccount;
       normalizedCreditAccount = accountNameMap[entry.creditAccount] || entry.creditAccount;
-      // Generate entry number
-      const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
       const entryDate =
         (entry.metadata as { postingDate?: string } | undefined)?.postingDate?.slice(0, 10) ||
         new Date().toISOString().split('T')[0];
@@ -1228,10 +1250,12 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         entry.source === 'Sale_Return' && companyId && entry.metadata?.saleReturnId
           ? `sale_return_settlement:${companyId}:${entry.metadata.saleReturnId}`
           : undefined;
+      const retryEntryNo = await allocateEntryNo();
       const journalEntry: JournalEntry = {
         company_id: companyId,
         branch_id: validBranchId,
-        entry_no: `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+        entry_no: retryEntryNo,
+        ...(entry.source === 'Manual' ? { document_no: retryEntryNo } : {}),
         entry_date: new Date().toISOString().split('T')[0],
         description: descRetry || undefined,
         reference_type: isWorkerPaymentRetry ? 'worker_payment' : entry.source.toLowerCase(),
@@ -1307,6 +1331,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         toast.error(`Account not found: ${!debitAccountObj ? normalizedDebitAccount : normalizedCreditAccount}. Please create the account first.`);
         return false;
       }
+
+      const entryNo = await allocateEntryNo();
 
       // Canonical rule: if a transaction touches Cash/Bank/Wallet, create payments row so Roznamcha shows it
       let manualPaymentId: string | null = null;
@@ -1447,6 +1473,7 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         company_id: companyId,
         branch_id: validBranchId,
         entry_no: entryNo,
+        ...(entry.source === 'Manual' ? { document_no: entryNo } : {}),
         entry_date: entryDate,
         description: descriptionToSave || undefined,
         reference_type: manualRefType || (isWorkerPayment ? 'worker_payment' : entry.source.toLowerCase()),

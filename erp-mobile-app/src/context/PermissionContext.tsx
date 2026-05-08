@@ -117,14 +117,14 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     (code: string): boolean => {
       if (!FEATURE_MOBILE_PERMISSION_V2) return true;
       if (!state.isPermissionLoaded) return false;
-      if (state.isOwner) return true;
-      
+      if (state.isAdminOrOwner) return true;
+
       const [module, action = 'view'] = code.split('.');
-      
+
       return permissionsApi.hasModuleAction(state.permissions, module, action) ||
         (action === 'view' && permissionsApi.canViewModule(state.permissions, module));
     },
-    [state.isPermissionLoaded, state.permissions, state.isOwner]
+    [state.isPermissionLoaded, state.permissions, state.isAdminOrOwner]
   );
 
   const hasBranchAccess = useCallback(

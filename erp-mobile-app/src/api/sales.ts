@@ -718,6 +718,7 @@ export async function recordCustomerPayment(params: {
   paymentMethod: string;
   paymentDate: string; // YYYY-MM-DD
   notes?: string | null;
+  referenceNumber?: string | null;
   createdBy?: string | null;
 }): Promise<{ data: { payment_id: string; reference_number?: string } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
@@ -730,12 +731,14 @@ export async function recordCustomerPayment(params: {
     paymentMethod,
     paymentDate,
     notes,
+    referenceNumber,
     createdBy,
   } = params;
   if (!companyId || !referenceId || amount <= 0 || !accountId) {
     return { data: null, error: 'Company, reference (sale), amount and account are required.' };
   }
   const dateVal = paymentDate || new Date().toISOString().split('T')[0];
+  const refTrim = referenceNumber != null ? String(referenceNumber).trim() : '';
   const { data, error } = await supabase.rpc('record_customer_payment', {
     p_company_id: companyId,
     p_customer_id: customerId || null,
@@ -746,6 +749,7 @@ export async function recordCustomerPayment(params: {
     p_payment_date: dateVal,
     p_notes: notes ?? null,
     p_created_by: createdBy ?? null,
+    p_reference_number_override: refTrim !== '' ? refTrim : null,
   });
   if (error) return { data: null, error: error.message };
   const res = data as { success?: boolean; payment_id?: string; reference_number?: string; error?: string } | null;

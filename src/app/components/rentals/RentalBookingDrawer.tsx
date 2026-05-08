@@ -19,6 +19,7 @@ import {
   Package
 } from 'lucide-react';
 import { format, addDays, differenceInDays } from "date-fns";
+import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
 import { cn } from "../ui/utils";
 import { Button } from "../ui/button";
 import { Calendar } from "../ui/calendar";
@@ -174,10 +175,6 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
   const [variationPickerProduct, setVariationPickerProduct] = useState<SearchProduct | null>(null);
   const [productVariations, setProductVariations] = useState<Array<{ id: string; sku: string; attributes: any; stock: number; price: number }>>([]);
   const [advancePaid, setAdvancePaid] = useState('');
-  // Rental Expenses (maintenance, alteration, dry cleaning etc.)
-  const [rentalExpenses, setRentalExpenses] = useState<Array<{ description: string; amount: number }>>([]);
-  const [expenseDesc, setExpenseDesc] = useState('');
-  const [expenseAmt, setExpenseAmt] = useState('');
 
   // Salesman & Commission
   const [salesmen, setSalesmen] = useState<any[]>([]);
@@ -446,8 +443,8 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
         await rentalService.updateBooking(editRental.id, companyId, {
           customerId: selectedCustomer,
           customerName: getCustomerName(),
-          pickupDate: pickupDate.toISOString().split('T')[0],
-          returnDate: returnDate.toISOString().split('T')[0],
+          pickupDate: formatLocalDateYYYYMMDD(pickupDate),
+          returnDate: formatLocalDateYYYYMMDD(returnDate),
           rentalCharges: totalRent,
           securityDeposit: 0,
           paidAmount: parseFloat(advancePaid) || 0,
@@ -458,7 +455,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
       } else {
         const advanceIntent = parseFloat(advancePaid) || 0;
         console.log('[RentalBookingDrawer] handleBookOrder state:', { salesmanId, commissionType, commissionValue, salesmenCount: salesmen.length });
-        const commissionBase = totalRent - (rentalExpenses.reduce((s, e) => s + e.amount, 0));
+        const commissionBase = totalRent;
         const calcCommission = commissionType === 'percentage'
           ? (commissionBase * commissionValue) / 100
           : commissionValue;
@@ -468,14 +465,13 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
           createdBy: user?.id ?? null,
           customerId: selectedCustomer,
           customerName: getCustomerName(),
-          bookingDate: bookingDate.toISOString().split('T')[0],
-          pickupDate: pickupDate.toISOString().split('T')[0],
-          returnDate: returnDate.toISOString().split('T')[0],
+          bookingDate: formatLocalDateYYYYMMDD(bookingDate),
+          pickupDate: formatLocalDateYYYYMMDD(pickupDate),
+          returnDate: formatLocalDateYYYYMMDD(returnDate),
           rentalCharges: totalRent,
           securityDeposit: 0,
           paidAmount: 0,
           notes: null,
-          expenses: rentalExpenses.length > 0 ? rentalExpenses : undefined,
           salesmanId: salesmanId || null,
           commissionAmount: salesmanId ? calcCommission : 0,
           commissionPercent: salesmanId && commissionType === 'percentage' ? commissionValue : null,
@@ -490,7 +486,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
             advanceAmount: advanceIntent,
             customerId: selectedCustomer,
             customerName: getCustomerName(),
-            bookingDate: bookingDate.toISOString().split('T')[0],
+            bookingDate: formatLocalDateYYYYMMDD(bookingDate),
             totalRent,
           });
           setAdvancePromptOpen(true);
@@ -550,17 +546,7 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
     setCartItems(prev => prev.filter(c => c.product.id !== productId));
   };
 
-  const addExpense = () => {
-    const amt = parseFloat(expenseAmt) || 0;
-    if (!expenseDesc.trim() || amt <= 0) return;
-    setRentalExpenses(prev => [...prev, { description: expenseDesc.trim(), amount: amt }]);
-    setExpenseDesc('');
-    setExpenseAmt('');
-  };
-  const removeExpense = (idx: number) => {
-    setRentalExpenses(prev => prev.filter((_, i) => i !== idx));
-  };
-  const totalExpenses = rentalExpenses.reduce((s, e) => s + e.amount, 0);
+  const totalExpenses = 0;
 
   const finishAfterNewBooking = async () => {
     await refreshRentals();
@@ -569,7 +555,6 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
     setCartItems([]);
     setManualRentPrice('');
     setAdvancePaid('');
-    setRentalExpenses([]);
     setPendingBooking(null);
     onClose();
   };
@@ -1063,26 +1048,11 @@ export const RentalBookingDrawer = ({ isOpen, onClose, editRental }: RentalBooki
                     </div>
                   )}
 
-                  {/* Dress devaluation (wear) — posts Dr Rental Expense / Cr Rental Income */}
                   <div className="space-y-2">
                     <Label className="text-xs text-gray-500 uppercase">Dress devaluation (wear / upkeep)</Label>
-                    <div className="flex gap-2">
-                      <Input value={expenseDesc} onChange={e => setExpenseDesc(e.target.value)} placeholder="e.g. Dry cleaning, alteration" className="flex-1 h-8 bg-gray-900 border-gray-800 text-white text-sm" />
-                      <Input value={expenseAmt} onChange={e => setExpenseAmt(e.target.value)} placeholder="Amount" type="number" className="w-24 h-8 bg-gray-900 border-gray-800 text-white text-sm text-right" />
-                      <Button size="sm" onClick={addExpense} disabled={!expenseDesc.trim() || !(parseFloat(expenseAmt) > 0)} className="h-8 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3">+ Add</Button>
+                    <div className="text-xs text-gray-400 bg-gray-900/60 border border-gray-800 rounded px-3 py-2">
+                      Applied automatically from Settings on booking save.
                     </div>
-                    {rentalExpenses.map((exp, idx) => (
-                      <div key={idx} className="flex items-center justify-between bg-gray-900/60 border border-gray-800 rounded px-3 py-1.5 text-sm">
-                        <span className="text-gray-300">{exp.description}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-red-400 font-mono text-xs">-{formatCurrency(exp.amount)}</span>
-                          <button onClick={() => removeExpense(idx)} className="text-gray-500 hover:text-red-400 text-xs">✕</button>
-                        </div>
-                      </div>
-                    ))}
-                    {totalExpenses > 0 && (
-                      <div className="text-xs text-gray-500 text-right">Total devaluation: <span className="text-red-400 font-mono">{formatCurrency(totalExpenses)}</span></div>
-                    )}
                   </div>
 
                   {/* Notes */}

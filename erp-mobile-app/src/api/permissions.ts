@@ -63,10 +63,17 @@ export function hasModuleAction(
   module: string,
   action: string
 ): boolean {
+  const scopeOnlyModules = new Set(['contacts', 'studio']);
+  const viewActionsForModule =
+    action === 'view'
+      ? scopeOnlyModules.has(module)
+        ? ['view_own', 'view_branch', 'view_company']
+        : ['view', 'view_own', 'view_branch', 'view_company']
+      : [];
   return perms.some(
     (p) =>
       p.module === module &&
-      (p.action === action || (action === 'view' && ['view', 'view_own', 'view_branch', 'view_company'].includes(p.action))) &&
+      (p.action === action || (action === 'view' && viewActionsForModule.includes(p.action))) &&
     p.allowed
   );
 }
@@ -78,12 +85,12 @@ export function canViewModule(perms: RolePermissionRow[], module: string): boole
     sales: ['view_own', 'view_branch', 'view_company', 'view'],
     purchase: ['view'],
     pos: ['view', 'use'],
-    studio: ['view'],
+    studio: ['view_own', 'view_branch', 'view_company'],
     rentals: ['view'],
     reports: ['view'],
     inventory: ['view'],
     ledger: ['view_full_accounting', 'view_customer', 'view_supplier'],
-    contacts: ['view'],
+    contacts: ['view_own', 'view_branch', 'view_company'],
     payments: ['receive', 'view'],
     settings: ['modify', 'view'],
     users: ['view', 'assign_permissions'],

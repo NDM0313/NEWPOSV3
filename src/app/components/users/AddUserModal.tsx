@@ -21,7 +21,7 @@ import { branchService, Branch } from '../../services/branchService';
 import { accountService, Account } from '../../services/accountService';
 import { toast } from 'sonner';
 
-type UserModalTab = 'general' | 'branches' | 'accounts' | 'permissions';
+type UserModalTab = 'general' | 'branches' | 'accounts';
 
 interface AddUserModalProps {
   open: boolean;
@@ -57,21 +57,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     can_be_assigned_as_salesman: false,
     passwordOption: 'temp' as 'temp' | 'invite',
     temporary_password: '',
-    permissions: {
-      canCreateSale: false,
-      canEditSale: false,
-      canDeleteSale: false,
-      canViewReports: false,
-      canManageSettings: false,
-      canManageUsers: false,
-      canAccessAccounting: false,
-      canMakePayments: false,
-      canReceivePayments: false,
-      canManageExpenses: false,
-      canManageProducts: false,
-      canManagePurchases: false,
-      canManageRentals: false,
-    }
   });
 
   // Reset form when modal opens/closes or editingUser changes
@@ -95,21 +80,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           rental_commission_rate: Number((editingUser as any).rental_commission_percent) || 0,
           is_active: editingUser.is_active ?? true,
           can_be_assigned_as_salesman: editingUser.can_be_assigned_as_salesman ?? false,
-          permissions: {
-            canCreateSale: editingUser.permissions?.canCreateSale ?? false,
-            canEditSale: editingUser.permissions?.canEditSale ?? false,
-            canDeleteSale: editingUser.permissions?.canDeleteSale ?? false,
-            canViewReports: editingUser.permissions?.canViewReports ?? false,
-            canManageSettings: editingUser.permissions?.canManageSettings ?? false,
-            canManageUsers: editingUser.permissions?.canManageUsers ?? false,
-            canAccessAccounting: editingUser.permissions?.canAccessAccounting ?? false,
-            canMakePayments: editingUser.permissions?.canMakePayments ?? false,
-            canReceivePayments: editingUser.permissions?.canReceivePayments ?? false,
-            canManageExpenses: editingUser.permissions?.canManageExpenses ?? false,
-            canManageProducts: editingUser.permissions?.canManageProducts ?? false,
-            canManagePurchases: editingUser.permissions?.canManagePurchases ?? false,
-            canManageRentals: editingUser.permissions?.canManageRentals ?? false,
-          }
         });
       } else {
         // Add mode - reset form
@@ -125,21 +95,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           can_be_assigned_as_salesman: false,
           passwordOption: 'temp',
           temporary_password: '',
-          permissions: {
-            canCreateSale: false,
-            canEditSale: false,
-            canDeleteSale: false,
-            canViewReports: false,
-            canManageSettings: false,
-            canManageUsers: false,
-            canAccessAccounting: false,
-            canMakePayments: false,
-            canReceivePayments: false,
-            canManageExpenses: false,
-            canManageProducts: false,
-            canManagePurchases: false,
-            canManageRentals: false,
-          }
         });
       }
     }
@@ -271,7 +226,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         role: formData.role,
         is_active: formData.is_active,
         can_be_assigned_as_salesman: formData.can_be_assigned_as_salesman,
-        permissions: formData.permissions,
       };
 
       console.log('[ADD USER MODAL] Saving user with data:', JSON.stringify(userData, null, 2));
@@ -419,9 +373,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Tabs: General | Branch Access | Account Access | Permissions */}
+        {/* Tabs: General | Branch Access | Account Access */}
         <div className="flex gap-1 border-b border-gray-800 pb-2">
-          {(['general', 'branches', 'accounts', 'permissions'] as const).map((tab) => (
+          {(['general', 'branches', 'accounts'] as const).map((tab) => (
             <button
               key={tab}
               type="button"
@@ -435,7 +389,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
               {tab === 'general' && <><UserIcon size={14} className="inline mr-1" /> General</>}
               {tab === 'branches' && <><Building2 size={14} className="inline mr-1" /> Branch Access</>}
               {tab === 'accounts' && <><Wallet size={14} className="inline mr-1" /> Account Access</>}
-              {tab === 'permissions' && <><Shield size={14} className="inline mr-1" /> Permissions</>}
             </button>
           ))}
         </div>
@@ -544,54 +497,13 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
               <Label htmlFor="role" className="text-gray-200">Role *</Label>
               <Select
                 value={formData.role}
-                onValueChange={(value: any) => {
-                  setFormData({ ...formData, role: value });
-                  // Apply role preset
-                  const presets: Record<string, Partial<typeof formData.permissions>> = {
-                    owner: {
-                      canCreateSale: true, canEditSale: true, canDeleteSale: true,
-                      canViewReports: true, canManageSettings: true, canManageUsers: true,
-                      canAccessAccounting: true, canMakePayments: true, canReceivePayments: true,
-                      canManageExpenses: true, canManageProducts: true, canManagePurchases: true,
-                      canManageRentals: true,
-                    },
-                    admin: {
-                      canCreateSale: true, canEditSale: true, canDeleteSale: true,
-                      canViewReports: true, canManageSettings: true, canManageUsers: true,
-                      canAccessAccounting: true, canMakePayments: true, canReceivePayments: true,
-                      canManageExpenses: true, canManageProducts: true, canManagePurchases: true,
-                      canManageRentals: true,
-                    },
-                    manager: {
-                      canCreateSale: true, canEditSale: true, canDeleteSale: false,
-                      canViewReports: true, canManageSettings: false, canManageUsers: false,
-                      canAccessAccounting: true, canMakePayments: true, canReceivePayments: true,
-                      canManageExpenses: true, canManageProducts: true, canManagePurchases: true,
-                      canManageRentals: true,
-                    },
-                    staff: {
-                      canCreateSale: false, canEditSale: false, canDeleteSale: false,
-                      canViewReports: false, canManageSettings: false, canManageUsers: false,
-                      canAccessAccounting: false, canMakePayments: false, canReceivePayments: false,
-                      canManageExpenses: false, canManageProducts: false, canManagePurchases: false,
-                      canManageRentals: false,
-                    },
-                    salesman: {
-                      canCreateSale: true, canEditSale: true, canDeleteSale: false,
-                      canViewReports: true, canManageSettings: false, canManageUsers: false,
-                      canAccessAccounting: false, canMakePayments: false, canReceivePayments: false,
-                      canManageExpenses: false, canManageProducts: false, canManagePurchases: false,
-                      canManageRentals: false,
-                    },
-                  };
-                  if (presets[value]) {
-                    setFormData(prev => ({
-                      ...prev,
-                      permissions: { ...prev.permissions, ...presets[value] },
-                      can_be_assigned_as_salesman: value === 'salesman' ? true : prev.can_be_assigned_as_salesman,
-                    }));
-                  }
-                }}
+                onValueChange={(value: any) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    role: value,
+                    can_be_assigned_as_salesman: value === 'salesman' ? true : prev.can_be_assigned_as_salesman,
+                  }))
+                }
               >
                 <SelectTrigger className="bg-gray-950 border-gray-700 text-white focus:border-blue-500">
                   <SelectValue placeholder="Select role" />
@@ -853,9 +765,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
             </div>
           )}
 
-          {activeTab === 'permissions' && (
-          <>
-            {/* Can Be Assigned As Salesman */}
+          {/* Can Be Assigned As Salesman */}
+          {activeTab === 'general' && (
             <div className="flex items-center justify-between p-4 bg-gray-950 border border-gray-800 rounded-lg">
               <div>
                 <Label htmlFor="can_be_salesman" className="text-gray-200">Can Be Assigned As Salesman</Label>
@@ -867,269 +778,11 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 onCheckedChange={(checked) => {
                   setFormData({
                     ...formData,
-                    can_be_assigned_as_salesman: checked,
-                    permissions: {
-                      ...formData.permissions,
-                      canCreateSale: checked ? true : formData.permissions.canCreateSale
-                    }
+                    can_be_assigned_as_salesman: checked
                   });
                 }}
               />
             </div>
-
-            {/* Permissions - Grouped by Modules */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label className="text-gray-200 font-medium">Permissions</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const allTrue: Record<string, boolean> = {
-                        canCreateSale: true, canEditSale: true, canDeleteSale: true,
-                        canViewReports: true, canManageSettings: true, canManageUsers: true,
-                        canAccessAccounting: true, canMakePayments: true, canReceivePayments: true,
-                        canManageExpenses: true, canManageProducts: true, canManagePurchases: true,
-                        canManageRentals: true,
-                      };
-                      setFormData(prev => ({ ...prev, permissions: { ...prev.permissions, ...allTrue } }));
-                    }}
-                    className="text-xs h-7 border-gray-700 text-gray-300 hover:bg-gray-800"
-                  >
-                    Select All
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const allFalse: Record<string, boolean> = {
-                        canCreateSale: false, canEditSale: false, canDeleteSale: false,
-                        canViewReports: false, canManageSettings: false, canManageUsers: false,
-                        canAccessAccounting: false, canMakePayments: false, canReceivePayments: false,
-                        canManageExpenses: false, canManageProducts: false, canManagePurchases: false,
-                        canManageRentals: false,
-                      };
-                      setFormData(prev => ({ ...prev, permissions: { ...prev.permissions, ...allFalse } }));
-                    }}
-                    className="text-xs h-7 border-gray-700 text-gray-300 hover:bg-gray-800"
-                  >
-                    Clear All
-                  </Button>
-                </div>
-              </div>
-              
-              {/* Sales Module */}
-              <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-2">
-                <Label className="text-gray-200 font-semibold text-sm mb-2 block">Sales</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { key: 'canCreateSale', label: 'Create Sales' },
-                    { key: 'canEditSale', label: 'Edit Sales' },
-                    { key: 'canDeleteSale', label: 'Delete Sales' },
-                  ].map((perm) => (
-                    <div key={perm.key} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={perm.key}
-                        checked={formData.permissions[perm.key as keyof typeof formData.permissions] as boolean}
-                        onCheckedChange={(checked) => {
-                          setFormData({
-                            ...formData,
-                            permissions: {
-                              ...formData.permissions,
-                              [perm.key]: checked as boolean
-                            }
-                          });
-                        }}
-                      />
-                      <Label htmlFor={perm.key} className="text-sm text-gray-300 cursor-pointer">
-                        {perm.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Accounting Module */}
-              <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-2">
-                <Label className="text-gray-200 font-semibold text-sm mb-2 block">Accounting</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { key: 'canAccessAccounting', label: 'Access Accounting' },
-                    { key: 'canMakePayments', label: 'Make Payments' },
-                    { key: 'canReceivePayments', label: 'Receive Payments' },
-                  ].map((perm) => (
-                    <div key={perm.key} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={perm.key}
-                        checked={formData.permissions[perm.key as keyof typeof formData.permissions] as boolean}
-                        onCheckedChange={(checked) => {
-                          setFormData({
-                            ...formData,
-                            permissions: {
-                              ...formData.permissions,
-                              [perm.key]: checked as boolean
-                            }
-                          });
-                        }}
-                      />
-                      <Label htmlFor={perm.key} className="text-sm text-gray-300 cursor-pointer">
-                        {perm.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Expenses Module */}
-              <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-2">
-                <Label className="text-gray-200 font-semibold text-sm mb-2 block">Expenses</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { key: 'canManageExpenses', label: 'Manage Expenses' },
-                  ].map((perm) => (
-                    <div key={perm.key} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={perm.key}
-                        checked={formData.permissions[perm.key as keyof typeof formData.permissions] as boolean}
-                        onCheckedChange={(checked) => {
-                          setFormData({
-                            ...formData,
-                            permissions: {
-                              ...formData.permissions,
-                              [perm.key]: checked as boolean
-                            }
-                          });
-                        }}
-                      />
-                      <Label htmlFor={perm.key} className="text-sm text-gray-300 cursor-pointer">
-                        {perm.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Products Module */}
-              <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-2">
-                <Label className="text-gray-200 font-semibold text-sm mb-2 block">Products</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { key: 'canManageProducts', label: 'Manage Products' },
-                  ].map((perm) => (
-                    <div key={perm.key} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={perm.key}
-                        checked={formData.permissions[perm.key as keyof typeof formData.permissions] as boolean}
-                        onCheckedChange={(checked) => {
-                          setFormData({
-                            ...formData,
-                            permissions: {
-                              ...formData.permissions,
-                              [perm.key]: checked as boolean
-                            }
-                          });
-                        }}
-                      />
-                      <Label htmlFor={perm.key} className="text-sm text-gray-300 cursor-pointer">
-                        {perm.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Purchases Module */}
-              <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-2">
-                <Label className="text-gray-200 font-semibold text-sm mb-2 block">Purchases</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { key: 'canManagePurchases', label: 'Manage Purchases' },
-                  ].map((perm) => (
-                    <div key={perm.key} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={perm.key}
-                        checked={formData.permissions[perm.key as keyof typeof formData.permissions] as boolean}
-                        onCheckedChange={(checked) => {
-                          setFormData({
-                            ...formData,
-                            permissions: {
-                              ...formData.permissions,
-                              [perm.key]: checked as boolean
-                            }
-                          });
-                        }}
-                      />
-                      <Label htmlFor={perm.key} className="text-sm text-gray-300 cursor-pointer">
-                        {perm.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Reports Module */}
-              <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-2">
-                <Label className="text-gray-200 font-semibold text-sm mb-2 block">Reports</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { key: 'canViewReports', label: 'View Reports' },
-                  ].map((perm) => (
-                    <div key={perm.key} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={perm.key}
-                        checked={formData.permissions[perm.key as keyof typeof formData.permissions] as boolean}
-                        onCheckedChange={(checked) => {
-                          setFormData({
-                            ...formData,
-                            permissions: {
-                              ...formData.permissions,
-                              [perm.key]: checked as boolean
-                            }
-                          });
-                        }}
-                      />
-                      <Label htmlFor={perm.key} className="text-sm text-gray-300 cursor-pointer">
-                        {perm.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Settings & Users Module */}
-              <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-2">
-                <Label className="text-gray-200 font-semibold text-sm mb-2 block">Settings & Users</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { key: 'canManageSettings', label: 'Manage Settings' },
-                    { key: 'canManageUsers', label: 'Manage Users' },
-                  ].map((perm) => (
-                    <div key={perm.key} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={perm.key}
-                        checked={formData.permissions[perm.key as keyof typeof formData.permissions] as boolean}
-                        onCheckedChange={(checked) => {
-                          setFormData({
-                            ...formData,
-                            permissions: {
-                              ...formData.permissions,
-                              [perm.key]: checked as boolean
-                            }
-                          });
-                        }}
-                      />
-                      <Label htmlFor={perm.key} className="text-sm text-gray-300 cursor-pointer">
-                        {perm.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </>
           )}
         </div>
 

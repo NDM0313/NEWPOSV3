@@ -16,6 +16,8 @@ export interface TransactionSuccessData {
   /** Party name: customer, supplier, etc. */
   partyName?: string | null;
   date?: string | null;
+  /** When set, shown as-is (avoids re-parsing locale datetime strings). */
+  dateDisplay?: string | null;
   branch?: string | null;
   /** Entity id for View Details navigation */
   entityId?: string | null;
@@ -150,7 +152,7 @@ export function TransactionSuccessModal({
             )}
             <div className="flex justify-between text-sm">
               <span className="text-[#9CA3AF]">Date</span>
-              <span className="text-white">{formatDate(data.date)}</span>
+              <span className="text-white">{data.dateDisplay ?? formatDate(data.date)}</span>
             </div>
           </div>
 

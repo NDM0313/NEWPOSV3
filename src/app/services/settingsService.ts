@@ -37,6 +37,24 @@ export interface DocumentSequence {
 }
 
 export const settingsService = {
+  async getDefaultDressDevaluation(companyId: string): Promise<number> {
+    const row = await this.getSetting(companyId, 'default_dress_devaluation');
+    const raw = row?.value;
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    return Number.isFinite(value) && value >= 0 ? value : 5000;
+  },
+
+  async setDefaultDressDevaluation(companyId: string, amount: number): Promise<SettingRecord> {
+    const normalized = Math.max(0, Math.round(Number(amount) || 0));
+    return this.setSetting(
+      companyId,
+      'default_dress_devaluation',
+      normalized,
+      'rental',
+      'Default dress devaluation amount auto-posted on rental booking'
+    );
+  },
+
   // ============================================
   // SETTINGS (Key-Value Store)
   // ============================================

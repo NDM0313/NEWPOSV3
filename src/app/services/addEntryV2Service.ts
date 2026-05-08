@@ -108,11 +108,17 @@ export async function createPureJournalEntry(params: CreatePureJournalParams): P
   const { companyId, branchId, entryDate, debitAccountId, creditAccountId, amount, description, createdBy, attachments } = params;
   if (!companyId || !debitAccountId || !creditAccountId || amount <= 0) throw new Error('Invalid pure journal params');
   const branch = validBranchId(branchId);
-  const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+  let entryNo: string;
+  try {
+    entryNo = await documentNumberService.getNextDocumentNumber(companyId, branch, 'manual_journal');
+  } catch {
+    entryNo = `JV-${Date.now()}`;
+  }
   const journalEntry: JournalEntry = {
     company_id: companyId,
     branch_id: branch ?? undefined,
     entry_no: entryNo,
+    document_no: entryNo,
     entry_date: entryDate,
     description: description || 'Journal entry',
     reference_type: 'journal',
@@ -491,11 +497,17 @@ export async function createInternalTransferEntry(params: CreateInternalTransfer
   if (!companyId || !fromAccountId || !toAccountId || amount <= 0) throw new Error('Invalid transfer params');
   const branch = validBranchId(branchId);
   const desc = description || 'Internal transfer';
-  const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+  let entryNo: string;
+  try {
+    entryNo = await documentNumberService.getNextDocumentNumber(companyId, branch, 'fund_transfer');
+  } catch {
+    entryNo = `FT-${Date.now()}`;
+  }
   const journalEntry: JournalEntry = {
     company_id: companyId,
     branch_id: branch ?? undefined,
     entry_no: entryNo,
+    document_no: entryNo,
     entry_date: entryDate,
     description: desc,
     reference_type: 'transfer',

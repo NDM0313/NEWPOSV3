@@ -38,7 +38,7 @@ Confirm:
 Run:
 
 git add .
-git commit -m "Fixed rental expense issue and updated graphics "
+git commit -m "COA STABLE "
 git push origin main
 
 Examples:

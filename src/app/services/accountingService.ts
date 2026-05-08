@@ -6,6 +6,8 @@ export interface JournalEntry {
   company_id: string;
   branch_id?: string;
   entry_no?: string;
+  /** Mirrored operational ref (e.g. JV- / FT-); same as entry_no when set by callers. */
+  document_no?: string | null;
   entry_date: string;
   description?: string;
   reference_type?: string;
@@ -666,7 +668,8 @@ export const accountingService = {
       let existingPurchases: Set<string> = new Set();
       let existingSales: Set<string> = new Set();
       let validPayments: Set<string> = new Set();
-      let paymentsList: { id: string; reference_type?: string; reference_id?: string }[] = [];
+      let paymentsList: { id: string; reference_type?: string; reference_id?: string; reference_number?: string | null }[] =
+        [];
 
       if (purchaseIds.length > 0) {
         const { data: purchases } = await supabase
@@ -694,7 +697,7 @@ export const accountingService = {
       if (uniquePaymentIds.length > 0) {
         const { data: payments } = await supabase
           .from('payments')
-          .select('id, reference_type, reference_id')
+          .select('id, reference_type, reference_id, reference_number')
           .in('id', uniquePaymentIds);
         
         if (payments) {
@@ -858,9 +861,43 @@ export const accountingService = {
       }
 
       const paymentRefTypeByPaymentId = new Map<string, string>();
+      const paymentRefNumberById = new Map<string, string>();
       (paymentsList || []).forEach((p: any) => {
         if (p?.id && p.reference_type) paymentRefTypeByPaymentId.set(String(p.id), String(p.reference_type));
+        const rn = p?.reference_number != null ? String(p.reference_number).trim() : '';
+        if (p?.id && rn) paymentRefNumberById.set(String(p.id), rn);
       });
+
+      const saleIdsForInvoice = new Set<string>((saleIds || []).map((id: string) => String(id)));
+      (paymentsList || []).forEach((p: any) => {
+        if (p.reference_type === 'sale' && p.reference_id) saleIdsForInvoice.add(String(p.reference_id));
+      });
+      const purchaseIdsForPo = new Set<string>((purchaseIds || []).map((id: string) => String(id)));
+      (paymentsList || []).forEach((p: any) => {
+        if (p.reference_type === 'purchase' && p.reference_id) purchaseIdsForPo.add(String(p.reference_id));
+      });
+
+      const saleInvoiceNoById = new Map<string, string>();
+      if (saleIdsForInvoice.size > 0) {
+        const { data: saleRows } = await supabase
+          .from('sales')
+          .select('id, invoice_no')
+          .in('id', [...saleIdsForInvoice]);
+        (saleRows || []).forEach((s: any) => {
+          if (s?.id && s.invoice_no) saleInvoiceNoById.set(String(s.id), String(s.invoice_no));
+        });
+      }
+
+      const purchasePoNoById = new Map<string, string>();
+      if (purchaseIdsForPo.size > 0) {
+        const { data: purRows } = await supabase
+          .from('purchases')
+          .select('id, po_no')
+          .in('id', [...purchaseIdsForPo]);
+        (purRows || []).forEach((r: any) => {
+          if (r?.id && r.po_no) purchasePoNoById.set(String(r.id), String(r.po_no));
+        });
+      }
 
       validEntries = validEntries.map((e: any) => {
         const rtNorm = String(e.reference_type || '')
@@ -938,6 +975,35 @@ export const accountingService = {
           out.root_reference_type = 'sale_return';
           out.root_reference_id = entry.reference_id;
         }
+        const rtN = String(entry.reference_type || '')
+          .toLowerCase()
+          .trim()
+          .replace(/\s+/g, '_');
+        let opSaleInv: string | undefined;
+        let opPurPo: string | undefined;
+        if ((rtN === 'sale' || rtN === 'sale_adjustment') && entry.reference_id) {
+          opSaleInv = saleInvoiceNoById.get(String(entry.reference_id));
+        } else if ((rtN === 'purchase' || rtN === 'purchase_adjustment') && entry.reference_id) {
+          opPurPo = purchasePoNoById.get(String(entry.reference_id));
+        }
+        const payKeyForOps =
+          entry.payment_id ||
+          ((rtN === 'payment' || rtN === 'payment_adjustment') && entry.reference_id
+            ? String(entry.reference_id)
+            : undefined);
+        if (payKeyForOps) {
+          const payRn = paymentRefNumberById.get(String(payKeyForOps));
+          if (payRn) out._payment_reference_number = payRn;
+          const root = paymentIdToRoot.get(String(payKeyForOps));
+          if (root?.root_reference_type === 'sale' && root.root_reference_id) {
+            opSaleInv = opSaleInv || saleInvoiceNoById.get(String(root.root_reference_id));
+          }
+          if (root?.root_reference_type === 'purchase' && root.root_reference_id) {
+            opPurPo = opPurPo || purchasePoNoById.get(String(root.root_reference_id));
+          }
+        }
+        if (opSaleInv) out._display_sale_invoice_no = opSaleInv;
+        if (opPurPo) out._display_purchase_po_no = opPurPo;
         return out;
       });
 
@@ -3230,6 +3296,12 @@ export const accountingService = {
       description: entry.description,
       reference_type: entry.reference_type,
     };
+    const mirroredDoc =
+      (entry.document_no && String(entry.document_no).trim()) ||
+      (entry.entry_no && /^(JV|FT)-/i.test(entry.entry_no) ? entry.entry_no : null);
+    if (mirroredDoc) {
+      insertData.document_no = mirroredDoc;
+    }
     
     // Only add optional UUID fields if they have valid values (not null/undefined)
     // CRITICAL FIX: Validate branch_id - must be valid UUID, not "all"
@@ -3277,6 +3349,12 @@ export const accountingService = {
     let entryError = result.error;
     if (entryError && entryError.code === 'PGRST204' && entryError.message?.includes('attachments')) {
       delete insertData.attachments;
+      result = await supabase.from('journal_entries').insert(insertData).select('*').single();
+      entryData = result.data;
+      entryError = result.error;
+    }
+    if (entryError && entryError.code === 'PGRST204' && entryError.message?.includes('document_no')) {
+      delete insertData.document_no;
       result = await supabase.from('journal_entries').insert(insertData).select('*').single();
       entryData = result.data;
       entryError = result.error;

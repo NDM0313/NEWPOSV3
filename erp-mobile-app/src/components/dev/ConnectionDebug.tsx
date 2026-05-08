@@ -1,9 +1,10 @@
 /**
  * Dev-only: shows connection info (Supabase URL, Company ID, Branch ID, User email).
- * Only visible when import.meta.env.DEV is true.
+ * Visible only when `npm run dev` and `VITE_SHOW_ERP_DEV_TOOLS=true`.
  */
 
 import { Database, User, Building2, MapPin } from 'lucide-react';
+import { showErpDevTools } from '../../utils/erpDevTools';
 
 interface ConnectionDebugProps {
   supabaseUrl: string;
@@ -13,7 +14,7 @@ interface ConnectionDebugProps {
 }
 
 export function ConnectionDebug({ supabaseUrl, companyId, branchId, userEmail }: ConnectionDebugProps) {
-  if (!import.meta.env.DEV) return null;
+  if (!showErpDevTools()) return null;
 
   const url = (import.meta.env.VITE_SUPABASE_URL || supabaseUrl || '').trim();
   const isVps = url.includes('supabase.dincouture.pk');

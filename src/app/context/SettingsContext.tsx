@@ -536,7 +536,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         user?.id && companyId
           ? supabase
               .from('users')
-              .select('role, permissions')
+              .select('role')
               .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
               .eq('company_id', companyId)
               .maybeSingle()
@@ -733,33 +733,32 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
             r === 'owner' || r === 'admin' || r === 'super admin' || r === 'superadmin' ? 'Admin'
               : r === 'manager' || r === 'accountant' ? 'Manager'
               : 'Staff';
-          const p = (userData.permissions as Record<string, boolean | undefined>) || {};
           const engineRole: EngineRole =
             r === 'owner' ? 'owner'
               : r === 'admin' || r === 'super admin' || r === 'superadmin' ? 'admin'
               : r === 'manager' || r === 'accountant' ? 'manager'
               : 'user';
-          let canManagePurchases = p.canManagePurchases ?? (role === 'Admin' || role === 'Manager');
-          let canUsePos = p.canUsePos;
-          let canAccessStudio = p.canAccessStudio;
-          let canManageRentals = p.canManageRentals ?? (role === 'Admin' || role === 'Manager');
-          let canCreateSale = p.canCreateSale ?? (role === 'Admin' || role === 'Manager');
-          let canEditSale = p.canEditSale ?? (role === 'Admin' || role === 'Manager');
-          let canDeleteSale = p.canDeleteSale ?? (role === 'Admin');
-          let canViewReports = p.canViewReports ?? (role === 'Admin' || role === 'Manager');
+          let canManagePurchases = role === 'Admin' || role === 'Manager';
+          let canUsePos: boolean | undefined;
+          let canAccessStudio: boolean | undefined;
+          let canManageRentals = role === 'Admin' || role === 'Manager';
+          let canCreateSale = role === 'Admin' || role === 'Manager';
+          let canEditSale = role === 'Admin' || role === 'Manager';
+          let canDeleteSale = role === 'Admin';
+          let canViewReports = role === 'Admin' || role === 'Manager';
           let canViewSale = false;
-          let canViewContacts = p.canViewContacts ?? (role === 'Admin' || role === 'Manager');
-          let canCreateContact = p.canCreateContact ?? (role === 'Admin' || role === 'Manager');
-          let canDeleteContact = p.canDeleteContact ?? (role === 'Admin');
-          let canManageSettings = p.canManageSettings ?? (role === 'Admin');
-          let canManageUsers = p.canManageUsers ?? (role === 'Admin');
-          let canAccessAccounting = p.canAccessAccounting ?? (role === 'Admin' || role === 'Manager');
-          let canMakePayments = p.canMakePayments ?? (role === 'Admin' || role === 'Manager');
-          let canReceivePayments = p.canReceivePayments ?? (role === 'Admin' || role === 'Manager');
-          let canManageExpenses = p.canManageExpenses ?? (role === 'Admin' || role === 'Manager');
-          let canManageProducts = p.canManageProducts ?? (role === 'Admin' || role === 'Manager');
-          let canEditPurchase = p.canEditPurchase ?? (role === 'Admin' || role === 'Manager');
-          let canDeletePurchase = p.canDeletePurchase ?? (role === 'Admin');
+          let canViewContacts = role === 'Admin' || role === 'Manager';
+          let canCreateContact = role === 'Admin' || role === 'Manager';
+          let canDeleteContact = role === 'Admin';
+          let canManageSettings = role === 'Admin';
+          let canManageUsers = role === 'Admin';
+          let canAccessAccounting = role === 'Admin' || role === 'Manager';
+          let canMakePayments = role === 'Admin' || role === 'Manager';
+          let canReceivePayments = role === 'Admin' || role === 'Manager';
+          let canManageExpenses = role === 'Admin' || role === 'Manager';
+          let canManageProducts = role === 'Admin' || role === 'Manager';
+          let canEditPurchase = role === 'Admin' || role === 'Manager';
+          let canDeletePurchase = role === 'Admin';
           let derivedPerms: UserPermissions | null = null;
           try {
             const userId = user?.id ?? '';
@@ -812,11 +811,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
             canCreateSale,
             canEditSale,
             canDeleteSale,
-            canCancelSale: p.canCancelSale ?? (role === 'Admin' || role === 'Manager'),
+            canCancelSale: role === 'Admin' || role === 'Manager',
             canViewReports,
             canViewSale,
             canViewContacts,
-            canCreateContact: canCreateContact ?? hasContacts,
+            canCreateContact: canCreateContact ?? canViewContacts,
             canDeleteContact: canDeleteContact ?? false,
             canManageSettings,
             canManageUsers,

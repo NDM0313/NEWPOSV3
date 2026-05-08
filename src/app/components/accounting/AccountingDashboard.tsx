@@ -206,10 +206,16 @@ function journalRowPresentation(entry: AccountingEntry): {
       badgeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
     };
   }
-  const meta = entry.metadata as { referenceType?: string; paymentId?: string; rootReferenceType?: string } | undefined;
+  const meta = entry.metadata as {
+    referenceType?: string;
+    paymentId?: string;
+    rootReferenceType?: string;
+    linkedPaymentReferenceType?: string;
+  } | undefined;
   const rtRaw = String(meta?.referenceType || '').toLowerCase();
   const payId = meta?.paymentId;
   const rootRt = String(meta?.rootReferenceType || '').toLowerCase();
+  const linkedPayRt = String(meta?.linkedPaymentReferenceType || '').toLowerCase();
   if (rtRaw === 'worker_payment') {
     return {
       typeLabel: 'Worker payment',
@@ -259,11 +265,32 @@ function journalRowPresentation(entry: AccountingEntry): {
       badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
     };
   }
-  if (entry.module === 'Payments' || rtRaw === 'manual_payment') {
+  if (linkedPayRt === 'sale' || (payId && linkedPayRt === 'sale')) {
+    return {
+      typeLabel: 'Customer receipt',
+      amountClass: 'text-emerald-400',
+      badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/35',
+    };
+  }
+  if (linkedPayRt === 'purchase' || (payId && linkedPayRt === 'purchase')) {
     return {
       typeLabel: 'Supplier payment',
       amountClass: 'text-sky-400',
       badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/35',
+    };
+  }
+  if (entry.module === 'Payments' || rtRaw === 'manual_payment') {
+    if (rtRaw === 'manual_payment') {
+      return {
+        typeLabel: 'Supplier payment',
+        amountClass: 'text-sky-400',
+        badgeClass: 'bg-sky-500/20 text-sky-300 border-sky-500/35',
+      };
+    }
+    return {
+      typeLabel: 'Payment',
+      amountClass: 'text-cyan-400',
+      badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/35',
     };
   }
   if (entry.module === 'Expenses' || entry.source === 'Expense') {

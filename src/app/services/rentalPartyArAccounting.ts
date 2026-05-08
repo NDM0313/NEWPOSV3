@@ -357,7 +357,7 @@ export const rentalPartyDevaluationRepairFingerprint = (companyId: string, origi
   `rental_party_devaluation_repair:${companyId}:${originalJournalEntryId}`;
 
 /**
- * Dress devaluation (wear): Dr expense (5300 / 6100), Cr Rental Income (4200) via DB RPC.
+ * Dress devaluation (wear): Dr Rental Income (4200), Cr expense (5300 / 6100) via DB RPC.
  * Walk-in (no customerId): service caller may still skip posting if no party context exists in schema variants.
  * `reference_type` = rental, `reference_id` = rental id.
  */
@@ -388,7 +388,7 @@ export async function postRentalPartyDevaluationIfNeeded(params: {
     createdBy,
     repairSourceJournalEntryId,
   } = params;
-  if (!customerId || amount <= 0) {
+  if (amount <= 0) {
     return { journalEntryId: null, skipped: true, reason: 'walk_in_or_zero' };
   }
   const fp = repairSourceJournalEntryId
@@ -415,8 +415,8 @@ export async function postRentalPartyDevaluationIfNeeded(params: {
     p_entry_date: entryDate.slice(0, 10),
     p_created_by: createdBy ?? null,
     p_line_description: desc,
-    p_debit_account_code: '5300',
-    p_credit_account_code: '4200',
+    p_debit_account_code: '4200',
+    p_credit_account_code: '5300',
   });
 
   if (rpcErr) {
@@ -437,10 +437,6 @@ export async function postRentalPartyDevaluationIfNeeded(params: {
       skipped: false,
       reason: row?.error || 'rpc_failed',
     };
-  }
-
-  if (row.skipped && row.reason === 'no_customer') {
-    return { journalEntryId: null, skipped: true, reason: 'walk_in_or_zero' };
   }
 
   if (row.skipped) {

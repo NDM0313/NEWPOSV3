@@ -1,5 +1,5 @@
 import { X, Package, BarChart3, ShoppingBag, Shirt, Camera, Receipt, DollarSign, Settings, CreditCard, Users, LayoutGrid, TrendingUp, ShoppingCart } from 'lucide-react';
-import type { Screen } from '../types';
+import type { Screen, User } from '../types';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
 import { usePermissions } from '../context/PermissionContext';
 import { getPermissionModuleForScreen } from '../utils/permissionModules';
@@ -7,7 +7,7 @@ import { getPermissionModuleForScreen } from '../utils/permissionModules';
 interface ModuleGridProps {
   onClose: () => void;
   onModuleSelect: (module: Screen) => void;
-  userRole: 'admin' | 'manager' | 'staff' | 'viewer';
+  userRole: User['role'];
 }
 
 interface Module {

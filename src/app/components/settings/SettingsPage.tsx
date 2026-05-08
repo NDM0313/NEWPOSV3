@@ -40,6 +40,7 @@ import {
   Activity
 } from 'lucide-react';
 import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthService';
+import { canAccessTechnicalDeveloperSettings } from '@/app/lib/developerAccountingAccess';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -331,6 +332,7 @@ export const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const { userRole } = useSupabase();
   const isAdminOrOwner = userRole === 'admin' || userRole === 'owner' || userRole === 'Admin' || userRole === 'Owner';
+  const showTechnicalDeveloperSettings = canAccessTechnicalDeveloperSettings(userRole);
   const [settings, setSettings] = useState<Settings>({
     // General
     businessName: 'Din Collection',
@@ -2359,6 +2361,8 @@ export const SettingsPage = () => {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
+                    {showTechnicalDeveloperSettings && (
+                      <>
                     <div>
                       <Label className="text-gray-400 mb-2 block">API Key</Label>
                       <Input
@@ -2378,6 +2382,8 @@ export const SettingsPage = () => {
                         className="bg-gray-800 border-gray-700 text-white"
                       />
                     </div>
+                      </>
+                    )}
                     <div>
                       <Label className="text-gray-400 mb-2 block">Backup Frequency</Label>
                       <select
@@ -2413,6 +2419,7 @@ export const SettingsPage = () => {
                   </div>
 
                   <div className="space-y-3 pt-4 border-t border-gray-800">
+                    {showTechnicalDeveloperSettings && (
                     <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
                       <div>
                         <div className="text-white font-medium">Enable API Access</div>
@@ -2425,6 +2432,7 @@ export const SettingsPage = () => {
                         className="w-5 h-5 rounded border-gray-700"
                       />
                     </label>
+                    )}
                     <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
                       <div>
                         <div className="text-white font-medium">Automatic Backup</div>
@@ -2437,6 +2445,7 @@ export const SettingsPage = () => {
                         className="w-5 h-5 rounded border-gray-700"
                       />
                     </label>
+                    {showTechnicalDeveloperSettings && (
                     <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
                       <div>
                         <div className="text-white font-medium">Debug Mode</div>
@@ -2449,6 +2458,7 @@ export const SettingsPage = () => {
                         className="w-5 h-5 rounded border-gray-700"
                       />
                     </label>
+                    )}
                     <label className="flex items-center justify-between p-4 bg-gray-800 rounded-lg cursor-pointer">
                       <div>
                         <div className="text-white font-medium">Multi-Location Support</div>

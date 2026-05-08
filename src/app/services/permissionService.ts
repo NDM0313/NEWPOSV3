@@ -40,7 +40,7 @@ const MODULES_ACTIONS: Record<string, string[]> = {
   sales: ['view_own', 'view_branch', 'view_company', 'create', 'edit', 'delete'],
   pos: ['view', 'use'],
   purchase: ['view_own', 'view_branch', 'view_company', 'create', 'edit', 'delete'],
-  studio: ['view_own', 'view_branch', 'view_company', 'view', 'create', 'edit', 'delete'],
+  studio: ['view_own', 'view_branch', 'view_company', 'create', 'edit', 'delete'],
   rentals: ['view_own', 'view_branch', 'view_company', 'create', 'edit', 'delete'],
   payments: ['view_own', 'view_branch', 'view_company', 'receive', 'edit', 'delete'],
   ledger: ['view_own', 'view_branch', 'view_company', 'view_customer', 'view_supplier', 'view_full_accounting'],

@@ -52,6 +52,22 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
   const [todaySales, setTodaySales] = useState<number>(0);
   const [pendingAmount, setPendingAmount] = useState<number>(0);
 
+  useEffect(() => {
+    if (!companyId || !branch?.id) return;
+    if (FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded) return;
+    let cancelled = false;
+    const branchId = branch.id;
+    Promise.all([
+      reportsApi.getSalesSummary(companyId, branchId, 1),
+      reportsApi.getReceivables(companyId, branchId),
+    ]).then(([todayRes, receivablesRes]) => {
+      if (cancelled) return;
+      setTodaySales(todayRes.data?.totalSales ?? 0);
+      setPendingAmount(receivablesRes.data ?? 0);
+    }).catch(() => { if (!cancelled) setTodaySales(0); });
+    return () => { cancelled = true; };
+  }, [companyId, branch?.id, isPermissionLoaded]);
+
   if (FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded) {
     return (
       <div className="min-h-screen bg-[#111827] flex items-center justify-center">
@@ -72,21 +88,6 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
     return true;
   });
 
-  useEffect(() => {
-    if (!companyId || !branch?.id) return;
-    let cancelled = false;
-    const branchId = branch.id;
-    Promise.all([
-      reportsApi.getSalesSummary(companyId, branchId, 1),
-      reportsApi.getReceivables(companyId, branchId),
-    ]).then(([todayRes, receivablesRes]) => {
-      if (cancelled) return;
-      setTodaySales(todayRes.data?.totalSales ?? 0);
-      setPendingAmount(receivablesRes.data ?? 0);
-    }).catch(() => { if (!cancelled) setTodaySales(0); });
-    return () => { cancelled = true; };
-  }, [companyId, branch?.id]);
-
   if (showFeatures) {
     return <FeaturesShowcase onClose={() => setShowFeatures(false)} />;
   }
@@ -103,13 +104,26 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
               <p className="text-xs text-[#D1D5DB]">{branch.name}</p>
             </div>
           </div>
-          <button
-            onClick={onLogout}
-            className="p-2 bg-[#374151] hover:bg-[#4B5563] rounded-lg transition-colors text-white"
-            aria-label="Logout"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {enabled.some((m) => m.id === 'settings') && (
+              <button
+                type="button"
+                onClick={() => onNavigate('settings')}
+                className="p-2 bg-[#374151] hover:bg-[#4B5563] rounded-lg transition-colors text-white"
+                aria-label="Settings"
+                title="Settings"
+              >
+                <SettingsIcon className="w-5 h-5" />
+              </button>
+            )}
+            <button
+              onClick={onLogout}
+              className="p-2 bg-[#374151] hover:bg-[#4B5563] rounded-lg transition-colors text-white"
+              aria-label="Logout"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-[#111827]/50 border border-[#374151] rounded-xl p-4">

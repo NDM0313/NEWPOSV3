@@ -78,3 +78,56 @@ export async function getSalesmen(companyId: string): Promise<{ data: SalesmanRo
 
   return { data, error: null };
 }
+
+export interface CreateUserWithAuthParams {
+  email: string;
+  full_name: string;
+  role: string;
+  company_id: string;
+  phone?: string;
+  temporary_password?: string;
+  send_invite_email?: boolean;
+  branch_ids?: string[];
+  default_branch_id?: string;
+  is_active?: boolean;
+}
+
+/**
+ * Same as web `userService.createUserWithAuth`: Edge Function `create-erp-user`.
+ */
+export async function createUserWithAuth(
+  params: CreateUserWithAuthParams
+): Promise<{ data: { user_id?: string; success?: boolean } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) return { data: null, error: 'Not authenticated. Please log in to create users.' };
+
+  const { data, error } = await supabase.functions.invoke('create-erp-user', {
+    body: params,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (error) {
+    const ctx = error as { message?: string; context?: { body?: string } };
+    let msg = ctx.message || 'Edge function failed';
+    try {
+      const b = ctx.context?.body;
+      if (b) {
+        const j = JSON.parse(b) as { error?: string; message?: string };
+        msg = j.error || j.message || msg;
+      }
+    } catch {
+      /* ignore */
+    }
+    return { data: null, error: msg };
+  }
+
+  const result = data as {
+    success?: boolean;
+    error?: string;
+    user_id?: string;
+  };
+  if (!result?.success) return { data: null, error: result?.error || 'Failed to create user' };
+  return { data: result, error: null };
+}

@@ -32,7 +32,7 @@ function deriveFromRows(rolePerms: RolePermissionRow[], role: 'Admin' | 'Manager
   const visibilityScopeActions = ['view_own', 'view_branch', 'view_company'];
   const hasPurchase = rolePerms.some(x => x.module === 'purchase' && (visibilityScopeActions.includes(x.action) || x.action === 'create') && x.allowed);
   const hasPos = rolePerms.some(x => x.module === 'pos' && (x.action === 'use' || x.action === 'view') && x.allowed);
-  const hasStudio = rolePerms.some(x => x.module === 'studio' && (visibilityScopeActions.includes(x.action) || ['view', 'create', 'edit', 'delete'].includes(x.action)) && x.allowed);
+  const hasStudio = rolePerms.some(x => x.module === 'studio' && (visibilityScopeActions.includes(x.action) || ['create', 'edit', 'delete'].includes(x.action)) && x.allowed);
   const hasRentals = rolePerms.some(x => x.module === 'rentals' && (visibilityScopeActions.includes(x.action) || x.action === 'create') && x.allowed);
   const hasSalesView = rolePerms.some(x => x.module === 'sales' && visibilityScopeActions.includes(x.action) && x.allowed);
   const hasSalesCreate = rolePerms.some(x => x.module === 'sales' && x.action === 'create' && x.allowed);
@@ -41,7 +41,7 @@ function deriveFromRows(rolePerms: RolePermissionRow[], role: 'Admin' | 'Manager
   const hasReportsView = rolePerms.some(x => x.module === 'reports' && x.action === 'view' && x.allowed);
   const hasAccountingVisibility = rolePerms.some(x => x.module === 'ledger' && (visibilityScopeActions.includes(x.action) || x.action === 'view_full_accounting' || x.action === 'view_supplier') && x.allowed);
   const hasInventory = rolePerms.some(x => x.module === 'inventory' && (visibilityScopeActions.includes(x.action) || x.action === 'view') && x.allowed);
-  const hasContacts = rolePerms.some(x => x.module === 'contacts' && (visibilityScopeActions.includes(x.action) || x.action === 'create') && x.allowed);
+  const hasContacts = rolePerms.some(x => x.module === 'contacts' && visibilityScopeActions.includes(x.action) && x.allowed);
   const hasContactsCreate = rolePerms.some(x => x.module === 'contacts' && x.action === 'create' && x.allowed);
   const hasContactsDelete = rolePerms.some(x => x.module === 'contacts' && x.action === 'delete' && x.allowed);
   const hasUsers = rolePerms.some(x => x.module === 'users' && (x.action === 'create' || x.action === 'edit' || x.action === 'delete' || x.action === 'assign_permissions') && x.allowed);
@@ -144,6 +144,8 @@ export function getDerivedPermissions(): UserPermissions | null {
 export function has(module: string, action: string): boolean {
   const d = getDerivedPermissions();
   if (!d) return false;
+  /** Align with checkPermission(): Admin UI role bypasses row-level checks (owner maps to Admin in SettingsContext). */
+  if (d.role === 'Admin') return true;
   const m = (module || '').toLowerCase();
   const a = (action || 'view').toLowerCase();
   if (m === 'sales') {

@@ -154,8 +154,25 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
   const totalAmount = rentalCharges + securityDeposit;
   const dueAmount = Math.max(0, totalAmount - paidAmount);
 
-  const expenseTotal = (expenses || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-  const commissionEligible = Math.max(0, rentalCharges - expenseTotal);
+  let normalizedExpenses = expenses || [];
+  if (normalizedExpenses.length === 0) {
+    const { data: dRow } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('company_id', companyId)
+      .eq('key', 'default_dress_devaluation')
+      .maybeSingle();
+    const raw = dRow?.value;
+    const defaultDevaluation = typeof raw === 'number' ? raw : Number(raw);
+    normalizedExpenses = [
+      {
+        description: 'Dress devaluation (wear)',
+        amount: Number.isFinite(defaultDevaluation) && defaultDevaluation >= 0 ? defaultDevaluation : 5000,
+      },
+    ];
+  }
+  const normalizedExpenseTotal = normalizedExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const commissionEligible = Math.max(0, rentalCharges - normalizedExpenseTotal);
   const commissionPct = commissionPercent != null && Number.isFinite(commissionPercent) ? Number(commissionPercent) : null;
   const commissionAmount =
     commissionPct != null && commissionPct > 0
@@ -188,8 +205,8 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     rentalInsert.commission_eligible_amount = commissionEligible;
     rentalInsert.commission_status = commissionAmount > 0 ? 'pending' : null;
   }
-  if (expenses && expenses.length > 0 && expenseTotal > 0) {
-    rentalInsert.rental_expenses = expenses;
+  if (normalizedExpenses.length > 0 && normalizedExpenseTotal > 0) {
+    rentalInsert.rental_expenses = normalizedExpenses;
   }
   if (securityDocumentType) rentalInsert.security_document_type = securityDocumentType;
   if (securityDocumentNumber) rentalInsert.security_document_number = securityDocumentNumber.trim() || null;
@@ -335,13 +352,13 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     }
   }
 
-  if (expenses && expenses.length > 0 && expenseTotal > 0) {
+  if (normalizedExpenses.length > 0 && normalizedExpenseTotal > 0) {
     const exJe = await postRentalExpenseJournalMobile({
       companyId,
       branchId,
       rentalId: rentalData.id,
       bookingNo: bookingNoDisplay,
-      expenses,
+      expenses: normalizedExpenses,
       entryDate: bookingDate,
       userId,
       customerId: customerId || null,

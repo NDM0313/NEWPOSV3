@@ -534,8 +534,8 @@ export default function DeveloperIntegrityLabPage() {
               <ShieldAlert className="h-5 w-5" /> Developer Integrity Lab — access denied
             </CardTitle>
             <CardDescription className="text-gray-400">
-              Allowed roles: owner, super admin, super_admin, developer, accounting_auditor. Local DEV: admin.
-              Optional env: <code className="text-xs">VITE_ACCOUNTING_DIAGNOSTICS=1</code>
+              Restricted to users with the <strong className="text-gray-300">developer</strong> role, or builds with{' '}
+              <code className="text-xs">VITE_ACCOUNTING_DIAGNOSTICS=1</code>.
             </CardDescription>
           </CardHeader>
         </Card>

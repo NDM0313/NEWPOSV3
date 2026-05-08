@@ -1,9 +1,10 @@
 /**
- * Developer Integrity Lab (Accounting Test Bench) — access control.
- * Normal Admin/Manager/Staff are excluded unless env / dev exception below.
+ * Developer-only surfaces: Integrity Lab, technical Settings (API/webhooks), RLS diagnostics.
+ * Owners, admins, and standard staff do not see these unless they use the `developer` role
+ * or controlled builds set VITE_ACCOUNTING_DIAGNOSTICS=1.
  */
 
-function canonRole(role: string | null | undefined): string {
+export function canonRole(role: string | null | undefined): string {
   return (role || '')
     .toLowerCase()
     .trim()
@@ -11,24 +12,21 @@ function canonRole(role: string | null | undefined): string {
     .replace(/\s+/g, ' ');
 }
 
-const INTEGRITY_LAB_ROLES_CANON = [
-  'owner',
-  'super admin',
-  'superadmin',
-  'super_admin',
-  'accounting_auditor',
-  'accounting auditor',
-  'developer',
-].map(canonRole);
-
+/** Integrity Lab / forensic GL tooling — developer role only (plus optional env below). */
 export function canAccessDeveloperIntegrityLab(userRole: string | null | undefined): boolean {
-  const r = canonRole(userRole);
-  if (INTEGRITY_LAB_ROLES_CANON.includes(r)) return true;
-  /** Staging / internal builds */
+  if (canonRole(userRole) === 'developer') return true;
   if (import.meta.env?.VITE_ACCOUNTING_DIAGNOSTICS === '1') return true;
-  /** Local dev: admin may open lab */
-  if (import.meta.env.DEV && (r === 'admin' || r === 'owner')) return true;
   return false;
+}
+
+/** API keys, webhooks, experimental feature-flag strip in Settings — developer role or diagnostics env. */
+export function canAccessTechnicalDeveloperSettings(userRole: string | null | undefined): boolean {
+  return canonRole(userRole) === 'developer' || import.meta.env?.VITE_ACCOUNTING_DIAGNOSTICS === '1';
+}
+
+/** RLS / low-level permission inspector — developer-oriented. */
+export function canAccessDeveloperPermissionDiagnostics(userRole: string | null | undefined): boolean {
+  return canonRole(userRole) === 'developer' || import.meta.env?.VITE_ACCOUNTING_DIAGNOSTICS === '1';
 }
 
 /** @deprecated Use canAccessDeveloperIntegrityLab */

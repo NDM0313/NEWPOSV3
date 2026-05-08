@@ -22,7 +22,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'manager' | 'staff' | 'viewer';
+  role: 'owner' | 'admin' | 'manager' | 'staff' | 'viewer' | 'salesman' | 'cashier';
   /** Public users.id for user_branches lookup. */
   profileId?: string;
   /** When set, user is locked to this branch (no branch selector). */

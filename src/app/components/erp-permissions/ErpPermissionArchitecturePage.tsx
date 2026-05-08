@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Shield, LayoutDashboard, UserCog, Grid3X3, Users, Building2, Lock } from 'lucide-react';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { canAccessDeveloperPermissionDiagnostics } from '@/app/lib/developerAccountingAccess';
 import { cn } from '../ui/utils';
 import { DashboardTab } from './DashboardTab';
 import { RolesTab } from './RolesTab';
@@ -10,7 +12,7 @@ import { RlsTab } from './RlsTab';
 
 export type ErpPermSubView = 'dashboard' | 'roles' | 'matrix' | 'users' | 'branch' | 'rls';
 
-const TABS: { id: ErpPermSubView; label: string; icon: typeof LayoutDashboard }[] = [
+const ALL_TABS: { id: ErpPermSubView; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'roles', label: 'Roles', icon: UserCog },
   { id: 'matrix', label: 'Matrix', icon: Grid3X3 },
@@ -20,7 +22,17 @@ const TABS: { id: ErpPermSubView; label: string; icon: typeof LayoutDashboard }[
 ];
 
 export function ErpPermissionArchitecturePage() {
+  const { userRole } = useSupabase();
+  const showRls = canAccessDeveloperPermissionDiagnostics(userRole);
+  const TABS = useMemo(
+    () => ALL_TABS.filter((t) => t.id !== 'rls' || showRls),
+    [showRls]
+  );
   const [subView, setSubView] = useState<ErpPermSubView>('dashboard');
+
+  useEffect(() => {
+    if (subView === 'rls' && !showRls) setSubView('dashboard');
+  }, [subView, showRls]);
 
   return (
     <div className="min-h-full bg-gray-950 text-white">

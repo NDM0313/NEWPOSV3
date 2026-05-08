@@ -17,7 +17,9 @@ import {
   Printer,
   Scan,
   UserCog,
+  UserPlus,
   Briefcase,
+  Shirt,
 } from 'lucide-react';
 import type { User, Branch } from '../../types';
 import * as authApi from '../../api/auth';
@@ -29,6 +31,7 @@ import { SetPinModal } from './SetPinModal';
 import { ConnectionDebug } from '../dev/ConnectionDebug';
 import { UserPermissionsScreen } from './UserPermissionsScreen';
 import { EmployeesSection } from './EmployeesSection';
+import { AddUserSheet } from './AddUserSheet';
 import { usePermissions } from '../../context/PermissionContext';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../../config/featureFlags';
 
@@ -111,6 +114,8 @@ export function SettingsModule({
   const [barcodeSaving, setBarcodeSaving] = useState(false);
   const [showUserPermissions, setShowUserPermissions] = useState(false);
   const [showEmployees, setShowEmployees] = useState(false);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [defaultDressDevaluation, setDefaultDressDevaluation] = useState<number>(5000);
 
   const isAdminOrOwner = user.role === 'admin' || (user.role as string) === 'owner';
   const { hasPermission } = usePermissions();
@@ -139,6 +144,7 @@ export function SettingsModule({
     if (!companyId) return;
     settingsApi.getMobilePrinterSettings(companyId).then(({ data }) => setPrinterConfig(data));
     settingsApi.getMobileBarcodeScannerSettings(companyId).then(({ data }) => setBarcodeSettings(data));
+    settingsApi.getDefaultDressDevaluation(companyId).then(({ data }) => setDefaultDressDevaluation(data));
   }, [companyId]);
 
   if (showUserPermissions) {
@@ -264,6 +270,17 @@ export function SettingsModule({
     );
   }
 
+  if (showAddUser && companyId) {
+    return (
+      <AddUserSheet
+        companyId={companyId}
+        branchId={branch?.id ?? null}
+        onBack={() => setShowAddUser(false)}
+        onSuccess={() => setSyncResult('User created successfully')}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
       <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
@@ -330,6 +347,38 @@ export function SettingsModule({
               title="User Permissions"
               subtitle="Role, branch access & permission matrix"
               onClick={() => setShowUserPermissions(true)}
+            />
+          )}
+
+          {isAdminOrOwner && (
+            <SettingsRow
+              icon={UserPlus}
+              iconColor="bg-emerald-500/20"
+              title="Add user"
+              subtitle="Invite or set temp password (same as web)"
+              onClick={() => setShowAddUser(true)}
+            />
+          )}
+
+          {isAdminOrOwner && (
+            <SettingsRow
+              icon={Shirt}
+              iconColor="bg-pink-500/20"
+              title="Default dress devaluation"
+              subtitle={`Rs. ${defaultDressDevaluation.toLocaleString()} (auto for rental booking)`}
+              onClick={async () => {
+                if (!companyId) return;
+                const nextRaw = window.prompt('Set default dress devaluation (Rs.)', String(defaultDressDevaluation));
+                if (nextRaw == null) return;
+                const next = Math.max(0, Math.round(Number(nextRaw) || 0));
+                const { error } = await settingsApi.setDefaultDressDevaluation(companyId, next);
+                if (error) {
+                  setSyncResult(`Failed to save: ${error}`);
+                  return;
+                }
+                setDefaultDressDevaluation(next);
+                setSyncResult('Default dress devaluation updated');
+              }}
             />
           )}
 

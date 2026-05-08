@@ -1,7 +1,9 @@
-/** Dev-only sync tracing (pending type, id, outcomes). */
+/** Dev-only sync tracing (pending type, id, outcomes). Requires VITE_SHOW_ERP_DEV_TOOLS=true. */
+
+import { showErpDevTools } from '../utils/erpDevTools';
 
 export function isSyncDebugEnabled(): boolean {
-  return Boolean(import.meta.env.DEV);
+  return showErpDevTools();
 }
 
 export function syncDebugLog(message: string, detail?: Record<string, unknown>): void {

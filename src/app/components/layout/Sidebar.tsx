@@ -35,7 +35,7 @@ import { useModules } from '../../context/ModuleContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
-import { canAccessDeveloperIntegrityLab } from '@/app/lib/developerAccountingAccess';
+import { canAccessTechnicalDeveloperSettings } from '@/app/lib/developerAccountingAccess';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -53,7 +53,7 @@ export const Sidebar = () => {
   const { modules: settingsModules, featureFlags, isPermissionLoaded } = useSettings();
   const { hasPermission } = useCheckPermission();
   const { userRole } = useSupabase();
-  const developerIntegrityLabAllowed = canAccessDeveloperIntegrityLab(userRole);
+  const developerToolsNavAllowed = canAccessTechnicalDeveloperSettings(userRole);
   const studioProductionV2 = featureFlags?.studio_production_v2 === true;
   const studioProductionV3 = featureFlags?.studio_production_v3 === true;
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
@@ -109,11 +109,11 @@ export const Sidebar = () => {
     },
     { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !hasPermission('reports.view') },
     { id: 'settings', label: 'Settings', icon: Settings, isHidden: !hasPermission('settings.view') },
-    { 
-      id: 'test-pages-group', 
-      label: 'Developer Tools', 
+    {
+      id: 'test-pages-group',
+      label: 'Developer Tools',
       icon: FlaskConical,
-      isHidden: !hasPermission('settings.view'), // Admin only – Permission Inspector, test pages
+      isHidden: !developerToolsNavAllowed,
       children: [
         { id: 'permission-inspector', label: 'Permission Inspector' },
         { id: 'test-account-entry', label: 'Account Entry' },
@@ -134,9 +134,7 @@ export const Sidebar = () => {
         { id: 'inventory-design-test', label: 'Inventory Design Test' },
         { id: 'rls-validation', label: 'RLS Validation' },
         { id: 'accounting-integrity-lab', label: 'Accounting Integrity Lab' },
-        ...(developerIntegrityLabAllowed
-          ? ([{ id: 'developer-integrity-lab', label: 'Developer Integrity Lab' }] as { id: string; label: string }[])
-          : []),
+        { id: 'developer-integrity-lab', label: 'Developer Integrity Lab' },
         { id: 'day4-certification', label: 'Day 4 Certification' },
         { id: 'erp-integration-test', label: 'ERP Integration Test' },
         { id: 'cutover-prep', label: 'Cutover Prep' },
