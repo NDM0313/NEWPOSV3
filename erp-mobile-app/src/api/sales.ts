@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getNextDocumentNumber } from './documentNumber';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -55,7 +56,29 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: 'App not configured.' };
   }
 
-  const { companyId, branchId, customerId, customerName, contactNumber, items, subtotal, discountAmount, taxAmount, expenses, total, paymentMethod, notes, isStudio, userId, paidAmount, dueAmount, paymentAccountId, orderDate: _orderDate, deadline, studioDesignName } = input;
+  const {
+    companyId,
+    branchId,
+    customerId,
+    customerName,
+    contactNumber,
+    items,
+    subtotal,
+    discountAmount,
+    taxAmount,
+    expenses,
+    total,
+    paymentMethod,
+    notes,
+    isStudio,
+    userId,
+    paidAmount,
+    dueAmount,
+    paymentAccountId,
+    orderDate,
+    deadline,
+    studioDesignName,
+  } = input;
 
   if (!companyId || !branchId || !userId) {
     return { data: null, error: 'Missing company, branch, or user.' };
@@ -81,55 +104,141 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
   const due = isStudio ? totalNum : dueNonStudio;
 
   const invDate = new Date().toISOString().slice(0, 10);
-  const salePayload: Record<string, unknown> = {
-    invoice_date: invDate,
-    customer_id: customerId || null,
-    customer_name: customerName || 'Walk-in',
-    contact_number: contactNumber || null,
-    subtotal: Number(subtotal) || 0,
-    discount_amount: Number(discountAmount) || 0,
-    tax_amount: Number(taxAmount) || 0,
-    expenses: Number(expenses) || 0,
-    total: totalNum,
-    notes: notes || null,
-  };
-  if (deadline != null && deadline !== '') salePayload.deadline = deadline;
+
+  let saleId: string;
+  /** Invoice / order ref shown after save (SL-… for regular, STD-… for studio). */
+  let docNo: string;
 
   if (isStudio) {
-    salePayload.type = 'quotation';
-    salePayload.status = 'order';
-    salePayload.payment_status = 'unpaid';
-    salePayload.payment_method = paymentMethod || 'Credit';
-    salePayload.paid_amount = 0;
-    salePayload.due_amount = totalNum;
+    /**
+     * Web parity: SalesContext uses `get_next_document_number_global('STD')` + direct `sales` insert
+     * (`order_no`, `invoice_no` null). Mobile previously used `create_sale_document_header`, which allocates via
+     * `generate_document_number('studio')` inside Postgres — a different allocator than web’s global STD counter.
+     */
+    const invoiceDateStr =
+      orderDate != null && String(orderDate).trim() !== ''
+        ? String(orderDate).trim().slice(0, 10)
+        : invDate;
+    const deadlineVal =
+      deadline != null && String(deadline).trim() !== '' ? String(deadline).trim().slice(0, 10) : null;
+
+    let orderNo: string;
+    try {
+      orderNo = await getNextDocumentNumber(companyId, effectiveBranchId, 'studio');
+    } catch (e) {
+      return { data: null, error: (e as Error).message ?? 'Failed to allocate studio order number.' };
+    }
+
+    const baseStudioRow = (): Record<string, unknown> => ({
+      company_id: companyId,
+      branch_id: effectiveBranchId,
+      invoice_no: null,
+      order_no: orderNo,
+      invoice_date: invoiceDateStr,
+      customer_id: customerId || null,
+      customer_name: customerName || 'Walk-in',
+      contact_number: contactNumber ?? null,
+      type: 'quotation',
+      status: 'order',
+      payment_status: 'unpaid',
+      payment_method: paymentMethod || 'Credit',
+      subtotal: Number(subtotal) || 0,
+      discount_amount: Number(discountAmount) || 0,
+      tax_amount: Number(taxAmount) || 0,
+      expenses: Number(expenses) || 0,
+      total: totalNum,
+      paid_amount: 0,
+      due_amount: totalNum,
+      notes: notes ?? null,
+      created_by: userId,
+      ...(deadlineVal ? { deadline: deadlineVal } : {}),
+    });
+
+    const insertStudio = (row: Record<string, unknown>) =>
+      supabase.from('sales').insert(row).select('id').single();
+
+    let row: Record<string, unknown> = { ...baseStudioRow(), is_studio: true };
+    let ins = await insertStudio(row);
+
+    const isUniqueOrderNo = (err: { code?: string; message?: string } | null) =>
+      !!err && (err.code === '23505' || String(err.message || '').includes('sales_company_branch_order_unique'));
+
+    const colMissing = (err: { code?: string; message?: string } | null) =>
+      !!err && (err.code === '42703' || String(err.message || '').toLowerCase().includes('is_studio'));
+
+    if (ins.error && colMissing(ins.error)) {
+      ins = await insertStudio(baseStudioRow());
+      if (!ins.error && ins.data?.id) {
+        await supabase.from('sales').update({ is_studio: true }).eq('id', (ins.data as { id: string }).id);
+      }
+    }
+
+    if (ins.error && isUniqueOrderNo(ins.error)) {
+      try {
+        orderNo = await getNextDocumentNumber(companyId, effectiveBranchId, 'studio');
+        row = { ...baseStudioRow(), order_no: orderNo, is_studio: true };
+        ins = await insertStudio(row);
+        if (ins.error && colMissing(ins.error)) {
+          ins = await insertStudio({ ...baseStudioRow(), order_no: orderNo });
+          if (!ins.error && ins.data?.id) {
+            await supabase.from('sales').update({ is_studio: true }).eq('id', (ins.data as { id: string }).id);
+          }
+        }
+      } catch (e) {
+        return { data: null, error: (e as Error).message ?? 'Failed to retry studio order.' };
+      }
+    }
+
+    if (ins.error) {
+      return { data: null, error: ins.error.message ?? 'Failed to create studio sale.' };
+    }
+    if (!ins.data?.id) {
+      return { data: null, error: 'Failed to create studio sale.' };
+    }
+    saleId = (ins.data as { id: string }).id;
+    docNo = orderNo;
   } else {
+    const salePayload: Record<string, unknown> = {
+      invoice_date: invDate,
+      customer_id: customerId || null,
+      customer_name: customerName || 'Walk-in',
+      contact_number: contactNumber || null,
+      subtotal: Number(subtotal) || 0,
+      discount_amount: Number(discountAmount) || 0,
+      tax_amount: Number(taxAmount) || 0,
+      expenses: Number(expenses) || 0,
+      total: totalNum,
+      notes: notes || null,
+    };
+    if (deadline != null && deadline !== '') salePayload.deadline = deadline;
+
     salePayload.type = 'invoice';
     salePayload.status = 'final';
     salePayload.payment_status = due > 0 ? (paid > 0 ? 'partial' : 'unpaid') : 'paid';
     salePayload.payment_method = paymentMethod || 'Cash';
     salePayload.paid_amount = paid;
     salePayload.due_amount = due;
+
+    const { data: hdrRaw, error: hdrErr } = await supabase.rpc('create_sale_document_header', {
+      p_company_id: companyId,
+      p_branch_id: effectiveBranchId,
+      p_is_studio: false,
+      p_sale: salePayload,
+      p_created_by: userId,
+    });
+
+    if (hdrErr) {
+      return { data: null, error: hdrErr.message };
+    }
+
+    const hdr = hdrRaw as { success?: boolean; sale_id?: string; document_no?: string; error?: string } | null;
+    if (!hdr?.success || !hdr.sale_id) {
+      return { data: null, error: hdr?.error ?? 'Failed to create sale.' };
+    }
+
+    saleId = hdr.sale_id;
+    docNo = String(hdr.document_no ?? '');
   }
-
-  const { data: hdrRaw, error: hdrErr } = await supabase.rpc('create_sale_document_header', {
-    p_company_id: companyId,
-    p_branch_id: effectiveBranchId,
-    p_is_studio: !!isStudio,
-    p_sale: salePayload,
-    p_created_by: userId,
-  });
-
-  if (hdrErr) {
-    return { data: null, error: hdrErr.message };
-  }
-
-  const hdr = hdrRaw as { success?: boolean; sale_id?: string; document_no?: string; error?: string } | null;
-  if (!hdr?.success || !hdr.sale_id) {
-    return { data: null, error: hdr?.error ?? 'Failed to create sale.' };
-  }
-
-  const saleId = hdr.sale_id;
-  const docNo = String(hdr.document_no ?? '');
   const itemsWithSaleId = items.map((item) => {
     const row: Record<string, unknown> = {
       sale_id: saleId,
