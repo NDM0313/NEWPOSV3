@@ -1,5 +1,5 @@
--- Transactional company restore RPC with trigger-safe controls.
--- Restores operational + accounting rows from a company-scoped backup JSON payload.
+-- Re-apply restore_company_backup_rpc after prior broken upsert (account_type / phantom cols / excluded.is_system on lean accounts).
+-- ON CONFLICT DO UPDATE only touches columns always present on `public.accounts` composite row type.
 
 create or replace function public.restore_company_backup_rpc(
   p_company_id uuid,
@@ -132,7 +132,6 @@ begin
   get diagnostics v_rows = row_count;
   v_restored := v_restored || jsonb_build_object('contacts', v_rows);
 
-  -- Minimal DO UPDATE columns: match lean `accounts` rows so `excluded.*` always exists (no is_system / balance / is_group required).
   insert into public.accounts
   select * from jsonb_populate_recordset(null::public.accounts, coalesce(v_data -> 'accounts', '[]'::jsonb))
   on conflict (company_id, code) do update
