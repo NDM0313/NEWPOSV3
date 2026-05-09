@@ -11,6 +11,15 @@ import { settingsService } from '@/app/services/settingsService';
 import { checkRentalAvailabilityForItems } from '@/app/services/rentalAvailabilityService';
 import { syncJournalEntryDateByDocumentRefs } from '@/app/services/journalTransactionDateSyncService';
 
+/** RPC requires a real branch UUID; map sentinel "default" to first company branch. */
+async function resolveBranchIdForRental(companyId: string, branchId: string): Promise<string> {
+  if (branchId && branchId !== 'default') return branchId;
+  const { data } = await supabase.from('branches').select('id').eq('company_id', companyId).limit(1).maybeSingle();
+  const first = data?.id;
+  if (!first) throw new Error('No branch set up. Add a branch in Settings to create rentals.');
+  return first;
+}
+
 export type RentalStatus = 'draft' | 'booked' | 'active' | 'rented' | 'picked_up' | 'returned' | 'overdue' | 'cancelled';
 
 export interface Rental {
@@ -251,12 +260,14 @@ export const rentalService = {
     const ret = new Date(returnDate);
     if (ret < pickup) throw new Error('Return date must be on or after pickup date');
 
+    const effectiveBranchId = await resolveBranchIdForRental(companyId, branchId);
+
     const availability = await checkRentalAvailabilityForItems({
       companyId,
       items: items.map((i) => ({ productId: i.productId })),
       startDate: pickupDate,
       endDate: returnDate,
-      branchId,
+      branchId: effectiveBranchId,
     });
     if (!availability.available) {
       throw new Error(availability.message || 'Selected dates conflict with an existing booking');
@@ -273,71 +284,33 @@ export const rentalService = {
     const effectivePaid = Math.max(0, Number(advanceAmount) || 0);
     const dueAmount = Math.max(0, totalAmount - effectivePaid);
 
-    const bookingNo = await settingsService.getNextDocumentNumber(companyId, branchId, 'rental');
-
-    console.log('[rentalService] createBooking commission data:', { salesmanId, commissionAmount, commissionPercent, commissionEligibleAmount });
-
-    let rentalData: any;
-    let rentalError: any;
-    ({ data: rentalData, error: rentalError } = await supabase
-      .from('rentals')
-      .insert({
-        company_id: companyId,
-        branch_id: branchId,
-        booking_no: bookingNo,
-        booking_date: bookingDate,
-        customer_id: customerId,
-        customer_name: customerName,
-        status: 'booked',
-        pickup_date: pickupDate,
-        return_date: returnDate,
-        duration_days: durationDays,
-        rental_charges: rentalCharges,
-        security_deposit: securityDeposit,
-        total_amount: totalAmount,
-        paid_amount: effectivePaid,
-        due_amount: dueAmount,
-        notes: notes || null,
-        created_by: createdBy || null,
-        ...(normalizedExpenses && normalizedExpenses.length > 0 ? { rental_expenses: normalizedExpenses } : {}),
-        ...(salesmanId ? {
-          salesman_id: salesmanId,
-          commission_amount: commissionAmount || 0,
-          commission_percent: commissionPercent,
-          commission_eligible_amount: commissionEligibleAmount ?? rentalCharges,
-          commission_status: commissionAmount > 0 ? 'pending' : null,
-        } : {}),
-      })
-      .select('id, booking_no')
-      .single());
-
-    // If rental_expenses or commission columns don't exist, retry without them
-    if (rentalError) {
-      console.warn('[rentalService] createBooking insert error:', rentalError.message);
+    const rentalPayload: Record<string, unknown> = {
+      booking_date: bookingDate,
+      customer_id: customerId,
+      customer_name: customerName,
+      status: 'booked',
+      pickup_date: pickupDate,
+      return_date: returnDate,
+      duration_days: durationDays,
+      rental_charges: rentalCharges,
+      security_deposit: securityDeposit,
+      total_amount: totalAmount,
+      paid_amount: effectivePaid,
+      due_amount: dueAmount,
+      notes,
+    };
+    if (normalizedExpenses && normalizedExpenses.length > 0) {
+      rentalPayload.rental_expenses = normalizedExpenses;
     }
-    if (rentalError && (String(rentalError.message || '').includes('rental_expenses') || String(rentalError.message || '').includes('commission') || String(rentalError.message || '').includes('salesman_id'))) {
-      console.warn('[rentalService] Retrying without commission/expense columns');
-      const { data: retryData, error: retryErr } = await supabase
-        .from('rentals')
-        .insert({
-          company_id: companyId, branch_id: branchId, booking_no: bookingNo,
-          booking_date: bookingDate, customer_id: customerId, customer_name: customerName,
-          status: 'booked', pickup_date: pickupDate, return_date: returnDate,
-          duration_days: durationDays, rental_charges: rentalCharges,
-          security_deposit: securityDeposit, total_amount: totalAmount,
-          paid_amount: effectivePaid, due_amount: dueAmount,
-          notes: notes || null, created_by: createdBy || null,
-        })
-        .select('id, booking_no')
-        .single();
-      if (retryErr) throw retryErr;
-      rentalData = retryData;
-    } else if (rentalError) {
-      throw rentalError;
+    if (salesmanId) {
+      rentalPayload.salesman_id = salesmanId;
+      rentalPayload.commission_amount = commissionAmount || 0;
+      rentalPayload.commission_percent = commissionPercent;
+      rentalPayload.commission_eligible_amount = commissionEligibleAmount ?? rentalCharges;
+      rentalPayload.commission_status = commissionAmount > 0 ? 'pending' : null;
     }
 
-    const itemsPayload = items.map((i) => ({
-      rental_id: rentalData.id,
+    const itemsJson = items.map((i) => ({
       product_id: i.productId,
       product_name: i.productName,
       quantity: i.quantity,
@@ -346,12 +319,45 @@ export const rentalService = {
       total: i.total,
     }));
 
-    const { error: itemsError } = await supabase.from('rental_items').insert(itemsPayload);
+    console.log('[rentalService] createBooking commission data:', { salesmanId, commissionAmount, commissionPercent, commissionEligibleAmount });
 
-    if (itemsError) {
-      await supabase.from('rentals').delete().eq('id', rentalData.id);
-      throw itemsError;
+    let rpcBody = rentalPayload;
+    const tryRpc = async (payload: Record<string, unknown>) =>
+      supabase.rpc('create_rental_booking', {
+        p_company_id: companyId,
+        p_branch_id: effectiveBranchId,
+        p_rental: payload,
+        p_items: itemsJson,
+        p_created_by: createdBy,
+      });
+
+    let { data: rpcRaw, error: rpcErr } = await tryRpc(rpcBody);
+    if (rpcErr) {
+      const msg = String(rpcErr.message || '');
+      if (msg.includes('rental_expenses') || msg.includes('commission') || msg.includes('salesman_id')) {
+        console.warn('[rentalService] Retrying create_rental_booking without commission/expense columns');
+        const fallback = { ...rentalPayload };
+        delete fallback.rental_expenses;
+        delete fallback.salesman_id;
+        delete fallback.commission_percent;
+        delete fallback.commission_amount;
+        delete fallback.commission_eligible_amount;
+        delete fallback.commission_status;
+        rpcBody = fallback;
+        const retry = await tryRpc(fallback);
+        rpcRaw = retry.data;
+        rpcErr = retry.error;
+      }
     }
+    if (rpcErr) throw rpcErr;
+
+    const rpc = rpcRaw as { success?: boolean; rental_id?: string; booking_no?: string; error?: string } | null;
+    if (!rpc?.success || !rpc.rental_id) {
+      throw new Error(rpc?.error || 'Rental create failed.');
+    }
+
+    const rentalData = { id: rpc.rental_id, booking_no: rpc.booking_no ?? '' };
+    const bookingNo = rentalData.booking_no;
 
     // Party AR GL (named customer): revenue (when charges > 0) + optional advance cash receipt
     if (customerId) {
@@ -366,7 +372,7 @@ export const rentalService = {
         if (rentalCharges > 0) {
           await postRentalPartyRevenueIfNeeded({
             companyId,
-            branchId,
+            branchId: effectiveBranchId,
             rentalId: rentalData.id,
             customerId,
             customerName,
@@ -378,7 +384,7 @@ export const rentalService = {
           if (am && am.discountAmount > 0) {
             await postRentalPartyDiscountIfNeeded({
               companyId,
-              branchId,
+              branchId: effectiveBranchId,
               rentalId: rentalData.id,
               customerId,
               customerName,
@@ -410,7 +416,7 @@ export const rentalService = {
           if (payId && cashId) {
             const { journalEntryId } = await postRentalPartyCashReceipt({
               companyId,
-              branchId,
+              branchId: effectiveBranchId,
               rentalId: rentalData.id,
               rentalPaymentId: payId,
               customerId,
@@ -450,7 +456,7 @@ export const rentalService = {
           const { postRentalPartyDevaluationIfNeeded } = await import('./rentalPartyArAccounting');
           const res = await postRentalPartyDevaluationIfNeeded({
             companyId,
-            branchId,
+            branchId: effectiveBranchId,
             rentalId: rentalData.id,
             customerId,
             customerName,

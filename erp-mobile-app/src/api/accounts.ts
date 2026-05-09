@@ -1,4 +1,15 @@
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { erpMobileUsingDemoSupabaseAnonKey, isSupabaseConfigured, supabase } from '../lib/supabase';
+
+/** Extra context when Postgres RPC exhausts PAY reference retries (wrong DB / missing migrations). */
+function appendPayReferenceAllocationHint(message: string): string {
+  if (!message.includes('Payment reference allocation')) return message;
+  let out =
+    `${message} Use the same VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY as the web app (.env.production); restart the dev server. Apply SQL migrations 20260509180000, 20260509190000, 20260510100000 on that database (one file: migrations/rollups/record_payment_allocation_fix_bundle.sql).`;
+  if (erpMobileUsingDemoSupabaseAnonKey) {
+    out += ' This session still uses the public Supabase tutorial anon key — replace it.';
+  }
+  return out;
+}
 import { getNextDocumentNumber } from './documentNumber';
 
 export interface AccountRow {
@@ -244,11 +255,14 @@ export interface JournalEntryLineRow {
 export interface JournalEntryRow {
   id: string;
   entry_no: string;
+  /** Payments voucher no (PAY-xx / RCV-xx) when this JE links via payment_id — preferred list label over JE entry_no. */
+  payment_reference_number?: string | null;
   entry_date: string;
   description: string;
   reference_type: string;
   reference_id?: string | null;
   payment_id?: string | null;
+  payment_notes?: string | null;
   total_debit: number;
   total_credit: number;
   posted_at?: string | null;
@@ -294,18 +308,44 @@ export async function getJournalEntries(
   if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
+  const paymentIds = Array.from(
+    new Set(
+      (data || [])
+        .map((e: Record<string, unknown>) => (e.payment_id != null ? String(e.payment_id) : ''))
+        .filter((id) => id !== ''),
+    ),
+  );
+  const paymentNotesById = new Map<string, string | null>();
+  const paymentRefNoById = new Map<string, string | null>();
+  if (paymentIds.length > 0) {
+    const { data: paymentRows } = await supabase.from('payments').select('id, notes, reference_number').in('id', paymentIds);
+    for (const row of paymentRows || []) {
+      const id = String((row as Record<string, unknown>).id ?? '');
+      if (!id) continue;
+      const notes = (row as Record<string, unknown>).notes;
+      paymentNotesById.set(id, notes != null && String(notes).trim() !== '' ? String(notes) : null);
+      const rn = (row as Record<string, unknown>).reference_number;
+      paymentRefNoById.set(
+        id,
+        rn != null && String(rn).trim() !== '' ? String(rn).trim() : null,
+      );
+    }
+  }
   const rows = (data || []).map((e: Record<string, unknown>) => {
     const lines = normalizeJeLines(e.lines);
     const totalDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+    const paymentId = e.payment_id != null && e.payment_id !== '' ? String(e.payment_id) : null;
     return {
       id: String(e.id ?? ''),
       entry_no: String(e.entry_no ?? ''),
+      payment_reference_number: paymentId ? paymentRefNoById.get(paymentId) ?? null : null,
       entry_date: e.entry_date ? new Date(e.entry_date as string).toISOString().slice(0, 10) : '',
       description: String(e.description ?? ''),
       reference_type: String(e.reference_type ?? ''),
       reference_id: e.reference_id != null && e.reference_id !== '' ? String(e.reference_id) : null,
-      payment_id: e.payment_id != null && e.payment_id !== '' ? String(e.payment_id) : null,
+      payment_id: paymentId,
+      payment_notes: paymentId ? paymentNotesById.get(paymentId) ?? null : null,
       total_debit: totalDebit,
       total_credit: totalCredit,
       posted_at: (e as { posted_at?: string }).posted_at
@@ -341,6 +381,21 @@ export async function getJournalEntryById(
     .maybeSingle();
   if (error) return { data: null, error: error.message };
   if (!e) return { data: null, error: null };
+  let paymentNotes: string | null = null;
+  let paymentReferenceNumber: string | null = null;
+  const paymentIdRaw = e.payment_id != null && e.payment_id !== '' ? String(e.payment_id) : null;
+  if (paymentIdRaw) {
+    const { data: paymentRow } = await supabase
+      .from('payments')
+      .select('notes, reference_number')
+      .eq('id', paymentIdRaw)
+      .maybeSingle();
+    const notesVal = (paymentRow as Record<string, unknown> | null)?.notes;
+    paymentNotes = notesVal != null && String(notesVal).trim() !== '' ? String(notesVal) : null;
+    const rnVal = (paymentRow as Record<string, unknown> | null)?.reference_number;
+    paymentReferenceNumber =
+      rnVal != null && String(rnVal).trim() !== '' ? String(rnVal).trim() : null;
+  }
   const lines = normalizeJeLines(e.lines);
   const totalDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
   const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
@@ -352,7 +407,9 @@ export async function getJournalEntryById(
       description: String(e.description ?? ''),
       reference_type: String(e.reference_type ?? ''),
       reference_id: e.reference_id != null && e.reference_id !== '' ? String(e.reference_id) : null,
-      payment_id: e.payment_id != null && e.payment_id !== '' ? String(e.payment_id) : null,
+      payment_id: paymentIdRaw,
+      payment_notes: paymentNotes,
+      payment_reference_number: paymentReferenceNumber,
       total_debit: totalDebit,
       total_credit: totalCredit,
       posted_at: (e as { posted_at?: string }).posted_at ? String((e as { posted_at?: string }).posted_at) : null,
@@ -732,9 +789,11 @@ export async function recordSupplierPayment(params: {
   userId?: string;
 }): Promise<{ data: { payment_id: string; reference_number?: string | null } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
-  // Let the DB trigger assign a unique reference when the caller did not
-  // supply one. Avoids the payments_reference_number_unique race condition.
-  const refNum: string | null = params.reference && params.reference.trim() ? params.reference.trim() : null;
+  const baseNotes = params.notes?.trim() ?? '';
+  const bankTraceId = params.reference?.trim() ?? '';
+  const composedNotes = bankTraceId
+    ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${bankTraceId}`
+    : baseNotes;
   const { data, error } = await supabase.rpc('record_payment_with_accounting', {
     p_company_id: params.companyId,
     p_branch_id: params.branchId,
@@ -745,8 +804,8 @@ export async function recordSupplierPayment(params: {
     p_payment_method: params.paymentMethod,
     p_payment_date: params.paymentDate,
     p_payment_account_id: params.paymentAccountId,
-    p_reference_number: refNum,
-    p_notes: params.notes ?? null,
+    p_reference_number: null,
+    p_notes: composedNotes || null,
     p_created_by: params.userId ?? null,
   });
   if (error) {
@@ -755,10 +814,13 @@ export async function recordSupplierPayment(params: {
       msg +=
         ' Apply migration migrations/20260449_record_payment_with_accounting_payment_status_cast.sql on Postgres (then NOTIFY pgrst reload if self-hosted).';
     }
-    return { data: null, error: msg };
+    return { data: null, error: appendPayReferenceAllocationHint(msg) };
   }
   const res = data as { success?: boolean; payment_id?: string; error?: string };
-  if (res?.success && res.payment_id) return { data: { payment_id: res.payment_id, reference_number: refNum }, error: null };
+  if (res?.success && res.payment_id) {
+    const rpcRef = (res as { reference_number?: string | null }).reference_number ?? null;
+    return { data: { payment_id: res.payment_id, reference_number: rpcRef }, error: null };
+  }
   let rpcErr = res?.error ?? 'Payment failed.';
   if (
     typeof rpcErr === 'string' &&
@@ -768,7 +830,11 @@ export async function recordSupplierPayment(params: {
     rpcErr +=
       ' Apply migration migrations/20260449_record_payment_with_accounting_payment_status_cast.sql on Postgres.';
   }
-  return { data: null, error: rpcErr };
+  return {
+    data: null,
+    error:
+      typeof rpcErr === 'string' ? appendPayReferenceAllocationHint(rpcErr) : rpcErr,
+  };
 }
 
 export interface WorkerWithPayable {

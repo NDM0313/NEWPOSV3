@@ -6,6 +6,15 @@ import {
   postRentalPartyRevenueJournalMobile,
 } from './rentalBookingAccounting';
 
+/** When branchId is 'default', use first branch — RPC requires a UUID. */
+async function resolveBranchId(companyId: string, branchId: string): Promise<string> {
+  if (branchId && branchId !== 'default') return branchId;
+  const { data } = await supabase.from('branches').select('id').eq('company_id', companyId).limit(1).maybeSingle();
+  const first = data?.id ?? null;
+  if (!first) throw new Error('No branch set up. Add a branch in Settings to create rentals.');
+  return first;
+}
+
 /** UI status: map DB status (picked_up, active, closed) to web-like labels */
 export function mapRentalStatus(dbStatus: string): string {
   const m: Record<string, string> = {
@@ -179,10 +188,14 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
       ? Math.round(commissionEligible * (commissionPct / 100) * 100) / 100
       : 0;
 
-  const rentalInsert: Record<string, unknown> = {
-    company_id: companyId,
-    branch_id: branchId,
-    booking_no: null,
+  let effectiveBranchId: string;
+  try {
+    effectiveBranchId = await resolveBranchId(companyId, branchId);
+  } catch (err) {
+    return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
+  }
+
+  const rentalPayload: Record<string, unknown> = {
     booking_date: bookingDate,
     customer_id: customerId,
     customer_name: customerName,
@@ -196,52 +209,26 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     paid_amount: paidAmount,
     due_amount: dueAmount,
     notes,
-    created_by: userId,
   };
-  if (salesmanId) rentalInsert.salesman_id = salesmanId;
+  if (salesmanId) rentalPayload.salesman_id = salesmanId;
   if (commissionPct != null && salesmanId) {
-    rentalInsert.commission_percent = commissionPct;
-    rentalInsert.commission_amount = commissionAmount;
-    rentalInsert.commission_eligible_amount = commissionEligible;
-    rentalInsert.commission_status = commissionAmount > 0 ? 'pending' : null;
+    rentalPayload.commission_percent = commissionPct;
+    rentalPayload.commission_amount = commissionAmount;
+    rentalPayload.commission_eligible_amount = commissionEligible;
+    rentalPayload.commission_status = commissionAmount > 0 ? 'pending' : null;
   }
   if (normalizedExpenses.length > 0 && normalizedExpenseTotal > 0) {
-    rentalInsert.rental_expenses = normalizedExpenses;
+    rentalPayload.rental_expenses = normalizedExpenses;
   }
-  if (securityDocumentType) rentalInsert.security_document_type = securityDocumentType;
-  if (securityDocumentNumber) rentalInsert.security_document_number = securityDocumentNumber.trim() || null;
-  if (securityDocumentImageUrl) rentalInsert.security_document_image_url = securityDocumentImageUrl;
+  if (securityDocumentType) rentalPayload.security_document_type = securityDocumentType;
+  if (securityDocumentNumber) rentalPayload.security_document_number = securityDocumentNumber.trim() || null;
+  if (securityDocumentImageUrl) rentalPayload.security_document_image_url = securityDocumentImageUrl;
   if (securityDocumentType || securityDocumentNumber || securityDocumentImageUrl) {
-    rentalInsert.security_status = 'collected';
+    rentalPayload.security_status = 'collected';
   }
 
-  let rentalData: { id: string; booking_no?: string | null } | null = null;
-  const firstIns = await supabase.from('rentals').insert(rentalInsert).select('id, booking_no').single();
-  if (firstIns.error) {
-    const msg = String(firstIns.error.message || '');
-    if (msg.includes('rental_expenses') || msg.includes('commission') || msg.includes('salesman_id')) {
-      const fallback: Record<string, unknown> = { ...rentalInsert };
-      delete fallback.rental_expenses;
-      delete fallback.salesman_id;
-      delete fallback.commission_percent;
-      delete fallback.commission_amount;
-      delete fallback.commission_eligible_amount;
-      delete fallback.commission_status;
-      const retry = await supabase.from('rentals').insert(fallback).select('id, booking_no').single();
-      if (retry.error) return { data: null, error: retry.error.message };
-      rentalData = retry.data as { id: string; booking_no?: string | null };
-    } else {
-      return { data: null, error: firstIns.error.message };
-    }
-  } else {
-    rentalData = firstIns.data as { id: string; booking_no?: string | null };
-  }
-
-  if (!rentalData?.id) return { data: null, error: 'Rental insert failed.' };
-
-  const itemsPayload = items.map((i) => {
+  const itemsJson = items.map((i) => {
     const row: Record<string, unknown> = {
-      rental_id: rentalData.id,
       product_id: i.productId,
       product_name: i.variationLabel ? `${i.productName} — ${i.variationLabel}` : i.productName,
       quantity: i.quantity,
@@ -253,20 +240,41 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     return row;
   });
 
-  let { error: itemsError } = await supabase.from('rental_items').insert(itemsPayload);
-  if (itemsError && /variation_id|column/i.test(itemsError.message ?? '')) {
-    const stripped = itemsPayload.map((row) => {
-      const clone: Record<string, unknown> = { ...row };
-      delete clone.variation_id;
-      return clone;
+  let rpcBody = rentalPayload;
+  const tryRpc = async (payload: Record<string, unknown>) =>
+    supabase.rpc('create_rental_booking', {
+      p_company_id: companyId,
+      p_branch_id: effectiveBranchId,
+      p_rental: payload,
+      p_items: itemsJson,
+      p_created_by: userId,
     });
-    const retry = await supabase.from('rental_items').insert(stripped);
-    itemsError = retry.error ?? null;
+
+  let { data: rpcRaw, error: rpcErr } = await tryRpc(rpcBody);
+  if (rpcErr) {
+    const msg = String(rpcErr.message || '');
+    if (msg.includes('rental_expenses') || msg.includes('commission') || msg.includes('salesman_id')) {
+      const fallback = { ...rentalPayload };
+      delete fallback.rental_expenses;
+      delete fallback.salesman_id;
+      delete fallback.commission_percent;
+      delete fallback.commission_amount;
+      delete fallback.commission_eligible_amount;
+      delete fallback.commission_status;
+      rpcBody = fallback;
+      const retry = await tryRpc(fallback);
+      rpcRaw = retry.data;
+      rpcErr = retry.error;
+    }
   }
-  if (itemsError) {
-    await supabase.from('rentals').delete().eq('id', rentalData.id);
-    return { data: null, error: itemsError.message };
+  if (rpcErr) return { data: null, error: rpcErr.message };
+
+  const rpc = rpcRaw as { success?: boolean; rental_id?: string; booking_no?: string; error?: string } | null;
+  if (!rpc?.success || !rpc.rental_id) {
+    return { data: null, error: rpc?.error ?? 'Rental create failed.' };
   }
+
+  const rentalData = { id: rpc.rental_id, booking_no: rpc.booking_no ?? null };
 
   const bookingNoDisplay = rentalData.booking_no || `RNT-${rentalData.id.slice(0, 8)}`;
 
@@ -313,7 +321,7 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
 
     const je = await postRentalAdvanceJournalMobile({
       companyId,
-      branchId,
+      branchId: effectiveBranchId,
       rentalId: rentalData.id,
       bookingNo: bookingNoDisplay,
       customerName: customerName,
@@ -339,7 +347,7 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
   } else if (customerId && rentalCharges > 0) {
     const rev = await postRentalPartyRevenueJournalMobile({
       companyId,
-      branchId,
+      branchId: effectiveBranchId,
       rentalId: rentalData.id,
       customerId,
       customerName,
@@ -355,7 +363,7 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
   if (normalizedExpenses.length > 0 && normalizedExpenseTotal > 0) {
     const exJe = await postRentalExpenseJournalMobile({
       companyId,
-      branchId,
+      branchId: effectiveBranchId,
       rentalId: rentalData.id,
       bookingNo: bookingNoDisplay,
       expenses: normalizedExpenses,

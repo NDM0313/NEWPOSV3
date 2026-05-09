@@ -2248,6 +2248,8 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
                                                                     <span className="text-xs text-gray-500 truncate">
                                                                         {p.reference && `Ref: ${p.reference}`}
                                                                         {p.reference && (p.notes || (p.attachments?.length ?? 0) > 0) && ' · '}
+                                                                        {p.notes && `Note: ${p.notes}`}
+                                                                        {p.notes && (p.attachments?.length ?? 0) > 0 && ' · '}
                                                                         {(p.attachments?.length ?? 0) > 0 && `${p.attachments!.length} file(s)`}
                                                                     </span>
                                                                 )}

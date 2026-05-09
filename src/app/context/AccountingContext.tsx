@@ -626,8 +626,9 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
 
     const saleInvDisplay = (journalEntry as { _display_sale_invoice_no?: string })._display_sale_invoice_no;
     const purPoDisplay = (journalEntry as { _display_purchase_po_no?: string })._display_purchase_po_no;
+    // Prefer payment voucher (list/enriched or embedded join) before PO/invoice so supplier settlement shows PAY-xx not PUR-xx.
     const operationalRef =
-      listPaymentRef || saleInvDisplay || purPoDisplay || embeddedPaymentRef || undefined;
+      listPaymentRef || embeddedPaymentRef || saleInvDisplay || purPoDisplay || undefined;
     const referenceNo =
       operationalRef || journalEntry.entry_no || journalEntry.id?.substring(0, 8) || 'N/A';
     if (operationalRef) metadata.documentNo = operationalRef;

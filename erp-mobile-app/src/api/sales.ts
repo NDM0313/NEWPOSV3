@@ -1,5 +1,4 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { getNextDocumentNumber } from './documentNumber';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -51,16 +50,6 @@ async function resolveBranchId(companyId: string, branchId: string): Promise<str
   return first;
 }
 
-/**
- * Get next invoice number from server – ATOMIC, same engine as Web (Settings → Numbering Rules).
- * Uses generate_document_number via getNextDocumentNumber. Studio → STD-xxx, regular → SL-xxx.
- * When branchId is 'default', uses first branch of company (RPC requires UUID).
- */
-async function getNextInvoiceNumber(companyId: string, branchId: string, isStudio: boolean): Promise<string> {
-  const effectiveBranchId = await resolveBranchId(companyId, branchId);
-  return getNextDocumentNumber(companyId, effectiveBranchId, isStudio ? 'studio' : 'sale');
-}
-
 export async function createSale(input: CreateSaleInput): Promise<{ data: { id: string; invoiceNo: string } | null; error: string | null }> {
   if (!isSupabaseConfigured) {
     return { data: null, error: 'App not configured.' };
@@ -82,13 +71,6 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
   }
 
-  let invoiceNo: string;
-  try {
-    invoiceNo = await getNextInvoiceNumber(companyId, effectiveBranchId, !!isStudio);
-  } catch (err) {
-    return { data: null, error: (err as Error).message ?? 'Failed to get invoice number' };
-  }
-
   const totalNum = Number(total) || 0;
   const isCredit = String(paymentMethod || '').toLowerCase() === 'credit';
   const isSplit = paidAmount != null && dueAmount != null;
@@ -98,90 +80,56 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
   const paid = isStudio ? 0 : paidNonStudio;
   const due = isStudio ? totalNum : dueNonStudio;
 
-  const isDuplicateDocNumberError = (err: { code?: string; message?: string } | null) =>
-    err?.code === '23505' ||
-    (err?.message != null &&
-      (String(err.message).includes('sales_company_branch_invoice_unique') ||
-        String(err.message).includes('order_no') ||
-        String(err.message).includes('invoice_no')));
-
-  const saleRowBaseRegular = {
-    company_id: companyId,
-    branch_id: effectiveBranchId,
-    invoice_date: new Date().toISOString(),
+  const invDate = new Date().toISOString().slice(0, 10);
+  const salePayload: Record<string, unknown> = {
+    invoice_date: invDate,
     customer_id: customerId || null,
     customer_name: customerName || 'Walk-in',
     contact_number: contactNumber || null,
-    type: 'invoice' as const,
-    status: 'final' as const,
-    payment_status: due > 0 ? (paid > 0 ? 'partial' : 'unpaid') : 'paid',
-    payment_method: paymentMethod || 'Cash',
     subtotal: Number(subtotal) || 0,
     discount_amount: Number(discountAmount) || 0,
     tax_amount: Number(taxAmount) || 0,
     expenses: Number(expenses) || 0,
     total: totalNum,
-    paid_amount: paid,
-    due_amount: due,
-    created_by: userId,
-    is_studio: false,
     notes: notes || null,
-    ...(deadline != null && deadline !== '' && { deadline: deadline }),
   };
+  if (deadline != null && deadline !== '') salePayload.deadline = deadline;
 
-  const saleRowBaseStudio = {
-    company_id: companyId,
-    branch_id: effectiveBranchId,
-    invoice_date: new Date().toISOString(),
-    customer_id: customerId || null,
-    customer_name: customerName || 'Walk-in',
-    contact_number: contactNumber || null,
-    type: 'quotation' as const,
-    status: 'order' as const,
-    payment_status: 'unpaid' as const,
-    payment_method: paymentMethod || 'Credit',
-    subtotal: Number(subtotal) || 0,
-    discount_amount: Number(discountAmount) || 0,
-    tax_amount: Number(taxAmount) || 0,
-    expenses: Number(expenses) || 0,
-    total: totalNum,
-    paid_amount: 0,
-    due_amount: totalNum,
-    created_by: userId,
-    is_studio: true,
-    notes: notes || null,
-    ...(deadline != null && deadline !== '' && { deadline: deadline }),
-  };
-
-  let docNo = invoiceNo;
-  let saleRow: Record<string, unknown> = isStudio
-    ? { ...saleRowBaseStudio, order_no: docNo }
-    : { ...saleRowBaseRegular, invoice_no: docNo };
-  let saleData: { id: string } | null = null;
-  let saleError: { code?: string; message?: string } | null = null;
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const result = await supabase.from('sales').insert(saleRow).select('id').single();
-    saleData = result.data as { id: string } | null;
-    saleError = result.error;
-    if (!saleError) break;
-    if (attempt === 0 && isDuplicateDocNumberError(saleError)) {
-      try {
-        docNo = await getNextInvoiceNumber(companyId, effectiveBranchId, !!isStudio);
-        saleRow = isStudio ? { ...saleRowBaseStudio, order_no: docNo } : { ...saleRowBaseRegular, invoice_no: docNo };
-      } catch {
-        break;
-      }
-    } else {
-      break;
-    }
+  if (isStudio) {
+    salePayload.type = 'quotation';
+    salePayload.status = 'order';
+    salePayload.payment_status = 'unpaid';
+    salePayload.payment_method = paymentMethod || 'Credit';
+    salePayload.paid_amount = 0;
+    salePayload.due_amount = totalNum;
+  } else {
+    salePayload.type = 'invoice';
+    salePayload.status = 'final';
+    salePayload.payment_status = due > 0 ? (paid > 0 ? 'partial' : 'unpaid') : 'paid';
+    salePayload.payment_method = paymentMethod || 'Cash';
+    salePayload.paid_amount = paid;
+    salePayload.due_amount = due;
   }
 
-  if (saleError || !saleData) {
-    return { data: null, error: saleError?.message ?? 'Failed to create sale.' };
+  const { data: hdrRaw, error: hdrErr } = await supabase.rpc('create_sale_document_header', {
+    p_company_id: companyId,
+    p_branch_id: effectiveBranchId,
+    p_is_studio: !!isStudio,
+    p_sale: salePayload,
+    p_created_by: userId,
+  });
+
+  if (hdrErr) {
+    return { data: null, error: hdrErr.message };
   }
 
-  const saleId = saleData.id;
+  const hdr = hdrRaw as { success?: boolean; sale_id?: string; document_no?: string; error?: string } | null;
+  if (!hdr?.success || !hdr.sale_id) {
+    return { data: null, error: hdr?.error ?? 'Failed to create sale.' };
+  }
+
+  const saleId = hdr.sale_id;
+  const docNo = String(hdr.document_no ?? '');
   const itemsWithSaleId = items.map((item) => {
     const row: Record<string, unknown> = {
       sale_id: saleId,
@@ -315,10 +263,8 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     }
   }
 
-  const displayDocNo =
-    isStudio ? String((saleRow.order_no as string) ?? docNo) : String((saleRow.invoice_no as string) ?? docNo);
   return {
-    data: { id: saleId, invoiceNo: displayDocNo },
+    data: { id: saleId, invoiceNo: docNo },
     error: null,
   };
 }
@@ -682,11 +628,11 @@ export async function recordSalePayment(params: {
     wallet: 'other',
   };
   const enumMethod = methodMap[normalized] || 'cash';
-  // When the caller did not pass a reference, let the DB trigger assign a unique
-  // value atomically. This avoids the payments_reference_number_unique race
-  // condition we saw when two client-side document-number lookups landed the
-  // same next value.
-  const refNum: string | null = referenceNumber && referenceNumber.trim() ? referenceNumber.trim() : null;
+  const bankTraceId = referenceNumber?.trim() ?? '';
+  const baseNotes = notes?.trim() ?? '';
+  const composedNotes = bankTraceId
+    ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${bankTraceId}`
+    : baseNotes;
   const dateVal = paymentDate || new Date().toISOString().split('T')[0];
   const { data, error } = await supabase.rpc('record_payment_with_accounting', {
     p_company_id: companyId,
@@ -698,8 +644,8 @@ export async function recordSalePayment(params: {
     p_payment_method: enumMethod,
     p_payment_date: dateVal,
     p_payment_account_id: paymentAccountId,
-    p_reference_number: refNum,
-    p_notes: notes ?? null,
+    p_reference_number: null,
+    p_notes: composedNotes || null,
     p_created_by: userId ?? null,
   });
   if (error) return { data: null, error: error.message };
@@ -739,6 +685,10 @@ export async function recordCustomerPayment(params: {
   }
   const dateVal = paymentDate || new Date().toISOString().split('T')[0];
   const refTrim = referenceNumber != null ? String(referenceNumber).trim() : '';
+  const baseNotes = notes?.trim() ?? '';
+  const composedNotes = refTrim
+    ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${refTrim}`
+    : baseNotes;
   const { data, error } = await supabase.rpc('record_customer_payment', {
     p_company_id: companyId,
     p_customer_id: customerId || null,
@@ -747,9 +697,9 @@ export async function recordCustomerPayment(params: {
     p_account_id: accountId,
     p_payment_method: paymentMethod || 'cash',
     p_payment_date: dateVal,
-    p_notes: notes ?? null,
+    p_notes: composedNotes || null,
     p_created_by: createdBy ?? null,
-    p_reference_number_override: refTrim !== '' ? refTrim : null,
+    p_reference_number_override: null,
   });
   if (error) return { data: null, error: error.message };
   const res = data as { success?: boolean; payment_id?: string; reference_number?: string; error?: string } | null;
@@ -763,13 +713,21 @@ export type PaymentAttachment = { url: string; name: string };
 
 /** Get payment history for a sale (including attachments for preview) */
 export async function getSalePayments(saleId: string): Promise<{
-  data: Array<{ id: string; date: string; amount: number; method: string; referenceNo: string; attachments?: PaymentAttachment[] }>;
+  data: Array<{
+    id: string;
+    date: string;
+    amount: number;
+    method: string;
+    referenceNo: string;
+    notes?: string;
+    attachments?: PaymentAttachment[];
+  }>;
   error: string | null;
 }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const { data, error } = await supabase
     .from('payments')
-    .select('id, payment_date, reference_number, amount, payment_method, attachments, voided_at')
+    .select('id, payment_date, reference_number, amount, payment_method, notes, attachments, voided_at')
     .eq('reference_type', 'sale')
     .eq('reference_id', saleId)
     .is('voided_at', null)
@@ -792,11 +750,20 @@ export async function getSalePayments(saleId: string): Promise<{
       amount: Number(p.amount ?? 0),
       method: String(p.payment_method ?? '—'),
       referenceNo: String(p.reference_number ?? '—'),
+      notes: p.notes != null && String(p.notes).trim() !== '' ? String(p.notes) : undefined,
       attachments: attachments?.length ? attachments : undefined,
     };
   });
 
-  const allocRows: Array<{ id: string; date: string; amount: number; method: string; referenceNo: string; attachments?: PaymentAttachment[] }> = [];
+  const allocRows: Array<{
+    id: string;
+    date: string;
+    amount: number;
+    method: string;
+    referenceNo: string;
+    notes?: string;
+    attachments?: PaymentAttachment[];
+  }> = [];
   try {
     const { data: allocs } = await supabase
       .from('payment_allocations')
@@ -806,7 +773,7 @@ export async function getSalePayments(saleId: string): Promise<{
     if (payIds.length > 0) {
       const { data: parents } = await supabase
         .from('payments')
-        .select('id, payment_date, reference_number, amount, payment_method, attachments, voided_at')
+        .select('id, payment_date, reference_number, amount, payment_method, notes, attachments, voided_at')
         .in('id', payIds);
       const parentById = new Map((parents || []).map((pr: Record<string, unknown>) => [String(pr.id), pr]));
       for (const a of allocs || []) {
@@ -828,6 +795,7 @@ export async function getSalePayments(saleId: string): Promise<{
           amount: Number(row.allocated_amount ?? 0),
           method: String(pr.payment_method ?? '—'),
           referenceNo: `${String(pr.reference_number ?? '—')} (alloc #${ord || '—'})`,
+          notes: pr.notes != null && String(pr.notes).trim() !== '' ? String(pr.notes) : undefined,
           attachments: attachments?.length ? attachments : undefined,
         });
       }

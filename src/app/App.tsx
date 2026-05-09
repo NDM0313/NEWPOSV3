@@ -543,23 +543,26 @@ export default function App() {
             <GlobalFilterProvider>
               <ModuleProvider>
                 <AccountingProvider>
-                  <SettingsProvider>
-                    <SalesProvider>
-                      <PurchaseProvider>
-                        <RentalProvider>
-                          <ExpenseProvider>
-                            <ProductionProvider>
-                              <NavigationProvider>
-                                <AppContent />
-                                <Toaster position="bottom-right" theme="dark" />
-                                <KeyboardShortcutsModal />
-                              </NavigationProvider>
-                            </ProductionProvider>
-                          </ExpenseProvider>
-                        </RentalProvider>
-                      </PurchaseProvider>
-                    </SalesProvider>
-                  </SettingsProvider>
+                  {/* Inner boundary: feature/UI errors must not unmount AccountingProvider (outer boundary replaces entire tree). */}
+                  <ErrorBoundary>
+                    <SettingsProvider>
+                      <SalesProvider>
+                        <PurchaseProvider>
+                          <RentalProvider>
+                            <ExpenseProvider>
+                              <ProductionProvider>
+                                <NavigationProvider>
+                                  <AppContent />
+                                  <Toaster position="bottom-right" theme="dark" />
+                                  <KeyboardShortcutsModal />
+                                </NavigationProvider>
+                              </ProductionProvider>
+                            </ExpenseProvider>
+                          </RentalProvider>
+                        </PurchaseProvider>
+                      </SalesProvider>
+                    </SettingsProvider>
+                  </ErrorBoundary>
                 </AccountingProvider>
               </ModuleProvider>
             </GlobalFilterProvider>

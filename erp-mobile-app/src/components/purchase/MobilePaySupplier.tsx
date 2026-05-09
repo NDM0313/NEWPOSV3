@@ -38,7 +38,6 @@ export function MobilePaySupplier({
   const handleSubmit = async (payload: MobilePaymentSheetSubmitPayload): Promise<MobilePaymentSheetSubmitResult> => {
     const methodForRpc =
       payload.method === 'wallet' ? 'other' : payload.method === 'card' ? 'card' : payload.method;
-
     const { data, error } = await recordSupplierPayment({
       companyId,
       branchId,
@@ -48,6 +47,7 @@ export function MobilePaySupplier({
       paymentAccountId: payload.accountId,
       paymentMethod: methodForRpc,
       userId: userId ?? undefined,
+      reference: payload.reference || undefined,
       notes: payload.notes || undefined,
     });
 

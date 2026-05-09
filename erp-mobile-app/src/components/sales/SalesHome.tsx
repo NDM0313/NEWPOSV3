@@ -124,7 +124,17 @@ export function SalesHome({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
   const [menuSale, setMenuSale] = useState<SaleRecord | null>(null);
-  const [paymentHistory, setPaymentHistory] = useState<Array<{ id: string; date: string; amount: number; method: string; referenceNo: string; attachments?: { url: string; name: string }[] }>>([]);
+  const [paymentHistory, setPaymentHistory] = useState<
+    Array<{
+      id: string;
+      date: string;
+      amount: number;
+      method: string;
+      referenceNo: string;
+      notes?: string;
+      attachments?: { url: string; name: string }[];
+    }>
+  >([]);
   const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
   const [studioSummary, setStudioSummary] = useState<{
     has_studio: boolean;
@@ -1156,6 +1166,7 @@ export function SalesHome({
                       <p className="text-white font-medium">Rs. {p.amount.toLocaleString()}</p>
                       <p className="text-xs text-[#9CA3AF]">{p.method} • {p.date}</p>
                       {p.referenceNo !== '—' && <p className="text-xs text-[#6B7280]">Ref: {p.referenceNo}</p>}
+                      {p.notes && <p className="text-xs text-[#9CA3AF] mt-1 break-words">{p.notes}</p>}
                     </div>
                     {p.attachments && p.attachments.length > 0 && (
                       <button

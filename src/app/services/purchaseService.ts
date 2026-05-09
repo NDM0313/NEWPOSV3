@@ -83,6 +83,15 @@ async function enrichPurchasesWithCreatorNames(purchases: any[]): Promise<void> 
   });
 }
 
+function buildPaymentNote(extraDescription?: string | null, bankTraceId?: string | null): string | null {
+  const parts: string[] = [];
+  const extra = String(extraDescription ?? '').trim();
+  const trace = String(bankTraceId ?? '').trim();
+  if (extra) parts.push(extra);
+  if (trace) parts.push(`Bank Trace ID: ${trace}`);
+  return parts.length ? parts.join(' | ') : null;
+}
+
 export interface Purchase {
   id?: string;
   company_id: string;
@@ -1259,7 +1268,7 @@ export const purchaseService = {
 
   // Record payment – allowed only when purchase status is final or received (DB enum — no `completed`).
   // Uses canonical supplierPaymentService: one payments row + one journal entry (no duplicate JE).
-  async recordPayment(purchaseId: string, amount: number, paymentMethod: string, accountId: string, companyId: string, branchId?: string | null, _referenceNumber?: string | null, options?: { notes?: string; attachments?: any }) {
+  async recordPayment(purchaseId: string, amount: number, paymentMethod: string, accountId: string, companyId: string, branchId?: string | null, referenceNumber?: string | null, options?: { notes?: string; attachments?: any }) {
     const maxAttempts = 3;
     let purchase: { id: string; status?: string; branch_id?: string | null } | null = null;
     let lastFetchError: unknown = null;
@@ -1317,7 +1326,7 @@ export const purchaseService = {
       paymentAccountId: accountId,
       purchaseId,
       paymentDate: new Date().toISOString().split('T')[0],
-      notes: options?.notes,
+      notes: buildPaymentNote(options?.notes, referenceNumber),
       attachments: options?.attachments,
     });
 
@@ -1362,7 +1371,7 @@ export const purchaseService = {
       contactId,
       supplierName: contactName,
       paymentDate: paymentDate || new Date().toISOString().split('T')[0],
-      notes: options?.notes,
+      notes: buildPaymentNote(options?.notes, null),
       attachments: options?.attachments,
     });
     return { id: result.paymentId, reference_number: result.referenceNumber };

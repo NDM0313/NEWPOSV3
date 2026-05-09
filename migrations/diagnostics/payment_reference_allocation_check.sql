@@ -5,7 +5,7 @@
 -- ============================================================================
 
 WITH params AS (
-  SELECT 'PASTE_COMPANY_UUID'::uuid AS company_id
+  SELECT '375fa03b-8e1e-46d3-9cfe-1cc20c02b473'::uuid AS company_id
 )
 
 -- 1) Duplicate reference_number (should return no rows in steady state)
@@ -24,7 +24,7 @@ ORDER BY use_count DESC;
 
 -- 2) Sequence drift: max numeric suffix in payments vs erp_document_sequences (PAYMENT)
 WITH params AS (
-  SELECT 'PASTE_COMPANY_UUID'::uuid AS company_id
+  SELECT '375fa03b-8e1e-46d3-9cfe-1cc20c02b473'::uuid AS company_id
 ),
 pay_max AS (
   SELECT COALESCE(MAX(CAST(SUBSTRING(p.reference_number FROM '([0-9]+)$') AS BIGINT)), 0) AS observed

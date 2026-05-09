@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Wallet, Building2, CreditCard, AlertCircle, Check, ChevronDown, Upload, FileText, Calendar, Clock, Trash2, History, Banknote } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
-import { useAccounting, type PaymentMethod, type Account } from '@/app/context/AccountingContext';
+import { useAccountingOptional, type PaymentMethod, type Account } from '@/app/context/AccountingContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -162,7 +162,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     return base;
   })();
 
-  const accounting = useAccounting();
+  const accounting = useAccountingOptional();
   const settings = useSettings();
   const { formatCurrency } = useFormatCurrency();
   const { branchId, companyId, user } = useSupabase();
@@ -286,10 +286,10 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
   // Refresh accounts when dialog opens so user-assigned accounts (user_account_access) are visible after RLS
   React.useEffect(() => {
-    if (isOpen && companyId) {
+    if (isOpen && companyId && accounting) {
       accounting.refreshEntries().catch(() => {});
     }
-  }, [isOpen, companyId]);
+  }, [isOpen, companyId, accounting]);
 
   // Normalize payment method for matching DB types (cash, bank, mobile_wallet)
   const normalizePaymentType = (t: string) => String(t || '').toLowerCase().trim().replace(/\s+/g, '_');
@@ -302,7 +302,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     const isBank = methodNorm === 'bank';
     const isWallet = methodNorm === 'mobile_wallet' || methodNorm === 'mobilewallet';
 
-    return accounting.accounts.filter(account => {
+    return (accounting?.accounts ?? []).filter(account => {
       if (account.isActive === false) return false;
 
       const accType = normalizePaymentType(String((account as any).type ?? account.accountType ?? ''));
@@ -353,7 +353,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     if (!editMode || !paymentToEdit?.accountId || userPickedPaymentMethodRef.current) return filtered;
     const savedId = String(paymentToEdit.accountId).trim();
     if (!savedId || filtered.some((a) => a.id === savedId)) return filtered;
-    const saved = accounting.accounts.find((a) => a.id === savedId);
+    const saved = (accounting?.accounts ?? []).find((a) => a.id === savedId);
     if (!saved) return filtered;
     return [saved, ...filtered];
   };
@@ -366,10 +366,10 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     const savedEditId = editMode && paymentToEdit?.accountId ? String(paymentToEdit.accountId).trim() : '';
 
     if (savedEditId) {
-      if (accounting.accounts.length === 0) {
+      if ((accounting?.accounts ?? []).length === 0) {
         return;
       }
-      const savedRow = accounting.accounts.find((a) => a.id === savedEditId);
+      const savedRow = (accounting?.accounts ?? []).find((a) => a.id === savedEditId);
       if (savedRow && !userPickedPaymentMethodRef.current) {
         const inFiltered = filteredAccounts.some((a) => a.id === savedEditId);
         if (!inFiltered) {
@@ -433,7 +433,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   }, [
     paymentMethod,
     settings.defaultAccounts,
-    accounting.accounts,
+    accounting?.accounts,
     companyId,
     isOpen,
     branchId,
@@ -532,10 +532,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   const labels = getContextLabels();
 
   // 🎯 Validation - Account ALWAYS required. On-account (no referenceId): any positive amount; document-linked: cap by outstanding
-  const canSubmit = 
-    amount > 0 && 
+  const canSubmit =
+    amount > 0 &&
     selectedAccount !== '' &&
     !isProcessing &&
+    !!accounting &&
     (referenceId ? amount <= effectiveOutstanding : true);
 
   // Handle payment submission
@@ -557,6 +558,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     }
     
     if (!canSubmit) return;
+
+    if (!accounting) {
+      toast.error('Accounting is not ready. Refresh the page or try again in a moment.');
+      return;
+    }
 
     setIsProcessing(true);
 
@@ -1299,7 +1305,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       }
 
       if (success) {
-        const selectedAccountDetails = accounting.accounts.find(a => a.id === selectedAccount);
+        const selectedAccountDetails = accounting?.accounts.find(a => a.id === selectedAccount);
         const accountInfo = selectedAccountDetails ? ` from ${selectedAccountDetails.name}` : '';
         toast.success(labels.successMessage, {
           description: `${formatCurrency(amount)} via ${paymentMethod}${accountInfo} on ${paymentDateTime}`
@@ -1372,6 +1378,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
 
           {/* Body - TWO COLUMN LAYOUT */}
           <div className="p-5">
+            {!accounting && (
+              <div className="mb-4 rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/95">
+                Accounting is not connected (this can happen after an error was recovered). Refresh the page to load chart of accounts and post payments to the ledger safely.
+              </div>
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               
               {/* LEFT COLUMN */}
@@ -1619,7 +1630,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                     </p>
                   )}
                   {selectedAccount && (() => {
-                    const account = accounting.accounts.find(a => a.id === selectedAccount);
+                    const account = (accounting?.accounts ?? []).find(a => a.id === selectedAccount);
                     const bal = account ? Number(account.balance) || 0 : 0;
                     if (account && amount > bal) {
                       return (

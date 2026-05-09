@@ -32,6 +32,15 @@ export interface CreatePurchaseInput {
   userId: string;
 }
 
+/** When branchId is 'default', use first branch — create RPC requires a UUID. */
+async function resolveBranchId(companyId: string, branchId: string): Promise<string> {
+  if (branchId && branchId !== 'default') return branchId;
+  const { data } = await supabase.from('branches').select('id').eq('company_id', companyId).limit(1).maybeSingle();
+  const first = data?.id ?? null;
+  if (!first) throw new Error('No branch set up. Add a branch on the Branch screen or in Settings to create purchases.');
+  return first;
+}
+
 const PURCHASE_ATTACHMENTS_BUCKET = 'purchase-attachments';
 const MAX_PURCHASE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
 
@@ -76,23 +85,6 @@ export async function uploadPurchaseAttachments(
   return { data: uploaded, error: null };
 }
 
-/**
- * Get next purchase number from server (company-level global sequence).
- * Uses same global allocator as web PurchaseContext (PDR/POR/PUR by status).
- */
-async function getNextPONumber(companyId: string, status: PurchaseStatus): Promise<string> {
-  const code: 'PDR' | 'POR' | 'PUR' =
-    status === 'ordered' ? 'POR' : status === 'draft' ? 'PDR' : 'PUR';
-  const { data, error } = await supabase.rpc('get_next_document_number_global', {
-    p_company_id: companyId,
-    p_type: code,
-  });
-  if (error || typeof data !== 'string' || !data) {
-    throw new Error(error?.message || 'Failed to get purchase document number');
-  }
-  return data;
-}
-
 export async function createPurchase(
   input: CreatePurchaseInput
 ): Promise<{ data: { id: string; poNo: string } | null; error: string | null }> {
@@ -128,52 +120,62 @@ export async function createPurchase(
     return { data: null, error: 'No items in purchase.' };
   }
 
-  let poNo: string;
+  let effectiveBranchId: string;
   try {
-    poNo = await getNextPONumber(companyId, status);
+    effectiveBranchId = await resolveBranchId(companyId, branchId);
   } catch (err) {
-    return { data: null, error: (err as Error).message ?? 'Failed to get PO number' };
+    return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
   }
 
   const paid = Math.max(0, Math.min(Number(paidAmount) || 0, Number(total) || 0));
   const due = Math.max(0, (Number(total) || 0) - paid);
   const paymentStatus = paid <= 0 ? 'unpaid' : paid >= (Number(total) || 0) ? 'paid' : 'partial';
 
-  const purchaseRow = {
-    company_id: companyId,
-    branch_id: branchId,
-    po_no: status === 'ordered' || status === 'draft' ? null : poNo,
-    order_no: status === 'ordered' ? poNo : null,
-    draft_no: status === 'draft' ? poNo : null,
-    po_date: new Date().toISOString(),
-    supplier_id: supplierId || null,
-    supplier_name: supplierName || 'Unknown',
-    contact_number: contactNumber || null,
-    status: status as string,
-    payment_status: paymentStatus,
-    subtotal: Number(subtotal) || 0,
-    discount_amount: Number(discountAmount) || 0,
-    tax_amount: Number(taxAmount) || 0,
-    shipping_cost: Number(shippingCost) || 0,
-    total: Number(total) || 0,
-    paid_amount: paid,
-    due_amount: due,
-    notes: notes || null,
-    attachments: Array.isArray(attachments) && attachments.length > 0 ? attachments : null,
-    created_by: userId,
-  };
+  const { data: hdrRaw, error: hdrErr } = await supabase.rpc('create_purchase_document_header', {
+    p_company_id: companyId,
+    p_branch_id: effectiveBranchId,
+    p_purchase: {
+      po_date: new Date().toISOString().slice(0, 10),
+      supplier_id: supplierId || null,
+      supplier_name: supplierName || 'Unknown',
+      contact_number: contactNumber || null,
+      status,
+      payment_status: paymentStatus,
+      subtotal: Number(subtotal) || 0,
+      discount_amount: Number(discountAmount) || 0,
+      tax_amount: Number(taxAmount) || 0,
+      shipping_cost: Number(shippingCost) || 0,
+      total: Number(total) || 0,
+      paid_amount: paid,
+      due_amount: due,
+      notes: notes || null,
+      attachments: Array.isArray(attachments) && attachments.length > 0 ? attachments : null,
+    },
+    p_created_by: userId,
+  });
 
-  const { data: purchaseData, error: purchaseError } = await supabase
-    .from('purchases')
-    .insert(purchaseRow)
-    .select('id')
-    .single();
+  if (hdrErr) return { data: null, error: hdrErr.message };
 
-  if (purchaseError) {
-    return { data: null, error: purchaseError.message };
+  const hdr = hdrRaw as {
+    success?: boolean;
+    purchase_id?: string;
+    allocated_no?: string;
+    po_no?: string | null;
+    order_no?: string | null;
+    draft_no?: string | null;
+    error?: string;
+  } | null;
+  if (!hdr?.success || !hdr.purchase_id) {
+    return { data: null, error: hdr?.error ?? 'Failed to create purchase.' };
   }
 
-  const purchaseId = purchaseData.id;
+  const purchaseId = hdr.purchase_id;
+  const poNo =
+    hdr.allocated_no ||
+    (status === 'ordered' ? hdr.order_no : null) ||
+    (status === 'draft' ? hdr.draft_no : null) ||
+    hdr.po_no ||
+    '';
   const itemsWithPurchaseId = items.map((item) => {
     const row: Record<string, unknown> = {
       purchase_id: purchaseId,
@@ -232,7 +234,7 @@ export async function createPurchase(
     const { recordSupplierPayment } = await import('./accounts');
     const payRes = await recordSupplierPayment({
       companyId,
-      branchId,
+      branchId: effectiveBranchId,
       purchaseId,
       amount: paid,
       paymentDate: new Date().toISOString().slice(0, 10),

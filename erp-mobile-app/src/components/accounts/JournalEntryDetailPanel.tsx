@@ -122,6 +122,12 @@ export function JournalEntryDetailPanel({
                 <p className="text-sm text-[#9CA3AF] mb-1">Description</p>
                 <p className="text-sm text-white">{entry.description}</p>
               </div>
+              {(detail?.payment_notes || entry.paymentNotes) && (
+                <div className="pb-3 border-b border-[#374151]">
+                  <p className="text-sm text-[#9CA3AF] mb-1">Payment Notes / Trace</p>
+                  <p className="text-sm text-white break-words">{detail?.payment_notes || entry.paymentNotes}</p>
+                </div>
+              )}
               <div className="flex justify-between pb-3 border-b border-[#374151]">
                 <span className="text-sm text-[#9CA3AF]">Total</span>
                 <span className="text-lg text-white font-bold">

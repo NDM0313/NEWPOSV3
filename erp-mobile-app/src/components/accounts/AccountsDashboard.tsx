@@ -62,6 +62,7 @@ export interface AccountEntry {
   referenceType?: string | null;
   referenceId?: string | null;
   paymentId?: string | null;
+  paymentNotes?: string | null;
 }
 
 interface AccountsDashboardProps {
@@ -274,7 +275,7 @@ export function AccountsDashboard({
         const postedAt = e.posted_at || e.created_at || null;
         return {
           id: e.id,
-          entryNumber: e.entry_no,
+          entryNumber: (e.payment_reference_number && String(e.payment_reference_number).trim()) || e.entry_no,
           type: mapReferenceTypeToEntryType(e.reference_type),
           date: e.entry_date,
           description: e.description,
@@ -293,6 +294,7 @@ export function AccountsDashboard({
           referenceType: e.reference_type,
           referenceId: e.reference_id,
           paymentId: e.payment_id ?? null,
+          paymentNotes: e.payment_notes ?? null,
         };
       });
       setEntries(mapped);

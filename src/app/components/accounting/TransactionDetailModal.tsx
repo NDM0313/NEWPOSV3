@@ -775,6 +775,16 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const payment = Array.isArray(transaction?.payment) 
     ? transaction.payment[0] 
     : transaction?.payment;
+  const paymentNotesDisplay = (() => {
+    const rawNotes = String(payment?.notes || '').trim();
+    if (!rawNotes) return '';
+
+    const docRefMatch = rawNotes.match(/invoice\/ref:\s*([^.|]+)/i);
+    const docRef = docRefMatch?.[1]?.trim() || '';
+
+    if (!docRef) return rawNotes;
+    return rawNotes.replace(/\bagainst\s+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, `against ${docRef}`);
+  })();
   const paymentContactName = String((payment as { contact?: { name?: string } })?.contact?.name || '').trim();
   const sale = Array.isArray(transaction?.sale) 
     ? transaction.sale[0] 
@@ -1081,6 +1091,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                           {format(new Date(payment.payment_date), 'dd MMM yyyy')}
                         </p>
                       </div>
+                      {paymentNotesDisplay && (
+                        <div className="col-span-2">
+                          <span className="text-gray-400">Payment Notes / Trace:</span>
+                          <p className="text-white break-words mt-1">{paymentNotesDisplay}</p>
+                        </div>
+                      )}
                       {/* CRITICAL FIX: Show attachment icon if payment has attachments */}
                       {payment.attachments && (
                         <div className="col-span-2">

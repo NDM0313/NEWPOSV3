@@ -104,6 +104,13 @@ function glStatementDocumentTypeFromReferenceType(
   return fallbackLabel;
 }
 
+function extractBankTraceId(notes?: string | null): string {
+  const raw = String(notes || '').trim();
+  if (!raw) return '';
+  const match = raw.match(/bank\s*trace\s*id\s*:\s*([^|]+)/i);
+  return match?.[1]?.trim() || '';
+}
+
 function journalLineNormalizedPaymentId(line: { journal_entry?: any; credit?: number }): string | null {
   const entry = line.journal_entry;
   if (!entry) return null;
@@ -659,10 +666,17 @@ export const accountingService = {
         .filter((e: any) => (e.reference_type === 'sale' || e.reference_type === 'sale_adjustment') && e.reference_id)
         .map((e: any) => e.reference_id) as string[];
       
-      const paymentIds = dataFiltered
+      // Include journal_entries.payment_id in the payments batch so supplier/customer settlement rows get PAY-xx / RCV-xx
+      // into paymentRefNumberById (reference_type may still be purchase/sale on the JE header).
+      // If RPC returns "Payment reference allocation failed after retries", verify migrations (generate_document_number /
+      // record_payment_with_accounting) on the target DB and erp_document_sequences drift vs prod.
+      const paymentIdsFromPaymentJe = dataFiltered
         .filter((e: any) => (e.reference_type === 'payment' || e.reference_type === 'payment_adjustment') && e.reference_id)
         .map((e: any) => e.reference_id) as string[];
-      const uniquePaymentIds = [...new Set(paymentIds)];
+      const paymentIdsFromJournalColumn = dataFiltered
+        .map((e: any) => e.payment_id)
+        .filter((id: unknown) => id != null && String(id).trim() !== '') as string[];
+      const uniquePaymentIds = [...new Set([...paymentIdsFromPaymentJe, ...paymentIdsFromJournalColumn.map(String)])];
 
       // Check which purchases/sales still exist
       let existingPurchases: Set<string> = new Set();
@@ -1445,7 +1459,7 @@ export const accountingService = {
           *,
           account:accounts(id, name, code, type)
         ),
-        payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+        payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
         branch:branches(id, name, code)
       `)
       .eq('id', journalEntryId)
@@ -1617,7 +1631,7 @@ export const accountingService = {
           *,
           account:accounts(id, name, code, type)
         ),
-        payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+        payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
         branch:branches(id, name, code)
       `)
       .eq('company_id', companyId)
@@ -1650,7 +1664,7 @@ export const accountingService = {
               *,
               account:accounts(id, name, code, type)
             ),
-            payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+            payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
             branch:branches(id, name, code)
           `)
           .eq('company_id', companyId)
@@ -1687,7 +1701,7 @@ export const accountingService = {
               *,
               account:accounts(id, name, code, type)
             ),
-          payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+          payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
           sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
             branch:branches(id, name, code)
           `)
@@ -1732,7 +1746,7 @@ export const accountingService = {
             *,
             account:accounts(id, name, code, type)
           ),
-          payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+          payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
           branch:branches(id, name, code)
         `)
         .eq('company_id', companyId)
@@ -1759,7 +1773,7 @@ export const accountingService = {
             *,
             account:accounts(id, name, code, type)
           ),
-          payment:payments(id, reference_number, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+          payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
           branch:branches(id, name, code)
         `)
         .eq('company_id', companyId)
@@ -1850,20 +1864,52 @@ export const accountingService = {
         .map((line: any) => line.journal_entry?.payment_id)
         .filter((id: string | undefined) => id) as string[];
       
-      const paymentRefsMap = new Map<string, string>();
+      const paymentRefsMap = new Map<string, { referenceNumber: string; bankTraceId: string }>();
       if (paymentIds.length > 0) {
         const { data: payments } = await supabase
           .from('payments')
-          .select('id, reference_number')
+          .select('id, reference_number, notes')
           .in('id', paymentIds);
         
         if (payments) {
           payments.forEach((p: any) => {
             if (p.reference_number) {
-              paymentRefsMap.set(p.id, p.reference_number);
+              paymentRefsMap.set(p.id, {
+                referenceNumber: String(p.reference_number),
+                bankTraceId: extractBankTraceId(p.notes),
+              });
             }
           });
         }
+      }
+
+      const saleIds = [...new Set(
+        (lines as any[])
+          .map((line: any) => line.journal_entry)
+          .filter((entry: any) => String(entry?.reference_type || '').toLowerCase() === 'sale' && entry?.reference_id)
+          .map((entry: any) => String(entry.reference_id))
+      )];
+      const purchaseIds = [...new Set(
+        (lines as any[])
+          .map((line: any) => line.journal_entry)
+          .filter((entry: any) => String(entry?.reference_type || '').toLowerCase() === 'purchase' && entry?.reference_id)
+          .map((entry: any) => String(entry.reference_id))
+      )];
+      const saleDocMap = new Map<string, string>();
+      const purchaseDocMap = new Map<string, string>();
+      if (saleIds.length) {
+        const { data: sales } = await supabase.from('sales').select('id, invoice_no, order_no, draft_no').in('id', saleIds);
+        (sales || []).forEach((s: any) => {
+          const doc = String(s.invoice_no || s.order_no || s.draft_no || '').trim();
+          if (doc) saleDocMap.set(String(s.id), doc);
+        });
+      }
+      if (purchaseIds.length) {
+        const { data: purchases } = await supabase.from('purchases').select('id, po_no, order_no, draft_no').in('id', purchaseIds);
+        (purchases || []).forEach((p: any) => {
+          const doc = String(p.po_no || p.order_no || p.draft_no || '').trim();
+          if (doc) purchaseDocMap.set(String(p.id), doc);
+        });
       }
 
       // Build ledger entries with running balance
@@ -2023,12 +2069,17 @@ export const accountingService = {
                 : `JE-${String(entry.id).slice(0, 4).toUpperCase()}`;
             referenceNumber = origNo ? `REV of ${origNo}` : `${selfJe} (reversal)`;
           } else if (!referenceNumber || referenceNumber.length > 20 || isUUID || !isShortFormat) {
-            if (entry.payment_id && paymentRefsMap.has(entry.payment_id)) {
-              referenceNumber = paymentRefsMap.get(entry.payment_id)!;
+            if (refType === 'sale' && entry.reference_id && saleDocMap.has(entry.reference_id)) {
+              referenceNumber = saleDocMap.get(entry.reference_id)!;
+            } else if (refType === 'purchase' && entry.reference_id && purchaseDocMap.has(entry.reference_id)) {
+              referenceNumber = purchaseDocMap.get(entry.reference_id)!;
+            } else if ((refType === 'manual_receipt' || refType === 'manual_payment') && entry.payment_id && paymentRefsMap.has(entry.payment_id)) {
+              const pay = paymentRefsMap.get(entry.payment_id)!;
+              referenceNumber = pay.bankTraceId || pay.referenceNumber;
+            } else if (entry.payment_id && paymentRefsMap.has(entry.payment_id)) {
+              referenceNumber = paymentRefsMap.get(entry.payment_id)!.referenceNumber;
             } else if (refType === 'expense' || refType === 'extra_expense') {
               referenceNumber = `EXP-${entry.id.substring(0, 4).toUpperCase()}`;
-            } else if (refType === 'sale') {
-              referenceNumber = `JE-${entry.id.substring(0, 4).toUpperCase()}`;
             } else {
               referenceNumber = `JE-${entry.id.substring(0, 4).toUpperCase()}`;
             }
@@ -2315,11 +2366,14 @@ export const accountingService = {
       }
 
       const paymentIds = customerPayments?.map(p => p.id) || [];
-      const paymentRefsMap = new Map<string, string>();
+      const paymentRefsMap = new Map<string, { referenceNumber: string; bankTraceId: string }>();
       const paymentDetailsMap = new Map<string, any>();
       customerPayments?.forEach((p: any) => {
         if (p.reference_number) {
-          paymentRefsMap.set(p.id, p.reference_number);
+          paymentRefsMap.set(p.id, {
+            referenceNumber: String(p.reference_number),
+            bankTraceId: extractBankTraceId(p.notes),
+          });
         }
         // Add account name to payment details
         if (p.payment_account_id && accountMap.has(p.payment_account_id)) {
@@ -2592,17 +2646,21 @@ export const accountingService = {
                                   (referenceNumber.includes('-') && referenceNumber.length === 36) ||
                                   referenceNumber.length > 50;
         
-        if (isInvalidEntryNo) {
-          // Generate short reference based on type (FALLBACK ONLY)
-          const sale = entry.reference_id ? salesMap.get(entry.reference_id) : null;
-          const rental = entry.reference_type === 'rental' && entry.reference_id ? rentalsMap.get(entry.reference_id) : null;
-          if (entry.reference_type === 'sale' && sale?.invoice_no) {
-            referenceNumber = sale.invoice_no;
-          } else if (entry.reference_type === 'rental' && rental?.booking_no) {
-            referenceNumber = rental.booking_no;
-          } else if (entry.payment_id && paymentRefsMap.has(entry.payment_id)) {
-            referenceNumber = paymentRefsMap.get(entry.payment_id)!;
-          } else if (entry.payment_id) {
+        const sale = entry.reference_id ? salesMap.get(entry.reference_id) : null;
+        const rental = entry.reference_type === 'rental' && entry.reference_id ? rentalsMap.get(entry.reference_id) : null;
+        const paymentMeta = entry.payment_id ? paymentRefsMap.get(entry.payment_id) : undefined;
+        const normalizedRefType = String(entry.reference_type || '').toLowerCase();
+        const preferredRef =
+          (normalizedRefType === 'sale' && sale?.invoice_no ? String(sale.invoice_no) : '') ||
+          ((normalizedRefType === 'manual_receipt' || normalizedRefType === 'manual_payment') && paymentMeta
+            ? paymentMeta.bankTraceId || paymentMeta.referenceNumber
+            : '') ||
+          (paymentMeta?.referenceNumber || '') ||
+          (normalizedRefType === 'rental' && rental?.booking_no ? String(rental.booking_no) : '');
+        if (preferredRef) {
+          referenceNumber = preferredRef;
+        } else if (isInvalidEntryNo) {
+          if (entry.payment_id) {
             referenceNumber = `PAY-${entry.payment_id.substring(0, 4).toUpperCase()}`;
           } else if (entry.reference_type === 'expense') {
             referenceNumber = `EXP-${entry.id.substring(0, 4).toUpperCase()}`;

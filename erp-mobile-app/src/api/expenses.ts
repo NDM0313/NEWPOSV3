@@ -1,5 +1,12 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { getNextDocumentNumber } from './documentNumber';
+
+async function resolveBranchId(companyId: string, branchId: string): Promise<string> {
+  if (branchId && branchId !== 'default') return branchId;
+  const { data } = await supabase.from('branches').select('id').eq('company_id', companyId).limit(1).maybeSingle();
+  const first = data?.id ?? null;
+  if (!first) throw new Error('No branch set up. Add a branch in Settings to create expenses.');
+  return first;
+}
 
 export interface ExpenseRow {
   id: string;
@@ -89,38 +96,64 @@ export async function createExpense(input: {
   receiptUrl?: string | null;
 }) {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
-  const expenseNo = await getNextDocumentNumber(input.companyId, input.branchId, 'expense');
+  let effectiveBranchId: string;
+  try {
+    effectiveBranchId = await resolveBranchId(input.companyId, input.branchId);
+  } catch (err) {
+    return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
+  }
   const paymentMethod = (input.paymentMethod || 'cash').toLowerCase();
-  const row: Record<string, unknown> = {
-    company_id: input.companyId,
-    branch_id: input.branchId,
-    expense_no: expenseNo,
+
+  const expensePayload: Record<string, unknown> = {
     expense_date: input.expenseDate || new Date().toISOString().slice(0, 10),
     category: input.category,
     description: input.description,
     amount: input.amount,
     payment_method: paymentMethod,
     status: 'paid',
-    created_by: input.userId,
   };
-  if (input.paymentAccountId) row.payment_account_id = input.paymentAccountId;
-  if (input.receiptUrl) row.receipt_url = input.receiptUrl;
-  let result = await supabase.from('expenses').insert(row).select('id, expense_no').single();
-  if (result.error) {
-    const msg = String(result.error.message || '').toLowerCase();
-    const schemaMissing = msg.includes("payment_account_id") || msg.includes("receipt_url") || msg.includes("column") && msg.includes("schema cache");
+  if (input.paymentAccountId) expensePayload.payment_account_id = input.paymentAccountId;
+  if (input.receiptUrl) expensePayload.receipt_url = input.receiptUrl;
+
+  const callRpc = async (payload: Record<string, unknown>) =>
+    supabase.rpc('create_expense_document', {
+      p_company_id: input.companyId,
+      p_branch_id: effectiveBranchId,
+      p_expense: payload,
+      p_created_by: input.userId,
+    });
+
+  let call = await callRpc(expensePayload);
+  let rpcRaw = call.data;
+  let rpcErr = call.error;
+
+  if (rpcErr) {
+    const msg = String(rpcErr.message || '').toLowerCase();
+    const schemaMissing =
+      msg.includes('payment_account_id') || msg.includes('receipt_url') || (msg.includes('column') && msg.includes('schema'));
     if (schemaMissing && (input.paymentAccountId || input.receiptUrl)) {
-      delete row.payment_account_id;
-      delete row.receipt_url;
-      result = await supabase.from('expenses').insert(row).select('id, expense_no').single();
+      const fallback = { ...expensePayload };
+      delete fallback.payment_account_id;
+      delete fallback.receipt_url;
+      call = await callRpc(fallback);
+      rpcRaw = call.data;
+      rpcErr = call.error;
     }
   }
-  if (result.error) return { data: null, error: result.error.message };
+
+  if (rpcErr) return { data: null, error: rpcErr.message };
+
+  const rpc = rpcRaw as { success?: boolean; expense_id?: string; expense_no?: string; error?: string } | null;
+  if (!rpc?.success || !rpc.expense_id) {
+    return { data: null, error: rpc?.error ?? 'Failed to create expense.' };
+  }
+
+  const result = { data: { id: rpc.expense_id, expense_no: rpc.expense_no } };
 
   // Accounting: post journal entry (Dr mapped expense account, Cr payment
   // account). Soft-warn on failure.
   try {
-    const expenseId = (result.data as { id?: string } | null)?.id;
+    const expenseId = rpc.expense_id;
     if (expenseId) {
       const { data: postData, error: postErr } = await supabase.rpc(
         'record_expense_with_accounting',

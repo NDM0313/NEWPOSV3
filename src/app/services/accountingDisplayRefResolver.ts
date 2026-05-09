@@ -22,6 +22,13 @@ type JeMeta = {
   payment_id: string | null;
 };
 
+function extractBankTraceId(notes?: string | null): string {
+  const raw = String(notes || '').trim();
+  if (!raw) return '';
+  const match = raw.match(/bank\s*trace\s*id\s*:\s*([^|]+)/i);
+  return match?.[1]?.trim() || '';
+}
+
 async function fetchInChunks<T>(ids: string[], fetchChunk: (chunk: string[]) => Promise<T[]>): Promise<T[]> {
   const out: T[] = [];
   for (let i = 0; i < ids.length; i += CHUNK) {
@@ -40,7 +47,7 @@ function buildUiForJournal(
     stages: Map<string, { id: string; production_id?: string; stage_type?: string }>;
     productions: Map<string, { production_no?: string | null }>;
     workers: Map<string, { name?: string | null }>;
-    payments: Map<string, { reference_number?: string | null; contact_id?: string | null }>;
+    payments: Map<string, { reference_number?: string | null; contact_id?: string | null; notes?: string | null }>;
     expenses: Map<string, { expense_no?: string | null; description?: string | null }>;
     contacts: Map<string, { name?: string | null }>;
   }
@@ -149,6 +156,7 @@ function buildUiForJournal(
   if (rt === 'payment_adjustment' || rt === 'payment') {
     const pay = ctx.payments.get(rid);
     const ref = String(pay?.reference_number || '').trim();
+    const trace = extractBankTraceId(pay?.notes);
     if (ref) {
       return {
         displayRef: ref,
@@ -181,7 +189,8 @@ function buildUiForJournal(
     const cust = rid ? ctx.contacts.get(rid) : undefined;
     const cname = String(cust?.name || '').trim();
     const bits: string[] = [];
-    if (ref) bits.push(ref);
+    if (trace) bits.push(trace);
+    else if (ref) bits.push(ref);
     if (cname) bits.push(cname);
     const displayRef = bits.join(' · ') || ref || cname || entryNoBadge;
     return {
@@ -196,11 +205,13 @@ function buildUiForJournal(
   if (rt === 'manual_payment') {
     const pay = j.payment_id ? ctx.payments.get(j.payment_id) : undefined;
     const ref = String(pay?.reference_number || '').trim();
+    const trace = extractBankTraceId(pay?.notes);
     const cid = pay?.contact_id ? String(pay.contact_id).trim() : '';
     const sup = cid ? ctx.contacts.get(cid) : undefined;
     const sname = String(sup?.name || '').trim();
     const bits: string[] = [];
-    if (ref) bits.push(ref);
+    if (trace) bits.push(trace);
+    else if (ref) bits.push(ref);
     if (sname) bits.push(sname);
     const displayRef = bits.join(' · ') || ref || sname || entryNoBadge;
     return {
@@ -329,15 +340,15 @@ export async function resolveJournalUiRefsByJournalIds(
     for (const w of rows) workers.set(w.id, w);
   }
 
-  const payments = new Map<string, { reference_number?: string | null; contact_id?: string | null }>();
+  const payments = new Map<string, { reference_number?: string | null; contact_id?: string | null; notes?: string | null }>();
   if (paymentRefIds.size) {
     const rows = await fetchInChunks([...paymentRefIds], async (chunk) => {
       const { data } = await supabase
         .from('payments')
-        .select('id, reference_number, contact_id')
+        .select('id, reference_number, contact_id, notes')
         .eq('company_id', companyId)
         .in('id', chunk);
-      return (data || []) as { id: string; reference_number?: string | null; contact_id?: string | null }[];
+      return (data || []) as { id: string; reference_number?: string | null; contact_id?: string | null; notes?: string | null }[];
     });
     for (const p of rows) {
       payments.set(p.id, p);

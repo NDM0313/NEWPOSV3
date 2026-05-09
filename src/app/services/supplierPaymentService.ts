@@ -1,16 +1,13 @@
 /**
  * Canonical supplier payment flow (Accounting Stabilization Phase 3).
- * One path: PAY ref from erp_document_sequences → payments row → one journal entry (Dr AP, Cr Cash/Bank).
- * All supplier payment entry points (document-linked and on-account) use this service to avoid duplicate JEs.
+ * Single backend path: `record_payment_with_accounting` allocates PAY refs and posts Dr AP / Cr Cash(Bank).
+ * Document-linked and on-account supplier payments both use the RPC (no client-side getNextDocumentNumber).
  */
 
 import { supabase } from '@/lib/supabase';
-import { documentNumberService } from '@/app/services/documentNumberService';
-import { accountingService } from '@/app/services/accountingService';
-import type { JournalEntry, JournalEntryLine } from '@/app/services/accountingService';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
-import { resolvePayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
 import { logPaymentCreated } from '@/app/services/auditLogService';
+import { recordPaymentWithAccounting } from '@/app/services/recordPaymentWithAccountingRpc';
 
 export type SupplierPaymentReferenceType = 'purchase' | 'on_account';
 
@@ -36,20 +33,13 @@ export interface CreateSupplierPaymentResult {
   referenceNumber: string;
 }
 
-const PAYMENT_METHOD_MAP: Record<string, string> = {
-  cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', card: 'card', Card: 'card',
-  cheque: 'other', Cheque: 'other', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
-  mobile_wallet: 'other', wallet: 'other', Wallet: 'other',
-};
-
-function normalizePaymentMethod(method: string): string {
-  const m = (method || 'cash').toLowerCase().trim();
-  return PAYMENT_METHOD_MAP[method] || PAYMENT_METHOD_MAP[m] || 'cash';
+function buildPaymentNote(extraDescription?: string | null): string | null {
+  const extra = String(extraDescription ?? '').trim();
+  return extra || null;
 }
 
 /**
- * Canonical supplier payment: one payments row (PAY-xxxx), one journal entry (Dr AP, Cr Cash/Bank).
- * Use for both document-linked (purchaseId) and on-account (contactId) supplier payments.
+ * Canonical supplier payment: RPC allocates PAY ref; optional patch for contact_id / received_by / attachments.
  */
 export async function createSupplierPayment(params: CreateSupplierPaymentParams): Promise<CreateSupplierPaymentResult> {
   const {
@@ -60,7 +50,6 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
     paymentAccountId,
     purchaseId,
     contactId,
-    supplierName,
     paymentDate,
     notes,
     attachments,
@@ -75,7 +64,6 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
     throw new Error('Either purchaseId (document-linked) or contactId (on-account) is required');
   }
 
-  // For purchase-linked payments: resolve contact_id from purchase so supplier ledger and reports can link
   let resolvedContactId: string | null = isOnAccount ? contactId : null;
   if (purchaseId && !resolvedContactId) {
     const { data: purchaseRow } = await supabase
@@ -83,50 +71,60 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
       .select('supplier_id')
       .eq('id', purchaseId)
       .single();
-    if ((purchaseRow as any)?.supplier_id) resolvedContactId = (purchaseRow as any).supplier_id;
+    if ((purchaseRow as { supplier_id?: string })?.supplier_id) {
+      resolvedContactId = (purchaseRow as { supplier_id: string }).supplier_id;
+    }
   }
   if (!resolvedContactId) {
     throw new Error('Supplier payment requires a linked supplier contact (contact_id) for AR/AP accountability.');
   }
 
-  const validBranchId = (branchId && branchId !== 'all') ? branchId : null;
-  const enumPaymentMethod = normalizePaymentMethod(paymentMethod);
+  const validBranchId = branchId && branchId !== 'all' ? branchId : null;
   const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
-
-  // 1) Payment reference from canonical source only
-  const referenceNumber = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment');
 
   const { data: { user: authUser } } = await supabase.auth.getUser();
   const authUserId = authUser?.id ?? null;
 
-  // 2) Insert payments row (Roznamcha shows it). contact_id required for supplier ledger.
-  const referenceType: string = isOnAccount ? 'on_account' : 'purchase';
-  const insertPayload: Record<string, unknown> = {
-    company_id: companyId,
-    branch_id: validBranchId,
-    payment_type: 'paid',
-    reference_type: referenceType,
-    reference_id: isOnAccount ? null : purchaseId,
-    contact_id: resolvedContactId,
+  const combinedDescription = buildPaymentNote(notes);
+  const referenceType = isOnAccount ? 'on_account' : 'purchase';
+  const rpcReferenceId = isOnAccount ? resolvedContactId : String(purchaseId);
+
+  const rpcResult = await recordPaymentWithAccounting({
+    companyId,
+    branchId: validBranchId,
+    paymentType: 'paid',
+    referenceType,
+    referenceId: rpcReferenceId,
     amount,
-    payment_method: enumPaymentMethod,
-    payment_account_id: paymentAccountId,
-    payment_date: paymentDateValue,
-    reference_number: referenceNumber,
+    paymentMethod,
+    paymentDate: paymentDateValue,
+    paymentAccountId,
+    notes: combinedDescription,
+    bankTraceId: null,
+    createdBy: authUserId,
+  });
+
+  const paymentId = rpcResult.paymentId;
+  const journalEntryId = rpcResult.journalEntryId;
+  const referenceNumber = rpcResult.referenceNumber;
+
+  const patch: Record<string, unknown> = {
+    contact_id: resolvedContactId,
     received_by: authUserId,
-    created_by: authUserId,
   };
-  if (notes) insertPayload.notes = notes;
-  if (attachments && attachments.length > 0) insertPayload.attachments = attachments;
+  if (attachments && attachments.length > 0) {
+    patch.attachments = attachments;
+  }
 
-  const { data: paymentRow, error: paymentErr } = await supabase
-    .from('payments')
-    .insert(insertPayload)
-    .select('id')
-    .single();
-
-  if (paymentErr) throw new Error(`Supplier payment (payments row) failed: ${paymentErr.message}`);
-  const paymentId = (paymentRow as { id: string }).id;
+  let upd = await supabase.from('payments').update(patch).eq('id', paymentId);
+  if (upd.error?.code === 'PGRST204' && String(upd.error.message || '').includes('attachments')) {
+    upd = await supabase
+      .from('payments')
+      .update({ contact_id: resolvedContactId, received_by: authUserId })
+      .eq('id', paymentId);
+  } else if (upd.error) {
+    console.warn('[supplierPaymentService] payments patch after RPC:', upd.error.message);
+  }
 
   logPaymentCreated(companyId, paymentId, {
     reference_type: referenceType,
@@ -134,44 +132,12 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
     amount,
   });
 
-  // 3) Accounts Payable account (2000)
-  const { data: apAccounts } = await supabase
-    .from('accounts')
-    .select('id')
-    .eq('company_id', companyId)
-    .or('code.eq.2000,name.ilike.%Accounts Payable%')
-    .limit(1);
-  const apControlId = (apAccounts?.[0] as { id: string } | undefined)?.id;
-  if (!apControlId) throw new Error('Accounts Payable account (2000) not found');
-  const apAccountId =
-    (await resolvePayablePostingAccountId(companyId, resolvedContactId || undefined)) || apControlId;
-
-  // 4) Journal entry (Dr AP, Cr Cash/Bank) linked to payment
-  const description = isOnAccount
-    ? `On-account payment to supplier ${supplierName || contactId}`
-    : `Payment for purchase ${purchaseId}`;
-  const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, validBranchId);
-  const journalEntry: JournalEntry = {
-    company_id: companyId,
-    branch_id: validBranchId ?? undefined,
-    entry_no: entryNo,
-    entry_date: paymentDateValue,
-    description,
-    reference_type: referenceType,
-    reference_id: isOnAccount ? contactId ?? undefined : purchaseId ?? undefined,
-    created_by: authUserId ?? undefined,
-  };
-  const lines: JournalEntryLine[] = [
-    { account_id: apAccountId, debit: amount, credit: 0, description },
-    { account_id: paymentAccountId, debit: 0, credit: amount, description: `Payment from account` },
-  ];
-  const savedEntry = await accountingService.createEntry(journalEntry, lines, paymentId);
-  const journalEntryId = (savedEntry as { id: string }).id;
-
   dispatchContactBalancesRefresh(companyId);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('paymentAdded'));
-    window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: resolvedContactId } }));
+    window.dispatchEvent(
+      new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: resolvedContactId } })
+    );
   }
   return { paymentId, journalEntryId, referenceNumber };
 }

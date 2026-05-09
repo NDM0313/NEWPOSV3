@@ -583,7 +583,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
             onClick={() => setShowOptional(!showOptional)}
             className="w-full flex items-center justify-between px-4 py-3 text-left text-sm font-medium text-[#9CA3AF] hover:bg-[#374151]/50"
           >
-            <span>Payment Date, Reference, Notes, Attachments</span>
+            <span>Payment Date, Bank Trace ID, Description, Attachments</span>
             {showOptional ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {showOptional && (
@@ -598,21 +598,21 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Reference (Optional)</label>
+                <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Bank Trace ID (Optional)</label>
                 <input
                   type="text"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
-                  placeholder="Cheque no, transaction id..."
+                  placeholder="Cheque no / bank transaction id..."
                   className="w-full h-11 px-3 rounded-lg bg-[#111827] border border-[#374151] text-white placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Notes (Optional)</label>
+                <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Description Add-on (Optional)</label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Add payment notes, remarks, or additional details..."
+                  placeholder="Add extra description/details (auto description is added by system)..."
                   rows={3}
                   className="w-full px-3 py-2 rounded-lg bg-[#111827] border border-[#374151] text-white placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-[#3B82F6] resize-none text-sm"
                 />
