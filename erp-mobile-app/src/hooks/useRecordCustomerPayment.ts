@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { recordCustomerPayment } from '../api/sales';
 
 export interface RecordCustomerPaymentParams {
@@ -27,13 +27,15 @@ export interface UseRecordCustomerPaymentResult {
  */
 export function useRecordCustomerPayment(): UseRecordCustomerPaymentResult {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   const submit = useCallback(async (params: RecordCustomerPaymentParams): Promise<{ success: boolean; error?: string; paymentId?: string; referenceNumber?: string }> => {
-    if (isSubmitting) return { success: false, error: 'Please wait.' };
+    if (isSubmittingRef.current) return { success: false, error: 'Please wait.' };
     if (!params.companyId || !params.referenceId || params.amount <= 0 || !params.accountId) {
       return { success: false, error: 'Missing required fields.' };
     }
 
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     try {
       const { data, error } = await recordCustomerPayment({
@@ -58,9 +60,10 @@ export function useRecordCustomerPayment(): UseRecordCustomerPaymentResult {
       const message = e instanceof Error ? e.message : 'Payment failed.';
       return { success: false, error: message };
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [isSubmitting]);
+  }, []);
 
   return { submit, isSubmitting };
 }

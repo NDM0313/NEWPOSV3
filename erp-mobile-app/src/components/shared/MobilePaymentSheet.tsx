@@ -237,6 +237,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [success, setSuccess] = useState<
     (TransactionSuccessData & { fromAccountName?: string; toAccountName?: string; paymentIdRaw?: string | null }) | null
   >(null);
@@ -335,7 +336,10 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
       return;
     }
 
+    if (submittingRef.current) return;
+
     const acct = accounts.find((a) => a.id === accountId);
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       const result = await onSubmit({
@@ -394,6 +398,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
       const msg = (err as { message?: string })?.message || 'Operation failed.';
       setToast({ message: msg, type: 'error' });
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
