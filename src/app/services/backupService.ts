@@ -35,6 +35,25 @@ export interface CompanyBackupData {
     journal_entries: JsonRow[];
     journal_entry_lines: JsonRow[];
     ledger_entries: JsonRow[];
+    /** Present when export includes Studio / Production (migration 20260514120000+). */
+    workers?: JsonRow[];
+    studio_sales?: JsonRow[];
+    studio_orders?: JsonRow[];
+    studio_order_items?: JsonRow[];
+    job_cards?: JsonRow[];
+    studio_tasks?: JsonRow[];
+    worker_payments?: JsonRow[];
+    worker_ledger_entries?: JsonRow[];
+    studio_production_logs?: JsonRow[];
+    studio_productions?: JsonRow[];
+    studio_production_stages?: JsonRow[];
+    studio_production_orders_v2?: JsonRow[];
+    studio_production_stages_v2?: JsonRow[];
+    studio_stage_assignments_v2?: JsonRow[];
+    studio_stage_receipts_v2?: JsonRow[];
+    studio_production_orders_v3?: JsonRow[];
+    studio_production_stages_v3?: JsonRow[];
+    studio_production_cost_breakdown_v3?: JsonRow[];
   };
 }
 

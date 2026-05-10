@@ -25,7 +25,11 @@ set search_path = public
 as $$
 declare
   v_user_id uuid := auth.uid();
-  v_request_role text := lower(coalesce(current_setting('request.jwt.claim.role', true), ''));
+  v_request_role text := lower(trim(coalesce(
+    nullif(current_setting('request.jwt.claim.role', true), ''),
+    nullif(auth.jwt()->>'role', ''),
+    ''
+  )));
   v_user_role text := '';
 
   v_branches jsonb := '[]'::jsonb;
@@ -45,6 +49,25 @@ declare
   v_journal_entries jsonb := '[]'::jsonb;
   v_journal_entry_lines jsonb := '[]'::jsonb;
   v_ledger_entries jsonb := '[]'::jsonb;
+
+  v_workers jsonb := '[]'::jsonb;
+  v_studio_sales jsonb := '[]'::jsonb;
+  v_studio_orders jsonb := '[]'::jsonb;
+  v_studio_order_items jsonb := '[]'::jsonb;
+  v_job_cards jsonb := '[]'::jsonb;
+  v_studio_tasks jsonb := '[]'::jsonb;
+  v_worker_payments jsonb := '[]'::jsonb;
+  v_worker_ledger_entries jsonb := '[]'::jsonb;
+  v_studio_production_logs jsonb := '[]'::jsonb;
+  v_studio_productions jsonb := '[]'::jsonb;
+  v_studio_production_stages jsonb := '[]'::jsonb;
+  v_studio_po_v2 jsonb := '[]'::jsonb;
+  v_studio_ps_v2 jsonb := '[]'::jsonb;
+  v_studio_sa_v2 jsonb := '[]'::jsonb;
+  v_studio_sr_v2 jsonb := '[]'::jsonb;
+  v_studio_po_v3 jsonb := '[]'::jsonb;
+  v_studio_ps_v3 jsonb := '[]'::jsonb;
+  v_studio_cb_v3 jsonb := '[]'::jsonb;
 
   v_company_name text := null;
   v_company_has_business_name boolean := false;
@@ -187,6 +210,157 @@ begin
   from public.ledger_entries le
   where le.company_id = p_company_id;
 
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'workers') then
+    select coalesce(jsonb_agg(to_jsonb(w) order by w.created_at), '[]'::jsonb)
+    into v_workers
+    from public.workers w
+    where w.company_id = p_company_id;
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_sales') then
+    select coalesce(jsonb_agg(to_jsonb(ss) order by ss.created_at), '[]'::jsonb)
+    into v_studio_sales
+    from public.studio_sales ss
+    where ss.branch_id in (select id from public.branches where company_id = p_company_id)
+       or ss.customer_id in (select id from public.contacts where company_id = p_company_id);
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_orders') then
+    select coalesce(jsonb_agg(to_jsonb(o) order by o.created_at), '[]'::jsonb)
+    into v_studio_orders
+    from public.studio_orders o
+    where o.company_id = p_company_id
+       or (o.sale_id is not null and o.sale_id in (select id from public.sales where company_id = p_company_id));
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_orders')
+     and exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_order_items') then
+    select coalesce(jsonb_agg(to_jsonb(i) order by i.created_at), '[]'::jsonb)
+    into v_studio_order_items
+    from public.studio_order_items i
+    join public.studio_orders o on o.id = i.studio_order_id
+    where o.company_id = p_company_id
+       or (o.sale_id is not null and o.sale_id in (select id from public.sales where company_id = p_company_id));
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_orders')
+     and exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'job_cards') then
+    select coalesce(jsonb_agg(to_jsonb(j) order by j.created_at), '[]'::jsonb)
+    into v_job_cards
+    from public.job_cards j
+    join public.studio_orders o on o.id = j.studio_order_id
+    where o.company_id = p_company_id
+       or (o.sale_id is not null and o.sale_id in (select id from public.sales where company_id = p_company_id));
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_orders')
+     and exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_tasks') then
+    select coalesce(jsonb_agg(to_jsonb(t) order by t.created_at), '[]'::jsonb)
+    into v_studio_tasks
+    from public.studio_tasks t
+    join public.studio_orders o on o.id = t.studio_order_id
+    where o.company_id = p_company_id
+       or (o.sale_id is not null and o.sale_id in (select id from public.sales where company_id = p_company_id));
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_orders')
+     and exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_tasks')
+     and exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'worker_payments') then
+    select coalesce(jsonb_agg(to_jsonb(wp) order by wp.created_at), '[]'::jsonb)
+    into v_worker_payments
+    from public.worker_payments wp
+    join public.studio_tasks t on t.id = wp.studio_task_id
+    join public.studio_orders o on o.id = t.studio_order_id
+    where o.company_id = p_company_id
+       or (o.sale_id is not null and o.sale_id in (select id from public.sales where company_id = p_company_id));
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'worker_ledger_entries') then
+    select coalesce(jsonb_agg(to_jsonb(wl) order by wl.created_at), '[]'::jsonb)
+    into v_worker_ledger_entries
+    from public.worker_ledger_entries wl
+    where wl.company_id = p_company_id;
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_production_logs') then
+    select coalesce(jsonb_agg(to_jsonb(sl) order by sl.performed_at), '[]'::jsonb)
+    into v_studio_production_logs
+    from public.studio_production_logs sl
+    join public.studio_productions p on p.id = sl.production_id
+    where p.company_id = p_company_id;
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_productions') then
+    select coalesce(jsonb_agg(to_jsonb(p) order by p.created_at), '[]'::jsonb)
+    into v_studio_productions
+    from public.studio_productions p
+    where p.company_id = p_company_id;
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_production_stages') then
+    select coalesce(jsonb_agg(to_jsonb(s) order by s.created_at), '[]'::jsonb)
+    into v_studio_production_stages
+    from public.studio_production_stages s
+    join public.studio_productions p on p.id = s.production_id
+    where p.company_id = p_company_id;
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_production_orders_v2') then
+    select coalesce(jsonb_agg(to_jsonb(o) order by o.created_at), '[]'::jsonb)
+    into v_studio_po_v2
+    from public.studio_production_orders_v2 o
+    where o.company_id = p_company_id;
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_production_stages_v2') then
+    select coalesce(jsonb_agg(to_jsonb(s) order by s.created_at), '[]'::jsonb)
+    into v_studio_ps_v2
+    from public.studio_production_stages_v2 s
+    join public.studio_production_orders_v2 o on o.id = s.order_id
+    where o.company_id = p_company_id;
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_stage_assignments_v2') then
+    select coalesce(jsonb_agg(to_jsonb(a) order by a.created_at), '[]'::jsonb)
+    into v_studio_sa_v2
+    from public.studio_stage_assignments_v2 a
+    join public.studio_production_stages_v2 s on s.id = a.stage_id
+    join public.studio_production_orders_v2 o on o.id = s.order_id
+    where o.company_id = p_company_id;
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_stage_receipts_v2') then
+    select coalesce(jsonb_agg(to_jsonb(r) order by r.created_at), '[]'::jsonb)
+    into v_studio_sr_v2
+    from public.studio_stage_receipts_v2 r
+    join public.studio_production_stages_v2 s on s.id = r.stage_id
+    join public.studio_production_orders_v2 o on o.id = s.order_id
+    where o.company_id = p_company_id;
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_production_orders_v3') then
+    select coalesce(jsonb_agg(to_jsonb(o) order by o.created_at), '[]'::jsonb)
+    into v_studio_po_v3
+    from public.studio_production_orders_v3 o
+    where o.company_id = p_company_id;
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_production_stages_v3') then
+    select coalesce(jsonb_agg(to_jsonb(s) order by s.created_at), '[]'::jsonb)
+    into v_studio_ps_v3
+    from public.studio_production_stages_v3 s
+    join public.studio_production_orders_v3 o on o.id = s.order_id
+    where o.company_id = p_company_id;
+  end if;
+
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'studio_production_cost_breakdown_v3') then
+    select coalesce(jsonb_agg(to_jsonb(c) order by c.id), '[]'::jsonb)
+    into v_studio_cb_v3
+    from public.studio_production_cost_breakdown_v3 c
+    join public.studio_production_orders_v3 o on o.id = c.production_id
+    where o.company_id = p_company_id;
+  end if;
+
   return jsonb_build_object(
     'success', true,
     'backup', jsonb_build_object(
@@ -213,7 +387,25 @@ begin
         'payments', v_payments,
         'journal_entries', v_journal_entries,
         'journal_entry_lines', v_journal_entry_lines,
-        'ledger_entries', v_ledger_entries
+        'ledger_entries', v_ledger_entries,
+        'workers', v_workers,
+        'studio_sales', v_studio_sales,
+        'studio_orders', v_studio_orders,
+        'studio_order_items', v_studio_order_items,
+        'job_cards', v_job_cards,
+        'studio_tasks', v_studio_tasks,
+        'worker_payments', v_worker_payments,
+        'worker_ledger_entries', v_worker_ledger_entries,
+        'studio_production_logs', v_studio_production_logs,
+        'studio_productions', v_studio_productions,
+        'studio_production_stages', v_studio_production_stages,
+        'studio_production_orders_v2', v_studio_po_v2,
+        'studio_production_stages_v2', v_studio_ps_v2,
+        'studio_stage_assignments_v2', v_studio_sa_v2,
+        'studio_stage_receipts_v2', v_studio_sr_v2,
+        'studio_production_orders_v3', v_studio_po_v3,
+        'studio_production_stages_v3', v_studio_ps_v3,
+        'studio_production_cost_breakdown_v3', v_studio_cb_v3
       )
     ),
     'counts', jsonb_build_object(
@@ -222,7 +414,11 @@ begin
       'rentals', jsonb_array_length(v_rentals),
       'expenses', jsonb_array_length(v_expenses),
       'journal_entries', jsonb_array_length(v_journal_entries),
-      'ledger_entries', jsonb_array_length(v_ledger_entries)
+      'ledger_entries', jsonb_array_length(v_ledger_entries),
+      'workers', jsonb_array_length(v_workers),
+      'studio_sales', jsonb_array_length(v_studio_sales),
+      'studio_productions', jsonb_array_length(v_studio_productions),
+      'studio_production_orders_v3', jsonb_array_length(v_studio_po_v3)
     )
   );
 exception when others then
@@ -231,3 +427,4 @@ end;
 $$;
 
 grant execute on function public.export_company_backup_rpc(uuid) to authenticated;
+grant execute on function public.export_company_backup_rpc(uuid) to service_role;

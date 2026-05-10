@@ -13,7 +13,11 @@ set search_path = public
 as $$
 declare
   v_user_id uuid := auth.uid();
-  v_request_role text := lower(coalesce(current_setting('request.jwt.claim.role', true), ''));
+  v_request_role text := lower(trim(coalesce(
+    nullif(current_setting('request.jwt.claim.role', true), ''),
+    nullif(auth.jwt()->>'role', ''),
+    ''
+  )));
   v_user_role text := '';
   v_prev_replication_role text := null;
 
@@ -205,6 +209,16 @@ begin
   get diagnostics v_rows = row_count;
   v_restored := v_restored || jsonb_build_object('ledger_entries', v_rows);
 
+  -- Avoid sales_items_pkey conflicts: remove stale/orphan rows matching backup PKs, then all lines for tenant sales.
+  delete from public.sales_items si
+  where si.id in (
+    select distinct (elem->>'id')::uuid
+    from jsonb_array_elements(coalesce(v_data -> 'sales_items', '[]'::jsonb)) elem
+    where nullif(trim(elem->>'id'), '') is not null
+  );
+  delete from public.sales_items si
+  where si.sale_id in (select id from public.sales where company_id = p_company_id);
+
   insert into public.sales_items
   select * from jsonb_populate_recordset(null::public.sales_items, coalesce(v_data -> 'sales_items', '[]'::jsonb));
   get diagnostics v_rows = row_count;
@@ -225,10 +239,30 @@ begin
   get diagnostics v_rows = row_count;
   v_restored := v_restored || jsonb_build_object('purchase_return_items', v_rows);
 
+  -- Avoid rental_items_pkey conflicts: remove stale/orphan rows matching backup PKs, then all lines for tenant rentals.
+  delete from public.rental_items ri
+  where ri.id in (
+    select distinct (elem->>'id')::uuid
+    from jsonb_array_elements(coalesce(v_data -> 'rental_items', '[]'::jsonb)) elem
+    where nullif(trim(elem->>'id'), '') is not null
+  );
+  delete from public.rental_items ri
+  where ri.rental_id in (select id from public.rentals where company_id = p_company_id);
+
   insert into public.rental_items
   select * from jsonb_populate_recordset(null::public.rental_items, coalesce(v_data -> 'rental_items', '[]'::jsonb));
   get diagnostics v_rows = row_count;
   v_restored := v_restored || jsonb_build_object('rental_items', v_rows);
+
+  -- Avoid rental_payments_pkey conflicts: remove stale/orphan rows matching backup PKs, then all payments for tenant rentals.
+  delete from public.rental_payments rp
+  where rp.id in (
+    select distinct (elem->>'id')::uuid
+    from jsonb_array_elements(coalesce(v_data -> 'rental_payments', '[]'::jsonb)) elem
+    where nullif(trim(elem->>'id'), '') is not null
+  );
+  delete from public.rental_payments rp
+  where rp.rental_id in (select id from public.rentals where company_id = p_company_id);
 
   insert into public.rental_payments
   select * from jsonb_populate_recordset(null::public.rental_payments, coalesce(v_data -> 'rental_payments', '[]'::jsonb));
