@@ -3,6 +3,7 @@ import { recordCustomerPayment } from '../api/sales';
 
 export interface RecordCustomerPaymentParams {
   companyId: string;
+  branchId: string | null;
   customerId: string | null;
   referenceId: string;
   amount: number;
@@ -37,6 +38,7 @@ export function useRecordCustomerPayment(): UseRecordCustomerPaymentResult {
     try {
       const { data, error } = await recordCustomerPayment({
         companyId: params.companyId,
+        branchId: params.branchId,
         customerId: params.customerId,
         referenceId: params.referenceId,
         amount: params.amount,

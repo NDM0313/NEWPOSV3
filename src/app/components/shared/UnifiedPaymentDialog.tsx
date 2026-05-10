@@ -1343,7 +1343,9 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
       {/* Backdrop — match AddEntryV2 (click-outside + aria) */}
       <div
         className="fixed inset-0 bg-black/70 backdrop-blur-md z-[130] animate-in fade-in duration-200"
-        onClick={onClose}
+        onClick={() => {
+          if (!isProcessing) onClose();
+        }}
         aria-hidden="true"
       />
 
@@ -1354,7 +1356,12 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
+          aria-busy={isProcessing}
         >
+          <fieldset
+            disabled={isProcessing}
+            className="min-w-0 border-0 p-0 m-0 block w-full rounded-2xl disabled:opacity-90 disabled:pointer-events-none"
+          >
           {/* Header */}
           <div className="flex items-center justify-between p-5 border-b border-gray-800 bg-gradient-to-r from-gray-900 via-gray-900 to-gray-800">
             <div className="flex items-center gap-3">
@@ -1827,6 +1834,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               </Button>
             </div>
           </div>
+          </fieldset>
         </div>
       </div>
     </>

@@ -62,8 +62,6 @@ function normalizePaymentMethod(method?: string): 'cash' | 'bank' | 'card' | 'ot
   return PAYMENT_METHOD_MAP[m] || 'cash';
 }
 
-/** Match web `workerAdvanceService` — Dr 2010 when stage billed / GL payable; else Dr 1180 (advance). */
-const WORKER_PAYABLE_EPS = 0.005;
 const WORKER_BRANCH_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function safeBranchForWorkerRpc(branchId: string | null | undefined): string | null {
@@ -72,62 +70,22 @@ function safeBranchForWorkerRpc(branchId: string | null | undefined): string | n
   return WORKER_BRANCH_UUID_RE.test(t) ? t : null;
 }
 
-function isWorkerLedgerUnpaid(status: unknown): boolean {
-  return String(status ?? '').toLowerCase() !== 'paid';
-}
-
-async function getWorkerGlNetPayableMobile(
+async function resolveBranchIdForPaymentMobile(
   companyId: string,
-  workerId: string,
   branchId: string | null | undefined
-): Promise<number> {
-  const { data, error } = await supabase.rpc('get_contact_party_gl_balances', {
-    p_company_id: companyId,
-    p_branch_id: safeBranchForWorkerRpc(branchId),
-  });
-  if (error || !Array.isArray(data)) return 0;
-  const row = (data as { contact_id: string; gl_worker_payable?: number | string }[]).find(
-    (r) => String(r.contact_id) === String(workerId)
-  );
-  return Number(row?.gl_worker_payable ?? 0) || 0;
-}
-
-async function shouldDebitWorkerPayableForPaymentMobile(
-  companyId: string,
-  workerId: string,
-  stageId: string | null | undefined,
-  branchId: string | null | undefined
-): Promise<boolean> {
-  if (stageId) {
-    const { data: row } = await supabase
-      .from('worker_ledger_entries')
-      .select('id, status')
-      .eq('company_id', companyId)
-      .eq('worker_id', workerId)
-      .eq('reference_type', 'studio_production_stage')
-      .eq('reference_id', stageId)
-      .maybeSingle();
-    if (row) return isWorkerLedgerUnpaid((row as { status?: string }).status);
-    const { data: je } = await supabase
-      .from('journal_entries')
-      .select('id')
-      .eq('company_id', companyId)
-      .eq('reference_type', 'studio_production_stage')
-      .eq('reference_id', stageId)
-      .or('is_void.is.null,is_void.eq.false')
-      .maybeSingle();
-    return Boolean(je);
-  }
-  const { data: rows } = await supabase
-    .from('worker_ledger_entries')
-    .select('id, status')
+): Promise<string> {
+  const b = safeBranchForWorkerRpc(branchId);
+  if (b) return b;
+  const { data, error } = await supabase
+    .from('branches')
+    .select('id')
     .eq('company_id', companyId)
-    .eq('worker_id', workerId)
-    .eq('reference_type', 'studio_production_stage')
-    .limit(200);
-  if ((rows || []).some((r) => isWorkerLedgerUnpaid((r as { status?: string }).status))) return true;
-  const glNet = await getWorkerGlNetPayableMobile(companyId, workerId, branchId);
-  return glNet > WORKER_PAYABLE_EPS;
+    .limit(1)
+    .maybeSingle();
+  if (error || !(data as { id?: string })?.id) {
+    throw new Error('No branch set up. Add a branch in Settings to record payments.');
+  }
+  return String((data as { id: string }).id);
 }
 
 /** Next account code in same series as web: 1000/1001… (cash), 1010/1011/1012… (bank), 1020… (wallet), 2000… (others). */
@@ -807,6 +765,7 @@ export async function recordSupplierPayment(params: {
     p_reference_number: null,
     p_notes: composedNotes || null,
     p_created_by: params.userId ?? null,
+    p_worker_stage_id: null,
   });
   if (error) {
     let msg = error.message;
@@ -1029,9 +988,7 @@ export async function getWorkerLedgerEntries(
 }
 
 /**
- * Record worker payment using canonical accounting spine:
- * payments -> journal_entries -> journal_entry_lines -> worker_ledger_entries.
- * Idempotent by payment reference for mobile retries / duplicate submits.
+ * Record worker payment via `record_payment_with_accounting` (WPY-*), then worker_ledger_entries row.
  */
 export async function recordWorkerPayment(params: {
   companyId: string;
@@ -1056,126 +1013,49 @@ export async function recordWorkerPayment(params: {
   const validBranchId = params.branchId && params.branchId !== 'all' && params.branchId !== 'default' ? params.branchId : null;
   const amount = Number(params.amount) || 0;
   const paymentMethod = normalizePaymentMethod(params.paymentMethod);
-  const ref = params.paymentReference ?? await getNextDocumentNumber(params.companyId, validBranchId, 'payment');
   const notes = params.notes ?? params.workPeriod ?? 'Worker payment';
 
-  // 1) payments (idempotent by reference_number + worker reference)
-  let paymentId: string | null = null;
-  const { data: existingPayment } = await supabase
-    .from('payments')
-    .select('id')
-    .eq('company_id', params.companyId)
-    .eq('reference_type', 'worker_payment')
-    .eq('reference_id', params.workerId)
-    .eq('reference_number', ref)
-    .limit(1)
-    .maybeSingle();
-  if (existingPayment?.id) {
-    paymentId = String(existingPayment.id);
-  } else {
-    const { data: paymentRow, error: paymentErr } = await supabase
-      .from('payments')
-      .insert({
-        company_id: params.companyId,
-        branch_id: validBranchId,
-        payment_type: 'paid',
-        reference_type: 'worker_payment',
-        reference_id: params.workerId,
-        amount,
-        payment_method: paymentMethod,
-        payment_account_id: params.paymentAccountId,
-        payment_date: params.paymentDate,
-        reference_number: ref,
-        notes,
-        created_by: params.userId ?? null,
-      })
-      .select('id')
-      .single();
-    if (paymentErr || !paymentRow?.id) return { data: null, error: paymentErr?.message ?? 'Failed to create payment row.' };
-    paymentId = String(paymentRow.id);
+  let branchResolved: string;
+  try {
+    branchResolved = await resolveBranchIdForPaymentMobile(params.companyId, validBranchId);
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'Branch required' };
   }
 
-  // 2) journal entry + lines (one JE per payment id)
-  let journalEntryId: string | null = null;
-  const { data: existingJe } = await supabase
-    .from('journal_entries')
-    .select('id')
-    .eq('company_id', params.companyId)
-    .eq('payment_id', paymentId)
-    .limit(1)
-    .maybeSingle();
-  if (existingJe?.id) {
-    journalEntryId = String(existingJe.id);
-  } else {
-    const payToPayable = await shouldDebitWorkerPayableForPaymentMobile(
-      params.companyId,
-      params.workerId,
-      params.stageId ?? null,
-      validBranchId
-    );
-    const { data: workerPayable } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('company_id', params.companyId)
-      .or('code.eq.2010,name.ilike.%Worker Payable%')
-      .limit(1)
-      .maybeSingle();
-    const { data: workerAdvance } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('company_id', params.companyId)
-      .or('code.eq.1180,name.ilike.%Worker Advance%')
-      .limit(1)
-      .maybeSingle();
-    const workerPayableId = String(workerPayable?.id || '');
-    const workerAdvanceId = String(workerAdvance?.id || '');
-    if (!workerPayableId) return { data: null, error: 'Worker Payable account not found (2010).' };
-    let debitAccountId: string;
-    if (payToPayable) debitAccountId = workerPayableId;
-    else {
-      if (!workerAdvanceId) return { data: null, error: 'Worker Advance account not found (1180).' };
-      debitAccountId = workerAdvanceId;
-    }
+  const { data, error } = await supabase.rpc('record_payment_with_accounting', {
+    p_company_id: params.companyId,
+    p_branch_id: branchResolved,
+    p_payment_type: 'paid',
+    p_reference_type: 'worker_payment',
+    p_reference_id: params.workerId,
+    p_amount: amount,
+    p_payment_method: paymentMethod,
+    p_payment_date: params.paymentDate,
+    p_payment_account_id: params.paymentAccountId,
+    p_reference_number: params.paymentReference?.trim() ? params.paymentReference.trim() : null,
+    p_notes: notes,
+    p_created_by: params.userId ?? null,
+    p_worker_stage_id: params.stageId ?? null,
+  });
 
-    const jeNo = await getNextDocumentNumber(params.companyId, validBranchId, 'journal');
-    const { data: jeRow, error: jeErr } = await supabase
-      .from('journal_entries')
-      .insert({
-        company_id: params.companyId,
-        branch_id: validBranchId,
-        entry_no: jeNo,
-        entry_date: params.paymentDate,
-        description: `Payment to worker ${params.workerName || params.workerId}`,
-        reference_type: 'worker_payment',
-        reference_id: params.workerId,
-        payment_id: paymentId,
-        created_by: params.userId ?? null,
-      })
-      .select('id')
-      .single();
-    if (jeErr || !jeRow?.id) return { data: null, error: jeErr?.message ?? 'Failed to create journal entry.' };
-    journalEntryId = String(jeRow.id);
+  if (error) return { data: null, error: appendPayReferenceAllocationHint(error.message) };
 
-    const { error: lineErr } = await supabase.from('journal_entry_lines').insert([
-      {
-        journal_entry_id: journalEntryId,
-        account_id: debitAccountId,
-        debit: amount,
-        credit: 0,
-        description: `Worker payment debit (${params.workerName || params.workerId})`,
-      },
-      {
-        journal_entry_id: journalEntryId,
-        account_id: params.paymentAccountId,
-        debit: 0,
-        credit: amount,
-        description: `Worker payment credit (${params.workerName || params.workerId})`,
-      },
-    ]);
-    if (lineErr) return { data: null, error: lineErr.message };
+  const res = data as {
+    success?: boolean;
+    payment_id?: string;
+    journal_entry_id?: string;
+    reference_number?: string | null;
+    error?: string;
+  };
+  if (!res?.success || !res.payment_id || !res.journal_entry_id) {
+    const msg = typeof res?.error === 'string' ? res.error : 'Worker payment failed.';
+    return { data: null, error: appendPayReferenceAllocationHint(msg) };
   }
 
-  // 3) worker ledger row (idempotent by accounting_payment + journal id OR payment reference)
+  const paymentId = res.payment_id;
+  const journalEntryId = res.journal_entry_id;
+  const ref = String(res.reference_number ?? '');
+
   const { data: existingLedger } = await supabase
     .from('worker_ledger_entries')
     .select('id')

@@ -260,6 +260,13 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
   const [invCategories, setInvCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [invSyncReplica, setInvSyncReplica] = useState(true);
   const [invSearchBusy, setInvSearchBusy] = useState(false);
+  /** After invoice/bill save — acknowledged modal before navigating back to order detail */
+  const [invoiceBillSuccess, setInvoiceBillSuccess] = useState<{
+    saleId: string;
+    refLabel?: string;
+    lineSummary?: string;
+    detail: string;
+  } | null>(null);
   const refreshMergedOrder = useCallback(
     async (saleId: string): Promise<StudioOrder | null> => {
       if (!companyId) return null;
@@ -763,7 +770,7 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
         return;
       }
       void withLoading('Saving invoice line...', async () => {
-        const { error } = await studioInvoiceApi.upsertStudioInvoiceLine({
+        const { data, error } = await studioInvoiceApi.upsertStudioInvoiceLine({
           companyId,
           branchId: branch?.id ?? null,
           saleId: selectedOrder.saleId,
@@ -779,15 +786,17 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
           alert(error);
           return;
         }
-        alert(
-          selectedOrder.customerInvoiceGenerated
-            ? 'Invoice line updated and sale totals refreshed.'
-            : 'Invoice line added, production linked, and sale totals updated.',
-        );
-        await loadOrders();
-        const next = await refreshMergedOrder(selectedOrder.saleId);
-        if (next) setSelectedOrder(next);
-        setView('order-detail');
+        const detail = selectedOrder.customerInvoiceGenerated
+          ? 'Invoice line updated and sale totals refreshed.'
+          : 'Invoice line added, production linked, and sale totals updated.';
+        setInvoiceBillSuccess({
+          saleId: selectedOrder.saleId,
+          refLabel: selectedOrder.orderNumber ? `Ref: ${selectedOrder.orderNumber}` : undefined,
+          lineSummary: data?.invoiceItemId
+            ? `Line item: ${data.invoiceItemId.slice(0, 8)}…`
+            : undefined,
+          detail,
+        });
       });
     };
 
@@ -825,7 +834,18 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
       }
     };
 
+    const dismissBillSuccessToOrderDetail = async () => {
+      if (!invoiceBillSuccess) return;
+      const saleId = invoiceBillSuccess.saleId;
+      setInvoiceBillSuccess(null);
+      await loadOrders();
+      const next = await refreshMergedOrder(saleId);
+      if (next) setSelectedOrder(next);
+      setView('order-detail');
+    };
+
     return (
+      <>
       <div className="min-h-screen pb-24 bg-[#111827]">
         <div className="bg-gradient-to-br from-[#10B981] to-[#059669] p-4 sticky top-0 z-10">
           <div className="flex items-center gap-3">
@@ -1124,6 +1144,42 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
           </button>
         </div>
       </div>
+
+      {invoiceBillSuccess ? (
+        <div
+          className="fixed inset-0 z-[95] bg-black/60 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="studio-bill-success-title"
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-[#374151] bg-[#1F2937] p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex justify-center">
+              <CheckCircle className="h-14 w-14 text-[#10B981]" aria-hidden />
+            </div>
+            <h2 id="studio-bill-success-title" className="mb-2 text-center text-lg font-semibold text-white">
+              Bill generated successfully
+            </h2>
+            {invoiceBillSuccess.refLabel ? (
+              <p className="mb-1 text-center text-sm text-[#D1D5DB]">{invoiceBillSuccess.refLabel}</p>
+            ) : null}
+            {invoiceBillSuccess.lineSummary ? (
+              <p className="mb-3 text-center text-xs text-[#9CA3AF] break-all">{invoiceBillSuccess.lineSummary}</p>
+            ) : null}
+            <p className="mb-6 text-center text-sm text-[#9CA3AF] leading-relaxed">{invoiceBillSuccess.detail}</p>
+            <button
+              type="button"
+              className="w-full rounded-xl bg-[#10B981] py-3 text-sm font-semibold text-white hover:bg-[#059669]"
+              onClick={() => void dismissBillSuccessToOrderDetail()}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      ) : null}
+      </>
     );
   }
 

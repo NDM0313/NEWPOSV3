@@ -683,6 +683,7 @@ export async function addRentalPayment(
       p_reference_number: null,
       p_notes: params.notes ?? params.reference ?? null,
       p_created_by: params.userId ?? null,
+      p_worker_stage_id: null,
     });
 
     if (rpcErr) return { error: rpcErr.message };

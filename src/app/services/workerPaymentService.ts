@@ -1,19 +1,14 @@
 /**
- * Canonical worker payment flow (Phase-2).
- * One path: payment ref from erp_document_sequences → payments row → journal entry → worker_ledger_entries.
- * Ensures Roznamcha shows worker payments (payments-only) and worker ledger has exactly one payment row per PAY ref.
+ * Canonical worker payment: `record_payment_with_accounting` (WPY-*, GL mirrors voucher)
+ * then worker_ledger + stage settlement (Pay Now) — same spine as mobile.
  */
 
 import { supabase } from '@/lib/supabase';
-import { documentNumberService } from '@/app/services/documentNumberService';
-import { accountingService } from '@/app/services/accountingService';
-import type { JournalEntry, JournalEntryLine } from '@/app/services/accountingService';
 import { studioProductionService } from '@/app/services/studioProductionService';
 import {
-  getWorkerAdvanceAccountId,
-  shouldDebitWorkerPayableForPayment,
-} from '@/app/services/workerAdvanceService';
-import { resolveWorkerPayablePostingAccountId } from '@/app/services/partySubledgerAccountService';
+  recordPaymentWithAccounting,
+  resolveBranchIdForPaymentRpc,
+} from '@/app/services/recordPaymentWithAccountingRpc';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 
 export interface CreateWorkerPaymentParams {
@@ -36,20 +31,8 @@ export interface CreateWorkerPaymentResult {
   referenceNumber: string;
 }
 
-const PAYMENT_METHOD_MAP: Record<string, string> = {
-  cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', card: 'card', Card: 'card',
-  cheque: 'other', Cheque: 'other', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
-  mobile_wallet: 'other', wallet: 'other', Wallet: 'other',
-};
-
-function normalizePaymentMethod(method: string): string {
-  const m = (method || 'cash').toLowerCase().trim();
-  return PAYMENT_METHOD_MAP[method] || PAYMENT_METHOD_MAP[m] || 'cash';
-}
-
 /**
- * Canonical worker payment: one payments row (PAY-xxxx), one journal entry, one worker_ledger_entries payment row.
- * Roznamcha shows it via payments. Job rows (studio_production_stage) are never given payment_reference.
+ * Record worker payment: single RPC (payments + journal + lines). Roznamcha via payments.
  */
 export async function createWorkerPayment(params: CreateWorkerPaymentParams): Promise<CreateWorkerPaymentResult> {
   const {
@@ -69,89 +52,49 @@ export async function createWorkerPayment(params: CreateWorkerPaymentParams): Pr
     throw new Error('companyId, workerId, amount, and paymentAccountId are required');
   }
 
-  const validBranchId = (branchId && branchId !== 'all') ? branchId : null;
-  const enumPaymentMethod = normalizePaymentMethod(paymentMethod);
+  const validBranchId = branchId && branchId !== 'all' ? branchId : null;
   const paymentDate = new Date().toISOString().split('T')[0];
-
-  // 1) Payment reference from canonical source only
-  const referenceNumber = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment');
-
   const { data: { user: authUser } } = await supabase.auth.getUser();
   const authUserId = authUser?.id ?? null;
 
-  // 2) Insert payments row (so Roznamcha shows it)
-  const { data: paymentRow, error: paymentErr } = await supabase
-    .from('payments')
-    .insert({
-      company_id: companyId,
-      branch_id: validBranchId,
-      payment_type: 'paid',
-      reference_type: 'worker_payment',
-      reference_id: workerId,
-      amount,
-      payment_method: enumPaymentMethod,
-      payment_account_id: paymentAccountId,
-      payment_date: paymentDate,
-      reference_number: referenceNumber,
-      notes: notes || undefined,
-      received_by: authUserId,
-      created_by: authUserId,
-    })
-    .select('id')
-    .single();
+  const branchResolved = await resolveBranchIdForPaymentRpc(companyId, validBranchId);
+  const noteText = (notes?.trim() || `Payment to worker ${workerName}`).slice(0, 2000);
 
-  if (paymentErr) throw new Error(`Worker payment (payments row) failed: ${paymentErr.message}`);
-  const paymentId = (paymentRow as { id: string }).id;
+  const result = await recordPaymentWithAccounting({
+    companyId,
+    branchId: branchResolved,
+    paymentType: 'paid',
+    referenceType: 'worker_payment',
+    referenceId: workerId,
+    amount,
+    paymentMethod,
+    paymentDate,
+    paymentAccountId,
+    notes: noteText,
+    createdBy: authUserId,
+    workerStageId: stageId ?? null,
+  });
 
-  // 3) Debit Worker Payable (2010) if a stage bill exists; else Worker Advance (1180)
-  const payToPayable = await shouldDebitWorkerPayableForPayment(companyId, workerId, stageId ?? null, validBranchId);
-  const workerPayableAccountId = await resolveWorkerPayablePostingAccountId(companyId, workerId);
-  if (!workerPayableAccountId) throw new Error('Worker Payable account (2010) not found');
-
-  let debitAccountId = workerPayableAccountId;
-  if (!payToPayable) {
-    const advId = await getWorkerAdvanceAccountId(companyId);
-    if (!advId) throw new Error('Worker Advance account (1180) not found. Run migrations or ensure default accounts.');
-    debitAccountId = advId;
-  }
-
-  const debitLabel = payToPayable ? 'Worker payable' : 'Worker advance (pre-bill)';
-  const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, validBranchId);
-  const journalEntry: JournalEntry = {
-    company_id: companyId,
-    branch_id: validBranchId ?? undefined,
-    entry_no: entryNo,
-    entry_date: paymentDate,
-    description: `Payment to worker ${workerName} (${debitLabel})`,
-    reference_type: 'worker_payment',
-    reference_id: workerId,
-    created_by: authUserId ?? undefined,
-  };
-  const lines: JournalEntryLine[] = [
-    { account_id: debitAccountId, debit: amount, credit: 0, description: `${debitLabel} – ${workerName}` },
-    { account_id: paymentAccountId, debit: 0, credit: amount, description: `Payment to worker ${workerName}` },
-  ];
-  const savedEntry = await accountingService.createEntry(journalEntry, lines, paymentId);
-  const journalEntryId = (savedEntry as { id: string }).id;
-
-  // 5) One worker_ledger_entries row (accounting_payment) with this PAY ref
   const isPayNowFull = stageId != null && stageAmount != null && amount >= Number(stageAmount);
   if (!isPayNowFull) {
     await studioProductionService.recordAccountingPaymentToLedger({
       companyId,
       workerId,
       amount,
-      paymentReference: referenceNumber,
-      notes: notes || `Payment to worker`,
-      journalEntryId,
+      paymentReference: result.referenceNumber,
+      notes: noteText,
+      journalEntryId: result.journalEntryId,
     });
   }
 
-  // 6) Pay Now full: mark stage/job as paid without putting PAY ref on job row (contamination fix)
   if (isPayNowFull && stageId) {
     await studioProductionService.markStageLedgerPaid(stageId, null);
   }
 
   dispatchContactBalancesRefresh(companyId);
-  return { paymentId, journalEntryId, referenceNumber };
+  return {
+    paymentId: result.paymentId,
+    journalEntryId: result.journalEntryId,
+    referenceNumber: result.referenceNumber,
+  };
 }

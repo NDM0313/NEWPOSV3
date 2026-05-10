@@ -81,6 +81,7 @@ export function UnifiedPaymentSheet({
     if (kind === 'sale') {
       const { success, error, paymentId, referenceNumber } = await submitCustomer({
         companyId,
+        branchId,
         customerId: partyId ?? null,
         referenceId,
         amount: payload.amount,

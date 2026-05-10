@@ -57,6 +57,8 @@ export interface RecordPaymentWithAccountingArgs {
   /** Bank / transaction trace shown in notes (optional). */
   bankTraceId?: string | null;
   createdBy?: string | null;
+  /** Studio Pay Now: stage id for Dr 2010 vs 1180 routing in `record_payment_with_accounting`. */
+  workerStageId?: string | null;
 }
 
 export interface RecordPaymentWithAccountingOk {
@@ -102,6 +104,7 @@ export async function recordPaymentWithAccounting(
     notes,
     bankTraceId,
     createdBy,
+    workerStageId,
   } = args;
 
   if (!companyId || !referenceId || amount <= 0 || !paymentAccountId) {
@@ -126,6 +129,7 @@ export async function recordPaymentWithAccounting(
     p_reference_number: null,
     p_notes: composedNotes,
     p_created_by: createdBy ?? null,
+    p_worker_stage_id: workerStageId ?? null,
   });
 
   if (error) {

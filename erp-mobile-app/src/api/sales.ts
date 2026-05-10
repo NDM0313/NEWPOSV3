@@ -756,6 +756,7 @@ export async function recordSalePayment(params: {
     p_reference_number: null,
     p_notes: composedNotes || null,
     p_created_by: userId ?? null,
+    p_worker_stage_id: null,
   });
   if (error) return { data: null, error: error.message };
   const res = data as { success?: boolean; payment_id?: string; error?: string } | null;
@@ -766,6 +767,8 @@ export async function recordSalePayment(params: {
 /** Record customer payment via RPC (atomic: payment + journal Dr Cash/Bank Cr A/R + update sale). Used by mobile Receive Payment screen. */
 export async function recordCustomerPayment(params: {
   companyId: string;
+  /** Sale branch; resolves like web — same PAY-* numbering as record_payment_with_accounting. */
+  branchId: string | null;
   customerId: string | null;
   referenceId: string; // sale id
   amount: number;
@@ -779,7 +782,7 @@ export async function recordCustomerPayment(params: {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const {
     companyId,
-    customerId,
+    branchId,
     referenceId,
     amount,
     accountId,
@@ -792,23 +795,43 @@ export async function recordCustomerPayment(params: {
   if (!companyId || !referenceId || amount <= 0 || !accountId) {
     return { data: null, error: 'Company, reference (sale), amount and account are required.' };
   }
+  let branchResolved: string;
+  try {
+    branchResolved = await resolveBranchId(companyId, branchId ?? 'default');
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
+  }
   const dateVal = paymentDate || new Date().toISOString().split('T')[0];
   const refTrim = referenceNumber != null ? String(referenceNumber).trim() : '';
   const baseNotes = notes?.trim() ?? '';
   const composedNotes = refTrim
     ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${refTrim}`
     : baseNotes;
-  const { data, error } = await supabase.rpc('record_customer_payment', {
+  const normalized = String(paymentMethod || 'cash').toLowerCase();
+  const methodMap: Record<string, 'cash' | 'bank' | 'card' | 'other'> = {
+    cash: 'cash',
+    bank: 'bank',
+    card: 'card',
+    cheque: 'other',
+    'mobile wallet': 'other',
+    mobile_wallet: 'other',
+    wallet: 'other',
+  };
+  const enumMethod = methodMap[normalized] || 'cash';
+  const { data, error } = await supabase.rpc('record_payment_with_accounting', {
     p_company_id: companyId,
-    p_customer_id: customerId || null,
+    p_branch_id: branchResolved,
+    p_payment_type: 'received',
+    p_reference_type: 'sale',
     p_reference_id: referenceId,
     p_amount: amount,
-    p_account_id: accountId,
-    p_payment_method: paymentMethod || 'cash',
+    p_payment_method: enumMethod,
     p_payment_date: dateVal,
+    p_payment_account_id: accountId,
+    p_reference_number: null,
     p_notes: composedNotes || null,
     p_created_by: createdBy ?? null,
-    p_reference_number_override: null,
+    p_worker_stage_id: null,
   });
   if (error) return { data: null, error: error.message };
   const res = data as { success?: boolean; payment_id?: string; reference_number?: string; error?: string } | null;

@@ -242,7 +242,7 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
     }
     const displayCategory = selectedSub?.name ?? selectedMain?.name ?? addCategory;
     setList((prev) => [
-      { id: data!.id, expense_no: data!.expense_no, date: new Date().toISOString().slice(0, 10), category: displayCategory, description: addDesc.trim(), amount: amt },
+      { id: data!.id, expense_no: data!.expense_no || '—', date: new Date().toISOString().slice(0, 10), category: displayCategory, description: addDesc.trim(), amount: amt },
       ...prev,
     ]);
     setAddError(null);

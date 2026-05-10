@@ -1091,4 +1091,10 @@ $$;
 COMMENT ON FUNCTION public.record_payment_with_accounting(UUID, UUID, payment_type, VARCHAR, UUID, DECIMAL, payment_method_enum, DATE, UUID, VARCHAR, TEXT, UUID) IS
 'Payment posting: sale/purchase/rental/expense/on_account; company-scoped PAY refs; duplicate-proof retries.';
 
+-- ============================================================================
+-- 20260517120000_record_payment_seq_year_match_generate_document_number.sql
+-- Apply after this bundle for duplicate-recovery sequence year = generate_document_number (now()).
+-- Full SQL: migrations/20260517120000_record_payment_seq_year_match_generate_document_number.sql
+-- ============================================================================
+
 NOTIFY pgrst, 'reload schema';
