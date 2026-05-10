@@ -14,9 +14,16 @@ ALTER TABLE stock_movements ADD CONSTRAINT stock_movements_movement_type_check C
     'RENTAL_OUT',
     'RENTAL_RETURN',
     'PRODUCTION_IN',
+    'PRODUCTION',
     'sale',
     'purchase',
-    'sale_cancelled'
+    'sale_cancelled',
+    'adjustment',
+    'PURCHASE_CANCELLED',
+    'SALE_CANCELLED',
+    'sale_return',
+    'rental_in',
+    'rental_out'
   )
 );
 
