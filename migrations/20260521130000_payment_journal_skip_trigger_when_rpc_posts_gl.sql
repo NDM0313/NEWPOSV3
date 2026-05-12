@@ -410,9 +410,17 @@ WITH ranked AS (
     je.payment_id,
     ROW_NUMBER() OVER (
       PARTITION BY je.payment_id
-      ORDER BY je.created_at DESC NULLS LAST, je.id DESC
+      ORDER BY
+        CASE
+          WHEN TRIM(COALESCE(je.document_no, '')) = TRIM(COALESCE(p.reference_number, '')) THEN 0
+          WHEN TRIM(COALESCE(je.entry_no, '')) LIKE 'JE-%' THEN 2
+          ELSE 1
+        END,
+        je.created_at DESC NULLS LAST,
+        je.id DESC
     ) AS rn
   FROM public.journal_entries je
+  INNER JOIN public.payments p ON p.id = je.payment_id
   WHERE je.payment_id IS NOT NULL
     AND COALESCE(je.is_void, FALSE) = FALSE
     AND je.reference_type = 'payment'
