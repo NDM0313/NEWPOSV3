@@ -13,6 +13,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import { dispatchAccountingInvalidated } from '@/app/lib/dataInvalidationBus';
 import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { accountHelperService } from './accountHelperService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from './accountingService';
@@ -674,8 +675,13 @@ export const saleAccountingService = {
       const result = await accountingService.createEntry(entry, lines);
       const journalEntryId = (result as any)?.id ?? null;
       console.log(`[saleAccountingService] Journal entry created for sale ${invoiceNo}: ${journalEntryId}`);
-      if (journalEntryId && typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+      if (journalEntryId) {
+        dispatchAccountingInvalidated({
+          companyId,
+          branchId: branchId ?? null,
+          entityId: saleId,
+          reason: 'saleDocumentJournalCreated',
+        });
       }
       dispatchContactBalancesRefresh(companyId);
       return journalEntryId;
@@ -1170,8 +1176,13 @@ export const saleAccountingService = {
       const result = await accountingService.createEntry(entry, lines);
       const journalEntryId = (result as any)?.id ?? null;
       console.log(`[saleAccountingService] Inventory reversal JE created for return ${returnNo}: ${journalEntryId}`);
-      if (journalEntryId && typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+      if (journalEntryId) {
+        dispatchAccountingInvalidated({
+          companyId,
+          branchId: branchId ?? null,
+          entityId: returnId,
+          reason: 'saleReturnInventoryReversalJe',
+        });
       }
       return journalEntryId;
     } catch (err: any) {

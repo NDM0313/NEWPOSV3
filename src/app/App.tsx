@@ -231,6 +231,32 @@ const AppContent = () => {
   }
 
   // Route protection: module toggles are company-wide and apply to all users/roles (Admin, Manager, Staff).
+  const moduleDisabledScreen = (title: string) => (
+    <Layout>
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-white mb-2">{title}</h2>
+          <p className="text-gray-400">
+            This module is turned off for your business. It is hidden for all users and roles. Enable it in Settings → Module Toggles.
+          </p>
+        </div>
+      </div>
+    </Layout>
+  );
+
+  if (currentView === 'sales' && !modules.salesModuleEnabled) {
+    return moduleDisabledScreen('Sales Module Disabled');
+  }
+  if (currentView === 'purchases' && !modules.purchasesModuleEnabled) {
+    return moduleDisabledScreen('Purchases Module Disabled');
+  }
+  if (currentView === 'expenses' && !modules.expensesModuleEnabled) {
+    return moduleDisabledScreen('Expenses Module Disabled');
+  }
+  if (currentView === 'reports' && !modules.reportsModuleEnabled) {
+    return moduleDisabledScreen('Reports Module Disabled');
+  }
+
   if (currentView === 'pos' && !modules.posModuleEnabled) {
     return (
       <Layout>
@@ -257,17 +283,28 @@ const AppContent = () => {
     );
   }
 
-  if ((currentView === 'studio' || currentView === 'studio-dashboard-new' || currentView === 'studio-sales-list-new' || currentView === 'studio-pipeline' || currentView === 'studio-sale-detail' || currentView === 'studio-sale-detail-new' || currentView === 'studio-workflow' || currentView === 'worker-detail' || currentView === 'studio-order-detail-v3' || currentView === 'manufacturing-bom' || currentView === 'manufacturing-orders' || currentView === 'manufacturing-workflow') && !modules.studioModuleEnabled) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-white mb-2">Studio Module Disabled</h2>
-            <p className="text-gray-400">This module is turned off for your business. It is hidden for all users and roles. Enable it in Settings → Module Toggles.</p>
-          </div>
-        </div>
-      </Layout>
-    );
+  if (
+    (currentView === 'manufacturing-bom' ||
+      currentView === 'manufacturing-orders' ||
+      currentView === 'manufacturing-workflow') &&
+    !modules.productionModuleEnabled
+  ) {
+    return moduleDisabledScreen('Production Module Disabled');
+  }
+
+  if (
+    (currentView === 'studio' ||
+      currentView === 'studio-dashboard-new' ||
+      currentView === 'studio-sales-list-new' ||
+      currentView === 'studio-pipeline' ||
+      currentView === 'studio-sale-detail' ||
+      currentView === 'studio-sale-detail-new' ||
+      currentView === 'studio-workflow' ||
+      currentView === 'worker-detail' ||
+      currentView === 'studio-order-detail-v3') &&
+    !modules.studioModuleEnabled
+  ) {
+    return moduleDisabledScreen('Studio Module Disabled');
   }
 
   if ((currentView === 'accounting' || currentView === 'ar-ap-reconciliation-center') && !modules.accountingModuleEnabled) {

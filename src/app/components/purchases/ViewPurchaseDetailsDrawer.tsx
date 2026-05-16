@@ -211,20 +211,21 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   }, [companyId]);
 
   // CRITICAL FIX: Load payments breakdown (defined first to avoid hoisting issue)
-  const loadPayments = useCallback(async (purchaseId: string) => {
+  const loadPayments = useCallback(async (purchaseId: string, opts?: { silent?: boolean }) => {
     if (!purchaseId) {
       console.warn('[VIEW PURCHASE] loadPayments called without purchaseId');
       return;
     }
-    setLoadingPayments(true);
+    const silent = opts?.silent === true;
+    if (!silent) setLoadingPayments(true);
     try {
       const fetchedPayments = await purchaseService.getPurchasePayments(purchaseId);
       setPayments(fetchedPayments || []);
     } catch (error) {
       console.error('[VIEW PURCHASE] Error loading payments:', error);
-      setPayments([]);
+      if (!silent) setPayments([]);
     } finally {
-      setLoadingPayments(false);
+      if (!silent) setLoadingPayments(false);
     }
   }, []);
 
@@ -549,14 +550,14 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   };
 
   // CRITICAL FIX: Reload purchase data (called after payment is added)
-  const reloadPurchaseData = useCallback(async () => {
+  const reloadPurchaseData = useCallback(async (opts?: { silentPayments?: boolean }) => {
     if (!purchaseId) return;
     try {
       const purchaseData = await purchaseService.getPurchase(purchaseId);
       if (purchaseData) {
         const convertedPurchase = convertFromSupabasePurchase(purchaseData);
         setPurchase(convertedPurchase);
-        await loadPayments(purchaseData.id);
+        await loadPayments(purchaseData.id, { silent: opts?.silentPayments });
         await loadActivityLogs(purchaseData.id);
       }
     } catch (error: any) {
@@ -568,7 +569,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   useEffect(() => {
     const handlePaymentAdded = () => {
       if (purchaseId) {
-        reloadPurchaseData();
+        reloadPurchaseData({ silentPayments: true });
       }
     };
     

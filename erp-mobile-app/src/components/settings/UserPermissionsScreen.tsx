@@ -4,7 +4,7 @@ import type { User } from '../../types';
 import { usePermissions } from '../../context/PermissionContext';
 import * as permissionsApi from '../../api/permissions';
 import * as branchesApi from '../../api/branches';
-import type { RolePermissionRow } from '../../api/permissions';
+import { FEATURE_MOBILE_ROLE_MATRIX_EDITOR } from '../../config/featureFlags';
 
 function mapAppRoleToEngine(role: string): permissionsApi.EngineRole {
   const r = (role || '').toLowerCase();
@@ -22,10 +22,11 @@ interface UserPermissionsScreenProps {
 
 export function UserPermissionsScreen({ onBack, user, companyId }: UserPermissionsScreenProps) {
   const { permissions, branchIds, isPermissionLoaded, isAdminOrOwner, reload } = usePermissions();
+  const canEditRoleMatrix = isAdminOrOwner && FEATURE_MOBILE_ROLE_MATRIX_EDITOR;
   const [branchList, setBranchList] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   const [editRole, setEditRole] = useState<permissionsApi.EngineRole | null>(null);
-  const [editPerms, setEditPerms] = useState<RolePermissionRow[]>([]);
+  const [editPerms, setEditPerms] = useState<permissionsApi.RolePermissionRow[]>([]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -54,25 +55,25 @@ export function UserPermissionsScreen({ onBack, user, companyId }: UserPermissio
         : `${branchIds.length} branch(es)`;
 
   const handleToggle = async (module: string, action: string, allowed: boolean) => {
-    if (!editRole || !isAdminOrOwner) return;
+    if (!editRole || !canEditRoleMatrix) return;
+    if (editRole !== 'manager' && editRole !== 'user') return;
     setSaving(`${module}.${action}`);
     const { error } = await permissionsApi.setRolePermission(editRole, module, action, allowed);
     setSaving(null);
     if (!error) {
-      setEditPerms((prev) =>
-        prev.map((p) => (p.module === module && p.action === action ? { ...p, allowed } : p))
-      );
-      if (editRole === engineRole) reload(user.id, user.role, user.profileId);
+      const fresh = await permissionsApi.getRolePermissionsByEngineRole(editRole);
+      setEditPerms(fresh);
+      if (editRole === engineRole) reload(user.id, user.role, user.profileId, companyId ?? undefined);
     }
   };
 
   const grouped = editPerms.length > 0
-    ? editPerms.reduce<Record<string, RolePermissionRow[]>>((acc, p) => {
+    ? editPerms.reduce<Record<string, permissionsApi.RolePermissionRow[]>>((acc, p) => {
         if (!acc[p.module]) acc[p.module] = [];
         acc[p.module].push(p);
         return acc;
       }, {})
-    : permissions.reduce<Record<string, RolePermissionRow[]>>((acc, p) => {
+    : permissions.reduce<Record<string, permissionsApi.RolePermissionRow[]>>((acc, p) => {
         if (!acc[p.module]) acc[p.module] = [];
         acc[p.module].push(p);
         return acc;
@@ -117,11 +118,22 @@ export function UserPermissionsScreen({ onBack, user, companyId }: UserPermissio
               </div>
             </div>
 
-            {isAdminOrOwner && (
+            {isAdminOrOwner && !canEditRoleMatrix && (
+              <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 text-xs text-[#9CA3AF]">
+                <p className="font-medium text-[#E5E7EB] mb-1">Mobile matrix editing is off</p>
+                <p>
+                  Use Web ERP → Settings → Access for full role matrix. To test mobile edits, run{' '}
+                  <code className="text-[#93C5FD]">localStorage.setItem(&apos;erp_mobile_feature_role_matrix_editor&apos;, &apos;true&apos;)</code>{' '}
+                  then reload; only <strong>manager</strong> and <strong>user</strong> engine roles can be changed here.
+                </p>
+              </div>
+            )}
+
+            {canEditRoleMatrix && (
               <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-                <p className="text-xs text-[#9CA3AF] mb-2">Edit role permissions (admin)</p>
+                <p className="text-xs text-[#9CA3AF] mb-2">Edit role permissions (manager / user only)</p>
                 <div className="flex flex-wrap gap-2">
-                  {(['owner', 'admin', 'manager', 'user'] as const).map((r) => (
+                  {permissionsApi.MOBILE_EDITABLE_ENGINE_ROLES.map((r) => (
                     <button
                       key={r}
                       onClick={() => setEditRole(editRole === r ? null : r)}
@@ -154,7 +166,7 @@ export function UserPermissionsScreen({ onBack, user, companyId }: UserPermissio
                             className="flex items-center justify-between text-sm"
                           >
                             <span className="text-[#E5E7EB]">{p.action}</span>
-                            {editRole && isAdminOrOwner ? (
+                            {editRole && canEditRoleMatrix ? (
                               <button
                                 onClick={() => handleToggle(p.module, p.action, !p.allowed)}
                                 disabled={!!saving}

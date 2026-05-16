@@ -40,12 +40,37 @@ export interface NumberingAnalysisRow {
   status: 'ok' | 'out_of_sync';
 }
 
-const DOC_TYPES: { document_type: string; label: string; prefix: string; table: string; column: string; prefixFilter?: (v: string) => boolean }[] = [
+const DOC_TYPES: {
+  document_type: string;
+  label: string;
+  prefix: string;
+  table: string;
+  column: string;
+  paymentType?: 'paid' | 'received';
+  prefixFilter?: (v: string) => boolean;
+}[] = [
   { document_type: 'SALE', label: 'Sales', prefix: 'SL', table: 'sales', column: 'invoice_no', prefixFilter: (v) => /^SL-/i.test(v) && !/^STD-/i.test(v) && !/^POS-/i.test(v) },
   { document_type: 'STUDIO', label: 'Studio', prefix: 'STD', table: 'sales', column: 'invoice_no', prefixFilter: (v) => /^STD-/i.test(v) },
   { document_type: 'POS', label: 'POS', prefix: 'POS', table: 'sales', column: 'invoice_no', prefixFilter: (v) => /^POS-/i.test(v) },
   { document_type: 'PURCHASE', label: 'Purchase', prefix: 'PUR', table: 'purchases', column: 'po_no' },
-  { document_type: 'PAYMENT', label: 'Payment', prefix: 'PAY', table: 'payments', column: 'reference_number', prefixFilter: (v) => /^PAY-\d/i.test(v) },
+  {
+    document_type: 'PAYMENT',
+    label: 'Outgoing payment',
+    prefix: 'PAY',
+    table: 'payments',
+    column: 'reference_number',
+    paymentType: 'paid',
+    prefixFilter: (v) => /^PAY-\d/i.test(v) && !/^PAY-BACKFILL-/i.test(v),
+  },
+  {
+    document_type: 'CUSTOMER_RECEIPT',
+    label: 'Customer receipt',
+    prefix: 'RCV',
+    table: 'payments',
+    column: 'reference_number',
+    paymentType: 'received',
+    prefixFilter: (v) => /^(RCV|PAY)-\d/i.test(v) && !/^PAY-BACKFILL/i.test(v),
+  },
   { document_type: 'EXPENSE', label: 'Expense', prefix: 'EXP', table: 'expenses', column: 'expense_no' },
   { document_type: 'RENTAL', label: 'Rental', prefix: 'REN', table: 'rentals', column: 'booking_no' },
   { document_type: 'PRODUCT', label: 'Product', prefix: 'PRD', table: 'products', column: 'sku', prefixFilter: (v) => /^PRD-/i.test(v) },
@@ -67,7 +92,7 @@ export const numberingMaintenanceService = {
         .eq('year', year),
       supabase.from('sales').select('invoice_no').eq('company_id', companyId),
       supabase.from('purchases').select('po_no').eq('company_id', companyId),
-      supabase.from('payments').select('reference_number').eq('company_id', companyId),
+      supabase.from('payments').select('reference_number, payment_type').eq('company_id', companyId),
       supabase.from('expenses').select('expense_no').eq('company_id', companyId),
       supabase.from('rentals').select('booking_no').eq('company_id', companyId),
       supabase.from('products').select('sku').eq('company_id', companyId),
@@ -82,7 +107,7 @@ export const numberingMaintenanceService = {
 
     const salesRows = (tableResults[0].data || []) as { invoice_no?: string }[];
     const purchaseRows = (tableResults[1].data || []) as { po_no?: string }[];
-    const paymentRows = (tableResults[2].data || []) as { reference_number?: string }[];
+    const paymentRows = (tableResults[2].data || []) as { reference_number?: string; payment_type?: string }[];
     const expenseRows = (tableResults[3].data || []) as { expense_no?: string }[];
     const rentalRows = (tableResults[4].data || []) as { booking_no?: string }[];
     const productRows = (tableResults[5].data || []) as { sku?: string }[];
@@ -97,7 +122,10 @@ export const numberingMaintenanceService = {
       } else if (doc.table === 'purchases') {
         databaseMax = maxFromStrings(purchaseRows.map((r) => r.po_no));
       } else if (doc.table === 'payments') {
-        const values = paymentRows.map((r) => r.reference_number).filter((v) => !doc.prefixFilter || doc.prefixFilter(v || ''));
+        const values = paymentRows
+          .filter((r) => !doc.paymentType || String(r.payment_type || '').toLowerCase() === doc.paymentType)
+          .map((r) => r.reference_number)
+          .filter((v) => !doc.prefixFilter || doc.prefixFilter(v || ''));
         databaseMax = maxFromStrings(values);
       } else if (doc.table === 'expenses') {
         databaseMax = maxFromStrings(expenseRows.map((r) => r.expense_no));
@@ -155,8 +183,19 @@ export const numberingMaintenanceService = {
       if ((existing as any).branch_based != null) payload.branch_based = (existing as any).branch_based;
     } else {
       const defaults: Record<string, string> = {
-        SALE: 'SL', PURCHASE: 'PUR', PAYMENT: 'PAY', EXPENSE: 'EXP', RENTAL: 'REN', STUDIO: 'STD', POS: 'POS',
-        PRODUCT: 'PRD', CUSTOMER: 'CUS', SUPPLIER: 'SUP', WORKER: 'WRK', JOB: 'JOB',
+        SALE: 'SL',
+        PURCHASE: 'PUR',
+        PAYMENT: 'PAY',
+        CUSTOMER_RECEIPT: 'RCV',
+        EXPENSE: 'EXP',
+        RENTAL: 'REN',
+        STUDIO: 'STD',
+        POS: 'POS',
+        PRODUCT: 'PRD',
+        CUSTOMER: 'CUS',
+        SUPPLIER: 'SUP',
+        WORKER: 'WRK',
+        JOB: 'JOB',
       };
       payload.prefix = defaults[documentType.toUpperCase()] || documentType.substring(0, 3).toUpperCase();
       payload.padding = 4;

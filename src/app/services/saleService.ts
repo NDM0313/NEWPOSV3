@@ -15,6 +15,7 @@ import { productService } from '@/app/services/productService';
 import { postSaleDocumentAccounting, reverseSaleDocumentAccounting } from './documentPostingEngine';
 import { auditLogService } from './auditLogService';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
 import { contactService } from '@/app/services/contactService';
 import {
   syncJournalEntryDateByDocumentRefs,
@@ -1373,6 +1374,12 @@ export const saleService = {
     await assertActiveJournalForPaymentId(paymentId, 'saleService.recordPayment');
 
     dispatchContactBalancesRefresh(companyId);
+    notifyAccountingEntriesChanged({
+      companyId,
+      branchId: branchId || null,
+      entityId: saleId,
+      reason: 'sale-payment',
+    });
 
     const { data: fullRow } = await supabase.from('payments').select('*').eq('id', paymentId).maybeSingle();
     return fullRow ?? { id: paymentId };
@@ -1667,9 +1674,12 @@ export const saleService = {
               createdBy: (user as any)?.id ?? null, receivableAccountId,
             });
           }
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-          }
+          notifyAccountingEntriesChanged({
+            companyId,
+            branchId: branchId || null,
+            entityId: saleId,
+            reason: 'sale-payment-adjustment',
+          });
         } catch (adjErr: any) {
           console.warn('[SALE SERVICE] Payment adjustment JE failed (payment row already updated):', adjErr?.message || adjErr);
         }
@@ -1733,9 +1743,12 @@ export const saleService = {
           // Clear payment sync cache so next sync re-evaluates this payment
           const { clearSkippedPaymentCache } = await import('@/app/services/paymentAdjustmentService');
           clearSkippedPaymentCache(paymentId);
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-          }
+          notifyAccountingEntriesChanged({
+            companyId,
+            branchId: branchId || null,
+            entityId: saleId,
+            reason: 'sale-payment-account-change',
+          });
         } catch (accErr: any) {
           console.warn('[SALE SERVICE] Payment account adjustment JE failed:', accErr?.message || accErr);
         }

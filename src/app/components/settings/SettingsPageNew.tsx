@@ -38,6 +38,7 @@ import { ErpPermissionArchitecturePage } from '@/app/components/erp-permissions/
 import { canAccessTechnicalDeveloperSettings } from '@/app/lib/developerAccountingAccess';
 import { settingsService } from '@/app/services/settingsService';
 import { NumberingPanel } from './NumberingPanel';
+import { ModuleTogglesSection } from './ModuleTogglesSection';
 import type { NumberingInnerTab } from './NumberingPanel';
 
 function TemplateFormFields({
@@ -1653,7 +1654,7 @@ export const SettingsPageNew = () => {
                         <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-amber-500/30">
                           <div>
                             <p className="text-white font-medium">Enable Packing (Boxes / Pieces)</p>
-                            <p className="text-sm text-gray-400">When ON: packing columns and modal appear in Sale, Purchase, Inventory, Ledger & Print. When OFF: system behaves as quantity-only.</p>
+                            <p className="text-sm text-gray-400">When ON: packing columns and modal appear in Sale, Purchase, Inventory, Ledger, Print, and the mobile app. When OFF: system behaves as quantity-only.</p>
                           </div>
                           <Switch
                             checked={settings.inventorySettings.enablePacking}
@@ -2482,79 +2483,17 @@ export const SettingsPageNew = () => {
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-3">
-                      <Store size={20} className="text-purple-400" />
-                      <div>
-                        <p className="text-white font-medium text-lg">POS Module</p>
-                        <p className="text-sm text-gray-400">Point of Sale system for quick sales</p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={modulesForm.posModuleEnabled}
-                      onCheckedChange={(val) => {
-                        setModulesForm({ ...modulesForm, posModuleEnabled: val });
-                        setHasUnsavedChanges(true);
-                      }}
-                    />
-                  </div>
+                                <ModuleTogglesSection
+                  value={modulesForm}
+                  onChange={(patch) => {
+                    setModulesForm({ ...modulesForm, ...patch });
+                    setHasUnsavedChanges(true);
+                  }}
+                />
 
-                  <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-3">
-                      <Shirt size={20} className="text-pink-400" />
-                      <div>
-                        <p className="text-white font-medium text-lg">Rental Module</p>
-                        <p className="text-sm text-gray-400">Dress rental management and tracking</p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={modulesForm.rentalModuleEnabled}
-                      onCheckedChange={(val) => {
-                        setModulesForm({ ...modulesForm, rentalModuleEnabled: val });
-                        setHasUnsavedChanges(true);
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-3">
-                      <Users size={20} className="text-blue-400" />
-                      <div>
-                        <p className="text-white font-medium text-lg">Studio Module</p>
-                        <p className="text-sm text-gray-400">Suit stitching and worker management</p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={modulesForm.studioModuleEnabled}
-                      onCheckedChange={(val) => {
-                        setModulesForm({ ...modulesForm, studioModuleEnabled: val });
-                        setHasUnsavedChanges(true);
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
-                    <div className="flex items-center gap-3">
-                      <Calculator size={20} className="text-yellow-400" />
-                      <div>
-                        <p className="text-white font-medium text-lg">Accounting Module</p>
-                        <p className="text-sm text-gray-400">Double-entry accounting system</p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={modulesForm.accountingModuleEnabled}
-                      onCheckedChange={(val) => {
-                        setModulesForm({ ...modulesForm, accountingModuleEnabled: val });
-                        setHasUnsavedChanges(true);
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mt-6">
+<div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mt-6">
                   <p className="text-sm text-blue-300">
-                    ℹ️ <strong>Note:</strong> Disabling a module hides it from the sidebar and mobile app for <strong>all users and roles</strong> (Admin, Manager, Staff) in this business. Existing data is preserved.
+                    ℹ️ <strong>Note:</strong> Disabling a module hides it from the sidebar and mobile app for <strong>all users and roles</strong> (Admin, Manager, Staff) in this business. Existing data is preserved. After saving, mobile users should log out and back in to refresh modules.
                   </p>
                 </div>
 

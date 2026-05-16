@@ -6,6 +6,9 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export type EngineRole = 'owner' | 'admin' | 'manager' | 'user';
 
+/** Subset editable from mobile (admin/owner + `FEATURE_MOBILE_ROLE_MATRIX_EDITOR`). Owner/admin rows: Web ERP only. */
+export const MOBILE_EDITABLE_ENGINE_ROLES: readonly ('manager' | 'user')[] = ['manager', 'user'];
+
 export interface RolePermissionRow {
   role: string;
   module: string;
@@ -106,6 +109,9 @@ export async function setRolePermission(
   action: string,
   allowed: boolean
 ): Promise<{ error: string | null }> {
+  if (role !== 'manager' && role !== 'user') {
+    return { error: 'This role can only be edited in Web ERP.' };
+  }
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
   const { error } = await supabase.from('role_permissions').upsert(
     { role, module, action, allowed },

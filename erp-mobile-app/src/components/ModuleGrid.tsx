@@ -2,7 +2,7 @@ import { X, Package, BarChart3, ShoppingBag, Shirt, Camera, Receipt, DollarSign,
 import type { Screen, User } from '../types';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
 import { usePermissions } from '../context/PermissionContext';
-import { getPermissionModuleForScreen } from '../utils/permissionModules';
+import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from '../utils/permissionModules';
 
 interface ModuleGridProps {
   onClose: () => void;
@@ -45,6 +45,7 @@ export function ModuleGrid({ onClose, onModuleSelect, userRole: _userRole }: Mod
   const enabled = modules.filter((m) => {
     if (!isModuleEnabled(m.id)) return false;
     if (FEATURE_MOBILE_PERMISSION_V2) {
+      if (screenSkipsModuleViewPermission(m.id)) return true;
       const code = getPermissionModuleForScreen(m.id);
       return code != null && hasPermission(`${code}.view`);
     }

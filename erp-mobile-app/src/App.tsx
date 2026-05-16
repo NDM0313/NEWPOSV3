@@ -7,7 +7,7 @@ import { getUserBranchIds } from './api/permissions';
 import { usePermissions } from './context/PermissionContext';
 import { useSettings } from './context/SettingsContext';
 import { FEATURE_MOBILE_PERMISSION_V2 } from './config/featureFlags';
-import { getPermissionModuleForScreen } from './utils/permissionModules';
+import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from './utils/permissionModules';
 import { AccessDenied } from './components/AccessDenied';
 
 const BRANCH_STORAGE_KEY = 'erp_mobile_branch';
@@ -406,6 +406,10 @@ export default function App() {
   const canAccessScreen = (screen: Screen, branchId: string | null | undefined): boolean => {
     if (!isModuleEnabled(screen)) return false;
     if (!FEATURE_MOBILE_PERMISSION_V2) return true;
+    if (screenSkipsModuleViewPermission(screen)) {
+      if (branchId && branchId !== 'all' && branchId !== 'default' && !hasBranchAccess(branchId)) return false;
+      return true;
+    }
     const module = getPermissionModuleForScreen(screen);
     if (!module) return screen === 'login' || screen === 'branch-selection';
     if (!hasPermission(`${module}.view`)) return false;

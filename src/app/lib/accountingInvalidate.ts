@@ -1,6 +1,6 @@
 import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
 
-/** Single event so AccountingContext, statements, party maps, and related UIs stay in sync after any JE write path. */
+/** Accounting invalidation via bus only — AccountingContext coalesces DATA_INVALIDATED (no duplicate legacy reload). */
 export function notifyAccountingEntriesChanged(args?: {
   companyId?: string | null;
   branchId?: string | null;
@@ -15,5 +15,4 @@ export function notifyAccountingEntriesChanged(args?: {
     entityId: args?.entityId ?? null,
     reason: args?.reason ?? 'accounting-entries-changed',
   });
-  window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
 }

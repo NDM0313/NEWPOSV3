@@ -31,7 +31,6 @@ import {
   FileBarChart,
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
-import { useModules } from '../../context/ModuleContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
@@ -49,7 +48,6 @@ type NavItem = {
 
 export const Sidebar = () => {
   const { currentView, setCurrentView, isSidebarOpen, toggleSidebar, openDrawer, setPartyLedgerParams } = useNavigation();
-  const { modules: moduleContextModules } = useModules();
   const { modules: settingsModules, featureFlags, isPermissionLoaded } = useSettings();
   const { hasPermission } = useCheckPermission();
   const { userRole } = useSupabase();
@@ -71,8 +69,8 @@ export const Sidebar = () => {
     { id: 'products', label: 'Products', icon: Package, isHidden: !hasPermission('products.view') },
     { id: 'inventory', label: 'Inventory', icon: Warehouse, isHidden: !hasPermission('inventory.view') },
     { id: 'stock-report', label: 'Stock Report', icon: FileBarChart, isHidden: !hasPermission('inventory.view') },
-    { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !hasPermission('purchases.view') },
-    { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !hasPermission('sales.view') },
+    { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !settingsModules.purchasesModuleEnabled || !hasPermission('purchases.view') },
+    { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !settingsModules.salesModuleEnabled || !hasPermission('sales.view') },
     { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled || !hasPermission('rentals.view') },
     { id: 'pos', label: 'POS System', icon: Store, isHidden: !settingsModules.posModuleEnabled || !hasPermission('pos.view') },
     { 
@@ -91,14 +89,14 @@ export const Sidebar = () => {
       id: 'manufacturing-group',
       label: 'Manufacturing',
       icon: Box,
-      isHidden: !settingsModules.studioModuleEnabled || !hasPermission('studio.view'),
+      isHidden: !settingsModules.productionModuleEnabled || !hasPermission('studio.view'),
       children: [
         { id: 'manufacturing-bom', label: 'Bill of Materials' },
         { id: 'manufacturing-orders', label: 'Production Orders' },
         { id: 'manufacturing-workflow', label: 'Production Workflow' },
       ]
     },
-    { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !hasPermission('expenses.view') },
+    { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !settingsModules.expensesModuleEnabled || !hasPermission('expenses.view') },
     { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
     { id: 'party-ledger', label: 'Party Ledger', icon: BookOpen, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
     {
@@ -107,7 +105,7 @@ export const Sidebar = () => {
       icon: Scale,
       isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view'),
     },
-    { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !hasPermission('reports.view') },
+    { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !settingsModules.reportsModuleEnabled || !hasPermission('reports.view') },
     { id: 'settings', label: 'Settings', icon: Settings, isHidden: !hasPermission('settings.view') },
     {
       id: 'test-pages-group',

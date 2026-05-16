@@ -284,11 +284,11 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
     if (!isOpen) userPickedPaymentMethodRef.current = false;
   }, [isOpen]);
 
-  // Refresh accounts when dialog opens so user-assigned accounts (user_account_access) are visible after RLS
+  // COA only when dialog opens — avoid full journal reload (refreshEntries) on every payment dialog.
   React.useEffect(() => {
-    if (isOpen && companyId && accounting) {
-      accounting.refreshEntries().catch(() => {});
-    }
+    if (!isOpen || !companyId || !accounting) return;
+    if ((accounting.accounts?.length ?? 0) > 0) return;
+    accounting.refreshAccounts?.().catch(() => {});
   }, [isOpen, companyId, accounting]);
 
   // Normalize payment method for matching DB types (cash, bank, mobile_wallet)

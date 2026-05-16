@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X,
   Plus,
@@ -43,6 +43,11 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { toast } from 'sonner';
+import {
+  DATA_INVALIDATED_EVENT,
+  shouldAcceptInvalidation,
+  type DataInvalidationDetail,
+} from '@/app/lib/dataInvalidationBus';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import { AttachmentPreviewRow } from '@/app/components/shared/AttachmentPreviewRow';
 import {
@@ -167,28 +172,50 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [attachmentsDialogList, setAttachmentsDialogList] = useState<{ url: string; name: string }[] | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const lastFetchKeyRef = useRef('');
+  const refreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const schedulePaymentsRefresh = useCallback(() => {
+    if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
+    refreshDebounceRef.current = setTimeout(() => {
+      refreshDebounceRef.current = null;
+      setRefreshTick((t) => t + 1);
+    }, 300);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
-    const bump = () => setRefreshTick((t) => t + 1);
-    window.addEventListener('accountingEntriesChanged', bump);
-    window.addEventListener('paymentAdded', bump);
-    window.addEventListener('rentalPaymentsChanged', bump);
-    /** GL reversal / composite void clears allocations — same as purchase path filtering `voided_at`. */
-    window.addEventListener('ledgerUpdated', bump);
-    return () => {
-      window.removeEventListener('accountingEntriesChanged', bump);
-      window.removeEventListener('paymentAdded', bump);
-      window.removeEventListener('rentalPaymentsChanged', bump);
-      window.removeEventListener('ledgerUpdated', bump);
+    const onAccountingInvalidated = (ev: Event) => {
+      const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      if (shouldAcceptInvalidation(detail, { domain: ['accounting'] })) {
+        schedulePaymentsRefresh();
+      }
     };
-  }, [isOpen]);
+    window.addEventListener(DATA_INVALIDATED_EVENT, onAccountingInvalidated as EventListener);
+    window.addEventListener('accountingEntriesChanged', schedulePaymentsRefresh);
+    window.addEventListener('paymentAdded', schedulePaymentsRefresh);
+    window.addEventListener('rentalPaymentsChanged', schedulePaymentsRefresh);
+    window.addEventListener('ledgerUpdated', schedulePaymentsRefresh);
+    return () => {
+      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
+      window.removeEventListener(DATA_INVALIDATED_EVENT, onAccountingInvalidated as EventListener);
+      window.removeEventListener('accountingEntriesChanged', schedulePaymentsRefresh);
+      window.removeEventListener('paymentAdded', schedulePaymentsRefresh);
+      window.removeEventListener('rentalPaymentsChanged', schedulePaymentsRefresh);
+      window.removeEventListener('ledgerUpdated', schedulePaymentsRefresh);
+    };
+  }, [isOpen, schedulePaymentsRefresh]);
 
-  // Fetch payments when modal opens or refreshes
+  // Fetch payments when modal opens or refreshes (silent revalidation on paymentAdded / accounting events)
   useEffect(() => {
     if (isOpen && invoice?.id) {
+      const fetchKey = `${invoice.id}:${invoice.referenceType ?? 'sale'}`;
+      const isHardOpen = fetchKey !== lastFetchKeyRef.current;
+
       const fetchPayments = async () => {
-        setLoadingPayments(true);
+        if (isHardOpen) {
+          setLoadingPayments(true);
+        }
         try {
           // 🔒 UUID ARCHITECTURE: Use referenceType (preferred) or fallback to pattern matching
           // CRITICAL: Display numbers should NEVER be used for business logic
@@ -242,9 +269,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               );
             } catch (rentalError: any) {
               console.error('[VIEW PAYMENTS] Error fetching rental payments:', rentalError);
-              // 🔒 GOLDEN RULE: Payment history = payments table ONLY
-              // Never fallback to invoice.payments - if payments table fails, show empty
-              setPayments([]);
+              if (isHardOpen) setPayments([]);
             }
           } else if (isPurchase) {
             // Purchase payments - ALWAYS from payments table
@@ -257,8 +282,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               setPayments(fetchedPayments || []);
             } catch (purchaseError: any) {
               console.error('[VIEW PAYMENTS] Error fetching purchase payments:', purchaseError);
-              // 🔒 GOLDEN RULE: Never fallback to invoice.payments
-              setPayments([]);
+              if (isHardOpen) setPayments([]);
             }
           } else {
             // Sale payments - ALWAYS from payments table
@@ -271,32 +295,33 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               setPayments(fetchedPayments || []);
             } catch (saleError: any) {
               console.error('[VIEW PAYMENTS] Error fetching sale payments:', saleError);
-              // 🔒 GOLDEN RULE: Never fallback to invoice.payments
-              setPayments([]);
+              if (isHardOpen) setPayments([]);
             }
           }
         } catch (error: any) {
           console.error('[VIEW PAYMENTS] Error fetching payments:', error);
-          // 🔒 GOLDEN RULE: Payment history = payments table ONLY
-          setPayments([]);
+          if (isHardOpen) setPayments([]);
         } finally {
+          if (isHardOpen) {
+            lastFetchKeyRef.current = fetchKey;
+          }
           setLoadingPayments(false);
         }
       };
       fetchPayments();
     } else {
-      // 🔒 GOLDEN RULE: Payment history = payments table ONLY
-      // If modal not open or invoice missing, show empty (not invoice.payments)
+      lastFetchKeyRef.current = '';
       setPayments([]);
     }
-  }, [isOpen, invoice?.id, refreshTick]);
+  }, [isOpen, invoice?.id, invoice?.referenceType, refreshTick]);
 
   if (!isOpen || !invoice) return null;
 
   // Use sum of actual payment records as Paid when loaded (fixes mismatch with Payment History)
   /** Active (non-voided) rows only — matches `getSalePayments` / purchase filter. */
   const sumPayments = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const displayedPaid = !loadingPayments ? sumPayments : invoice.paid;
+  const displayedPaid =
+    payments.length > 0 ? sumPayments : loadingPayments ? invoice.paid : sumPayments;
   const displayedDue = Math.max(0, invoice.total - displayedPaid);
 
   const statusConfig = getPaymentStatusConfig(invoice.paymentStatus) ?? DEFAULT_PAYMENT_CONFIG;

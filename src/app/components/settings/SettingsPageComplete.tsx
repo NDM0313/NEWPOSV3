@@ -16,6 +16,7 @@ import { NumberingRulesTable } from './NumberingRulesTable';
 import { NumberingMaintenanceTable } from './NumberingMaintenanceTable';
 import { NumberAuditTable } from './NumberAuditTable';
 import { CourierManagementPanel } from './CourierManagementPanel';
+import { ModuleTogglesSection } from './ModuleTogglesSection';
 import { toast } from 'sonner';
 
 type SettingsTab = 
@@ -1141,77 +1142,13 @@ export const SettingsPageComplete = () => {
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
-                <div>
-                  <p className="text-white font-medium text-lg">Rental Module</p>
-                  <p className="text-sm text-gray-400">Enable dress rental management features</p>
-                </div>
-                <Switch
-                  checked={modulesForm.rentalModuleEnabled}
-                  onCheckedChange={(val) => {
-                    setModulesForm({ ...modulesForm, rentalModuleEnabled: val });
-                    setHasUnsavedChanges(true);
-                  }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
-                <div>
-                  <p className="text-white font-medium text-lg">Studio Production Module</p>
-                  <p className="text-sm text-gray-400">Enable suit stitching and worker management</p>
-                </div>
-                <Switch
-                  checked={modulesForm.studioModuleEnabled}
-                  onCheckedChange={(val) => {
-                    setModulesForm({ ...modulesForm, studioModuleEnabled: val });
-                    setHasUnsavedChanges(true);
-                  }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
-                <div>
-                  <p className="text-white font-medium text-lg">Accounting Module</p>
-                  <p className="text-sm text-gray-400">Enable double-entry accounting system</p>
-                </div>
-                <Switch
-                  checked={modulesForm.accountingModuleEnabled}
-                  onCheckedChange={(val) => {
-                    setModulesForm({ ...modulesForm, accountingModuleEnabled: val });
-                    setHasUnsavedChanges(true);
-                  }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
-                <div>
-                  <p className="text-white font-medium text-lg">POS Module</p>
-                  <p className="text-sm text-gray-400">Enable Point of Sale system</p>
-                </div>
-                <Switch
-                  checked={modulesForm.posModuleEnabled}
-                  onCheckedChange={(val) => {
-                    setModulesForm({ ...modulesForm, posModuleEnabled: val });
-                    setHasUnsavedChanges(true);
-                  }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between bg-gray-950 p-5 rounded-lg border border-gray-800">
-                <div>
-                  <p className="text-white font-medium text-lg">Production Module</p>
-                  <p className="text-sm text-gray-400">Enable advanced production workflows</p>
-                </div>
-                <Switch
-                  checked={modulesForm.productionModuleEnabled}
-                  onCheckedChange={(val) => {
-                    setModulesForm({ ...modulesForm, productionModuleEnabled: val });
-                    setHasUnsavedChanges(true);
-                  }}
-                />
-              </div>
-            </div>
+            <ModuleTogglesSection
+              value={modulesForm}
+              onChange={(patch) => {
+                setModulesForm({ ...modulesForm, ...patch });
+                setHasUnsavedChanges(true);
+              }}
+            />
 
             <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mt-6">
               <p className="text-sm text-blue-300">

@@ -27,6 +27,11 @@ export function getPermissionModuleForScreen(screen: Screen): string | null {
   return SCREEN_TO_MODULE[screen] ?? null;
 }
 
+/** App shell screens: any signed-in user may open; admin-only rows stay gated inside the module. */
+export function screenSkipsModuleViewPermission(screen: Screen): boolean {
+  return screen === 'settings';
+}
+
 export function screenRequiresPermission(screen: Screen): boolean {
   return screen !== 'login' && screen !== 'branch-selection' && screen !== 'home' && getPermissionModuleForScreen(screen) != null;
 }

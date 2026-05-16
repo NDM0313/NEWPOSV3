@@ -19,9 +19,13 @@ The existing `create_business_transaction` RPC does:
 
 ---
 
-## Extended Flow (Wizard — To Implement)
+## Extended Flow (implemented via `create_business_transaction`)
 
-### New RPC: `create_business_wizard_transaction`
+Migration **61** (`supabase-extract/migrations/61_create_business_bootstrap_template.sql`) implements the extended wizard bootstrap in one RPC: `settings` rows, `modules_config`, units, categories, and company fields. The frontend calls this through `businessService.createBusiness()` from [CreateBusinessWizard.tsx](../src/app/components/auth/CreateBusinessWizard.tsx).
+
+Registry (wizard ↔ Settings ↔ DB): [companyBootstrapRegistry.ts](../src/app/config/companyBootstrapRegistry.ts).
+
+### Historical note: `create_business_wizard_transaction`
 
 **Parameters (extended):**
 

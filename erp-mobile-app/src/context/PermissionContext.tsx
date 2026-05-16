@@ -6,10 +6,13 @@ import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
 import type { RolePermissionRow } from '../api/permissions';
 import type { Screen } from '../types';
 
+export type ModuleConfigStatus = 'loading' | 'ok' | 'load_error' | 'no_company';
+
 interface PermissionState {
   permissions: RolePermissionRow[];
   branchIds: string[];
   moduleToggles: ModuleToggles;
+  moduleConfigStatus: ModuleConfigStatus;
   isPermissionLoaded: boolean;
   isAdminOrOwner: boolean;
   isOwner: boolean;
@@ -20,6 +23,8 @@ interface PermissionContextValue extends PermissionState {
   hasBranchAccess: (branchId: string) => boolean;
   /** Company Module Toggles (same as Web): apply to all users/roles in this business. If module is off, hidden for everyone. */
   isModuleEnabled: (screenId: Screen) => boolean;
+  /** User-facing hint when modules are hidden due to config load failure or admin toggles. */
+  moduleConfigBanner: string | null;
   /** profileId = public users.id for user_branches; companyId = fallback when user has no assigned branches (single-branch company). */
   reload: (userId: string, appRole: string, profileId?: string, companyId?: string) => Promise<void>;
 }
@@ -43,16 +48,49 @@ const defaultState: PermissionState = {
   permissions: [],
   branchIds: [],
   moduleToggles: defaultModuleToggles,
+  moduleConfigStatus: 'loading',
   isPermissionLoaded: false,
   isAdminOrOwner: false,
   isOwner: false,
 };
+
+function resolveModuleConfigStatus(
+  companyId: string | undefined,
+  moduleRes: { data: ModuleToggles | null; error: unknown }
+): ModuleConfigStatus {
+  if (!companyId) return 'no_company';
+  if (moduleRes.error || !moduleRes.data) return 'load_error';
+  return 'ok';
+}
+
+function buildModuleConfigBanner(
+  status: ModuleConfigStatus,
+  toggles: ModuleToggles,
+  isAdminOrOwner: boolean
+): string | null {
+  if (status === 'no_company') {
+    return 'Company not linked to your account. Contact your administrator.';
+  }
+  if (status === 'load_error') {
+    return 'Could not load company modules. Check internet connection and try logging out and back in.';
+  }
+  const companyOff =
+    !toggles.posModuleEnabled ||
+    !toggles.rentalModuleEnabled ||
+    !toggles.studioModuleEnabled ||
+    !toggles.accountingModuleEnabled;
+  if (status === 'ok' && companyOff && isAdminOrOwner) {
+    return 'Some modules are off for this business. Enable them in Web ERP → Settings → Module Toggles (POS, Rental, Studio, Accounting). Packing: Settings → Inventory → Enable Packing.';
+  }
+  return null;
+}
 
 const PermissionContext = createContext<PermissionContextValue>({
   ...defaultState,
   hasPermission: () => false,
   hasBranchAccess: () => false,
   isModuleEnabled: () => true,
+  moduleConfigBanner: null,
   reload: async () => {},
 });
 
@@ -63,11 +101,13 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     const branchUserId = profileId ?? userId;
     if (!FEATURE_MOBILE_PERMISSION_V2) {
       const moduleRes = companyId ? await getModuleConfigs(companyId) : { data: null, error: new Error('No company') };
-      const toggles = (moduleRes.error || !moduleRes.data) ? safeModuleTogglesWhenFail : moduleRes.data;
+      const moduleConfigStatus = resolveModuleConfigStatus(companyId, moduleRes);
+      const toggles = moduleConfigStatus === 'ok' && moduleRes.data ? moduleRes.data : safeModuleTogglesWhenFail;
       setState({
         permissions: [],
         branchIds: [],
         moduleToggles: toggles,
+        moduleConfigStatus,
         isPermissionLoaded: true,
         isAdminOrOwner: true,
         isOwner: true,
@@ -90,12 +130,15 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       const r = (appRole || '').toLowerCase();
       const isAdminOrOwner = ['owner', 'admin', 'super admin', 'superadmin'].includes(r);
       const isOwner = r === 'owner';
-      const moduleToggles = (moduleRes.error || !moduleRes.data) ? safeModuleTogglesWhenFail : moduleRes.data;
+      const moduleConfigStatus = resolveModuleConfigStatus(companyId, moduleRes);
+      const moduleToggles =
+        moduleConfigStatus === 'ok' && moduleRes.data ? moduleRes.data : safeModuleTogglesWhenFail;
 
       setState({
         permissions: perms,
         branchIds,
         moduleToggles,
+        moduleConfigStatus,
         isPermissionLoaded: true,
         isAdminOrOwner,
         isOwner,
@@ -106,6 +149,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         permissions: [],
         branchIds: [],
         moduleToggles: safeModuleTogglesWhenFail,
+        moduleConfigStatus: 'load_error',
         isPermissionLoaded: true,
         isAdminOrOwner: false,
         isOwner: false,
@@ -153,6 +197,10 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     [state.moduleToggles]
   );
 
+  const moduleConfigBanner = state.isPermissionLoaded
+    ? buildModuleConfigBanner(state.moduleConfigStatus, state.moduleToggles, state.isAdminOrOwner)
+    : null;
+
   return (
     <PermissionContext.Provider
       value={{
@@ -160,6 +208,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         hasPermission,
         hasBranchAccess,
         isModuleEnabled,
+        moduleConfigBanner,
         reload,
       }}
     >

@@ -557,6 +557,7 @@ export const settingsService = {
       { type: 'studio', prefix: 'STD-' },
       { type: 'pos', prefix: 'POS-' },
       { type: 'payment', prefix: 'PAY-' },
+      { type: 'customer_receipt', prefix: 'RCV-' },
       { type: 'job', prefix: 'JOB-' },
       { type: 'journal', prefix: 'JV-' },
     ];

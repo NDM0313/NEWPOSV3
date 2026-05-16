@@ -12,13 +12,13 @@ import { pickCanonicalInventoryAssetAccount } from '@/app/lib/inventoryAccountRo
 import { accountingReportsService } from '@/app/services/accountingReportsService';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
-import { supabase, isPlaceholderSupabaseAnonKey } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { warnIfUsingStoredBalanceAsTruth } from '@/app/services/accountingCanonicalGuard';
-import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
 import {
   DATA_INVALIDATED_EVENT,
+  dispatchDataInvalidated,
   type DataInvalidationDetail,
   shouldAcceptInvalidation,
 } from '@/app/lib/dataInvalidationBus';
@@ -198,13 +198,23 @@ export interface AccountBalance {
 interface AccountingContextType {
   entries: AccountingEntry[];
   balances: Map<AccountType, number>;
+  /** True only during first mount / filter change full load — not background event sync. */
   loading: boolean;
+  /** Background journal/COA refresh in progress (non-blocking). */
+  backgroundSync: boolean;
   
   // Core functions
   createEntry: (entry: Omit<AccountingEntry, 'id' | 'date' | 'createdBy'>) => Promise<boolean>;
   createReversalEntry: (originalJournalEntryId: string, reason?: string) => Promise<boolean>;
   undoLastPaymentMutation: (paymentId: string) => Promise<boolean>;
   refreshEntries: () => Promise<void>;
+  /** Reload COA only (no full journal fetch) — use when opening payment dialogs. */
+  refreshAccounts: () => Promise<void>;
+  /** Upsert journal rows into local state without a full getAllEntries fetch. */
+  appendOrMergeEntries: (
+    input: AccountingEntry | AccountingEntry[] | JournalEntryWithLines | JournalEntryWithLines[]
+  ) => void;
+  patchAccountBalances: (accountIdToBalance: Record<string, number>) => void;
   getEntriesByReference: (referenceNo: string) => AccountingEntry[];
   getEntriesBySource: (source: TransactionSource) => AccountingEntry[];
   getAccountBalance: (accountType: AccountType) => number;
@@ -449,27 +459,67 @@ const AccountingContext = createContext<AccountingContextType | undefined>(undef
 // 🎯 PROVIDER COMPONENT
 // ============================================
 
+const BALANCE_SYNC_THROTTLE_MS = 60_000;
+const COALESCED_REFRESH_MS = 500;
+
+/** Reload COA on invalidation only when the chart changed — not payments/sales/realtime noise. */
+function invalidationShouldReloadAccounts(reason?: string): boolean {
+  if (!reason) return false;
+  const r = reason.toLowerCase();
+  if (
+    /realtime-change|fallback-poll|contact-balance|sale-payment|accounting-entries-changed|manualreceipt|manualsupplier|sale:|rental:|payment-added/.test(
+      r
+    )
+  ) {
+    return false;
+  }
+  return /account-created|chart-of-accounts|coa-|new-account|accounts-changed/.test(r);
+}
+
+type LoadEntriesOptions = {
+  showBlockingLoading?: boolean;
+  skipBalanceSync?: boolean;
+};
+
 export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [entries, setEntries] = useState<AccountingEntry[]>([]);
   const [balances, setBalances] = useState<Map<AccountType, number>>(new Map());
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [initialLoading, setInitialLoading] = useState<boolean>(true);
+  const [backgroundSync, setBackgroundSync] = useState<boolean>(false);
   const { companyId, branchId, user, userRole } = useSupabase();
   const globalFilter = useGlobalFilterOptional();
-const startDateISO = globalFilter?.startDate ?? (() => {
-  const end = new Date();
-  const start = new Date(end);
-  start.setDate(start.getDate() - 29);
-  return start.toISOString().slice(0, 10);
-})();
-const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10);
+
+  const defaultDateRange = useMemo(() => {
+    const end = new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - 29);
+    return {
+      start: start.toISOString().slice(0, 10),
+      end: end.toISOString().slice(0, 10),
+    };
+  }, []);
+
+  const startDateISO = globalFilter?.startDate ?? defaultDateRange.start;
+  const endDateISO = globalFilter?.endDate ?? defaultDateRange.end;
 
   // Current user (from auth context)
   const currentUser = user?.email || 'Admin';
   const currentUserId = user?.id;
 
-  // Debounce timer for loadEntries (multiple events fire per action)
-  const loadEntriesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadEntriesInFlightRef = useRef<Promise<void> | null>(null);
+  const pendingEntriesReloadRef = useRef(false);
+  const loadAccountsInFlightRef = useRef<Promise<void> | null>(null);
+  const pendingAccountsReloadRef = useRef(false);
+  const paymentSyncDoneForCompanyRef = useRef<string | null>(null);
+  const lastBalanceSyncAtRef = useRef<number>(0);
+  const coalescedRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const coalescedRefreshOptsRef = useRef({ entries: false, accounts: false, blocking: false });
+  const fullReloadCountRef = useRef(0);
+  const journalRowsCacheRef = useRef<JournalEntryWithLines[]>([]);
+  const scheduleCoalescedRefreshRef = useRef<
+    (opts?: { entries?: boolean; accounts?: boolean; blocking?: boolean }) => void
+  >(() => {});
 
   // Convert Supabase account format to app format
   const convertFromSupabaseAccount = useCallback((supabaseAccount: any): Account => {
@@ -665,9 +715,79 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     };
   }, []);
 
+  // Recalculate balances from entries
+  const recalculateBalances = useCallback((entriesToUse: AccountingEntry[]) => {
+    const newBalances = new Map<AccountType, number>();
+
+    entriesToUse.forEach((entry) => {
+      const currentDebit = newBalances.get(entry.debitAccount) || 0;
+      newBalances.set(entry.debitAccount, currentDebit + entry.amount);
+
+      const currentCredit = newBalances.get(entry.creditAccount) || 0;
+      newBalances.set(entry.creditAccount, currentCredit + entry.amount);
+    });
+
+    setBalances(newBalances);
+  }, []);
+
+  const applyJournalRowsToState = useCallback(
+    (dataWithReversalFlag: JournalEntryWithLines[]) => {
+      journalRowsCacheRef.current = dataWithReversalFlag;
+      const chainIndex = buildPaymentChainIndex(dataWithReversalFlag as any[]);
+      const convertedEntries = dataWithReversalFlag.map((je) =>
+        convertFromJournalEntry(je as JournalEntryWithLines, chainIndex)
+      );
+      setEntries(convertedEntries);
+      recalculateBalances(convertedEntries);
+      return convertedEntries;
+    },
+    [convertFromJournalEntry, recalculateBalances]
+  );
+
+  const maybeSyncBalancesFromJournal = useCallback(async () => {
+    if (!companyId) return;
+    const now = Date.now();
+    if (now - lastBalanceSyncAtRef.current < BALANCE_SYNC_THROTTLE_MS) return;
+    lastBalanceSyncAtRef.current = now;
+    try {
+      const { syncAccountsBalanceFromJournal } = await import('@/app/services/liveDataRepairService');
+      await syncAccountsBalanceFromJournal(companyId);
+    } catch (syncBalErr) {
+      if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Balance sync after load:', syncBalErr);
+    }
+  }, [companyId]);
+
+  const runPaymentAccountSyncOnce = useCallback(async () => {
+    if (!companyId || paymentSyncDoneForCompanyRef.current === companyId) return;
+    paymentSyncDoneForCompanyRef.current = companyId;
+    try {
+      const { syncPaymentAccountAdjustmentsForCompany } = await import('@/app/services/paymentAdjustmentService');
+      const syncResult = await syncPaymentAccountAdjustmentsForCompany(companyId);
+      const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
+      tracePaymentEditFlow('AccountingContext.runPaymentAccountSyncOnce', {
+        companyId,
+        synced: syncResult.synced,
+        errors: syncResult.errors,
+        skippedDuplicates: syncResult.skippedDuplicates,
+        skippedAmbiguous: syncResult.skippedAmbiguous,
+        skippedPf14Chain: syncResult.skippedPf14Chain,
+      });
+      if (syncResult.synced > 0) {
+        scheduleCoalescedRefreshRef.current({ entries: true, accounts: true });
+      }
+    } catch (syncErr) {
+      if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Payment account sync:', syncErr);
+    }
+  }, [companyId]);
+
   // Load accounts from database. Phase 7: Prefer balance from journal (single source of truth).
   const loadAccounts = useCallback(async () => {
     if (!companyId) return;
+
+    if (loadAccountsInFlightRef.current) {
+      pendingAccountsReloadRef.current = true;
+      return loadAccountsInFlightRef.current;
+    }
 
     const linkContactsToAccounts = async (list: Account[]): Promise<Account[]> => {
       const linkedIds = [...new Set(list.map((a) => a.linked_contact_id).filter(Boolean))] as string[];
@@ -692,263 +812,283 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       });
     };
 
-    try {
-      const data = await accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined);
-      const convertedAccounts = data.map(convertFromSupabaseAccount);
-      const withParty = await linkContactsToAccounts(convertedAccounts);
+    const run = async () => {
       try {
-        const asOf = new Date().toISOString().slice(0, 10);
-        const journalBalances = await accountingReportsService.getAccountBalancesFromJournal(companyId, asOf, branchId === 'all' ? undefined : branchId);
-        const merged = withParty.map((acc) => ({
-          ...acc,
-          balance: journalBalances[acc.id!] !== undefined ? journalBalances[acc.id!]! : 0,
-        }));
-        setAccounts(merged);
-      } catch (jbErr) {
-        warnIfUsingStoredBalanceAsTruth(
-          'AccountingContext.loadAccounts',
-          'balance',
-          'Journal balance merge failed — COA balances shown as 0 (not stored accounts.balance)'
-        );
-        if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Journal balances unavailable:', jbErr);
-        setAccounts(withParty);
+        const data = await accountService.getAllAccounts(companyId, branchId === 'all' ? undefined : branchId || undefined);
+        const convertedAccounts = data.map(convertFromSupabaseAccount);
+        const withParty = await linkContactsToAccounts(convertedAccounts);
+        try {
+          const asOf = new Date().toISOString().slice(0, 10);
+          const journalBalances = await accountingReportsService.getAccountBalancesFromJournal(
+            companyId,
+            asOf,
+            branchId === 'all' ? undefined : branchId
+          );
+          const merged = withParty.map((acc) => ({
+            ...acc,
+            balance: journalBalances[acc.id!] !== undefined ? journalBalances[acc.id!]! : 0,
+          }));
+          setAccounts(merged);
+        } catch (jbErr) {
+          warnIfUsingStoredBalanceAsTruth(
+            'AccountingContext.loadAccounts',
+            'balance',
+            'Journal balance merge failed — COA balances shown as 0 (not stored accounts.balance)'
+          );
+          if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Journal balances unavailable:', jbErr);
+          setAccounts(withParty);
+        }
+        if (import.meta.env?.DEV) console.log('✅ Accounts loaded:', convertedAccounts.length);
+      } catch (error) {
+        console.error('[ACCOUNTING CONTEXT] Error loading accounts:', error);
+        setAccounts([]);
+      } finally {
+        loadAccountsInFlightRef.current = null;
+        if (pendingAccountsReloadRef.current) {
+          pendingAccountsReloadRef.current = false;
+          scheduleCoalescedRefreshRef.current({ accounts: true, entries: false });
+        }
       }
-      if (import.meta.env?.DEV) console.log('✅ Accounts loaded:', convertedAccounts.length);
-    } catch (error) {
-      console.error('[ACCOUNTING CONTEXT] Error loading accounts:', error);
-      setAccounts([]);
-    }
+    };
+
+    const p = run();
+    loadAccountsInFlightRef.current = p;
+    return p;
   }, [companyId, branchId, convertFromSupabaseAccount]);
 
-  // Load journal entries from database
-  const loadEntries = useCallback(async () => {
-    if (!companyId) {
-      setLoading(false);
-      return;
-    }
+  // Load journal entries from database (no payment sync here — avoids feedback loop)
+  const loadEntries = useCallback(
+    async (opts?: LoadEntriesOptions) => {
+      if (!companyId) {
+        setInitialLoading(false);
+        return;
+      }
 
-    setLoading(true);
-    try {
-      // PF-14.1: Sync ledger with payments table (single source of truth). Any payment whose
-      // payment_account_id differs from the effective debit account in JEs gets a backfilled
-      // account-adjustment JE so Cash/Bank ledgers show correctly without per-screen fixes.
-      try {
-        const { syncPaymentAccountAdjustmentsForCompany } = await import('@/app/services/paymentAdjustmentService');
-        const syncResult = await syncPaymentAccountAdjustmentsForCompany(companyId);
-        const { synced } = syncResult;
-        const { tracePaymentEditFlow } = await import('@/app/lib/paymentEditFlowTrace');
-        tracePaymentEditFlow('AccountingContext.loadEntries.sync_payment_accounts', {
-          companyId,
-          synced,
-          errors: syncResult.errors,
-          skippedDuplicates: syncResult.skippedDuplicates,
-          skippedAmbiguous: syncResult.skippedAmbiguous,
-          skippedPf14Chain: syncResult.skippedPf14Chain,
+      if (loadEntriesInFlightRef.current) {
+        pendingEntriesReloadRef.current = true;
+        return loadEntriesInFlightRef.current;
+      }
+
+      const blocking = opts?.showBlockingLoading === true;
+
+      const run = async () => {
+        if (blocking) setInitialLoading(true);
+        else setBackgroundSync(true);
+        try {
+          if (import.meta.env?.DEV) {
+            fullReloadCountRef.current += 1;
+            if (fullReloadCountRef.current > 8) {
+              console.warn(
+                `[ACCOUNTING CONTEXT] full journal reload count=${fullReloadCountRef.current} (check for fetch storm)`
+              );
+            }
+          }
+
+          const startDate = startDateISO ? new Date(startDateISO) : null;
+          const endDate = endDateISO ? new Date(endDateISO) : null;
+          const data = await accountingService.getAllEntries(
+            companyId,
+            branchId === 'all' ? undefined : branchId || undefined,
+            startDate,
+            endDate
+          );
+          const jeIds = (data as { id?: string }[])
+            .map((j) => String(j.id || '').trim())
+            .filter(Boolean);
+          const reversedOriginalIds = new Set<string>();
+          const CHUNK = 150;
+          for (let i = 0; i < jeIds.length; i += CHUNK) {
+            const chunk = jeIds.slice(i, i + CHUNK);
+            const { data: revParents, error: revErr } = await supabase
+              .from('journal_entries')
+              .select('reference_id')
+              .eq('company_id', companyId)
+              .eq('reference_type', 'correction_reversal')
+              .in('reference_id', chunk)
+              .or('is_void.is.null,is_void.eq.false');
+            if (revErr && import.meta.env?.DEV) {
+              console.warn('[ACCOUNTING CONTEXT] correction_reversal batch lookup:', revErr.message);
+            }
+            for (const r of revParents || []) {
+              const rid = (r as { reference_id?: string }).reference_id;
+              if (rid) reversedOriginalIds.add(String(rid));
+            }
+          }
+          const dataWithReversalFlag = (data as any[]).map((je) => ({
+            ...je,
+            _has_active_correction_reversal: Boolean(je.id && reversedOriginalIds.has(String(je.id))),
+          }));
+          const convertedEntries = applyJournalRowsToState(dataWithReversalFlag as JournalEntryWithLines[]);
+          if (import.meta.env?.DEV) console.log('✅ Journal entries loaded:', convertedEntries.length);
+
+          if (!opts?.skipBalanceSync) {
+            await maybeSyncBalancesFromJournal();
+          }
+        } catch (error) {
+          console.error('[ACCOUNTING CONTEXT] Error loading journal entries:', error);
+          setEntries([]);
+        } finally {
+          if (blocking) setInitialLoading(false);
+          setBackgroundSync(false);
+          loadEntriesInFlightRef.current = null;
+          if (pendingEntriesReloadRef.current) {
+            pendingEntriesReloadRef.current = false;
+            scheduleCoalescedRefreshRef.current({ entries: true, accounts: false });
+          }
+        }
+      };
+
+      const p = run();
+      loadEntriesInFlightRef.current = p;
+      return p;
+    },
+    [companyId, branchId, startDateISO, endDateISO, applyJournalRowsToState, maybeSyncBalancesFromJournal]
+  );
+
+  const scheduleCoalescedRefresh = useCallback(
+    (opts?: { entries?: boolean; accounts?: boolean; blocking?: boolean }) => {
+      const acc = coalescedRefreshOptsRef.current;
+      if (opts?.entries !== undefined) acc.entries = opts.entries;
+      if (opts?.accounts !== undefined) acc.accounts = opts.accounts;
+      if (opts?.blocking) acc.blocking = true;
+      if (coalescedRefreshTimerRef.current) clearTimeout(coalescedRefreshTimerRef.current);
+      coalescedRefreshTimerRef.current = setTimeout(() => {
+        coalescedRefreshTimerRef.current = null;
+        const o = { ...coalescedRefreshOptsRef.current };
+        coalescedRefreshOptsRef.current = { entries: false, accounts: false, blocking: false };
+        if (o.accounts) void loadAccounts();
+        if (o.entries) void loadEntries({ showBlockingLoading: o.blocking });
+      }, COALESCED_REFRESH_MS);
+    },
+    [loadAccounts, loadEntries]
+  );
+
+  scheduleCoalescedRefreshRef.current = scheduleCoalescedRefresh;
+
+  const loadAccountsRef = useRef(loadAccounts);
+  loadAccountsRef.current = loadAccounts;
+  const loadEntriesRef = useRef(loadEntries);
+  loadEntriesRef.current = loadEntries;
+
+  const appendOrMergeEntries = useCallback(
+    (input: AccountingEntry | AccountingEntry[] | JournalEntryWithLines | JournalEntryWithLines[]) => {
+      const items = Array.isArray(input) ? input : [input];
+      const journalRows: JournalEntryWithLines[] = [];
+      const accountingOnly: AccountingEntry[] = [];
+
+      for (const item of items) {
+        if ('lines' in item || ('reference_type' in item && 'entry_date' in item)) {
+          journalRows.push(item as JournalEntryWithLines);
+        } else {
+          accountingOnly.push(item as AccountingEntry);
+        }
+      }
+
+      if (journalRows.length > 0) {
+        const byId = new Map(
+          journalRowsCacheRef.current.map((je) => [String(je.id || ''), je])
+        );
+        for (const je of journalRows) {
+          const id = String(je.id || '');
+          if (id) byId.set(id, je);
+        }
+        const merged = Array.from(byId.values());
+        applyJournalRowsToState(merged);
+        return;
+      }
+
+      if (accountingOnly.length > 0) {
+        setEntries((prev) => {
+          const byId = new Map(prev.map((e) => [e.id, e]));
+          for (const e of accountingOnly) {
+            if (e.id) byId.set(e.id, e);
+          }
+          const next = Array.from(byId.values());
+          recalculateBalances(next);
+          return next;
         });
-        if (synced > 0 && typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-        }
-      } catch (syncErr) {
-        if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Payment account sync:', syncErr);
       }
+    },
+    [applyJournalRowsToState, recalculateBalances]
+  );
 
-      // Convert ISO strings back to Date objects only at call time — deps stay as stable primitives
-      const startDate = startDateISO ? new Date(startDateISO) : null;
-      const endDate = endDateISO ? new Date(endDateISO) : null;
-      const data = await accountingService.getAllEntries(
-        companyId, 
-        branchId === 'all' ? undefined : branchId || undefined,
-        startDate,
-        endDate
-      );
-      const jeIds = (data as { id?: string }[])
-        .map((j) => String(j.id || '').trim())
-        .filter(Boolean);
-      const reversedOriginalIds = new Set<string>();
-      const CHUNK = 150;
-      for (let i = 0; i < jeIds.length; i += CHUNK) {
-        const chunk = jeIds.slice(i, i + CHUNK);
-        const { data: revParents, error: revErr } = await supabase
-          .from('journal_entries')
-          .select('reference_id')
-          .eq('company_id', companyId)
-          .eq('reference_type', 'correction_reversal')
-          .in('reference_id', chunk)
-          .or('is_void.is.null,is_void.eq.false');
-        if (revErr && import.meta.env?.DEV) {
-          console.warn('[ACCOUNTING CONTEXT] correction_reversal batch lookup:', revErr.message);
-        }
-        for (const r of revParents || []) {
-          const rid = (r as { reference_id?: string }).reference_id;
-          if (rid) reversedOriginalIds.add(String(rid));
-        }
-      }
-      const dataWithReversalFlag = (data as any[]).map((je) => ({
-        ...je,
-        _has_active_correction_reversal: Boolean(je.id && reversedOriginalIds.has(String(je.id))),
-      }));
-      const chainIndex = buildPaymentChainIndex(dataWithReversalFlag as any[]);
-      const convertedEntries = dataWithReversalFlag.map((je) =>
-        convertFromJournalEntry(je as JournalEntryWithLines, chainIndex)
-      );
-      setEntries(convertedEntries);
-      if (import.meta.env?.DEV) console.log('✅ Journal entries loaded:', convertedEntries.length);
-      
-      // Recalculate balances from real entries
-      recalculateBalances(convertedEntries);
-
-      // Auto-sync stored account balances to journal truth (debounced via debouncedLoadEntries)
-      try {
-        const { syncAccountsBalanceFromJournal } = await import('@/app/services/liveDataRepairService');
-        await syncAccountsBalanceFromJournal(companyId);
-      } catch (syncBalErr) {
-        if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] Balance sync after load:', syncBalErr);
-      }
-    } catch (error) {
-      console.error('[ACCOUNTING CONTEXT] Error loading journal entries:', error);
-      setEntries([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [companyId, branchId, startDateISO, endDateISO, convertFromJournalEntry]);
-
-  // Recalculate balances from entries
-  const recalculateBalances = useCallback((entriesToUse: AccountingEntry[]) => {
-    const newBalances = new Map<AccountType, number>();
-    
-    entriesToUse.forEach(entry => {
-      // Update debit account
-      const currentDebit = newBalances.get(entry.debitAccount) || 0;
-      newBalances.set(entry.debitAccount, currentDebit + entry.amount);
-      
-      // Update credit account
-      const currentCredit = newBalances.get(entry.creditAccount) || 0;
-      newBalances.set(entry.creditAccount, currentCredit + entry.amount);
-    });
-    
-    setBalances(newBalances);
+  const patchAccountBalances = useCallback((accountIdToBalance: Record<string, number>) => {
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        const id = acc.id;
+        if (!id || accountIdToBalance[id] === undefined) return acc;
+        return { ...acc, balance: accountIdToBalance[id]! };
+      })
+    );
   }, []);
 
-  // Debounced version of loadEntries — collapses multiple rapid event-driven calls into one
-  const debouncedLoadEntries = useCallback(() => {
-    if (loadEntriesTimerRef.current) clearTimeout(loadEntriesTimerRef.current);
-    loadEntriesTimerRef.current = setTimeout(() => {
-      loadEntriesTimerRef.current = null;
-      loadEntries();
-    }, 300);
-  }, [loadEntries]);
-
-  // Cleanup debounce timer on unmount
   useEffect(() => {
     return () => {
-      if (loadEntriesTimerRef.current) clearTimeout(loadEntriesTimerRef.current);
+      if (coalescedRefreshTimerRef.current) clearTimeout(coalescedRefreshTimerRef.current);
     };
   }, []);
 
   // Load accounts and entries on mount and when company/branch/date range changes
   useEffect(() => {
-    if (companyId) {
-      loadAccounts();
-      loadEntries(); // Direct call on mount — no debounce for initial load
-    }
-  }, [companyId, branchId, startDateISO, endDateISO, loadAccounts, loadEntries]);
+    if (!companyId) return;
+    paymentSyncDoneForCompanyRef.current = null;
+    void loadAccountsRef.current();
+    void loadEntriesRef.current({ showBlockingLoading: true }).then(() => {
+      void runPaymentAccountSyncOnce();
+    });
+  }, [companyId, branchId, startDateISO, endDateISO, runPaymentAccountSyncOnce]);
 
-  // CRITICAL: Listen for purchase/sale delete events to refresh entries
+  // Listen for purchase/sale delete events
   useEffect(() => {
     const handlePurchaseDelete = () => {
-      console.log('[ACCOUNTING CONTEXT] Purchase deleted, refreshing entries...');
-      debouncedLoadEntries();
+      scheduleCoalescedRefreshRef.current({ entries: true, accounts: false });
     };
-
     const handleSaleDelete = () => {
-      console.log('[ACCOUNTING CONTEXT] Sale deleted, refreshing entries...');
-      debouncedLoadEntries();
+      scheduleCoalescedRefreshRef.current({ entries: true, accounts: false });
     };
-
     window.addEventListener('purchaseDeleted', handlePurchaseDelete);
     window.addEventListener('saleDeleted', handleSaleDelete);
-
     return () => {
       window.removeEventListener('purchaseDeleted', handlePurchaseDelete);
       window.removeEventListener('saleDeleted', handleSaleDelete);
     };
-  }, [debouncedLoadEntries]);
+  }, []);
 
-  /** Journal / payment flows dispatch `accountingEntriesChanged` — keep context entries + accounts in sync without full reload. */
+  /** Coalesced refresh — entries-only for most events; no CONTACT_BALANCES_REFRESH (contact UIs own that). */
   useEffect(() => {
     if (!companyId) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const queue = () => {
-      if (timer) return;
-      timer = setTimeout(() => {
-        timer = null;
-        void loadAccounts();
-        void debouncedLoadEntries();
-      }, 200);
+
+    const bumpEntriesOnly = () => {
+      scheduleCoalescedRefreshRef.current({ entries: true, accounts: false });
     };
-    const bump = () => {
-      queue();
-      // Do not dispatch CONTACT_BALANCES_REFRESH here: callers already fire it where needed, and it retriggers
-      // listeners (e.g. statement page journalRefreshTick) in the same turn as accountingEntriesChanged/paymentAdded.
-    };
+
     const onDataInvalidated = (ev: Event) => {
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
       if (
         !shouldAcceptInvalidation(detail, {
-          domain: ['accounting', 'sales', 'purchases', 'contacts', 'rentals', 'inventory', 'studio'],
+          domain: ['accounting'],
           companyId,
           branchId: branchId === 'all' ? null : branchId ?? null,
         })
       ) {
         return;
       }
-      queue();
+      const reloadAccounts = invalidationShouldReloadAccounts(detail?.reason);
+      scheduleCoalescedRefreshRef.current({
+        entries: true,
+        accounts: reloadAccounts,
+      });
     };
-    const onContactBalancesRefresh = (ev: Event) => {
-      const cid = (ev as CustomEvent<{ companyId?: string }>).detail?.companyId;
-      if (cid && cid === companyId) queue();
-    };
-    window.addEventListener('accountingEntriesChanged', bump);
-    window.addEventListener('paymentAdded', bump);
-    window.addEventListener('ledgerUpdated', bump);
-    window.addEventListener(CONTACT_BALANCES_REFRESH_EVENT, onContactBalancesRefresh);
+
+    window.addEventListener('accountingEntriesChanged', bumpEntriesOnly);
     window.addEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
     return () => {
-      if (timer) clearTimeout(timer);
-      window.removeEventListener('accountingEntriesChanged', bump);
-      window.removeEventListener('paymentAdded', bump);
-      window.removeEventListener('ledgerUpdated', bump);
-      window.removeEventListener(CONTACT_BALANCES_REFRESH_EVENT, onContactBalancesRefresh);
+      window.removeEventListener('accountingEntriesChanged', bumpEntriesOnly);
       window.removeEventListener(DATA_INVALIDATED_EVENT, onDataInvalidated as EventListener);
     };
-  }, [branchId, companyId, loadAccounts, debouncedLoadEntries]);
+  }, [branchId, companyId]);
 
-  // Cross-client sync (mobile/web): refresh accounting when DB rows change outside this browser tab.
-  useEffect(() => {
-    if (!companyId) return;
-    if (import.meta.env.VITE_DISABLE_REALTIME === 'true') return;
-    if (isPlaceholderSupabaseAnonKey) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const queue = () => {
-      if (timer) return;
-      timer = setTimeout(() => {
-        timer = null;
-        void loadAccounts();
-        void debouncedLoadEntries();
-      }, 250);
-    };
-    const channel = supabase
-      .channel(`accounting-live-${companyId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_entries', filter: `company_id=eq.${companyId}` }, queue)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `company_id=eq.${companyId}` }, queue)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases', filter: `company_id=eq.${companyId}` }, queue)
-      .subscribe();
-
-    return () => {
-      if (timer) clearTimeout(timer);
-      void supabase.removeChannel(channel);
-    };
-  }, [companyId, loadAccounts, debouncedLoadEntries]);
+  // Realtime for journal/payments: WebRealtimeBridge only (avoids duplicate channels with this provider).
 
   // ============================================
   // 🎯 REAL DATA LOADING (NO DEMO DATA)
@@ -1549,8 +1689,14 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
               createdBy: currentUserId ?? null,
               explicitAllocations: null,
             });
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+            if (companyId) {
+              dispatchDataInvalidated({
+                domain: 'accounting',
+                companyId,
+                branchId: validBranchId,
+                entityId: manualPaymentId,
+                reason: 'manualReceiptAllocated',
+              });
               window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
             }
           } catch (allocErr: any) {
@@ -1589,8 +1735,14 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
               createdBy: currentUserId ?? null,
               explicitAllocations: null,
             });
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+            if (companyId) {
+              dispatchDataInvalidated({
+                domain: 'accounting',
+                companyId,
+                branchId: validBranchId,
+                entityId: manualPaymentId,
+                reason: 'manualSupplierPaymentAllocated',
+              });
               window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierId } }));
             }
           } catch (allocErr: any) {
@@ -1655,9 +1807,8 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
         console.warn('[WORKER LEDGER DEBUG] Worker Payable debit but no metadata.workerId – entry will NOT appear in worker ledger. Use Pay Worker flow or select worker in Manual Entry.');
       }
 
-      // Convert and add to local state
-      const convertedEntry = convertFromJournalEntry(savedEntry as JournalEntryWithLines);
-      setEntries(prev => [convertedEntry, ...prev]);
+      // Convert and add to local state (no global refetch)
+      appendOrMergeEntries(savedEntry as JournalEntryWithLines);
       
       // Update balances
     updateBalances(entry.debitAccount, entry.creditAccount, entry.amount);
@@ -2771,8 +2922,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
 
   // Refresh both accounts and entries
   const refreshEntries = useCallback(async () => {
-    await Promise.all([loadAccounts(), loadEntries()]);
+    await Promise.all([
+      loadAccounts(),
+      loadEntries({ showBlockingLoading: false }),
+    ]);
   }, [loadAccounts, loadEntries]);
+
+  const refreshAccounts = useCallback(async () => {
+    await loadAccounts();
+  }, [loadAccounts]);
 
   /** Safe manual correction: create a reversal JE for the given journal entry (PF-07). */
   const createReversalEntry = useCallback(async (originalJournalEntryId: string, reason?: string): Promise<boolean> => {
@@ -2823,10 +2981,14 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
       if (result) {
         await refreshEntries();
         toast.success(`Undo ${result.mutationType}: restored previous state`);
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('paymentAdded'));
-          window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
-          window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: {} }));
+        if (companyId && typeof window !== 'undefined') {
+          dispatchDataInvalidated({
+            domain: 'accounting',
+            companyId,
+            branchId: branchId === 'all' ? null : branchId ?? null,
+            entityId: paymentId,
+            reason: 'undoLastPaymentMutation',
+          });
         }
         return true;
       }
@@ -2845,11 +3007,15 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
   const value = useMemo<AccountingContextType>(() => ({
     entries,
     balances,
-    loading,
+    loading: initialLoading,
+    backgroundSync,
     createEntry,
     createReversalEntry,
     undoLastPaymentMutation,
     refreshEntries,
+    refreshAccounts,
+    appendOrMergeEntries,
+    patchAccountBalances,
     getEntriesByReference,
     getEntriesBySource,
     getAccountBalance,
@@ -2879,8 +3045,9 @@ const endDateISO = globalFilter?.endDate ?? new Date().toISOString().slice(0, 10
     getAccountsByType,
     getAccountById,
   }), [
-    entries, balances, loading, accounts,
-    createEntry, createReversalEntry, undoLastPaymentMutation, refreshEntries, getEntriesByReference, getEntriesBySource,
+    entries, balances, initialLoading, backgroundSync, accounts,
+    createEntry, createReversalEntry, undoLastPaymentMutation, refreshEntries, refreshAccounts, appendOrMergeEntries, patchAccountBalances,
+    getEntriesByReference, getEntriesBySource,
     getAccountBalance, getEntriesBySupplier, getEntriesByCustomer, getEntriesByWorker,
     getSupplierBalance, getCustomerBalance, getWorkerBalance,
     recordSale, recordSalePayment, recordRentalBooking, recordRentalDelivery,

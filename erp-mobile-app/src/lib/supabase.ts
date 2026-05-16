@@ -2,7 +2,13 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { RealtimeClient } from '@supabase/realtime-js';
 import { clearSecure } from './secureStorage';
 
-let supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+/** Vite defines `import.meta.env`; Node (e.g. tsx --test) does not — avoid crashing on import. */
+const env =
+  typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string | boolean | undefined> }).env
+    ? ((import.meta as { env: Record<string, string | boolean | undefined> }).env)
+    : ({} as Record<string, string | boolean | undefined>);
+
+let supabaseUrl = String(env.VITE_SUPABASE_URL ?? '').trim();
 const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
 /**
@@ -11,11 +17,11 @@ const origin = typeof window !== 'undefined' ? window.location.origin : '';
  * /auth/v1, /rest/v1, etc. to https://supabase.dincouture.pk.
  */
 const isViteDevLocal =
-  import.meta.env.DEV &&
+  Boolean(env.DEV) &&
   origin &&
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
 const isViteDevLan =
-  import.meta.env.DEV &&
+  Boolean(env.DEV) &&
   origin &&
   /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(origin);
 
@@ -28,7 +34,7 @@ if (isViteDevLocal || isViteDevLan) {
 if (origin.includes('erp.dincouture.pk')) {
   supabaseUrl = origin;
 }
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+const supabaseAnonKey = String(env.VITE_SUPABASE_ANON_KEY ?? '').trim();
 
 const hasConfig = Boolean(supabaseUrl && supabaseAnonKey && !supabaseUrl.startsWith('http://placeholder'));
 if (!hasConfig) {
@@ -72,7 +78,7 @@ export const erpMobileUsingDemoSupabaseAnonKey = hasConfig && isDemoSupabaseAnon
 
 /** Use postgres_changes / Realtime only when config is valid and not the demo anon key. */
 export const erpMobileCanUseRealtime =
-  hasConfig && import.meta.env.VITE_DISABLE_REALTIME !== 'true' && !isDemoSupabaseAnonKey(supabaseAnonKey);
+  hasConfig && env.VITE_DISABLE_REALTIME !== 'true' && !isDemoSupabaseAnonKey(supabaseAnonKey);
 
 export const mobileRealtimeHealth = {
   configured: hasConfig,
@@ -81,7 +87,7 @@ export const mobileRealtimeHealth = {
     ? 'missing-env'
     : isDemoSupabaseAnonKey(supabaseAnonKey)
       ? 'demo-anon-key'
-      : import.meta.env.VITE_DISABLE_REALTIME === 'true'
+      : env.VITE_DISABLE_REALTIME === 'true'
         ? 'disabled-by-env'
         : 'ok',
 } as const;
@@ -91,11 +97,11 @@ export const mobileRealtimeHealth = {
  * fragile; use a direct wss:// URL to VITE_SUPABASE_HOST when in dev on localhost/LAN.
  */
 function attachDirectRealtimeInLocalDev(client: SupabaseClient): void {
-  if (typeof window === 'undefined' || !import.meta.env.DEV) return;
+  if (typeof window === 'undefined' || !env.DEV) return;
   if (!isViteDevLocal && !isViteDevLan) return;
   if (!hasConfig || isDemoSupabaseAnonKey(supabaseAnonKey)) return;
 
-  const configured = (import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/$/, '');
+  const configured = String(env.VITE_SUPABASE_URL ?? '').trim().replace(/\/$/, '');
   if (!configured.startsWith('https://') || configured.includes('localhost')) return;
 
   const realtimeHref = `${configured.replace(/^https/i, 'wss')}/realtime/v1`;
@@ -138,6 +144,6 @@ if (hasConfig) {
   });
 }
 
-if (import.meta.env.DEV) {
+if (env.DEV) {
   console.info('[ERP Mobile] Realtime health:', mobileRealtimeHealth);
 }

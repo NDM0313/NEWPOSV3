@@ -1,12 +1,32 @@
 # Android build
 
-This project uses **Gradle 9.1** and **Android Gradle Plugin 9.0**, which support **Java 17 through 25**. You can use your system JDK (including JDK 25) without changing it.
+This project uses **Gradle 9.1.0** and **Android Gradle Plugin 9.0**. Capacitor 8 requires **JDK 21+** for compilation (JDK 25 works on this machine).
 
-## Build
+## One-time setup
 
-From the `android` folder:
+1. Install Android Studio (SDK). Set `sdk.dir` in `android/local.properties` (see example path for Windows).
+2. Use JDK 21 or newer. On Windows PowerShell before Gradle:
 
-- **Windows:** `.\gradlew.bat assembleDebug`
-- **macOS/Linux:** `./gradlew assembleDebug`
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-25.0.1.8-hotspot"
+```
 
-Ensure **Android SDK** is installed and `sdk.dir` is set in `local.properties` (or `ANDROID_HOME` is set). From `erp-mobile-app`, run `npx cap sync` if you add Cordova plugins (otherwise the stub project is used).
+## Full build (from `erp-mobile-app`)
+
+```bash
+npm ci
+npm run build:mobile
+npx cap sync android
+cd android
+.\gradlew.bat assembleDebug    # Windows
+# ./gradlew assembleDebug      # macOS/Linux
+```
+
+**Debug APK:** `android/app/build/outputs/apk/debug/app-debug.apk`
+
+## Company modules
+
+Enable POS, Rental, Studio, Accounting in Web ERP → **Settings → Module Toggles**.  
+Packing: **Settings → Inventory → Enable Packing**. Mobile users: log out and back in after changes.
+
+Run `migrations/backfill_mobile_modules_config.sql` in Supabase once if legacy companies are missing module rows.

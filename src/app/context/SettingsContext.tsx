@@ -11,6 +11,11 @@ import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { isDebugErpEnabled } from '@/app/lib/debugErp';
+import type { ModuleToggles } from '@/app/config/companyBootstrapRegistry';
+import { defaultModuleToggles } from '@/app/config/companyBootstrapRegistry';
+import { buildModuleTogglesFromConfigRows, moduleTogglePatchesToDb } from '@/app/config/moduleConfigSemantics';
+
+export type { ModuleToggles };
 
 // ============================================
 // 🎯 TYPES & INTERFACES
@@ -188,15 +193,6 @@ export interface AccountingSettings {
   defaultTaxRate: number;
 }
 
-export interface ModuleToggles {
-  rentalModuleEnabled: boolean;
-  studioModuleEnabled: boolean;
-  accountingModuleEnabled: boolean;
-  productionModuleEnabled: boolean;
-  posModuleEnabled: boolean;
-  combosEnabled: boolean;
-}
-
 interface SettingsContextType {
   // Loading state
   loading: boolean;
@@ -298,7 +294,14 @@ function getDefaultSettingsStub(): SettingsContextType {
     getNextNumber: async () => '',
     currentUser: { role: 'Admin', canCreateSale: true, canEditSale: true, canDeleteSale: true, canCancelSale: true, canViewSale: true, canViewContacts: true, canViewReports: true, canManageSettings: true, canManageUsers: true, canAccessAccounting: true, canMakePayments: true, canReceivePayments: true, canManageExpenses: true, canManageProducts: true, canManagePurchases: true, canManageRentals: true },
     updatePermissions: noop,
-    modules: { rentalModuleEnabled: true, studioModuleEnabled: true, accountingModuleEnabled: true, productionModuleEnabled: true, posModuleEnabled: true, combosEnabled: false },
+    modules: {
+      ...defaultModuleToggles(),
+      rentalModuleEnabled: true,
+      studioModuleEnabled: true,
+      accountingModuleEnabled: true,
+      productionModuleEnabled: true,
+      posModuleEnabled: true,
+    },
     updateModules: noop,
     featureFlags: {},
     updateFeatureFlag: noop,
@@ -468,14 +471,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   });
 
   // Module Toggles
-  const [modules, setModules] = useState<ModuleToggles>({
-    rentalModuleEnabled: false,
-    studioModuleEnabled: false,
-    accountingModuleEnabled: false,
-    productionModuleEnabled: false,
-    posModuleEnabled: false,
-    combosEnabled: false,
-  });
+  const [modules, setModules] = useState<ModuleToggles>(defaultModuleToggles());
 
   // Feature Flags (Safe Zone – studio_production_v2, etc.)
   const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>({});
@@ -712,16 +708,14 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       });
 
       // Module Toggles (already fetched in parallel above)
-      const modulesMap = new Map(moduleConfigs.map((m: any) => [m.module_name, m.is_enabled]));
-      const getModuleEnabled = (name: string): boolean => modulesMap.get(name) === true;
-      setModules({
-        rentalModuleEnabled: getModuleEnabled('rentals'),
-        studioModuleEnabled: getModuleEnabled('studio'),
-        accountingModuleEnabled: getModuleEnabled('accounting'),
-        productionModuleEnabled: getModuleEnabled('production'),
-        posModuleEnabled: getModuleEnabled('pos'),
-        combosEnabled: getModuleEnabled('combos'),
-      });
+      setModules(
+        buildModuleTogglesFromConfigRows(
+          (moduleConfigs || []).map((m: { module_name: string; is_enabled: boolean }) => ({
+            module_name: m.module_name,
+            is_enabled: m.is_enabled,
+          }))
+        )
+      );
 
       // Feature flags (already fetched in parallel above, errors caught with .catch({}))
       setFeatureFlags(flags || {});
@@ -1132,19 +1126,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     
     try {
       // Save each module toggle
-      const moduleNameMap: Record<keyof ModuleToggles, string> = {
-        rentalModuleEnabled: 'rentals',
-        studioModuleEnabled: 'studio',
-        accountingModuleEnabled: 'accounting',
-        productionModuleEnabled: 'production',
-        posModuleEnabled: 'pos',
-        combosEnabled: 'combos',
-      };
-
-      for (const [key, moduleName] of Object.entries(moduleNameMap)) {
-        if (key in newModules) {
-          await settingsService.setModuleEnabled(companyId, moduleName, updated[key as keyof ModuleToggles] as boolean);
-        }
+      const patches = moduleTogglePatchesToDb(newModules);
+      for (const { moduleName, isEnabled } of patches) {
+        await settingsService.setModuleEnabled(companyId, moduleName, isEnabled);
       }
       
       toast.success('Module toggles saved');

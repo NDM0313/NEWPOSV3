@@ -50,8 +50,8 @@ export const MobileNavDrawer = () => {
     { id: 'contacts', label: 'Contacts', icon: Users, isHidden: !hasPermission('contacts.view') },
     { id: 'products', label: 'Products', icon: Package, isHidden: !hasPermission('products.view') },
     { id: 'inventory', label: 'Inventory', icon: Warehouse, isHidden: !hasPermission('inventory.view') },
-    { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !hasPermission('purchases.view') },
-    { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !hasPermission('sales.view') },
+    { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !settingsModules.purchasesModuleEnabled || !hasPermission('purchases.view') },
+    { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !settingsModules.salesModuleEnabled || !hasPermission('sales.view') },
     { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled || !hasPermission('rentals.view') },
     { id: 'pos', label: 'POS System', icon: Store, isHidden: !settingsModules.posModuleEnabled || !hasPermission('pos.view') },
     {
@@ -66,7 +66,7 @@ export const MobileNavDrawer = () => {
         { id: 'studio-workflow', label: 'Workers' },
       ],
     },
-    { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !hasPermission('expenses.view') },
+    { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !settingsModules.expensesModuleEnabled || !hasPermission('expenses.view') },
     { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
     {
       id: 'ar-ap-reconciliation-center',
@@ -74,7 +74,7 @@ export const MobileNavDrawer = () => {
       icon: Scale,
       isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view'),
     },
-    { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !hasPermission('reports.view') },
+    { id: 'reports', label: 'Reports', icon: PieChart, isHidden: !settingsModules.reportsModuleEnabled || !hasPermission('reports.view') },
     { id: 'settings', label: 'Settings', icon: Settings, isHidden: !hasPermission('settings.view') },
   ];
 

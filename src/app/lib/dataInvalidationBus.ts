@@ -111,6 +111,22 @@ export function dispatchRentalLifecycleInvalidated(opts: {
   }
 }
 
+/** Single accounting-domain invalidation (prefer over `accountingEntriesChanged` + `paymentAdded` + `ledgerUpdated`). */
+export function dispatchAccountingInvalidated(opts: {
+  companyId: string;
+  branchId?: string | null;
+  entityId?: string | null;
+  reason: string;
+}): void {
+  dispatchDataInvalidated({
+    domain: 'accounting',
+    companyId: opts.companyId,
+    branchId: opts.branchId ?? null,
+    entityId: opts.entityId ?? null,
+    reason: opts.reason,
+  });
+}
+
 export function dispatchStudioDataInvalidated(opts: {
   companyId: string;
   branchId?: string | null;

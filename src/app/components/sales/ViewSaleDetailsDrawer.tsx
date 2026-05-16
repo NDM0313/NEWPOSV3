@@ -263,16 +263,17 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   }, [companyId]);
 
   // CRITICAL FIX: Load payments breakdown (must be defined before useEffect that uses it)
-  const loadPayments = useCallback(async (saleId: string) => {
-    setLoadingPayments(true);
+  const loadPayments = useCallback(async (saleId: string, opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
+    if (!silent) setLoadingPayments(true);
     try {
       const fetchedPayments = await saleService.getSalePayments(saleId);
       setPayments(fetchedPayments);
     } catch (error) {
       console.error('[VIEW SALE] Error loading payments:', error);
-      setPayments([]);
+      if (!silent) setPayments([]);
     } finally {
-      setLoadingPayments(false);
+      if (!silent) setLoadingPayments(false);
     }
   }, []);
 
@@ -436,14 +437,14 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   }, [isOpen, saleId, (sale as any)?.source, (sale as any)?.source_id, (sale as any)?.show_studio_breakdown]);
 
   // CRITICAL FIX: Reload sale data (called after payment is added or sale updated e.g. Studio invoice sync)
-  const reloadSaleData = useCallback(async () => {
+  const reloadSaleData = useCallback(async (opts?: { silentPayments?: boolean }) => {
     if (!saleId) return;
     try {
       const saleData = await saleService.getSaleById(saleId);
       if (saleData) {
         const convertedSale = convertFromSupabaseSale(saleData);
         setSale(convertedSale);
-        await loadPayments(saleId);
+        await loadPayments(saleId, { silent: opts?.silentPayments });
         await loadActivityLogs(saleId);
         if ((convertedSale as any).studioCharges != null || (convertedSale as any).is_studio) {
           const summary = await studioProductionService.getStudioSummaryBySaleId(saleId).catch(() => null);
@@ -459,7 +460,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   useEffect(() => {
     const handlePaymentAdded = () => {
       if (saleId) {
-        reloadSaleData();
+        reloadSaleData({ silentPayments: true });
       }
     };
     
@@ -473,7 +474,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   useEffect(() => {
     const handler = (e: CustomEvent<{ saleId: string }>) => {
       if (e.detail?.saleId && saleId && e.detail.saleId === saleId) {
-        reloadSaleData();
+        reloadSaleData({ silentPayments: true });
       }
     };
     window.addEventListener('saleUpdated', handler as EventListener);

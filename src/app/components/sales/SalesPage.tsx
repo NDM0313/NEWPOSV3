@@ -82,6 +82,7 @@ import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { transitionSaleLifecycle, restoreSaleFromCancelled } from '@/app/lib/documentLifecycleActions';
 import { SaleLifecycleMenuBlock, type SaleLifecycleAction } from '@/app/components/sales/SaleLifecycleMenuBlock';
+import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
 
 /** Shipment / freight charged to customer (trigger-synced `shipment_charges` on sale). Matches ViewSaleDetailsDrawer. */
 function getSaleShippingChargesAmount(sale: Sale): number {
@@ -216,18 +217,6 @@ export const SalesPage = () => {
     loadSalesWithReturns();
   }, [companyId, branchId, sales.length]);
 
-  // 🎯 Listen for payment added event to refresh sales list
-  useEffect(() => {
-    const handlePaymentAdded = async () => {
-      console.log('[SALES PAGE] Payment added event received, refreshing sales list...');
-      await refreshSales();
-    };
-
-    window.addEventListener('paymentAdded', handlePaymentAdded);
-    return () => {
-      window.removeEventListener('paymentAdded', handlePaymentAdded);
-    };
-  }, [refreshSales]);
   
   // 🎯 Payment Dialog & Ledger states
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -2644,6 +2633,16 @@ export const SalesPage = () => {
             await refreshSales();
             setPaymentDialogOpen(false);
             setPaymentToEdit(null);
+            if (companyId && selectedSale?.id) {
+              const bid = branchId === 'all' ? null : branchId ?? null;
+              dispatchDataInvalidated({
+                domain: 'sales',
+                companyId,
+                branchId: bid,
+                entityId: selectedSale.id,
+                reason: 'payment-recorded',
+              });
+            }
             window.dispatchEvent(new CustomEvent('paymentAdded'));
             const customerId = selectedSale?.customer;
             if (customerId) {

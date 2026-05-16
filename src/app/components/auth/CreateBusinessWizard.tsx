@@ -30,9 +30,15 @@ import {
   Receipt,
   BarChart3,
   MapPin,
+  Box,
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { businessService } from '@/app/services/businessService';
+import {
+  BUSINESS_TYPE_MODULES,
+  MODULE_REGISTRY,
+  WIZARD_BUSINESS_TYPES,
+} from '@/app/config/companyBootstrapRegistry';
 
 const CURRENCIES = [
   { code: 'PKR', label: 'PKR (Pakistani Rupee)' },
@@ -42,23 +48,6 @@ const CURRENCIES = [
   { code: 'AED', label: 'AED (UAE Dirham)' },
   { code: 'SAR', label: 'SAR (Saudi Riyal)' },
 ];
-
-const BUSINESS_TYPES = [
-  { value: 'retail', label: 'Retail' },
-  { value: 'rental', label: 'Rental' },
-  { value: 'manufacturing', label: 'Manufacturing' },
-  { value: 'wholesale', label: 'Wholesale' },
-  { value: 'mixed', label: 'Mixed' },
-];
-
-/** Default modules per business type (wizard module ids). User can change in Step 4. */
-const BUSINESS_TYPE_MODULES: Record<string, string[]> = {
-  retail: ['sales', 'pos', 'accounting', 'reports'],
-  wholesale: ['sales', 'purchases', 'accounting', 'reports'],
-  manufacturing: ['purchases', 'studio', 'sales', 'accounting', 'reports'],
-  rental: ['rentals', 'sales', 'accounting', 'reports'],
-  mixed: ['sales', 'purchases', 'rentals', 'pos', 'studio', 'accounting', 'expenses', 'payroll', 'reports'],
-};
 
 const FISCAL_MONTHS = [
   { value: '1', label: 'January' },
@@ -72,17 +61,25 @@ const COSTING_METHODS = [
   { value: 'Weighted Average', label: 'Weighted Average' },
 ];
 
-const MODULES: { id: string; label: string; description: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
-  { id: 'sales', label: 'Sales', description: 'Create invoices and manage customers', icon: ShoppingCart },
-  { id: 'purchases', label: 'Purchases', description: 'Track supplier purchases', icon: Truck },
-  { id: 'rentals', label: 'Rentals', description: 'Manage rental bookings and returns', icon: Shirt },
-  { id: 'pos', label: 'POS', description: 'Point of sale and quick checkout', icon: Store },
-  { id: 'studio', label: 'Studio Production', description: 'Orders and production stages', icon: Camera },
-  { id: 'accounting', label: 'Accounting', description: 'Financial reporting and ledgers', icon: BookOpen },
-  { id: 'expenses', label: 'Expenses', description: 'Record and track expenses', icon: Receipt },
-  { id: 'payroll', label: 'Payroll', description: 'Worker payments (future)', icon: User },
-  { id: 'reports', label: 'Reports', description: 'Analytics and reports', icon: BarChart3 },
-];
+const MODULE_ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  sales: ShoppingCart,
+  purchases: Truck,
+  rentals: Shirt,
+  pos: Store,
+  studio: Camera,
+  production: Box,
+  accounting: BookOpen,
+  expenses: Receipt,
+  payroll: User,
+  reports: BarChart3,
+};
+
+const MODULES = MODULE_REGISTRY.filter((m) => m.inWizard).map((m) => ({
+  id: m.moduleName,
+  label: m.label,
+  description: m.description,
+  icon: MODULE_ICONS[m.moduleName] ?? Package,
+}));
 
 const BASE_UNITS = [
   { value: 'pcs', label: 'Piece (pcs)' },
@@ -325,7 +322,7 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {BUSINESS_TYPES.map((t) => (
+                        {WIZARD_BUSINESS_TYPES.map((t) => (
                           <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                         ))}
                       </SelectContent>

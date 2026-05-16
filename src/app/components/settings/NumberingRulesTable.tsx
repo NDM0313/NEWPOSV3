@@ -19,7 +19,8 @@ const SENTINEL = '00000000-0000-0000-0000-000000000000';
 const MODULES: { document_type: string; label: string; defaultPrefix: string; type: 'Document' | 'Master' }[] = [
   { document_type: 'SALE', label: 'Sale', defaultPrefix: 'SL', type: 'Document' },
   { document_type: 'PURCHASE', label: 'Purchase', defaultPrefix: 'PUR', type: 'Document' },
-  { document_type: 'PAYMENT', label: 'Payment', defaultPrefix: 'PAY', type: 'Document' },
+  { document_type: 'PAYMENT', label: 'Outgoing payment', defaultPrefix: 'PAY', type: 'Document' },
+  { document_type: 'CUSTOMER_RECEIPT', label: 'Customer receipt', defaultPrefix: 'RCV', type: 'Document' },
   { document_type: 'EXPENSE', label: 'Expense', defaultPrefix: 'EXP', type: 'Document' },
   { document_type: 'RENTAL', label: 'Rental', defaultPrefix: 'REN', type: 'Document' },
   { document_type: 'STUDIO', label: 'Studio', defaultPrefix: 'STD', type: 'Document' },

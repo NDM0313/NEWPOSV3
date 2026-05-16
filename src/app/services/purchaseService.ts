@@ -3,6 +3,7 @@ import { getDocumentConversionSchemaFlags } from '@/app/lib/documentConversionSc
 import { canPostAccountingForPurchaseStatus, wasPurchasePostedForReversal } from '@/app/lib/postingStatusGate';
 import { activityLogService } from '@/app/services/activityLogService';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
+import { dispatchAccountingInvalidated } from '@/app/lib/dataInvalidationBus';
 import { createSupplierPayment } from '@/app/services/supplierPaymentService';
 import { PURCHASE_HEADER_COLUMNS } from '@/app/lib/purchaseDbConstants';
 import { postPurchaseDocumentAccounting, reversePurchaseDocumentAccounting } from '@/app/services/documentPostingEngine';
@@ -1536,8 +1537,12 @@ export const purchaseService = {
               createdBy: (user as any)?.id ?? null, payableAccountId,
             });
           }
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+          if ((data as any)?.company_id) {
+            dispatchAccountingInvalidated({
+              companyId: String((data as any).company_id),
+              entityId: paymentId,
+              reason: 'purchasePaymentAmountAdjustmentJe',
+            });
           }
         } catch (adjErr: any) {
           console.warn('[PURCHASE SERVICE] Payment amount adjustment JE failed:', adjErr?.message || adjErr);
@@ -1602,8 +1607,12 @@ export const purchaseService = {
           // Clear payment sync cache so next sync re-evaluates this payment
           const { clearSkippedPaymentCache } = await import('@/app/services/paymentAdjustmentService');
           clearSkippedPaymentCache(paymentId);
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+          if ((data as any)?.company_id) {
+            dispatchAccountingInvalidated({
+              companyId: String((data as any).company_id),
+              entityId: paymentId,
+              reason: 'purchasePaymentAccountAdjustmentJe',
+            });
           }
         } catch (accErr: any) {
           console.warn('[PURCHASE SERVICE] Payment account adjustment JE failed:', accErr?.message || accErr);
@@ -1618,9 +1627,13 @@ export const purchaseService = {
           entryDate: updates.paymentDate,
         }).catch((e) => console.warn('[purchaseService] payment journal entry_date sync:', e));
       }
-      if ((data as any)?.company_id) dispatchContactBalancesRefresh(String((data as any).company_id));
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+      if ((data as any)?.company_id) {
+        dispatchContactBalancesRefresh(String((data as any).company_id));
+        dispatchAccountingInvalidated({
+          companyId: String((data as any).company_id),
+          entityId: paymentId,
+          reason: 'purchasePaymentUpdated',
+        });
       }
       return data;
     } catch (error: any) {

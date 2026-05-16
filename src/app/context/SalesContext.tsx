@@ -2041,7 +2041,12 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             await sbEdit.from('journal_entries').update({ description: `${docJe.description || ''} ${editLog}`.slice(0, 500) }).eq('id', jeId);
 
             console.log('[SALES CONTEXT] PF-14 v2: In-place updated sale document JE', jeId, 'for', invoiceNo);
-            window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
+            dispatchSaleLifecycleInvalidated({
+              companyId,
+              branchId: branchId ?? null,
+              saleId: id,
+              reason: 'saleDocumentJeEdited',
+            });
           }
 
           // Phase 4: Activity only when value actually changed (no misleading or duplicate entries)

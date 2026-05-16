@@ -9,7 +9,7 @@ import { FeaturesShowcase } from './FeaturesShowcase';
 import * as reportsApi from '../api/reports';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
 import { usePermissions } from '../context/PermissionContext';
-import { getPermissionModuleForScreen } from '../utils/permissionModules';
+import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from '../utils/permissionModules';
 
 interface HomeScreenProps {
   user: User;
@@ -47,7 +47,7 @@ const MODULES: ModuleCard[] = [
 
 export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: HomeScreenProps) {
   const responsive = useResponsive();
-  const { hasPermission, isPermissionLoaded, isModuleEnabled } = usePermissions();
+  const { hasPermission, isPermissionLoaded, isModuleEnabled, moduleConfigBanner } = usePermissions();
   const [showFeatures, setShowFeatures] = useState(false);
   const [todaySales, setTodaySales] = useState<number>(0);
   const [pendingAmount, setPendingAmount] = useState<number>(0);
@@ -82,6 +82,7 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
   const enabled = MODULES.filter((m) => {
     if (!isModuleEnabled(m.id)) return false;
     if (FEATURE_MOBILE_PERMISSION_V2) {
+      if (screenSkipsModuleViewPermission(m.id)) return true;
       const code = getPermissionModuleForScreen(m.id);
       return code != null && hasPermission(`${code}.view`);
     }
@@ -148,6 +149,11 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
       </div>
 
       <div className={responsive.spacing.page}>
+        {moduleConfigBanner && (
+          <div className="mb-4 p-4 bg-amber-900/30 border border-amber-500/40 rounded-xl" role="status">
+            <p className="text-sm text-amber-100">{moduleConfigBanner}</p>
+          </div>
+        )}
         <h2 className="text-sm font-medium text-[#9CA3AF] mb-4">MODULES</h2>
         <div
           className={`grid gap-4 ${responsive.spacing.grid}`}
