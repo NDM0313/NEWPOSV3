@@ -261,6 +261,44 @@ apply_quick_login_auth
 # Studio storage/API: ensure anon key is JWT-signed (run again after services up)
 [ -f deploy/fix-supabase-storage-jwt.sh ] && bash deploy/fix-supabase-storage-jwt.sh || true
 
+# Smoke: Kong/JWT scripts above can change anon on disk while /m/ was built earlier — if auth health
+# fails through ERP nginx (host 3001), rebuild erp once so the bundle matches live Kong.
+set -a
+. ./.env.production
+set +a
+ERP_AUTH_SMOKE_URL="${ERP_AUTH_SMOKE_URL:-http://127.0.0.1:3001/auth/v1/health}"
+AUTH_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+  -H "apikey: ${VITE_SUPABASE_ANON_KEY}" \
+  -H "Authorization: Bearer ${VITE_SUPABASE_ANON_KEY}" \
+  "$ERP_AUTH_SMOKE_URL" 2>/dev/null) || AUTH_CODE="000"
+[ -z "$AUTH_CODE" ] && AUTH_CODE="000"
+case "$AUTH_CODE" in
+  2??)
+    echo "[deploy] Auth health OK (HTTP $AUTH_CODE) at $ERP_AUTH_SMOKE_URL — anon matches ERP→Kong path."
+    ;;
+  *)
+    echo "[deploy] WARN: Auth health returned HTTP $AUTH_CODE at $ERP_AUTH_SMOKE_URL (expected 2xx). Rebuilding ERP so /m/ bundle matches current anon key..."
+    $COMPOSE_CMD build --no-cache erp
+    docker rm -f erp-frontend 2>/dev/null || true
+    $COMPOSE_CMD up -d --force-recreate erp
+    set -a
+    . ./.env.production
+    set +a
+    AUTH_CODE2=$(curl -sS -o /dev/null -w "%{http_code}" \
+      -H "apikey: ${VITE_SUPABASE_ANON_KEY}" \
+      -H "Authorization: Bearer ${VITE_SUPABASE_ANON_KEY}" \
+      "$ERP_AUTH_SMOKE_URL" 2>/dev/null) || AUTH_CODE2="000"
+    [ -z "$AUTH_CODE2" ] && AUTH_CODE2="000"
+    case "$AUTH_CODE2" in
+      2??) echo "[deploy] Auth health OK after rebuild (HTTP $AUTH_CODE2)." ;;
+      *)
+        echo "[deploy] ERROR: Auth health still HTTP $AUTH_CODE2 after ERP rebuild. Check Kong, JWT_SECRET/ANON_KEY, and port 3001."
+        exit 1
+        ;;
+    esac
+    ;;
+esac
+
 # Supabase /backup route: https://supabase.dincouture.pk/backup serves backup page (erp-backup-page)
 [ -d deploy/backup-page ] && chmod -R 755 deploy/backup-page || true
 $COMPOSE_CMD up -d backup-page 2>/dev/null || true
