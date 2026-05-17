@@ -180,6 +180,19 @@ export default function App() {
   }, [companyId, selectedBranch?.id]);
 
   useEffect(() => {
+    if (!companyId || !online) return;
+    const bid = selectedBranch?.id ?? null;
+    void Promise.all([
+      import('./api/accounts').then((m) => m.getPaymentAccounts(companyId)),
+      import('./api/branches').then((m) => m.getBranches(companyId)),
+      import('./api/products').then((m) => m.getProducts(companyId)),
+      import('./api/contacts').then((m) => m.getContacts(companyId, undefined, bid)),
+      import('./api/contacts').then((m) => m.getContacts(companyId, 'customer', bid)),
+      import('./api/contacts').then((m) => m.getContacts(companyId, 'supplier', bid)),
+    ]).catch(() => {});
+  }, [companyId, selectedBranch?.id, online]);
+
+  useEffect(() => {
     if (user?.id && user?.role) reload(user.id, user.role, user.profileId, companyId ?? undefined);
   }, [user?.id, user?.role, user?.profileId, companyId, reload]);
 

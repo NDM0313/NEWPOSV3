@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
 
 import { getNextDocumentNumber } from './documentNumber';
 import { uploadProductImages } from '../utils/productImageUpload';
@@ -89,6 +90,31 @@ export async function getProductByBarcodeOrSku(
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const trimmed = (code || '').trim();
   if (!trimmed) return { data: null, error: 'No barcode or SKU provided.' };
+
+  if (isBrowserOffline()) {
+    const cacheKey = listCacheKeys.products(companyId);
+    const products = await listCacheGet<Product[]>(cacheKey);
+    if (!products?.length) {
+      return { data: null, error: 'Offline: products not cached. Connect once while logged in.' };
+    }
+    const lower = trimmed.toLowerCase();
+    for (const p of products) {
+      if (
+        (p.barcode && p.barcode.trim().toLowerCase() === lower) ||
+        (p.sku && p.sku.trim().toLowerCase() === lower)
+      ) {
+        return { data: p, error: null };
+      }
+      if (p.variations?.length) {
+        for (const v of p.variations) {
+          if (v.sku && v.sku.trim().toLowerCase() === lower) {
+            return { data: p, error: null };
+          }
+        }
+      }
+    }
+    return { data: null, error: 'Product not found in offline cache.' };
+  }
 
   const { data: byBarcode, error: errBarcode } = await supabase
     .from('products')
@@ -197,6 +223,14 @@ function stockMapFromMovements(
 
 export async function getProducts(companyId: string): Promise<{ data: Product[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const cacheKey = listCacheKeys.products(companyId);
+  if (isBrowserOffline()) {
+    const cached = await listCacheGet<Product[]>(cacheKey);
+    return {
+      data: cached ?? [],
+      error: cached?.length ? null : 'Offline: products not cached. Connect once while logged in.',
+    };
+  }
   const { data, error } = await supabase
     .from('products')
     .select(PRODUCTS_SELECT)
@@ -267,6 +301,7 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
       imageUrls: Array.isArray(row.image_urls) ? row.image_urls : [],
     });
   }
+  void listCacheSet(cacheKey, list);
   return { data: list, error: null };
 }
 

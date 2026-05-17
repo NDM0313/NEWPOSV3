@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
 
 export interface BranchRow {
   id: string;
@@ -20,6 +21,14 @@ export async function getBranches(companyId: string): Promise<{ data: Branch[]; 
   if (!isSupabaseConfigured) {
     return { data: [], error: 'App not configured.' };
   }
+  const cacheKey = listCacheKeys.branches(companyId);
+  if (isBrowserOffline()) {
+    const cached = await listCacheGet<Branch[]>(cacheKey);
+    return {
+      data: cached ?? [],
+      error: cached?.length ? null : 'Offline: branches not cached. Connect once while logged in.',
+    };
+  }
   const { data, error } = await supabase
     .from('branches')
     .select('id, company_id, name, code, address, city, is_active')
@@ -33,6 +42,7 @@ export async function getBranches(companyId: string): Promise<{ data: Branch[]; 
     name: row.name,
     location: [row.address, row.city].filter(Boolean).join(', ') || row.code || '—',
   }));
+  void listCacheSet(cacheKey, list);
   return { data: list, error: null };
 }
 

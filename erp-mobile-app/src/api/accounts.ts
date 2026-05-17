@@ -11,6 +11,7 @@ function appendPayReferenceAllocationHint(message: string): string {
   return out;
 }
 import { getNextDocumentNumber } from './documentNumber';
+import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
 
 export interface AccountRow {
   id: string;
@@ -182,6 +183,14 @@ export async function getAccounts(companyId: string): Promise<{ data: AccountRow
 /** Payment accounts: cash, bank, wallet (for transfers) */
 export async function getPaymentAccounts(companyId: string): Promise<{ data: AccountRow[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const cacheKey = listCacheKeys.paymentAccounts(companyId);
+  if (isBrowserOffline()) {
+    const cached = await listCacheGet<AccountRow[]>(cacheKey);
+    return {
+      data: cached ?? [],
+      error: cached?.length ? null : 'Offline: payment accounts not cached. Connect once while logged in.',
+    };
+  }
   const q = supabase
     .from('accounts')
     .select('id, code, name, type, balance')
@@ -199,6 +208,7 @@ export async function getPaymentAccounts(companyId: string): Promise<{ data: Acc
     type: String(r.type ?? '—'),
     balance: Number(r.balance) || 0,
   }));
+  void listCacheSet(cacheKey, rows);
   return { data: rows, error: null };
 }
 

@@ -1,28 +1,57 @@
 # Android build
 
-This project uses **Gradle 9.1.0** and **Android Gradle Plugin 9.0**. Capacitor 8 requires **JDK 21+** for compilation (JDK 25 works on this machine).
+This project uses **Gradle 9.1.0** and **Android Gradle Plugin 9.0**. Use **JDK 17** (`JAVA_HOME`) unless you explicitly validate a newer JDK against this repo (JDK 21+ may work but JDK 17 matches `gradle.properties` / compile target notes).
 
 ## One-time setup
 
-1. Install Android Studio (SDK). Set `sdk.dir` in `android/local.properties` (see example path for Windows).
-2. Use JDK 21 or newer. On Windows PowerShell before Gradle:
+1. Install Android Studio (SDK). Set `sdk.dir` in `android/local.properties`.
+2. Set `JAVA_HOME` to JDK 17 (recommended).
 
-```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-25.0.1.8-hotspot"
-```
-
-## Full build (from `erp-mobile-app`)
+## Debug build (from `erp-mobile-app`)
 
 ```bash
 npm ci
-npm run build:mobile
-npx cap sync android
-cd android
-.\gradlew.bat assembleDebug    # Windows
-# ./gradlew assembleDebug      # macOS/Linux
+npm run android:debug
 ```
 
 **Debug APK:** `android/app/build/outputs/apk/debug/app-debug.apk`
+
+Manual equivalent:
+
+```bash
+npm run build:mobile && npx cap sync android && cd android && ./gradlew assembleDebug   # macOS/Linux
+# Windows: .\gradlew.bat assembleDebug
+```
+
+---
+
+## Production (signed AAB / APK)
+
+See also **Production build** section in repo root [`../README.md`](../README.md).
+
+1. **`erp-mobile-app/.env.production`** — copy from [`.env.production.example`](../.env.production.example); must include **`VITE_TARGET=capacitor`** + production Supabase URL/anon key (same as web).
+2. **Sync:**
+
+   ```bash
+   npm run cap:sync:android:prod
+   ```
+
+3. **`android/keystore.properties`** — copy from [`keystore.properties.example`](keystore.properties.example); reference your upload `.jks` (path relative to `android/`). Required for meaningful `bundleRelease` / `assembleRelease` signing.
+
+4. **Bump** `versionCode` / `versionName` in [`app/build.gradle`](app/build.gradle) `defaultConfig` before each Play upload.
+
+5. **Outputs:**
+
+   ```bash
+   cd erp-mobile-app
+   npm run android:bundle         # Play: .aab
+   npm run android:apk:release    # sideload .apk(s)
+   ```
+
+Typical outputs:  
+`app/build/outputs/bundle/release/app-release.aab` · `app/build/outputs/apk/release/`
+
+---
 
 ## Company modules
 

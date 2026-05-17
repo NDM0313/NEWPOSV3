@@ -49,6 +49,41 @@ Har module ke liye:
 3. **App.tsx** mein us screen par real component render karo (abhi `PlaceholderModule` hai).
 4. API baad mein connect karo (same backend/ERP API use karna hai).
 
+## Production build — Play Store / signed APK+AAB (`com.dincouture.erp`)
+
+**JDK:** Prefer **JDK 17** (`JAVA_HOME`); matches `compileOptions`/Gradle notes under `android/gradle.properties`.
+
+1. **Vite env (Capacitor + real barcode):** Copy [`.env.production.example`](.env.production.example) → `.env.production` (gitignored). Set `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` exactly like web prod. **Do not omit `VITE_TARGET=capacitor`** — otherwise the barcode stub is bundled.
+2. **Install & typecheck (optional gate):**
+
+   ```bash
+   npm ci && npm run typecheck
+   ```
+
+3. **Web bundle + sync Android:**
+
+   ```bash
+   npm run cap:sync:android:prod
+   ```
+
+4. **Version:** Bump `versionCode` (required for each Play upload) and optionally `versionName` in [`android/app/build.gradle`](android/app/build.gradle) under `defaultConfig`.
+
+5. **Signing:** Copy [`android/keystore.properties.example`](android/keystore.properties.example) → `android/keystore.properties`, set passwords/alias/path to your `.jks` (paths relative to `android/`).  
+   Omit `keystore.properties` only for internal Studio signing — **release `bundleRelease` / `assembleRelease` need signing for Play.**
+
+6. **Gradle (from repo root):**
+
+   ```bash
+   npm run android:bundle           # AAB → Play Console
+   npm run android:apk:release     # APK → sideload / testing
+   ```
+
+   Artifacts typically: `android/app/build/outputs/bundle/release/app-release.aab`, `android/app/build/outputs/apk/release/app-release.apk` (exact filename may include splits).
+
+7. **Play:** Prefer **Google Play App Signing**; keep your **upload keystore** backup offline.
+
+**Windows:** If `./gradlew` fails, open `android/` in Android Studio or run `gradlew.bat bundleRelease`.
+
 ## Build
 
 ```bash

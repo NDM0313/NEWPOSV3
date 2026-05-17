@@ -237,6 +237,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   const submittingRef = useRef(false);
   const [success, setSuccess] = useState<
     (TransactionSuccessData & { fromAccountName?: string; toAccountName?: string; paymentIdRaw?: string | null }) | null
@@ -288,6 +289,10 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
       setAccountId(first.id);
     }
   }, [filteredAccounts, accountId]);
+
+  useEffect(() => {
+    setAccountPickerOpen(false);
+  }, [paymentMethod]);
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
   const dueDisplay = outstandingAmount ?? 0;
@@ -559,21 +564,78 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
 
         <div>
           <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Select Account *</label>
-          <select
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-            className="w-full h-12 px-4 rounded-lg bg-[#1F2937] border border-[#374151] text-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6] appearance-none pr-10 bg-[length:20px] bg-[right_0.75rem_center] bg-no-repeat"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239CA3AF'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-            }}
+          <button
+            type="button"
+            onClick={() => setAccountPickerOpen(true)}
+            disabled={filteredAccounts.length === 0}
+            className="w-full min-h-[3rem] px-4 py-3 rounded-xl bg-[#1F2937] border border-[#374151] text-left flex items-center justify-between gap-3 disabled:opacity-50 disabled:pointer-events-none active:bg-[#374151]/80"
           >
-            {filteredAccounts.length === 0 && <option value="">No matching accounts</option>}
-            {filteredAccounts.map((acc) => (
-              <option key={acc.id} value={acc.id}>
-                {acc.name} • Balance: Rs. {acc.balance.toLocaleString('en-PK', { minimumFractionDigits: 2 })}
-              </option>
-            ))}
-          </select>
+            <div className="min-w-0 flex-1">
+              {filteredAccounts.length === 0 ? (
+                <span className="text-sm text-[#6B7280]">No matching accounts for this method</span>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-white truncate">
+                    {selectedAccount?.name ?? 'Select account'}
+                  </p>
+                  <p className="text-xs text-[#9CA3AF] mt-0.5">
+                    Balance Rs.{' '}
+                    {(selectedAccount?.balance ?? 0).toLocaleString('en-PK', { minimumFractionDigits: 2 })}
+                  </p>
+                </>
+              )}
+            </div>
+            <ChevronDown className="w-5 h-5 text-[#9CA3AF] shrink-0" />
+          </button>
+          {accountPickerOpen && filteredAccounts.length > 0 && (
+            <div
+              className="fixed inset-0 z-[80] flex flex-col justify-end bg-black/60"
+              role="presentation"
+              onClick={() => setAccountPickerOpen(false)}
+            >
+              <div
+                className="bg-[#111827] rounded-t-2xl border-t border-[#374151] max-h-[min(70vh,28rem)] flex flex-col shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[#374151] shrink-0">
+                  <span className="text-sm font-semibold text-white">Payment account</span>
+                  <button
+                    type="button"
+                    onClick={() => setAccountPickerOpen(false)}
+                    className="p-2 rounded-lg text-[#9CA3AF] hover:bg-[#1F2937] hover:text-white"
+                    aria-label="Close"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="overflow-y-auto overscroll-contain px-2 pb-4 pt-1">
+                  {filteredAccounts.map((acc) => {
+                    const selected = acc.id === accountId;
+                    return (
+                      <button
+                        key={acc.id}
+                        type="button"
+                        onClick={() => {
+                          setAccountId(acc.id);
+                          setAccountPickerOpen(false);
+                        }}
+                        className={`w-full text-left rounded-xl px-3 py-3 mb-2 border transition-colors ${
+                          selected
+                            ? 'border-[#3B82F6] bg-[#1E3A5F]/40 ring-1 ring-[#3B82F6]/50'
+                            : 'border-[#374151] bg-[#1F2937] hover:border-[#4B5563]'
+                        }`}
+                      >
+                        <p className="text-sm font-medium text-white leading-snug">{acc.name}</p>
+                        <p className="text-xs text-[#9CA3AF] mt-1">
+                          Balance Rs. {acc.balance.toLocaleString('en-PK', { minimumFractionDigits: 2 })}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
           {amountExceedsBalance && (
             <p className="mt-2 flex items-center gap-2 text-sm text-[#F59E0B]">
               <AlertTriangle className="w-4 h-4 shrink-0" />

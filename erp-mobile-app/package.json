@@ -8,13 +8,17 @@
     "dev": "vite --host",
     "build": "tsc -b && vite build",
     "build:mobile": "vite build",
+    "build:mobile:prod": "vite build --mode production",
     "build:mobile:pwa": "VITE_BASE=/m/ vite build && node scripts/rewrite-pwa-base.js",
     "cap:sync": "npm run build:mobile && npx cap sync",
     "cap:sync:android": "npm run build:mobile && npx cap sync android",
+    "cap:sync:android:prod": "npm run build:mobile:prod && npx cap sync android",
     "cap:sync:ios": "npm run build:mobile && npx cap sync ios",
     "cap:android": "npx cap open android",
     "cap:ios": "npx cap open ios",
-    "android:debug": "npm run cap:sync:android && cd android && gradlew.bat assembleDebug",
+    "android:debug": "npm run cap:sync:android && cd android && ./gradlew assembleDebug",
+    "android:bundle": "cd android && ./gradlew bundleRelease",
+    "android:apk:release": "cd android && ./gradlew assembleRelease",
     "preview": "vite preview"
   },
   "dependencies": {

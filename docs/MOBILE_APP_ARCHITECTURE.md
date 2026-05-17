@@ -66,5 +66,5 @@ Additional: **purchase**, **accounting**, **studio**, **rental**, **reports**, *
 
 ## Platform
 
-- **Capacitor:** iOS/Android; native camera for barcode.
-- **Build:** `npm run build` (Vite); then Capacitor sync and native build (see `CAPACITOR.md`, `README_BUILD.md` in erp-mobile-app).
+- **Capacitor:** iOS/Android; native camera for barcode (`VITE_TARGET=capacitor` for production native bundles — see [`erp-mobile-app/README.md`](../erp-mobile-app/README.md)).
+- **Build:** [`erp-mobile-app/README.md`](../erp-mobile-app/README.md) (dev + Play/AAB/APK prod); [`erp-mobile-app/android/README_BUILD.md`](../erp-mobile-app/android/README_BUILD.md) — Gradle JDK 17, `bundleRelease` vs `assembleRelease`.

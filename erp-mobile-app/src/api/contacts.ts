@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
 import { normalizeCompanyId } from './contactBalancesUtils';
 import type { ContactBalancesRow } from './contactBalancesRpc';
 import {
@@ -99,6 +100,14 @@ export async function getContacts(
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const company = normalizeCompanyId(companyId);
   if (!company) return { data: [], error: 'Missing company.' };
+  const cacheKey = listCacheKeys.contacts(company, type ?? 'all', branchId ?? 'all');
+  if (isBrowserOffline()) {
+    const cached = await listCacheGet<Contact[]>(cacheKey);
+    return {
+      data: cached ?? [],
+      error: cached?.length ? null : 'Offline: contacts not cached. Connect once while logged in.',
+    };
+  }
   let query = supabase
     .from('contacts')
     .select('id, company_id, type, name, phone, email, city, address, opening_balance, credit_limit, worker_role, is_active, created_at, updated_at')
@@ -159,6 +168,7 @@ export async function getContacts(
       updatedAt: row.updated_at ?? undefined,
     };
   });
+  void listCacheSet(cacheKey, list);
   return { data: list, error: null };
 }
 
