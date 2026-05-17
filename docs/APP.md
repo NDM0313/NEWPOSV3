@@ -60,6 +60,8 @@ Covers mobile permission helpers / guard and selected `checkPermission` behaviou
 
 Gradle / Xcode projects under `erp-mobile-app/android` and `erp-mobile-app/ios` are maintained with Capacitor. Regenerate or open locally with `npx cap sync` / IDE workflows as needed; not every machine needs native folders for web-only work.
 
+**Windows APK builds:** [APK_BUILD_WINDOWS.md](./APK_BUILD_WINDOWS.md) — quick commands: `cd erp-mobile-app && npm run android:debug:win`, or from repo root `npm run mobile:apk:debug:win`. Release log template: [`erp-mobile-app/releases/APK_UPDATE.md`](../erp-mobile-app/releases/APK_UPDATE.md).
+
 ## Contributing
 
 - Prefer small, scoped commits.

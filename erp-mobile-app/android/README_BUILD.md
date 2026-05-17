@@ -16,6 +16,8 @@ npm run android:debug
 
 **Debug APK:** `android/app/build/outputs/apk/debug/app-debug.apk`
 
+**Windows (npm):** `npm run android:debug:win` — or run `scripts\build-apk-windows.cmd`, or PowerShell `.\scripts\build-apk-windows.ps1`. Full guide: [`docs/APK_BUILD_WINDOWS.md`](../../docs/APK_BUILD_WINDOWS.md).
+
 Manual equivalent:
 
 ```bash

@@ -2,6 +2,12 @@
 
 This file tracks **follow-ups** that are intentionally **not** fully closed in a single push. Use it as a checklist for the next session.
 
+## Done in repo (reference)
+
+- [x] **Git pull** — stay current with `main` (`git pull origin main`).
+- [x] **Windows APK builder** — scripts and docs: [`docs/APK_BUILD_WINDOWS.md`](./APK_BUILD_WINDOWS.md), `erp-mobile-app/scripts/build-apk-windows.ps1`, `build-apk-windows.cmd`, npm scripts `android:*:win` and root `mobile:apk:*:win`.
+- [x] **APK update log template** — [`erp-mobile-app/releases/APK_UPDATE.md`](../erp-mobile-app/releases/APK_UPDATE.md) (fill after each build).
+
 ## Permissions / cleanup (needs sign-off)
 
 - [ ] Review [PERMISSION_DELETE_CANDIDATES.md](./PERMISSION_DELETE_CANDIDATES.md) and approve removal of unused components (`UserPermissionsTab`, `PermissionManagementPanel`) if still unreferenced.
@@ -20,6 +26,7 @@ This file tracks **follow-ups** that are intentionally **not** fully closed in a
 ## Android / native builds
 
 - [ ] Local: `cd erp-mobile-app && npm run build:mobile && npx cap sync` when you are ready to refresh native projects; fix Gradle/SDK versions per your machine.
+- [ ] After each distributed APK: update [`erp-mobile-app/releases/APK_UPDATE.md`](../erp-mobile-app/releases/APK_UPDATE.md) with version, path/URL, and changelog.
 
 ## Documentation
 

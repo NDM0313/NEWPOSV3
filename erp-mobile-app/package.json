@@ -17,8 +17,11 @@
     "cap:android": "npx cap open android",
     "cap:ios": "npx cap open ios",
     "android:debug": "npm run cap:sync:android && cd android && ./gradlew assembleDebug",
+    "android:debug:win": "npm run cap:sync:android && cd android && gradlew.bat assembleDebug",
     "android:bundle": "cd android && ./gradlew bundleRelease",
+    "android:bundle:win": "cd android && gradlew.bat bundleRelease",
     "android:apk:release": "cd android && ./gradlew assembleRelease",
+    "android:apk:release:win": "npm run cap:sync:android:prod && cd android && gradlew.bat assembleRelease",
     "preview": "vite preview"
   },
   "dependencies": {

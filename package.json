@@ -33,6 +33,8 @@
     "link-auth": "node scripts/run-link-auth.js",
     "sync:mobile-env": "node scripts/sync-mobile-env.js",
     "mobile:dev": "node scripts/sync-mobile-env.js && cd erp-mobile-app && npm run dev",
+    "mobile:apk:debug:win": "cd erp-mobile-app && npm run android:debug:win",
+    "mobile:apk:release:win": "cd erp-mobile-app && npm run android:apk:release:win",
     "deploy:prepare": "node scripts/run-migrations.js --allow-fail && vite build",
     "deploy:prepare:mobile": "node scripts/sync-mobile-env.js && cd erp-mobile-app && npx vite build",
     "test:bootstrap": "npx tsx --test src/app/config/moduleConfigSemantics.test.ts",
