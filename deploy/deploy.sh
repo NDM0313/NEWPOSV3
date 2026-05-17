@@ -214,8 +214,17 @@ if [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
   echo "[deploy] ERROR: VITE_SUPABASE_ANON_KEY is empty after writing .env.production. Kong/docker did not supply ANON_KEY. Fix Kong SUPABASE_ANON_KEY or /root/supabase/docker/.env, then re-run deploy."
   exit 1
 fi
-node scripts/verify-mobile-build-env.mjs .env.production || exit 1
-node scripts/sync-mobile-env.js || true
+# Non-interactive SSH often has no node in PATH; match fix-supabase-storage-jwt.sh pattern.
+run_project_node() {
+  if command -v node >/dev/null 2>&1; then
+    node "$@"
+  else
+    echo "[deploy] node not in PATH; using Docker node:20-alpine for: $*"
+    docker run --rm -v "$(pwd):/w" -w /w node:20-alpine node "$@"
+  fi
+}
+run_project_node scripts/verify-mobile-build-env.mjs .env.production || exit 1
+run_project_node scripts/sync-mobile-env.js || true
 COMPOSE_CMD="docker compose -f deploy/docker-compose.prod.yml --env-file .env.production"
 # Build only ERP (avoids studio-injector pull of python:3.11-alpine which can TLS timeout on VPS)
 echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST) - fresh mobile /m/ build..."
