@@ -70,3 +70,13 @@ Edit [`erp-mobile-app/releases/APK_UPDATE.md`](../erp-mobile-app/releases/APK_UP
 | `npm run android:bundle:win` | `gradlew.bat bundleRelease` (run sync first if web assets changed) |
 
 From repo root: `npm run mobile:apk:debug:win` / `npm run mobile:apk:release:win` (see root `package.json`).
+
+## Troubleshooting
+
+### `invalid source release: 21` (JDK 17)
+
+Capacitor 8’s `node_modules/@capacitor/android` defaults to **Java 21**. If `JAVA_HOME` is **JDK 17**, Gradle used to fail compiling `:capacitor-android`.
+
+This repo pins **all** Android library/app modules to **Java 17** in [`android/build.gradle`](../erp-mobile-app/android/build.gradle) (`subprojects { ... compileOptions VERSION_17 }`). If you still see release 21 after upgrading Capacitor, re-check that block exists.
+
+**Alternative:** install **JDK 21+**, set `JAVA_HOME`, and you can remove the pin if you prefer to match upstream Capacitor defaults.

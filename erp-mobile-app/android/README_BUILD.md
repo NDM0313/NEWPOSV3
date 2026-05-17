@@ -1,6 +1,8 @@
 # Android build
 
-This project uses **Gradle 9.1.0** and **Android Gradle Plugin 9.0**. Use **JDK 17** (`JAVA_HOME`) unless you explicitly validate a newer JDK against this repo (JDK 21+ may work but JDK 17 matches `gradle.properties` / compile target notes).
+This project uses **Gradle 9.1.0** and **Android Gradle Plugin 9.0**. Use **JDK 17** (`JAVA_HOME`) unless you explicitly validate a newer JDK against this repo (JDK 21+ also works if you drop the root `subprojects` Java 17 pin in `android/build.gradle`).
+
+**Note:** Capacitor 8’s `@capacitor/android` defaults to Java 21 in `node_modules`. The repo’s root [`build.gradle`](build.gradle) forces **Java 17** for all Android modules so JDK 17 machines do not hit `invalid source release: 21`.
 
 ## One-time setup
 

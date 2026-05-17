@@ -25,6 +25,22 @@ allprojects {
     }
 }
 
+// Capacitor 8's @capacitor/android (and generated capacitor.build.gradle) default to Java 21.
+// JDK 17 then fails with: invalid source release: 21. Pin all Android modules to 17 to match
+// app/build.gradle and android/README_BUILD.md.
+subprojects { subproject ->
+    subproject.afterEvaluate {
+        if (!subproject.plugins.hasPlugin('com.android.library') &&
+                !subproject.plugins.hasPlugin('com.android.application')) {
+            return
+        }
+        subproject.android.compileOptions {
+            sourceCompatibility JavaVersion.VERSION_17
+            targetCompatibility JavaVersion.VERSION_17
+        }
+    }
+}
+
 task clean(type: Delete) {
     delete rootProject.buildDir
 }
