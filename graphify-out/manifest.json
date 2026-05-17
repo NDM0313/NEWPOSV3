@@ -1140,11 +1140,11 @@
     "hash": "0a870f274a940afbb5ac58f6cc51ae96"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\build.gradle": {
-    "mtime": 1772090991.2639234,
-    "hash": "23e69d99483a5a2b73a32038d014e949"
+    "mtime": 1779031680.9067783,
+    "hash": "1d0b5da1e09162cc2147d437f592f38f"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\capacitor.settings.gradle": {
-    "mtime": 1778924697.5758655,
+    "mtime": 1779031920.723933,
     "hash": "df9afd2ac6038b36f0c8f4cae35e1a59"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\gradlew": {
@@ -1164,7 +1164,7 @@
     "hash": "a4aee2191cbaa5af30f35852a6cba51f"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\capacitor.build.gradle": {
-    "mtime": 1778924697.5774763,
+    "mtime": 1779031920.7265441,
     "hash": "f6a29e1fd5265c06bbf8ea94b19aa5af"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\androidTest\\java\\com\\getcapacitor\\myapp\\ExampleInstrumentedTest.java": {
@@ -1172,31 +1172,31 @@
     "hash": "c777a4127ae7213f7da22c4105bdfeab"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\cordova.js": {
-    "mtime": 1778924697.5669444,
+    "mtime": 1779031920.7159677,
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\cordova_plugins.js": {
-    "mtime": 1778924697.567961,
+    "mtime": 1779031920.7176096,
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\sw.js": {
     "mtime": 1772475375.9854503,
     "hash": "e08de7a4509669543a382e61d5153f3f"
   },
-  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\assets\\index-CXW5p3V-.js": {
-    "mtime": 1778924684.630694,
-    "hash": "437ca2e2044189122b85bef5282a55bd"
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\assets\\index-DVT7yavW.js": {
+    "mtime": 1779031916.2395375,
+    "hash": "8eb0c339d0c9de5605960106634784d4"
   },
-  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\assets\\index.es-B6JZog0s.js": {
-    "mtime": 1778924684.6266315,
-    "hash": "fae5bce8edf421bea4719dab8a849ccd"
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\assets\\index.es-p7ncqBvw.js": {
+    "mtime": 1779031916.23736,
+    "hash": "321111ddeec158ddd707f88dbf401b31"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\assets\\mlkit-stub-VZB11ysT.js": {
-    "mtime": 1778924684.627645,
+    "mtime": 1779031916.23736,
     "hash": "c2506ff746bb8b057537e4c52c06dfd9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\assets\\purify.es-B9ZVCkUG.js": {
-    "mtime": 1778924684.627645,
+    "mtime": 1779031916.23736,
     "hash": "6e35f46a3cb2fc5d4710606e4db165ec"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\java\\com\\dincouture\\erp\\MainActivity.java": {
@@ -1208,11 +1208,11 @@
     "hash": "3f8a2768101e4de10f606ea4516fd339"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\capacitor-cordova-android-plugins\\build.gradle": {
-    "mtime": 1778924697.5805793,
+    "mtime": 1779031920.7291365,
     "hash": "2af61653d70c95d20802c8b5c433ba90"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\capacitor-cordova-android-plugins\\cordova.variables.gradle": {
-    "mtime": 1778924697.582184,
+    "mtime": 1779031920.731753,
     "hash": "d2372a0ae9aa60abb8d03e7f06bf9194"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\capacitor-cordova-android-plugins-stub\\build.gradle": {
@@ -5742,6 +5742,10 @@
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\scripts\\verify-journal-source-of-truth.mjs": {
     "mtime": 1774690766.353721,
     "hash": "d862ef428ec1b1ba80a2e99719179f01"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\scripts\\verify-mobile-build-env.mjs": {
+    "mtime": 1779034682.673865,
+    "hash": "39b19bfe10c4c6232cf3f798a4beef47"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\scripts\\verify-new-business-exists.js": {
     "mtime": 1773744432.3745623,
@@ -10712,12 +10716,12 @@
     "hash": "96a61cf696efc0fee8359803ba4d7c2a"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\APK_BUILD_WINDOWS.md": {
-    "mtime": 1779030659.6405537,
-    "hash": "4b52ffad03d752bad9f09f7e73dd9208"
+    "mtime": 1779034707.423603,
+    "hash": "1fd4ec6d94e052a890390ad606af9af0"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\APP.md": {
-    "mtime": 1779030693.4426281,
-    "hash": "a738a476ead9c08eb00791c53e0fa087"
+    "mtime": 1779034707.333333,
+    "hash": "48e505dbef7a19ca5c577e5c6dc11cf5"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\BACKEND_LOGIC_AUDIT.md": {
     "mtime": 1771917867.549209,
@@ -11360,8 +11364,8 @@
     "hash": "1a99cf55b3a21097510f6bcf29bd5cd7"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\GITHUB_UPLOAD_REMAINING.md": {
-    "mtime": 1779030691.9424105,
-    "hash": "66e4da22de826be1858e00ef503562b4"
+    "mtime": 1779034737.898116,
+    "hash": "9498c22691c4be0aa2706a0adb5c834b"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\GIT_MERGE_RECOVERY_REPORT.md": {
     "mtime": 1773561573.814086,
@@ -11482,6 +11486,10 @@
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\MOBILE_ROADMAP.md": {
     "mtime": 1773313017.7024486,
     "hash": "827973bf91ba5530510172c17eb7aa2d"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\MOBILE_WEB_LOGIN.md": {
+    "mtime": 1779034703.6159403,
+    "hash": "1f29f04982d1dd7b127a30d7787d0194"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\NEXT_DEVELOPMENT_PHASE.md": {
     "mtime": 1773217011.2706006,
@@ -12856,12 +12864,12 @@
     "hash": "01bfa303ccd18a6351daa0d6a27a2c20"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\README_BUILD.md": {
-    "mtime": 1779030688.8244097,
-    "hash": "bd67024145e7a29ada53786bdaff4f3d"
+    "mtime": 1779031791.5724692,
+    "hash": "e6652612c3491745f540660f14675d59"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\index.html": {
-    "mtime": 1778924684.6281557,
-    "hash": "2e634ca999c1a4b4c99c52f20a65ee14"
+    "mtime": 1779031916.238003,
+    "hash": "266603ab62a51aad6ea940feeba715c3"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\features\\barcode\\BARCODE_IMPLEMENTATION_PLAN.md": {
     "mtime": 1773308568.909989,

@@ -36,6 +36,12 @@ npm run dev
 
 Use your team’s env sync script from the repo root when applicable (for example `npm run sync:mobile-env` if configured).
 
+## Mobile web PWA (`/m/` on the same host as Web ERP)
+
+The mobile web app is built into **`/m/`** (see [`deploy/Dockerfile`](../deploy/Dockerfile) `mobile-builder` stage). **Before any production build**, ensure real Supabase vars are present: run `npm run sync:mobile-env` locally, and on the VPS rely on [`deploy/deploy.sh`](../deploy/deploy.sh) (it validates anon key and runs `verify-mobile-build-env.mjs` before `docker compose build`).
+
+If login shows **demo anon key** or **user profile not found**, see **[MOBILE_WEB_LOGIN.md](./MOBILE_WEB_LOGIN.md)**.
+
 ## Permissions (summary)
 
 - **Database source of truth:** `role_permissions` and `user_branches` (Postgres).

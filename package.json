@@ -32,6 +32,7 @@
     "seed:full": "node scripts/run-phases.js",
     "link-auth": "node scripts/run-link-auth.js",
     "sync:mobile-env": "node scripts/sync-mobile-env.js",
+    "verify:mobile-build-env": "node scripts/verify-mobile-build-env.mjs",
     "mobile:dev": "node scripts/sync-mobile-env.js && cd erp-mobile-app && npm run dev",
     "mobile:apk:debug:win": "cd erp-mobile-app && npm run android:debug:win",
     "mobile:apk:release:win": "cd erp-mobile-app && npm run android:apk:release:win",

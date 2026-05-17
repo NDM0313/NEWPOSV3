@@ -6,7 +6,7 @@ This file tracks **follow-ups** that are intentionally **not** fully closed in a
 
 - [x] **Git pull** — stay current with `main` (`git pull origin main`).
 - [x] **Windows APK builder** — scripts and docs: [`docs/APK_BUILD_WINDOWS.md`](./APK_BUILD_WINDOWS.md), `erp-mobile-app/scripts/build-apk-windows.ps1`, `build-apk-windows.cmd`, npm scripts `android:*:win` and root `mobile:apk:*:win`.
-- [x] **APK update log template** — [`erp-mobile-app/releases/APK_UPDATE.md`](../erp-mobile-app/releases/APK_UPDATE.md) (fill after each build).
+- [x] **Mobile web `/m/` login troubleshooting** — [MOBILE_WEB_LOGIN.md](./MOBILE_WEB_LOGIN.md); deploy validates anon key (`scripts/verify-mobile-build-env.mjs`).
 
 ## Permissions / cleanup (needs sign-off)
 

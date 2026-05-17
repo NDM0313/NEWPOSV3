@@ -190,8 +190,7 @@ fi
   echo "VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY:-}"
   echo "VITE_DISABLE_REALTIME=${VITE_DISABLE_REALTIME:-true}"
 } > .env.production
-[ -z "$VITE_SUPABASE_ANON_KEY" ] && echo "WARN: VITE_SUPABASE_ANON_KEY empty. Set it in .env.production or ensure Kong is running."
-echo "[deploy] Using VITE_SUPABASE_URL=$VITE_SUPABASE_URL"
+echo "[deploy] Using VITE_SUPABASE_URL=$VITE_SUPABASE_URL (anon key length: ${#VITE_SUPABASE_ANON_KEY})"
 
 # Kong fix BEFORE build so app image gets correct anon key (avoids "Invalid authentication credentials")
 [ -f deploy/fix-supabase-kong-domain.sh ] && bash deploy/fix-supabase-kong-domain.sh || true
@@ -208,6 +207,15 @@ CACHEBUST=$(date +%s)
 grep -v '^CACHEBUST=' .env.production > .env.production.tmp 2>/dev/null || true
 echo "CACHEBUST=$CACHEBUST" >> .env.production.tmp
 mv .env.production.tmp .env.production
+set -a
+. ./.env.production
+set +a
+if [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+  echo "[deploy] ERROR: VITE_SUPABASE_ANON_KEY is empty after writing .env.production. Kong/docker did not supply ANON_KEY. Fix Kong SUPABASE_ANON_KEY or /root/supabase/docker/.env, then re-run deploy."
+  exit 1
+fi
+node scripts/verify-mobile-build-env.mjs .env.production || exit 1
+node scripts/sync-mobile-env.js || true
 COMPOSE_CMD="docker compose -f deploy/docker-compose.prod.yml --env-file .env.production"
 # Build only ERP (avoids studio-injector pull of python:3.11-alpine which can TLS timeout on VPS)
 echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST) - fresh mobile /m/ build..."

@@ -71,6 +71,8 @@ Edit [`erp-mobile-app/releases/APK_UPDATE.md`](../erp-mobile-app/releases/APK_UP
 
 From repo root: `npm run mobile:apk:debug:win` / `npm run mobile:apk:release:win` (see root `package.json`).
 
+**Mobile web (`/m/`)** uses the same Supabase keys but a Vite build baked into the main ERP image — see [MOBILE_WEB_LOGIN.md](./MOBILE_WEB_LOGIN.md) if you see the demo-key banner or “user profile not found” on `erp.dincouture.pk/m/`.
+
 ## Troubleshooting
 
 ### `invalid source release: 21` (JDK 17)
