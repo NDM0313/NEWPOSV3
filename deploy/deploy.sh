@@ -231,6 +231,9 @@ echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST) - fresh mobile /m/ build..."
 $COMPOSE_CMD build --no-cache erp
 # Force new container from new image (no stale mobile build)
 $COMPOSE_CMD down 2>/dev/null || true
+$COMPOSE_CMD stop erp 2>/dev/null || true
+$COMPOSE_CMD rm -sf erp 2>/dev/null || true
+docker stop erp-frontend 2>/dev/null || true
 docker rm -f erp-frontend 2>/dev/null || true
 $COMPOSE_CMD up -d --force-recreate erp
 
@@ -298,6 +301,9 @@ if [ "$poll_rc" -eq 0 ]; then
 elif [ "$poll_rc" -eq 1 ]; then
   echo "[deploy] Auth health HTTP $AUTH_CODE (401/403) at $ERP_AUTH_SMOKE_URL — rebuilding ERP so /m/ bundle matches current anon key..."
   $COMPOSE_CMD build --no-cache erp
+  $COMPOSE_CMD stop erp 2>/dev/null || true
+  $COMPOSE_CMD rm -sf erp 2>/dev/null || true
+  docker stop erp-frontend 2>/dev/null || true
   docker rm -f erp-frontend 2>/dev/null || true
   $COMPOSE_CMD up -d --force-recreate erp
   sleep 12
