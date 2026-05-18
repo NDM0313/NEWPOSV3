@@ -10,7 +10,8 @@ cd "$ROOT"
 
 echo "=== .env.production (URL + anon length only) ==="
 grep '^VITE_SUPABASE_URL=' .env.production || true
-k="$(grep '^VITE_SUPABASE_ANON_KEY=' .env.production | cut -d= -f2- | tr -d '\r\n')"
+# JWT values contain '='; only strip the first '=' after the key name.
+k="$(grep '^VITE_SUPABASE_ANON_KEY=' .env.production | sed 's/^VITE_SUPABASE_ANON_KEY=//' | tr -d '\r\n')"
 echo "anon_key_length=${#k}"
 
 echo "=== JS bundles mentioning erp.dincouture.pk (first 5 files) ==="
