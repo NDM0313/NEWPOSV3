@@ -82,7 +82,13 @@ It is intended as a **handover** for the next engineer or model if login still f
 
 ---
 
-### 5. Other related deploy work (referenced; not exhaustive)
+### 5. [`deploy/hard-rebuild-erp.sh`](../../deploy/hard-rebuild-erp.sh) (added in final fix)
+
+**Purpose:** Run on the **VPS** only: bumps **`CACHEBUST`**, kills/removes fixed-name compose containers, **`docker compose … build --no-cache erp`**, **`up -d --force-recreate erp`**. Uses a **bash array** for `docker compose` so commands are not broken by **Windows OpenSSH clients** mangling **`$VAR`**.
+
+---
+
+### 6. Other related deploy work (referenced; not exhaustive)
 
 Commits and scripts in the same era (from `git log` on auth-touched paths): **`deploy/docker-compose.prod.yml`** (fixed `container_name`, external networks), smoke / mobile rebuild guards (`d412b50`, `27ef296`, etc.), **`fix(deploy): auth smoke retries; rebuild /m/ only on 401/403 not 502`** — **502** intentionally does **not** trigger the same rebuild path as **401**, because 502 is infrastructure, not anon mismatch.
 
@@ -133,7 +139,17 @@ Optional: `SUPABASE_ENV=/path/to/docker/.env` if non-default.
 
 ### Step 3 — Hard rebuild `erp` (no cache) and recreate container
 
-Match **`deploy/deploy.sh`** compose invocation (includes **`--env-file .env.production`** and **`CACHEBUST`** so Docker does not reuse stale Vite layers):
+Match **`deploy/deploy.sh`** compose invocation (includes **`--env-file .env.production`** and **`CACHEBUST`** so Docker does not reuse stale Vite layers).
+
+**Windows / PowerShell over SSH:** do **not** paste blocks that use **`$COMPOSE_CMD`** or **`$(date …)`** — the **local** shell may strip or rewrite them before the remote sees the command (symptom: `compose: command not found`). On the VPS, run the checked-in helper:
+
+```bash
+cd /root/NEWPOSV3
+git fetch origin && git reset --hard origin/main
+bash deploy/hard-rebuild-erp.sh
+```
+
+Equivalent manual block (run **on the VPS** in an interactive root shell, not from PowerShell):
 
 ```bash
 cd /root/NEWPOSV3
@@ -162,6 +178,8 @@ cd /root/NEWPOSV3 && bash scripts/vps-audit-auth-bridge.sh
 
 **Expected:** `erp_anon_length` equals `kong_anon_length` (e.g. **176**), no WARN for key mismatch, **`public_erp_http=200`** and **`local_3001_http=200`** for `/auth/v1/health` (JSON body, not nginx 502 HTML).
 
+**Post-fix check (Din Couture VPS, after `efbeb4b` + `2ccbb38`):** `erp_anon_length=176`, `kong_anon_length=176`, `public_erp_http=200`, `local_3001_http=200` (GoTrue JSON).
+
 ---
 
 ## If this pipeline still fails
@@ -176,7 +194,7 @@ cd /root/NEWPOSV3 && bash scripts/vps-audit-auth-bridge.sh
 
 ## Commit references (main — auth bridge / deploy touchpoints)
 
-Recent commits touching this area (non-exhaustive): `16e1d12`, `5bd2525`, `a2c251d`, `19dcfe4` (audit script + nginx + deploy teardown), plus earlier `3c7bf20`, `6f98f75`, `6d1fc85`, `2579f43` (compose / name conflicts), `3c7bf20` / `27ef296` / `d412b50` (smoke / mobile / 502 vs 401 behavior).
+Recent commits touching this area (non-exhaustive): `efbeb4b` (prefer **`ANON_KEY=`** in `write-erp-env` + this log), `2ccbb38` (`hard-rebuild-erp.sh`), `16e1d12`, `5bd2525`, `a2c251d`, `19dcfe4` (audit script + nginx + deploy teardown), plus earlier compose / name-conflict and smoke-test commits.
 
 ---
 
