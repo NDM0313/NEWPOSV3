@@ -17,7 +17,14 @@ if [ ! -f "$SUPABASE_ENV" ]; then
   exit 1
 fi
 
-line=$(grep -E '^ANON_KEY=|^SUPABASE_ANON_KEY=' "$SUPABASE_ENV" 2>/dev/null | head -1)
+# Prefer ANON_KEY= (Kong / self-hosted canonical). Do NOT use grep -E 'A|B'|head -1 — if
+# SUPABASE_ANON_KEY= appears first in the file, it can be a stale/shorter JWT and would win.
+line=""
+if grep -q '^ANON_KEY=' "$SUPABASE_ENV" 2>/dev/null; then
+  line=$(grep '^ANON_KEY=' "$SUPABASE_ENV" | head -1)
+elif grep -q '^SUPABASE_ANON_KEY=' "$SUPABASE_ENV" 2>/dev/null; then
+  line=$(grep '^SUPABASE_ANON_KEY=' "$SUPABASE_ENV" | head -1)
+fi
 if [ -z "$line" ]; then
   echo "[write-erp-env] ERROR: No ANON_KEY= or SUPABASE_ANON_KEY= line in $SUPABASE_ENV"
   exit 1

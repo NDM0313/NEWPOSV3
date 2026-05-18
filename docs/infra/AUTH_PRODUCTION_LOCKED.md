@@ -33,7 +33,7 @@ This document defines the **canonical** way Supabase keys reach the Din Couture 
 
 ## VPS bridge audit (read-only)
 
-- Run on the VPS from the repo: `bash scripts/vps-audit-auth-bridge.sh` — prints `VITE_SUPABASE_URL`, anon length, which JS chunks reference `erp.dincouture.pk`, and HTTP status for `GET /auth/v1/health` via **public** `https://erp.dincouture.pk` and **local** `http://127.0.0.1:3001` (uses `--header` so JWTs are not mangled by shell quoting).
+- Run on the VPS from the repo: `bash scripts/vps-audit-auth-bridge.sh` — prints `VITE_SUPABASE_URL`, anon length, which JS chunks reference `erp.dincouture.pk`, and HTTP status for `GET /auth/v1/health` via **public** `https://erp.dincouture.pk` and **local** `http://127.0.0.1:3001` (implemented with **Python** `urllib` so JWTs are not mangled by shell `cut`/`curl` quoting).
 
 **Localhost dev vs production:** dev uses the Vite `/supabase` proxy ([`vite.config.ts`](../../vite.config.ts)); production uses same-origin `erp.dincouture.pk` and this Nginx path. Same database does not imply the same HTTP hop.
 
