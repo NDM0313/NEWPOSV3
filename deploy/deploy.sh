@@ -211,13 +211,12 @@ COMPOSE_CMD="docker compose -f deploy/docker-compose.prod.yml --env-file .env.pr
 # Build only ERP (avoids studio-injector pull of python:3.11-alpine which can TLS timeout on VPS)
 echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST) - fresh mobile /m/ build..."
 $COMPOSE_CMD build --no-cache erp
-# Named container + compose network can survive a partial down — remove explicitly, then down, then up.
-docker rm -f erp-frontend 2>/dev/null || true
+# Fixed container_name= in compose — remove by name so a new container can be created; then full project down.
+docker rm -f erp-frontend erp-backup-page erp-studio-injector 2>/dev/null || true
 $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
 $COMPOSE_CMD stop erp 2>/dev/null || true
 $COMPOSE_CMD rm -sf erp 2>/dev/null || true
 docker rm -f erp-frontend 2>/dev/null || true
-docker network rm deploy_default 2>/dev/null || true
 $COMPOSE_CMD up -d --force-recreate erp
 
 # Auto-apply migrations (accounts.subtype, journal_entries columns, etc.)
@@ -247,7 +246,7 @@ $COMPOSE_CMD up -d backup-page 2>/dev/null || true
 [ -f deploy/add-kong-backup-route.sh ] && bash deploy/add-kong-backup-route.sh || true
 
 # Studio sidebar: inject "Backups" under Platform (Kong -> studio-injector -> Studio). Skip build if Docker Hub timeout.
-docker compose -f deploy/docker-compose.prod.yml up -d studio-injector 2>/dev/null || true
+$COMPOSE_CMD up -d studio-injector 2>/dev/null || true
 [ -f deploy/point-kong-dashboard-to-injector.sh ] && bash deploy/point-kong-dashboard-to-injector.sh || true
 
 # studio.dincouture.pk: Traefik must be on supabase_default to reach supabase-studio:3000 (avoid 502)
