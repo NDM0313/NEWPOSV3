@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { RealtimeClient } from '@supabase/realtime-js';
 import { clearSecure } from './secureStorage';
@@ -10,6 +11,8 @@ const env =
 
 let supabaseUrl = String(env.VITE_SUPABASE_URL ?? '').trim();
 const origin = typeof window !== 'undefined' ? window.location.origin : '';
+
+const isNativeCapacitor = Capacitor.isNativePlatform();
 
 /**
  * Local Vite dev (localhost / LAN IP): Kong CORS only allows erp.dincouture.pk, so direct
@@ -25,14 +28,21 @@ const isViteDevLan =
   origin &&
   /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(origin);
 
-if (isViteDevLocal || isViteDevLan) {
-  supabaseUrl = origin;
-}
-
-// Production: keep /m same-origin with web app so ERP nginx can proxy /auth|/rest|/storage|/realtime.
-// This avoids cross-origin CORS preflight issues on mobile web.
-if (origin.includes('erp.dincouture.pk')) {
-  supabaseUrl = origin;
+/**
+ * Native Android/iOS: NEVER substitute window.location.origin (often http://localhost or
+ * capacitor://localhost) — that targets the device, not the VPS.
+ * @see docs/infra/MOBILE_APK_LOCKED_PATTERN.md
+ */
+if (isNativeCapacitor) {
+  supabaseUrl = String(env.VITE_SUPABASE_URL ?? '').trim();
+} else {
+  if (isViteDevLocal || isViteDevLan) {
+    supabaseUrl = origin;
+  }
+  // Browser / PWA on erp host: same-origin so ERP nginx proxies /auth|/rest|/storage|/realtime.
+  if (origin.includes('erp.dincouture.pk')) {
+    supabaseUrl = origin;
+  }
 }
 const supabaseAnonKey = String(env.VITE_SUPABASE_ANON_KEY ?? '').trim();
 
@@ -97,7 +107,7 @@ export const mobileRealtimeHealth = {
  * fragile; use a direct wss:// URL to VITE_SUPABASE_HOST when in dev on localhost/LAN.
  */
 function attachDirectRealtimeInLocalDev(client: SupabaseClient): void {
-  if (typeof window === 'undefined' || !env.DEV) return;
+  if (typeof window === 'undefined' || !env.DEV || isNativeCapacitor) return;
   if (!isViteDevLocal && !isViteDevLan) return;
   if (!hasConfig || isDemoSupabaseAnonKey(supabaseAnonKey)) return;
 
