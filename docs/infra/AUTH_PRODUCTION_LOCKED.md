@@ -27,6 +27,16 @@ This document defines the **canonical** way Supabase keys reach the Din Couture 
 - Run a **full** `bash deploy/deploy.sh` on the VPS (not only “fixes-only”) so Vite rebakes anon into `dist` and `/m/`.
 - Operators: **hard refresh** or clear site data once (PWA/service worker can retain old hashed assets).
 
+## ERP Nginx → Kong (same-origin bridge)
+
+- [`deploy/nginx.conf`](../../deploy/nginx.conf) proxies `/auth/`, `/rest/`, `/storage/`, `/realtime/` to `supabase-kong:8000` with `Host: supabase.dincouture.pk`. `client_max_body_size` and `proxy_buffering off` on `/auth/` and `/rest/` reduce risk of truncated or buffered JSON bodies on login and large filters.
+
+## VPS bridge audit (read-only)
+
+- Run on the VPS from the repo: `bash scripts/vps-audit-auth-bridge.sh` — prints `VITE_SUPABASE_URL`, anon length, which JS chunks reference `erp.dincouture.pk`, and HTTP status for `GET /auth/v1/health` via **public** `https://erp.dincouture.pk` and **local** `http://127.0.0.1:3001` (uses `--header` so JWTs are not mangled by shell quoting).
+
+**Localhost dev vs production:** dev uses the Vite `/supabase` proxy ([`vite.config.ts`](../../vite.config.ts)); production uses same-origin `erp.dincouture.pk` and this Nginx path. Same database does not imply the same HTTP hop.
+
 ## Console noise (not Supabase)
 
 Messages such as **“Host validation failed”** / **“insights whitelist”** often come from **third-party analytics or browser extensions**, not GoTrue. Confirm in **Network** that requests to your own origin fail before attributing to this pipeline.
