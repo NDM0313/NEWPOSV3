@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "patch-package",
     "typecheck": "tsc -b",
     "dev": "vite --host",
     "build": "tsc -b && vite build",
@@ -25,8 +26,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@capacitor/core": "^8.1.0",
     "@capacitor-mlkit/barcode-scanning": "^8.0.1",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/splash-screen": "^8.0.0",
     "@supabase/realtime-js": "^2.95.3",
     "@supabase/supabase-js": "^2.95.3",
     "crypto-js": "^4.2.0",
@@ -45,6 +47,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "patch-package": "^8.0.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",
     "typescript": "~5.6.2",
