@@ -211,10 +211,12 @@ COMPOSE_CMD="docker compose -f deploy/docker-compose.prod.yml --env-file .env.pr
 # Build only ERP (avoids studio-injector pull of python:3.11-alpine which can TLS timeout on VPS)
 echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST) - fresh mobile /m/ build..."
 $COMPOSE_CMD build --no-cache erp
-# Fixed container_name= — remove containers, tear down project, drop default network if orphaned, then up erp.
+# Fixed container_name= — kill/remove containers, tear down project, drop default network if orphaned, then up erp.
+docker kill erp-frontend erp-backup-page erp-studio-injector 2>/dev/null || true
 docker rm -f erp-frontend erp-backup-page erp-studio-injector 2>/dev/null || true
 $COMPOSE_CMD down --remove-orphans 2>/dev/null || true
 docker network rm deploy_default 2>/dev/null || true
+sleep 2
 $COMPOSE_CMD up -d --force-recreate erp
 
 # Auto-apply migrations (accounts.subtype, journal_entries columns, etc.)
