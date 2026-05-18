@@ -13,7 +13,7 @@ This document defines the **canonical** way Supabase keys reach the Din Couture 
 
 1. [`deploy/fix-supabase-storage-jwt.sh`](../../deploy/fix-supabase-storage-jwt.sh) — Regenerates `ANON_KEY` / `SERVICE_ROLE_KEY` from `JWT_SECRET`, writes **only** `/root/supabase/docker/.env`, recreates Kong/Studio/Storage/Functions and restarts Auth/Rest. Does **not** write `NEWPOSV3/.env.production`.
 2. [`deploy/fix-supabase-kong-domain.sh`](../../deploy/fix-supabase-kong-domain.sh) — `API_EXTERNAL_URL`, `SUPABASE_PUBLIC_URL`, GoTrue **`SITE_URL`**, redirect allow-list for `https://erp.dincouture.pk`. **Default:** does **not** copy Kong’s runtime anon into ERP env (opt-in: `SYNC_KONG_ANON_TO_ERP_ENV=1` for debugging only).
-3. [`deploy/add-kong-cors-erp-origin.sh`](../../deploy/add-kong-cors-erp-origin.sh) — Kong `kong.yml` CORS for `https://erp.dincouture.pk`.
+3. [`deploy/add-kong-cors-erp-origin.sh`](../../deploy/add-kong-cors-erp-origin.sh) — Kong `kong.yml` CORS: **`https://erp.dincouture.pk`** plus **Capacitor / localhost** WebView origins (`capacitor://localhost`, `ionic://localhost`, `http://localhost`, etc.).
 4. [`deploy/write-erp-env-from-supabase-docker-env.sh`](../../deploy/write-erp-env-from-supabase-docker-env.sh) — **Only** script that writes `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_DISABLE_REALTIME` into **`NEWPOSV3/.env.production`** and **`erp-mobile-app/.env.production`**, by **reading anon from the Supabase docker `.env` file** (not `docker exec` Kong).
 
 [`deploy/deploy.sh`](../../deploy/deploy.sh) orchestrates **once per full deploy**: (1) storage JWT fix → (2) Kong domain / GoTrue URLs → (3) Kong CORS → (4) `write-erp-env-from-supabase-docker-env.sh` → verify → Docker `build --no-cache erp` → `up`.
@@ -21,7 +21,7 @@ This document defines the **canonical** way Supabase keys reach the Din Couture 
 ## Client runtime (locked behavior)
 
 - **Web:** [`src/lib/supabase.ts`](../../src/lib/supabase.ts) forces **same-origin** `https://erp.dincouture.pk` in production so `/auth` and `/rest` go through ERP nginx → Kong (avoids cross-origin CORS in the browser).
-- **Capacitor native (Android/iOS):** [`erp-mobile-app/src/lib/supabase.ts`](../../erp-mobile-app/src/lib/supabase.ts) **must** use baked `VITE_SUPABASE_URL` only — see [`docs/infra/MOBILE_APK_LOCKED_PATTERN.md`](MOBILE_APK_LOCKED_PATTERN.md). Do not reuse the web `window.location.origin` shortcut on native.
+- **Capacitor native (Android/iOS):** [`erp-mobile-app/src/lib/supabase.ts`](../../erp-mobile-app/src/lib/supabase.ts) **must** use baked `VITE_SUPABASE_URL` only — see [`MOBILE_APK_LOCKED_PATTERN.md`](MOBILE_APK_LOCKED_PATTERN.md). Do not reuse the web `window.location.origin` shortcut on native.
 
 ## After changing keys
 
