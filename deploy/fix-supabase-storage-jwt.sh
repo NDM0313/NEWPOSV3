@@ -1,7 +1,8 @@
 #!/bin/bash
 # Fix "Failed to retrieve buckets" / "signature verification failed" in Supabase Studio.
-# The anon key must be signed with the same JWT_SECRET as the project. This script
-# regenerates ANON_KEY and SERVICE_ROLE_KEY from JWT_SECRET and restarts Kong + Auth.
+# Regenerates ANON_KEY and SERVICE_ROLE_KEY from JWT_SECRET in /root/supabase/docker/.env
+# and recreates Kong/Studio/Storage/Functions (restart does not reload .env in Docker).
+# ERP VITE_* files: use deploy/write-erp-env-from-supabase-docker-env.sh after this script.
 # Run on VPS from project root: bash deploy/fix-supabase-storage-jwt.sh
 
 set -e
@@ -9,7 +10,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SUPABASE_ENV="${SUPABASE_ENV:-/root/supabase/docker/.env}"
 SUPABASE_DIR="$(dirname "$SUPABASE_ENV")"
-ERP_ENV="$ROOT/.env.production"
 
 if [ ! -f "$SUPABASE_ENV" ]; then
   echo "[fix-jwt] Supabase .env not found at $SUPABASE_ENV. Skip."
@@ -56,29 +56,7 @@ printf 'SERVICE_ROLE_KEY=%s\n' "$NEW_SERVICE" >> "${SUPABASE_ENV}.tmp2"
 mv "${SUPABASE_ENV}.tmp2" "$SUPABASE_ENV"
 rm -f "${SUPABASE_ENV}.tmp"
 echo "[fix-jwt] Updated ANON_KEY and SERVICE_ROLE_KEY in $SUPABASE_ENV"
-
-# Update ERP .env.production so frontend uses the same anon key
-if [ -f "$ERP_ENV" ]; then
-  grep -v '^VITE_SUPABASE_ANON_KEY=' "$ERP_ENV" > "${ERP_ENV}.tmp" 2>/dev/null || true
-  printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$NEW_ANON" >> "${ERP_ENV}.tmp"
-  mv "${ERP_ENV}.tmp" "$ERP_ENV"
-  echo "[fix-jwt] Updated VITE_SUPABASE_ANON_KEY in .env.production"
-fi
-
-# Also sync Mobile ERP .env.production (Vite mobile build reads this file in Docker mobile-builder stage)
-MOBILE_ENV="$ROOT/erp-mobile-app/.env.production"
-if [ -f "$MOBILE_ENV" ]; then
-  grep -v '^VITE_SUPABASE_ANON_KEY=' "$MOBILE_ENV" > "${MOBILE_ENV}.tmp" 2>/dev/null || true
-  printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$NEW_ANON" >> "${MOBILE_ENV}.tmp"
-  mv "${MOBILE_ENV}.tmp" "$MOBILE_ENV"
-  echo "[fix-jwt] Updated VITE_SUPABASE_ANON_KEY in erp-mobile-app/.env.production"
-else
-  echo "[fix-jwt] erp-mobile-app/.env.production missing; creating from root .env.production"
-  {
-    grep -E '^VITE_SUPABASE_URL=' "$ERP_ENV" 2>/dev/null || echo 'VITE_SUPABASE_URL=https://supabase.dincouture.pk'
-    printf 'VITE_SUPABASE_ANON_KEY=%s\n' "$NEW_ANON"
-  } > "$MOBILE_ENV"
-fi
+# ERP VITE_* is written only by deploy/write-erp-env-from-supabase-docker-env.sh (reads this file) to avoid drift vs baked bundles.
 
 # Recreate containers that use ANON_KEY (restart does NOT reload .env in Docker)
 # Studio serves the key to the browser; Storage/Kong/Functions use it for API. All must get new key from .env.
@@ -90,4 +68,4 @@ else
   echo "[fix-jwt] docker-compose not found; recreate Kong, Studio, Storage manually so they pick up new keys."
 fi
 
-echo "[fix-jwt] Done. Rebuild ERP so the app gets the new anon key: bash deploy/deploy.sh"
+echo "[fix-jwt] Done. Next: bash deploy/write-erp-env-from-supabase-docker-env.sh then bash deploy/deploy.sh (full build)."

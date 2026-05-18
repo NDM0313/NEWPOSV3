@@ -1,7 +1,7 @@
 #!/bin/bash
-# Fix supabase.dincouture.pk: Kong "Invalid authentication credentials" and host validation.
+# Fix supabase.dincouture.pk: Kong host validation and GoTrue SITE_URL / redirect allow-list.
 # Run on VPS: bash deploy/fix-supabase-kong-domain.sh
-# Ensures Supabase .env has correct API URL, syncs Kong anon key to ERP, restarts Kong.
+# VITE_SUPABASE_ANON_KEY for ERP builds comes from deploy/write-erp-env-from-supabase-docker-env.sh (not Kong exec by default).
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,8 +50,10 @@ if [ -f "$SUPABASE_ENV" ]; then
   echo "[fix-supabase-kong] SITE_URL, GOTRUE_SITE_URL and redirect allow-list set for erp.dincouture.pk"
 fi
 
-# 2. Sync Kong anon key to ERP .env.production only (do NOT write back to Supabase .env - JWT fix owns ANON_KEY there)
-if docker ps --format '{{.Names}}' | grep -q 'supabase-kong'; then
+# 2. Optional: sync Kong runtime anon into ERP .env (default OFF — causes drift vs Vite-baked bundles).
+# Use only for manual debugging: SYNC_KONG_ANON_TO_ERP_ENV=1 bash deploy/fix-supabase-kong-domain.sh
+SUPABASE_DIR="$(dirname "$SUPABASE_ENV")"
+if [ "${SYNC_KONG_ANON_TO_ERP_ENV:-0}" = "1" ] && docker ps --format '{{.Names}}' | grep -q 'supabase-kong'; then
   KONG_ANON=$(docker exec supabase-kong sh -c 'echo "$SUPABASE_ANON_KEY"' 2>/dev/null | tr -d '\n\r')
   if [ -n "$KONG_ANON" ]; then
     [ -f "$ERP_ENV" ] || touch "$ERP_ENV"
@@ -60,16 +62,18 @@ if docker ps --format '{{.Names}}' | grep -q 'supabase-kong'; then
     else
       echo "VITE_SUPABASE_ANON_KEY=$KONG_ANON" >> "$ERP_ENV"
     fi
-    echo "[fix-supabase-kong] Synced Kong anon key to ERP .env.production"
+    echo "[fix-supabase-kong] Synced Kong anon key to ERP .env.production (SYNC_KONG_ANON_TO_ERP_ENV=1)"
   fi
-  # Restart Auth so it picks up SITE_URL; do NOT restart Kong (JWT fix recreates Kong to load new keys)
-  SUPABASE_DIR="$(dirname "$SUPABASE_ENV")"
-  if [ -f "$SUPABASE_DIR/docker-compose.yml" ] || [ -f "$SUPABASE_DIR/docker-compose.yaml" ]; then
-    (cd "$SUPABASE_DIR" && docker compose restart auth 2>/dev/null) || true
-    echo "[fix-supabase-kong] Auth restarted."
-  fi
+elif [ "${SYNC_KONG_ANON_TO_ERP_ENV:-0}" = "1" ]; then
+  echo "[fix-supabase-kong] SYNC_KONG_ANON_TO_ERP_ENV=1 but Kong not running; skip anon sync."
 else
-  echo "[fix-supabase-kong] Kong container not found, skip key sync and restart."
+  echo "[fix-supabase-kong] Kong→ERP anon sync skipped (default; use deploy/write-erp-env-from-supabase-docker-env.sh)."
+fi
+
+# Restart Auth so GoTrue picks up SITE_URL / redirect env (independent of Kong running)
+if [ -f "$SUPABASE_DIR/docker-compose.yml" ] || [ -f "$SUPABASE_DIR/docker-compose.yaml" ]; then
+  (cd "$SUPABASE_DIR" && docker compose restart auth 2>/dev/null) || true
+  echo "[fix-supabase-kong] Auth restarted."
 fi
 
 # 3. Ensure ERP .env uses same-origin (erp.dincouture.pk) so browser only hits ERP; nginx in container proxies /auth/, /rest/ to Kong

@@ -154,6 +154,7 @@ EOSQL
 # Fixes-only mode: apply DB/storage fixes and exit (no build, no docker up)
 if [ -n "$DEPLOY_ONLY_FIXES" ]; then
   [ -f deploy/fix-supabase-storage-jwt.sh ] && bash deploy/fix-supabase-storage-jwt.sh || true
+  [ -f /root/supabase/docker/.env ] && bash deploy/write-erp-env-from-supabase-docker-env.sh || true
   [ -f deploy/apply-studio-no-auto-assign.sh ] && bash deploy/apply-studio-no-auto-assign.sh || true
   apply_expenses_columns
   [ -f deploy/apply-storage-rls-vps.sh ] && bash deploy/apply-storage-rls-vps.sh || apply_rls
@@ -169,34 +170,15 @@ fi
 # --- Storage JWT fix (Studio "Failed to retrieve buckets") before .env so Kong gets new keys ---
 [ -f deploy/fix-supabase-storage-jwt.sh ] && bash deploy/fix-supabase-storage-jwt.sh || true
 
-# --- Auto-fix .env.production (VPS: same-origin so app calls erp.dincouture.pk → nginx proxies /auth|rest to Kong; no CORS) ---
-ERP_ORIGIN="https://erp.dincouture.pk"
-ANON_KEY=""
-[ -f .env.production ] && source .env.production 2>/dev/null || true
-if [ -z "$VITE_SUPABASE_URL" ] || [ "$VITE_SUPABASE_URL" = "https://supabase.dincouture.pk" ] || [ "$VITE_SUPABASE_URL" = "https://your-supabase-api-url" ]; then
-  VITE_SUPABASE_URL="$ERP_ORIGIN"
-fi
-# Get anon key from Kong (same VPS) or Supabase docker .env
-if docker ps --format '{{.Names}}' | grep -q 'supabase-kong'; then
-  ANON_KEY=$(docker exec supabase-kong sh -c 'echo "$SUPABASE_ANON_KEY"' 2>/dev/null | tr -d '\n\r')
-fi
-[ -z "$ANON_KEY" ] && [ -f /root/supabase/docker/.env ] && \
-  ANON_KEY=$(grep -E '^ANON_KEY=|^SUPABASE_ANON_KEY=' /root/supabase/docker/.env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '\n\r" ')
-[ -n "$ANON_KEY" ] && VITE_SUPABASE_ANON_KEY="$ANON_KEY"
-[ -z "$VITE_DISABLE_REALTIME" ] && VITE_DISABLE_REALTIME=true
-# Write .env.production (keep existing anon key if we didn't find one from Kong/Supabase)
-{
-  echo "VITE_SUPABASE_URL=$VITE_SUPABASE_URL"
-  echo "VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY:-}"
-  echo "VITE_DISABLE_REALTIME=${VITE_DISABLE_REALTIME:-true}"
-} > .env.production
-echo "[deploy] Using VITE_SUPABASE_URL=$VITE_SUPABASE_URL (anon key length: ${#VITE_SUPABASE_ANON_KEY})"
-
-# Kong fix BEFORE build so app image gets correct anon key (avoids "Invalid authentication credentials")
+# --- ERP Vite env: canonical ANON from /root/supabase/docker/.env (see docs/infra/AUTH_PRODUCTION_LOCKED.md) ---
+# Order: GoTrue/Kong URLs + redirects → Kong CORS → write .env.production (never read anon from running Kong — avoids race/drift).
 [ -f deploy/fix-supabase-kong-domain.sh ] && bash deploy/fix-supabase-kong-domain.sh || true
-# CORS: allow https://erp.dincouture.pk so auth returns JSON (no "request was denied" / "is not valid JSON")
 [ -f deploy/add-kong-cors-erp-origin.sh ] && bash deploy/add-kong-cors-erp-origin.sh || true
-source .env.production
+bash deploy/write-erp-env-from-supabase-docker-env.sh || exit 1
+set -a
+. ./.env.production
+set +a
+echo "[deploy] Using VITE_SUPABASE_URL=$VITE_SUPABASE_URL (anon key length: ${#VITE_SUPABASE_ANON_KEY})"
 # Ensure mobile source has latest login UI (4 buttons, "auto-fills"); fail so user runs git pull
 if ! grep -q "auto-fills and signs in" erp-mobile-app/src/components/LoginScreen.tsx 2>/dev/null; then
   echo "[deploy] ERROR: LoginScreen.tsx is old (no 'auto-fills and signs in'). Run: git pull origin main && bash deploy/deploy.sh"
@@ -211,7 +193,7 @@ set -a
 . ./.env.production
 set +a
 if [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
-  echo "[deploy] ERROR: VITE_SUPABASE_ANON_KEY is empty after writing .env.production. Kong/docker did not supply ANON_KEY. Fix Kong SUPABASE_ANON_KEY or /root/supabase/docker/.env, then re-run deploy."
+  echo "[deploy] ERROR: VITE_SUPABASE_ANON_KEY is empty after write-erp-env. Ensure /root/supabase/docker/.env has ANON_KEY= or SUPABASE_ANON_KEY=, run deploy/fix-supabase-storage-jwt.sh, then re-run deploy."
   exit 1
 fi
 # Non-interactive SSH often has no node in PATH; match fix-supabase-storage-jwt.sh pattern.
@@ -257,70 +239,6 @@ apply_rls_performance
 apply_quick_login_auth
 [ -f deploy/apply-enable-rls-public.sh ] && bash deploy/apply-enable-rls-public.sh || true
 [ -f deploy/fix-supabase-studio-settings-api.sh ] && bash deploy/fix-supabase-studio-settings-api.sh || true
-
-# Fix supabase.dincouture.pk: Kong host (API_EXTERNAL_URL), sync key to ERP, restart Auth
-[ -f deploy/fix-supabase-kong-domain.sh ] && bash deploy/fix-supabase-kong-domain.sh || true
-
-# Studio storage/API: ensure anon key is JWT-signed (run again after services up)
-[ -f deploy/fix-supabase-storage-jwt.sh ] && bash deploy/fix-supabase-storage-jwt.sh || true
-
-# Smoke: Kong/JWT scripts above can change anon on disk while /m/ was built earlier. Only HTTP 401/403
-# here means "wrong apikey" (rebuild /m/). 502/503/000 usually means Kong warming or ERP not listening yet — retry, do not rebuild.
-set -a
-. ./.env.production
-set +a
-ERP_AUTH_SMOKE_URL="${ERP_AUTH_SMOKE_URL:-http://127.0.0.1:3001/auth/v1/health}"
-curl_erp_auth_code() {
-  curl -sS -o /dev/null -w "%{http_code}" \
-    -H "apikey: ${VITE_SUPABASE_ANON_KEY}" \
-    -H "Authorization: Bearer ${VITE_SUPABASE_ANON_KEY}" \
-    "$ERP_AUTH_SMOKE_URL" 2>/dev/null || echo "000"
-}
-poll_erp_auth_health() {
-  local code="" n=0
-  while [ "$n" -lt 25 ]; do
-    n=$((n + 1))
-    code=$(curl_erp_auth_code)
-    [ -z "$code" ] && code="000"
-    case "$code" in
-      2??) echo "$code"; return 0 ;;
-      401|403) echo "$code"; return 1 ;;
-      *) sleep 3 ;;
-    esac
-  done
-  code=$(curl_erp_auth_code)
-  [ -z "$code" ] && code="000"
-  echo "$code"
-  return 2
-}
-
-AUTH_CODE=$(poll_erp_auth_health)
-poll_rc=$?
-if [ "$poll_rc" -eq 0 ]; then
-  echo "[deploy] Auth health OK (HTTP $AUTH_CODE) at $ERP_AUTH_SMOKE_URL — anon matches ERP→Kong path."
-elif [ "$poll_rc" -eq 1 ]; then
-  echo "[deploy] Auth health HTTP $AUTH_CODE (401/403) at $ERP_AUTH_SMOKE_URL — rebuilding ERP so /m/ bundle matches current anon key..."
-  $COMPOSE_CMD build --no-cache erp
-  $COMPOSE_CMD stop erp 2>/dev/null || true
-  $COMPOSE_CMD rm -sf erp 2>/dev/null || true
-  docker stop erp-frontend 2>/dev/null || true
-  docker rm -f erp-frontend 2>/dev/null || true
-  $COMPOSE_CMD up -d --force-recreate erp
-  sleep 12
-  set -a
-  . ./.env.production
-  set +a
-  AUTH_CODE2=$(poll_erp_auth_health)
-  poll_rc2=$?
-  if [ "$poll_rc2" -eq 0 ]; then
-    echo "[deploy] Auth health OK after rebuild (HTTP $AUTH_CODE2)."
-  else
-    echo "[deploy] ERROR: Auth health not OK after rebuild (last HTTP $AUTH_CODE2). Check Kong, JWT_SECRET/ANON_KEY, and port 3001."
-    exit 1
-  fi
-else
-  echo "[deploy] WARN: Auth health at $ERP_AUTH_SMOKE_URL never reached 2xx (last HTTP $AUTH_CODE); Kong/ERP may still be warming. Skipping anon-mismatch rebuild. Verify: curl -sI -H \"apikey: …\" $ERP_AUTH_SMOKE_URL"
-fi
 
 # Supabase /backup route: https://supabase.dincouture.pk/backup serves backup page (erp-backup-page)
 [ -d deploy/backup-page ] && chmod -R 755 deploy/backup-page || true

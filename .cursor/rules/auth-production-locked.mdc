@@ -1,0 +1,29 @@
+---
+description: Production Supabase/Kong/GoTrue auth pipeline is locked — do not refactor without explicit user approval.
+globs:
+  - deploy/deploy.sh
+  - deploy/fix-supabase-*.sh
+  - deploy/write-erp-env-from-supabase-docker-env.sh
+  - deploy/add-kong-cors-erp-origin.sh
+  - deploy/gen-jwt-keys.cjs
+  - deploy/Dockerfile
+  - deploy/docker-compose.prod.yml
+  - src/lib/supabase.ts
+  - erp-mobile-app/src/lib/supabase.ts
+  - src/app/context/SupabaseContext.tsx
+alwaysApply: false
+---
+
+# Locked: production authentication
+
+- **Do not** “simplify”, reorder, or add health-check workarounds to [`deploy/deploy.sh`](deploy/deploy.sh) unless the user explicitly asks. The orchestration is documented in [`docs/infra/AUTH_PRODUCTION_LOCKED.md`](docs/infra/AUTH_PRODUCTION_LOCKED.md).
+
+- **Canonical anon for ERP builds:** [`deploy/write-erp-env-from-supabase-docker-env.sh`](deploy/write-erp-env-from-supabase-docker-env.sh) reads `ANON_KEY` from `/root/supabase/docker/.env` only. **Do not** reintroduce copying `VITE_SUPABASE_ANON_KEY` from `docker exec supabase-kong` into `.env.production` by default (causes drift vs Vite-inlined bundles).
+
+- **JWT regeneration:** [`deploy/fix-supabase-storage-jwt.sh`](deploy/fix-supabase-storage-jwt.sh) updates Supabase docker `.env` only; it does **not** write `NEWPOSV3/.env.production`.
+
+- **GoTrue / CORS:** [`deploy/fix-supabase-kong-domain.sh`](deploy/fix-supabase-kong-domain.sh) and [`deploy/add-kong-cors-erp-origin.sh`](deploy/add-kong-cors-erp-origin.sh) own host + CORS for `erp.dincouture.pk`.
+
+- **Client:** [`src/lib/supabase.ts`](src/lib/supabase.ts) and [`erp-mobile-app/src/lib/supabase.ts`](erp-mobile-app/src/lib/supabase.ts) use same-origin production URLs; [`SupabaseContext.tsx`](src/app/context/SupabaseContext.tsx) has intentional `SecurityError` handling — do not remove without review.
+
+If the user reports login failures, read `docs/infra/AUTH_PRODUCTION_LOCKED.md` first, then diagnose (key mismatch vs `public.users` vs network), then propose a **minimal** fix with explicit approval to change this pipeline.
