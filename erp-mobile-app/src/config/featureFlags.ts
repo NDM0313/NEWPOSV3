@@ -32,9 +32,10 @@ export const FEATURE_MOBILE_ROLE_MATRIX_EDITOR =
 
 export function getFeatureMobilePermissionV2(): boolean {
   try {
-    return localStorage.getItem(KEY) === 'true';
+    const v = localStorage.getItem(KEY);
+    return v !== 'false';
   } catch {
-    return false;
+    return true;
   }
 }
 

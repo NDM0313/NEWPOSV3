@@ -54,7 +54,8 @@ function hasWebCrypto(): boolean {
 
 type KeyOrHex = CryptoKey | string;
 
-async function hashPin(pin: string): Promise<string> {
+/** Exported for counter-user PIN vault (same salt as device PIN). */
+export async function hashPin(pin: string): Promise<string> {
   if (hasWebCrypto()) {
     const data = new TextEncoder().encode(PIN_SALT + pin);
     const buf = await (crypto as Crypto).subtle!.digest('SHA-256', data);
@@ -65,7 +66,7 @@ async function hashPin(pin: string): Promise<string> {
   return CryptoJS.SHA256(PIN_SALT + pin).toString(CryptoJS.enc.Hex);
 }
 
-async function deriveKey(pin: string): Promise<KeyOrHex> {
+export async function deriveKey(pin: string): Promise<KeyOrHex> {
   if (hasWebCrypto()) {
     const enc = new TextEncoder().encode(KEY_SALT + pin);
     const hash = await (crypto as Crypto).subtle!.digest('SHA-256', enc);
@@ -74,7 +75,7 @@ async function deriveKey(pin: string): Promise<KeyOrHex> {
   return CryptoJS.SHA256(KEY_SALT + pin).toString(CryptoJS.enc.Hex);
 }
 
-async function encrypt(
+export async function encryptPayload(
   plaintext: string,
   key: KeyOrHex
 ): Promise<{ iv: string; ciphertext: string; algo?: 'cbc' }> {
@@ -106,7 +107,7 @@ async function encrypt(
   };
 }
 
-async function decrypt(
+export async function decryptPayload(
   ivB64: string,
   ciphertextB64: string,
   key: KeyOrHex,
@@ -175,7 +176,7 @@ export async function saveSecurePayload(pin: string, payload: SecurePayload): Pr
   const pinHash = await hashPin(pin);
   const key = await deriveKey(pin);
   const json = JSON.stringify(payload);
-  const encResult = await encrypt(json, key);
+  const encResult = await encryptPayload(json, key);
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -245,7 +246,7 @@ export async function verifyPinAndUnlock(pin: string): Promise<VerifyResult> {
 
   try {
     const key = await deriveKey(pin);
-    const json = await decrypt(row.iv, row.ciphertext, key, row.algo);
+    const json = await decryptPayload(row.iv, row.ciphertext, key, row.algo);
     const payload = JSON.parse(json) as SecurePayload;
     const now = Date.now();
     if (payload.savedAt && now - payload.savedAt > SESSION_MAX_AGE_MS) {
@@ -253,7 +254,7 @@ export async function verifyPinAndUnlock(pin: string): Promise<VerifyResult> {
       return { success: false, locked: false, message: 'Session expired. Please sign in again.', expired: true };
     }
     payload.savedAt = now;
-    const encResult = await encrypt(JSON.stringify(payload), key);
+    const encResult = await encryptPayload(JSON.stringify(payload), key);
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);

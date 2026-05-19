@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { initInputKeyboard } from './utils/inputKeyboard';
 import type { Screen, User, Branch, BottomNavTab } from './types';
 import * as authApi from './api/auth';
@@ -13,6 +13,7 @@ import { AccessDenied } from './components/AccessDenied';
 const BRANCH_STORAGE_KEY = 'erp_mobile_branch';
 import { useResponsive } from './hooks/useResponsive';
 import { LoginScreen } from './components/LoginScreen';
+import { CreateBusinessWizardScreen } from './components/auth/CreateBusinessWizardScreen';
 import { BranchSelection } from './components/BranchSelection';
 import { HomeScreen } from './components/HomeScreen';
 import { BottomNav } from './components/BottomNav';
@@ -35,10 +36,16 @@ import { PackingListModule } from './components/packing/PackingListModule';
 import { SyncStatusBar } from './components/SyncStatusBar';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { runSync, getUnsyncedCount } from './lib/syncEngine';
+import { clearAllPending } from './lib/offlineStore';
+import type { AuthProfile } from './api/auth';
 import { markUnlocked, clearUnlockMark, shouldRelock } from './lib/pinLock';
 import { dispatchMobileInvalidated } from './lib/dataInvalidationBus';
 import { subscribeMobileRealtime } from './lib/realtimeSubscriptions';
 import { mobileRealtimeHealth } from './lib/supabase';
+import { resetLocalDataPlaneForNewCompany } from './lib/sessionIsolation';
+import { dispatchSessionSwitched } from './lib/sessionSwitchBus';
+
+const LAST_AUTOSYNC_KEY = 'erp_mobile_last_autosync_at';
 
 const MODULE_TITLES: Record<Screen, string> = {
   login: 'Login',
@@ -78,6 +85,145 @@ export default function App() {
   const [studioFocusSaleId, setStudioFocusSaleId] = useState<string | null>(null);
   const [isPinLocked, setIsPinLocked] = useState(false);
   const [documentEditIntent, setDocumentEditIntent] = useState<{ kind: 'sale' | 'purchase'; id: string } | null>(null);
+  const [showCreateBusiness, setShowCreateBusiness] = useState(false);
+  const previousAuthUserIdRef = useRef<string | null>(null);
+  const onlineWasOfflineRef = useRef(false);
+
+  const applyProfileAfterCounterSwitch = useCallback(
+    async (profile: AuthProfile) => {
+      const prevCompany = companyId;
+      const cid = profile.companyId || '';
+      if (prevCompany !== null && profile.companyId !== prevCompany) {
+        try {
+          await clearAllPending();
+        } catch {
+          /* ignore */
+        }
+        try {
+          localStorage.removeItem(BRANCH_STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+        setSelectedBranch(null);
+      }
+
+      const u: User = {
+        id: profile.userId,
+        name: profile.name,
+        email: profile.email,
+        role: profile.role,
+        profileId: profile.profileId,
+        branchId: profile.branchId ?? undefined,
+        branchLocked: profile.branchLocked,
+      };
+      setUser(u);
+      setCompanyId(profile.companyId);
+      setDocumentEditIntent(null);
+      previousAuthUserIdRef.current = profile.userId;
+      markUnlocked();
+      setIsPinLocked(false);
+      setIsBranchResolving(true);
+
+      if (profile.branchLocked && profile.branchId && cid) {
+        try {
+          const { data: branches } = await getBranches(cid);
+          const lockedBranch = branches?.find((b) => b.id === profile.branchId);
+          if (lockedBranch) {
+            setSelectedBranch(lockedBranch);
+            try {
+              localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(lockedBranch));
+            } catch {
+              /* ignore */
+            }
+            setCurrentScreen('home');
+            setActiveBottomTab('home');
+            setIsBranchResolving(false);
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+
+      if (cid && profile.profileId) {
+        try {
+          const [branchesRes, userBranchIds] = await Promise.all([
+            getBranches(cid),
+            getUserBranchIds(profile.profileId),
+          ]);
+          const companyBranches = branchesRes.data || [];
+          const isAdmin = (profile.role || '').toLowerCase() === 'admin';
+          if (companyBranches.length === 1) {
+            setSelectedBranch(companyBranches[0]);
+            try {
+              localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(companyBranches[0]));
+            } catch {
+              /* ignore */
+            }
+            setCurrentScreen('home');
+            setActiveBottomTab('home');
+            setIsBranchResolving(false);
+            return;
+          }
+          if (!isAdmin && userBranchIds.length === 1) {
+            const assigned =
+              companyBranches.find((b) => b.id === userBranchIds[0]) ?? {
+                id: userBranchIds[0],
+                name: 'Branch',
+                location: '—',
+              };
+            setSelectedBranch(assigned);
+            try {
+              localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(assigned));
+            } catch {
+              /* ignore */
+            }
+            setCurrentScreen('home');
+            setActiveBottomTab('home');
+            setIsBranchResolving(false);
+            return;
+          }
+          const saved = localStorage.getItem(BRANCH_STORAGE_KEY);
+          const branch = saved ? (JSON.parse(saved) as Branch) : null;
+          if (branch?.id && branch?.name && (isAdmin || userBranchIds.length === 0 || userBranchIds.includes(branch.id))) {
+            setSelectedBranch(branch);
+            setCurrentScreen('home');
+            setActiveBottomTab('home');
+            setIsBranchResolving(false);
+            return;
+          }
+          setCurrentScreen('branch-selection');
+          setIsBranchResolving(false);
+          return;
+        } catch {
+          setCurrentScreen('branch-selection');
+          setIsBranchResolving(false);
+          return;
+        }
+      }
+
+      setCurrentScreen('branch-selection');
+      setIsBranchResolving(false);
+    },
+    [companyId]
+  );
+
+  const handleCounterSessionReplaced = useCallback(
+    async (profile: AuthProfile) => {
+      await applyProfileAfterCounterSwitch(profile);
+      (['sales', 'purchases', 'accounting', 'contacts'] as const).forEach((domain) => {
+        dispatchMobileInvalidated({
+          domain,
+          companyId: profile.companyId,
+          branchId: profile.branchId ?? null,
+          reason: 'counter-session-switch',
+        });
+      });
+      reload(profile.userId, profile.role, profile.profileId, profile.companyId ?? undefined);
+      dispatchSessionSwitched({ userId: profile.userId, companyId: profile.companyId });
+    },
+    [applyProfileAfterCounterSwitch, reload]
+  );
 
   useEffect(() => {
     const cleanup = initInputKeyboard();
@@ -125,22 +271,51 @@ export default function App() {
   }, [user?.id, isPinLocked]);
 
   useEffect(() => {
-    if (!online || !user) return;
+    if (!user) return;
+    if (!online) {
+      onlineWasOfflineRef.current = true;
+      return;
+    }
     let cancelled = false;
+    const justReconnected = onlineWasOfflineRef.current;
+    onlineWasOfflineRef.current = false;
+
     const doSync = () => {
       getUnsyncedCount().then((n) => {
         if (cancelled || n === 0) return;
         setStatus('syncing');
-        runSync().then(({ errors }) => {
-          if (!cancelled) setStatus(errors > 0 ? 'sync_error' : 'online');
-        }).catch(() => { if (!cancelled) setStatus('sync_error'); });
+        runSync()
+          .then(({ errors }) => {
+            if (cancelled) return;
+            if (errors === 0) {
+              try {
+                localStorage.setItem(LAST_AUTOSYNC_KEY, String(Date.now()));
+              } catch {
+                /* ignore */
+              }
+              window.dispatchEvent(new CustomEvent('erp-mobile:autosync-complete'));
+            }
+            setStatus(errors > 0 ? 'sync_error' : 'online');
+          })
+          .catch(() => {
+            if (!cancelled) setStatus('sync_error');
+          });
       });
     };
-    doSync();
+
+    const start = () => {
+      if (justReconnected) {
+        window.setTimeout(() => doSync(), 450);
+      } else {
+        doSync();
+      }
+    };
+    start();
     const t = setInterval(doSync, 60 * 1000);
-    const onOnline = () => doSync();
-    window.addEventListener('online', onOnline);
-    return () => { cancelled = true; clearInterval(t); window.removeEventListener('online', onOnline); };
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
   }, [online, user?.id, setStatus]);
 
   useEffect(() => {
@@ -312,6 +487,10 @@ export default function App() {
   }, []);
 
   const handleLogin = async (u: User, cid: string | null) => {
+    if (previousAuthUserIdRef.current !== null && previousAuthUserIdRef.current !== u.id) {
+      await resetLocalDataPlaneForNewCompany();
+    }
+    previousAuthUserIdRef.current = u.id;
     setUser(u);
     setCompanyId(cid);
     setIsBranchResolving(true);
@@ -404,6 +583,8 @@ export default function App() {
     setSelectedBranch(null);
     setIsBranchResolving(false);
     setIsPinLocked(false);
+    setShowCreateBusiness(false);
+    previousAuthUserIdRef.current = null;
     setCurrentScreen('login');
   };
 
@@ -445,6 +626,20 @@ export default function App() {
     );
   }
 
+  if (currentScreen === 'login' && !user && showCreateBusiness) {
+    return (
+      <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
+        <CreateBusinessWizardScreen
+          onCancel={() => setShowCreateBusiness(false)}
+          onComplete={(u, cid) => {
+            setShowCreateBusiness(false);
+            void handleLogin(u, cid);
+          }}
+        />
+      </div>
+    );
+  }
+
   if (currentScreen === 'login') {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
@@ -452,6 +647,7 @@ export default function App() {
           onLogin={handleLogin}
           pinUnlockUser={user}
           pinUnlockCompanyId={companyId}
+          onCreateBusiness={() => setShowCreateBusiness(true)}
         />
       </div>
     );
@@ -523,7 +719,13 @@ export default function App() {
       {currentScreen === 'pos' && user && (
         !canAccessScreen('pos', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
-          : <POSModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
+          : <POSModule
+              onBack={navigateHome}
+              user={user}
+              companyId={companyId}
+              branchId={selectedBranch?.id ?? null}
+              onCounterSessionReplaced={handleCounterSessionReplaced}
+            />
       )}
       {currentScreen === 'contacts' && user && (
         !canAccessScreen('contacts', selectedBranch?.id)
@@ -616,7 +818,13 @@ export default function App() {
       {currentScreen === 'expense' && user && (
         !canAccessScreen('expense', selectedBranch?.id)
           ? <AccessDenied onBack={navigateHome} />
-          : <ExpenseModule onBack={navigateHome} user={user} companyId={companyId} branch={selectedBranch} />
+          : <ExpenseModule
+              onBack={navigateHome}
+              user={user}
+              companyId={companyId}
+              branch={selectedBranch}
+              onCounterSessionReplaced={handleCounterSessionReplaced}
+            />
       )}
       {currentScreen === 'inventory' && user && (
         !canAccessScreen('inventory', selectedBranch?.id)

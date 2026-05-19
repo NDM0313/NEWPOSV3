@@ -7,6 +7,11 @@ import {
 import * as employeesApi from '../../api/employees';
 import * as branchesApi from '../../api/branches';
 import { CustomSelect, CustomSearchableSheet } from '../common';
+import {
+  FUNCTIONAL_ROLE_OPTIONS,
+  normalizeAppRole,
+  getFunctionalRoleLabel,
+} from '../../config/functionalRoles';
 
 interface EmployeesSectionProps {
   onBack: () => void;
@@ -143,7 +148,8 @@ export function EmployeesSection({ onBack, companyId, isAdminOrOwner, userId }: 
     // Actually, I can just fetch it directly here or update getEmployees.
     // Let's use the current employee object if I update the API.
     
-    setEditRole((emp.user as any)?.role || 'user');
+    const rawRole = (emp.user as { role?: string })?.role;
+    setEditRole(normalizeAppRole(rawRole) === 'owner' ? 'owner' : normalizeAppRole(rawRole));
     setSubmitting(false);
     setShowEdit(true);
   };
@@ -159,7 +165,10 @@ export function EmployeesSection({ onBack, companyId, isAdminOrOwner, userId }: 
           commission_rate: Number(editCommission),
           is_active: editIsActive
         }),
-        employeesApi.updateUserRole(selectedEmployee.user_id, editRole),
+        employeesApi.updateUserRole(
+          selectedEmployee.user_id,
+          editRole === 'owner' ? 'owner' : normalizeAppRole(editRole)
+        ),
         employeesApi.updateUserBranches(selectedEmployee.user_id, editBranchIds, companyId)
       ]);
       
@@ -379,18 +388,22 @@ export function EmployeesSection({ onBack, companyId, isAdminOrOwner, userId }: 
                   <Shield className="w-3.5 h-3.5" /> Role & Permissions
                 </h3>
                 <div>
-                  <CustomSelect
-                    label="User Role"
-                    value={editRole}
-                    onChange={setEditRole}
-                    options={[
-                      { value: 'owner', label: 'Owner' },
-                      { value: 'admin', label: 'Admin' },
-                      { value: 'manager', label: 'Manager' },
-                      { value: 'user', label: 'User / Staff' },
-                    ]}
-                    zIndexClass="z-[100]"
-                  />
+                  {editRole === 'owner' ? (
+                    <p className="text-sm text-amber-300/90 py-2">
+                      {getFunctionalRoleLabel('owner')} — cannot be changed here.
+                    </p>
+                  ) : (
+                    <CustomSelect
+                      label="User Role"
+                      value={editRole}
+                      onChange={setEditRole}
+                      options={FUNCTIONAL_ROLE_OPTIONS.map((r) => ({
+                        value: r.value,
+                        label: r.label,
+                      }))}
+                      zIndexClass="z-[100]"
+                    />
+                  )}
                 </div>
               </div>
 

@@ -49,5 +49,16 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Allow camera to scan product barcodes.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.dincouture.erp.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.dincouture.erp</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

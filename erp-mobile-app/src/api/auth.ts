@@ -1,3 +1,5 @@
+import { Browser } from '@capacitor/browser';
+import { Capacitor } from '@capacitor/core';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import {
   hasSecurePayload,
@@ -8,8 +10,167 @@ import {
   type SecurePayload,
   type VerifyResult,
 } from '../lib/secureStorage';
+import { normalizeAppRole, type AssignableAppRole } from '../config/functionalRoles';
+import { getOAuthRedirectTo } from '../lib/oauthRedirect';
 
-export type UserRole = 'admin' | 'manager' | 'staff' | 'viewer';
+export { getOAuthRedirectTo } from '../lib/oauthRedirect';
+
+const SESSION_POLL_MS = 200;
+
+/**
+ * Wait until Supabase client has an access token (required before authenticated RPCs).
+ */
+export async function ensureAuthenticatedSession(maxWaitMs = 8000): Promise<{ ok: boolean; message?: string }> {
+  if (!isSupabaseConfigured) {
+    return { ok: false, message: 'App is not configured.' };
+  }
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
+    if (error) {
+      return { ok: false, message: error.message };
+    }
+    if (session?.access_token) {
+      return { ok: true };
+    }
+    await new Promise((r) => setTimeout(r, SESSION_POLL_MS));
+  }
+  return {
+    ok: false,
+    message: 'Auth session missing. Confirm your email code and try again.',
+  };
+}
+
+export async function signInWithGoogle(): Promise<{
+  error: { message: string } | null;
+  /** True when user must finish in external browser; listen for `erp-auth-oauth-complete`. */
+  pendingExternalBrowser?: boolean;
+}> {
+  if (!isSupabaseConfigured) {
+    return {
+      error: {
+        message:
+          'App not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in erp-mobile-app/.env, then restart.',
+      },
+    };
+  }
+  const redirectTo = getOAuthRedirectTo();
+  const queryParams = { access_type: 'offline', prompt: 'select_account' as const };
+
+  if (Capacitor.isNativePlatform()) {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo,
+        skipBrowserRedirect: true,
+        queryParams,
+      },
+    });
+    if (error) return { error: { message: error.message } };
+    if (!data?.url) return { error: { message: 'No OAuth URL returned. Check Supabase Google provider.' } };
+    await Browser.open({ url: data.url });
+    return { error: null, pendingExternalBrowser: true };
+  }
+
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo,
+      queryParams,
+    },
+  });
+  if (error) return { error: { message: error.message } };
+  return { error: null };
+}
+
+export async function signUpForNewBusiness(params: {
+  email: string;
+  password: string;
+  ownerName: string;
+  phone?: string;
+  businessName?: string;
+  businessType?: string;
+}): Promise<{
+  needsEmailVerification: boolean;
+  hasSession: boolean;
+  error: { message: string } | null;
+}> {
+  if (!isSupabaseConfigured) {
+    return {
+      needsEmailVerification: false,
+      hasSession: false,
+      error: {
+        message:
+          'App not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in erp-mobile-app/.env, then restart.',
+      },
+    };
+  }
+  const { data, error } = await supabase.auth.signUp({
+    email: params.email,
+    password: params.password,
+    options: {
+      data: {
+        full_name: params.ownerName,
+        phone: params.phone,
+        business_name: params.businessName,
+        business_type: params.businessType,
+      },
+    },
+  });
+  if (error) {
+    let msg = error.message;
+    if (msg.toLowerCase().includes('already registered')) {
+      msg = 'This email is already registered. Sign in, or use a different email.';
+    }
+    return { needsEmailVerification: false, hasSession: false, error: { message: msg } };
+  }
+  const hasSession = Boolean(data.session);
+  const needsEmailVerification = Boolean(data.user) && !hasSession;
+  return { needsEmailVerification, hasSession, error: null };
+}
+
+/** Confirm email after signUp (6-digit code or similar). Tries `signup` then `email` OTP types. */
+export async function verifySignupEmailOtp(
+  email: string,
+  token: string
+): Promise<{ error: { message: string } | null; sessionEstablished: boolean }> {
+  const clean = token.replace(/\D/g, '').trim();
+  if (!clean) return { error: { message: 'Enter the verification code.' }, sessionEstablished: false };
+  let result = await supabase.auth.verifyOtp({
+    email,
+    token: clean,
+    type: 'signup',
+  });
+  if (result.error) {
+    const alt = await supabase.auth.verifyOtp({
+      email,
+      token: clean,
+      type: 'email',
+    } as Parameters<typeof supabase.auth.verifyOtp>[0]);
+    result = alt;
+  }
+  if (result.error) {
+    return { error: { message: result.error.message }, sessionEstablished: false };
+  }
+  if (result.data?.session?.access_token) {
+    return { error: null, sessionEstablished: true };
+  }
+  const ensured = await ensureAuthenticatedSession();
+  return {
+    error: null,
+    sessionEstablished: ensured.ok,
+  };
+}
+
+export async function resendSignupEmailOtp(email: string): Promise<{ error: { message: string } | null }> {
+  const { error } = await supabase.auth.resend({ type: 'signup', email });
+  return error ? { error: { message: error.message } } : { error: null };
+}
+
+export type UserRole = AssignableAppRole | 'owner';
 
 export interface AuthProfile {
   name: string;
@@ -57,13 +218,13 @@ export async function signIn(email: string, password: string): Promise<{ data: A
   if (profileError || !row) {
     return {
       data: null,
-      error: { message: 'User profile not found. Create a business in the web app first.' },
+      error: { message: 'User profile not found. Use “Create account” on the login screen or complete setup in the web app.' },
     };
   }
 
-  const role = (row.role?.toLowerCase() || 'staff') as UserRole;
-  const validRoles: UserRole[] = ['admin', 'manager', 'staff', 'viewer'];
-  const finalRole = validRoles.includes(role) ? role : 'staff';
+  const normalized = normalizeAppRole(row.role);
+  const finalRole: UserRole =
+    normalized === 'owner' ? 'owner' : (normalized as AssignableAppRole);
   // branch_id not on users; branch lock would come from user_branches (future)
   const branchId: string | null = null;
   const branchLocked = false;
@@ -124,8 +285,9 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
   if (error || !row) return null;
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
-  const role = (row.role?.toLowerCase() || 'staff') as UserRole;
-  const validRoles: UserRole[] = ['admin', 'manager', 'staff', 'viewer'];
+  const normalized = normalizeAppRole(row.role);
+  const finalRole: UserRole =
+    normalized === 'owner' ? 'owner' : (normalized as AssignableAppRole);
   const profileId = (row as { id?: string }).id ?? undefined;
 
   let branchId: string | null = null;
@@ -145,7 +307,7 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
   return {
     name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
     email: user.email || '',
-    role: validRoles.includes(role) ? role : 'staff',
+    role: finalRole,
     companyId: row.company_id || null,
     userId: user.id,
     profileId,

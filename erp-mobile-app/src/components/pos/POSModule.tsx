@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2, X } from 'lucide-react';
+import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2, X, Users } from 'lucide-react';
 import type { User } from '../../types';
+import type { AuthProfile } from '../../api/auth';
+import { SwitchUserPinOverlay } from '../auth/SwitchUserPinOverlay';
 import * as productsApi from '../../api/products';
 import * as salesApi from '../../api/sales';
 import { addPending } from '../../lib/offlineStore';
@@ -16,6 +18,7 @@ interface POSModuleProps {
   user: User;
   companyId: string | null;
   branchId: string | null;
+  onCounterSessionReplaced?: (profile: AuthProfile) => void | Promise<void>;
 }
 
 /** Product as shown in POS grid: base + optional variations with stock */
@@ -41,7 +44,7 @@ interface CartItem {
   variationName?: string;
 }
 
-export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps) {
+export function POSModule({ onBack, user, companyId, branchId, onCounterSessionReplaced }: POSModuleProps) {
   const [products, setProducts] = useState<POSProduct[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -56,6 +59,15 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
   const { runSingleFlight, isRunning: isCheckoutSubmitRunning } = useSingleFlightAction();
   const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [scannerInput, setScannerInput] = useState(''); // keyboard wedge (Speed-X, Sunmi, CS60)
+  const [showSwitchUser, setShowSwitchUser] = useState(false);
+
+  useEffect(() => {
+    setCart([]);
+    setLastInvoiceNo(null);
+    setCheckoutError(null);
+    setShowCart(false);
+    setShowPaymentStep(false);
+  }, [user.id]);
 
   useEffect(() => {
     if (!scanMessage) return;
@@ -358,6 +370,13 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
 
   return (
     <div className="min-h-screen bg-[#111827] pb-28">
+      {onCounterSessionReplaced ? (
+        <SwitchUserPinOverlay
+          open={showSwitchUser}
+          onClose={() => setShowSwitchUser(false)}
+          onSessionReplaced={onCounterSessionReplaced}
+        />
+      ) : null}
       <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
         <div className="flex items-center justify-between px-4 h-14">
           <div className="flex items-center gap-3">
@@ -369,6 +388,16 @@ export function POSModule({ onBack, user, companyId, branchId }: POSModuleProps)
             </div>
             <h1 className="text-white font-semibold text-base">Point of Sale</h1>
           </div>
+          {onCounterSessionReplaced ? (
+            <button
+              type="button"
+              onClick={() => setShowSwitchUser(true)}
+              className="p-2 hover:bg-[#374151] rounded-lg text-white"
+              title="Switch user"
+            >
+              <Users className="w-5 h-5" />
+            </button>
+          ) : null}
         </div>
       </div>
 

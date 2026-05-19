@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { subscribeNetworkConnectivity, getInitialNetworkConnected } from '../lib/networkBridge';
 
 export type NetworkStatus = 'online' | 'offline' | 'syncing' | 'sync_error';
 
@@ -11,21 +12,34 @@ export function useNetworkStatus(): {
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
   const [status, setStatus] = useState<NetworkStatus>(online ? 'online' : 'offline');
+  const mounted = useRef(true);
 
   useEffect(() => {
-    const handleOnline = () => {
-      setOnline(true);
-      setStatus('online');
-    };
-    const handleOffline = () => {
-      setOnline(false);
-      setStatus('offline');
-    };
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    mounted.current = true;
+    void getInitialNetworkConnected().then((connected) => {
+      if (!mounted.current) return;
+      setOnline(connected);
+      setStatus((prev) => {
+        if (!connected) return 'offline';
+        if (prev === 'syncing' || prev === 'sync_error') return prev;
+        return 'online';
+      });
+    });
+    const unsub = subscribeNetworkConnectivity((connected) => {
+      if (!mounted.current) return;
+      setOnline(connected);
+      if (!connected) {
+        setStatus('offline');
+        return;
+      }
+      setStatus((prev) => {
+        if (prev === 'syncing' || prev === 'sync_error') return prev;
+        return 'online';
+      });
+    });
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      mounted.current = false;
+      unsub();
     };
   }, []);
 

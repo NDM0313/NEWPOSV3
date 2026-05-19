@@ -5,14 +5,11 @@ import { usePermissions } from '../../context/PermissionContext';
 import * as permissionsApi from '../../api/permissions';
 import * as branchesApi from '../../api/branches';
 import { FEATURE_MOBILE_ROLE_MATRIX_EDITOR } from '../../config/featureFlags';
-
-function mapAppRoleToEngine(role: string): permissionsApi.EngineRole {
-  const r = (role || '').toLowerCase();
-  if (r === 'owner') return 'owner';
-  if (r === 'admin' || r === 'super admin' || r === 'superadmin') return 'admin';
-  if (r === 'manager' || r === 'accountant') return 'manager';
-  return 'user';
-}
+import {
+  mapAppRoleToEngineRole,
+  getFunctionalRoleLabel,
+  getEngineRoleLabel,
+} from '../../config/functionalRoles';
 
 interface UserPermissionsScreenProps {
   onBack: () => void;
@@ -43,7 +40,7 @@ export function UserPermissionsScreen({ onBack, user, companyId }: UserPermissio
     }
   }, [editRole]);
 
-  const engineRole = mapAppRoleToEngine(user.role);
+  const engineRole = mapAppRoleToEngineRole(user.role);
   const effectiveBranchLabel =
     isAdminOrOwner || branchIds.length === 0
       ? 'All branches'
@@ -104,8 +101,8 @@ export function UserPermissionsScreen({ onBack, user, companyId }: UserPermissio
           <>
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
               <p className="text-xs text-[#9CA3AF] mb-1">Your role</p>
-              <p className="font-medium text-white capitalize">{user.role}</p>
-              <p className="text-xs text-[#6B7280] mt-1">Engine: {engineRole}</p>
+              <p className="font-medium text-white">{getFunctionalRoleLabel(user.role)}</p>
+              <p className="text-xs text-[#6B7280] mt-1">Matrix row: {getEngineRoleLabel(engineRole)}</p>
             </div>
 
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center gap-3">
@@ -137,11 +134,11 @@ export function UserPermissionsScreen({ onBack, user, companyId }: UserPermissio
                     <button
                       key={r}
                       onClick={() => setEditRole(editRole === r ? null : r)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize ${
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
                         editRole === r ? 'bg-[#8B5CF6] text-white' : 'bg-[#374151] text-[#9CA3AF] hover:bg-[#4B5563]'
                       }`}
                     >
-                      {r}
+                      {getEngineRoleLabel(r)}
                     </button>
                   ))}
                 </div>
@@ -150,7 +147,7 @@ export function UserPermissionsScreen({ onBack, user, companyId }: UserPermissio
 
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden">
               <h4 className="text-sm font-medium text-[#9CA3AF] px-4 py-3 border-b border-[#374151]">
-                Permission matrix {editRole ? `(${editRole})` : '(your role)'}
+                Permission matrix {editRole ? `(${getEngineRoleLabel(editRole)})` : '(your role)'}
               </h4>
               <div className="divide-y divide-[#374151] max-h-[50vh] overflow-y-auto">
                 {Object.entries(grouped).map(([module, rows]) => (

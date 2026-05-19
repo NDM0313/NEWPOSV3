@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Lock, Mail, Zap, Loader2, KeyRound, AlertTriangle } from 'lucide-react';
 import { erpMobileUsingDemoSupabaseAnonKey } from '../lib/supabase';
 import type { User } from '../types';
 import * as authApi from '../api/auth';
 import { markUnlocked } from '../lib/pinLock';
+import { OAUTH_COMPLETE_EVENT, type OauthCompleteDetail } from '../lib/oauthCallback';
 
 interface LoginScreenProps {
   onLogin: (user: User, companyId: string | null) => void;
@@ -17,11 +18,14 @@ interface LoginScreenProps {
    * screen/state intact rather than re-running the full login flow.
    */
   onUnlock?: () => void;
+  /** Open mobile create-business wizard (new account + company). */
+  onCreateBusiness?: () => void;
 }
 
 const PIN_LENGTH = 6;
 
-export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUnlockCompanyId, onUnlock }: LoginScreenProps) {
+export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUnlockCompanyId, onUnlock, onCreateBusiness }: LoginScreenProps) {
+  const googleOAuthPendingRef = useRef(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
@@ -36,6 +40,50 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
   useEffect(() => {
     authApi.hasPinSet().then(setHasPinSet);
     authApi.getPinLockedUntil().then(setPinLockedUntil);
+  }, []);
+
+  useEffect(() => {
+    const onOauthComplete = (ev: Event) => {
+      if (!googleOAuthPendingRef.current) return;
+      googleOAuthPendingRef.current = false;
+      const ce = ev as CustomEvent<OauthCompleteDetail>;
+      const detail = ce.detail;
+      void (async () => {
+        try {
+          if (!detail?.success) {
+            setError(detail?.message || 'Google sign-in failed.');
+            return;
+          }
+          const sess = await authApi.getSession();
+          if (!sess) {
+            setError('Could not read session after Google sign-in.');
+            return;
+          }
+          const profile = await authApi.getProfile(sess.userId);
+          if (!profile) {
+            setError('Profile not found. Ask an admin to invite this account.');
+            return;
+          }
+          const user: User = {
+            id: profile.userId,
+            name: profile.name,
+            email: profile.email,
+            role: profile.role,
+            profileId: profile.profileId,
+            branchId: profile.branchId ?? undefined,
+            branchLocked: profile.branchLocked,
+          };
+          setShowSetPin(true);
+          setUserForSetPin(user);
+          setCompanyIdForSetPin(profile.companyId);
+          setBranchIdForSetPin(profile.branchId ?? null);
+        } finally {
+          setLoading(false);
+        }
+      })();
+    };
+    window.addEventListener(OAUTH_COMPLETE_EVENT, onOauthComplete);
+    return () => window.removeEventListener(OAUTH_COMPLETE_EVENT, onOauthComplete);
   }, []);
 
   const isPinMode = hasPinSet;
@@ -218,6 +266,26 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
     await authApi.signOut();
     await authApi.clearPin();
     window.location.reload();
+  };
+
+  const handleGoogleSignIn = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const { error: e, pendingExternalBrowser } = await authApi.signInWithGoogle();
+      if (e) {
+        setError(e.message);
+        return;
+      }
+      if (pendingExternalBrowser) {
+        googleOAuthPendingRef.current = true;
+        return;
+      }
+    } finally {
+      if (!googleOAuthPendingRef.current) {
+        setLoading(false);
+      }
+    }
   };
 
   // --- Set PIN modal (after first email/password login) ---
@@ -421,6 +489,27 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
             Sign In
           </button>
         </form>
+
+        <div className="mt-4 space-y-2">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void handleGoogleSignIn()}
+            className="w-full h-11 rounded-lg border border-[#374151] bg-[#1F2937] text-sm text-white hover:bg-[#374151] flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            Sign in with Google
+          </button>
+          {onCreateBusiness ? (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={onCreateBusiness}
+              className="w-full h-10 text-sm text-[#60A5FA] hover:text-[#93C5FD]"
+            >
+              New business? Create account
+            </button>
+          ) : null}
+        </div>
 
         <p className="mt-4 mb-2 text-xs text-[#6B7280] text-center">
           Quick login (auto-fills and signs in):

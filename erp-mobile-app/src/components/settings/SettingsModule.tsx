@@ -20,6 +20,7 @@ import {
   UserPlus,
   Briefcase,
   Shirt,
+  Users,
 } from 'lucide-react';
 import type { User, Branch } from '../../types';
 import * as authApi from '../../api/auth';
@@ -34,6 +35,9 @@ import { EmployeesSection } from './EmployeesSection';
 import { AddUserSheet } from './AddUserSheet';
 import { usePermissions } from '../../context/PermissionContext';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../../config/featureFlags';
+import { APP_VERSION, registerAppVersionTap } from '../../lib/developerMode';
+import { DeveloperToolsSection } from './DeveloperToolsSection';
+import { countCounterUsers, saveCounterUserForPin } from '../../lib/counterUserVault';
 
 interface SettingsModuleProps {
   onBack: () => void;
@@ -116,12 +120,23 @@ export function SettingsModule({
   const [showEmployees, setShowEmployees] = useState(false);
   const [showAddUser, setShowAddUser] = useState(false);
   const [defaultDressDevaluation, setDefaultDressDevaluation] = useState<number>(5000);
+  const [showCounterPinEnroll, setShowCounterPinEnroll] = useState(false);
+  const [counterPinA, setCounterPinA] = useState('');
+  const [counterPinB, setCounterPinB] = useState('');
+  const [counterPinBusy, setCounterPinBusy] = useState(false);
+  const [counterPinMsg, setCounterPinMsg] = useState<string | null>(null);
+  const [counterSlotCount, setCounterSlotCount] = useState(0);
 
-  const isAdminOrOwner = user.role === 'admin' || (user.role as string) === 'owner';
-  const { hasPermission } = usePermissions();
-  const canManageSettings = isAdminOrOwner || (FEATURE_MOBILE_PERMISSION_V2 && (hasPermission('settings.modify') || hasPermission('settings.view')));
+  const { hasPermission, isAdminOrOwner } = usePermissions();
+  const canManageSettings =
+    isAdminOrOwner || (FEATURE_MOBILE_PERMISSION_V2 && hasPermission('settings.modify'));
 
   const refreshUnsynced = () => getUnsyncedCount().then(setUnsyncedCount);
+
+  useEffect(() => {
+    if (!companyId || !isAdminOrOwner) return;
+    void countCounterUsers().then(setCounterSlotCount);
+  }, [companyId, isAdminOrOwner, showCounterPinEnroll]);
 
   useEffect(() => {
     authApi.hasPinSet().then(setHasPin);
@@ -248,6 +263,13 @@ export function SettingsModule({
       setSyncResult('Failed to clear');
     } finally {
       setClearing(false);
+    }
+  };
+
+  const handleAppVersionTap = () => {
+    const r = registerAppVersionTap();
+    if (r.justUnlocked) {
+      setSyncResult('Developer Tools enabled — see below.');
     }
   };
 
@@ -419,6 +441,20 @@ export function SettingsModule({
               title="Set Quick PIN"
               subtitle="4–6 digits for faster unlock"
               onClick={() => setShowSetPin(true)}
+            />
+          )}
+          {isAdminOrOwner && companyId && branch?.id && branch.id !== 'all' && (
+            <SettingsRow
+              icon={Users}
+              iconColor="bg-emerald-500/20"
+              title="Counter tablet PIN"
+              subtitle={`Enroll signed-in user for POS/Expense PIN switch (${counterSlotCount} saved)`}
+              onClick={() => {
+                setCounterPinMsg(null);
+                setCounterPinA('');
+                setCounterPinB('');
+                setShowCounterPinEnroll(true);
+              }}
             />
           )}
         </div>
@@ -639,8 +675,9 @@ export function SettingsModule({
           <SettingsRow
             icon={Building2}
             iconColor="bg-[#8B5CF6]/20"
-            title="Din Collection Mobile"
-            subtitle="Version 0.1.0"
+            title="App version"
+            subtitle={APP_VERSION}
+            onClick={handleAppVersionTap}
           />
           <SettingsRow
             icon={Info}
@@ -648,6 +685,7 @@ export function SettingsModule({
             title="About"
             subtitle="ERP for bridal & rental business"
           />
+          <DeveloperToolsSection />
         </div>
 
         {hasPin && (
@@ -671,6 +709,98 @@ export function SettingsModule({
         </button>
       </div>
 
+      {showCounterPinEnroll && branch?.id && branch.id !== 'all' && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-[#1F2937] border border-[#374151] p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-white mb-1">Counter tablet PIN</h3>
+            <p className="text-xs text-[#9CA3AF] mb-4">
+              Saves this device session for the signed-in user under a separate 4-digit PIN (POS / Expense “Switch user”). Increases token theft risk if the device is lost — use only on trusted counter tablets.
+            </p>
+            {counterPinMsg ? <p className="text-sm text-red-400 mb-3">{counterPinMsg}</p> : null}
+            <label className="block text-xs text-[#9CA3AF] mb-1">4-digit PIN</label>
+            <input
+              value={counterPinA}
+              onChange={(e) => setCounterPinA(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              className="w-full mb-3 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white"
+              inputMode="numeric"
+              maxLength={4}
+              autoComplete="off"
+              placeholder="••••"
+            />
+            <label className="block text-xs text-[#9CA3AF] mb-1">Confirm PIN</label>
+            <input
+              value={counterPinB}
+              onChange={(e) => setCounterPinB(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              className="w-full mb-4 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white"
+              inputMode="numeric"
+              maxLength={4}
+              autoComplete="off"
+              placeholder="••••"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCounterPinEnroll(false)}
+                className="flex-1 h-11 rounded-xl bg-[#374151] text-white font-medium"
+                disabled={counterPinBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={counterPinBusy}
+                onClick={() => {
+                  void (async () => {
+                    setCounterPinMsg(null);
+                    if (!/^\d{4}$/.test(counterPinA) || !/^\d{4}$/.test(counterPinB)) {
+                      setCounterPinMsg('PIN must be exactly 4 digits.');
+                      return;
+                    }
+                    if (counterPinA !== counterPinB) {
+                      setCounterPinMsg('PINs do not match.');
+                      return;
+                    }
+                    setCounterPinBusy(true);
+                    try {
+                      if (!companyId) {
+                        setCounterPinMsg('No company selected.');
+                        return;
+                      }
+                      const session = await authApi.getSessionWithRefresh();
+                      if (!session?.refreshToken) {
+                        setCounterPinMsg('No refresh token in session. Sign in again with email/password.');
+                        return;
+                      }
+                      await saveCounterUserForPin(counterPinA, {
+                        refreshToken: session.refreshToken,
+                        userId: session.userId,
+                        companyId,
+                        branchId: branch.id,
+                        email: session.email,
+                        savedAt: Date.now(),
+                        displayName: user.name,
+                        publicUsersId: user.profileId,
+                      });
+                      setShowCounterPinEnroll(false);
+                      setCounterPinA('');
+                      setCounterPinB('');
+                      void countCounterUsers().then(setCounterSlotCount);
+                      setSyncResult('Counter PIN saved for this user.');
+                    } catch (e) {
+                      setCounterPinMsg(e instanceof Error ? e.message : 'Save failed.');
+                    } finally {
+                      setCounterPinBusy(false);
+                    }
+                  })();
+                }}
+                className="flex-1 h-11 rounded-xl bg-emerald-600 text-white font-medium disabled:opacity-50"
+              >
+                {counterPinBusy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showChangePin && (
         <ChangePinModal
           onClose={() => setShowChangePin(false)}

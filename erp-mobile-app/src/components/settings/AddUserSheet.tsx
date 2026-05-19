@@ -2,14 +2,7 @@ import { useState } from 'react';
 import { ArrowLeft, Loader2, Mail, User, Key } from 'lucide-react';
 import { CustomSelect } from '../common';
 import * as usersApi from '../../api/users';
-
-const ROLES = [
-  { value: 'staff', label: 'Staff' },
-  { value: 'salesman', label: 'Salesman' },
-  { value: 'cashier', label: 'Cashier' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'admin', label: 'Admin' },
-] as const;
+import { FUNCTIONAL_ROLE_OPTIONS, normalizeAppRole } from '../../config/functionalRoles';
 
 interface AddUserSheetProps {
   companyId: string;
@@ -21,7 +14,7 @@ interface AddUserSheetProps {
 export function AddUserSheet({ companyId, branchId, onBack, onSuccess }: AddUserSheetProps) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<string>('staff');
+  const [role, setRole] = useState<string>('salesman');
   const [passwordOption, setPasswordOption] = useState<'invite' | 'temp'>('invite');
   const [temporaryPassword, setTemporaryPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -44,7 +37,7 @@ export function AddUserSheet({ companyId, branchId, onBack, onSuccess }: AddUser
     const { error: err } = await usersApi.createUserWithAuth({
       full_name: name,
       email: em,
-      role,
+      role: normalizeAppRole(role),
       company_id: companyId,
       send_invite_email: passwordOption === 'invite',
       temporary_password: passwordOption === 'temp' ? temporaryPassword : undefined,
@@ -112,7 +105,7 @@ export function AddUserSheet({ companyId, branchId, onBack, onSuccess }: AddUser
             label="Role"
             value={role}
             onChange={setRole}
-            options={ROLES.map((r) => ({ value: r.value, label: r.label }))}
+            options={FUNCTIONAL_ROLE_OPTIONS.map((r) => ({ value: r.value, label: r.label }))}
             zIndexClass="z-[100]"
           />
         </div>

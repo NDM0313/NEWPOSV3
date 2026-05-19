@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Plus, Calendar, DollarSign, Search, Loader2, Upload, X } from 'lucide-react';
+import { ArrowLeft, Plus, Calendar, DollarSign, Search, Loader2, Upload, X, Users } from 'lucide-react';
 import { TextInput, NumericInput, ActionBar, CustomSelect, CustomSearchableSheet, PullToRefresh } from '../common';
 import type { User, Branch } from '../../types';
+import type { AuthProfile } from '../../api/auth';
+import { SwitchUserPinOverlay } from '../auth/SwitchUserPinOverlay';
 import * as expensesApi from '../../api/expenses';
 import * as authApi from '../../api/auth';
 import * as accountsApi from '../../api/accounts';
@@ -14,6 +16,7 @@ interface ExpenseModuleProps {
   user: User;
   companyId: string | null;
   branch: Branch | null;
+  onCounterSessionReplaced?: (profile: AuthProfile) => void | Promise<void>;
 }
 
 type DateGroup = 'today' | 'yesterday' | 'thisWeek' | 'older';
@@ -71,7 +74,7 @@ function getCategoryIcon(cat: string): string {
   return CATEGORIES.find((c) => c.value === cat)?.icon ?? '📊';
 }
 
-export function ExpenseModule({ onBack, user: _user, companyId, branch }: ExpenseModuleProps) {
+export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessionReplaced }: ExpenseModuleProps) {
   const [list, setList] = useState<{ id: string; expense_no: string; date: string; category: string; description: string; amount: number }[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [showAdd, setShowAdd] = useState(false);
@@ -95,6 +98,7 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
   const [paidToUserId, setPaidToUserId] = useState('');
   const [salaryUsers, setSalaryUsers] = useState<SalaryUserRow[]>([]);
   const [salaryUsersLoading, setSalaryUsersLoading] = useState(false);
+  const [showSwitchUser, setShowSwitchUser] = useState(false);
 
   const loadExpenses = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -118,7 +122,7 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
         );
       }
     },
-    [companyId, branch?.id]
+    [companyId, branch?.id, user.id]
   );
 
   useEffect(() => {
@@ -535,6 +539,13 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
+      {onCounterSessionReplaced ? (
+        <SwitchUserPinOverlay
+          open={showSwitchUser}
+          onClose={() => setShowSwitchUser(false)}
+          onSessionReplaced={onCounterSessionReplaced}
+        />
+      ) : null}
       <div className="bg-gradient-to-br from-[#EF4444] to-[#DC2626] p-4 sticky top-0 z-10">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -546,13 +557,25 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
               <p className="text-xs text-white/80">Track all business expenses</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 px-3 py-2.5 bg-white text-[#DC2626] hover:bg-white/90 rounded-lg font-medium text-sm shadow-lg transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            Add
-          </button>
+          <div className="flex items-center gap-2">
+            {onCounterSessionReplaced ? (
+              <button
+                type="button"
+                onClick={() => setShowSwitchUser(true)}
+                className="p-2.5 bg-white/15 hover:bg-white/25 rounded-lg text-white"
+                title="Switch user"
+              >
+                <Users className="w-5 h-5" />
+              </button>
+            ) : null}
+            <button
+              onClick={() => setShowAdd(true)}
+              className="flex items-center gap-2 px-3 py-2.5 bg-white text-[#DC2626] hover:bg-white/90 rounded-lg font-medium text-sm shadow-lg transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+              Add
+            </button>
+          </div>
         </div>
 
         {!loading && (

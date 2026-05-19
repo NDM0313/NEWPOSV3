@@ -26,8 +26,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/browser": "^8.0.0",
     "@capacitor-mlkit/barcode-scanning": "^8.0.1",
     "@capacitor/core": "^8.1.0",
+    "@capacitor/network": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.0",
     "@supabase/realtime-js": "^2.95.3",
     "@supabase/supabase-js": "^2.95.3",

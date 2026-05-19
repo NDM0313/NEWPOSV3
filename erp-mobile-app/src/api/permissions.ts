@@ -1,10 +1,14 @@
 /**
  * Mobile: fetch role_permissions and user_branches from backend (same as Web ERP).
- * Used by PermissionContext after login.
  */
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
-export type EngineRole = 'owner' | 'admin' | 'manager' | 'user';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  mapAppRoleToEngineRole,
+  type EngineRole,
+} from '../config/functionalRoles';
+
+export type { EngineRole };
 
 /** Subset editable from mobile (admin/owner + `FEATURE_MOBILE_ROLE_MATRIX_EDITOR`). Owner/admin rows: Web ERP only. */
 export const MOBILE_EDITABLE_ENGINE_ROLES: readonly ('manager' | 'user')[] = ['manager', 'user'];
@@ -16,20 +20,12 @@ export interface RolePermissionRow {
   allowed: boolean;
 }
 
-function mapAppRoleToEngine(role: string): EngineRole {
-  const r = (role || '').toLowerCase();
-  if (r === 'owner') return 'owner';
-  if (r === 'admin' || r === 'super admin' || r === 'superadmin') return 'admin';
-  if (r === 'manager' || r === 'accountant') return 'manager';
-  return 'user';
-}
-
-/** Fetch role_permissions for the given app role (admin, manager, staff, viewer). */
+/** Fetch role_permissions for the given app role. */
 export async function getRolePermissions(
   appRole: string
 ): Promise<RolePermissionRow[]> {
   if (!isSupabaseConfigured) return [];
-  const engineRole = mapAppRoleToEngine(appRole);
+  const engineRole = mapAppRoleToEngineRole(appRole);
   return getRolePermissionsByEngineRole(engineRole);
 }
 
@@ -44,7 +40,7 @@ export async function getRolePermissionsByEngineRole(
     .eq('role', engineRole)
     .order('module')
     .order('action');
-  
+
   if (error) return [];
   return (data ?? []) as RolePermissionRow[];
 }
@@ -60,46 +56,43 @@ export async function getUserBranchIds(userId: string): Promise<string[]> {
   return (data ?? []).map((r: { branch_id: string }) => r.branch_id);
 }
 
+const VIEW_ACTIONS = ['view', 'view_own', 'view_branch', 'view_company'];
+
 /** Check if permission allows (module + action). */
 export function hasModuleAction(
   perms: RolePermissionRow[],
   module: string,
   action: string
 ): boolean {
-  const scopeOnlyModules = new Set(['contacts', 'studio']);
   const viewActionsForModule =
-    action === 'view'
-      ? scopeOnlyModules.has(module)
-        ? ['view_own', 'view_branch', 'view_company']
-        : ['view', 'view_own', 'view_branch', 'view_company']
-      : [];
+    action === 'view' ? VIEW_ACTIONS : [];
   return perms.some(
     (p) =>
       p.module === module &&
       (p.action === action || (action === 'view' && viewActionsForModule.includes(p.action))) &&
-    p.allowed
+      p.allowed
   );
 }
 
 /** Convenience: can user view this module? */
 export function canViewModule(perms: RolePermissionRow[], module: string): boolean {
-  if (perms.length === 0) return false; // empty permissions = no access (v2 requirement)
+  if (perms.length === 0) return false;
   const viewActions: Record<string, string[]> = {
-    sales: ['view_own', 'view_branch', 'view_company', 'view'],
-    purchase: ['view'],
+    sales: VIEW_ACTIONS,
+    purchase: VIEW_ACTIONS,
     pos: ['view', 'use'],
-    studio: ['view_own', 'view_branch', 'view_company'],
-    rentals: ['view'],
+    studio: VIEW_ACTIONS,
+    rentals: VIEW_ACTIONS,
     reports: ['view'],
-    inventory: ['view'],
-    ledger: ['view_full_accounting', 'view_customer', 'view_supplier'],
-    contacts: ['view_own', 'view_branch', 'view_company'],
-    payments: ['receive', 'view'],
-    settings: ['modify', 'view'],
-    users: ['view', 'assign_permissions'],
+    inventory: VIEW_ACTIONS.concat(['adjust', 'transfer']),
+    ledger: ['view_full_accounting', 'view_customer', 'view_supplier', ...VIEW_ACTIONS],
+    contacts: VIEW_ACTIONS,
+    payments: ['receive', ...VIEW_ACTIONS],
+    settings: ['modify'],
+    users: ['assign_permissions', 'create', 'edit', 'delete'],
   };
-  const actions = viewActions[module] ?? ['view'];
-  return actions.some((a) => perms.some(p => p.module === module && p.action === a && p.allowed));
+  const actions = viewActions[module] ?? VIEW_ACTIONS;
+  return actions.some((a) => perms.some((p) => p.module === module && p.action === a && p.allowed));
 }
 
 /** Set one role permission (admin/owner only by RLS). */

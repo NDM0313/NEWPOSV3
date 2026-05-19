@@ -3,6 +3,7 @@ import * as permissionsApi from '../api/permissions';
 import { getModuleConfigs, type ModuleToggles } from '../api/settings';
 import { getBranches } from '../api/branches';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
+import { isAdminOrOwnerAppRole } from '../config/functionalRoles';
 import type { RolePermissionRow } from '../api/permissions';
 import type { Screen } from '../types';
 
@@ -127,9 +128,8 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
           branchIds = [companyBranches[0].id];
         }
       }
-      const r = (appRole || '').toLowerCase();
-      const isAdminOrOwner = ['owner', 'admin', 'super admin', 'superadmin'].includes(r);
-      const isOwner = r === 'owner';
+      const isAdminOrOwner = isAdminOrOwnerAppRole(appRole);
+      const isOwner = (appRole || '').toLowerCase() === 'owner';
       const moduleConfigStatus = resolveModuleConfigStatus(companyId, moduleRes);
       const moduleToggles =
         moduleConfigStatus === 'ok' && moduleRes.data ? moduleRes.data : safeModuleTogglesWhenFail;
