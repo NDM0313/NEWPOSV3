@@ -7,6 +7,7 @@
 - [x] **Business Wizard** — [`CreateBusinessWizardScreen.tsx`](../erp-mobile-app/src/components/auth/CreateBusinessWizardScreen.tsx) + [`business.ts`](../erp-mobile-app/src/api/business.ts) RPC wrapper
 - [x] **OTP step** — `otp` phase with verify/resend; session gate via [`ensureAuthenticatedSession`](../erp-mobile-app/src/api/auth.ts) (see [`macbook_handoff_auth_fixes.plan.md`](macbook_handoff_auth_fixes.plan.md))
 - [x] **Google OAuth flow** — native deep link (`oauthRedirect` / `oauthCallback`), Android intent-filter, iOS URL scheme, [`LoginScreen`](../erp-mobile-app/src/components/LoginScreen.tsx) external-browser completion
+- [x] **Supabase Dashboard verification runbook** — Tickable operator checklist: [`erp_mobile_phase2_supabase_dashboard_runbook.md`](erp_mobile_phase2_supabase_dashboard_runbook.md) (execute in Dashboard; record sign-off in runbook).
 
 ## Deliverables (implementation)
 
@@ -46,6 +47,8 @@ sequenceDiagram
 ```
 
 ## Supabase Dashboard checklist (operator)
+
+**Tickable copy (recommended):** [`erp_mobile_phase2_supabase_dashboard_runbook.md`](erp_mobile_phase2_supabase_dashboard_runbook.md)
 
 1. **Authentication → Providers → Email**
    - Ensure **Confirm email** is configured as required for new signups if you want OTP / verification before RPC.

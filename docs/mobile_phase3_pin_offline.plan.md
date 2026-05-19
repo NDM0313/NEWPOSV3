@@ -12,7 +12,8 @@
 
 ## Next Polish Targets
 
-- [ ] **Google Pixel 6 Pro & Emulator physical device WebView test** — Reload / cold-start flows; confirm debug APK matches debug signing for [`DebugSslWebViewClient.java`](../erp-mobile-app/android/app/src/main/java/com/dincouture/erp/DebugSslWebViewClient.java) (see [`docs/infra/ANDROID_DEBUG_WEBVIEW_SSL.md`](infra/ANDROID_DEBUG_WEBVIEW_SSL.md)). Validate OAuth return, OTP wizard, and offline autosync on real hardware.
+- [x] **Device / emulator WebView QA runbook** — Repro checklist and sign-off table: [`mobile_phase3_device_qa_runbook.md`](mobile_phase3_device_qa_runbook.md) (covers Pixel 6 Pro / emulator, cold start, OAuth, OTP wizard, offline autosync; references [`DebugSslWebViewClient.java`](../erp-mobile-app/android/app/src/main/java/com/dincouture/erp/DebugSslWebViewClient.java) and [`docs/infra/ANDROID_DEBUG_WEBVIEW_SSL.md`](infra/ANDROID_DEBUG_WEBVIEW_SSL.md)).
+- [ ] **Device QA executed** — Operator completes all boxes and sign-off row in the runbook on real hardware or emulator.
 
 ## Step 1 — Counter tablet multi-user PIN
 
