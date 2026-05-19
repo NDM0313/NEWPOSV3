@@ -2,6 +2,12 @@
 
 **Scope:** `erp-mobile-app/` only. Uses existing Supabase Auth (`signUp`, `verifyOtp`, `resend`, `signInWithOAuth`) and existing RPC `create_business_transaction`. **No new Postgres migrations** in this repo slice.
 
+## Implementation status (2026-05-19)
+
+- [x] **Business Wizard** — [`CreateBusinessWizardScreen.tsx`](../erp-mobile-app/src/components/auth/CreateBusinessWizardScreen.tsx) + [`business.ts`](../erp-mobile-app/src/api/business.ts) RPC wrapper
+- [x] **OTP step** — `otp` phase with verify/resend; session gate via [`ensureAuthenticatedSession`](../erp-mobile-app/src/api/auth.ts) (see [`macbook_handoff_auth_fixes.plan.md`](macbook_handoff_auth_fixes.plan.md))
+- [x] **Google OAuth flow** — native deep link (`oauthRedirect` / `oauthCallback`), Android intent-filter, iOS URL scheme, [`LoginScreen`](../erp-mobile-app/src/components/LoginScreen.tsx) external-browser completion
+
 ## Deliverables (implementation)
 
 | Item | Location |

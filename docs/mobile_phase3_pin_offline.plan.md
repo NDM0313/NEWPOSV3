@@ -2,6 +2,18 @@
 
 **Scope:** `erp-mobile-app/` client-only. No Postgres migrations, no Supabase URL/key changes ([`MOBILE_APK_LOCKED_PATTERN.md`](infra/MOBILE_APK_LOCKED_PATTERN.md)).
 
+## Implementation status (2026-05-19)
+
+- [x] **offline-idb-v2** — IndexedDB v2 hardening ([`offlineStore.ts`](../erp-mobile-app/src/lib/offlineStore.ts), `DB_VERSION = 2`, `PENDING` | `SYNCING` | `SYNCED` | `ERROR`)
+- [x] **syncengine-status** — Sync engine transitions ([`syncEngine.ts`](../erp-mobile-app/src/lib/syncEngine.ts))
+- [x] **network-autosync** — `@capacitor/network` + [`networkBridge.ts`](../erp-mobile-app/src/lib/networkBridge.ts); App debounced `runSync` on reconnect
+- [x] **devtools-sync-ui** — Developer Tools sync counts ([`DeveloperToolsSection.tsx`](../erp-mobile-app/src/components/settings/DeveloperToolsSection.tsx))
+- [x] **counter-vault-switch** — Multi-user PIN switching & enrollment ([`counterUserVault.ts`](../erp-mobile-app/src/lib/counterUserVault.ts), [`SwitchUserPinOverlay.tsx`](../erp-mobile-app/src/components/auth/SwitchUserPinOverlay.tsx))
+
+## Next Polish Targets
+
+- [ ] **Google Pixel 6 Pro & Emulator physical device WebView test** — Reload / cold-start flows; confirm debug APK matches debug signing for [`DebugSslWebViewClient.java`](../erp-mobile-app/android/app/src/main/java/com/dincouture/erp/DebugSslWebViewClient.java) (see [`docs/infra/ANDROID_DEBUG_WEBVIEW_SSL.md`](infra/ANDROID_DEBUG_WEBVIEW_SSL.md)). Validate OAuth return, OTP wizard, and offline autosync on real hardware.
+
 ## Step 1 — Counter tablet multi-user PIN
 
 - **Secondary vault:** [`erp-mobile-app/src/lib/counterUserVault.ts`](../erp-mobile-app/src/lib/counterUserVault.ts) — IndexedDB `erp_mobile_counter_vault`, rows keyed by SHA-256 of 4-digit PIN; payload encrypted with PIN-derived key (same crypto pattern as [`secureStorage.ts`](../erp-mobile-app/src/lib/secureStorage.ts)).
