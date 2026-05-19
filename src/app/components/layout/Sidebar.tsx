@@ -57,6 +57,10 @@ export const Sidebar = () => {
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
 
+  const expensesNavVisible =
+    (settingsModules.expensesModuleEnabled && hasPermission('expenses.view')) ||
+    (settingsModules.accountingModuleEnabled && hasPermission('accounting.view'));
+
   const toggleExpand = (id: string) => {
     setExpandedItems(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
@@ -96,7 +100,7 @@ export const Sidebar = () => {
         { id: 'manufacturing-workflow', label: 'Production Workflow' },
       ]
     },
-    { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !settingsModules.expensesModuleEnabled || !hasPermission('expenses.view') },
+    { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !expensesNavVisible },
     { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
     { id: 'party-ledger', label: 'Party Ledger', icon: BookOpen, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
     {

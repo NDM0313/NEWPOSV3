@@ -1,5 +1,22 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
+/** DB / RPC expect cash | bank | card | other — wallet accounts must map to other. */
+function normalizeExpensePaymentMethodForDb(raw: string | undefined): string {
+  const m = (raw || 'cash').toLowerCase().trim();
+  if (m === 'bank') return 'bank';
+  if (m === 'card') return 'card';
+  if (m === 'wallet' || m === 'mobile_wallet' || m === 'other') return 'other';
+  return 'cash';
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function sanitizeUuid(v: string | null | undefined): string | null {
+  if (v == null || typeof v !== 'string') return null;
+  const t = v.trim();
+  return UUID_RE.test(t) ? t : null;
+}
+
 async function resolveBranchId(companyId: string, branchId: string): Promise<string> {
   if (branchId && branchId !== 'default') return branchId;
   const { data } = await supabase.from('branches').select('id').eq('company_id', companyId).limit(1).maybeSingle();
@@ -94,6 +111,10 @@ export async function createExpense(input: {
   paymentAccountId?: string | null;
   /** Receipt/bill attachment URL after upload to storage */
   receiptUrl?: string | null;
+  /** Salary expense: `users.id` payee (RPC insert may omit; patched client-side). */
+  paidToUserId?: string | null;
+  /** Display / vendor line (maps to `vendor_name` when column exists). */
+  payeeName?: string | null;
 }) {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   let effectiveBranchId: string;
@@ -102,7 +123,7 @@ export async function createExpense(input: {
   } catch (err) {
     return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
   }
-  const paymentMethod = (input.paymentMethod || 'cash').toLowerCase();
+  const paymentMethod = normalizeExpensePaymentMethodForDb(input.paymentMethod);
 
   const expensePayload: Record<string, unknown> = {
     expense_date: input.expenseDate || new Date().toISOString().slice(0, 10),
@@ -110,10 +131,11 @@ export async function createExpense(input: {
     description: input.description,
     amount: input.amount,
     payment_method: paymentMethod,
-    status: 'paid',
   };
-  if (input.paymentAccountId) expensePayload.payment_account_id = input.paymentAccountId;
-  if (input.receiptUrl) expensePayload.receipt_url = input.receiptUrl;
+  const payAcct = sanitizeUuid(input.paymentAccountId ?? null);
+  if (payAcct) expensePayload.payment_account_id = payAcct;
+  const receipt = (input.receiptUrl ?? '').trim();
+  if (receipt) expensePayload.receipt_url = receipt;
 
   const callRpc = async (payload: Record<string, unknown>) =>
     supabase.rpc('create_expense_document', {
@@ -131,7 +153,7 @@ export async function createExpense(input: {
     const msg = String(rpcErr.message || '').toLowerCase();
     const schemaMissing =
       msg.includes('payment_account_id') || msg.includes('receipt_url') || (msg.includes('column') && msg.includes('schema'));
-    if (schemaMissing && (input.paymentAccountId || input.receiptUrl)) {
+    if (schemaMissing && (payAcct || receipt)) {
       const fallback = { ...expensePayload };
       delete fallback.payment_account_id;
       delete fallback.receipt_url;
@@ -167,6 +189,36 @@ export async function createExpense(input: {
     }
   } catch (err) {
     console.warn('[EXPENSES API] record_expense_with_accounting threw:', err);
+  }
+
+  const expenseId = rpc.expense_id;
+  const patch: Record<string, unknown> = {};
+  const paidUid = sanitizeUuid(input.paidToUserId ?? null);
+  if (paidUid) patch.paid_to_user_id = paidUid;
+  const vendor = (input.payeeName ?? '').trim().slice(0, 255);
+  if (vendor) patch.vendor_name = vendor;
+
+  if (expenseId && Object.keys(patch).length > 0) {
+    let upd = await supabase.from('expenses').update(patch).eq('id', expenseId).eq('company_id', input.companyId);
+    if (upd.error) {
+      const msg = String(upd.error.message || '').toLowerCase();
+      if ((msg.includes('vendor_name') || msg.includes('schema cache')) && 'vendor_name' in patch) {
+        const { vendor_name: _drop, ...withoutVendor } = patch;
+        if (Object.keys(withoutVendor).length > 0) {
+          upd = await supabase
+            .from('expenses')
+            .update(withoutVendor)
+            .eq('id', expenseId)
+            .eq('company_id', input.companyId);
+        }
+      }
+      if (upd.error) {
+        return {
+          data: null,
+          error: `Expense was created but payee could not be saved: ${upd.error.message}. You can edit the expense in the web app.`,
+        };
+      }
+    }
   }
 
   return { data: result.data, error: null };

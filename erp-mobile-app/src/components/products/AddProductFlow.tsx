@@ -7,6 +7,7 @@ import * as unitsApi from '../../api/units';
 import * as productsApi from '../../api/products';
 import * as variationLibrary from '../../api/variationLibrary';
 import type { AttributeWithValues } from '../../api/variationLibrary';
+import { CustomSelect } from '../common';
 
 export interface AddProductFlowSavePayload {
   id?: string;
@@ -129,6 +130,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
     barcode: string;
   }>>([]);
   const [productsWithVariations, setProductsWithVariations] = useState<Array<{ id: string; name: string; variations?: Array<{ attributes?: Record<string, string> }> }>>([]);
+  const [attrCopySelectNonce, setAttrCopySelectNonce] = useState(0);
 
   useEffect(() => {
     if (!companyId) return;
@@ -514,25 +516,28 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
                     </button>
                   </div>
                 ) : (
-                  <div className="flex gap-2">
-                    <select
-                      value={formData.categoryId || ''}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === '__add__') setShowAddCategory(true);
-                        else {
-                          const cat = categories.find((c) => c.id === v);
-                          setFormData((prev) => ({ ...prev, categoryId: v || '', category: cat?.name ?? '' }));
-                        }
-                      }}
-                      className="flex-1 h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#3B82F6]"
-                    >
-                      <option value="">Select category</option>
-                      {categories.map((cat, i) => (
-                        <option key={cat?.id ?? `cat-${i}`} value={String(cat?.id ?? '')}>{String(cat?.name ?? '')}</option>
-                      ))}
-                      <option value="__add__">+ Add new category</option>
-                    </select>
+                  <div className="flex gap-2 flex-1 min-w-0">
+                    <div className="flex-1 min-w-0">
+                      <CustomSelect
+                        value={formData.categoryId || ''}
+                        onChange={(v) => {
+                          if (v === '__add__') setShowAddCategory(true);
+                          else {
+                            const cat = categories.find((c) => c.id === v);
+                            setFormData((prev) => ({ ...prev, categoryId: v || '', category: cat?.name ?? '' }));
+                          }
+                        }}
+                        options={[
+                          { value: '', label: 'Select category' },
+                          ...categories.map((cat, i) => ({
+                            value: String(cat?.id ?? ''),
+                            label: String(cat?.name ?? `Category ${i}`),
+                          })),
+                          { value: '__add__', label: '+ Add new category' },
+                        ]}
+                        zIndexClass="z-[100]"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -557,21 +562,22 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
                   </button>
                 </div>
               ) : (
-                <select
+                <CustomSelect
                   value={formData.brandId || ''}
-                  onChange={(e) => {
-                    const v = e.target.value;
+                  onChange={(v) => {
                     if (v === '__add__') setShowAddBrand(true);
                     else setFormData((prev) => ({ ...prev, brandId: v || '' }));
                   }}
-                  className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#3B82F6]"
-                >
-                  <option value="">Select brand (optional)</option>
-                  {brands.map((b, i) => (
-                    <option key={b?.id ?? `brand-${i}`} value={String(b?.id ?? '')}>{String(b?.name ?? '')}</option>
-                  ))}
-                  <option value="__add__">+ Add new brand</option>
-                </select>
+                  options={[
+                    { value: '', label: 'Select brand (optional)' },
+                    ...brands.map((b, i) => ({
+                      value: String(b?.id ?? ''),
+                      label: String(b?.name ?? `Brand ${i}`),
+                    })),
+                    { value: '__add__', label: '+ Add new brand' },
+                  ]}
+                  zIndexClass="z-[100]"
+                />
               )}
             </div>
             <div>
@@ -688,23 +694,24 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
                   </button>
                 </div>
               ) : (
-                <select
+                <CustomSelect
                   value={formData.unitId || formData.unit || ''}
-                  onChange={(e) => {
-                    const v = e.target.value;
+                  onChange={(v) => {
                     if (v === '__add__') setShowAddUnit(true);
                     else {
                       const u = unitOptions.find((o) => o.id === v || o.name === v);
                       setFormData((prev) => ({ ...prev, unitId: u?.id || '', unit: u?.name ?? 'Piece' }));
                     }
                   }}
-                  className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#3B82F6]"
-                >
-                  {unitOptions.map((u, i) => (
-                    <option key={String(u?.id || u?.name || `unit-${i}`)} value={String(u?.id || u?.name || '')}>{String(u?.name ?? '')}</option>
-                  ))}
-                  <option value="__add__">+ Add new unit</option>
-                </select>
+                  options={[
+                    ...unitOptions.map((u, i) => ({
+                      value: String(u?.id || u?.name || ''),
+                      label: String(u?.name ?? `Unit ${i}`),
+                    })),
+                    { value: '__add__', label: '+ Add new unit' },
+                  ]}
+                  zIndexClass="z-[100]"
+                />
               )}
             </div>
           </div>
@@ -731,22 +738,25 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
                 {/* Copy from existing product */}
                 {productsWithVariations.length > 0 && (
                   <div>
-                    <label className="block text-sm text-[#9CA3AF] mb-2">Copy from existing product</label>
-                    <select
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        e.target.value = '';
+                    <CustomSelect
+                      key={attrCopySelectNonce}
+                      label="Copy from existing product"
+                      value=""
+                      onChange={(id) => {
                         if (!id) return;
                         const p = productsWithVariations.find((x) => x.id === id);
                         if (p) copyAttributesFromProduct(p);
+                        setAttrCopySelectNonce((n) => n + 1);
                       }}
-                      className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white focus:outline-none focus:border-[#3B82F6]"
-                    >
-                      <option value="">Select product to copy attributes...</option>
-                      {productsWithVariations.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name} ({p.variations?.length ?? 0} vars)</option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: '', label: 'Select product to copy attributes...' },
+                        ...productsWithVariations.map((p) => ({
+                          value: p.id,
+                          label: `${p.name} (${p.variations?.length ?? 0} vars)`,
+                        })),
+                      ]}
+                      zIndexClass="z-[100]"
+                    />
                   </div>
                 )}
 

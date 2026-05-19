@@ -180,15 +180,18 @@ export async function getAccounts(companyId: string): Promise<{ data: AccountRow
   };
 }
 
-/** Payment accounts: cash, bank, wallet (for transfers) */
+const PAYMENT_ACCOUNT_TYPES_LOWER = new Set(['cash', 'bank', 'mobile_wallet', 'wallet']);
+
+/** Payment accounts: cash, bank, mobile wallet only (no generic asset / AR / etc.). */
 export async function getPaymentAccounts(companyId: string): Promise<{ data: AccountRow[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const cacheKey = listCacheKeys.paymentAccounts(companyId);
   if (isBrowserOffline()) {
     const cached = await listCacheGet<AccountRow[]>(cacheKey);
+    const filtered = (cached ?? []).filter((a) => PAYMENT_ACCOUNT_TYPES_LOWER.has((a.type || '').toLowerCase()));
     return {
-      data: cached ?? [],
-      error: cached?.length ? null : 'Offline: payment accounts not cached. Connect once while logged in.',
+      data: filtered,
+      error: filtered.length ? null : 'Offline: payment accounts not cached. Connect once while logged in.',
     };
   }
   const q = supabase
@@ -197,7 +200,7 @@ export async function getPaymentAccounts(companyId: string): Promise<{ data: Acc
     .eq('company_id', companyId)
     .eq('is_active', true)
     .or('is_group.eq.false,is_group.is.null')
-    .in('type', ['cash', 'bank', 'asset', 'mobile_wallet'])
+    .in('type', ['cash', 'bank', 'mobile_wallet', 'wallet'])
     .order('code');
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };

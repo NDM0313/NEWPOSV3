@@ -25,6 +25,7 @@ import { MobileActionBar } from '../shared/MobileActionBar';
 import { PdfPreviewModal } from '../shared/PdfPreviewModal';
 import { usePdfPreview } from '../shared/usePdfPreview';
 import { InvoicePreviewPdf, type InvoicePreviewItem } from '../shared/InvoicePreviewPdf';
+import { CustomSearchableSheet } from '../common';
 
 interface PurchaseModuleProps {
   onBack: () => void;
@@ -1249,26 +1250,25 @@ export function PurchaseModule({
             </div>
             <div className="p-4 space-y-3 overflow-y-auto">
               <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">Supplier</label>
-                <select
+                <CustomSearchableSheet
+                  label="Supplier"
+                  sheetTitle="Supplier"
                   value={editSupplierId ?? ''}
-                  onChange={(e) => {
-                    const v = e.target.value;
+                  onChange={(v) => {
                     setEditSupplierId(v || null);
                     const s = editSupplierOptions.find((x) => x.id === v);
                     if (s) setEditSupplierName(s.name);
                     else if (!v) setEditSupplierName(editOrder.vendor || '');
                   }}
+                  options={[
+                    { value: '', label: '—' },
+                    ...editSupplierOptions.map((s) => ({ value: s.id, label: s.name })),
+                  ]}
+                  placeholder="Search supplier…"
+                  searchPlaceholder="Search…"
                   disabled={editSuppliersLoading}
-                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                >
-                  <option value="">—</option>
-                  {editSupplierOptions.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                  zIndexClass="z-[110]"
+                />
                 {editSuppliersLoading && <p className="text-[10px] text-[#9CA3AF] mt-1">Loading suppliers…</p>}
               </div>
               <div>

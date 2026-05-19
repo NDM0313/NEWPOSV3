@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, Lock, Loader2 } from 'lucide-react';
+import { CustomSelect } from '../common';
 import * as authApi from '../../api/auth';
 import type { User } from '../../types';
 import { getPinLockSettings, setPinLockSettings } from '../../lib/pinLock';
@@ -118,17 +119,14 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
             <p className="text-xs text-[#6B7280] -mt-1 mb-2">
               App will ask for PIN after being inactive for the selected time.
             </p>
-            <label className="block text-xs text-[#9CA3AF] mb-1">Re-lock after</label>
-            <select
-              value={timeoutMs}
+            <CustomSelect
+              label="Re-lock after"
+              value={String(timeoutMs)}
+              onChange={(v) => setTimeoutMs(Number(v))}
+              options={TIMEOUT_OPTIONS.map((o) => ({ value: String(o.ms), label: o.label }))}
               disabled={!requireOnResume}
-              onChange={(e) => setTimeoutMs(Number(e.target.value))}
-              className="w-full px-3 py-2 bg-[#111827] border border-[#374151] rounded-lg text-white text-sm disabled:opacity-50 focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]"
-            >
-              {TIMEOUT_OPTIONS.map((o) => (
-                <option key={o.ms} value={o.ms}>{o.label}</option>
-              ))}
-            </select>
+              zIndexClass="z-[100]"
+            />
           </div>
 
           <button

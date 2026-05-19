@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, Search, Plus, X, Wallet } from 'lucide-react';
+import { CustomSelect } from '../common';
 
 interface Account {
   id: string;
@@ -254,18 +255,19 @@ export function SelectAccountTablet({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Account Type *</label>
-                <select
+                <CustomSelect
+                  label="Account Type *"
                   value={newAccount.type}
-                  onChange={(e) => setNewAccount({ ...newAccount, type: e.target.value })}
-                  className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#F59E0B] focus:ring-2 focus:ring-[#F59E0B]/20"
-                >
-                  <option value="Asset">Asset</option>
-                  <option value="Liability">Liability</option>
-                  <option value="Expense">Expense</option>
-                  <option value="Revenue">Revenue</option>
-                  <option value="Equity">Equity</option>
-                </select>
+                  onChange={(v) => setNewAccount({ ...newAccount, type: v })}
+                  options={[
+                    { value: 'Asset', label: 'Asset' },
+                    { value: 'Liability', label: 'Liability' },
+                    { value: 'Expense', label: 'Expense' },
+                    { value: 'Revenue', label: 'Revenue' },
+                    { value: 'Equity', label: 'Equity' },
+                  ]}
+                  zIndexClass="z-[100]"
+                />
               </div>
               <div className="flex gap-3 pt-4">
                 <button

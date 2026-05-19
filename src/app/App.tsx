@@ -250,7 +250,7 @@ const AppContent = () => {
   if (currentView === 'purchases' && !modules.purchasesModuleEnabled) {
     return moduleDisabledScreen('Purchases Module Disabled');
   }
-  if (currentView === 'expenses' && !modules.expensesModuleEnabled) {
+  if (currentView === 'expenses' && !modules.expensesModuleEnabled && !modules.accountingModuleEnabled) {
     return moduleDisabledScreen('Expenses Module Disabled');
   }
   if (currentView === 'reports' && !modules.reportsModuleEnabled) {

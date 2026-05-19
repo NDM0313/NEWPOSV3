@@ -22,7 +22,7 @@ export async function getInventory(
 
   const { data: products, error: productsError } = await supabase
     .from('products')
-    .select('id, name, sku, min_stock, retail_price, cost_price, category, image_urls')
+    .select('id, name, sku, min_stock, retail_price, cost_price, category_id, image_urls, has_variations, product_categories(name)')
     .eq('company_id', companyId)
     .eq('is_active', true)
     .order('name');
@@ -33,7 +33,7 @@ export async function getInventory(
   const productIds = products.map((p: { id: string }) => p.id);
   let movQ = supabase
     .from('stock_movements')
-    .select('product_id, quantity')
+    .select('product_id, variation_id, quantity')
     .eq('company_id', companyId)
     .in('product_id', productIds);
   if (branchId && branchId !== 'all' && branchId !== 'default') {
@@ -41,17 +41,51 @@ export async function getInventory(
   }
   const { data: movements } = await movQ;
 
-  const stockByProductId: Record<string, number> = {};
-  (movements || []).forEach((m: { product_id: string; quantity: number }) => {
-    const id = m.product_id;
-    stockByProductId[id] = (stockByProductId[id] ?? 0) + Number(m.quantity ?? 0);
-  });
+  function stockMapFromMovements(
+    rows: { product_id: string; variation_id: string | null; quantity: number }[]
+  ): Record<string, number> {
+    const map: Record<string, number> = {};
+    for (const m of rows) {
+      const key = m.variation_id ? `${m.product_id}_${m.variation_id}` : m.product_id;
+      map[key] = (map[key] ?? 0) + (Number(m.quantity) || 0);
+    }
+    return map;
+  }
+
+  const stockByKey = stockMapFromMovements(
+    (movements || []) as { product_id: string; variation_id: string | null; quantity: number }[]
+  );
+
+  const withVariations = products.filter((r: { has_variations?: boolean }) => r.has_variations);
+  const varProductIds = withVariations.map((r: { id: string }) => r.id);
+  let varMap: Record<string, { id: string }[]> = {};
+  if (varProductIds.length > 0) {
+    const { data: varData } = await supabase
+      .from('product_variations')
+      .select('id, product_id')
+      .in('product_id', varProductIds)
+      .eq('is_active', true);
+    for (const v of varData || []) {
+      const pv = v as { product_id: string; id: string };
+      if (!varMap[pv.product_id]) varMap[pv.product_id] = [];
+      varMap[pv.product_id].push({ id: pv.id });
+    }
+  }
 
   const list: InventoryItem[] = products.map((r: Record<string, unknown>) => {
     const id = String(r.id ?? '');
-    const stock = stockByProductId[id] ?? 0;
+    const hasVariations = r.has_variations === true;
+    let stock: number;
+    if (hasVariations) {
+      const vars = varMap[id] ?? [];
+      stock = vars.length > 0 ? vars.reduce((sum, v) => sum + (stockByKey[`${id}_${v.id}`] ?? 0), 0) : 0;
+    } else {
+      stock = stockByKey[id] ?? 0;
+    }
     const minStock = Number(r.min_stock) ?? 0;
     const imgs = (r.image_urls as string[] | null) ?? [];
+    const pc = r.product_categories as { name?: string } | { name?: string }[] | null | undefined;
+    const categoryName = Array.isArray(pc) ? pc[0]?.name : pc?.name;
     return {
       id,
       sku: String(r.sku ?? '—'),
@@ -61,7 +95,7 @@ export async function getInventory(
       isLowStock: minStock > 0 && stock <= minStock,
       retailPrice: Number(r.retail_price) ?? 0,
       costPrice: Number(r.cost_price) ?? 0,
-      category: (r.category as string | null) ?? null,
+      category: categoryName ?? null,
       imageUrl: imgs[0] ?? null,
     };
   });

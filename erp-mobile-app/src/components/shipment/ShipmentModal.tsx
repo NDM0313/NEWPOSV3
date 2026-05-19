@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2, Truck } from 'lucide-react';
+import { CustomSelect } from '../common';
 import * as couriersApi from '../../api/couriers';
 import * as shipmentsApi from '../../api/shipments';
 
@@ -95,30 +96,23 @@ export function ShipmentModal({
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-[#D1D5DB] mb-1">Courier</label>
-            <select
+            <CustomSelect
+              label="Courier"
               value={courierId}
-              onChange={(e) => setCourierId(e.target.value)}
-              className="w-full rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white"
+              onChange={setCourierId}
+              options={[{ value: '', label: 'Select courier' }, ...couriers.map((c) => ({ value: c.id, label: c.name }))]}
               disabled={couriersLoading}
-            >
-              <option value="">Select courier</option>
-              {couriers.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+              zIndexClass="z-[100]"
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium text-[#D1D5DB] mb-1">Status</label>
-            <select
+            <CustomSelect
+              label="Status"
               value={shipmentStatus}
-              onChange={(e) => setShipmentStatus(e.target.value)}
-              className="w-full rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white"
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+              onChange={setShipmentStatus}
+              options={STATUS_OPTIONS.map((s) => ({ value: s, label: s }))}
+              zIndexClass="z-[100]"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-[#D1D5DB] mb-1">Tracking number</label>

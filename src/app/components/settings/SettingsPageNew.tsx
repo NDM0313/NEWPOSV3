@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { AddUserModal } from '../users/AddUserModal';
 import { AddBranchModal } from '../branches/AddBranchModal';
 import { exportAndDownloadBackup, restoreCompanyBackup, type CompanyBackupData } from '@/app/services/backupService';
+import { BackupRestoreWorkbench } from '@/app/modules/csv-workbench';
 import { companyResetService, type CompanyResetPreview } from '@/app/services/companyResetService';
 import { InventoryMasters, type InventoryMasterTab } from './inventory/InventoryMasters';
 import { LeadTools } from './LeadTools';
@@ -2608,8 +2609,17 @@ export const SettingsPageNew = () => {
                   </div>
                 </div>
 
+                <div className="bg-gray-950 p-6 rounded-lg border border-emerald-800/40">
+                  <h4 className="text-white font-medium mb-2">Backup &amp; selective restore (ZIP / CSV)</h4>
+                  <p className="text-sm text-gray-400 mb-4">
+                    Export a full A-to-Z package with inventory stock balances, or import selected entities
+                    with dependency checks. Client-only — uses existing contact, product, and stock services.
+                  </p>
+                  <BackupRestoreWorkbench isOwner={isOwner} />
+                </div>
+
                 <div className="bg-gray-950 p-6 rounded-lg border border-gray-800">
-                  <h4 className="text-white font-medium mb-2">Company Backup (JSON)</h4>
+                  <h4 className="text-white font-medium mb-2">Advanced: Company Backup (JSON)</h4>
                   <p className="text-sm text-gray-400 mb-4">
                     Owner-only export. Data is strictly filtered by active company_id and includes tenant-safe tables.
                   </p>
@@ -2635,7 +2645,7 @@ export const SettingsPageNew = () => {
                 </div>
 
                 <div className="bg-gray-950 p-6 rounded-lg border border-amber-700/50">
-                  <h4 className="text-white font-medium mb-2">Restore Company Backup (Owner Only)</h4>
+                  <h4 className="text-white font-medium mb-2">Advanced: Full restore (JSON, Owner Only)</h4>
                   <p className="text-sm text-gray-400 mb-3">
                     Restore validates `meta.company_id`, clears current tenant data in FK-safe order, then imports backup data hierarchically.
                   </p>

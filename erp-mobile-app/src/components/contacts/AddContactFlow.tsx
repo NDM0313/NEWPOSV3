@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, User, Phone, Mail, MapPin, DollarSign, Briefcase } from 'lucide-react';
+import { CustomSelect } from '../common';
 import type { ContactRole } from '../../api/contacts';
 
 export interface AddContactFormData {
@@ -153,19 +154,25 @@ export function AddContactFlow({ onBack, onSubmit, error }: AddContactFlowProps)
               <h3 className="font-semibold text-sm">Worker Details</h3>
             </div>
             <div>
-              <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Worker Type *</label>
-              <select
-                value={formData.workerType}
-                onChange={(e) => { setFormData({ ...formData, workerType: e.target.value as AddContactFormData['workerType'] }); setErrors({ ...errors, workerType: '' }); }}
-                className={`w-full h-12 bg-[#111827] border rounded-lg px-4 text-white focus:outline-none ${errors.workerType ? 'border-[#EF4444]' : 'border-[#374151] focus:border-[#F59E0B]'}`}
-              >
-                <option value="">Select worker type</option>
-                <option value="dyer">Dyer</option>
-                <option value="stitcher">Stitcher</option>
-                <option value="master">Master</option>
-                <option value="handwork">Handwork</option>
-                <option value="other">Other</option>
-              </select>
+              <div className={errors.workerType ? '[&_button]:border-[#EF4444]' : ''}>
+                <CustomSelect
+                  label="Worker Type *"
+                  value={formData.workerType}
+                  onChange={(v) => {
+                    setFormData({ ...formData, workerType: v as AddContactFormData['workerType'] });
+                    setErrors({ ...errors, workerType: '' });
+                  }}
+                  options={[
+                    { value: '', label: 'Select worker type' },
+                    { value: 'dyer', label: 'Dyer' },
+                    { value: 'stitcher', label: 'Stitcher' },
+                    { value: 'master', label: 'Master' },
+                    { value: 'handwork', label: 'Handwork' },
+                    { value: 'other', label: 'Other' },
+                  ]}
+                  zIndexClass="z-[100]"
+                />
+              </div>
               {errors.workerType && <p className="text-[#EF4444] text-xs mt-1">{errors.workerType}</p>}
             </div>
             <div>

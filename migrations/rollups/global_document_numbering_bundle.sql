@@ -558,6 +558,7 @@ $pur$;
 
 -- ---------------------------------------------------------------------------
 -- 5) create_sale_document_header — invoice_no (regular) or order_no (studio)
+-- Enum casts for type/status/payment_status (see migrations/20260522120000_create_sale_document_header_enum_casts.sql).
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.create_sale_document_header(
   p_company_id UUID,
@@ -633,9 +634,9 @@ BEGIN
             THEN (s->>'customer_id')::UUID ELSE NULL END,
           COALESCE(NULLIF(TRIM(s->>'customer_name'), ''), 'Walk-in'),
           NULLIF(TRIM(s->>'contact_number'), ''),
-          COALESCE(NULLIF(TRIM(s->>'type'), ''), 'quotation'),
-          COALESCE(NULLIF(TRIM(s->>'status'), ''), 'order'),
-          COALESCE(NULLIF(TRIM(s->>'payment_status'), ''), 'unpaid'),
+          (COALESCE(NULLIF(TRIM(s->>'type'), ''), 'quotation'))::public.sale_type,
+          (COALESCE(NULLIF(TRIM(s->>'status'), ''), 'order'))::public.sale_status,
+          (COALESCE(NULLIF(TRIM(s->>'payment_status'), ''), 'unpaid'))::public.payment_status,
           COALESCE(NULLIF(TRIM(s->>'payment_method'), ''), 'Credit'),
           COALESCE((s->>'subtotal')::NUMERIC, 0),
           COALESCE((s->>'discount_amount')::NUMERIC, 0),
@@ -684,9 +685,9 @@ BEGIN
             THEN (s->>'customer_id')::UUID ELSE NULL END,
           COALESCE(NULLIF(TRIM(s->>'customer_name'), ''), 'Walk-in'),
           NULLIF(TRIM(s->>'contact_number'), ''),
-          COALESCE(NULLIF(TRIM(s->>'type'), ''), 'invoice'),
-          COALESCE(NULLIF(TRIM(s->>'status'), ''), 'final'),
-          COALESCE(NULLIF(TRIM(s->>'payment_status'), ''), 'unpaid'),
+          (COALESCE(NULLIF(TRIM(s->>'type'), ''), 'invoice'))::public.sale_type,
+          (COALESCE(NULLIF(TRIM(s->>'status'), ''), 'final'))::public.sale_status,
+          (COALESCE(NULLIF(TRIM(s->>'payment_status'), ''), 'unpaid'))::public.payment_status,
           COALESCE(NULLIF(TRIM(s->>'payment_method'), ''), 'Cash'),
           COALESCE((s->>'subtotal')::NUMERIC, 0),
           COALESCE((s->>'discount_amount')::NUMERIC, 0),

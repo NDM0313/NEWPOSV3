@@ -8,6 +8,7 @@ import {
   type TransactionDetail,
 } from '../../../../api/transactions';
 import { getPaymentAccounts } from '../../../../api/accounts';
+import { CustomSelect } from '../../../common';
 
 interface EditTransactionSheetProps {
   open: boolean;
@@ -197,28 +198,30 @@ export function EditTransactionSheet({ open, companyId, mode, targetId, onClose,
 
               {mode === 'payment' && (
                 <>
-                  <label className="block text-xs text-[#9CA3AF]">Payment Account</label>
-                  <select
+                  <CustomSelect
+                    label="Payment Account"
                     value={form.paymentAccountId}
-                    onChange={(e) => setForm((s) => ({ ...s, paymentAccountId: e.target.value }))}
-                    className="w-full h-10 rounded bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                  >
-                    <option value="">Select account</option>
-                    {paymentAccounts.map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
-                  <label className="block text-xs text-[#9CA3AF]">Payment Method</label>
-                  <select
+                    onChange={(v) => setForm((s) => ({ ...s, paymentAccountId: v }))}
+                    options={[
+                      { value: '', label: 'Select account' },
+                      ...paymentAccounts.map((a) => ({ value: a.id, label: a.name })),
+                    ]}
+                    disabled={saving}
+                    zIndexClass="z-[100]"
+                  />
+                  <CustomSelect
+                    label="Payment Method"
                     value={form.paymentMethod}
-                    onChange={(e) => setForm((s) => ({ ...s, paymentMethod: e.target.value }))}
-                    className="w-full h-10 rounded bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                  >
-                    <option value="cash">Cash</option>
-                    <option value="bank">Bank</option>
-                    <option value="card">Card</option>
-                    <option value="other">Other</option>
-                  </select>
+                    onChange={(v) => setForm((s) => ({ ...s, paymentMethod: v }))}
+                    options={[
+                      { value: 'cash', label: 'Cash' },
+                      { value: 'bank', label: 'Bank' },
+                      { value: 'card', label: 'Card' },
+                      { value: 'other', label: 'Other' },
+                    ]}
+                    disabled={saving}
+                    zIndexClass="z-[100]"
+                  />
                   <label className="block text-xs text-[#9CA3AF]">Reference #</label>
                   <input
                     type="text"
@@ -238,28 +241,28 @@ export function EditTransactionSheet({ open, companyId, mode, targetId, onClose,
 
               {mode === 'journal' && (
                 <>
-                  <label className="block text-xs text-[#9CA3AF]">Debit Account</label>
-                  <select
+                  <CustomSelect
+                    label="Debit Account"
                     value={form.debitAccountId}
-                    onChange={(e) => setForm((s) => ({ ...s, debitAccountId: e.target.value }))}
-                    className="w-full h-10 rounded bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                  >
-                    <option value="">Select debit account</option>
-                    {accounts.map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
-                  <label className="block text-xs text-[#9CA3AF]">Credit Account</label>
-                  <select
+                    onChange={(v) => setForm((s) => ({ ...s, debitAccountId: v }))}
+                    options={[
+                      { value: '', label: 'Select debit account' },
+                      ...accounts.map((a) => ({ value: a.id, label: a.name })),
+                    ]}
+                    disabled={saving}
+                    zIndexClass="z-[100]"
+                  />
+                  <CustomSelect
+                    label="Credit Account"
                     value={form.creditAccountId}
-                    onChange={(e) => setForm((s) => ({ ...s, creditAccountId: e.target.value }))}
-                    className="w-full h-10 rounded bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                  >
-                    <option value="">Select credit account</option>
-                    {accounts.map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setForm((s) => ({ ...s, creditAccountId: v }))}
+                    options={[
+                      { value: '', label: 'Select credit account' },
+                      ...accounts.map((a) => ({ value: a.id, label: a.name })),
+                    ]}
+                    disabled={saving}
+                    zIndexClass="z-[100]"
+                  />
                   <label className="block text-xs text-[#9CA3AF]">Description</label>
                   <textarea
                     rows={3}

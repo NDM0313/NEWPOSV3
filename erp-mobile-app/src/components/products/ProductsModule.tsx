@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ArrowLeft, Package, Plus, Search, Loader2, Edit2, Image as ImageIcon, Boxes, AlertTriangle, TrendingUp } from 'lucide-react';
 import type { User } from '../../types';
 import * as productsApi from '../../api/products';
 import type { ProductVariationRow } from '../../api/products';
 import { AddProductFlow, type AddProductFlowSavePayload } from './AddProductFlow';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
+import { PullToRefresh } from '../common';
 import { formatQty } from '../../utils/quantity';
 
 /** Total stock: sum of variation stocks when hasVariations, else product stock */
@@ -50,21 +51,24 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
   const [saving, setSaving] = useState(false);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
 
+  const loadProducts = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!companyId) {
+        setProducts([]);
+        setLoading(false);
+        return;
+      }
+      if (!opts?.silent) setLoading(true);
+      const { data, error } = await productsApi.getProducts(companyId);
+      setLoading(false);
+      setProducts(error ? [] : data || []);
+    },
+    [companyId]
+  );
+
   useEffect(() => {
-    if (!companyId) {
-      setProducts([]);
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    productsApi.getProducts(companyId).then(({ data, error }) => {
-      if (cancelled) return;
-      setLoading(false);
-      setProducts(error ? [] : data);
-    });
-    return () => { cancelled = true; };
-  }, [companyId]);
+    void loadProducts();
+  }, [loadProducts]);
 
   const filtered = products.filter((p) => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
@@ -155,6 +159,20 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
     setEditingProduct(null);
   };
 
+  const stats = useMemo(() => {
+    const totalProducts = products.length;
+    let totalStock = 0;
+    let lowStock = 0;
+    let stockValue = 0;
+    for (const p of products) {
+      const s = getDisplayStock(p);
+      totalStock += s;
+      stockValue += s * (p.costPrice || 0);
+      if (p.minStock != null && s <= (p.minStock ?? 0)) lowStock += 1;
+    }
+    return { totalProducts, totalStock, lowStock, stockValue };
+  }, [products]);
+
   if (view === 'add') {
     return (
       <>
@@ -186,20 +204,6 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
       </>
     );
   }
-
-  const stats = useMemo(() => {
-    const totalProducts = products.length;
-    let totalStock = 0;
-    let lowStock = 0;
-    let stockValue = 0;
-    for (const p of products) {
-      const s = getDisplayStock(p);
-      totalStock += s;
-      stockValue += s * (p.costPrice || 0);
-      if (p.minStock != null && s <= (p.minStock ?? 0)) lowStock += 1;
-    }
-    return { totalProducts, totalStock, lowStock, stockValue };
-  }, [products]);
 
   return (
     <div className="min-h-screen bg-[#0B1120] pb-24">
@@ -255,7 +259,8 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         </div>
       </div>
 
-      <div className="p-4">
+      <PullToRefresh onRefresh={() => loadProducts({ silent: true })} disabled={!companyId} spinnerAccentClass="border-t-[#3B82F6]">
+        <div className="p-4">
         {loading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 text-[#3B82F6] animate-spin" />
@@ -366,7 +371,8 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
             )}
           </>
         )}
-      </div>
+        </div>
+      </PullToRefresh>
     </div>
   );
 }

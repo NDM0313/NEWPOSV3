@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2, Save } from 'lucide-react';
+import { CustomSelect } from '../../common';
 import type { TransactionDetail } from '../../../api/transactions';
 import { supabase } from '../../../lib/supabase';
 import { updateTransaction } from '../../../api/transactionEdit';
@@ -114,20 +115,17 @@ export function TransactionEditSheet({ detail, companyId, onClose, onSuccess }: 
 
           {!isManualJournal && (
             <div>
-              <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Payment Account</label>
-              <select
+              <CustomSelect
+                label="Payment Account"
                 value={selectedAccountId}
-                onChange={(e) => setSelectedAccountId(e.target.value)}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#6366F1]"
+                onChange={setSelectedAccountId}
+                options={[
+                  { value: '', label: 'Select Account' },
+                  ...accounts.map((acc) => ({ value: acc.id, label: acc.name, subtitle: acc.type })),
+                ]}
                 disabled={loading}
-              >
-                <option value="">Select Account</option>
-                {accounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name}
-                  </option>
-                ))}
-              </select>
+                zIndexClass="z-[100]"
+              />
             </div>
           )}
 

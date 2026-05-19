@@ -1,0 +1,50 @@
+---
+description: Rules for building, debugging, and fixing Capacitor Android apps (Pixel/cleartext), Windows PowerShell, and Gradle sync order.
+globs:
+  - erp-mobile-app/**/*
+  - erp-mobile-app/capacitor.config.ts
+  - erp-mobile-app/android/app/src/main/AndroidManifest.xml
+alwaysApply: false
+---
+
+# Android & Capacitor build rules
+
+When the user asks to build the Android app, fix a blink/crash, or run Gradle, follow these rules.
+
+## 1. Cleartext and Pixel compatibility (blink / WebView)
+
+- **Always** keep `android:usesCleartextTraffic="true"` on the `<application>` element in [`erp-mobile-app/android/app/src/main/AndroidManifest.xml`](erp-mobile-app/android/app/src/main/AndroidManifest.xml).
+- **Always** keep [`erp-mobile-app/android/app/src/main/res/xml/network_security_config.xml`](erp-mobile-app/android/app/src/main/res/xml/network_security_config.xml) wired via `android:networkSecurityConfig` so local and HTTP traffic work during development.
+- In [`erp-mobile-app/capacitor.config.ts`](erp-mobile-app/capacitor.config.ts), keep `android.allowMixedContent: true` for Android.
+
+After changing `capacitor.config.ts`, run Capacitor sync so the config is copied into Android assets (e.g. `npm run cap:sync:android:prod` or `npx cap sync android`).
+
+## 2. PowerShell commands only (Windows)
+
+- Do **not** suggest Unix-only commands such as `rm -rf`.
+- To remove directories, use: `Remove-Item -Path "path" -Recurse -Force` (quote paths that contain spaces).
+
+## 3. Correct Gradle directory
+
+- Do **not** run `gradlew` from the repo root or from `erp-mobile-app` alone.
+- **Always** `cd` (or `Set-Location`) to `erp-mobile-app\android` before `.\gradlew.bat clean`, `.\gradlew.bat assembleDebug`, etc.
+- Use Windows-style invocation: `.\gradlew.bat` (not `./gradlew`).
+
+## 4. Sync before native build
+
+- From **`erp-mobile-app`**, run **`npm run cap:sync:android:prod`** before building the debug/release APK so `dist` and Capacitor config are up to date in the Android project.
+- For a non-production web bundle, `npm run cap:sync:android` is the alternative; default to prod when the user is testing production-like APKs.
+
+## Example (PowerShell, paths with spaces)
+
+Run from the machine’s repo root (adjust drive/path if needed):
+
+```powershell
+Set-Location "C:\Users\ndm31\dev\Corusr\NEW POSV3\erp-mobile-app"
+npm run cap:sync:android:prod
+Set-Location ".\android"
+.\gradlew.bat assembleDebug
+adb install -r "C:\Users\ndm31\dev\Corusr\NEW POSV3\erp-mobile-app\android\app\build\outputs\apk\debug\app-debug.apk"
+```
+
+Ensure `adb devices` shows the emulator or device before `adb install`.

@@ -47,7 +47,8 @@ import {
 import { shouldRunFocusRefresh } from '@/app/lib/focusRefreshPolicy';
 import { Pagination } from '@/app/components/ui/pagination';
 import { CustomSelect } from '@/app/components/ui/custom-select';
-import { ListToolbar } from '@/app/components/ui/list-toolbar';
+import { BackgroundSyncBar } from '@/app/components/ui/BackgroundSyncBar';
+import { useListBackgroundRefresh } from '@/app/hooks/useListBackgroundRefresh';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -205,11 +206,15 @@ export const ContactsPage = () => {
   const [paymentFlowMode, setPaymentFlowMode] = useState<'customer_receipt' | 'supplier_payment' | null>(null);
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  /** Row-level delete in progress (UUID) — avoids full-table skeleton on delete refresh. */
+  const [deletingContactUuid, setDeletingContactUuid] = useState<string | null>(null);
   const [editContactOpen, setEditContactOpen] = useState(false);
   const [viewProfileOpen, setViewProfileOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
+  /** Throttle accounting-domain invalidations (journal storms) so Contacts does not refetch on every JE reload. */
+  const lastAccountingContactsInvalidationRef = useRef(0);
   const loadContactsInProgressRef = useRef(false);
   const queuedReloadRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** If refresh is requested while a load runs, run one more load when the current one finishes. */
@@ -219,6 +224,12 @@ export const ContactsPage = () => {
   const loadContactsRef = useRef<() => Promise<void>>(async () => {});
   const [filterPosition, setFilterPosition] = useState({ top: 0, left: 0 });
   const [companyBranches, setCompanyBranches] = useState<Branch[]>([]);
+  const {
+    beginFetch: beginContactsFetch,
+    markInitialComplete: markContactsInitialComplete,
+    reset: resetContactsListRefresh,
+    isBackgroundRefreshing: contactsBackgroundRefreshing,
+  } = useListBackgroundRefresh();
 
   const queueSmartReload = useCallback(() => {
     if (!companyId) return;
@@ -226,7 +237,7 @@ export const ContactsPage = () => {
     queuedReloadRef.current = setTimeout(() => {
       queuedReloadRef.current = null;
       void loadContactsRef.current();
-    }, 220);
+    }, 1100);
   }, [companyId]);
 
   useEffect(() => {
@@ -237,6 +248,10 @@ export const ContactsPage = () => {
     branchService.getBranchesCached(companyId).then(setCompanyBranches).catch(() => setCompanyBranches([]));
   }, [companyId]);
 
+  useEffect(() => {
+    resetContactsListRefresh();
+  }, [companyId, resetContactsListRefresh]);
+
   const getBranchLabel = useCallback(
     (bid: string | null | undefined) => {
       if (!bid) return 'Unassigned';
@@ -245,6 +260,9 @@ export const ContactsPage = () => {
     },
     [companyBranches]
   );
+
+  const getBranchLabelRef = useRef(getBranchLabel);
+  getBranchLabelRef.current = getBranchLabel;
 
   // Convert Supabase contact to app format. Phase-1 keeps operational amounts neutral (0/0)
   // until canonical RPC balances load; this avoids showing fallback/test math as final balances.
@@ -298,13 +316,13 @@ export const ContactsPage = () => {
       netBalance: receivables - payables,
       status,
       branchId: supabaseContact.branch_id ? String(supabaseContact.branch_id) : null,
-      branch: getBranchLabel(supabaseContact.branch_id),
+      branch: getBranchLabelRef.current(supabaseContact.branch_id),
       address: supabaseContact.address,
       lastTransaction: supabaseContact.updated_at ? new Date(supabaseContact.updated_at).toISOString().split('T')[0] : undefined,
       is_system_generated: supabaseContact.is_system_generated || false,
       system_type: supabaseContact.system_type || undefined,
     };
-  }, [getBranchLabel]);
+  }, []);
 
   /**
    * When branch names load after contacts, refresh labels only — never during list/balance fetch
@@ -312,12 +330,17 @@ export const ContactsPage = () => {
    */
   useEffect(() => {
     if (!companyBranches.length || listLoading || balancesLoading) return;
-    setContacts((prev) =>
-      prev.map((c) => ({
-        ...c,
-        branch: getBranchLabel(c.branchId),
-      }))
-    );
+    setContacts((prev) => {
+      if (prev.length === 0) return prev;
+      let changed = false;
+      const next = prev.map((c) => {
+        const nb = getBranchLabel(c.branchId);
+        if (nb === c.branch) return c;
+        changed = true;
+        return { ...c, branch: nb };
+      });
+      return changed ? next : prev;
+    });
   }, [companyBranches, getBranchLabel, listLoading, balancesLoading]);
 
   // Load contacts in two phases: (1) contacts list fast, (2) receivables/payables from RPC or merged sales/purchases
@@ -348,7 +371,10 @@ export const ContactsPage = () => {
     };
 
     try {
-      setListLoading(true);
+      const fetchMode = beginContactsFetch();
+      if (fetchMode.mode === 'initial') {
+        setListLoading(true);
+      }
       setBalancesLoading(false);
       setBalancesStale(false);
       setOperationalEngine(null);
@@ -497,6 +523,7 @@ export const ContactsPage = () => {
       clearBalanceTimeout();
       setListLoading(false);
       setBalancesLoading(false);
+      markContactsInitialComplete();
       loadContactsInProgressRef.current = false;
       if (pendingContactsBalanceRefreshRef.current) {
         pendingContactsBalanceRefreshRef.current = false;
@@ -505,7 +532,7 @@ export const ContactsPage = () => {
         });
       }
     }
-  }, [companyId, branchId, convertFromSupabaseContact]);
+  }, [companyId, branchId, convertFromSupabaseContact, beginContactsFetch, markContactsInitialComplete]);
 
   useEffect(() => {
     loadContactsRef.current = loadContacts;
@@ -523,24 +550,7 @@ export const ContactsPage = () => {
 
   const balanceColumnsPending = balancesLoading || balancesStale;
 
-  /** Keep party-attributed GL map refreshed for row GL subline. */
-  useEffect(() => {
-    if (!companyId || listLoading || balancesLoading || balancesStale) {
-      if (listLoading || balancesLoading || balancesStale) setPartyGlByContactId(null);
-      return;
-    }
-    let cancelled = false;
-    contactService
-      .getContactPartyGlBalancesMap(companyId, branchId === 'all' ? null : branchId)
-      .then((m) => {
-        if (!cancelled) setPartyGlByContactId(m);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [companyId, branchId, listLoading, balancesLoading, balancesStale]);
-
-  /** Control-account drawer → open this contact’s canonical party statement */
+  /** Party GL map is populated inside loadContacts phase-2; avoid a second duplicate RPC on every settle. */
   useEffect(() => {
     if (listLoading || contacts.length === 0) return;
     let raw: string | null = null;
@@ -678,6 +688,11 @@ export const ContactsPage = () => {
   useEffect(() => {
     const onInvalidated = (ev: Event) => {
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      if (detail?.domain === 'accounting') {
+        const now = Date.now();
+        if (now - lastAccountingContactsInvalidationRef.current < 3500) return;
+        lastAccountingContactsInvalidationRef.current = now;
+      }
       if (
         !shouldAcceptInvalidation(detail, {
           domain: ['contacts', 'sales', 'purchases', 'accounting'],
@@ -984,16 +999,18 @@ export const ContactsPage = () => {
   // Action handlers
   const handleDeleteContact = async () => {
     if (!selectedContact) return;
-    
+    const id = selectedContact.uuid;
     try {
-      await contactService.deleteContact(selectedContact.uuid);
+      setDeletingContactUuid(id);
+      await contactService.deleteContact(id);
       toast.success('Contact deleted successfully');
       setDeleteDialogOpen(false);
       setSelectedContact(null);
-      // Reload contacts from database
       await loadContacts();
     } catch (error: any) {
       toast.error('Failed to delete contact: ' + (error.message || 'Unknown error'));
+    } finally {
+      setDeletingContactUuid(null);
     }
   };
 
@@ -1005,6 +1022,7 @@ export const ContactsPage = () => {
     <div className="h-screen flex flex-col bg-[#0B0F19]">
       {/* Sticky top section: header + summary + toolbar - prevents overlap with content */}
       <div className="shrink-0 sticky top-0 z-20 bg-[#0B0F19] flex flex-col">
+      <BackgroundSyncBar active={contactsBackgroundRefreshing} label="Updating contacts and balances…" />
       {/* Page Header */}
       <div className="px-6 py-3 border-b border-gray-800">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1738,7 +1756,7 @@ export const ContactsPage = () => {
       {/* Contacts Table - Scrollable (min-h-0 lets flex-1 shrink so overflow works) */}
       <div className="flex-1 min-h-0 overflow-auto px-6 py-3">
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden min-h-[200px]">
-          {listLoading ? (
+          {listLoading && contacts.length === 0 ? (
             <div className="p-4 md:p-5">
               <div className="grid grid-cols-2 gap-3 max-w-md mx-auto mb-4">
                 <div className="rounded-lg border border-gray-800 bg-gray-900/80 p-3 animate-pulse">
@@ -1896,11 +1914,12 @@ export const ContactsPage = () => {
                             <div className="flex items-center justify-end gap-1">
                               {partyGlByContactId &&
                                 partyGlMismatchFlags(contact, partyGlByContactId.get(String(contact.uuid))).receivables && (
-                                  <AlertCircle
-                                    size={14}
-                                    className="text-amber-400 shrink-0"
+                                  <span
+                                    className="inline-flex shrink-0"
                                     title={`GL receivable variance [${operationalReasonTag || 'posting_gap'}] — check Customer ledger GL tab / journals`}
-                                  />
+                                  >
+                                    <AlertCircle size={14} className="text-amber-400 shrink-0" />
+                                  </span>
                                 )}
                               <div
                                 className={cn(
@@ -1947,11 +1966,12 @@ export const ContactsPage = () => {
                             <div className="flex items-center justify-end gap-1">
                               {partyGlByContactId &&
                                 partyGlMismatchFlags(contact, partyGlByContactId.get(String(contact.uuid))).payables && (
-                                  <AlertCircle
-                                    size={14}
-                                    className="text-amber-400 shrink-0"
+                                  <span
+                                    className="inline-flex shrink-0"
                                     title={`GL payable variance [${operationalReasonTag || 'posting_gap'}] — check party statement GL tab`}
-                                  />
+                                  >
+                                    <AlertCircle size={14} className="text-amber-400 shrink-0" />
+                                  </span>
                                 )}
                               <div
                                 className={cn(
@@ -1996,7 +2016,10 @@ export const ContactsPage = () => {
                       </div>
 
                       {/* Actions - Show only on hover */}
-                      <div className="flex justify-center">
+                      <div className="flex justify-center items-center min-h-[32px]">
+                        {deletingContactUuid === contact.uuid ? (
+                          <Loader2 size={18} className="text-sky-400 animate-spin" aria-label="Deleting" />
+                        ) : (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button 
@@ -2256,6 +2279,7 @@ export const ContactsPage = () => {
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
+                        )}
                       </div>
                     </div>
                   ))

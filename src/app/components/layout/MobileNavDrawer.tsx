@@ -39,6 +39,10 @@ export const MobileNavDrawer = () => {
   const studioProductionV3 = featureFlags?.studio_production_v3 === true;
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
+  const expensesNavVisible =
+    (settingsModules.expensesModuleEnabled && hasPermission('expenses.view')) ||
+    (settingsModules.accountingModuleEnabled && hasPermission('accounting.view'));
+
   const toggleExpand = (id: string) => {
     setExpandedItems((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
@@ -66,7 +70,7 @@ export const MobileNavDrawer = () => {
         { id: 'studio-workflow', label: 'Workers' },
       ],
     },
-    { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !settingsModules.expensesModuleEnabled || !hasPermission('expenses.view') },
+    { id: 'expenses', label: 'Expenses', icon: Receipt, isHidden: !expensesNavVisible },
     { id: 'accounting', label: 'Accounting', icon: Calculator, isHidden: !settingsModules.accountingModuleEnabled || !hasPermission('accounting.view') },
     {
       id: 'ar-ap-reconciliation-center',

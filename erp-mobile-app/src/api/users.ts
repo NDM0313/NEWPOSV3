@@ -79,6 +79,50 @@ export async function getSalesmen(companyId: string): Promise<{ data: SalesmanRo
   return { data, error: null };
 }
 
+/** Roles eligible for Salary expense payee (mirrors web `userService.getUsersForSalary`). Workers are excluded. */
+const SALARY_EXPENSE_ROLES = ['admin', 'manager', 'staff', 'salesman', 'operator', 'cashier', 'inventory'] as const;
+
+export interface SalaryUserRow {
+  id: string;
+  full_name: string;
+  email: string | null;
+  role: string | null;
+}
+
+/**
+ * Active users who may receive salary via Expenses (not production workers).
+ */
+export async function getUsersForSalary(companyId: string): Promise<{ data: SalaryUserRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+
+  const { data: users, error } = await supabase
+    .from('users')
+    .select('id, full_name, role, email, is_active')
+    .eq('company_id', companyId);
+
+  if (error) return { data: [], error: error.message };
+
+  type Row = { id: string; full_name?: string | null; role?: string | null; email?: string | null; is_active?: boolean };
+  const active = (users || []).filter((u) => (u as Row).is_active !== false);
+  const roleOk = (r: string) => (SALARY_EXPENSE_ROLES as readonly string[]).includes(r);
+  const filtered = active.filter((u) => {
+    const role = String((u as Row).role ?? '').toLowerCase();
+    return roleOk(role);
+  });
+
+  const data: SalaryUserRow[] = filtered.map((u) => {
+    const r = u as Row;
+    return {
+      id: String(r.id),
+      full_name: String(r.full_name ?? '—'),
+      email: r.email ?? null,
+      role: r.role ?? null,
+    };
+  });
+
+  return { data, error: null };
+}
+
 export interface CreateUserWithAuthParams {
   email: string;
   full_name: string;

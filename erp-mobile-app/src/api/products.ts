@@ -16,7 +16,7 @@ export async function getNextProductSKU(companyId: string, branchId: string | nu
 
 /** Products table select: omit current_stock so query works when column is missing. Stock from variations or 0. */
 const PRODUCTS_SELECT =
-  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, image_urls, product_categories(name), units(name, allow_decimal)';
+  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, image_urls, product_categories(name), units(name)';
 
 export interface ProductRow {
   id: string;

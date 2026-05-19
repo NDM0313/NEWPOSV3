@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, Loader2, Mail, User, Key } from 'lucide-react';
+import { CustomSelect } from '../common';
 import * as usersApi from '../../api/users';
 
 const ROLES = [
@@ -107,18 +108,13 @@ export function AddUserSheet({ companyId, branchId, onBack, onSuccess }: AddUser
         </div>
 
         <div>
-          <label className="text-xs text-[#9CA3AF] block mb-1">Role</label>
-          <select
+          <CustomSelect
+            label="Role"
             value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl px-3 py-3 text-white"
-          >
-            {ROLES.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </select>
+            onChange={setRole}
+            options={ROLES.map((r) => ({ value: r.value, label: r.label }))}
+            zIndexClass="z-[100]"
+          />
         </div>
 
         <div className="space-y-2">

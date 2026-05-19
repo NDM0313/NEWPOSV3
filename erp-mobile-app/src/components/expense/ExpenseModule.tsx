@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Plus, Calendar, DollarSign, Search, Loader2, Upload, X } from 'lucide-react';
-import { TextInput, NumericInput, ActionBar } from '../common';
+import { TextInput, NumericInput, ActionBar, CustomSelect, CustomSearchableSheet, PullToRefresh } from '../common';
 import type { User, Branch } from '../../types';
 import * as expensesApi from '../../api/expenses';
 import * as authApi from '../../api/auth';
 import * as accountsApi from '../../api/accounts';
 import * as branchesApi from '../../api/branches';
+import { getUsersForSalary, type SalaryUserRow } from '../../api/users';
 import { addPending } from '../../lib/offlineStore';
 
 interface ExpenseModuleProps {
@@ -91,18 +92,20 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [branchesList, setBranchesList] = useState<Branch[]>([]);
   const [addBranchId, setAddBranchId] = useState('');
+  const [paidToUserId, setPaidToUserId] = useState('');
+  const [salaryUsers, setSalaryUsers] = useState<SalaryUserRow[]>([]);
+  const [salaryUsersLoading, setSalaryUsersLoading] = useState(false);
 
-  useEffect(() => {
-    if (!companyId) {
+  const loadExpenses = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!companyId) {
+        setLoading(false);
+        return;
+      }
+      if (!opts?.silent) setLoading(true);
+      const { data, error } = await expensesApi.getExpenses(companyId, branch?.id);
       setLoading(false);
-      return;
-    }
-    let c = false;
-    setLoading(true);
-    expensesApi.getExpenses(companyId, branch?.id).then(({ data, error }) => {
-      if (c) return;
-      setLoading(false);
-      if (!error && data)
+      if (!error && data) {
         setList(
           data.map((r: { id: string; expense_no?: string; expense_date: string; category: string; description?: string; amount: number }) => ({
             id: r.id,
@@ -113,11 +116,14 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
             amount: r.amount,
           }))
         );
-    });
-    return () => {
-      c = true;
-    };
-  }, [companyId, branch?.id]);
+      }
+    },
+    [companyId, branch?.id]
+  );
+
+  useEffect(() => {
+    void loadExpenses();
+  }, [loadExpenses]);
 
   useEffect(() => {
     if (!showAdd || !companyId) return;
@@ -141,22 +147,77 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
     categoryTree.length > 0 && (mainCategoryId || subCategoryId)
       ? (selectedSub?.slug ?? selectedMain?.slug ?? '')
       : (CATEGORY_TO_SLUG[addCategory] ?? addCategory.toLowerCase().replace(/\s+/g, '_'));
+
+  const slugLower = (effectiveCategorySlug || '').toLowerCase();
+  const isSalaryCategory =
+    slugLower === 'salaries' ||
+    slugLower === 'salary' ||
+    slugLower === 'wages' ||
+    selectedMain?.type === 'salary' ||
+    selectedSub?.type === 'salary';
+
+  useEffect(() => {
+    if (!isSalaryCategory) {
+      setPaidToUserId('');
+      setSalaryUsers([]);
+      setSalaryUsersLoading(false);
+      return;
+    }
+    if (!showAdd || !companyId) return;
+    let cancelled = false;
+    setSalaryUsersLoading(true);
+    getUsersForSalary(companyId)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        setSalaryUsersLoading(false);
+        if (error) setSalaryUsers([]);
+        else setSalaryUsers(data || []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSalaryUsersLoading(false);
+          setSalaryUsers([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showAdd, companyId, isSalaryCategory]);
+
   const selectedAccount = paymentAccounts.find((a) => a.id === addAccountId);
-  const paymentMethodFromAccount = selectedAccount ? (selectedAccount.type === 'bank' ? 'bank' : selectedAccount.type === 'mobile_wallet' ? 'wallet' : 'cash') : 'cash';
+  const paymentMethodFromAccount = selectedAccount
+    ? selectedAccount.type === 'bank'
+      ? 'bank'
+      : selectedAccount.type === 'mobile_wallet' || selectedAccount.type === 'wallet'
+        ? 'wallet'
+        : 'cash'
+    : 'cash';
   const effectiveBranchId = branch?.id && branch.id !== 'all' ? branch.id : addBranchId;
 
   const handleAdd = async () => {
     const amt = parseFloat(addAmount);
-    if (!companyId || !effectiveBranchId || !addDesc.trim() || isNaN(amt) || amt <= 0) {
+    if (!companyId || !effectiveBranchId || isNaN(amt) || amt <= 0) {
       setAddError(
         branch?.id === 'all' && !addBranchId
           ? 'Select a branch for this expense.'
-          : 'Enter valid description and amount.'
+          : 'Enter a valid amount greater than zero.'
       );
       return;
     }
     if (!effectiveCategorySlug) {
       setAddError('Please select a category.');
+      return;
+    }
+    const selectedSalaryUser = isSalaryCategory ? salaryUsers.find((u) => u.id === paidToUserId) : undefined;
+    if (isSalaryCategory && !paidToUserId) {
+      setAddError('Please select the user to pay (Salary is for Staff / Salesman / Operator only).');
+      return;
+    }
+    const descriptionFinal =
+      addDesc.trim() ||
+      (isSalaryCategory && selectedSalaryUser ? `${selectedSalaryUser.full_name} – Salary` : '');
+    if (!descriptionFinal) {
+      setAddError('Enter a description or select a salary payee.');
       return;
     }
     if (paymentAccounts.length > 0 && !addAccountId) {
@@ -195,17 +256,19 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
           companyId,
           branchId: effectiveBranchId,
           category: effectiveCategorySlug,
-          description: addDesc.trim(),
+          description: descriptionFinal,
           amount: amt,
           paymentMethod,
           userId: session.userId,
           paymentAccountId: addAccountId || undefined,
           receiptUrl: receiptUrl || undefined,
+          paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
+          payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : undefined,
         }, companyId, effectiveBranchId);
         const displayCategory = selectedSub?.name ?? selectedMain?.name ?? addCategory;
         const tempId = `offline-${Date.now()}`;
         setList((prev) => [
-          { id: tempId, expense_no: 'Pending sync', date: new Date().toISOString().slice(0, 10), category: displayCategory, description: addDesc.trim(), amount: amt },
+          { id: tempId, expense_no: 'Pending sync', date: new Date().toISOString().slice(0, 10), category: displayCategory, description: descriptionFinal, amount: amt },
           ...prev,
         ]);
         setAddError(null);
@@ -215,6 +278,7 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
         setAddAccountId('');
         setMainCategoryId('');
         setSubCategoryId('');
+        setPaidToUserId('');
         setAddReceiptFile(null);
         setAddBranchId('');
       } catch (e) {
@@ -228,12 +292,14 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
       companyId,
       branchId: effectiveBranchId,
       category: effectiveCategorySlug,
-      description: addDesc.trim(),
+      description: descriptionFinal,
       amount: amt,
       paymentMethod,
       userId: session.userId,
       paymentAccountId: addAccountId || undefined,
       receiptUrl: receiptUrl || undefined,
+      paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
+      payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : undefined,
     });
     setSaving(false);
     if (error) {
@@ -242,7 +308,7 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
     }
     const displayCategory = selectedSub?.name ?? selectedMain?.name ?? addCategory;
     setList((prev) => [
-      { id: data!.id, expense_no: data!.expense_no || '—', date: new Date().toISOString().slice(0, 10), category: displayCategory, description: addDesc.trim(), amount: amt },
+      { id: data!.id, expense_no: data!.expense_no || '—', date: new Date().toISOString().slice(0, 10), category: displayCategory, description: descriptionFinal, amount: amt },
       ...prev,
     ]);
     setAddError(null);
@@ -252,6 +318,7 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
     setAddAccountId('');
     setMainCategoryId('');
     setSubCategoryId('');
+    setPaidToUserId('');
     setAddReceiptFile(null);
     setAddBranchId('');
   };
@@ -301,91 +368,116 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
             {/* Branch (when "All Branches" is selected) */}
             {branch?.id === 'all' && branchesList.length > 0 && (
               <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-                <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Branch *</label>
-                <select
+                <CustomSelect
+                  label="Branch *"
                   value={addBranchId}
-                  onChange={(e) => setAddBranchId(e.target.value)}
-                  className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#EF4444]"
-                >
-                  <option value="">Select branch for this expense</option>
-                  {branchesList.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-[#9CA3AF] mt-1">Expense will be recorded under the selected branch.</p>
+                  onChange={setAddBranchId}
+                  options={[
+                    { value: '', label: 'Select branch for this expense' },
+                    ...branchesList.map((b) => ({ value: b.id, label: b.name })),
+                  ]}
+                  placeholder="Select branch"
+                  zIndexClass="z-[90]"
+                />
+                <p className="text-xs text-[#9CA3AF] mt-2">Expense will be recorded under the selected branch.</p>
               </div>
             )}
 
             {/* Account (Cash/Bank) */}
             {paymentAccounts.length > 0 && (
               <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-                <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Paid from (Account) *</label>
-                <select
+                <CustomSelect
+                  label="Paid from (Account) *"
                   value={addAccountId}
-                  onChange={(e) => setAddAccountId(e.target.value)}
-                  className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#EF4444]"
-                >
-                  <option value="">Select account (Cash / Bank)</option>
-                  {paymentAccounts.map((acc) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.name} ({acc.type}) — Rs. {acc.balance.toLocaleString()}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setAddAccountId}
+                  options={[
+                    { value: '', label: 'Select account (Cash / Bank)' },
+                    ...paymentAccounts.map((acc) => ({
+                      value: acc.id,
+                      label: `${acc.name} (${acc.type})`,
+                      subtitle: `Rs. ${acc.balance.toLocaleString()}`,
+                    })),
+                  ]}
+                  placeholder="Select account"
+                  zIndexClass="z-[90]"
+                />
               </div>
             )}
 
             {/* Category: tree (main + sub) or fallback */}
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Category *</label>
+              <span className="block text-sm font-medium text-[#D1D5DB] mb-2">Category *</span>
               {categoryTree.length > 0 ? (
                 <div className="space-y-3">
-                  <select
-                    value={mainCategoryId || '_none'}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setMainCategoryId(v === '_none' ? '' : v);
+                  <CustomSelect
+                    value={mainCategoryId}
+                    onChange={(v) => {
+                      setMainCategoryId(v);
                       setSubCategoryId('');
                     }}
-                    className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#EF4444]"
-                  >
-                    <option value="_none">Select main category</option>
-                    {categoryTree.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: 'Select main category' },
+                      ...categoryTree.map((m) => ({ value: m.id, label: m.name })),
+                    ]}
+                    placeholder="Main category"
+                    zIndexClass="z-[90]"
+                  />
                   {subOptions.length > 0 && (
-                    <select
-                      value={subCategoryId || '_main'}
-                      onChange={(e) => setSubCategoryId(e.target.value === '_main' ? '' : e.target.value)}
-                      className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#EF4444]"
-                    >
-                      <option value="_main">— {selectedMain?.name} (main)</option>
-                      {subOptions.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
+                    <CustomSelect
+                      value={subCategoryId}
+                      onChange={setSubCategoryId}
+                      options={[
+                        { value: '', label: `— ${selectedMain?.name ?? 'Category'} (main)` },
+                        ...subOptions.map((s) => ({ value: s.id, label: s.name })),
+                      ]}
+                      placeholder="Subcategory"
+                      zIndexClass="z-[90]"
+                    />
                   )}
                 </div>
               ) : (
-                <select
+                <CustomSelect
                   value={addCategory}
-                  onChange={(e) => setAddCategory(e.target.value)}
-                  className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white focus:outline-none focus:border-[#EF4444]"
-                >
-                  {CATEGORY_OPTIONS.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+                  onChange={setAddCategory}
+                  options={CATEGORY_OPTIONS.map((c) => ({ value: c, label: c }))}
+                  zIndexClass="z-[90]"
+                />
               )}
             </div>
 
+            {isSalaryCategory && (
+              <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+                {salaryUsersLoading ? (
+                  <p className="text-sm text-[#9CA3AF] flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin shrink-0" /> Loading staff…
+                  </p>
+                ) : (
+                  <CustomSearchableSheet
+                    label="Pay to (staff user) *"
+                    sheetTitle="Select payee"
+                    value={paidToUserId}
+                    onChange={setPaidToUserId}
+                    options={salaryUsers.map((u) => ({
+                      value: u.id,
+                      label: u.full_name,
+                      description: [u.role, u.email].filter(Boolean).join(' · ') || undefined,
+                    }))}
+                    placeholder="Search by name, role, or email…"
+                    searchPlaceholder="Search staff…"
+                    required
+                    hint="Salary is for users only (Admin, Staff, Salesman, Operator). Workers are paid via Production → Worker Ledger."
+                    zIndexClass="z-[90]"
+                  />
+                )}
+              </div>
+            )}
+
             <TextInput
-              label="Description *"
+              label={isSalaryCategory ? 'Description (optional for salary)' : 'Description *'}
               value={addDesc}
               onChange={setAddDesc}
-              placeholder="What was this expense for?"
-              required
+              placeholder={isSalaryCategory ? 'Optional — defaults to payee name + Salary' : 'What was this expense for?'}
+              required={!isSalaryCategory}
             />
             <NumericInput
               label="Amount (Rs.) *"
@@ -501,6 +593,7 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
         )}
       </div>
 
+      <PullToRefresh onRefresh={() => loadExpenses({ silent: true })} disabled={!companyId} spinnerAccentClass="border-t-[#EF4444]">
       <div className="p-4 space-y-4">
         {loading ? (
           <div className="flex justify-center py-12">
@@ -555,6 +648,7 @@ export function ExpenseModule({ onBack, user: _user, companyId, branch }: Expens
           })
         )}
       </div>
+      </PullToRefresh>
 
       <button
         onClick={() => setShowAdd(true)}

@@ -1,0 +1,92 @@
+---
+description: Master lockdown for NEW POSV3 — schema, GL/sales integrity, deploy auth, and safe extension boundaries. Requires explicit user confirmation before high-risk edits.
+globs:
+  - erp-mobile-app/**/*
+  - POS/**/*
+  - supabase/**/*
+  - accounting/**/*
+  - migrations/**/*
+  - src/**/*
+  - deploy/**/*
+alwaysApply: true
+---
+
+# System lockdown — NEW POSV3
+
+This repository is in **safe stable mode** (see [`GIT_WORKFLOW_RULES.txt`](GIT_WORKFLOW_RULES.txt)). Treat the items below as **production-critical** unless the user explicitly asks to change them and confirms the blast radius.
+
+## Indexed working surfaces (auto-scope)
+
+These paths define where ERP, mobile, POS shell, edge functions, UI modules, **canonical Postgres migrations**, main web `src`, and **deploy** orchestration live. When editing here, assume **downstream devices (web + Capacitor + VPS)** depend on current contracts.
+
+| Area | Path | Role |
+|------|------|------|
+| Mobile ERP | [`erp-mobile-app/`](erp-mobile-app/) | Capacitor + Vite; baked Supabase URL; sync → `android/` / `ios/` |
+| Expo POS shell | [`POS/`](POS/) | Separate client; do not silently change shared API assumptions vs main ERP |
+| Supabase project slice | [`supabase/`](supabase/) | Edge functions + small migration set shipped with repo |
+| Accounting UI modules | [`accounting/`](accounting/) | Chart / journal / transfer UI; must stay aligned with `src/` API + RPCs |
+| **Canonical DB** | [`migrations/`](migrations/) | **Primary** SQL migrations (sales, GL, inventory, RLS, RPCs) — highest risk |
+| Main web app | [`src/`](src/) | Primary UI, services, hooks against Supabase |
+| Production deploy | [`deploy/`](deploy/) | Docker, Kong, nginx, env writers — locked with auth docs |
+
+**Reference / archive SQL:** [`supabase-extract/migrations/`](supabase-extract/migrations/) — treat as historical or apply-order reference; prefer **new** forward migrations under [`migrations/`](migrations/) rather than rewriting extract files unless the user explicitly requests extract maintenance.
+
+## Hard stops — require explicit user confirmation in the same request
+
+Do **not** implement, reorder, or “simplify” the following without the user **clearly stating** they want the change and accepting risk to **money, stock, and invoices**:
+
+1. **Database structure**
+   - `DROP TABLE`, `DROP COLUMN`, destructive `ALTER` on tables that store money, balances, or legal documents (including but not limited to: `sales`, `sale_items`, `purchases`, `purchase_items`, `accounts`, `journal_entries`, `journal_entry_lines`, payment / allocation / receipt tables, inventory movement tables, `document_sequences`, commission / studio production tables tied to posted GL).
+   - Replacing or bulk-`DROP POLICY` on RLS for the above without a reviewed, additive policy plan.
+   - Changing **trigger** behavior that posts GL, updates stock, or finalizes sales/purchases (including “skip trigger when RPC” patterns) without an explicit migration review story.
+
+2. **Stable accounting / GL**
+   - Any change that alters **double-entry meaning** (debit/credit rules, account typing, party mapping, AR/AP repair RPCs) or **void/reversal** semantics.
+   - Renumbering or reusing `accounts.code` / journal document numbers in ways that affect historical reports.
+
+3. **Core sales / operational states**
+   - Sale / purchase **status** enums, cancellation flows, finalize / unfinalize, COGS posting, or studio ↔ sale sync fields that other modules read.
+   - Invoice / receipt numbering and **atomic sequence** RPCs (race-sensitive).
+
+4. **Auth / keys / mobile API base (cross-rule)**
+   - Follow [`.cursor/rules/auth-production-locked.mdc`](.cursor/rules/auth-production-locked.mdc) and [`docs/infra/MOBILE_APK_LOCKED_PATTERN.md`](docs/infra/MOBILE_APK_LOCKED_PATTERN.md). Do not change Supabase URL selection for native Capacitor or production key sources without explicit approval and doc updates.
+
+5. **Android / Capacitor build safety**
+   - Follow [`.cursor/rules/android-capacitor-build.mdc`](.cursor/rules/android-capacitor-build.mdc) for cleartext, `network_security_config`, Gradle cwd, and sync-before-build.
+
+## Architectural boundaries (future features must respect)
+
+```mermaid
+flowchart LR
+  subgraph clients [Clients]
+    Web[src_ERP]
+    Mobile[erp_mobile_app]
+    POSshell[POS_Expo]
+  end
+  subgraph contracts [Contracts]
+    API[Supabase_RPCs_and_tables]
+  end
+  subgraph data [Data_plane]
+    PG[(Postgres_migrations)]
+  end
+  Web --> API
+  Mobile --> API
+  POSshell --> API
+  API --> PG
+```
+
+- **UI redesigns (web or mobile):** Change **layout, styling, and composition** inside components. Do **not** change RPC names, table shapes, or shared TypeScript DTOs consumed by multiple screens unless paired with a **minimal migration + all callers updated** in the same change set.
+- **Multi-user / switching / RBAC:** Prefer **additive** tables/columns/policies (`CREATE POLICY`, new join tables). Avoid replacing entire permission engines or removing enterprise role checks in one pass.
+- **New features:** New business logic should live in **new modules** (new components under `src/features/...`, new migrations with clear names) and call **existing** RPCs where possible. Do not copy-paste divergent “second implementations” of finalize/pay/post flows.
+- **Parallel clients:** `erp-mobile-app` and `POS/` must remain compatible with the **same** Supabase contract as [`src/`](src/). If you change the server contract, update **all** affected clients or the user must explicitly scope “web only” / “mobile later”.
+
+## Allowed without lifting full lockdown (still use minimal diffs)
+
+- `CREATE TABLE IF NOT EXISTS` / additive columns with defaults for **new** features.
+- Read-only diagnostics, views, and indexes that do not change write paths (document performance impact).
+- UI-only bugfixes that do not alter queries, RPC args, or migrations.
+- Docs and comments that reflect current behavior.
+
+## When uncertain
+
+Stop and ask the user to confirm scope **before** editing migrations, GL triggers, sale state machines, or deploy auth wiring. Prefer linking to the relevant [`migrations/*.sql`](migrations/) file and listing **tables + policies** touched in the PR-style summary.

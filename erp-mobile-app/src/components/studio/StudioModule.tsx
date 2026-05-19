@@ -17,7 +17,7 @@ import {
   readStudioProfitPctFromStorage,
   writeStudioProfitPctToStorage,
 } from './studioPricing';
-import { NumericInput } from '../common';
+import { NumericInput, CustomSelect } from '../common';
 
 interface StudioModuleProps {
   onBack: () => void;
@@ -1069,19 +1069,16 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
 
             {!invSelectedProduct ? (
               <div className="space-y-2">
-                <label className="text-xs text-[#9CA3AF]">Category (new product)</label>
-                <select
+                <CustomSelect
+                  label="Category (new product)"
                   value={invCategoryId}
-                  onChange={(e) => setInvCategoryId(e.target.value)}
-                  className="w-full rounded-lg bg-[#111827] border border-[#374151] px-3 py-2.5 text-sm text-white"
-                >
-                  <option value="">Optional — uncategorized</option>
-                  {invCategories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setInvCategoryId}
+                  options={[
+                    { value: '', label: 'Optional — uncategorized' },
+                    ...invCategories.map((c) => ({ value: c.id, label: c.name })),
+                  ]}
+                  zIndexClass="z-[100]"
+                />
               </div>
             ) : (
               <p className="text-sm text-[#10B981]">

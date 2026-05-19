@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import * as employeesApi from '../../api/employees';
 import * as branchesApi from '../../api/branches';
+import { CustomSelect, CustomSearchableSheet } from '../common';
 
 interface EmployeesSectionProps {
   onBack: () => void;
@@ -378,17 +379,18 @@ export function EmployeesSection({ onBack, companyId, isAdminOrOwner, userId }: 
                   <Shield className="w-3.5 h-3.5" /> Role & Permissions
                 </h3>
                 <div>
-                  <label className="text-[10px] text-[#9CA3AF] block mb-1.5 uppercase font-bold">User Role</label>
-                  <select 
-                    className="w-full bg-[#111827] border border-[#374151] rounded-xl px-4 py-2.5 text-white outline-none text-sm"
+                  <CustomSelect
+                    label="User Role"
                     value={editRole}
-                    onChange={(e) => setEditRole(e.target.value)}
-                  >
-                    <option value="owner">Owner</option>
-                    <option value="admin">Admin</option>
-                    <option value="manager">Manager</option>
-                    <option value="user">User / Staff</option>
-                  </select>
+                    onChange={setEditRole}
+                    options={[
+                      { value: 'owner', label: 'Owner' },
+                      { value: 'admin', label: 'Admin' },
+                      { value: 'manager', label: 'Manager' },
+                      { value: 'user', label: 'User / Staff' },
+                    ]}
+                    zIndexClass="z-[100]"
+                  />
                 </div>
               </div>
 
@@ -441,15 +443,22 @@ export function EmployeesSection({ onBack, companyId, isAdminOrOwner, userId }: 
             </div>
             <div className="space-y-4">
               <div>
-                <label className="text-xs text-[#9CA3AF] block mb-1.5 uppercase font-bold">Select User</label>
-                <select 
-                  className="w-full bg-[#111827] border border-[#374151] rounded-xl px-4 py-3 text-white focus:border-[#3B82F6] outline-none"
+                <CustomSearchableSheet
+                  label="Select User"
+                  sheetTitle="Select user"
                   value={newUserId}
-                  onChange={(e) => setNewUserId(e.target.value)}
-                >
-                  <option value="">Select a user...</option>
-                  {availableUsers.map(u => <option key={u.id} value={u.id}>{u.full_name || u.name}</option>)}
-                </select>
+                  onChange={setNewUserId}
+                  options={[
+                    { value: '', label: 'Select a user…' },
+                    ...availableUsers.map((u) => ({
+                      value: u.id,
+                      label: u.full_name || u.name || u.id,
+                    })),
+                  ]}
+                  placeholder="Search users…"
+                  searchPlaceholder="Search…"
+                  zIndexClass="z-[100]"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

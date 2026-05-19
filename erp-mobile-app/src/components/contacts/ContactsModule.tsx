@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Users, Plus, Search, Phone, Loader2 } from 'lucide-react';
 import type { User } from '../../types';
 import * as contactsApi from '../../api/contacts';
@@ -6,6 +6,7 @@ import type { Contact, ContactRole } from '../../api/contacts';
 import { AddContactFlow, type AddContactFormData } from './AddContactFlow';
 import { EditContactFlow } from './EditContactFlow';
 import { ContactDetailView } from './ContactDetailView';
+import { PullToRefresh } from '../common';
 
 export type { Contact, ContactRole };
 
@@ -28,18 +29,17 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
   const [updateError, setUpdateError] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!companyId) {
-      setContacts([]);
-      setLoading(false);
-      setLoadError('Company not selected.');
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
-    contactsApi.getContacts(companyId, undefined, branchId).then(({ data, error }) => {
-      if (cancelled) return;
+  const loadContacts = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!companyId) {
+        setContacts([]);
+        setLoading(false);
+        setLoadError('Company not selected.');
+        return;
+      }
+      if (!opts?.silent) setLoading(true);
+      setLoadError(null);
+      const { data, error } = await contactsApi.getContacts(companyId, undefined, branchId);
       setLoading(false);
       if (error) {
         setLoadError(error);
@@ -47,9 +47,13 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
       } else {
         setContacts(data || []);
       }
-    });
-    return () => { cancelled = true; };
-  }, [companyId, branchId]);
+    },
+    [companyId, branchId]
+  );
+
+  useEffect(() => {
+    void loadContacts();
+  }, [loadContacts]);
 
   const filtered = contacts.filter((c) => {
     const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search);
@@ -165,7 +169,8 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
         </div>
       </div>
 
-      <div className="p-4">
+      <PullToRefresh onRefresh={() => loadContacts({ silent: true })} disabled={!companyId} spinnerAccentClass="border-t-[#8B5CF6]">
+        <div className="p-4">
         {loadError && (
           <div className="mb-4 p-3 bg-[#EF4444]/10 border border-[#EF4444]/50 rounded-xl text-[#FCA5A5] text-sm">
             {loadError}
@@ -255,7 +260,8 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
         )}
         </>
         )}
-      </div>
+        </div>
+      </PullToRefresh>
     </div>
   );
 }

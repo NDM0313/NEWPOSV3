@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, Loader2 } from 'lucide-react';
+import { CustomSelect } from '../common';
 import * as accountsApi from '../../api/accounts';
 import { ACCOUNT_TYPES } from '../../api/accounts';
 import { dispatchMobileAccountingInvalidated } from '../../lib/dataInvalidationBus';
@@ -99,18 +100,13 @@ export function AddAccountForm({ onBack, onSuccess, companyId }: AddAccountFormP
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Type</label>
-          <select
+          <CustomSelect
+            label="Type"
             value={type}
-            onChange={(e) => setType(e.target.value as AccountTypeValue)}
-            className="w-full px-4 py-3 bg-[#1F2937] border border-[#374151] rounded-xl text-white focus:outline-none focus:border-[#F59E0B]"
-          >
-            {ACCOUNT_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setType(v as AccountTypeValue)}
+            options={ACCOUNT_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+            zIndexClass="z-[100]"
+          />
         </div>
 
         <div>

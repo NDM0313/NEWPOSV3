@@ -82,6 +82,8 @@ export function registerAllSyncHandlers(): void {
       userId: string;
       paymentAccountId?: string | null;
       receiptUrl?: string | null;
+      paidToUserId?: string | null;
+      payeeName?: string | null;
     };
     const { data, error } = await expensesApi.createExpense({
       companyId: p.companyId,
@@ -93,6 +95,8 @@ export function registerAllSyncHandlers(): void {
       userId: p.userId,
       paymentAccountId: p.paymentAccountId,
       receiptUrl: p.receiptUrl,
+      paidToUserId: p.paidToUserId,
+      payeeName: p.payeeName,
     });
     if (error) return { error };
     return { serverId: data!.id };

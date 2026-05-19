@@ -224,6 +224,7 @@ export const contactService = {
 
       // If code unique violation, get next code and retry
       if (isContactCodeUniqueViolation(error) && payload.code) {
+        lastInsertError = error;
         const codeType =
           (payload.type === 'customer' || payload.type === 'both') ? 'CUS' :
           payload.type === 'supplier' ? 'SUP' :
@@ -242,6 +243,9 @@ export const contactService = {
     }
 
     const error = lastInsertError;
+    if (!error) {
+      throw new Error('Contact could not be created (no error returned from database)');
+    }
     const isBadRequest = error.code === 'PGRST204' || error.code === 'PGRST116' || (error as any).status === 400;
     if (!isBadRequest) throw error;
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { CustomSelect } from '../common';
 import type { RentalDetail } from '../../api/rentals';
 
 interface RentalPickupModalProps {
@@ -69,16 +70,17 @@ export function RentalPickupModal({ rental, onClose, onConfirm, loading }: Renta
           </div>
           <p className="text-sm font-medium text-[#E5E7EB]">Security Document Collected?</p>
           <div>
-            <label className="block text-sm text-[#9CA3AF] mb-1">Document type</label>
-            <select
+            <CustomSelect
+              label="Document type"
               value={documentType}
-              onChange={(e) => setDocumentType(e.target.value as 'cnic' | 'card' | 'other')}
-              className="w-full max-w-full min-w-0 h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white box-border"
-            >
-              <option value="cnic">CNIC</option>
-              <option value="card">Card</option>
-              <option value="other">Other</option>
-            </select>
+              onChange={(v) => setDocumentType(v as 'cnic' | 'card' | 'other')}
+              options={[
+                { value: 'cnic', label: 'CNIC' },
+                { value: 'card', label: 'Card' },
+                { value: 'other', label: 'Other' },
+              ]}
+              zIndexClass="z-[100]"
+            />
           </div>
           <div>
             <label className="block text-sm text-[#9CA3AF] mb-1">Document number</label>

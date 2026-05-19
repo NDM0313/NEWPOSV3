@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { CustomSelect } from '../common';
 import type { RentalDetail } from '../../api/rentals';
 import * as accountsApi from '../../api/accounts';
 
@@ -113,16 +114,17 @@ export function RentalReturnModal({ rental, companyId, onClose, onConfirm, loadi
             />
           </div>
           <div>
-            <label className="block text-sm text-[#9CA3AF] mb-1">Condition</label>
-            <select
+            <CustomSelect
+              label="Condition"
               value={conditionType}
-              onChange={(e) => setConditionType(e.target.value)}
-              className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white"
-            >
-              <option value="good">Good condition</option>
-              <option value="minor_damage">Minor damage</option>
-              <option value="major_damage">Major damage</option>
-            </select>
+              onChange={setConditionType}
+              options={[
+                { value: 'good', label: 'Good condition' },
+                { value: 'minor_damage', label: 'Minor damage' },
+                { value: 'major_damage', label: 'Major damage' },
+              ]}
+              zIndexClass="z-[100]"
+            />
           </div>
           {conditionType !== 'good' && (
             <>
@@ -160,17 +162,19 @@ export function RentalReturnModal({ rental, companyId, onClose, onConfirm, loadi
               </label>
               {penaltyPaid && penalty > 0 && (
                 <div>
-                  <label className="block text-sm text-[#9CA3AF] mb-1">Penalty received into *</label>
-                  <select
+                  <CustomSelect
+                    label="Penalty received into *"
                     value={penaltyPaymentAccountId ?? ''}
-                    onChange={(e) => setPenaltyPaymentAccountId(e.target.value || null)}
-                    className="w-full max-w-full min-w-0 h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white box-border"
-                  >
-                    <option value="">Select account</option>
-                    {paymentAccounts.map((acc) => (
-                      <option key={acc.id} value={acc.id}>{acc.name} ({acc.code})</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setPenaltyPaymentAccountId(v || null)}
+                    options={[
+                      { value: '', label: 'Select account' },
+                      ...paymentAccounts.map((acc) => ({
+                        value: acc.id,
+                        label: `${acc.name} (${acc.code})`,
+                      })),
+                    ]}
+                    zIndexClass="z-[100]"
+                  />
                 </div>
               )}
             </>

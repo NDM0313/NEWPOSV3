@@ -18,6 +18,7 @@ import {
   saleAccountingSnapshotFromRow,
   type SaleLedgerSyncSkipReason,
 } from '../../api/saleEditAccounting';
+import { CustomSearchableSheet } from '../common';
 
 /** STD lives on order_no until finalized (matches web); invoice_no may be null pre-bill. */
 function saleDocumentDisplayNo(row: Record<string, unknown>): string {
@@ -1537,26 +1538,25 @@ export function SalesHome({
             </div>
             <div className="p-4 space-y-3 overflow-y-auto">
               <div>
-                <label className="block text-xs text-[#9CA3AF] mb-1">Customer</label>
-                <select
+                <CustomSearchableSheet
+                  label="Customer"
+                  sheetTitle="Customer"
                   value={editCustomerId ?? ''}
-                  onChange={(e) => {
-                    const v = e.target.value;
+                  onChange={(v) => {
                     setEditCustomerId(v || null);
                     const c = editCustomerOptions.find((x) => x.id === v);
                     if (c) setEditCustomerName(c.name);
                     else if (!v) setEditCustomerName(String((editSale.raw.customer_name as string) || 'Walk-in'));
                   }}
+                  options={[
+                    { value: '', label: 'Walk-in / other' },
+                    ...editCustomerOptions.map((c) => ({ value: c.id, label: c.name })),
+                  ]}
+                  placeholder="Search customer…"
+                  searchPlaceholder="Search…"
                   disabled={editCustomersLoading}
-                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
-                >
-                  <option value="">Walk-in / other</option>
-                  {editCustomerOptions.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  zIndexClass="z-[110]"
+                />
                 {editCustomersLoading && <p className="text-[10px] text-[#9CA3AF] mt-1">Loading customers…</p>}
               </div>
               <div>

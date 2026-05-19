@@ -9,6 +9,7 @@ import * as branchesApi from '../../api/branches';
 import * as accountsApi from '../../api/accounts';
 import * as usersApi from '../../api/users';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
+import { CustomSelect, CustomSearchableSheet } from '../common';
 import { localNowDateString, formatLocalDateTimeDisplay } from '../../utils/localDate';
 import type { User } from '../../types';
 
@@ -747,32 +748,35 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         </div>
         <div className="p-4 space-y-4">
           <div>
-            <label className="block text-sm text-[#9CA3AF] mb-2">Salesman</label>
-            <select
+            <CustomSearchableSheet
+              label="Salesman"
+              sheetTitle="Salesman"
               value={salesmanId ?? ''}
-              onChange={(e) => {
-                const id = e.target.value || null;
-                setSalesmanId(id);
-                if (id) {
-                  const picked = salesmen.find((s) => s.id === id);
-                  const defPct = picked?.rentalCommissionPercent ?? picked?.defaultCommissionPercent ?? null;
-                  if (defPct != null) setCommissionPct(String(defPct));
-                } else {
+              onChange={(id) => {
+                if (!id) {
+                  setSalesmanId(null);
                   setCommissionPct('');
+                  return;
                 }
+                setSalesmanId(id);
+                const picked = salesmen.find((s) => s.id === id);
+                const defPct = picked?.rentalCommissionPercent ?? picked?.defaultCommissionPercent ?? null;
+                if (defPct != null) setCommissionPct(String(defPct));
+                else setCommissionPct('');
               }}
-              className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white"
-            >
-              <option value="">— None —</option>
-              {salesmen.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}{s.role ? ` (${s.role})` : ''}
-                </option>
-              ))}
-            </select>
-            {salesmen.length === 0 && (
-              <p className="text-xs text-[#6B7280] mt-1">No salesmen configured. Enable "can be salesman" in user permissions.</p>
-            )}
+              options={[
+                { value: '', label: '— None —' },
+                ...salesmen.map((s) => ({
+                  value: s.id,
+                  label: s.name,
+                  description: s.role || undefined,
+                })),
+              ]}
+              placeholder="Search salesman…"
+              searchPlaceholder="Search…"
+              hint={salesmen.length === 0 ? 'No salesmen configured. Enable "can be salesman" in user permissions.' : undefined}
+              zIndexClass="z-[100]"
+            />
           </div>
           <div>
             <label className="block text-sm text-[#9CA3AF] mb-2">Commission %</label>
@@ -857,19 +861,19 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           </div>
           {paidAmount > 0 && (
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <label className="block text-sm text-[#9CA3AF] mb-2">Receive Advance Into *</label>
-              <select
+              <CustomSelect
+                label="Receive Advance Into *"
                 value={advancePaymentAccountId ?? ''}
-                onChange={(e) => setAdvancePaymentAccountId(e.target.value || null)}
-                className="w-full max-w-full min-w-0 h-12 bg-[#111827] border border-[#374151] rounded-xl px-4 text-white box-border"
-              >
-                <option value="">Select account</option>
-                {paymentAccounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name} ({acc.code})
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setAdvancePaymentAccountId(v || null)}
+                options={[
+                  { value: '', label: 'Select account' },
+                  ...paymentAccounts.map((acc) => ({
+                    value: acc.id,
+                    label: `${acc.name} (${acc.code})`,
+                  })),
+                ]}
+                zIndexClass="z-[100]"
+              />
               {paymentAccounts.length === 0 && <p className="text-xs text-[#F59E0B] mt-1">No payment accounts. Add Cash/Bank in Accounts.</p>}
             </div>
           )}
@@ -923,17 +927,13 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             </p>
           </div>
           <div>
-            <label className="block text-sm text-[#9CA3AF] mb-2">Document Type</label>
-            <select
+            <CustomSelect
+              label="Document Type"
               value={securityDocType}
-              onChange={(e) => setSecurityDocType(e.target.value)}
-              className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white"
-            >
-              <option value="">— None —</option>
-              {SECURITY_DOC_TYPES.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
+              onChange={setSecurityDocType}
+              options={[{ value: '', label: '— None —' }, ...SECURITY_DOC_TYPES.map((t) => ({ value: t, label: t }))]}
+              zIndexClass="z-[100]"
+            />
           </div>
           <div>
             <label className="block text-sm text-[#9CA3AF] mb-2">Document Number</label>
@@ -1009,17 +1009,19 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           </div>
           {needAccount && (
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <label className="block text-sm text-[#9CA3AF] mb-2">Receive Advance Into *</label>
-              <select
+              <CustomSelect
+                label="Receive Advance Into *"
                 value={advancePaymentAccountId ?? ''}
-                onChange={(e) => setAdvancePaymentAccountId(e.target.value || null)}
-                className="w-full max-w-full min-w-0 h-12 bg-[#111827] border border-[#374151] rounded-xl px-4 text-white box-border"
-              >
-                <option value="">Select account</option>
-                {paymentAccounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>{acc.name} ({acc.code})</option>
-                ))}
-              </select>
+                onChange={(v) => setAdvancePaymentAccountId(v || null)}
+                options={[
+                  { value: '', label: 'Select account' },
+                  ...paymentAccounts.map((acc) => ({
+                    value: acc.id,
+                    label: `${acc.name} (${acc.code})`,
+                  })),
+                ]}
+                zIndexClass="z-[100]"
+              />
               {paymentAccounts.length === 0 && <p className="text-xs text-[#F59E0B] mt-1">No payment accounts. Add Cash/Bank in Accounts.</p>}
               <p className="text-xs text-[#6B7280] mt-1">Dr Cash/Bank, Cr customer receivable; rental charges Dr AR / Cr Rental Income.</p>
             </div>
@@ -1056,17 +1058,17 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
         {error && <div className="p-3 bg-[#EF4444]/20 border border-[#EF4444] rounded-xl text-[#FCA5A5] text-sm">{error}</div>}
         {needsBranchSelection && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-            <label className="block text-sm text-[#9CA3AF] mb-2">Branch *</label>
-            <select
+            <CustomSelect
+              label="Branch *"
               value={selectedBranchId ?? ''}
-              onChange={(e) => setSelectedBranchId(e.target.value || null)}
-              className={`w-full h-12 bg-[#111827] border rounded-xl px-4 text-white ${!selectedBranchId ? 'border-[#EF4444]' : 'border-[#374151]'}`}
-            >
-              <option value="">Select a specific branch</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
+              onChange={(v) => setSelectedBranchId(v || null)}
+              options={[
+                { value: '', label: 'Select a specific branch' },
+                ...branches.map((b) => ({ value: b.id, label: b.name })),
+              ]}
+              className={!selectedBranchId ? '[&_button]:border-[#EF4444]' : ''}
+              zIndexClass="z-[100]"
+            />
           </div>
         )}
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">

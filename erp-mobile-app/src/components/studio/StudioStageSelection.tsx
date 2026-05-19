@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Check, Plus, X } from 'lucide-react';
+import { CustomSelect } from '../common';
 import type { UiStageType } from '../../api/studio';
 
 /**
@@ -238,18 +239,13 @@ export function StudioStageSelection({ onBack, onSave, existingStageTypes = [], 
               />
             </div>
             <div>
-              <label className="text-xs text-[#9CA3AF] mb-1 block">Worker category (for routing)</label>
-              <select
+              <CustomSelect
+                label="Worker category (for routing)"
                 value={draftMapsTo}
-                onChange={(e) => setDraftMapsTo(e.target.value as UiStageType)}
-                className="w-full px-3 py-2 rounded-lg bg-[#111827] border border-[#374151] text-white focus:outline-none focus:border-[#8B5CF6]"
-              >
-                {STAGE_OPTIONS.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setDraftMapsTo(v as UiStageType)}
+                options={STAGE_OPTIONS.map((o) => ({ value: o.id, label: `${o.icon} ${o.name}` }))}
+                zIndexClass="z-[100]"
+              />
             </div>
             <div className="flex gap-2">
               <button
