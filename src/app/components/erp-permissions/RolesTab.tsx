@@ -5,11 +5,13 @@ import { userService } from '@/app/services/userService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { cn } from '../ui/utils';
 
+import { getEngineRoleLabel, mapAppRoleToEngineRole } from '@/app/config/functionalRoles';
+
 const ROLES = [
-  { id: 'owner', label: 'OWNER', icon: Crown, color: 'bg-green-500/20 text-green-400 border-green-500/30' },
-  { id: 'admin', label: 'ADMIN', icon: Shield, color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-  { id: 'manager', label: 'MANAGER', icon: Briefcase, color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
-  { id: 'user', label: 'SALESMAN', icon: ShoppingCart, color: 'bg-red-500/20 text-red-400 border-red-500/30' },
+  { id: 'owner', label: getEngineRoleLabel('owner').toUpperCase(), icon: Crown, color: 'bg-green-500/20 text-green-400 border-green-500/30' },
+  { id: 'admin', label: getEngineRoleLabel('admin').toUpperCase(), icon: Shield, color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+  { id: 'manager', label: getEngineRoleLabel('manager').toUpperCase(), icon: Briefcase, color: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
+  { id: 'user', label: getEngineRoleLabel('user').toUpperCase(), icon: ShoppingCart, color: 'bg-red-500/20 text-red-400 border-red-500/30' },
 ];
 
 const CAPS: [string, string, string][] = [
@@ -44,8 +46,7 @@ export function RolesTab() {
     userService.getAllUsers(companyId, { includeInactive: false }).then((users) => {
       const by: Record<string, number> = {};
       (users || []).forEach((u) => {
-        const r = (u.role || 'user').toLowerCase();
-        const k = r === 'salesman' ? 'user' : r;
+        const k = mapAppRoleToEngineRole(u.role);
         by[k] = (by[k] ?? 0) + 1;
       });
       setUserCount(by);

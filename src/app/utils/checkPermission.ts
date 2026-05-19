@@ -160,20 +160,3 @@ export function canViewReports(p: UserPermissions): boolean {
   return checkPermission(p, 'reports', 'view');
 }
 
-/**
- * Backend-friendly: check by role + module + action.
- * Use when only role is available (e.g. from get_user_role() RPC).
- * Admin always allowed. Manager/Staff require full permissions - use checkPermission().
- * Backend must validate via RLS / has_module_permission().
- */
-export type UserRole = 'Admin' | 'Manager' | 'Staff';
-
-export function checkPermissionByRole(
-  role: UserRole | string,
-  _module: PermissionModule,
-  _action: PermissionAction
-): boolean {
-  const r = (role || '').toString();
-  if (r === 'Admin' || r.toLowerCase() === 'admin') return true;
-  return false;
-}

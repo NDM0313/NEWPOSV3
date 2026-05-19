@@ -14,6 +14,10 @@ import { isDebugErpEnabled } from '@/app/lib/debugErp';
 import type { ModuleToggles } from '@/app/config/companyBootstrapRegistry';
 import { defaultModuleToggles } from '@/app/config/companyBootstrapRegistry';
 import { buildModuleTogglesFromConfigRows, moduleTogglePatchesToDb } from '@/app/config/moduleConfigSemantics';
+import {
+  mapAppRoleToEngineRole,
+  mapAppRoleToUiRole,
+} from '@/app/config/functionalRoles';
 
 export type { ModuleToggles };
 
@@ -722,16 +726,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
       // User permissions (userData fetched in parallel above)
       if (userData) {
-          const r = (userData.role || 'staff').toLowerCase();
-          const role: 'Admin' | 'Manager' | 'Staff' =
-            r === 'owner' || r === 'admin' || r === 'super admin' || r === 'superadmin' ? 'Admin'
-              : r === 'manager' || r === 'accountant' ? 'Manager'
-              : 'Staff';
-          const engineRole: EngineRole =
-            r === 'owner' ? 'owner'
-              : r === 'admin' || r === 'super admin' || r === 'superadmin' ? 'admin'
-              : r === 'manager' || r === 'accountant' ? 'manager'
-              : 'user';
+          const role = mapAppRoleToUiRole(userData.role);
+          const engineRole: EngineRole = mapAppRoleToEngineRole(userData.role);
           let canManagePurchases = role === 'Admin' || role === 'Manager';
           let canUsePos: boolean | undefined;
           let canAccessStudio: boolean | undefined;
@@ -1103,19 +1099,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     }
   };
 
+  /** @deprecated Legacy settings.user_permissions store — use role_permissions matrix instead. */
   const updatePermissions = async (permissions: Partial<UserPermissions>) => {
     if (!companyId) return;
-    
-    const updated = { ...currentUser, ...permissions };
-    setCurrentUser(updated);
-    
-    try {
-      await settingsService.setSetting(companyId, 'user_permissions', updated, 'permissions', 'User permissions');
-      toast.success('Permissions saved');
-    } catch (error) {
-      console.error('[SETTINGS] Error saving permissions:', error);
-      toast.error('Failed to save permissions');
-    }
+    setCurrentUser((prev) => ({ ...prev, ...permissions }));
   };
 
   const updateModules = async (newModules: Partial<ModuleToggles>) => {

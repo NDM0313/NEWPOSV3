@@ -49,7 +49,6 @@ const StudioDashboardNew = lazy(() => import('./components/studio/StudioDashboar
 import { SettingsPage } from './components/settings/SettingsPage';
 const SettingsPageNew = lazy(() => import('./components/settings/SettingsPageNew').then(m => ({ default: m.SettingsPageNew })));
 const ErpPermissionArchitecturePage = lazy(() => import('./components/erp-permissions/ErpPermissionArchitecturePage').then(m => ({ default: m.ErpPermissionArchitecturePage })));
-import { SettingsPageComplete } from './components/settings/SettingsPageComplete';
 import { SettingsPageClean } from './components/settings/SettingsPageClean';
 import { StudioWorkflowPage } from './components/studio/StudioWorkflowPage';
 import { PackingEntryPage } from './components/packing/PackingEntryPage';

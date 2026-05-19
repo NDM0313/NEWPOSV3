@@ -2,7 +2,7 @@
  * ACTIVE PERMISSION ENGINE – DO NOT MODIFY
  * Used by all ERP modules in production.
  * Single source of truth: public.role_permissions (role, module, action, allowed).
- * Consumed by: SettingsContext, useCheckPermission, ErpPermissionArchitecturePage, UserPermissionsTab, PermissionManagementPanel, PermissionInspectorPage.
+ * Consumed by: SettingsContext, useCheckPermission, ErpPermissionArchitecturePage, PermissionInspectorPage.
  */
 import { supabase } from '@/lib/supabase';
 

@@ -70,7 +70,7 @@ import {
 } from "../ui/popover";
 import { PackingDetails } from '../transactions/PackingEntryModal';
 import { toast } from "sonner";
-import { BranchSelector, currentUser } from '@/app/components/layout/BranchSelector';
+import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import { PurchaseItemsSection } from './PurchaseItemsSection';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
 import { useSupabase } from '@/app/context/SupabaseContext';

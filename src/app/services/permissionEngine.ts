@@ -28,20 +28,39 @@ function isStale(loadedAt: number): boolean {
   return Date.now() - loadedAt > CACHE_TTL_MS;
 }
 
+const VIEW_ACTIONS = ['view', 'view_own', 'view_branch', 'view_company'];
+
+function rowAllowsView(
+  rolePerms: RolePermissionRow[],
+  module: string,
+  extraActions: string[] = []
+): boolean {
+  return rolePerms.some(
+    (x) =>
+      x.module === module &&
+      x.allowed &&
+      (VIEW_ACTIONS.includes(x.action) || extraActions.includes(x.action))
+  );
+}
+
 function deriveFromRows(rolePerms: RolePermissionRow[], role: 'Admin' | 'Manager' | 'Staff'): UserPermissions {
-  const visibilityScopeActions = ['view_own', 'view_branch', 'view_company'];
-  const hasPurchase = rolePerms.some(x => x.module === 'purchase' && (visibilityScopeActions.includes(x.action) || x.action === 'create') && x.allowed);
-  const hasPos = rolePerms.some(x => x.module === 'pos' && (x.action === 'use' || x.action === 'view') && x.allowed);
-  const hasStudio = rolePerms.some(x => x.module === 'studio' && (visibilityScopeActions.includes(x.action) || ['create', 'edit', 'delete'].includes(x.action)) && x.allowed);
-  const hasRentals = rolePerms.some(x => x.module === 'rentals' && (visibilityScopeActions.includes(x.action) || x.action === 'create') && x.allowed);
-  const hasSalesView = rolePerms.some(x => x.module === 'sales' && visibilityScopeActions.includes(x.action) && x.allowed);
+  const visibilityScopeActions = VIEW_ACTIONS;
+  const hasPurchase = rowAllowsView(rolePerms, 'purchase', ['create']);
+  const hasPos = rolePerms.some(x => x.module === 'pos' && (x.action === 'use' || VIEW_ACTIONS.includes(x.action)) && x.allowed);
+  const hasStudio = rowAllowsView(rolePerms, 'studio', ['create', 'edit', 'delete']);
+  const hasRentals = rowAllowsView(rolePerms, 'rentals', ['create']);
+  const hasSalesView = rowAllowsView(rolePerms, 'sales');
   const hasSalesCreate = rolePerms.some(x => x.module === 'sales' && x.action === 'create' && x.allowed);
   const hasSalesEdit = rolePerms.some(x => x.module === 'sales' && x.action === 'edit' && x.allowed);
   const hasSalesDelete = rolePerms.some(x => x.module === 'sales' && x.action === 'delete' && x.allowed);
   const hasReportsView = rolePerms.some(x => x.module === 'reports' && x.action === 'view' && x.allowed);
-  const hasAccountingVisibility = rolePerms.some(x => x.module === 'ledger' && (visibilityScopeActions.includes(x.action) || x.action === 'view_full_accounting' || x.action === 'view_supplier') && x.allowed);
-  const hasInventory = rolePerms.some(x => x.module === 'inventory' && (visibilityScopeActions.includes(x.action) || x.action === 'view') && x.allowed);
-  const hasContacts = rolePerms.some(x => x.module === 'contacts' && visibilityScopeActions.includes(x.action) && x.allowed);
+  const hasAccountingVisibility = rowAllowsView(rolePerms, 'ledger', [
+    'view_full_accounting',
+    'view_supplier',
+    'view_customer',
+  ]);
+  const hasInventory = rowAllowsView(rolePerms, 'inventory', ['adjust', 'transfer']);
+  const hasContacts = rowAllowsView(rolePerms, 'contacts');
   const hasContactsCreate = rolePerms.some(x => x.module === 'contacts' && x.action === 'create' && x.allowed);
   const hasContactsDelete = rolePerms.some(x => x.module === 'contacts' && x.action === 'delete' && x.allowed);
   const hasUsers = rolePerms.some(x => x.module === 'users' && (x.action === 'create' || x.action === 'edit' || x.action === 'delete' || x.action === 'assign_permissions') && x.allowed);

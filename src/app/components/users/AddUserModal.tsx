@@ -20,6 +20,11 @@ import { employeeService } from '../../services/employeeService';
 import { branchService, Branch } from '../../services/branchService';
 import { accountService, Account } from '../../services/accountService';
 import { toast } from 'sonner';
+import {
+  FUNCTIONAL_ROLE_OPTIONS,
+  normalizeAppRole,
+  type AssignableAppRole,
+} from '@/app/config/functionalRoles';
 
 type UserModalTab = 'general' | 'branches' | 'accounts';
 
@@ -49,7 +54,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     full_name: '',
     email: '',
     phone: '',
-    role: 'staff' as 'owner' | 'admin' | 'manager' | 'staff' | 'salesman' | 'cashier' | 'inventory',
+    role: 'salesman' as AssignableAppRole | 'owner',
     basic_salary: 0,
     commission_rate: 0,
     rental_commission_rate: 0 as number,
@@ -74,7 +79,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           full_name: editingUser.full_name || '',
           email: editingUser.email || '',
           phone: editingUser.phone || '',
-          role: (editingUser.role as any) || 'staff',
+          role:
+            normalizeAppRole(editingUser.role) === 'owner'
+              ? 'owner'
+              : (normalizeAppRole(editingUser.role) as AssignableAppRole),
           basic_salary: 0,
           commission_rate: 0,
           rental_commission_rate: Number((editingUser as any).rental_commission_percent) || 0,
@@ -87,7 +95,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           full_name: '',
           email: '',
           phone: '',
-          role: 'staff',
+          role: 'salesman',
           basic_salary: 0,
           commission_rate: 0,
           rental_commission_rate: 0,
@@ -223,9 +231,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         full_name: formData.full_name.trim(),
         email: formData.email.trim().toLowerCase(),
         phone: formData.phone || undefined,
-        role: formData.role,
+        role: formData.role === 'owner' ? 'owner' : normalizeAppRole(formData.role),
         is_active: formData.is_active,
-        can_be_assigned_as_salesman: formData.can_be_assigned_as_salesman,
+        can_be_assigned_as_salesman:
+          formData.role === 'salesman' || formData.can_be_assigned_as_salesman,
       };
 
       console.log('[ADD USER MODAL] Saving user with data:', JSON.stringify(userData, null, 2));
@@ -495,30 +504,36 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
             {/* Role */}
             <div className="space-y-2">
               <Label htmlFor="role" className="text-gray-200">Role *</Label>
-              <Select
-                value={formData.role}
-                onValueChange={(value: any) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    role: value,
-                    can_be_assigned_as_salesman: value === 'salesman' ? true : prev.can_be_assigned_as_salesman,
-                  }))
-                }
-              >
-                <SelectTrigger className="bg-gray-950 border-gray-700 text-white focus:border-blue-500">
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-800 text-white">
-                  <SelectItem value="owner">Owner (Unrestricted)</SelectItem>
-                  <SelectItem value="admin">Administrator (All Permissions)</SelectItem>
-                  <SelectItem value="manager">Manager (Branch / Limited)</SelectItem>
-                  <SelectItem value="staff">Staff (Restricted)</SelectItem>
-                  <SelectItem value="salesman">Salesman (Sales Only)</SelectItem>
-                  <SelectItem value="cashier">Cashier</SelectItem>
-                  <SelectItem value="inventory">Inventory Clerk</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-gray-500">Selecting a role will auto-apply permission presets</p>
+              {formData.role === 'owner' ? (
+                <p className="text-sm text-amber-300/90 py-2 px-3 bg-amber-950/30 border border-amber-800/40 rounded-md">
+                  Owner (system) — company creator; role cannot be changed here.
+                </p>
+              ) : (
+                <Select
+                  value={formData.role}
+                  onValueChange={(value: AssignableAppRole) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      role: value,
+                      can_be_assigned_as_salesman: value === 'salesman',
+                    }))
+                  }
+                >
+                  <SelectTrigger className="bg-gray-950 border-gray-700 text-white focus:border-blue-500">
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                    {FUNCTIONAL_ROLE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <p className="text-xs text-gray-500">
+                Permissions come from Settings → Access → Roles &amp; Permissions matrix.
+              </p>
             </div>
 
             {/* Salary & Commission - ONLY for non-owners */}

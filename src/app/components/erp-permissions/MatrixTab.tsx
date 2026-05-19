@@ -8,12 +8,13 @@ import { cn } from '../ui/utils';
 import { Switch } from '../ui/switch';
 import { Checkbox } from '../ui/checkbox';
 import { Label } from '../ui/label';
+import { getEngineRoleLabel } from '@/app/config/functionalRoles';
 
 const ENGINE_ROLES: { id: EngineRole; label: string; icon: typeof Crown }[] = [
-  { id: 'owner', label: 'OWNER', icon: Crown },
-  { id: 'admin', label: 'ADMIN', icon: Shield },
-  { id: 'manager', label: 'MANAGER', icon: Briefcase },
-  { id: 'user', label: 'SALESMAN', icon: ShoppingCart },
+  { id: 'owner', label: getEngineRoleLabel('owner').toUpperCase(), icon: Crown },
+  { id: 'admin', label: getEngineRoleLabel('admin').toUpperCase(), icon: Shield },
+  { id: 'manager', label: getEngineRoleLabel('manager').toUpperCase(), icon: Briefcase },
+  { id: 'user', label: getEngineRoleLabel('user').toUpperCase(), icon: ShoppingCart },
 ];
 
 const MODULE_ORDER: string[] = [

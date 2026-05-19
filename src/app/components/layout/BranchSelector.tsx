@@ -6,14 +6,6 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { branchService, Branch } from '@/app/services/branchService';
 
-// Global Current User - Change role to 'user' to test locked behavior
-export const currentUser = {
-  id: 1,
-  name: "Admin User",
-  role: "admin" as "admin" | "user", // admin = can change branch, user = locked to assigned branch
-  assignedBranchId: 1,
-};
-
 interface BranchSelectorProps {
   /** When not provided, uses context branchId/setBranchId (for filter bars). */
   branchId?: string | null;
@@ -42,7 +34,7 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
   const branchId = propBranchId ?? contextBranchId ?? null;
   const setBranchId = propSetBranchId ?? contextSetBranchId;
 
-  const isAdmin = canManageSettings || currentUser.role === 'admin';
+  const isAdmin = canManageSettings;
   const isBranchLocked = disabled || !isAdmin;
 
   const loadBranches = useCallback(async () => {

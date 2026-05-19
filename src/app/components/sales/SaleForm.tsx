@@ -97,7 +97,7 @@ import {
 } from "../ui/alert-dialog";
 import { PackingDetails } from '../transactions/PackingEntryModal';
 import { toast } from "sonner";
-import { BranchSelector, currentUser } from '@/app/components/layout/BranchSelector';
+import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import { SaleItemsSection } from './SaleItemsSection';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';

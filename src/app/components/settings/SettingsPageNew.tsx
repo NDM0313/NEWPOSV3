@@ -37,6 +37,8 @@ import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthServ
 import { EmployeesTab } from './EmployeesTab';
 import { ErpPermissionArchitecturePage } from '@/app/components/erp-permissions/ErpPermissionArchitecturePage';
 import { canAccessTechnicalDeveloperSettings } from '@/app/lib/developerAccountingAccess';
+import { AppVersionTapTarget } from '@/app/components/settings/developer/AppVersionTapTarget';
+import { DeveloperToolsPanel } from '@/app/components/settings/developer/DeveloperToolsPanel';
 import { settingsService } from '@/app/services/settingsService';
 import { NumberingPanel } from './NumberingPanel';
 import { ModuleTogglesSection } from './ModuleTogglesSection';
@@ -2786,6 +2788,11 @@ export const SettingsPageNew = () => {
                 </div>
               </div>
             )}
+
+            <div className="border-t border-gray-800 pt-6 space-y-4">
+              <AppVersionTapTarget />
+              <DeveloperToolsPanel />
+            </div>
 
           </div>
         </div>
