@@ -11,7 +11,7 @@ Copy this block for every new APK you ship. Keep the newest entry at the top.
 | **Date** | 2026-05-20 |
 | **versionName** | 1.0.1 |
 | **versionCode** | 2 |
-| **Git commit** | PLACEHOLDER_COMMIT |
+| **Git commit** | `9912cfe` |
 | **Configuration** | Release (signed) |
 | **APK path (local)** | `android/app/build/outputs/apk/release/app-release.apk` (copy: `releases/erp-mobile-1.0.1-build2.apk` for uploads) |
 | **Download URL** | GitHub Release tag `mobile-v1.0.1-build2` (attach `erp-mobile-1.0.1-build2.apk`) |
