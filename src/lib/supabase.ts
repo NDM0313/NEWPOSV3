@@ -5,6 +5,10 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { getBrowserStorage } from '@/app/lib/safeBrowserStorage';
+import {
+  getBridgeAccessToken,
+  setResolvedSupabaseConfig,
+} from '@/app/lib/supabaseSessionBridge';
 
 // ============================================
 // CONFIGURATION
@@ -56,6 +60,17 @@ function decodeJwtIss(token: string): string | null {
 export const isPlaceholderSupabaseAnonKey = decodeJwtIss(supabaseAnonKey) === 'supabase-demo';
 
 const isValidSupabaseUrl = supabaseUrl.startsWith('http://') || supabaseUrl.startsWith('https://');
+
+setResolvedSupabaseConfig(supabaseUrl, supabaseAnonKey);
+
+/** Same URL the Supabase client uses (for session-bridge REST fallback). */
+export function getResolvedSupabaseUrl(): string {
+  return supabaseUrl.replace(/\/$/, '');
+}
+
+export function getSupabaseAnonKey(): string {
+  return supabaseAnonKey;
+}
 // DEBUG: Log Supabase URL at runtime (localhost vs production)
 if (import.meta.env?.DEV) {
   console.log('[SUPABASE] VITE_SUPABASE_URL at runtime:', import.meta.env.VITE_SUPABASE_URL);
@@ -201,7 +216,24 @@ function memoryFallback(): Storage {
 // CREATE CLIENT
 // ============================================
 
+/** Attach JWT from in-memory bridge when GoTrue cannot read storage (production strict privacy). */
+function supabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const token = getBridgeAccessToken();
+  if (!token) {
+    return fetch(input, init);
+  }
+  const headers = new Headers(init?.headers);
+  if (!headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  if (!headers.has('apikey')) {
+    headers.set('apikey', supabaseAnonKey);
+  }
+  return fetch(input, { ...init, headers });
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { fetch: supabaseFetch },
   auth: {
     persistSession: true,
     autoRefreshToken: true,

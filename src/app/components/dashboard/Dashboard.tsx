@@ -6,7 +6,7 @@ import { useSales } from '../../context/SalesContext';
 import { usePurchases } from '../../context/PurchaseContext';
 import { useExpenses } from '../../context/ExpenseContext';
 import { useAccountingOptional } from '../../context/AccountingContext';
-import { useSupabase } from '../../context/SupabaseContext';
+import { useSupabase, STORAGE_BLOCKED_MESSAGE } from '../../context/SupabaseContext';
 import { useGlobalFilter } from '../../context/GlobalFilterContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
@@ -49,8 +49,13 @@ const CreateYourBusinessCard: React.FC<{
       } else {
         setFixError(errMsg);
       }
-    } catch {
-      setFixError('Something went wrong.');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.toLowerCase().includes('securityerror') || msg.includes('request was denied')) {
+        setFixError(STORAGE_BLOCKED_MESSAGE);
+      } else {
+        setFixError('Something went wrong.');
+      }
     } finally {
       setFixing(false);
     }
@@ -183,7 +188,17 @@ export const Dashboard = () => {
   const purchases = usePurchases();
   const expenses = useExpenses();
   const accounting = useAccountingOptional();
-  const { companyId, signOut, profileLoadComplete, authConfigError, refreshUserProfile } = useSupabase();
+  const {
+    user,
+    companyId,
+    signOut,
+    profileLoadComplete,
+    authConfigError,
+    connectionError,
+    storageBlocked,
+    retryConnection,
+    refreshUserProfile,
+  } = useSupabase();
   const { modules: settingsModules } = useSettings();
   const { hasPermission } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
@@ -479,6 +494,34 @@ export const Dashboard = () => {
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="max-w-md p-8 rounded-xl bg-[#1F2937] border border-red-500/40 text-center">
             <p className="text-red-400 text-sm mb-4">{authConfigError}</p>
+            <button
+              type="button"
+              className="text-[#9CA3AF] hover:text-white text-sm underline"
+              onClick={async () => {
+                await signOut();
+                window.location.href = '/';
+              }}
+            >
+              Sign out and go to login
+            </button>
+          </div>
+        </div>
+      );
+    }
+    if (user && connectionError) {
+      return (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="max-w-md p-8 rounded-xl bg-[#1F2937] border border-amber-500/40 text-center">
+            <p className="text-amber-200 text-sm mb-4">
+              {storageBlocked ? STORAGE_BLOCKED_MESSAGE : 'Could not load your company profile. Please try again.'}
+            </p>
+            <button
+              type="button"
+              className="w-full mb-3 px-4 py-2 rounded-lg bg-[#3B82F6] text-white hover:bg-[#2563EB]"
+              onClick={retryConnection}
+            >
+              Retry
+            </button>
             <button
               type="button"
               className="text-[#9CA3AF] hover:text-white text-sm underline"

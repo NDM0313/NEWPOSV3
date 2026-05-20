@@ -1,9 +1,15 @@
-import React, { createContext, useContext, useEffect, useState, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 import { settingsService } from '@/app/services/settingsService';
 import { permissionEngine } from '@/app/services/permissionEngine';
 import { branchService } from '@/app/services/branchService';
+import {
+  setBridgeSession,
+  fetchUserProfileRow,
+  getBridgeAccessToken,
+  type UserProfileRow,
+} from '@/app/lib/supabaseSessionBridge';
 
 /** True when Supabase returned 502/503/504 and retries are exhausted; show "Service temporarily unavailable" and offer retry. */
 const CONNECTION_ERROR_MAX_RETRIES = 2;
@@ -41,6 +47,9 @@ function isInvalidAuthCredentialsError(err: any): boolean {
 export const AUTH_CONFIG_ERROR_MESSAGE =
   'Anon key does not match the server. Copy VITE_SUPABASE_ANON_KEY from VPS .env.production into .env.local and restart the dev server (or rebuild ERP on production).';
 
+export const STORAGE_BLOCKED_MESSAGE =
+  'Browser blocked site storage. Allow cookies/storage for erp.dincouture.pk or use a normal (non-private) window, then Retry.';
+
 /** SecurityError / request denied (storage blocked, CORS, or opaque response) – retry like server errors, never sign out. */
 function isStorageOrSecurityError(err: any): boolean {
   if (!err) return false;
@@ -63,6 +72,8 @@ interface SupabaseContextType {
   profileLoadComplete: boolean;
   /** True when Supabase returned 502/5xx and retries exhausted; UI can show "Service temporarily unavailable" and retry button. */
   connectionError: boolean;
+  /** True when connectionError was caused by blocked localStorage/session (strict privacy). */
+  storageBlocked: boolean;
   /** Set when REST returns 401 due to wrong/mismatched VITE_SUPABASE_ANON_KEY (not "no business"). */
   authConfigError: string | null;
   /** Call after connectionError to retry loading profile (getSession + fetchUserData). */
@@ -106,7 +117,18 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [enablePacking, setEnablePackingState] = useState<boolean>(false);
   const [profileLoadComplete, setProfileLoadComplete] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<boolean>(false);
+  const [storageBlocked, setStorageBlocked] = useState<boolean>(false);
   const [authConfigError, setAuthConfigError] = useState<string | null>(null);
+  const sessionRef = useRef<Session | null>(null);
+
+  const syncSessionToBridge = useCallback((s: Session | null) => {
+    sessionRef.current = s;
+    setBridgeSession(s);
+  }, []);
+
+  useEffect(() => {
+    syncSessionToBridge(session);
+  }, [session, syncSessionToBridge]);
 
   const loadEnablePacking = async (cid: string) => {
     try {
@@ -159,6 +181,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setConnectionError(true);
       }
       setSession(session);
+      syncSessionToBridge(session);
       setUser(session?.user ?? null);
       if (session?.user && import.meta.env?.DEV) {
         console.log('[AUTH] AUTH USER (after getSession):', {
@@ -209,6 +232,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const { data: { session: current } } = await supabase.auth.getSession();
           if (current?.user) {
             setSession(current);
+            syncSessionToBridge(current);
             setUser(current.user);
             requestUserProfileLoad(current.user.id);
             return;
@@ -221,6 +245,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       setSession(session);
+      syncSessionToBridge(session);
       setUser(newUser);
 
       if (newUser) {
@@ -245,6 +270,63 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => subscription.unsubscribe();
   }, []);
 
+  const applyProfileFromRow = async (data: UserProfileRow, userId: string) => {
+    if (data.is_active === false) {
+      await supabase.auth.signOut();
+      setCompanyId(null);
+      setUserRole(null);
+      setBranchId(null);
+      setDefaultBranchId(null);
+      setProfileLoadComplete(true);
+      return;
+    }
+    setCompanyId(data.company_id);
+    setUserRole(data.role);
+    setProfileLoadComplete(true);
+    setConnectionError(false);
+    setStorageBlocked(false);
+    fetchedRef.current.add(userId);
+    lastFetchedUserIdRef.current = userId;
+    const erpUserId = data.id;
+    if (data.company_id) {
+      const canCreateAccounts = ['admin', 'manager', 'accountant'].includes(String(data.role || '').toLowerCase());
+      if (canCreateAccounts) {
+        import('@/app/services/defaultAccountsService').then(({ defaultAccountsService }) => {
+          defaultAccountsService.ensureDefaultAccounts(data.company_id!).catch((error: any) => {
+            console.error('[SUPABASE CONTEXT] Error ensuring default accounts:', error);
+          });
+        });
+      }
+      loadUserBranch(
+        { erpUserId, authUserId: data.auth_user_id ?? null },
+        data.company_id,
+        data.role
+      );
+    }
+  };
+
+  const tryProfileBridgeFallback = async (userId: string): Promise<boolean> => {
+    const token = sessionRef.current?.access_token ?? getBridgeAccessToken();
+    if (!token) return false;
+    const { data, error } = await fetchUserProfileRow(userId, token);
+    if (error) {
+      if (import.meta.env?.DEV) console.warn('[FETCH USER DATA] Bridge fallback failed:', error.message);
+      return false;
+    }
+    if (!data) {
+      setCompanyId(null);
+      setUserRole(null);
+      setBranchId(null);
+      setDefaultBranchId(null);
+      setProfileLoadComplete(true);
+      setConnectionError(false);
+      setStorageBlocked(false);
+      return true;
+    }
+    await applyProfileFromRow(data, userId);
+    return true;
+  };
+
   // Fetch user data (company, role). Retries on transient/502 errors so we don't show "no business" on a single gateway blip.
   const fetchUserData = async (userId: string, isRetry = false, retryCount = 0) => {
     // Prevent duplicate concurrent calls for the same userId
@@ -268,8 +350,10 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       fetchingRef.current.add(userId);
       if (!isRetry) setProfileLoadComplete(false);
       setConnectionError(false);
+      setStorageBlocked(false);
       setAuthConfigError(null);
-      
+      syncSessionToBridge(sessionRef.current);
+
       if (import.meta.env?.DEV) {
         console.log('[FETCH USER DATA] Looking for ERP profile with auth_user_id or id:', userId);
         console.log('[FETCH USER DATA] Query: users WHERE id.eq.' + userId + ' OR auth_user_id.eq.' + userId);
@@ -316,6 +400,10 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // 502/503/504 or SecurityError/request denied: retry with backoff; NEVER sign out on these
         const serverErr = isServerError(error);
         const storageErr = isStorageOrSecurityError(error);
+        if (storageErr) {
+          const bridged = await tryProfileBridgeFallback(userId);
+          if (bridged) return;
+        }
         if ((serverErr || storageErr) && retryCount < CONNECTION_ERROR_MAX_RETRIES) {
           const delay = RETRY_DELAY_MS * (retryCount + 1);
           if (!storageErrorLoggedRef.current.has(userId)) {
@@ -327,6 +415,11 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           return;
         }
         if ((serverErr || storageErr) && retryCount >= CONNECTION_ERROR_MAX_RETRIES) {
+          if (storageErr) {
+            const bridged = await tryProfileBridgeFallback(userId);
+            if (bridged) return;
+            setStorageBlocked(true);
+          }
           setConnectionError(true);
         }
         // Other transient: single retry (existing behavior)
@@ -405,6 +498,10 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.error('[FETCH USER DATA EXCEPTION]', error);
       // SecurityError / request denied: retry like server errors; NEVER sign out
       const storageErr = isStorageOrSecurityError(error);
+      if (storageErr) {
+        const bridged = await tryProfileBridgeFallback(userId);
+        if (bridged) return;
+      }
       if (storageErr && retryCount < CONNECTION_ERROR_MAX_RETRIES) {
         const delay = RETRY_DELAY_MS * (retryCount + 1);
         console.warn('[FETCH USER DATA] Exception (storage/security), retrying in', delay, 'ms');
@@ -413,7 +510,11 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return;
       }
       if (storageErr && retryCount >= CONNECTION_ERROR_MAX_RETRIES) {
-        setConnectionError(true);
+        const bridged = await tryProfileBridgeFallback(userId);
+        if (!bridged) {
+          setStorageBlocked(true);
+          setConnectionError(true);
+        }
       }
       if (!storageErr && !isRetry) {
         fetchingRef.current.delete(userId);
@@ -559,8 +660,16 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         email: email,
         timestamp: new Date().toISOString()
       });
-    } else if (result.data?.user && import.meta.env?.DEV) {
-      console.log('[AUTH SUCCESS] Sign in successful:', { userId: result.data.user.id, email: result.data.user.email });
+    } else if (result.data?.session) {
+      syncSessionToBridge(result.data.session);
+      setSession(result.data.session);
+      setUser(result.data.user ?? null);
+      if (import.meta.env?.DEV) {
+        console.log('[AUTH SUCCESS] Sign in successful:', {
+          userId: result.data.user?.id,
+          email: result.data.user?.email,
+        });
+      }
     }
     
     return result;
@@ -568,6 +677,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const retryConnection = () => {
     setConnectionError(false);
+    setStorageBlocked(false);
     setAuthConfigError(null);
     setLoading(true);
     attemptSessionLoad(0);
@@ -587,8 +697,10 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const signOut = async () => {
     await supabase.auth.signOut();
     setConnectionError(false);
+    setStorageBlocked(false);
     setAuthConfigError(null);
     setProfileLoadComplete(false);
+    syncSessionToBridge(null);
     permissionEngine.clear();
     branchService.clearBranchCache();
     setUser(null);
@@ -624,6 +736,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     loading,
     profileLoadComplete,
     connectionError,
+    storageBlocked,
     authConfigError,
     retryConnection,
     refreshUserProfile,
@@ -643,7 +756,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     refreshEnablePacking,
     supabaseClient: supabase,
   }), [
-    user, session, loading, profileLoadComplete, connectionError, authConfigError, companyId, userRole, branchId, defaultBranchId,
+    user, session, loading, profileLoadComplete, connectionError, storageBlocked, authConfigError, companyId, userRole, branchId, defaultBranchId,
     accessibleBranchIds, branchCount, requiresBranchSelection, enablePacking,
     signIn, signOut, retryConnection, refreshUserProfile, setBranchId, setAccessibleBranchIds, setEnablePacking, refreshEnablePacking,
   ]);
@@ -662,6 +775,7 @@ const defaultSupabaseContext: SupabaseContextType = {
   loading: true,
   profileLoadComplete: false,
   connectionError: false,
+  storageBlocked: false,
   authConfigError: null,
   retryConnection: () => {},
   refreshUserProfile: () => {},
