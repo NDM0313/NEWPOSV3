@@ -37,9 +37,7 @@ Confirm:
 
 Run:
 
-git add .
-git commit -m "finalaz 90% "
-git push origin main
+cd..
 
 Examples:
 
@@ -54,7 +52,7 @@ git commit -m "Bug fix: Purchase service FK issue"
 
 On current machine:
 git add .
-git commit -m "claude coa "
+git commit -m "mobile login"
 git push origin main
 
 On new machine:

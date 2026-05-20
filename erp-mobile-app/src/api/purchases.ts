@@ -30,6 +30,8 @@ export interface CreatePurchaseInput {
   notes?: string;
   attachments?: { url: string; name: string }[];
   userId: string;
+  /** Purchase order date YYYY-MM-DD (local). */
+  poDate?: string;
 }
 
 /** When branchId is 'default', use first branch — create RPC requires a UUID. */
@@ -107,6 +109,7 @@ export async function createPurchase(
     notes,
     attachments,
     userId,
+    poDate,
     status = 'ordered',
     paidAmount = 0,
     paymentMethod = 'cash',
@@ -130,12 +133,15 @@ export async function createPurchase(
   const paid = Math.max(0, Math.min(Number(paidAmount) || 0, Number(total) || 0));
   const due = Math.max(0, (Number(total) || 0) - paid);
   const paymentStatus = paid <= 0 ? 'unpaid' : paid >= (Number(total) || 0) ? 'paid' : 'partial';
+  const defaultPoDay = new Date().toISOString().slice(0, 10);
+  const poDay =
+    poDate != null && String(poDate).trim() !== '' ? String(poDate).trim().slice(0, 10) : defaultPoDay;
 
   const { data: hdrRaw, error: hdrErr } = await supabase.rpc('create_purchase_document_header', {
     p_company_id: companyId,
     p_branch_id: effectiveBranchId,
     p_purchase: {
-      po_date: new Date().toISOString().slice(0, 10),
+      po_date: poDay,
       supplier_id: supplierId || null,
       supplier_name: supplierName || 'Unknown',
       contact_number: contactNumber || null,

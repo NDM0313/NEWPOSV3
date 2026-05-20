@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import * as authApi from '../../api/auth';
-import { getCounterUserForPin } from '../../lib/counterUserVault';
+import { getCounterUserForPin, formatCounterPinAuthError } from '../../lib/counterUserVault';
 
 interface SwitchUserPinOverlayProps {
   open: boolean;
@@ -43,7 +43,7 @@ export function SwitchUserPinOverlay({ open, onClose, onSessionReplaced }: Switc
       }
       const refreshed = await authApi.refreshSessionFromRefreshToken(payload.refreshToken);
       if (!refreshed.ok) {
-        setError(refreshed.error || 'Session refresh failed.');
+        setError(formatCounterPinAuthError(refreshed.error));
         setBusy(false);
         return;
       }

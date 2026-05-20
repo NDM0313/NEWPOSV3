@@ -4,12 +4,14 @@ import { TextInput, NumericInput, ActionBar, CustomSelect, CustomSearchableSheet
 import type { User, Branch } from '../../types';
 import type { AuthProfile } from '../../api/auth';
 import { SwitchUserPinOverlay } from '../auth/SwitchUserPinOverlay';
+import { isSharedCounterModeEnabled } from '../../lib/sharedCounterMode';
 import * as expensesApi from '../../api/expenses';
 import * as authApi from '../../api/auth';
 import * as accountsApi from '../../api/accounts';
 import * as branchesApi from '../../api/branches';
 import { getUsersForSalary, type SalaryUserRow } from '../../api/users';
 import { addPending } from '../../lib/offlineStore';
+import { localNowDateString } from '../../utils/localDate';
 
 interface ExpenseModuleProps {
   onBack: () => void;
@@ -17,6 +19,7 @@ interface ExpenseModuleProps {
   companyId: string | null;
   branch: Branch | null;
   onCounterSessionReplaced?: (profile: AuthProfile) => void | Promise<void>;
+  onRequestCounterLock?: () => void;
 }
 
 type DateGroup = 'today' | 'yesterday' | 'thisWeek' | 'older';
@@ -74,7 +77,7 @@ function getCategoryIcon(cat: string): string {
   return CATEGORIES.find((c) => c.value === cat)?.icon ?? '📊';
 }
 
-export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessionReplaced }: ExpenseModuleProps) {
+export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessionReplaced, onRequestCounterLock }: ExpenseModuleProps) {
   const [list, setList] = useState<{ id: string; expense_no: string; date: string; category: string; description: string; amount: number }[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [showAdd, setShowAdd] = useState(false);
@@ -99,6 +102,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
   const [salaryUsers, setSalaryUsers] = useState<SalaryUserRow[]>([]);
   const [salaryUsersLoading, setSalaryUsersLoading] = useState(false);
   const [showSwitchUser, setShowSwitchUser] = useState(false);
+  /** Calendar date in device local TZ (`YYYY-MM-DD`); matches `expenses.expense_date`. */
+  const [addExpenseDate, setAddExpenseDate] = useState(localNowDateString);
+
+  useEffect(() => {
+    if (showAdd) setAddExpenseDate(localNowDateString());
+  }, [showAdd]);
 
   const loadExpenses = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -264,6 +273,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
           amount: amt,
           paymentMethod,
           userId: session.userId,
+          expenseDate: addExpenseDate,
           paymentAccountId: addAccountId || undefined,
           receiptUrl: receiptUrl || undefined,
           paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
@@ -272,7 +282,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
         const displayCategory = selectedSub?.name ?? selectedMain?.name ?? addCategory;
         const tempId = `offline-${Date.now()}`;
         setList((prev) => [
-          { id: tempId, expense_no: 'Pending sync', date: new Date().toISOString().slice(0, 10), category: displayCategory, description: descriptionFinal, amount: amt },
+          { id: tempId, expense_no: 'Pending sync', date: addExpenseDate, category: displayCategory, description: descriptionFinal, amount: amt },
           ...prev,
         ]);
         setAddError(null);
@@ -285,6 +295,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
         setPaidToUserId('');
         setAddReceiptFile(null);
         setAddBranchId('');
+        setAddExpenseDate(localNowDateString());
       } catch (e) {
         setAddError(e instanceof Error ? e.message : 'Failed to save offline.');
       }
@@ -300,6 +311,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
       amount: amt,
       paymentMethod,
       userId: session.userId,
+      expenseDate: addExpenseDate,
       paymentAccountId: addAccountId || undefined,
       receiptUrl: receiptUrl || undefined,
       paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
@@ -312,7 +324,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
     }
     const displayCategory = selectedSub?.name ?? selectedMain?.name ?? addCategory;
     setList((prev) => [
-      { id: data!.id, expense_no: data!.expense_no || '—', date: new Date().toISOString().slice(0, 10), category: displayCategory, description: descriptionFinal, amount: amt },
+      { id: data!.id, expense_no: data!.expense_no || '—', date: addExpenseDate, category: displayCategory, description: descriptionFinal, amount: amt },
       ...prev,
     ]);
     setAddError(null);
@@ -325,6 +337,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
     setPaidToUserId('');
     setAddReceiptFile(null);
     setAddBranchId('');
+    setAddExpenseDate(localNowDateString());
   };
 
   const filtered = list.filter((e) => {
@@ -449,6 +462,21 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
               )}
             </div>
 
+            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+              <label htmlFor="expense-date-input" className="block text-sm font-medium text-[#D1D5DB] mb-2">
+                Expense date *
+              </label>
+              <input
+                id="expense-date-input"
+                type="date"
+                value={addExpenseDate}
+                max={localNowDateString()}
+                onChange={(e) => setAddExpenseDate(e.target.value)}
+                className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white focus:outline-none focus:border-[#EF4444]"
+              />
+              <p className="text-xs text-[#9CA3AF] mt-2">Uses your device calendar date (not UTC midnight).</p>
+            </div>
+
             {isSalaryCategory && (
               <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
                 {salaryUsersLoading ? (
@@ -539,7 +567,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
-      {onCounterSessionReplaced ? (
+      {onCounterSessionReplaced && !isSharedCounterModeEnabled() ? (
         <SwitchUserPinOverlay
           open={showSwitchUser}
           onClose={() => setShowSwitchUser(false)}
@@ -561,7 +589,13 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
             {onCounterSessionReplaced ? (
               <button
                 type="button"
-                onClick={() => setShowSwitchUser(true)}
+                onClick={() => {
+                  if (isSharedCounterModeEnabled() && onRequestCounterLock) {
+                    onRequestCounterLock();
+                  } else {
+                    setShowSwitchUser(true);
+                  }
+                }}
                 className="p-2.5 bg-white/15 hover:bg-white/25 rounded-lg text-white"
                 title="Switch user"
               >

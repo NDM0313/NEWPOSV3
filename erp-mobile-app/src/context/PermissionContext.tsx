@@ -3,7 +3,7 @@ import * as permissionsApi from '../api/permissions';
 import { getModuleConfigs, type ModuleToggles } from '../api/settings';
 import { getBranches } from '../api/branches';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
-import { isAdminOrOwnerAppRole } from '../config/functionalRoles';
+import { isAdminOrOwnerAppRole, canViewFinancialBalances } from '../config/functionalRoles';
 import type { RolePermissionRow } from '../api/permissions';
 import type { Screen } from '../types';
 
@@ -17,6 +17,7 @@ interface PermissionState {
   isPermissionLoaded: boolean;
   isAdminOrOwner: boolean;
   isOwner: boolean;
+  canViewBalances: boolean;
 }
 
 interface PermissionContextValue extends PermissionState {
@@ -53,6 +54,7 @@ const defaultState: PermissionState = {
   isPermissionLoaded: false,
   isAdminOrOwner: false,
   isOwner: false,
+  canViewBalances: false,
 };
 
 function resolveModuleConfigStatus(
@@ -81,7 +83,7 @@ function buildModuleConfigBanner(
     !toggles.studioModuleEnabled ||
     !toggles.accountingModuleEnabled;
   if (status === 'ok' && companyOff && isAdminOrOwner) {
-    return 'Some modules are off for this business. Enable them in Web ERP → Settings → Module Toggles (POS, Rental, Studio, Accounting). Packing: Settings → Inventory → Enable Packing.';
+    return 'Some modules are off for this business. As admin or owner, turn them on here under Settings → Company modules, or in Web ERP → Settings.';
   }
   return null;
 }
@@ -112,6 +114,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         isPermissionLoaded: true,
         isAdminOrOwner: true,
         isOwner: true,
+        canViewBalances: true,
       });
       return;
     }
@@ -130,6 +133,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       }
       const isAdminOrOwner = isAdminOrOwnerAppRole(appRole);
       const isOwner = (appRole || '').toLowerCase() === 'owner';
+      const canViewBalances = canViewFinancialBalances(appRole);
       const moduleConfigStatus = resolveModuleConfigStatus(companyId, moduleRes);
       const moduleToggles =
         moduleConfigStatus === 'ok' && moduleRes.data ? moduleRes.data : safeModuleTogglesWhenFail;
@@ -142,6 +146,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         isPermissionLoaded: true,
         isAdminOrOwner,
         isOwner,
+        canViewBalances,
       });
     } catch (err) {
       console.error("[PermissionContext] Error loading permissions:", err);
@@ -153,6 +158,7 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         isPermissionLoaded: true,
         isAdminOrOwner: false,
         isOwner: false,
+        canViewBalances: false,
       });
     }
   }, []);

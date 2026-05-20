@@ -11,12 +11,20 @@ import { SelectCustomerTablet } from './SelectCustomerTablet';
 import { AddProducts } from './AddProducts';
 import { SaleSummary } from './SaleSummary';
 import { PaymentDialog } from './PaymentDialog';
+import type { PaymentResult } from './PaymentDialog';
 import { SaleConfirmation } from './SaleConfirmation';
 import { StudioDetailsStep, type StudioDetailsData } from './StudioDetailsStep';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 import { getMobilePrinterSettings } from '../../api/settings';
 import { formatPlainReceiptLines, printThermalReceiptLines } from '../../services/thermalPrint';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
+import { localNowDateString, formatLocalDateYYYYMMDD } from '../../utils/localDate';
+
+function localDatePlusDays(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return formatLocalDateYYYYMMDD(d);
+}
 
 export type SalesStep = 'home' | 'customer' | 'products' | 'studioDetails' | 'summary' | 'payment' | 'confirmation';
 
@@ -50,6 +58,10 @@ export interface SaleData {
   tax: number;
   total: number;
   notes: string;
+  /** In-memory files chosen on Sale Summary; uploaded after sale is created. */
+  attachmentFiles?: File[];
+  /** Calendar date for invoice (YYYY-MM-DD, local). */
+  saleDate: string;
   saleType: 'regular' | 'studio';
   /** Studio only: order date (YYYY-MM-DD), deadline (YYYY-MM-DD), required design name, optional production notes */
   orderDate?: string;
@@ -89,12 +101,6 @@ export function SalesModule({
   const [createdSaleId, setCreatedSaleId] = useState<string | null>(null);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
   const { runSingleFlight, isRunning: isPaymentSubmitRunning } = useSingleFlightAction();
-  const todayStr = () => new Date().toISOString().split('T')[0];
-  const todayPlus7Str = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + 7);
-    return d.toISOString().split('T')[0];
-  };
   const [saleData, setSaleData] = useState<SaleData>({
     customer: null,
     products: [],
@@ -104,9 +110,11 @@ export function SalesModule({
     tax: 0,
     total: 0,
     notes: '',
+    attachmentFiles: [],
+    saleDate: localNowDateString(),
     saleType: initialSaleType === 'studio' ? 'studio' : 'regular',
-    orderDate: todayStr(),
-    deadlineDate: todayPlus7Str(),
+    orderDate: localNowDateString(),
+    deadlineDate: localDatePlusDays(7),
     studioProductName: '',
     productionNotes: '',
   });
@@ -135,7 +143,11 @@ export function SalesModule({
     else setStep('summary');
   };
   const handleStudioDetailsNext = (data: StudioDetailsData) => {
-    setSaleData((prev) => ({ ...prev, ...data }));
+    setSaleData((prev) => ({
+      ...prev,
+      ...data,
+      saleDate: data.orderDate || prev.saleDate || localNowDateString(),
+    }));
     setStep('summary');
   };
   const handleSummaryUpdate = (data: Partial<SaleData>) => {
@@ -149,7 +161,7 @@ export function SalesModule({
     setSaveError(null);
     setStep('payment');
   };
-  const handlePaymentComplete = async (result: { paymentMethod: string; paidAmount?: number; dueAmount?: number; accountId?: string | null; accountName?: string | null }) => {
+  const handlePaymentComplete = async (result: PaymentResult) => {
     await runSingleFlight(async () => {
     if (!companyId || !user?.id) {
       setSaveError('Company or user missing.');
@@ -208,12 +220,19 @@ export function SalesModule({
       notes: saleData.saleType === 'studio' ? (saleData.productionNotes || saleData.notes || undefined) : (saleData.notes || undefined),
       isStudio: saleData.saleType === 'studio',
       userId: user.id,
+      invoiceDate: saleData.saleDate || localNowDateString(),
+      paymentDate: result.paymentDate || localNowDateString(),
       ...(saleData.saleType === 'studio' && {
         orderDate: saleData.orderDate || undefined,
         deadline: saleData.deadlineDate || undefined,
         studioDesignName: (saleData.studioProductName ?? '').trim() || undefined,
       }),
     };
+
+    if (saleData.attachmentFiles && saleData.attachmentFiles.length > 0 && !navigator.onLine) {
+      setSaveError('Attachments require an internet connection. Remove files or go online to save.');
+      return;
+    }
 
     if (!navigator.onLine) {
       try {
@@ -230,6 +249,20 @@ export function SalesModule({
     if (error) {
       setSaveError(error);
       return;
+    }
+    if (data?.id && saleData.attachmentFiles && saleData.attachmentFiles.length > 0) {
+      const upload = await salesApi.uploadSaleAttachments(companyId, data.id, saleData.attachmentFiles);
+      if (upload.error) {
+        setSaveError(`Sale saved but attachments failed: ${upload.error}`);
+        return;
+      }
+      if (upload.data.length > 0) {
+        const { error: attErr } = await salesApi.updateSaleAttachments(data.id, upload.data);
+        if (attErr) {
+          setSaveError(`Sale saved but attachments could not be linked: ${attErr}`);
+          return;
+        }
+      }
     }
     setCreatedInvoiceNo(data?.invoiceNo ?? null);
     setCreatedSaleId(data?.id ?? null);
@@ -264,9 +297,11 @@ export function SalesModule({
       tax: 0,
       total: 0,
       notes: '',
+      attachmentFiles: [],
+      saleDate: localNowDateString(),
       saleType: 'regular',
-      orderDate: todayStr(),
-      deadlineDate: todayPlus7Str(),
+      orderDate: localNowDateString(),
+      deadlineDate: localDatePlusDays(7),
       studioProductName: '',
       productionNotes: '',
     });
@@ -285,9 +320,11 @@ export function SalesModule({
       tax: 0,
       total: 0,
       notes: '',
+      attachmentFiles: [],
+      saleDate: localNowDateString(),
       saleType: 'regular',
-      orderDate: todayStr(),
-      deadlineDate: todayPlus7Str(),
+      orderDate: localNowDateString(),
+      deadlineDate: localDatePlusDays(7),
       studioProductName: '',
       productionNotes: '',
     });
@@ -329,9 +366,11 @@ export function SalesModule({
       tax: 0,
       total: 0,
       notes: '',
+      attachmentFiles: [],
+      saleDate: localNowDateString(),
       saleType: 'regular',
-      orderDate: todayStr(),
-      deadlineDate: todayPlus7Str(),
+      orderDate: localNowDateString(),
+      deadlineDate: localDatePlusDays(7),
       studioProductName: '',
       productionNotes: '',
     });
@@ -355,9 +394,11 @@ export function SalesModule({
       tax: 0,
       total: 0,
       notes: '',
+      attachmentFiles: [],
+      saleDate: localNowDateString(),
       saleType: 'regular',
-      orderDate: todayStr(),
-      deadlineDate: todayPlus7Str(),
+      orderDate: localNowDateString(),
+      deadlineDate: localDatePlusDays(7),
       studioProductName: '',
       productionNotes: '',
     });
@@ -408,8 +449,8 @@ export function SalesModule({
         <StudioDetailsStep
           onBack={handleStepBack}
           initialData={{
-            orderDate: saleData.orderDate || new Date().toISOString().split('T')[0],
-            deadlineDate: saleData.deadlineDate || (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().split('T')[0]; })(),
+            orderDate: saleData.orderDate || localNowDateString(),
+            deadlineDate: saleData.deadlineDate || localDatePlusDays(7),
             studioProductName: saleData.studioProductName || '',
             productionNotes: saleData.productionNotes || '',
           }}
@@ -434,6 +475,7 @@ export function SalesModule({
               saving={saving || isPaymentSubmitRunning}
               saveError={saveError}
               hasCustomer={!!saleData.customer?.id}
+              viewerRole={user.role}
             />
             )
       )}

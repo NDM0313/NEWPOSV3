@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { RealtimeClient } from '@supabase/realtime-js';
 import { clearSecure } from './secureStorage';
+import { syncCounterRefreshTokenForUserId } from './counterUserVault';
 
 /** Vite defines `import.meta.env`; Node (e.g. tsx --test) does not — avoid crashing on import. */
 const env =
@@ -144,9 +145,24 @@ export const supabase = createClient(url, key, {
 
 attachDirectRealtimeInLocalDev(supabase);
 
+let counterVaultSyncTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleCounterVaultTokenSync(session: { user: { id: string }; refresh_token?: string } | null): void {
+  const uid = session?.user?.id;
+  const rt = session?.refresh_token;
+  if (!uid || !rt) return;
+  if (counterVaultSyncTimer) clearTimeout(counterVaultSyncTimer);
+  counterVaultSyncTimer = setTimeout(() => {
+    counterVaultSyncTimer = null;
+    void syncCounterRefreshTokenForUserId(uid, rt).catch(() => {});
+  }, 400);
+}
+
 /** Auto-fix: when session is lost (refresh failed, CORS, etc.), clear PIN vault and notify app */
 if (hasConfig) {
   supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+      if (session) scheduleCounterVaultTokenSync(session);
+    }
     if (event === 'SIGNED_OUT' && !session) {
       clearSecure().catch(() => {});
       window.dispatchEvent(new CustomEvent('erp-auth-signed-out'));

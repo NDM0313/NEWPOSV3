@@ -47,6 +47,12 @@ export function isAdminOrOwnerAppRole(role: string | null | undefined): boolean 
   return r === 'owner' || r === 'admin';
 }
 
+/** Owner, admin, and manager may see GL/cash and AR/AP balances; workers/salesmen may not. */
+export function canViewFinancialBalances(role: string | null | undefined): boolean {
+  const r = normalizeAppRole(role);
+  return r === 'owner' || r === 'admin' || r === 'manager';
+}
+
 export function getFunctionalRoleLabel(appRole: string | null | undefined): string {
   const r = normalizeAppRole(appRole);
   if (r === 'owner') return 'Owner (system)';

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Search, Plus, Phone, X, Loader2, Star, ShoppingCart, Palette } from 'lucide-react';
 import type { Customer } from './SalesModule';
 import * as contactsApi from '../../api/contacts';
+import { usePermissions } from '../../context/PermissionContext';
+import { getPartyBalanceLabel } from '../../utils/balancePrivacy';
 
 interface SelectCustomerProps {
   companyId: string | null;
@@ -15,7 +17,16 @@ function contactToCustomer(c: contactsApi.Contact): Customer {
   return { id: c.id, name: c.name, phone: c.phone || '—', balance: c.balance };
 }
 
+function CustomerBalanceLine({ balance, canView }: { balance: number; canView: boolean }) {
+  const label = getPartyBalanceLabel(balance, canView);
+  if (!label) return null;
+  return (
+    <p className={`text-xs mt-2 ${balance > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>{label}</p>
+  );
+}
+
 export function SelectCustomer({ companyId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerProps) {
+  const { canViewBalances } = usePermissions();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [searchQuery, setSearchQuery] = useState('');
@@ -160,11 +171,7 @@ export function SelectCustomer({ companyId, onBack, onSelect, initialSaleType = 
                         <Phone className="w-4 h-4" />
                         <span>{customer.phone}</span>
                       </div>
-                      {customer.balance !== 0 && (
-                        <p className={`text-xs mt-2 ${customer.balance > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
-                          {customer.balance > 0 ? `Due: Rs. ${customer.balance.toLocaleString()}` : `Credit: Rs. ${Math.abs(customer.balance).toLocaleString()}`}
-                        </p>
-                      )}
+                      <CustomerBalanceLine balance={customer.balance} canView={canViewBalances} />
                     </div>
                   </div>
                 </button>
@@ -192,11 +199,7 @@ export function SelectCustomer({ companyId, onBack, onSelect, initialSaleType = 
                       <Phone className="w-4 h-4" />
                       <span>{customer.phone}</span>
                     </div>
-                    {customer.balance !== 0 && (
-                      <p className={`text-xs mt-2 ${customer.balance > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
-                        {customer.balance > 0 ? `Due: Rs. ${customer.balance.toLocaleString()}` : `Credit: Rs. ${Math.abs(customer.balance).toLocaleString()}`}
-                      </p>
-                    )}
+                    <CustomerBalanceLine balance={customer.balance} canView={canViewBalances} />
                   </div>
                 </div>
               </button>

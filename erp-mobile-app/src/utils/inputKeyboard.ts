@@ -38,6 +38,9 @@ function applyInputAttributes(el: HTMLInputElement | HTMLTextAreaElement) {
   }
 
   if (type === 'password') {
+    if (existingInputMode === 'decimal' || existingInputMode === 'numeric') {
+      el.setAttribute('inputMode', existingInputMode);
+    }
     el.setAttribute('enterKeyHint', 'next');
     el.dataset.keyboardApplied = 'true';
     return;
@@ -64,7 +67,29 @@ function applyInputAttributes(el: HTMLInputElement | HTMLTextAreaElement) {
     return;
   }
 
-  // Text, search, url, etc.
+  const autoComplete = (el.getAttribute('autocomplete') || '').toLowerCase();
+  const pattern = el.getAttribute('pattern') || '';
+  const digitOnlyPattern =
+    pattern === '[0-9]*' || pattern === '[0-9]+' || pattern === '[0-9]{4,8}' || pattern === '[0-9]{6}';
+  if (
+    type === 'text' &&
+    (autoComplete === 'one-time-code' || digitOnlyPattern) &&
+    !existingInputMode
+  ) {
+    el.setAttribute('inputMode', 'numeric');
+    el.setAttribute('enterKeyHint', 'next');
+    el.dataset.keyboardApplied = 'true';
+    return;
+  }
+
+  // Text, search, url, etc. — preserve explicit numeric modes (e.g. OTP with inputMode="numeric")
+  if (existingInputMode === 'decimal' || existingInputMode === 'numeric') {
+    el.setAttribute('inputMode', existingInputMode);
+    el.setAttribute('enterKeyHint', 'next');
+    el.dataset.keyboardApplied = 'true';
+    return;
+  }
+
   el.setAttribute('inputMode', 'text');
   el.setAttribute('enterKeyHint', 'next');
   el.dataset.keyboardApplied = 'true';

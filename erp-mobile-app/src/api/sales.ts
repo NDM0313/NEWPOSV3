@@ -34,12 +34,80 @@ export interface CreateSaleInput {
   notes?: string;
   isStudio: boolean;
   userId: string;
+  /** Document / invoice date (YYYY-MM-DD, local). Regular + studio `sales.invoice_date`. */
+  invoiceDate?: string;
   /** Studio: order date (YYYY-MM-DD) */
   orderDate?: string;
   /** Studio: deadline (YYYY-MM-DD) */
   deadline?: string;
   /** Studio: replica / outfit title → studio_productions.design_name */
   studioDesignName?: string;
+  /** Payment date when paid > 0 (YYYY-MM-DD). */
+  paymentDate?: string;
+}
+
+const SALE_ATTACHMENTS_BUCKET = 'sale-attachments';
+const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB each
+
+/** Upload files to sale-attachments bucket (path: companyId/saleId/...). */
+export async function uploadSaleAttachments(
+  companyId: string,
+  saleId: string,
+  files: File[]
+): Promise<{ data: { url: string; name: string }[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  if (!files.length) return { data: [], error: null };
+
+  const uploaded: { url: string; name: string }[] = [];
+  const prefix = `${companyId}/${saleId}/${Date.now()}`;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    if (file.size > MAX_SALE_ATTACHMENT_BYTES) {
+      return { data: uploaded, error: `File "${file.name}" is too large. Max 10MB per file.` };
+    }
+    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const path = `${prefix}_${i}_${safeName}`;
+
+    const { error } = await supabase.storage.from(SALE_ATTACHMENTS_BUCKET).upload(path, file, {
+      upsert: true,
+      contentType: file.type || 'application/octet-stream',
+    });
+    if (error) {
+      const msg = String(error.message || '').toLowerCase();
+      const bucketMissing = msg.includes('bucket') && (msg.includes('not found') || msg.includes('does not exist'));
+      return {
+        data: uploaded,
+        error: bucketMissing
+          ? 'Storage bucket "sale-attachments" not found. Create it in Supabase Storage first.'
+          : error.message,
+      };
+    }
+    const { data: urlData } = supabase.storage.from(SALE_ATTACHMENTS_BUCKET).getPublicUrl(path);
+    uploaded.push({ url: urlData?.publicUrl || path, name: file.name });
+  }
+
+  return { data: uploaded, error: null };
+}
+
+/** Persist attachment metadata on the sale row (after upload). */
+export async function updateSaleAttachments(
+  saleId: string,
+  attachments: { url: string; name: string }[]
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { error } = await supabase
+    .from('sales')
+    .update({ attachments: attachments.length > 0 ? attachments : null })
+    .eq('id', saleId);
+  if (error) {
+    if (error.code === 'PGRST204' && String(error.message || '').includes('attachments')) {
+      return { error: null };
+    }
+    return { error: error.message };
+  }
+  return { error: null };
 }
 
 /** When branchId is 'default' (no branches), use first branch for RPC. No auto-create (POST branches can 403). */
@@ -75,9 +143,11 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     paidAmount,
     dueAmount,
     paymentAccountId,
+    invoiceDate,
     orderDate,
     deadline,
     studioDesignName,
+    paymentDate,
   } = input;
 
   if (!companyId || !branchId || !userId) {
@@ -103,7 +173,9 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
   const paid = isStudio ? 0 : paidNonStudio;
   const due = isStudio ? totalNum : dueNonStudio;
 
-  const invDate = new Date().toISOString().slice(0, 10);
+  const defaultDay = new Date().toISOString().slice(0, 10);
+  const invoiceFromInput =
+    invoiceDate != null && String(invoiceDate).trim() !== '' ? String(invoiceDate).trim().slice(0, 10) : null;
 
   let saleId: string;
   /** Invoice / order ref shown after save (SL-… for regular, STD-… for studio). */
@@ -116,9 +188,10 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
      * `generate_document_number('studio')` inside Postgres — a different allocator than web’s global STD counter.
      */
     const invoiceDateStr =
-      orderDate != null && String(orderDate).trim() !== ''
+      invoiceFromInput ??
+      (orderDate != null && String(orderDate).trim() !== ''
         ? String(orderDate).trim().slice(0, 10)
-        : invDate;
+        : defaultDay);
     const deadlineVal =
       deadline != null && String(deadline).trim() !== '' ? String(deadline).trim().slice(0, 10) : null;
 
@@ -198,6 +271,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     saleId = (ins.data as { id: string }).id;
     docNo = orderNo;
   } else {
+    const invDate = invoiceFromInput ?? defaultDay;
     const salePayload: Record<string, unknown> = {
       invoice_date: invDate,
       customer_id: customerId || null,
@@ -323,7 +397,10 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       reference_id: saleId,
       amount: paid,
       payment_method: enumMethod,
-      payment_date: new Date().toISOString().slice(0, 10),
+      payment_date:
+        paymentDate != null && String(paymentDate).trim() !== ''
+          ? String(paymentDate).trim().slice(0, 10)
+          : new Date().toISOString().slice(0, 10),
       payment_account_id: paymentAccountId || null,
       created_by: userId,
     });

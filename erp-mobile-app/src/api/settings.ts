@@ -278,3 +278,35 @@ export async function getModuleConfigs(
     error: null,
   };
 }
+
+export async function setEnablePacking(companyId: string, value: boolean): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured || !companyId) return { error: 'App not configured.' };
+  const { error } = await supabase.from('settings').upsert(
+    {
+      company_id: companyId,
+      key: 'enable_packing',
+      value,
+      category: 'inventory',
+      description: 'Enable Packing (Boxes/Pieces) – when OFF, packing is hidden system-wide',
+    },
+    { onConflict: 'company_id,key' },
+  );
+  return { error: error?.message ?? null };
+}
+
+export async function setModuleEnabled(
+  companyId: string,
+  moduleName: string,
+  isEnabled: boolean,
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured || !companyId) return { error: 'App not configured.' };
+  const { error } = await supabase.from('modules_config').upsert(
+    {
+      company_id: companyId,
+      module_name: moduleName,
+      is_enabled: isEnabled,
+    },
+    { onConflict: 'company_id,module_name' },
+  );
+  return { error: error?.message ?? null };
+}

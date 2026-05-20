@@ -6,6 +6,8 @@ import {
   type TransactionReferenceType,
 } from '../../../../api/transactionDetail';
 import { formatAmount, formatDate } from './format';
+import { AttachmentsSection } from '../../../shared/AttachmentsSection';
+import { AttachmentPreviewModal } from '../../../sales/AttachmentPreviewModal';
 
 interface TransactionDetailSheetProps {
   open: boolean;
@@ -48,6 +50,15 @@ export function TransactionDetailSheet({
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState<TransactionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
+  const [attachmentPreviewStart, setAttachmentPreviewStart] = useState(0);
+
+  useEffect(() => {
+    if (!open) {
+      setAttachmentPreviewList(null);
+      setAttachmentPreviewStart(0);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open || !companyId || !referenceId) return;
@@ -67,6 +78,11 @@ export function TransactionDetailSheet({
   }, [open, companyId, referenceType, referenceId]);
 
   if (!open) return null;
+
+  const openAttachmentPreview = (items: Array<{ url: string; name: string }>, startIndex = 0) => {
+    setAttachmentPreviewList(items);
+    setAttachmentPreviewStart(startIndex);
+  };
 
   const title = detail?.entryNo ? `${TYPE_LABEL[referenceType] ?? 'Transaction'} · ${detail.entryNo}` : fallbackTitle || TYPE_LABEL[referenceType] || 'Transaction';
 
@@ -123,6 +139,13 @@ export function TransactionDetailSheet({
                     ))}
                   </dl>
                 </div>
+              )}
+
+              {detail.attachments && detail.attachments.length > 0 && (
+                <AttachmentsSection
+                  items={detail.attachments}
+                  onOpenPreview={openAttachmentPreview}
+                />
               )}
 
               {detail.description && (
@@ -185,6 +208,17 @@ export function TransactionDetailSheet({
           )}
         </div>
       </div>
+      {attachmentPreviewList && attachmentPreviewList.length > 0 && (
+        <AttachmentPreviewModal
+          attachments={attachmentPreviewList}
+          initialIndex={attachmentPreviewStart}
+          isOpen
+          onClose={() => {
+            setAttachmentPreviewList(null);
+            setAttachmentPreviewStart(0);
+          }}
+        />
+      )}
     </div>
   );
 }

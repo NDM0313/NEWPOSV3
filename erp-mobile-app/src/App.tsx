@@ -44,6 +44,12 @@ import { subscribeMobileRealtime } from './lib/realtimeSubscriptions';
 import { mobileRealtimeHealth } from './lib/supabase';
 import { resetLocalDataPlaneForNewCompany } from './lib/sessionIsolation';
 import { dispatchSessionSwitched } from './lib/sessionSwitchBus';
+import { POSLockScreen } from './components/auth/POSLockScreen';
+import {
+  shouldActivateCounterLockScreen,
+  requestCounterLockScreen,
+} from './lib/sharedCounterMode';
+import { countCounterUsers } from './lib/counterUserVault';
 
 const LAST_AUTOSYNC_KEY = 'erp_mobile_last_autosync_at';
 
@@ -84,6 +90,10 @@ export default function App() {
   const [salesInitialType, setSalesInitialType] = useState<'regular' | 'studio' | null>(null);
   const [studioFocusSaleId, setStudioFocusSaleId] = useState<string | null>(null);
   const [isPinLocked, setIsPinLocked] = useState(false);
+  const [isCounterLocked, setIsCounterLocked] = useState(false);
+  const counterBootLockCheckedRef = useRef(false);
+  /** When true, skip cold-boot POS lock once — user just came through `handleLogin` (already authenticated). */
+  const skipCounterBootLockAfterInteractiveLoginRef = useRef(false);
   const [documentEditIntent, setDocumentEditIntent] = useState<{ kind: 'sale' | 'purchase'; id: string } | null>(null);
   const [showCreateBusiness, setShowCreateBusiness] = useState(false);
   const previousAuthUserIdRef = useRef<string | null>(null);
@@ -221,9 +231,35 @@ export default function App() {
       });
       reload(profile.userId, profile.role, profile.profileId, profile.companyId ?? undefined);
       dispatchSessionSwitched({ userId: profile.userId, companyId: profile.companyId });
+      setIsCounterLocked(false);
+      void authApi.syncCurrentSessionToCounterVault();
     },
     [applyProfileAfterCounterSwitch, reload]
   );
+
+  useEffect(() => {
+    if (authLoading || !user?.id) return;
+    if (skipCounterBootLockAfterInteractiveLoginRef.current) {
+      skipCounterBootLockAfterInteractiveLoginRef.current = false;
+      counterBootLockCheckedRef.current = true;
+      return;
+    }
+    if (counterBootLockCheckedRef.current) return;
+    counterBootLockCheckedRef.current = true;
+    void shouldActivateCounterLockScreen().then((lock) => {
+      if (lock) setIsCounterLocked(true);
+    });
+  }, [authLoading, user?.id]);
+
+  useEffect(() => {
+    const onLockRequested = () => {
+      void shouldActivateCounterLockScreen().then((lock) => {
+        if (lock) setIsCounterLocked(true);
+      });
+    };
+    window.addEventListener('erp-mobile:counter-lock-requested', onLockRequested);
+    return () => window.removeEventListener('erp-mobile:counter-lock-requested', onLockRequested);
+  }, []);
 
   useEffect(() => {
     const cleanup = initInputKeyboard();
@@ -238,6 +274,8 @@ export default function App() {
       setIsBranchResolving(false);
       setCurrentScreen('login');
       setIsPinLocked(false);
+      setIsCounterLocked(false);
+      counterBootLockCheckedRef.current = false;
       clearUnlockMark();
     };
     window.addEventListener('erp-auth-signed-out', onSignedOut);
@@ -487,6 +525,7 @@ export default function App() {
   }, []);
 
   const handleLogin = async (u: User, cid: string | null) => {
+    skipCounterBootLockAfterInteractiveLoginRef.current = true;
     if (previousAuthUserIdRef.current !== null && previousAuthUserIdRef.current !== u.id) {
       await resetLocalDataPlaneForNewCompany();
     }
@@ -506,6 +545,7 @@ export default function App() {
           setCurrentScreen('home');
           setActiveBottomTab('home');
           setIsBranchResolving(false);
+          void authApi.syncCurrentSessionToCounterVault();
           return;
         }
       } catch { /* fall through */ }
@@ -521,6 +561,7 @@ export default function App() {
           setCurrentScreen('home');
           setActiveBottomTab('home');
           setIsBranchResolving(false);
+          void authApi.syncCurrentSessionToCounterVault();
           return;
         }
         if (!isAdmin && userBranchIds.length === 1) {
@@ -530,12 +571,14 @@ export default function App() {
           setCurrentScreen('home');
           setActiveBottomTab('home');
           setIsBranchResolving(false);
+          void authApi.syncCurrentSessionToCounterVault();
           return;
         }
       } catch { /* ignore */ }
     }
     setCurrentScreen('branch-selection');
     setIsBranchResolving(false);
+    void authApi.syncCurrentSessionToCounterVault();
   };
 
   const handleBranchSelect = (b: Branch) => {
@@ -544,6 +587,7 @@ export default function App() {
     setCurrentScreen('home');
     setActiveBottomTab('home');
     setIsBranchResolving(false);
+    void authApi.syncCurrentSessionToCounterVault();
   };
 
   const navigateToModule = (screen: Screen, options?: { studioSale?: boolean }) => {
@@ -574,8 +618,8 @@ export default function App() {
     }
   };
 
-  const handleLogout = async () => {
-    await authApi.signOut();
+  const handleLogoutFull = async () => {
+    await authApi.signOutGlobal();
     try { localStorage.removeItem(BRANCH_STORAGE_KEY); } catch { /* ignore */ }
     clearUnlockMark();
     setUser(null);
@@ -583,9 +627,23 @@ export default function App() {
     setSelectedBranch(null);
     setIsBranchResolving(false);
     setIsPinLocked(false);
+    setIsCounterLocked(false);
+    counterBootLockCheckedRef.current = false;
     setShowCreateBusiness(false);
     previousAuthUserIdRef.current = null;
     setCurrentScreen('login');
+  };
+
+  const handleLogout = async () => {
+    if ((await countCounterUsers()) > 0) {
+      setIsCounterLocked(true);
+      return;
+    }
+    await handleLogoutFull();
+  };
+
+  const handleRequestCounterLock = () => {
+    requestCounterLockScreen();
   };
 
   const handleBottomNavChange = (tab: BottomNavTab) => {
@@ -623,6 +681,15 @@ export default function App() {
           <div className="text-[#9CA3AF] animate-pulse">Loading permissions...</div>
         </div>
       </div>
+    );
+  }
+
+  if (isCounterLocked && user) {
+    return (
+      <POSLockScreen
+        onSessionReplaced={handleCounterSessionReplaced}
+        onUseFullLogin={() => void handleLogoutFull()}
+      />
     );
   }
 
@@ -725,6 +792,7 @@ export default function App() {
               companyId={companyId}
               branchId={selectedBranch?.id ?? null}
               onCounterSessionReplaced={handleCounterSessionReplaced}
+              onRequestCounterLock={handleRequestCounterLock}
             />
       )}
       {currentScreen === 'contacts' && user && (
@@ -824,6 +892,7 @@ export default function App() {
               companyId={companyId}
               branch={selectedBranch}
               onCounterSessionReplaced={handleCounterSessionReplaced}
+              onRequestCounterLock={handleRequestCounterLock}
             />
       )}
       {currentScreen === 'inventory' && user && (

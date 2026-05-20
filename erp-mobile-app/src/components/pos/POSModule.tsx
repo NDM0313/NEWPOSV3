@@ -3,6 +3,7 @@ import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, L
 import type { User } from '../../types';
 import type { AuthProfile } from '../../api/auth';
 import { SwitchUserPinOverlay } from '../auth/SwitchUserPinOverlay';
+import { isSharedCounterModeEnabled } from '../../lib/sharedCounterMode';
 import * as productsApi from '../../api/products';
 import * as salesApi from '../../api/sales';
 import { addPending } from '../../lib/offlineStore';
@@ -12,6 +13,7 @@ import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
 import { BarcodeScanner } from '../../features/barcode';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
+import { localNowDateString } from '../../utils/localDate';
 
 interface POSModuleProps {
   onBack: () => void;
@@ -19,6 +21,7 @@ interface POSModuleProps {
   companyId: string | null;
   branchId: string | null;
   onCounterSessionReplaced?: (profile: AuthProfile) => void | Promise<void>;
+  onRequestCounterLock?: () => void;
 }
 
 /** Product as shown in POS grid: base + optional variations with stock */
@@ -44,7 +47,7 @@ interface CartItem {
   variationName?: string;
 }
 
-export function POSModule({ onBack, user, companyId, branchId, onCounterSessionReplaced }: POSModuleProps) {
+export function POSModule({ onBack, user, companyId, branchId, onCounterSessionReplaced, onRequestCounterLock }: POSModuleProps) {
   const [products, setProducts] = useState<POSProduct[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -56,6 +59,7 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
   const [lastInvoiceNo, setLastInvoiceNo] = useState<string | null>(null);
   const [variationModalProduct, setVariationModalProduct] = useState<POSProduct | null>(null);
   const [showPaymentStep, setShowPaymentStep] = useState(false);
+  const [invoiceDate, setInvoiceDate] = useState(() => localNowDateString());
   const { runSingleFlight, isRunning: isCheckoutSubmitRunning } = useSingleFlightAction();
   const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [scannerInput, setScannerInput] = useState(''); // keyboard wedge (Speed-X, Sunmi, CS60)
@@ -67,6 +71,7 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
     setCheckoutError(null);
     setShowCart(false);
     setShowPaymentStep(false);
+    setInvoiceDate(localNowDateString());
   }, [user.id]);
 
   useEffect(() => {
@@ -341,6 +346,8 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
       paymentAccountId: result.accountId ?? null,
       isStudio: false,
       userId: user.id,
+      invoiceDate,
+      paymentDate: result.paymentDate || invoiceDate,
     };
 
     if (!navigator.onLine) {
@@ -391,7 +398,13 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
           {onCounterSessionReplaced ? (
             <button
               type="button"
-              onClick={() => setShowSwitchUser(true)}
+              onClick={() => {
+                if (isSharedCounterModeEnabled() && onRequestCounterLock) {
+                  onRequestCounterLock();
+                } else {
+                  setShowSwitchUser(true);
+                }
+              }}
               className="p-2 hover:bg-[#374151] rounded-lg text-white"
               title="Switch user"
             >
@@ -608,7 +621,18 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
 
       {/* Payment: same flow as Sales — PaymentDialog (method → account → amount → post) */}
       {showPaymentStep && (
-        <div className="fixed inset-0 z-[60] bg-[#111827]">
+        <div className="fixed inset-0 z-[60] bg-[#111827] flex flex-col">
+          <div className="px-4 pt-4 pb-2 border-b border-[#374151] shrink-0">
+            <label className="block text-xs text-[#9CA3AF] mb-1">Invoice date</label>
+            <input
+              type="date"
+              max={localNowDateString()}
+              value={invoiceDate}
+              onChange={(e) => setInvoiceDate(e.target.value)}
+              className="w-full max-w-xs h-10 bg-[#1F2937] border border-[#374151] rounded-lg px-3 text-sm text-white"
+            />
+          </div>
+          <div className="flex-1 min-h-0 flex flex-col">
           <PaymentDialog
             onBack={() => { setShowPaymentStep(false); setShowCart(true); }}
             totalAmount={total}
@@ -616,7 +640,9 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
             onComplete={handlePaymentComplete}
             saving={checkoutLoading || isCheckoutSubmitRunning}
             saveError={checkoutError}
+            viewerRole={user.role}
           />
+          </div>
         </div>
       )}
 

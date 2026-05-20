@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Search, Plus, Phone, X, Building2 } from 'lucide-react';
 import * as contactsApi from '../../api/contacts';
+import { usePermissions } from '../../context/PermissionContext';
 
 export interface Supplier {
   id: string;
@@ -16,6 +17,7 @@ interface SelectSupplierTabletProps {
 }
 
 export function SelectSupplierTablet({ onBack, onSelect, companyId }: SelectSupplierTabletProps) {
+  const { canViewBalances } = usePermissions();
   const [searchQuery, setSearchQuery] = useState('');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(!!companyId);
@@ -127,7 +129,7 @@ export function SelectSupplierTablet({ onBack, onSelect, companyId }: SelectSupp
                     <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">RECENT SUPPLIERS</h2>
                     <div className="space-y-2">
                       {recentSuppliers.map((supplier) => (
-                        <SupplierCard key={supplier.id} supplier={supplier} onSelect={onSelect} />
+                        <SupplierCard key={supplier.id} supplier={supplier} canViewBalances={canViewBalances} onSelect={onSelect} />
                       ))}
                     </div>
                   </div>
@@ -138,7 +140,7 @@ export function SelectSupplierTablet({ onBack, onSelect, companyId }: SelectSupp
                   </h2>
                   <div className="space-y-2">
                     {filteredSuppliers.map((supplier) => (
-                      <SupplierCard key={supplier.id} supplier={supplier} onSelect={onSelect} />
+                      <SupplierCard key={supplier.id} supplier={supplier} canViewBalances={canViewBalances} onSelect={onSelect} />
                     ))}
                   </div>
                   {filteredSuppliers.length === 0 && (
@@ -169,14 +171,18 @@ export function SelectSupplierTablet({ onBack, onSelect, companyId }: SelectSupp
                   <span className="text-xs text-[#6B7280]">Total Suppliers</span>
                   <span className="text-sm font-semibold text-white">{stats.total}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-[#6B7280]">Payables</span>
-                  <span className="text-sm font-semibold text-[#EF4444]">{stats.withDue}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-[#6B7280]">Receivables</span>
-                  <span className="text-sm font-semibold text-[#10B981]">{stats.withCredit}</span>
-                </div>
+                {canViewBalances && (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-[#6B7280]">Payables</span>
+                      <span className="text-sm font-semibold text-[#EF4444]">{stats.withDue}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-[#6B7280]">Receivables</span>
+                      <span className="text-sm font-semibold text-[#10B981]">{stats.withCredit}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
             <div className="bg-[#10B981]/10 border border-[#10B981]/30 rounded-xl p-4">
@@ -253,7 +259,15 @@ export function SelectSupplierTablet({ onBack, onSelect, companyId }: SelectSupp
   );
 }
 
-function SupplierCard({ supplier, onSelect }: { supplier: Supplier; onSelect: (s: Supplier) => void }) {
+function SupplierCard({
+  supplier,
+  canViewBalances,
+  onSelect,
+}: {
+  supplier: Supplier;
+  canViewBalances: boolean;
+  onSelect: (s: Supplier) => void;
+}) {
   return (
     <button
       onClick={() => onSelect(supplier)}
@@ -270,7 +284,7 @@ function SupplierCard({ supplier, onSelect }: { supplier: Supplier; onSelect: (s
             <span>{supplier.phone}</span>
           </div>
         </div>
-        {supplier.balance !== 0 && (
+        {canViewBalances && supplier.balance !== 0 && (
           <div className="text-right flex-shrink-0">
             <p className={`text-xs font-medium ${supplier.balance > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
               {supplier.balance > 0 ? 'Payable' : 'Receivable'}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Search, Plus, Phone, X, Star, ShoppingCart, Palette } from 'lucide-react';
 import type { Customer } from './SalesModule';
 import * as contactsApi from '../../api/contacts';
+import { usePermissions } from '../../context/PermissionContext';
 
 function contactToCustomer(c: contactsApi.Contact): Customer {
   return { id: c.id, name: c.name, phone: c.phone || '—', balance: c.balance };
@@ -17,6 +18,7 @@ interface SelectCustomerTabletProps {
 }
 
 export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerTabletProps) {
+  const { canViewBalances } = usePermissions();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [searchQuery, setSearchQuery] = useState('');
@@ -143,7 +145,7 @@ export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleT
                     <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">RECENT CUSTOMERS</h2>
                     <div className="space-y-2">
                       {recentCustomers.map((c) => (
-                        <CustomerCard key={c.id} customer={c} onSelect={() => onSelect(c, saleType)} isRecent />
+                        <CustomerCard key={c.id} customer={c} canViewBalances={canViewBalances} onSelect={() => onSelect(c, saleType)} isRecent />
                       ))}
                     </div>
                   </div>
@@ -154,7 +156,7 @@ export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleT
                   </h2>
                   <div className="space-y-2">
                     {filteredCustomers.map((c) => (
-                      <CustomerCard key={c.id} customer={c} onSelect={() => onSelect(c, saleType)} />
+                      <CustomerCard key={c.id} customer={c} canViewBalances={canViewBalances} onSelect={() => onSelect(c, saleType)} />
                     ))}
                   </div>
                   {filteredCustomers.length === 0 && (
@@ -182,14 +184,18 @@ export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleT
                   <span className="text-xs text-[#6B7280]">Total Customers</span>
                   <span className="text-sm font-semibold text-white">{stats.total}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-[#6B7280]">With Due</span>
-                  <span className="text-sm font-semibold text-[#EF4444]">{stats.withDue}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-[#6B7280]">With Credit</span>
-                  <span className="text-sm font-semibold text-[#10B981]">{stats.withCredit}</span>
-                </div>
+                {canViewBalances && (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-[#6B7280]">With Due</span>
+                      <span className="text-sm font-semibold text-[#EF4444]">{stats.withDue}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-[#6B7280]">With Credit</span>
+                      <span className="text-sm font-semibold text-[#10B981]">{stats.withCredit}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -262,10 +268,12 @@ export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleT
 
 function CustomerCard({
   customer,
+  canViewBalances,
   onSelect,
   isRecent,
 }: {
   customer: Customer;
+  canViewBalances: boolean;
   onSelect: () => void;
   isRecent?: boolean;
 }) {
@@ -293,7 +301,7 @@ function CustomerCard({
             <span>{customer.phone}</span>
           </div>
         </div>
-        {customer.balance !== 0 && (
+        {canViewBalances && customer.balance !== 0 && (
           <div className="text-right flex-shrink-0">
             <p className={`text-xs font-medium ${customer.balance > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
               {customer.balance > 0 ? 'Due' : 'Credit'}

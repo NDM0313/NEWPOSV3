@@ -6,11 +6,11 @@ import {
   Share2,
   BookOpen,
   Loader2,
-  Paperclip,
   SquarePen,
 } from 'lucide-react';
 import {
   getTransactionDetail,
+  canEditTransaction,
   type TransactionDetail,
 } from '../../../api/transactions';
 import { buildPaymentReferenceLabels } from '../../../utils/paymentReferenceDisplay';
@@ -18,8 +18,11 @@ import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { ReceiptPreviewPdf } from '../../shared/ReceiptPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
 import { EditTransactionSheet } from './_shared/EditTransactionSheet';
-import { canEditTransaction } from '../../../api/transactions';
 import { dispatchMobileAccountingInvalidated } from '../../../lib/dataInvalidationBus';
+import { AttachmentPreviewModal } from '../../sales/AttachmentPreviewModal';
+import { AttachmentsSection } from '../../shared/AttachmentsSection';
+import { normalizeAttachments } from '../../../lib/normalizeAttachments';
+import { formatPaymentDateTimeLine, paymentDateTimeIsoForReceipt } from '../../../utils/transactionDisplayDate';
 
 interface Props {
   paymentId: string;
@@ -35,23 +38,14 @@ const METHOD_LABEL: Record<string, string> = {
   other: 'Other',
 };
 
-function formatDateTime(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return `${d.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' })} · ${d.toLocaleTimeString('en-PK', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  })}`;
-}
-
 export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLedger }: Props) {
   const [detail, setDetail] = useState<TransactionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const preview = usePdfPreview(companyId);
   const [showEdit, setShowEdit] = useState(false);
+  const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
+  const [attachmentPreviewStart, setAttachmentPreviewStart] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -85,6 +79,11 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
     });
   };
   const editability = detail ? canEditTransaction(detail.referenceType, 'payment_row') : { editable: false, kind: 'locked' as const };
+
+  const openAttachmentPreview = (items: Array<{ url: string; name: string }>, startIndex = 0) => {
+    setAttachmentPreviewList(items);
+    setAttachmentPreviewStart(startIndex);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center md:justify-center bg-black/60" onClick={onClose}>
@@ -122,7 +121,7 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
                     {isReceived ? 'Payment Received' : 'Payment Paid'}
                   </p>
                   <p className="text-lg font-semibold text-white truncate">{detail.partyName ?? detail.partyAccountName ?? '—'}</p>
-                  <p className="text-xs text-[#9CA3AF] mt-0.5">{formatDateTime(detail.createdAt || detail.paymentDate)}</p>
+                  <p className="text-xs text-[#9CA3AF] mt-0.5">{formatPaymentDateTimeLine(detail.paymentDate, detail.createdAt)}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className={`text-lg font-bold ${amountColor}`}>
@@ -201,25 +200,11 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
               </section>
             )}
 
-            {detail.attachments && detail.attachments.length > 0 && (
-              <section className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-                <h3 className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide mb-3">Attachments</h3>
-                <ul className="space-y-2">
-                  {detail.attachments.map((a, idx) => (
-                    <li key={idx}>
-                      <a
-                        href={a.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-2 text-sm text-[#6366F1] hover:underline"
-                      >
-                        <Paperclip className="w-4 h-4" />
-                        {a.name || `Attachment ${idx + 1}`}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </section>
+            {normalizeAttachments(detail.attachments).length > 0 && (
+              <AttachmentsSection
+                items={normalizeAttachments(detail.attachments)}
+                onOpenPreview={openAttachmentPreview}
+              />
             )}
 
             <div className="grid grid-cols-2 gap-2 pt-2">
@@ -262,7 +247,7 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
             heading={detail.direction === 'received' ? 'Payment Received' : 'Payment Paid'}
             partyName={detail.partyName ?? detail.partyAccountName ?? 'Customer'}
             amount={detail.amount}
-            dateTime={detail.createdAt || detail.paymentDate}
+            dateTime={paymentDateTimeIsoForReceipt(detail.paymentDate, detail.createdAt)}
             fromAccountName={detail.direction === 'received' ? detail.paymentAccountName : (detail.partyAccountName ?? detail.partyName ?? null)}
             toAccountName={detail.direction === 'received' ? (detail.partyAccountName ?? detail.partyName ?? null) : detail.paymentAccountName}
             referenceNumber={refLabels.primary || (detail.referenceNumber ?? detail.entryNo ?? null)}
@@ -297,6 +282,17 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
                 setDetail(data);
               })
               .finally(() => setLoading(false));
+          }}
+        />
+      )}
+      {attachmentPreviewList && attachmentPreviewList.length > 0 && (
+        <AttachmentPreviewModal
+          attachments={attachmentPreviewList}
+          initialIndex={attachmentPreviewStart}
+          isOpen={true}
+          onClose={() => {
+            setAttachmentPreviewList(null);
+            setAttachmentPreviewStart(0);
           }}
         />
       )}

@@ -11,14 +11,36 @@ interface AddUserSheetProps {
   onSuccess: () => void;
 }
 
+function PinDots({ value, length = 8 }: { value: string; length?: number }) {
+  return (
+    <div className="flex justify-center gap-1.5 flex-wrap">
+      {Array.from({ length }).map((_, i) => (
+        <div
+          key={i}
+          className="w-8 h-10 rounded-lg bg-[#111827] border border-[#374151] flex items-center justify-center text-white font-mono"
+        >
+          {value[i] ? '•' : ''}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function AddUserSheet({ companyId, branchId, onBack, onSuccess }: AddUserSheetProps) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<string>('salesman');
   const [passwordOption, setPasswordOption] = useState<'invite' | 'temp'>('invite');
+  const [tempMode, setTempMode] = useState<'password' | 'pin'>('password');
   const [temporaryPassword, setTemporaryPassword] = useState('');
+  const [pinDigits, setPinDigits] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const appendPin = (d: string) => {
+    if (pinDigits.length >= 4) return;
+    setPinDigits((p) => (p + d).slice(0, 4));
+  };
 
   const handleSubmit = async () => {
     setError('');
@@ -28,9 +50,21 @@ export function AddUserSheet({ companyId, branchId, onBack, onSuccess }: AddUser
       setError('Name and email are required.');
       return;
     }
-    if (passwordOption === 'temp' && (!temporaryPassword || temporaryPassword.length < 8)) {
-      setError('Temporary password must be at least 8 characters.');
-      return;
+    let tempPass: string | undefined;
+    if (passwordOption === 'temp') {
+      if (tempMode === 'pin') {
+        if (!/^\d{4}$/.test(pinDigits)) {
+          setError('Enter a 4-digit PIN (used as initial password; enroll counter PIN in Settings after login).');
+          return;
+        }
+        tempPass = `${pinDigits}${pinDigits}`;
+      } else {
+        if (!temporaryPassword || temporaryPassword.length < 8) {
+          setError('Temporary password must be at least 8 characters.');
+          return;
+        }
+        tempPass = temporaryPassword;
+      }
     }
     setSubmitting(true);
     const branch_ids = branchId && branchId !== 'all' ? [branchId] : undefined;
@@ -40,7 +74,7 @@ export function AddUserSheet({ companyId, branchId, onBack, onSuccess }: AddUser
       role: normalizeAppRole(role),
       company_id: companyId,
       send_invite_email: passwordOption === 'invite',
-      temporary_password: passwordOption === 'temp' ? temporaryPassword : undefined,
+      temporary_password: passwordOption === 'temp' ? tempPass : undefined,
       branch_ids,
       default_branch_id: branchId && branchId !== 'all' ? branchId : undefined,
       is_active: true,
@@ -112,42 +146,95 @@ export function AddUserSheet({ companyId, branchId, onBack, onSuccess }: AddUser
 
         <div className="space-y-2">
           <p className="text-xs text-[#9CA3AF] font-medium">Access</p>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="pwd"
-              checked={passwordOption === 'invite'}
-              onChange={() => setPasswordOption('invite')}
-              className="text-[#3B82F6]"
-            />
-            <span className="text-sm text-[#E5E7EB]">Send invite email (user sets password)</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="pwd"
-              checked={passwordOption === 'temp'}
-              onChange={() => setPasswordOption('temp')}
-              className="text-[#3B82F6]"
-            />
-            <span className="text-sm text-[#E5E7EB]">Temporary password</span>
-          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setPasswordOption('invite')}
+              className={`text-left p-3 rounded-xl border transition-colors ${
+                passwordOption === 'invite'
+                  ? 'border-[#3B82F6] bg-[#3B82F6]/10'
+                  : 'border-[#374151] bg-[#1F2937] hover:border-[#4B5563]'
+              }`}
+            >
+              <span className="text-sm font-medium text-white block">Invite email</span>
+              <span className="text-xs text-[#9CA3AF] mt-1 block">User sets their own password</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPasswordOption('temp')}
+              className={`text-left p-3 rounded-xl border transition-colors ${
+                passwordOption === 'temp'
+                  ? 'border-[#3B82F6] bg-[#3B82F6]/10'
+                  : 'border-[#374151] bg-[#1F2937] hover:border-[#4B5563]'
+              }`}
+            >
+              <span className="text-sm font-medium text-white block">Temporary password</span>
+              <span className="text-xs text-[#9CA3AF] mt-1 block">You set initial access</span>
+            </button>
+          </div>
         </div>
 
         {passwordOption === 'temp' && (
-          <div>
-            <label className="text-xs text-[#9CA3AF] block mb-1">Temporary password (min 8 chars)</label>
-            <div className="relative">
-              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6B7280]" />
-              <input
-                type="password"
-                value={temporaryPassword}
-                onChange={(e) => setTemporaryPassword(e.target.value)}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-xl pl-10 pr-3 py-3 text-white"
-                placeholder="••••••••"
-                autoComplete="new-password"
-              />
+          <div className="space-y-3 bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setTempMode('password')}
+                className={`flex-1 py-2 rounded-lg text-xs font-medium ${
+                  tempMode === 'password' ? 'bg-[#3B82F6] text-white' : 'bg-[#111827] text-[#9CA3AF] border border-[#374151]'
+                }`}
+              >
+                Alphanumeric (8+)
+              </button>
+              <button
+                type="button"
+                onClick={() => setTempMode('pin')}
+                className={`flex-1 py-2 rounded-lg text-xs font-medium ${
+                  tempMode === 'pin' ? 'bg-[#3B82F6] text-white' : 'bg-[#111827] text-[#9CA3AF] border border-[#374151]'
+                }`}
+              >
+                4-digit PIN
+              </button>
             </div>
+            {tempMode === 'password' ? (
+              <div>
+                <label className="text-xs text-[#9CA3AF] block mb-1">Temporary password (min 8 chars)</label>
+                <div className="relative">
+                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6B7280]" />
+                  <input
+                    type="password"
+                    value={temporaryPassword}
+                    onChange={(e) => setTemporaryPassword(e.target.value)}
+                    className="w-full bg-[#111827] border border-[#374151] rounded-xl pl-10 pr-3 py-3 text-white"
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-xs text-[#9CA3AF] mb-2">
+                  POS-style PIN entry. After first login, enroll this user under Settings → Counter tablet PIN.
+                </p>
+                <PinDots value={pinDigits} length={4} />
+                <div className="grid grid-cols-3 gap-2 mt-3">
+                  {(['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clr', '0', 'del'] as const).map((key, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        if (key === 'del') setPinDigits((p) => p.slice(0, -1));
+                        else if (key === 'clr') setPinDigits('');
+                        else appendPin(key);
+                      }}
+                      className="h-11 rounded-lg bg-[#374151] text-white font-medium disabled:opacity-30"
+                    >
+                      {key === 'del' ? '⌫' : key === 'clr' ? 'C' : key}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

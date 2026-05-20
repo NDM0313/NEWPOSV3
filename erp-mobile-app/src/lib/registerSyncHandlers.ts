@@ -40,6 +40,8 @@ export function registerAllSyncHandlers(): void {
       notes?: string;
       isStudio: boolean;
       userId: string;
+      invoiceDate?: string;
+      paymentDate?: string;
       orderDate?: string;
       deadline?: string;
       studioDesignName?: string;
@@ -63,6 +65,8 @@ export function registerAllSyncHandlers(): void {
       notes: p.notes,
       isStudio: !!p.isStudio,
       userId: p.userId,
+      invoiceDate: p.invoiceDate,
+      paymentDate: p.paymentDate,
       orderDate: p.orderDate,
       deadline: p.deadline,
       studioDesignName: p.studioDesignName,
@@ -80,6 +84,7 @@ export function registerAllSyncHandlers(): void {
       amount: number;
       paymentMethod: string;
       userId: string;
+      expenseDate?: string;
       paymentAccountId?: string | null;
       receiptUrl?: string | null;
       paidToUserId?: string | null;
@@ -93,6 +98,7 @@ export function registerAllSyncHandlers(): void {
       amount: p.amount,
       paymentMethod: p.paymentMethod || 'cash',
       userId: p.userId,
+      expenseDate: p.expenseDate,
       paymentAccountId: p.paymentAccountId,
       receiptUrl: p.receiptUrl,
       paidToUserId: p.paidToUserId,

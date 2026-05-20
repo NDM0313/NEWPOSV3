@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { fetchReferenceAttachments } from './transactionDetail';
 
 /**
  * A single payment transaction flattened for UI display.
@@ -171,8 +172,8 @@ export async function getPaymentTransactions(
       'id, created_at, payment_date, payment_type, reference_type, reference_id, reference_number, amount, payment_method, payment_account_id, branch_id, notes, attachments, created_by',
     )
     .eq('company_id', filters.companyId)
-    .order('payment_date', { ascending: true })
-    .order('created_at', { ascending: true })
+    .order('payment_date', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(filters.limit ?? 150);
 
   if (filters.branchId && filters.branchId !== 'all' && filters.branchId !== 'default') {
@@ -348,7 +349,10 @@ export async function getPaymentTransactions(
       data: out.filter(
         (t) =>
           (t.partyName || '').toLowerCase().includes(q) ||
+          (t.partyAccountName || '').toLowerCase().includes(q) ||
+          (t.paymentAccountName || '').toLowerCase().includes(q) ||
           (t.referenceNumber || '').toLowerCase().includes(q) ||
+          (t.entryNo || '').toLowerCase().includes(q) ||
           (t.notes || '').toLowerCase().includes(q),
       ),
       error: null,
@@ -412,8 +416,26 @@ export async function getTransactionDetail(
     }
   }
 
+  let mergedAttachments = base.attachments;
+  const refType = String(base.referenceType || '').trim();
+  const refId = String(base.referenceId || '').trim();
+  if (refType && refId) {
+    const extra = await fetchReferenceAttachments(companyId, refType, refId);
+    const seen = new Set<string>();
+    const out: Array<{ url: string; name?: string | null }> = [];
+    const push = (url: string, name?: string | null) => {
+      const u = String(url || '').trim();
+      if (!u || seen.has(u)) return;
+      seen.add(u);
+      out.push({ url: u, name: name ?? null });
+    };
+    for (const a of base.attachments || []) push(a.url, a.name);
+    for (const a of extra) push(a.url, a.name);
+    mergedAttachments = out.length ? out : null;
+  }
+
   return {
-    data: { ...base, journalLines, partyPhone, partyType },
+    data: { ...base, attachments: mergedAttachments, journalLines, partyPhone, partyType },
     error: null,
   };
 }

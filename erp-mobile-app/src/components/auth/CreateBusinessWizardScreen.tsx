@@ -254,6 +254,7 @@ export function CreateBusinessWizardScreen({ onCancel, onComplete }: CreateBusin
             <input
               type="text"
               inputMode="numeric"
+              pattern="[0-9]*"
               autoComplete="one-time-code"
               maxLength={12}
               value={otp}

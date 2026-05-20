@@ -5,6 +5,12 @@ import type { User } from '../types';
 import * as authApi from '../api/auth';
 import { markUnlocked } from '../lib/pinLock';
 import { OAUTH_COMPLETE_EVENT, type OauthCompleteDetail } from '../lib/oauthCallback';
+import { CounterLoginPanel } from './auth/CounterLoginPanel';
+import {
+  formatCounterPinAuthError,
+  getCounterVaultUserIdForPin,
+  saveCounterUserForPin,
+} from '../lib/counterUserVault';
 
 interface LoginScreenProps {
   onLogin: (user: User, companyId: string | null) => void;
@@ -147,6 +153,35 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         branchId: branchIdForSetPin,
         email: userForSetPin.email,
       });
+      if (/^\d{4}$/.test(setPinValue) && companyIdForSetPin) {
+        try {
+          const prof = await authApi.getProfile(sessionWithRefresh.userId);
+          const branchId = prof?.branchId ?? branchIdForSetPin ?? null;
+          if (branchId) {
+            const existingUid = await getCounterVaultUserIdForPin(setPinValue);
+            if (existingUid && existingUid !== sessionWithRefresh.userId) {
+              console.warn(
+                '[LoginScreen] Counter tablet PIN not saved: this 4-digit PIN is already used on this tablet by another login.',
+              );
+            } else {
+              await saveCounterUserForPin(setPinValue, {
+                refreshToken: sessionWithRefresh.refreshToken,
+                userId: sessionWithRefresh.userId,
+                companyId: companyIdForSetPin,
+                branchId,
+                email: sessionWithRefresh.email || userForSetPin.email,
+                savedAt: Date.now(),
+                displayName: prof?.name?.trim() || userForSetPin.name,
+                publicUsersId: userForSetPin.profileId,
+                role: userForSetPin.role,
+              });
+              void authApi.syncCurrentSessionToCounterVault();
+            }
+          }
+        } catch (counterErr) {
+          console.warn('[LoginScreen] Counter tablet PIN not saved from first-time setup:', counterErr);
+        }
+      }
       markUnlocked();
       onLogin(userForSetPin, companyIdForSetPin);
       setShowSetPin(false);
@@ -186,7 +221,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         if (!session) {
           const refreshed = await authApi.refreshSessionFromRefreshToken(payload.refreshToken);
           if (!refreshed.ok) {
-            setError(refreshed.error || 'Could not restore session.');
+            setError(formatCounterPinAuthError(refreshed.error));
             return;
           }
         }
@@ -318,7 +353,15 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
             <KeyRound className="w-12 h-12 mx-auto mb-2 text-[#3B82F6]" />
             <h2 className="text-lg font-semibold text-white">Set PIN for next time</h2>
             <p className="text-sm text-[#9CA3AF] mt-1">Enter 4–6 digits. Stored securely on this device.</p>
-            <p className="text-xs text-[#6B7280] mt-2">Change or remove in Settings after login.</p>
+            <p className="text-xs text-[#6B7280] mt-2">
+              Use exactly <span className="text-[#9CA3AF] font-medium">4 digits</span> if you want the same PIN on the
+              shared lock screen (POS). With 5–6 digits, add Counter tablet PIN later in Settings.
+            </p>
+            <p className="text-xs text-[#6B7280] mt-1">
+              Shared counter PIN needs an assigned branch. If you do not have one yet, set Counter tablet PIN in
+              Settings after choosing a branch.
+            </p>
+            <p className="text-xs text-[#6B7280] mt-1">Change or remove in Settings after login.</p>
           </div>
           <div className="space-y-4">
             <div>
@@ -452,6 +495,12 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
       </div>
 
       <div className="w-full max-w-sm">
+        <CounterLoginPanel
+          onLogin={onLogin}
+          onUseFullLogin={() => {
+            setError('');
+          }}
+        />
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-[#6B7280] mb-2">Email</label>

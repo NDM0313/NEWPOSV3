@@ -26,6 +26,8 @@ import { PdfPreviewModal } from '../shared/PdfPreviewModal';
 import { usePdfPreview } from '../shared/usePdfPreview';
 import { InvoicePreviewPdf, type InvoicePreviewItem } from '../shared/InvoicePreviewPdf';
 import { CustomSearchableSheet } from '../common';
+import { AttachmentsSection } from '../shared/AttachmentsSection';
+import { normalizeAttachments } from '../../lib/normalizeAttachments';
 
 interface PurchaseModuleProps {
   onBack: () => void;
@@ -70,6 +72,7 @@ export function PurchaseModule({
   const [menuOrder, setMenuOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
   const [paymentHistory, setPaymentHistory] = useState<purchasesApi.PurchasePaymentRow[]>([]);
   const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
+  const [attachmentPreviewStart, setAttachmentPreviewStart] = useState(0);
   const [markAsFinalError, setMarkAsFinalError] = useState<string | null>(null);
   const [markAsFinalLoading, setMarkAsFinalLoading] = useState(false);
   const [cancelOrder, setCancelOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
@@ -123,6 +126,11 @@ export function PurchaseModule({
     const { data } = await purchasesApi.getPurchasePayments(purchaseId);
     setPaymentHistory(data || []);
   }, []);
+
+  const openAttachmentPreview = (list: Array<{ url: string; name: string }>, startIndex = 0) => {
+    setAttachmentPreviewList(list);
+    setAttachmentPreviewStart(startIndex);
+  };
 
   useEffect(() => {
     if (selectedOrder) {
@@ -780,6 +788,7 @@ export function PurchaseModule({
 
   if (view === 'details' && selectedOrder) {
     const showMarkAsFinal = ['ordered', 'draft', 'sent', 'confirmed'].includes(selectedOrder.status);
+    const purchaseDocAttachments = normalizeAttachments(selectedOrder.attachments ?? null);
     return (
       <div className="min-h-screen bg-[#111827] flex flex-col">
         <div className="bg-[#1F2937] border-b border-[#374151] p-4 sticky top-0 z-10 shrink-0">
@@ -873,6 +882,10 @@ export function PurchaseModule({
             </div>
           </div>
 
+          {purchaseDocAttachments.length > 0 && (
+            <AttachmentsSection items={purchaseDocAttachments} onOpenPreview={openAttachmentPreview} />
+          )}
+
           {paymentHistory.length > 0 && (
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
               <h3 className="text-sm font-medium text-[#9CA3AF] mb-3">Payment History</h3>
@@ -887,7 +900,7 @@ export function PurchaseModule({
                     {p.attachments && p.attachments.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => setAttachmentPreviewList(p.attachments!)}
+                        onClick={() => openAttachmentPreview(p.attachments!, 0)}
                         className="p-2 rounded-lg text-[#3B82F6] hover:bg-[#374151] shrink-0"
                         aria-label="View attachments"
                       >
@@ -903,9 +916,12 @@ export function PurchaseModule({
           {attachmentPreviewList && attachmentPreviewList.length > 0 && (
             <AttachmentPreviewModal
               attachments={attachmentPreviewList}
-              initialIndex={0}
+              initialIndex={attachmentPreviewStart}
               isOpen={true}
-              onClose={() => setAttachmentPreviewList(null)}
+              onClose={() => {
+                setAttachmentPreviewList(null);
+                setAttachmentPreviewStart(0);
+              }}
             />
           )}
         </div>
@@ -1280,7 +1296,7 @@ export function PurchaseModule({
               {(showDiscountField || Number(editOrder.discount ?? 0) > 0) && (
                 <div>
                   <label className="block text-xs text-[#9CA3AF] mb-1">Discount</label>
-                  <input type="number" min="0" step="0.01" value={editDiscount} onChange={(e) => setEditDiscount(e.target.value)}
+                  <input type="number" min="0" step="0.01" inputMode="decimal" value={editDiscount} onChange={(e) => setEditDiscount(e.target.value)}
                     className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
                 </div>
               )}
@@ -1293,7 +1309,7 @@ export function PurchaseModule({
               {(showTaxField || Number(editTax) > 0) && (
                 <div>
                   <label className="block text-xs text-[#9CA3AF] mb-1">Tax</label>
-                  <input type="number" min="0" step="0.01" value={editTax} onChange={(e) => setEditTax(e.target.value)}
+                  <input type="number" min="0" step="0.01" inputMode="decimal" value={editTax} onChange={(e) => setEditTax(e.target.value)}
                     className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm" />
                 </div>
               )}
@@ -1377,6 +1393,7 @@ export function PurchaseModule({
                               type="number"
                               min="0"
                               step="0.01"
+                              inputMode="decimal"
                               value={row.quantity}
                               onChange={(e) => updateEditPurchaseLine(idx, { quantity: Number(e.target.value) || 0 })}
                               className="w-full h-9 rounded bg-[#0B1120] border border-[#374151] text-white px-2 text-sm"
@@ -1388,6 +1405,7 @@ export function PurchaseModule({
                               type="number"
                               min="0"
                               step="0.01"
+                              inputMode="decimal"
                               value={row.unitPrice}
                               onChange={(e) => updateEditPurchaseLine(idx, { unitPrice: Number(e.target.value) || 0 })}
                               className="w-full h-9 rounded bg-[#0B1120] border border-[#374151] text-white px-2 text-sm"

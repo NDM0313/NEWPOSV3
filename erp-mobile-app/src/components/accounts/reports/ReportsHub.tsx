@@ -23,6 +23,7 @@ import { ReportHeader } from './_shared/ReportHeader';
 import { TransactionsTimeline } from './TransactionsTimeline';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
 import { formatAmount } from './_shared/format';
+import { formatPaymentDateTime } from '../../../utils/transactionDisplayDate';
 
 export type LegacyReportKey =
   // party ledgers
@@ -52,13 +53,15 @@ interface ReportsHubProps {
   companyId: string | null;
   branchId?: string | null;
   onNavigateToDocumentEdit?: (kind: 'sale' | 'purchase', documentId: string) => void;
+  /** Incremented when accounting data invalidates; refetches hub preview without remounting timeline. */
+  reportRefreshEpoch?: number;
 }
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function ReportsHub({ onBack, onOpenReport, companyId, branchId, onNavigateToDocumentEdit }: ReportsHubProps) {
+export function ReportsHub({ onBack, onOpenReport, companyId, branchId, onNavigateToDocumentEdit, reportRefreshEpoch = 0 }: ReportsHubProps) {
   const [view, setView] = useState<'hub' | 'timeline'>('hub');
   const [todayRows, setTodayRows] = useState<TransactionRow[]>([]);
   const [recentRows, setRecentRows] = useState<TransactionRow[]>([]);
@@ -86,7 +89,7 @@ export function ReportsHub({ onBack, onOpenReport, companyId, branchId, onNaviga
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId]);
+  }, [companyId, branchId, reportRefreshEpoch]);
 
   const todayStats = useMemo(() => {
     let received = 0;
@@ -101,6 +104,7 @@ export function ReportsHub({ onBack, onOpenReport, companyId, branchId, onNaviga
   if (view === 'timeline') {
     return (
       <TransactionsTimeline
+        reportRefreshEpoch={reportRefreshEpoch}
         companyId={companyId}
         branchId={branchId}
         onBack={() => setView('hub')}
@@ -355,7 +359,7 @@ function MiniTxRow({ tx, onClick }: { tx: TransactionRow; onClick: () => void })
   const iconBg = isReceived ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-[#EF4444]/20 text-[#EF4444]';
   const Icon = isReceived ? ArrowDownLeft : ArrowUpRight;
   const amountColor = isReceived ? 'text-[#10B981]' : 'text-[#EF4444]';
-  const time = tx.createdAt ? new Date(tx.createdAt).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' }) : '';
+  const time = formatPaymentDateTime(tx.paymentDate, tx.createdAt).time;
   return (
     <li>
       <button

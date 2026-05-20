@@ -1,4 +1,70 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { normalizeAttachments, type NormalizedAttachment } from '../lib/normalizeAttachments';
+
+/**
+ * Load attachments from a referenced source row (sale, purchase, expense, linked payment, journal).
+ * Used by the payments timeline detail view to show document-level files alongside `payments.attachments`.
+ */
+export async function fetchReferenceAttachments(
+  companyId: string,
+  referenceType: string,
+  referenceId: string,
+): Promise<NormalizedAttachment[]> {
+  if (!isSupabaseConfigured || !companyId || !referenceId) return [];
+  const rt = String(referenceType || '').toLowerCase();
+  try {
+    if (rt === 'sale') {
+      const { data } = await supabase
+        .from('sales')
+        .select('attachments')
+        .eq('id', referenceId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      return data ? normalizeAttachments((data as { attachments?: unknown }).attachments) : [];
+    }
+    if (rt === 'purchase') {
+      const { data } = await supabase
+        .from('purchases')
+        .select('attachments')
+        .eq('id', referenceId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      return data ? normalizeAttachments((data as { attachments?: unknown }).attachments) : [];
+    }
+    if (rt === 'expense') {
+      const { data } = await supabase
+        .from('expenses')
+        .select('receipt_url')
+        .eq('id', referenceId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      const ru = String((data as { receipt_url?: string | null } | null)?.receipt_url ?? '').trim();
+      return ru ? [{ url: ru, name: 'Receipt' }] : [];
+    }
+    if (rt === 'payment' || rt === 'expense_payment') {
+      const { data } = await supabase
+        .from('payments')
+        .select('attachments')
+        .eq('id', referenceId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      return data ? normalizeAttachments((data as { attachments?: unknown }).attachments) : [];
+    }
+    if (rt === 'journal') {
+      const { data, error } = await supabase
+        .from('journal_entries')
+        .select('attachments')
+        .eq('company_id', companyId)
+        .eq('id', referenceId)
+        .maybeSingle();
+      if (error || !data) return [];
+      return normalizeAttachments((data as { attachments?: unknown }).attachments);
+    }
+  } catch {
+    /* best-effort */
+  }
+  return [];
+}
 
 export type TransactionReferenceType =
   | 'sale'
@@ -32,6 +98,8 @@ export interface TransactionDetail {
   lines: TransactionDetailLine[];
   totals: { debit: number; credit: number };
   headerMeta: Record<string, string | number | null>;
+  /** Source-document attachments (sale/purchase/payment/expense receipt/journal), when available. */
+  attachments?: NormalizedAttachment[];
 }
 
 /**
@@ -66,11 +134,14 @@ export async function getTransactionDetail(
   const je = (jeRows || [])[0] as Record<string, unknown> | undefined;
 
   let headerMeta: Record<string, string | number | null> = {};
+  let sourceAttachments: NormalizedAttachment[] | undefined;
   try {
     if (referenceType === 'sale') {
       const { data } = await supabase
         .from('sales')
-        .select('invoice_no, customer_name, total, paid_amount, due_amount, invoice_date, payment_status, status')
+        .select(
+          'invoice_no, customer_name, total, paid_amount, due_amount, invoice_date, payment_status, status, attachments',
+        )
         .eq('id', referenceId)
         .maybeSingle();
       if (data) {
@@ -84,11 +155,15 @@ export async function getTransactionDetail(
           Status: String(data.status ?? ''),
           Payment: String(data.payment_status ?? ''),
         };
+        const att = normalizeAttachments((data as { attachments?: unknown }).attachments);
+        if (att.length) sourceAttachments = att;
       }
     } else if (referenceType === 'purchase') {
       const { data } = await supabase
         .from('purchases')
-        .select('po_no, supplier_name, total, paid_amount, due_amount, po_date, payment_status, status')
+        .select(
+          'po_no, supplier_name, total, paid_amount, due_amount, po_date, payment_status, status, attachments',
+        )
         .eq('id', referenceId)
         .maybeSingle();
       if (data) {
@@ -102,11 +177,13 @@ export async function getTransactionDetail(
           Status: String(data.status ?? ''),
           Payment: String(data.payment_status ?? ''),
         };
+        const att = normalizeAttachments((data as { attachments?: unknown }).attachments);
+        if (att.length) sourceAttachments = att;
       }
     } else if (referenceType === 'expense') {
       const { data } = await supabase
         .from('expenses')
-        .select('expense_no, category, description, amount, payment_method, expense_date, status')
+        .select('expense_no, category, description, amount, payment_method, expense_date, status, receipt_url')
         .eq('id', referenceId)
         .maybeSingle();
       if (data) {
@@ -119,11 +196,13 @@ export async function getTransactionDetail(
           Date: data.expense_date ? String(data.expense_date).slice(0, 10) : '',
           Status: String(data.status ?? ''),
         };
+        const ru = String((data as { receipt_url?: string | null }).receipt_url ?? '').trim();
+        if (ru) sourceAttachments = [{ url: ru, name: 'Receipt' }];
       }
-    } else if (referenceType === 'payment') {
+    } else if (referenceType === 'payment' || referenceType === 'expense_payment') {
       const { data } = await supabase
         .from('payments')
-        .select('payment_no, amount, payment_method, reference_number, payment_date, notes, status')
+        .select('payment_no, amount, payment_method, reference_number, payment_date, notes, status, attachments')
         .eq('id', referenceId)
         .maybeSingle();
       if (data) {
@@ -136,6 +215,8 @@ export async function getTransactionDetail(
           Notes: String(data.notes ?? ''),
           Status: String(data.status ?? ''),
         };
+        const att = normalizeAttachments((data as { attachments?: unknown }).attachments);
+        if (att.length) sourceAttachments = att;
       }
     } else if (referenceType === 'stock_movement') {
       const { data } = await supabase
@@ -229,6 +310,22 @@ export async function getTransactionDetail(
     /* header meta is best-effort; continue with journal lines only */
   }
 
+  if (referenceType === 'journal' && referenceId) {
+    const { data, error } = await supabase
+      .from('journal_entries')
+      .select('attachments')
+      .eq('company_id', companyId)
+      .eq('id', referenceId)
+      .maybeSingle();
+    if (!error && data) {
+      const att = normalizeAttachments((data as { attachments?: unknown }).attachments);
+      if (att.length) sourceAttachments = att;
+    }
+  }
+
+  const attachmentPayload =
+    sourceAttachments && sourceAttachments.length > 0 ? { attachments: sourceAttachments } : {};
+
   if (!je) {
     if (Object.keys(headerMeta).length === 0) return { data: null, error: 'Transaction not found.' };
     return {
@@ -243,6 +340,7 @@ export async function getTransactionDetail(
         lines: [],
         totals: { debit: 0, credit: 0 },
         headerMeta,
+        ...attachmentPayload,
       },
       error: null,
     };
@@ -261,6 +359,7 @@ export async function getTransactionDetail(
         lines: [],
         totals: { debit: 0, credit: 0 },
         headerMeta,
+        ...attachmentPayload,
       },
       error: null,
     };
@@ -296,6 +395,7 @@ export async function getTransactionDetail(
       lines,
       totals: { debit: totalDebit, credit: totalCredit },
       headerMeta,
+      ...attachmentPayload,
     },
     error: null,
   };

@@ -1,5 +1,6 @@
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
+import type { User as SupabaseAuthUser } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import {
   hasSecurePayload,
@@ -12,10 +13,27 @@ import {
 } from '../lib/secureStorage';
 import { normalizeAppRole, type AssignableAppRole } from '../config/functionalRoles';
 import { getOAuthRedirectTo } from '../lib/oauthRedirect';
+import { syncCounterRefreshTokenForUserId, syncCounterVaultDisplayMetadataForUserId } from '../lib/counterUserVault';
 
 export { getOAuthRedirectTo } from '../lib/oauthRedirect';
 
 const SESSION_POLL_MS = 200;
+
+type UsersNameRow = { full_name?: string | null; email?: string | null };
+
+/** Prefer ERP `users.full_name`, then auth metadata, then email local-part. */
+function displayNameFromAuthUserAndRow(user: SupabaseAuthUser, row: UsersNameRow): string {
+  const full = row.full_name?.trim();
+  if (full) return full;
+  const md = user.user_metadata as Record<string, unknown> | undefined;
+  if (typeof md?.full_name === 'string' && md.full_name.trim()) return String(md.full_name).trim();
+  if (typeof md?.name === 'string' && md.name.trim()) return String(md.name).trim();
+  const ae = user.email?.trim();
+  if (ae) return ae.split('@')[0] || ae;
+  const re = row.email?.trim();
+  if (re) return re.split('@')[0] || re;
+  return 'User';
+}
 
 /**
  * Wait until Supabase client has an access token (required before authenticated RPCs).
@@ -210,7 +228,7 @@ export async function signIn(email: string, password: string): Promise<{ data: A
   // users table: match by id (legacy) OR auth_user_id (links to auth.users.id)
   const { data: row, error: profileError } = await supabase
     .from('users')
-    .select('id, company_id, role')
+    .select('id, company_id, role, full_name, email')
     .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
     .limit(1)
     .maybeSingle();
@@ -229,24 +247,62 @@ export async function signIn(email: string, password: string): Promise<{ data: A
   const branchId: string | null = null;
   const branchLocked = false;
 
-  return {
-    data: {
-      name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
-      email: user.email || email,
-      role: finalRole,
-      companyId: row.company_id || null,
-      userId: user.id,
-      profileId: (row as { id?: string }).id ?? undefined,
-      branchId,
-      branchLocked,
-    },
-    error: null,
+  const profile: AuthProfile = {
+    name: displayNameFromAuthUserAndRow(user, row as UsersNameRow),
+    email: user.email || email,
+    role: finalRole,
+    companyId: row.company_id || null,
+    userId: user.id,
+    profileId: (row as { id?: string }).id ?? undefined,
+    branchId,
+    branchLocked,
   };
+
+  const rt = authData.session?.refresh_token;
+  if (rt && user.id) {
+    try {
+      await syncCounterRefreshTokenForUserId(user.id, rt);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return { data: profile, error: null };
 }
 
-export async function signOut(): Promise<void> {
-  await supabase.auth.signOut();
+/** Revoke refresh tokens on the server and clear the device PIN vault. */
+export async function signOutGlobal(): Promise<void> {
+  await supabase.auth.signOut({ scope: 'global' });
   await clearSecure();
+}
+
+/** Clear the client session only (does not revoke server refresh tokens). */
+export async function signOutLocal(): Promise<void> {
+  await supabase.auth.signOut({ scope: 'local' });
+}
+
+/** @deprecated Prefer `signOutGlobal` or `signOutLocal` for clarity. */
+export async function signOut(): Promise<void> {
+  await signOutGlobal();
+}
+
+/** After any successful login or refresh, push the current refresh token into counter vault rows for this user. */
+export async function syncCurrentSessionToCounterVault(): Promise<void> {
+  const s = await getSessionWithRefresh();
+  if (!s) return;
+  try {
+    await syncCounterRefreshTokenForUserId(s.userId, s.refreshToken);
+    const prof = await getProfile(s.userId);
+    if (prof?.name) {
+      await syncCounterVaultDisplayMetadataForUserId(s.userId, {
+        displayName: prof.name,
+        email: prof.email,
+        role: prof.role,
+      });
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function getSession(): Promise<{ userId: string; email: string } | null> {
@@ -271,6 +327,15 @@ export async function refreshSessionFromRefreshToken(refreshToken: string): Prom
   const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
   if (error) return { ok: false, error: error.message };
   if (!data?.session) return { ok: false, error: 'No session returned.' };
+  const rt = data.session.refresh_token;
+  const uid = data.session.user?.id;
+  if (rt && uid) {
+    try {
+      await syncCounterRefreshTokenForUserId(uid, rt);
+    } catch {
+      /* ignore */
+    }
+  }
   return { ok: true };
 }
 
@@ -278,7 +343,7 @@ export async function refreshSessionFromRefreshToken(refreshToken: string): Prom
 export async function getProfile(userId: string): Promise<AuthProfile | null> {
   const { data: row, error } = await supabase
     .from('users')
-    .select('id, company_id, role')
+    .select('id, company_id, role, full_name, email')
     .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
     .limit(1)
     .maybeSingle();
@@ -305,7 +370,7 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
   }
 
   return {
-    name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+    name: displayNameFromAuthUserAndRow(user, row as UsersNameRow),
     email: user.email || '',
     role: finalRole,
     companyId: row.company_id || null,

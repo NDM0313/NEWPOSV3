@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { ArrowLeft, Search, Plus, X, Wallet } from 'lucide-react';
 import { CustomSelect } from '../common';
+import { usePermissions } from '../../context/PermissionContext';
+import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
 
 interface Account {
   id: string;
@@ -27,6 +29,7 @@ export function SelectAccountTablet({
   title = 'Select Account',
   subtitle = 'Choose account for transaction',
 }: SelectAccountTabletProps) {
+  const { canViewBalances } = usePermissions();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newAccount, setNewAccount] = useState({ name: '', type: 'Asset' });
@@ -97,8 +100,9 @@ export function SelectAccountTablet({
             </div>
           </div>
           <div className="text-right flex-shrink-0">
-            <p className="text-xs font-medium text-[#6B7280]">Balance</p>
-            <p className={`text-sm font-semibold ${account.balance >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>Rs. {Math.abs(account.balance).toLocaleString()}</p>
+            <p className="text-xs font-medium text-[#6B7280]">
+              {formatAccountBalanceLineIfAllowed(account.balance, canViewBalances)}
+            </p>
           </div>
         </div>
       </button>

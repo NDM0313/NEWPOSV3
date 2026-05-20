@@ -37,7 +37,20 @@ import { usePermissions } from '../../context/PermissionContext';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../../config/featureFlags';
 import { APP_VERSION, registerAppVersionTap } from '../../lib/developerMode';
 import { DeveloperToolsSection } from './DeveloperToolsSection';
-import { countCounterUsers, saveCounterUserForPin } from '../../lib/counterUserVault';
+import { ModuleTogglesSection } from './ModuleTogglesSection';
+import {
+  countCounterUsers,
+  getCounterVaultUserIdForPin,
+  listEnrolledCounterProfiles,
+  saveCounterUserForPin,
+  type EnrolledCounterProfile,
+} from '../../lib/counterUserVault';
+import { getFunctionalRoleLabel } from '../../config/functionalRoles';
+import {
+  isSharedCounterModeEnabled,
+  setSharedCounterModeEnabled,
+  subscribeSharedCounterMode,
+} from '../../lib/sharedCounterMode';
 
 interface SettingsModuleProps {
   onBack: () => void;
@@ -126,6 +139,9 @@ export function SettingsModule({
   const [counterPinBusy, setCounterPinBusy] = useState(false);
   const [counterPinMsg, setCounterPinMsg] = useState<string | null>(null);
   const [counterSlotCount, setCounterSlotCount] = useState(0);
+  const [lockScreenProfiles, setLockScreenProfiles] = useState<EnrolledCounterProfile[]>([]);
+  const [lockProfilesLoading, setLockProfilesLoading] = useState(false);
+  const [sharedCounterMode, setSharedCounterMode] = useState(() => isSharedCounterModeEnabled());
 
   const { hasPermission, isAdminOrOwner } = usePermissions();
   const canManageSettings =
@@ -134,9 +150,27 @@ export function SettingsModule({
   const refreshUnsynced = () => getUnsyncedCount().then(setUnsyncedCount);
 
   useEffect(() => {
-    if (!companyId || !isAdminOrOwner) return;
-    void countCounterUsers().then(setCounterSlotCount);
-  }, [companyId, isAdminOrOwner, showCounterPinEnroll]);
+    if (!companyId) {
+      setCounterSlotCount(0);
+      setLockScreenProfiles([]);
+      return;
+    }
+    setLockProfilesLoading(true);
+    void authApi
+      .syncCurrentSessionToCounterVault()
+      .then(() => Promise.all([listEnrolledCounterProfiles(), countCounterUsers()]))
+      .then(([profiles, count]) => {
+        setLockScreenProfiles(profiles);
+        setCounterSlotCount(count);
+      })
+      .catch(() => {
+        setLockScreenProfiles([]);
+        setCounterSlotCount(0);
+      })
+      .finally(() => setLockProfilesLoading(false));
+  }, [companyId, showCounterPinEnroll]);
+
+  useEffect(() => subscribeSharedCounterMode(() => setSharedCounterMode(isSharedCounterModeEnabled())), []);
 
   useEffect(() => {
     authApi.hasPinSet().then(setHasPin);
@@ -359,6 +393,15 @@ export function SettingsModule({
           </button>
         )}
 
+        {isAdminOrOwner && companyId ? (
+          <ModuleTogglesSection
+            companyId={companyId}
+            userId={user.id}
+            userRole={user.role}
+            profileId={user.profileId}
+          />
+        ) : null}
+
         {/* User Permissions — same as Web ERP Permissions: only for users with settings.modify (or admin when V2 off) */}
         <div className="space-y-2">
           <p className="text-xs text-[#6B7280] font-medium px-1">Permissions</p>
@@ -443,7 +486,7 @@ export function SettingsModule({
               onClick={() => setShowSetPin(true)}
             />
           )}
-          {isAdminOrOwner && companyId && branch?.id && branch.id !== 'all' && (
+          {companyId && branch?.id && branch.id !== 'all' && (
             <SettingsRow
               icon={Users}
               iconColor="bg-emerald-500/20"
@@ -457,6 +500,79 @@ export function SettingsModule({
               }}
             />
           )}
+          {companyId && branch?.id && branch.id !== 'all' && (
+            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <Users className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-white">Who shows on the lock / home screen</p>
+                  <p className="text-xs text-[#9CA3AF] mt-0.5 leading-relaxed">
+                    Each person must use this tablet once: sign in with email and password, open Settings, tap{' '}
+                    <span className="text-[#D1D5DB] font-medium">Counter tablet PIN</span>, and save their own 4-digit
+                    code — use a <span className="text-[#D1D5DB] font-medium">different</span> PIN than anyone else on
+                    this tablet (same PIN replaces the other user). You cannot add someone else from here without their
+                    login on this device — that is how their session is stored safely.
+                  </p>
+                </div>
+              </div>
+              {lockProfilesLoading ? (
+                <p className="text-xs text-[#6B7280] px-1">Loading…</p>
+              ) : lockScreenProfiles.length === 0 ? (
+                <p className="text-xs text-amber-200/90 px-1">
+                  No counter users yet. Tap “Counter tablet PIN” above for the account that is signed in now.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {lockScreenProfiles.map((p) => (
+                    <li
+                      key={p.pinHash}
+                      title={[p.displayName, p.email].filter(Boolean).join(' · ')}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{p.displayName}</p>
+                        {p.email ? (
+                          <p className="text-xs text-[#6B7280] truncate">{p.email}</p>
+                        ) : null}
+                      </div>
+                      <span className="text-xs text-[#9CA3AF] shrink-0">
+                        {p.role ? getFunctionalRoleLabel(p.role) : 'Staff'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[#10B981]/20 shrink-0">
+                <Lock className="w-5 h-5 text-[#10B981]" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium text-white">Shared Counter Mode</p>
+                <p className="text-sm text-[#9CA3AF]">
+                  On boot and logout, show the POS lock screen instead of signing out ({counterSlotCount} enrolled)
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={sharedCounterMode}
+              disabled={counterSlotCount === 0}
+              onClick={() => {
+                const next = !sharedCounterMode;
+                setSharedCounterModeEnabled(next);
+                setSharedCounterMode(next);
+              }}
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium ${
+                sharedCounterMode ? 'bg-emerald-600/30 text-emerald-200' : 'bg-[#374151] text-[#9CA3AF]'
+              } disabled:opacity-40`}
+            >
+              {sharedCounterMode ? 'On' : 'Off'}
+            </button>
+          </div>
         </div>
 
         {/* Printer & Barcode (standard: thermal/A4 + barcode scanner) */}
@@ -714,7 +830,10 @@ export function SettingsModule({
           <div className="w-full max-w-md rounded-2xl bg-[#1F2937] border border-[#374151] p-5 shadow-xl">
             <h3 className="text-lg font-semibold text-white mb-1">Counter tablet PIN</h3>
             <p className="text-xs text-[#9CA3AF] mb-4">
-              Saves this device session for the signed-in user under a separate 4-digit PIN (POS / Expense “Switch user”). Increases token theft risk if the device is lost — use only on trusted counter tablets.
+              Saves this device session for the signed-in user under a separate 4-digit PIN (POS / Expense “Switch user”).
+              Each person on this tablet must choose a <span className="text-[#D1D5DB] font-medium">different</span> PIN —
+              duplicate codes replace the other user’s slot. Increases token theft risk if the device is lost — use only
+              on trusted counter tablets.
             </p>
             {counterPinMsg ? <p className="text-sm text-red-400 mb-3">{counterPinMsg}</p> : null}
             <label className="block text-xs text-[#9CA3AF] mb-1">4-digit PIN</label>
@@ -761,6 +880,7 @@ export function SettingsModule({
                       return;
                     }
                     setCounterPinBusy(true);
+                    const hadNoSlots = counterSlotCount === 0;
                     try {
                       if (!companyId) {
                         setCounterPinMsg('No company selected.');
@@ -771,6 +891,19 @@ export function SettingsModule({
                         setCounterPinMsg('No refresh token in session. Sign in again with email/password.');
                         return;
                       }
+                      const profileForVault = await authApi.getProfile(session.userId);
+                      const displayNameForVault =
+                        profileForVault?.name?.trim() ||
+                        user.name?.trim() ||
+                        session.email.split('@')[0] ||
+                        'User';
+                      const existingUid = await getCounterVaultUserIdForPin(counterPinA);
+                      if (existingUid && existingUid !== session.userId) {
+                        setCounterPinMsg(
+                          'This 4-digit PIN is already used on this tablet by another login. Pick a different PIN for each person.',
+                        );
+                        return;
+                      }
                       await saveCounterUserForPin(counterPinA, {
                         refreshToken: session.refreshToken,
                         userId: session.userId,
@@ -778,13 +911,20 @@ export function SettingsModule({
                         branchId: branch.id,
                         email: session.email,
                         savedAt: Date.now(),
-                        displayName: user.name,
+                        displayName: displayNameForVault,
                         publicUsersId: user.profileId,
+                        role: user.role,
                       });
                       setShowCounterPinEnroll(false);
                       setCounterPinA('');
                       setCounterPinB('');
-                      void countCounterUsers().then(setCounterSlotCount);
+                      void countCounterUsers().then((n) => {
+                        setCounterSlotCount(n);
+                        if (hadNoSlots && n > 0) {
+                          setSharedCounterModeEnabled(true);
+                          setSharedCounterMode(true);
+                        }
+                      });
                       setSyncResult('Counter PIN saved for this user.');
                     } catch (e) {
                       setCounterPinMsg(e instanceof Error ? e.message : 'Save failed.');

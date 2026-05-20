@@ -190,7 +190,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
   if (view === 'reports') {
     return (
       <ReportsHub
-        key={`reports-hub-${reportRefreshEpoch}`}
+        reportRefreshEpoch={reportRefreshEpoch}
         onBack={backFromReportsHub}
         onOpenReport={openReport}
         companyId={companyId ?? null}

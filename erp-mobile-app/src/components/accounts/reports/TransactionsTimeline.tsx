@@ -22,11 +22,18 @@ import { dispatchMobileAccountingInvalidated } from '../../../lib/dataInvalidati
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { TimelinePreviewPdf } from '../../shared/TimelinePreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
+import {
+  formatPaymentDateTime,
+  formatEventDateGroupLabel,
+  getTransactionEventDateKey,
+} from '../../../utils/transactionDisplayDate';
 
 interface TransactionsTimelineProps {
   onBack: () => void;
   companyId: string | null;
   branchId?: string | null;
+  /** When incremented (from parent invalidation), refetch list without remounting. */
+  reportRefreshEpoch?: number;
   onViewLedger?: (info: { partyId?: string | null; partyName?: string | null; accountId?: string | null }) => void;
   onNavigateToDocumentEdit?: (kind: 'sale' | 'purchase', documentId: string) => void;
   /** Optional initial filters (e.g. open with only today's payments). */
@@ -51,15 +58,6 @@ function displayReference(tx: TransactionRow): string {
   return ref;
 }
 
-function formatDate(dateStr: string): { date: string; time: string } {
-  if (!dateStr) return { date: '', time: '' };
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return { date: dateStr, time: '' };
-  const date = d.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' });
-  const time = d.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', hour12: true });
-  return { date, time };
-}
-
 function transactionEffectiveMs(tx: TransactionRow): number {
   const c = String(tx.createdAt || '').trim();
   if (c) {
@@ -77,38 +75,54 @@ function transactionEffectiveMs(tx: TransactionRow): number {
 function compareTransactionsWithinDay(a: TransactionRow, b: TransactionRow): number {
   const ta = transactionEffectiveMs(a);
   const tb = transactionEffectiveMs(b);
-  if (ta !== tb) return ta - tb;
+  if (tb !== ta) return tb - ta;
   const pa = String(a.paymentDate || '').slice(0, 10);
   const pb = String(b.paymentDate || '').slice(0, 10);
-  if (pa !== pb) return pa.localeCompare(pb);
-  return String(a.id).localeCompare(String(b.id));
+  if (pa !== pb) return pb.localeCompare(pa);
+  return String(b.id).localeCompare(String(a.id));
 }
 
 function groupByDate(rows: TransactionRow[]): Array<{ key: string; label: string; items: TransactionRow[] }> {
   const out: Array<{ key: string; label: string; items: TransactionRow[] }> = [];
   const map: Record<string, TransactionRow[]> = {};
   rows.forEach((r) => {
-    const key = r.paymentDate || r.createdAt.slice(0, 10);
+    const key = getTransactionEventDateKey(r.paymentDate, r.createdAt) || 'unknown';
     if (!map[key]) map[key] = [];
     map[key].push(r);
   });
   Object.keys(map)
-    .sort((a, b) => a.localeCompare(b))
+    .sort((a, b) => b.localeCompare(a))
     .forEach((k) => {
-      const d = new Date(k);
-      const label = Number.isNaN(d.getTime())
-        ? k
-        : d.toLocaleDateString('en-PK', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+      const label = k === 'unknown' ? 'Unknown date' : formatEventDateGroupLabel(k);
       const items = [...map[k]].sort(compareTransactionsWithinDay);
       out.push({ key: k, label, items });
     });
   return out;
 }
 
+/** Client-side search mirror (party, reference, notes) — matches API filter fields. */
+function matchesTransactionSearch(tx: TransactionRow, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    tx.partyName,
+    tx.partyAccountName,
+    tx.paymentAccountName,
+    tx.referenceNumber,
+    tx.entryNo,
+    tx.notes,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(q);
+}
+
 export function TransactionsTimeline({
   onBack,
   companyId,
   branchId,
+  reportRefreshEpoch = 0,
   onViewLedger,
   onNavigateToDocumentEdit: _onNavigateToDocumentEdit,
   initialFilters,
@@ -124,9 +138,15 @@ export function TransactionsTimeline({
   const [endDate, setEndDate] = useState<string>(initialFilters?.endDate ?? '');
   const [method, setMethod] = useState<string>('all');
   const [search, setSearch] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<{ mode: 'payment' | 'journal'; id: string } | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -139,7 +159,7 @@ export function TransactionsTimeline({
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       method: method === 'all' ? undefined : method,
-      search: search || undefined,
+      search: debouncedSearch || undefined,
       limit: 300,
     })
       .then(({ data, error }) => {
@@ -147,19 +167,24 @@ export function TransactionsTimeline({
         setRows(data || []);
       })
       .finally(() => setLoading(false));
-  }, [companyId, branchId, direction, startDate, endDate, method, search]);
+  }, [companyId, branchId, direction, startDate, endDate, method, debouncedSearch, reportRefreshEpoch]);
+
+  const filteredRows = useMemo(() => {
+    if (!debouncedSearch) return rows;
+    return rows.filter((r) => matchesTransactionSearch(r, debouncedSearch));
+  }, [rows, debouncedSearch]);
 
   const stats = useMemo(() => {
     let received = 0;
     let paid = 0;
-    rows.forEach((r) => {
+    filteredRows.forEach((r) => {
       if (r.direction === 'received') received += r.amount;
       else paid += r.amount;
     });
-    return { received, paid, net: received - paid, count: rows.length };
-  }, [rows]);
+    return { received, paid, net: received - paid, count: filteredRows.length };
+  }, [filteredRows]);
 
-  const groups = useMemo(() => groupByDate(rows), [rows]);
+  const groups = useMemo(() => groupByDate(filteredRows), [filteredRows]);
 
   const refresh = () => {
     if (!companyId) return;
@@ -171,7 +196,7 @@ export function TransactionsTimeline({
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       method: method === 'all' ? undefined : method,
-      search: search || undefined,
+      search: debouncedSearch || undefined,
       limit: 300,
     })
       .then(({ data, error }) => {
@@ -201,7 +226,7 @@ export function TransactionsTimeline({
           </button>
           <button
             onClick={preview.openPreview}
-            disabled={preview.loading || rows.length === 0}
+            disabled={preview.loading || filteredRows.length === 0}
             className="p-2 hover:bg-white/10 rounded-lg text-white disabled:opacity-50"
             aria-label="Share PDF"
           >
@@ -371,7 +396,7 @@ export function TransactionsTimeline({
             groups={groups.map((g) => ({
               date: g.label,
               rows: g.items.map((t) => {
-                const { time } = formatDate(t.createdAt || t.paymentDate);
+                const { time } = formatPaymentDateTime(t.paymentDate, t.createdAt);
                 const isReceived = t.direction === 'received';
                 return {
                   time,
@@ -390,7 +415,7 @@ export function TransactionsTimeline({
           />
         </PdfPreviewModal>
       )}
-      {!loading && !error && rows.length > 0 && (
+      {!loading && !error && filteredRows.length > 0 && (
         <div className="fixed left-4 right-4 bottom-24 z-20">
           <div className="rounded-xl border border-[#374151] bg-[#111827]/95 backdrop-blur px-4 py-2 flex items-center justify-between">
             <span className="text-xs text-[#9CA3AF]">Floating balance</span>
@@ -420,7 +445,7 @@ function TransactionRowCard({ tx, onClick, onEdit }: { tx: TransactionRow; onCli
   const amountColor = isReceived ? 'text-[#10B981]' : 'text-[#EF4444]';
   const pillBg = isReceived ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30' : 'bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/30';
   const Icon = isReceived ? ArrowDownLeft : ArrowUpRight;
-  const { date, time } = formatDate(tx.createdAt || tx.paymentDate);
+  const { date, time } = formatPaymentDateTime(tx.paymentDate, tx.createdAt);
   const from = isReceived ? (tx.paymentAccountName ?? '—') : (tx.partyAccountName ?? tx.partyName ?? '—');
   const to = isReceived ? (tx.partyAccountName ?? tx.partyName ?? '—') : (tx.paymentAccountName ?? '—');
 

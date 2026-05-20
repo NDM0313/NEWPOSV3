@@ -47,6 +47,10 @@ import { PdfPreviewModal } from '../shared/PdfPreviewModal';
 import { usePdfPreview } from '../shared/usePdfPreview';
 import { NumericInput } from '../common';
 import { InvoicePreviewPdf, type InvoicePreviewItem } from '../shared/InvoicePreviewPdf';
+import { AttachmentsSection } from '../shared/AttachmentsSection';
+import { normalizeAttachments } from '../../lib/normalizeAttachments';
+import { usePermissions } from '../../context/PermissionContext';
+import { maskMoney } from '../../utils/balancePrivacy';
 
 type SaleRecord = {
   raw: Record<string, unknown>;
@@ -119,6 +123,7 @@ export function SalesHome({
   initialEditSaleId,
   onConsumedInitialEditSaleId,
 }: SalesHomeProps) {
+  const { canViewBalances } = usePermissions();
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
   const [stats, setStats] = useState<{ today: number; week: number; month: number }>({ today: 0, week: 0, month: 0 });
   const [loading, setLoading] = useState(true);
@@ -137,6 +142,7 @@ export function SalesHome({
     }>
   >([]);
   const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
+  const [attachmentPreviewStart, setAttachmentPreviewStart] = useState(0);
   const [studioSummary, setStudioSummary] = useState<{
     has_studio: boolean;
     production_status: string;
@@ -150,6 +156,11 @@ export function SalesHome({
   } | null>(null);
   const [, setShowStudioBreakdown] = useState(false);
   const [studioBreakdownFallback, setStudioBreakdownFallback] = useState<Array<{ task_type: string; cost: number; worker_name?: string; completed_at?: string | null }>>([]);
+
+  const openAttachmentPreview = (list: Array<{ url: string; name: string }>, startIndex = 0) => {
+    setAttachmentPreviewList(list);
+    setAttachmentPreviewStart(startIndex);
+  };
 
   const filteredSales = recentSales.filter(
     (sale) =>
@@ -954,6 +965,7 @@ export function SalesHome({
     const discount = Number(selectedSale.raw.discount ?? 0);
     const isCancelled = selectedSale.raw.status === 'cancelled';
     const hasStudio = (studioSummary?.has_studio ?? false) || studioCost > 0;
+    const saleDocumentAttachments = normalizeAttachments(selectedSale.raw.attachments);
 
     return (
       <div className="min-h-screen pb-24 bg-[#111827]">
@@ -1139,12 +1151,12 @@ export function SalesHome({
             <div className="pt-2 border-t border-[#3B82F6]/30 space-y-1">
               <div className="flex justify-between text-sm">
                 <span className="text-[#9CA3AF]">Customer Payments:</span>
-                <span className="text-[#10B981]">Rs. {paidAmount.toLocaleString()}</span>
+                <span className="text-[#10B981]">{maskMoney(paidAmount, canViewBalances)}</span>
               </div>
               <div className="flex justify-between text-lg font-bold">
                 <span className="text-white">Balance Due:</span>
                 <span className={getPaymentStatusColor(paymentStatus)}>
-                  Rs. {dueAmount.toLocaleString()}
+                  {maskMoney(dueAmount, canViewBalances)}
                 </span>
               </div>
             </div>
@@ -1156,6 +1168,10 @@ export function SalesHome({
               </span>
             </div>
           </div>
+
+          {saleDocumentAttachments.length > 0 && (
+            <AttachmentsSection items={saleDocumentAttachments} onOpenPreview={openAttachmentPreview} />
+          )}
 
           {paymentHistory.length > 0 && (
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
@@ -1172,7 +1188,7 @@ export function SalesHome({
                     {p.attachments && p.attachments.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => setAttachmentPreviewList(p.attachments!)}
+                        onClick={() => openAttachmentPreview(p.attachments!, 0)}
                         className="p-2 rounded-lg text-[#3B82F6] hover:bg-[#374151] shrink-0"
                         aria-label="View attachments"
                       >
@@ -1188,9 +1204,12 @@ export function SalesHome({
           {attachmentPreviewList && attachmentPreviewList.length > 0 && (
             <AttachmentPreviewModal
               attachments={attachmentPreviewList}
-              initialIndex={0}
+              initialIndex={attachmentPreviewStart}
               isOpen={true}
-              onClose={() => setAttachmentPreviewList(null)}
+              onClose={() => {
+                setAttachmentPreviewList(null);
+                setAttachmentPreviewStart(0);
+              }}
             />
           )}
         </div>
@@ -1304,14 +1323,14 @@ export function SalesHome({
                     )}
                     <div className="flex justify-between">
                       <span className="text-[#9CA3AF]">Received:</span>
-                      <span className="text-[#10B981]">Rs. {sale.total_received.toLocaleString()}</span>
+                      <span className="text-[#10B981]">{maskMoney(sale.total_received, canViewBalances)}</span>
                     </div>
                     <div className="flex justify-between items-center gap-2">
                       <span className="text-[#9CA3AF]">
                         {overpaid ? 'Credit Balance:' : 'Balance:'}
                       </span>
                       <span className={`font-medium shrink-0 ${overpaid ? 'text-[#10B981]' : 'text-white'}`}>
-                        Rs. {overpaid ? sale.credit_balance.toLocaleString() : sale.balance_due.toLocaleString()}
+                        {maskMoney(overpaid ? sale.credit_balance : sale.balance_due, canViewBalances)}
                       </span>
                     </div>
                   </div>
@@ -1576,6 +1595,7 @@ export function SalesHome({
                     type="number"
                     min="0"
                     step="0.01"
+                    inputMode="decimal"
                     value={editDiscount}
                     onChange={(e) => setEditDiscount(e.target.value)}
                     className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
@@ -1599,6 +1619,7 @@ export function SalesHome({
                     type="number"
                     min="0"
                     step="0.01"
+                    inputMode="decimal"
                     value={editExtra}
                     onChange={(e) => setEditExtra(e.target.value)}
                     className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"

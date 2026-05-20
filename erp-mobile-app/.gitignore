@@ -7,3 +7,6 @@ dist
 .env.local
 .env.production
 .env.*.local
+
+# Local release APK copies for sideload / GitHub uploads (large binary; do not commit)
+releases/*.apk

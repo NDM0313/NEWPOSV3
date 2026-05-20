@@ -2,11 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Plus, Minus, Trash2, Search, Loader2, Package, Upload, X } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { SelectSupplierTablet, type Supplier } from './SelectSupplierTablet';
+import { SelectSupplier } from './SelectSupplier';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
 import { PackingEntryModal } from '../transactions/PackingEntryModal';
 import { PackingInputButton } from '../transactions/PackingInputButton';
 import * as purchasesApi from '../../api/purchases';
-import * as contactsApi from '../../api/contacts';
 import * as productsApi from '../../api/products';
 import { getBranches } from '../../api/branches';
 import { addPending } from '../../lib/offlineStore';
@@ -17,6 +17,7 @@ import { MobileActionBar } from '../shared/MobileActionBar';
 import { createPortal } from 'react-dom';
 import { useSettings } from '../../context/SettingsContext';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
+import { localNowDateString } from '../../utils/localDate';
 
 interface PurchaseItem {
   id: string;
@@ -76,9 +77,8 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   /** User-chosen purchase status at creation time. 'ordered' = stock not posted yet (just a PO/order). 'received' = goods in hand; posts stock + accounting. */
   const [creationStatus, setCreationStatus] = useState<'ordered' | 'received'>('received');
   const [search, setSearch] = useState('');
-  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [products, setProducts] = useState<ProductForPurchase[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -86,18 +86,13 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [attachmentError, setAttachmentError] = useState('');
+  const [poDate, setPoDate] = useState(() => localNowDateString());
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const lastItemRef = useRef<HTMLDivElement | null>(null);
   const { runSingleFlight, isRunning: isSubmitRunning } = useSingleFlightAction();
 
   useEffect(() => {
-    if (step === 'vendor') {
-      setLoading(true);
-      contactsApi.getContacts(companyId, 'supplier').then(({ data, error: err }) => {
-        setLoading(false);
-        setVendors(err ? [] : data.map((c) => ({ id: c.id, name: c.name, phone: c.phone || '' })));
-      });
-    } else if (step === 'items' && vendor) {
+    if (step === 'items' && vendor) {
       setLoading(true);
       productsApi.getProducts(companyId).then(({ data, error: err }) => {
         setLoading(false);
@@ -267,6 +262,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
         notes: notes.trim() || undefined,
         attachments: purchaseAttachments,
         userId,
+        poDate,
       };
 
       if (!navigator.onLine) {
@@ -353,50 +349,14 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
       );
     }
     return (
-      <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
-          <div className="flex items-center gap-3 px-4 h-14">
-            <button onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg text-white">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="font-semibold text-base text-white">New Purchase</h1>
-              <p className="text-xs text-[#9CA3AF]">Step 1: Select Supplier</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-4">
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-8 h-8 text-[#10B981] animate-spin" />
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {vendors.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => {
-                  setVendor(v);
-                  setStep('items');
-                }}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#10B981] transition-all text-left"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-white mb-1">{v.name}</h3>
-                    <p className="text-sm text-[#9CA3AF]">{v.phone}</p>
-                  </div>
-                  <span className="text-[#6B7280]">→</span>
-                </div>
-              </button>
-            ))}
-            {vendors.length === 0 && (
-              <p className="text-center text-[#9CA3AF] py-8">No suppliers found. Add suppliers in Contacts first.</p>
-            )}
-          </div>
-        )}
-        </div>
-      </div>
+      <SelectSupplier
+        companyId={companyId}
+        onBack={onBack}
+        onSelect={(s: Supplier) => {
+          setVendor({ id: s.id, name: s.name, phone: s.phone });
+          setStep('items');
+        }}
+      />
     );
   }
 
@@ -623,6 +583,17 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
               <span className="text-white">Total</span>
               <span className="text-[#10B981]">Rs. {total.toLocaleString()}</span>
             </div>
+          </div>
+
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">PO date</label>
+            <input
+              type="date"
+              max={localNowDateString()}
+              value={poDate}
+              onChange={(e) => setPoDate(e.target.value)}
+              className="w-full max-w-xs h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white"
+            />
           </div>
 
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">

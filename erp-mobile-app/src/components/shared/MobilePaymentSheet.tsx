@@ -24,6 +24,9 @@ import {
 import { PdfPreviewModal } from './PdfPreviewModal';
 import { ReceiptPreviewPdf } from './ReceiptPreviewPdf';
 import { usePdfPreview } from './usePdfPreview';
+import { usePermissions } from '../../context/PermissionContext';
+import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
+import { localNowDateString } from '../../utils/localDate';
 
 export type PaymentSheetMode =
   | 'receive'
@@ -224,7 +227,8 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   const [amount, setAmount] = useState<number>(baseAmount > 0 ? baseAmount : 0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [accountId, setAccountId] = useState('');
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const { canViewBalances } = usePermissions();
+  const [paymentDate, setPaymentDate] = useState(() => localNowDateString());
   const [notes, setNotes] = useState('');
   const [reference, setReference] = useState('');
   const [showOptional, setShowOptional] = useState(false);
@@ -482,7 +486,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                     </span>
                   </div>
                 )}
-                {alreadyPaid != null && (
+                {canViewBalances && alreadyPaid != null && (
                   <div className="flex justify-between">
                     <span className="text-[#9CA3AF]">Already Paid:</span>
                     <span className="text-[#10B981]">
@@ -490,7 +494,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                     </span>
                   </div>
                 )}
-                {outstandingAmount != null && (
+                {canViewBalances && outstandingAmount != null && (
                   <div className="flex justify-between font-semibold mt-1 pt-2 border-t border-[#374151]">
                     <span className="text-[#9CA3AF]">
                       {mode === 'receive' || mode === 'rental' ? 'Outstanding Amount:' : 'Amount Due:'}
@@ -504,6 +508,17 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
             )}
           </div>
         )}
+
+        <div>
+          <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Payment date *</label>
+          <input
+            type="date"
+            max={localNowDateString()}
+            value={paymentDate}
+            onChange={(e) => setPaymentDate(e.target.value)}
+            className="w-full max-w-xs h-11 px-3 rounded-lg bg-[#1F2937] border border-[#374151] text-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"
+          />
+        </div>
 
         <div>
           <label className="block text-sm font-medium text-[#9CA3AF] mb-2">
@@ -579,8 +594,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                     {selectedAccount?.name ?? 'Select account'}
                   </p>
                   <p className="text-xs text-[#9CA3AF] mt-0.5">
-                    Balance Rs.{' '}
-                    {(selectedAccount?.balance ?? 0).toLocaleString('en-PK', { minimumFractionDigits: 2 })}
+                    {formatAccountBalanceLineIfAllowed(selectedAccount?.balance ?? 0, canViewBalances)}
                   </p>
                 </>
               )}
@@ -627,7 +641,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                       >
                         <p className="text-sm font-medium text-white leading-snug">{acc.name}</p>
                         <p className="text-xs text-[#9CA3AF] mt-1">
-                          Balance Rs. {acc.balance.toLocaleString('en-PK', { minimumFractionDigits: 2 })}
+                          {formatAccountBalanceLineIfAllowed(acc.balance, canViewBalances)}
                         </p>
                       </button>
                     );
@@ -659,6 +673,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                 <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Payment Date</label>
                 <input
                   type="date"
+                  max={localNowDateString()}
                   value={paymentDate}
                   onChange={(e) => setPaymentDate(e.target.value)}
                   className="w-full h-11 px-3 rounded-lg bg-[#111827] border border-[#374151] text-white focus:outline-none focus:ring-2 focus:ring-[#3B82F6]"

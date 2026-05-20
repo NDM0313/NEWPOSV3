@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Banknote, Building2, Smartphone, CreditCard, AlertCircle, Loader2, Receipt } from 'lucide-react';
 import { getPaymentAccounts } from '../../api/accounts';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
+import { usePermissions } from '../../context/PermissionContext';
+import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
+import { canViewFinancialBalances } from '../../config/functionalRoles';
+import { localNowDateString } from '../../utils/localDate';
 
 export interface PaymentResult {
   paymentMethod: string;
@@ -10,6 +14,8 @@ export interface PaymentResult {
   /** Database account ID for accounting (required when paidAmount > 0) */
   accountId?: string | null;
   accountName?: string | null;
+  /** Payment date YYYY-MM-DD (local calendar). */
+  paymentDate?: string;
 }
 
 interface PaymentDialogProps {
@@ -23,6 +29,8 @@ interface PaymentDialogProps {
   hasCustomer?: boolean;
   /** When true, show Credit option (purchase/supplier payable – same UI as hasCustomer). */
   showCreditOption?: boolean;
+  /** App role for balance privacy (defaults from PermissionContext). */
+  viewerRole?: string;
 }
 
 type PaymentMethod = 'cash' | 'bank' | 'wallet' | 'card' | 'credit';
@@ -43,9 +51,23 @@ const METHOD_TO_TYPE: Record<Exclude<PaymentMethod, 'credit'>, string[]> = {
   card: ['bank'], // Card terminals typically use bank accounts
 };
 
-export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, saving, saveError, hasCustomer, showCreditOption }: PaymentDialogProps) {
+export function PaymentDialog({
+  onBack,
+  totalAmount,
+  companyId,
+  onComplete,
+  saving,
+  saveError,
+  hasCustomer,
+  showCreditOption,
+  viewerRole: viewerRoleProp,
+}: PaymentDialogProps) {
+  const { canViewBalances: canViewBalancesCtx } = usePermissions();
+  const canViewBalances =
+    viewerRoleProp != null ? canViewFinancialBalances(viewerRoleProp) : canViewBalancesCtx;
   const showCredit = showCreditOption ?? hasCustomer;
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [paymentDate, setPaymentDate] = useState(() => localNowDateString());
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('full');
@@ -91,6 +113,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
             dueAmount: totalAmount,
             accountId: null,
             accountName: null,
+            paymentDate,
           });
         } catch (e) {
           console.error('[PaymentDialog] Credit onComplete failed:', e);
@@ -154,6 +177,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
       dueAmount: paymentMode === 'skip' ? totalAmount : dueAmount,
       accountId: paymentMode === 'skip' ? null : selectedAccount?.id ?? null,
       accountName: paymentMode === 'skip' ? null : selectedAccount?.name ?? null,
+      paymentDate,
     };
     await runSingleFlight(async () => {
       await onComplete(result);
@@ -400,7 +424,7 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
                   )}
                 </div>
                 <p className="text-sm text-[#9CA3AF]">
-                  Balance: Rs. {account.balance.toLocaleString()}
+                  {formatAccountBalanceLineIfAllowed(account.balance, canViewBalances)}
                 </p>
               </button>
             ))}
@@ -425,8 +449,20 @@ export function PaymentDialog({ onBack, totalAmount, companyId, onComplete, savi
             <p className="text-xs text-[#9CA3AF] mb-1">Selected Account</p>
             <p className="font-medium text-[#F9FAFB]">{selectedAccount.name}</p>
             <p className="text-sm text-[#9CA3AF] mt-1">
-              Balance: Rs. {selectedAccount.balance.toLocaleString()}
+              {formatAccountBalanceLineIfAllowed(selectedAccount.balance, canViewBalances)}
             </p>
+          </div>
+
+          <div className="mb-6">
+            <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Payment date</label>
+            <input
+              type="date"
+              max={localNowDateString()}
+              value={paymentDate}
+              onChange={(e) => setPaymentDate(e.target.value)}
+              disabled={isBusy}
+              className="w-full max-w-xs h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white disabled:opacity-50"
+            />
           </div>
 
           {/* Payment Mode */}

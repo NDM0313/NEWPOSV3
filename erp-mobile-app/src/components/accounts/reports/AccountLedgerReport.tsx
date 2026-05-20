@@ -17,6 +17,7 @@ import { usePdfPreview } from '../../shared/usePdfPreview';
 import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
 import type { TransactionReferenceType } from '../../../api/transactionDetail';
 import { sortLedgerLinesAndRebuildRunningBalance } from '../../../lib/ledgerChronology';
+import { formatEventDateGroupLabel, getTransactionEventDateKey } from '../../../utils/transactionDisplayDate';
 
 interface AccountLedgerReportProps {
   onBack: () => void;
@@ -217,8 +218,25 @@ export function AccountLedgerReport({
   }, [range.from, range.to, lines.length]);
 
   const groupedLines = useMemo(() => {
-    if (granularity === 'none' || lines.length === 0) {
-      return [{ key: 'all', label: '', lines, closingBalance: totals.closing }];
+    if (lines.length === 0) {
+      return [{ key: 'all', label: '', lines: [], closingBalance: totals.closing }];
+    }
+    if (granularity === 'none') {
+      const dayMap = new Map<string, LedgerLine[]>();
+      for (const line of lines) {
+        const key = getTransactionEventDateKey(line.date, line.createdAt) || 'unknown';
+        const arr = dayMap.get(key) ?? [];
+        arr.push(line);
+        dayMap.set(key, arr);
+      }
+      return Array.from(dayMap.entries())
+        .sort((a, b) => b[0].localeCompare(a[0]))
+        .map(([key, groupLines]) => ({
+          key,
+          label: key === 'unknown' ? 'Unknown date' : formatEventDateGroupLabel(key),
+          lines: groupLines,
+          closingBalance: groupLines[groupLines.length - 1]?.runningBalance ?? totals.closing,
+        }));
     }
     const groups = new Map<string, { key: string; label: string; lines: LedgerLine[]; closingBalance: number }>();
     const labelForKey = (key: string) => {
@@ -232,7 +250,8 @@ export function AccountLedgerReport({
     };
 
     const weekKey = (dateStr: string): string => {
-      const d = new Date(dateStr + 'T00:00:00Z');
+      const ymd = getTransactionEventDateKey(dateStr, null) || dateStr.slice(0, 10);
+      const d = new Date(`${ymd}T00:00:00Z`);
       const yr = d.getUTCFullYear();
       const jan1 = new Date(Date.UTC(yr, 0, 1));
       const dayOfYear = Math.floor((d.getTime() - jan1.getTime()) / 86400000) + 1;
@@ -241,11 +260,13 @@ export function AccountLedgerReport({
     };
 
     const monthKey = (dateStr: string): string => {
-      return dateStr.slice(0, 7);
+      const ymd = getTransactionEventDateKey(dateStr, null) || dateStr.slice(0, 10);
+      return ymd.slice(0, 7);
     };
 
     for (const line of lines) {
-      const key = granularity === 'month' ? monthKey(line.date) : weekKey(line.date);
+      const eventDate = getTransactionEventDateKey(line.date, line.createdAt) || line.date;
+      const key = granularity === 'month' ? monthKey(eventDate) : weekKey(eventDate);
       const existing = groups.get(key);
       if (existing) {
         existing.lines.push(line);
