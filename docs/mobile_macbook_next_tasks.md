@@ -12,8 +12,27 @@ cd erp-mobile-app && npm ci && npm run typecheck
 
 ## Get the APK
 
-- **Preferred:** Download **`erp-mobile-1.0.1-build2.apk`** from the GitHub Release tagged **`mobile-v1.0.1-build2`**.
-- **Or rebuild signed Release on Mac:** copy `android/keystore.properties` from a secure channel (never commit it), then:
+- **After GitHub Release exists:** download **`erp-mobile-1.0.1-build2.apk`** from release tag **`mobile-v1.0.1-build2`** on [NEWPOSV3 releases](https://github.com/NDM0313/NEWPOSV3/releases).
+- **If the release is not created yet:** the signed file should still be on the Windows machine at `erp-mobile-app/releases/erp-mobile-1.0.1-build2.apk` (or rebuild from `main`). Publish the release using GitHub CLI or the web UI — see [`erp-mobile-app/releases/APK_UPDATE.md`](../erp-mobile-app/releases/APK_UPDATE.md) section **Create the GitHub Release**.
+
+### Publish release from Mac (example)
+
+```bash
+# Install: https://cli.github.com/
+gh auth login
+cd /path/to/NEWPOSV3
+git pull origin main
+gh release create mobile-v1.0.1-build2 \
+  --title "ERP Mobile 1.0.1 (build 2) — Shared counter PIN" \
+  --notes-file erp-mobile-app/releases/GH_RELEASE_NOTES_mobile-v1.0.1-build2.md \
+  erp-mobile-app/releases/erp-mobile-1.0.1-build2.apk
+```
+
+If the `.apk` is only on Windows, copy it to the Mac first (AirDrop / Drive / `scp`), then run `gh release create` with that local path.
+
+### Or rebuild signed Release on Mac
+
+Copy `android/keystore.properties` from a secure channel (never commit it), then:
 
 ```bash
 cd erp-mobile-app

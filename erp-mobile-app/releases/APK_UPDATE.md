@@ -14,7 +14,20 @@ Copy this block for every new APK you ship. Keep the newest entry at the top.
 | **Git commit** | `9912cfe` |
 | **Configuration** | Release (signed) |
 | **APK path (local)** | `android/app/build/outputs/apk/release/app-release.apk` (copy: `releases/erp-mobile-1.0.1-build2.apk` for uploads) |
-| **Download URL** | GitHub Release tag `mobile-v1.0.1-build2` (attach `erp-mobile-1.0.1-build2.apk`) |
+| **Download URL** | Create release on GitHub (see below). Intended tag: `mobile-v1.0.1-build2`. |
+
+### Create the GitHub Release (APK upload)
+
+`gh` was not available on the Windows build machine. On any machine with [GitHub CLI](https://cli.github.com/) installed and authenticated (`gh auth login`), from repo root:
+
+```bash
+gh release create mobile-v1.0.1-build2 \
+  --title "ERP Mobile 1.0.1 (build 2) — Shared counter PIN" \
+  --notes-file erp-mobile-app/releases/GH_RELEASE_NOTES_mobile-v1.0.1-build2.md \
+  erp-mobile-app/releases/erp-mobile-1.0.1-build2.apk
+```
+
+Or use **GitHub → Releases → Draft a new release**: tag `mobile-v1.0.1-build2`, upload `erp-mobile-app/releases/erp-mobile-1.0.1-build2.apk`, paste the contents of `erp-mobile-app/releases/GH_RELEASE_NOTES_mobile-v1.0.1-build2.md` as the description.
 
 ### Changelog (user-facing)
 
