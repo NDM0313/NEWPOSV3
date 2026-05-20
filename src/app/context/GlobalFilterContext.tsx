@@ -7,6 +7,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef, ReactNode } from 'react';
 import { useSupabase } from './SupabaseContext';
+import { safeLocalStorageGetItem, safeLocalStorageSetItem } from '@/app/lib/safeBrowserStorage';
 
 const STORAGE_KEY = 'erp-global-filters';
 
@@ -102,7 +103,7 @@ function loadFromStorage(): PersistedFilters {
   const empty: PersistedFilters = { dateRangeType: null, customStartDate: null, customEndDate: null, branchId: null };
   if (typeof window === 'undefined') return empty;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = safeLocalStorageGetItem(STORAGE_KEY);
     if (!raw) return empty;
     const parsed = JSON.parse(raw) as Partial<PersistedFilters>;
     return {
@@ -120,7 +121,7 @@ function loadFromStorage(): PersistedFilters {
 function saveToStorage(filters: PersistedFilters) {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
+    safeLocalStorageSetItem(STORAGE_KEY, JSON.stringify(filters));
   } catch (e) {
     console.warn('[GlobalFilter] Failed to persist filters:', e);
   }

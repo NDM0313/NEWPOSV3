@@ -2,6 +2,14 @@
  * Hidden Developer Mode (client-only). Unlock by tapping App Version 7 times in Settings.
  */
 
+import {
+  getBrowserStorage,
+  safeLocalStorageGetItem,
+  safeLocalStorageKeys,
+  safeLocalStorageRemoveItem,
+  safeLocalStorageSetItem,
+} from '@/app/lib/safeBrowserStorage';
+
 export const DEVELOPER_MODE_STORAGE_KEY = 'erp_developer_mode_unlocked';
 export const DEVELOPER_VERBOSE_API_ERRORS_KEY = 'erp_developer_verbose_api_errors';
 export const DEVELOPER_MODE_TAP_TARGET = 7;
@@ -124,17 +132,12 @@ export function resetAppVersionTapStateForTests(): void {
  */
 export function clearClientCaches(): { removedKeys: number } {
   let removedKeys = 0;
+  safeLocalStorageKeys((k) => !isPreservedKey(k)).forEach((k) => {
+    safeLocalStorageRemoveItem(k);
+    removedKeys += 1;
+  });
   try {
-    const keys: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && !isPreservedKey(k)) keys.push(k);
-    }
-    keys.forEach((k) => {
-      localStorage.removeItem(k);
-      removedKeys += 1;
-    });
-    sessionStorage.clear();
+    getBrowserStorage('session')?.clear();
   } catch {
     /* ignore */
   }

@@ -4,6 +4,7 @@
 // Supabase connection for Din Collection ERP
 
 import { createClient } from '@supabase/supabase-js';
+import { getBrowserStorage } from '@/app/lib/safeBrowserStorage';
 
 // ============================================
 // CONFIGURATION
@@ -66,6 +67,12 @@ if (!supabaseUrl || !isValidSupabaseUrl || !supabaseAnonKey) {
     'In production these must be set at BUILD time (e.g. docker compose build with --env-file .env.production).';
   console.error(msg);
   throw new Error(msg);
+}
+
+if (import.meta.env.DEV && (isPlaceholderSupabaseAnonKey || isDemoSupabaseAnonKey(supabaseAnonKey))) {
+  throw new Error(
+    '[Supabase] VITE_SUPABASE_ANON_KEY is the public demo JWT. Run: bash scripts/sync-local-env-from-vps.sh then restart npm run dev.'
+  );
 }
 
 const isDemoAnonKey = isDemoSupabaseAnonKey(supabaseAnonKey);
@@ -147,13 +154,15 @@ function probeStorage(storage: Storage): boolean {
 
 function safeStorage(): Storage {
   if (typeof window === 'undefined') return memoryFallback();
-  if (probeStorage(window.localStorage)) {
+  const ls = getBrowserStorage('local');
+  if (ls && probeStorage(ls)) {
     authStorageKind = 'localStorage';
-    return window.localStorage;
+    return ls;
   }
-  if (probeStorage(window.sessionStorage)) {
+  const ss = getBrowserStorage('session');
+  if (ss && probeStorage(ss)) {
     authStorageKind = 'sessionStorage';
-    return window.sessionStorage;
+    return ss;
   }
   return memoryFallback();
 }

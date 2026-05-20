@@ -5,6 +5,12 @@
  */
 import { getRolePermissions, type EngineRole, type RolePermissionRow } from '@/app/services/permissionService';
 import type { UserPermissions } from '@/app/utils/checkPermission';
+import {
+  safeLocalStorageGetItem,
+  safeLocalStorageKeys,
+  safeLocalStorageRemoveItem,
+  safeLocalStorageSetItem,
+} from '@/app/lib/safeBrowserStorage';
 
 const CACHE_KEY_PREFIX = 'erp_perm_';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
@@ -114,7 +120,7 @@ export async function loadPermissions(
   }
 
   try {
-    const stored = localStorage.getItem(key);
+    const stored = safeLocalStorageGetItem(key);
     if (stored) {
       const parsed = JSON.parse(stored) as PermissionCacheEntry;
       if (parsed.userId === userId && parsed.companyId === companyId && parsed.role === role && !isStale(parsed.loadedAt)) {
@@ -123,7 +129,7 @@ export async function loadPermissions(
       }
     }
   } catch {
-    // ignore localStorage parse errors
+    // ignore parse errors
   }
 
   const rolePerms = await getRolePermissions(role);
@@ -137,11 +143,7 @@ export async function loadPermissions(
     loadedAt: Date.now(),
   };
   memoryCache = entry;
-  try {
-    localStorage.setItem(key, JSON.stringify(entry));
-  } catch {
-    // quota or disabled
-  }
+  safeLocalStorageSetItem(key, JSON.stringify(entry));
   return derived;
 }
 
@@ -218,16 +220,7 @@ export function clear(): void {
  */
 export function invalidateForRole(role: EngineRole): void {
   if (memoryCache && memoryCache.role === role) memoryCache = null;
-  try {
-    const keys: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.endsWith(`_${role}`)) keys.push(k);
-    }
-    keys.forEach(k => localStorage.removeItem(k));
-  } catch {
-    // ignore
-  }
+  safeLocalStorageKeys((k) => k.endsWith(`_${role}`)).forEach((k) => safeLocalStorageRemoveItem(k));
 }
 
 export const permissionEngine = {

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { safeLocalStorageGetItem, safeLocalStorageSetItem } from '@/app/lib/safeBrowserStorage';
 
 export type ModuleId = 'rentals' | 'manufacturing' | 'repairs' | 'loyalty' | 'accounting';
 
@@ -28,7 +29,7 @@ const ModuleContext = createContext<ModuleContextType | undefined>(undefined);
 function loadModulesFromStorage(): Record<ModuleId, ModuleConfig> {
   try {
     if (typeof window === 'undefined') return defaultModules;
-    const saved = localStorage.getItem('erp_modules');
+    const saved = safeLocalStorageGetItem('erp_modules');
     return saved ? JSON.parse(saved) : defaultModules;
   } catch {
     return defaultModules;
@@ -36,12 +37,8 @@ function loadModulesFromStorage(): Record<ModuleId, ModuleConfig> {
 }
 
 function saveModulesToStorage(modules: Record<ModuleId, ModuleConfig>) {
-  try {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem('erp_modules', JSON.stringify(modules));
-  } catch {
-    // ignore SecurityError / quota / disabled storage
-  }
+  if (typeof window === 'undefined') return;
+  safeLocalStorageSetItem('erp_modules', JSON.stringify(modules));
 }
 
 export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
