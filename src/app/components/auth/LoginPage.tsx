@@ -36,10 +36,7 @@ export const LoginPage: React.FC = () => {
       setError(errorMessage);
       setLoading(false);
     } else if (data?.user) {
-      // Success - reload page to trigger ProtectedRoute re-evaluation
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      setLoading(false);
     }
   };
 
@@ -51,9 +48,7 @@ export const LoginPage: React.FC = () => {
     // Auto-login after business creation
     const { error: signInError } = await signIn(email, password);
     if (!signInError) {
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      setCreateBusinessSuccess(true);
     } else {
       setError('Business created but login failed. Please login manually.');
       setCreateBusinessSuccess(false);
@@ -72,17 +67,15 @@ export const LoginPage: React.FC = () => {
       setError(signInError.message);
       setLoading(false);
     } else if (data?.user) {
-      setTimeout(() => window.location.reload(), 500);
+      setLoading(false);
     }
   };
 
-
-  
   const handleAdminLogin = async () => {
     setLoading(true);
     setError('');
     const adminEmail = 'admin@dincouture.pk';
-    const adminPassword = '123456';
+    const adminPassword = 'AdminDincouture2026';
     setEmail(adminEmail);
     setPassword(adminPassword);
     const { data, error: signInError } = await signIn(adminEmail, adminPassword);
@@ -90,7 +83,7 @@ export const LoginPage: React.FC = () => {
       setError(signInError.message);
       setLoading(false);
     } else if (data?.user) {
-      setTimeout(() => window.location.reload(), 500);
+      setLoading(false);
     }
   };
 
@@ -123,10 +116,7 @@ export const LoginPage: React.FC = () => {
       setError(errorMessage);
       setLoading(false);
     } else if (data?.user) {
-      // Success - reload page to trigger ProtectedRoute re-evaluation
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      setLoading(false);
     }
   };
 

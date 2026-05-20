@@ -21,7 +21,10 @@ const DashboardRevenueChart = lazy(() =>
 
 const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
 
-const CreateYourBusinessCard: React.FC<{ signOut: () => Promise<void> }> = ({ signOut }) => {
+const CreateYourBusinessCard: React.FC<{
+  signOut: () => Promise<void>;
+  refreshUserProfile: () => void;
+}> = ({ signOut, refreshUserProfile }) => {
   const [fixing, setFixing] = useState(false);
   const [fixError, setFixError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -35,10 +38,17 @@ const CreateYourBusinessCard: React.FC<{ signOut: () => Promise<void> }> = ({ si
     try {
       const result = await businessService.linkAuthUserToBusiness();
       if (result.success) {
-        window.location.reload();
+        refreshUserProfile();
         return;
       }
-      setFixError(result.error || 'Could not link account.');
+      const errMsg = result.error || 'Could not link account.';
+      if (errMsg.includes('Invalid authentication credentials')) {
+        setFixError(
+          'API key mismatch: set VITE_SUPABASE_ANON_KEY in .env.local to your VPS anon JWT, restart npm run dev, then try again.'
+        );
+      } else {
+        setFixError(errMsg);
+      }
     } catch {
       setFixError('Something went wrong.');
     } finally {
@@ -58,10 +68,17 @@ const CreateYourBusinessCard: React.FC<{ signOut: () => Promise<void> }> = ({ si
         businessName: businessName.trim(),
       });
       if (result.success) {
-        window.location.reload();
+        refreshUserProfile();
         return;
       }
-      setCreateError(result.error || 'Failed to create business.');
+      const errMsg = result.error || 'Failed to create business.';
+      if (errMsg.includes('Invalid authentication credentials')) {
+        setCreateError(
+          'API key mismatch: set VITE_SUPABASE_ANON_KEY in .env.local to your VPS anon JWT, restart npm run dev.'
+        );
+      } else {
+        setCreateError(errMsg);
+      }
     } catch {
       setCreateError('Something went wrong. Please try again.');
     } finally {
@@ -166,7 +183,7 @@ export const Dashboard = () => {
   const purchases = usePurchases();
   const expenses = useExpenses();
   const accounting = useAccountingOptional();
-  const { companyId, signOut, profileLoadComplete } = useSupabase();
+  const { companyId, signOut, profileLoadComplete, authConfigError, refreshUserProfile } = useSupabase();
   const { modules: settingsModules } = useSettings();
   const { hasPermission } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
@@ -457,8 +474,27 @@ export const Dashboard = () => {
         </div>
       );
     }
+    if (authConfigError) {
+      return (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="max-w-md p-8 rounded-xl bg-[#1F2937] border border-red-500/40 text-center">
+            <p className="text-red-400 text-sm mb-4">{authConfigError}</p>
+            <button
+              type="button"
+              className="text-[#9CA3AF] hover:text-white text-sm underline"
+              onClick={async () => {
+                await signOut();
+                window.location.href = '/';
+              }}
+            >
+              Sign out and go to login
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
-      <CreateYourBusinessCard signOut={signOut} />
+      <CreateYourBusinessCard signOut={signOut} refreshUserProfile={refreshUserProfile} />
     );
   }
 

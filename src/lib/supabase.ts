@@ -132,18 +132,40 @@ if (import.meta.env?.DEV) {
 // ============================================
 
 const memoryStore: Record<string, string> = {};
-function safeStorage(): Storage {
+let authStorageKind: 'localStorage' | 'sessionStorage' | 'memory' = 'memory';
+
+function probeStorage(storage: Storage): boolean {
   try {
-    if (typeof window === 'undefined') return memoryFallback();
-    const storage = window.localStorage;
-    storage.getItem('');
-    return storage;
+    const probe = '__sb_probe__';
+    storage.setItem(probe, '1');
+    storage.removeItem(probe);
+    return true;
   } catch {
-    return memoryFallback();
+    return false;
   }
 }
+
+function safeStorage(): Storage {
+  if (typeof window === 'undefined') return memoryFallback();
+  if (probeStorage(window.localStorage)) {
+    authStorageKind = 'localStorage';
+    return window.localStorage;
+  }
+  if (probeStorage(window.sessionStorage)) {
+    authStorageKind = 'sessionStorage';
+    return window.sessionStorage;
+  }
+  return memoryFallback();
+}
+
+/** True when auth session is only in RAM (lost on full navigation unless sessionStorage works). */
+export function authStorageIsEphemeral(): boolean {
+  return authStorageKind === 'memory';
+}
+
 // Never throw – avoids "SecurityError: The request was denied" when storage is blocked (iframe, strict privacy)
 function memoryFallback(): Storage {
+  authStorageKind = 'memory';
   return {
     getItem: (key: string) => {
       try { return memoryStore[key] ?? null; } catch { return null; }

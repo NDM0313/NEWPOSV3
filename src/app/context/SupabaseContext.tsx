@@ -26,6 +26,21 @@ function isAbortError(err: any): boolean {
   return err?.name === 'AbortError' || String(err?.message ?? '').toLowerCase().includes('aborted');
 }
 
+/** REST/PostgREST 401 when anon JWT does not match the self-hosted Kong secret (common in local dev with demo key). */
+function isInvalidAuthCredentialsError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err?.message ?? err ?? '').toLowerCase();
+  return (
+    msg.includes('invalid authentication credentials') ||
+    msg.includes('invalid credentials') ||
+    msg.includes('jwt expired') ||
+    msg.includes('signature verification failed')
+  );
+}
+
+export const AUTH_CONFIG_ERROR_MESSAGE =
+  'Anon key does not match the server. Copy VITE_SUPABASE_ANON_KEY from VPS .env.production into .env.local and restart the dev server (or rebuild ERP on production).';
+
 /** SecurityError / request denied (storage blocked, CORS, or opaque response) – retry like server errors, never sign out. */
 function isStorageOrSecurityError(err: any): boolean {
   if (!err) return false;
@@ -48,8 +63,12 @@ interface SupabaseContextType {
   profileLoadComplete: boolean;
   /** True when Supabase returned 502/5xx and retries exhausted; UI can show "Service temporarily unavailable" and retry button. */
   connectionError: boolean;
+  /** Set when REST returns 401 due to wrong/mismatched VITE_SUPABASE_ANON_KEY (not "no business"). */
+  authConfigError: string | null;
   /** Call after connectionError to retry loading profile (getSession + fetchUserData). */
   retryConnection: () => void;
+  /** Re-fetch public.users profile after business create/link (no page reload). */
+  refreshUserProfile: () => void;
   signIn: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
   companyId: string | null;
@@ -87,6 +106,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [enablePacking, setEnablePackingState] = useState<boolean>(false);
   const [profileLoadComplete, setProfileLoadComplete] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<boolean>(false);
+  const [authConfigError, setAuthConfigError] = useState<string | null>(null);
 
   const loadEnablePacking = async (cid: string) => {
     try {
@@ -127,6 +147,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Initialize user session. Retry getSession on 502/5xx so transient gateway errors don't immediately show login.
   const attemptSessionLoad = async (attempt = 0): Promise<void> => {
     setConnectionError(false);
+    setAuthConfigError(null);
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error && isServerError(error)) {
@@ -247,6 +268,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       fetchingRef.current.add(userId);
       if (!isRetry) setProfileLoadComplete(false);
       setConnectionError(false);
+      setAuthConfigError(null);
       
       if (import.meta.env?.DEV) {
         console.log('[FETCH USER DATA] Looking for ERP profile with auth_user_id or id:', userId);
@@ -283,6 +305,12 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setBranchId(null);
           setDefaultBranchId(null);
           setProfileLoadComplete(true);
+          return;
+        }
+        if (isInvalidAuthCredentialsError(error)) {
+          setAuthConfigError(AUTH_CONFIG_ERROR_MESSAGE);
+          setProfileLoadComplete(true);
+          fetchingRef.current.delete(userId);
           return;
         }
         // 502/503/504 or SecurityError/request denied: retry with backoff; NEVER sign out on these
@@ -540,14 +568,26 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const retryConnection = () => {
     setConnectionError(false);
+    setAuthConfigError(null);
     setLoading(true);
     attemptSessionLoad(0);
+  };
+
+  const refreshUserProfile = () => {
+    const uid = user?.id;
+    if (!uid) return;
+    setAuthConfigError(null);
+    fetchedRef.current.delete(uid);
+    fetchingRef.current.delete(uid);
+    setProfileLoadComplete(false);
+    fetchUserData(uid, false, 0);
   };
 
   // Sign out
   const signOut = async () => {
     await supabase.auth.signOut();
     setConnectionError(false);
+    setAuthConfigError(null);
     setProfileLoadComplete(false);
     permissionEngine.clear();
     branchService.clearBranchCache();
@@ -584,7 +624,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     loading,
     profileLoadComplete,
     connectionError,
+    authConfigError,
     retryConnection,
+    refreshUserProfile,
     signIn,
     signOut,
     companyId,
@@ -601,9 +643,9 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     refreshEnablePacking,
     supabaseClient: supabase,
   }), [
-    user, session, loading, profileLoadComplete, connectionError, companyId, userRole, branchId, defaultBranchId,
+    user, session, loading, profileLoadComplete, connectionError, authConfigError, companyId, userRole, branchId, defaultBranchId,
     accessibleBranchIds, branchCount, requiresBranchSelection, enablePacking,
-    signIn, signOut, retryConnection, setBranchId, setAccessibleBranchIds, setEnablePacking, refreshEnablePacking,
+    signIn, signOut, retryConnection, refreshUserProfile, setBranchId, setAccessibleBranchIds, setEnablePacking, refreshEnablePacking,
   ]);
 
   return (
@@ -620,7 +662,9 @@ const defaultSupabaseContext: SupabaseContextType = {
   loading: true,
   profileLoadComplete: false,
   connectionError: false,
+  authConfigError: null,
   retryConnection: () => {},
+  refreshUserProfile: () => {},
   signIn: async () => {},
   signOut: async () => {},
   companyId: null,
