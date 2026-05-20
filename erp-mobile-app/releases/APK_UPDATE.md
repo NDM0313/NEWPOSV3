@@ -18,7 +18,15 @@ Copy this block for every new APK you ship. Keep the newest entry at the top.
 
 ### Create the GitHub Release (APK upload)
 
-`gh` was not available on the Windows build machine. On any machine with [GitHub CLI](https://cli.github.com/) installed and authenticated (`gh auth login`), from repo root:
+`gh` was not available on the Windows build machine. On any machine with [GitHub CLI](https://cli.github.com/) installed and authenticated (`gh auth login`):
+
+**Windows (from repo root):**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\erp-mobile-app\releases\publish-github-release.ps1
+```
+
+**Or manually from repo root:**
 
 ```bash
 gh release create mobile-v1.0.1-build2 \

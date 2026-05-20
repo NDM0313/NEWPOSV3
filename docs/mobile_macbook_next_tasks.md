@@ -30,6 +30,8 @@ gh release create mobile-v1.0.1-build2 \
 
 If the `.apk` is only on Windows, copy it to the Mac first (AirDrop / Drive / `scp`), then run `gh release create` with that local path.
 
+**Windows shortcut:** from repo root run `powershell -ExecutionPolicy Bypass -File .\erp-mobile-app\releases\publish-github-release.ps1` (requires `gh` on PATH).
+
 ### Or rebuild signed Release on Mac
 
 Copy `android/keystore.properties` from a secure channel (never commit it), then:
