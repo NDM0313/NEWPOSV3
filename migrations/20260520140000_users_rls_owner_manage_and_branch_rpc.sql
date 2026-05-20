@@ -7,11 +7,11 @@ CREATE POLICY "admins_manage_users"
   TO authenticated
   USING (
     company_id = get_user_company_id()
-    AND COALESCE(LOWER(TRIM(get_user_role())), '') IN ('admin', 'owner')
+    AND COALESCE(LOWER(TRIM(get_user_role()::text)), '') IN ('admin', 'owner')
   )
   WITH CHECK (
     company_id = get_user_company_id()
-    AND COALESCE(LOWER(TRIM(get_user_role())), '') IN ('admin', 'owner')
+    AND COALESCE(LOWER(TRIM(get_user_role()::text)), '') IN ('admin', 'owner')
   );
 
 COMMENT ON POLICY "admins_manage_users" ON public.users IS
@@ -34,7 +34,7 @@ DECLARE
 BEGIN
   r := COALESCE(LOWER(TRIM(get_user_role()::text)), '');
   IF r NOT IN ('admin', 'owner') THEN
-    RAISE EXCEPTION 'ACCESS_DENIED: Only admin or owner can set user branches. Current role: %', COALESCE(r, 'unknown');
+    RAISE EXCEPTION 'ACCESS_DENIED: Only admin or owner can set user branches. Current role: %', COALESCE(get_user_role()::text, 'unknown');
   END IF;
 
   DELETE FROM public.user_branches WHERE user_id = p_user_id;
@@ -63,7 +63,7 @@ DECLARE
 BEGIN
   r := COALESCE(LOWER(TRIM(get_user_role()::text)), '');
   IF r NOT IN ('admin', 'owner') THEN
-    RAISE EXCEPTION 'ACCESS_DENIED: Only admin or owner can set user account access. Current role: %', COALESCE(r, 'unknown');
+    RAISE EXCEPTION 'ACCESS_DENIED: Only admin or owner can set user account access. Current role: %', COALESCE(get_user_role()::text, 'unknown');
   END IF;
 
   DELETE FROM public.user_account_access WHERE user_id = p_user_id;
