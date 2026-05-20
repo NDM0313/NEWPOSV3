@@ -67,6 +67,7 @@ UPDATE auth.users SET encrypted_password = crypt('AdminDincouture2026', gen_salt
 UPDATE auth.users SET encrypted_password = crypt('123456', gen_salt('bf', 10)), email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE email = 'ndm313@yahoo.com';
 UPDATE auth.users SET encrypted_password = crypt('123456', gen_salt('bf', 10)), email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE email = 'ndm313@live.com';
 UPDATE auth.users SET encrypted_password = crypt('demo123', gen_salt('bf', 10)), email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE email = 'demo@dincollection.com';
+UPDATE auth.users SET encrypted_password = crypt('123456', gen_salt('bf', 10)), email_confirmed_at = COALESCE(email_confirmed_at, now()) WHERE email = 'mm@yahoo.com';
 EOSQL
 
 echo "[login-401-fix] Done. Run verification: bash deploy/verify-login-401-fix.sh"

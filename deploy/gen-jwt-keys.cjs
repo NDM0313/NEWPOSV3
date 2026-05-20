@@ -16,7 +16,7 @@ const sign = (payload) => {
   const s = crypto.createHmac('sha256', secret).update(b64(header) + '.' + b64(payload)).digest('base64url');
   return b64(header) + '.' + b64(payload) + '.' + s;
 };
-const anon = sign({ role: 'anon', iss: 'supabase-demo', iat, exp });
-const serviceRole = sign({ role: 'service_role', iss: 'supabase-demo', iat, exp });
+const anon = sign({ role: 'anon', iss: 'supabase', iat, exp });
+const serviceRole = sign({ role: 'service_role', iss: 'supabase', iat, exp });
 console.log('ANON_KEY=' + anon);
 console.log('SERVICE_ROLE_KEY=' + serviceRole);

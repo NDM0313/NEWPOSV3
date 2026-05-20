@@ -29,6 +29,15 @@ else
   echo "ndm313@yahoo.com: FAIL"
 fi
 
+TOKEN_MM=$(curl -sk -X POST "https://supabase.dincouture.pk/auth/v1/token?grant_type=password" \
+  -H "apikey: $KEY" -H "Content-Type: application/json" \
+  -d '{"email":"mm@yahoo.com","password":"123456"}')
+if echo "$TOKEN_MM" | grep -q '"access_token"'; then
+  echo "mm@yahoo.com: OK"
+else
+  echo "mm@yahoo.com: FAIL (user may not exist or password not reset)"
+fi
+
 ADMIN_OK=false; NDM_OK=false
 echo "$TOKEN_ADMIN" | grep -q '"access_token"' && ADMIN_OK=true
 echo "$TOKEN_NDM" | grep -q '"access_token"' && NDM_OK=true
