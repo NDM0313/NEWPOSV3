@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import { getBrowserStorage } from '@/app/lib/safeBrowserStorage';
 import {
   getBridgeAccessToken,
+  getBridgeSession,
   setResolvedSupabaseConfig,
 } from '@/app/lib/supabaseSessionBridge';
 
@@ -241,6 +242,71 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storage: safeStorage(),
   },
 });
+
+/** SecurityError / storage denied – GoTrue cannot read persisted session. */
+function isStorageSecurityError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = String((err as { message?: string })?.message ?? err).toLowerCase();
+  const name = String((err as { name?: string })?.name ?? '').toLowerCase();
+  return (
+    name === 'securityerror' ||
+    msg.includes('securityerror') ||
+    msg.includes('request was denied') ||
+    msg.includes('access is denied')
+  );
+}
+
+function bridgeSessionResult(): { data: { session: import('@supabase/supabase-js').Session }; error: null } | null {
+  const bridged = getBridgeSession();
+  if (!bridged) return null;
+  return { data: { session: bridged }, error: null };
+}
+
+const originalGetSession = supabase.auth.getSession.bind(supabase.auth);
+supabase.auth.getSession = async () => {
+  try {
+    const result = await originalGetSession();
+    if (result.error && isStorageSecurityError(result.error)) {
+      const fallback = bridgeSessionResult();
+      if (fallback) return fallback;
+    }
+    if (!result.data.session) {
+      const fallback = bridgeSessionResult();
+      if (fallback) return fallback;
+    }
+    return result;
+  } catch (e) {
+    if (isStorageSecurityError(e)) {
+      const fallback = bridgeSessionResult();
+      if (fallback) return fallback;
+      return { data: { session: null }, error: e as import('@supabase/supabase-js').AuthError };
+    }
+    throw e;
+  }
+};
+
+const originalGetUser = supabase.auth.getUser.bind(supabase.auth);
+supabase.auth.getUser = async () => {
+  try {
+    const result = await originalGetUser();
+    if (result.error && isStorageSecurityError(result.error)) {
+      const bridged = getBridgeSession();
+      if (bridged?.user) return { data: { user: bridged.user }, error: null };
+    }
+    if (!result.data.user) {
+      const bridged = getBridgeSession();
+      if (bridged?.user) return { data: { user: bridged.user }, error: null };
+    }
+    return result;
+  } catch (e) {
+    if (isStorageSecurityError(e)) {
+      const bridged = getBridgeSession();
+      if (bridged?.user) return { data: { user: bridged.user }, error: null };
+      return { data: { user: null }, error: e as import('@supabase/supabase-js').AuthError };
+    }
+    throw e;
+  }
+};
 
 // ============================================
 // HELPER FUNCTIONS

@@ -1,13 +1,15 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, authStorageIsEphemeral } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 import { settingsService } from '@/app/services/settingsService';
 import { permissionEngine } from '@/app/services/permissionEngine';
 import { branchService } from '@/app/services/branchService';
+import { loginWithPasswordGrant } from '@/app/lib/authPasswordGrant';
 import {
   setBridgeSession,
   fetchUserProfileRow,
   getBridgeAccessToken,
+  getBridgeSession,
   type UserProfileRow,
 } from '@/app/lib/supabaseSessionBridge';
 
@@ -172,6 +174,26 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setAuthConfigError(null);
     try {
       const { data: { session }, error } = await supabase.auth.getSession();
+      if (error && isStorageOrSecurityError(error)) {
+        setStorageBlocked(true);
+        if (session?.user) {
+          syncSessionToBridge(session);
+          setSession(session);
+          setUser(session.user);
+          requestUserProfileLoad(session.user.id);
+          setLoading(false);
+          return;
+        }
+        const bridged = getBridgeSession();
+        if (bridged?.user) {
+          setSession(bridged);
+          syncSessionToBridge(bridged);
+          setUser(bridged.user);
+          requestUserProfileLoad(bridged.user.id);
+          setLoading(false);
+          return;
+        }
+      }
       if (error && isServerError(error)) {
         if (attempt < CONNECTION_ERROR_MAX_RETRIES) {
           if (import.meta.env?.DEV) console.warn('[AUTH] getSession 5xx, retrying in', RETRY_DELAY_MS, 'ms', { attempt: attempt + 1 });
@@ -205,7 +227,20 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setTimeout(() => attemptSessionLoad(attempt + 1), RETRY_DELAY_MS);
         return;
       }
-      if (storageErr) setConnectionError(true);
+      if (storageErr) {
+        setStorageBlocked(true);
+        const bridged = getBridgeSession();
+        if (bridged?.user) {
+          setSession(bridged);
+          syncSessionToBridge(bridged);
+          setUser(bridged.user);
+          requestUserProfileLoad(bridged.user.id);
+        } else {
+          setConnectionError(true);
+        }
+        setLoading(false);
+        return;
+      }
       if (isServerError(e) && attempt < CONNECTION_ERROR_MAX_RETRIES) {
         if (import.meta.env?.DEV) console.warn('[AUTH] getSession threw 5xx, retrying in', RETRY_DELAY_MS, 'ms', { attempt: attempt + 1 });
         setTimeout(() => attemptSessionLoad(attempt + 1), RETRY_DELAY_MS);
@@ -646,19 +681,65 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Removed createUserEntry - users must register business first via CreateBusinessForm
 
+  const applyRestSignIn = async (email: string, password: string) => {
+    setStorageBlocked(true);
+    const { data, error } = await loginWithPasswordGrant(email, password);
+    if (error || !data?.session) {
+      if (error) {
+        console.error('[AUTH ERROR] REST password grant failed:', {
+          status: error.status,
+          message: error.message,
+          email,
+        });
+      }
+      return { data: { user: null, session: null }, error };
+    }
+
+    syncSessionToBridge(data.session);
+    const { error: setSessionError } = await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+    setSession(data.session);
+    setUser(data.user);
+    if (setSessionError && import.meta.env?.DEV) {
+      console.warn('[AUTH] setSession after REST grant:', setSessionError.message);
+    }
+    if (import.meta.env?.DEV) {
+      console.log('[AUTH SUCCESS] REST sign in:', { userId: data.user.id, email: data.user.email });
+    }
+    return { data: { user: data.user, session: data.session }, error: setSessionError };
+  };
+
   // Sign in
   const signIn = async (email: string, password: string) => {
     if (import.meta.env?.DEV) console.log('[AUTH] Attempting sign in:', { email });
-    
-    const result = await supabase.auth.signInWithPassword({ email, password });
-    
+
+    if (authStorageIsEphemeral()) {
+      return applyRestSignIn(email, password);
+    }
+
+    let result;
+    try {
+      result = await supabase.auth.signInWithPassword({ email, password });
+    } catch (e: any) {
+      if (isStorageOrSecurityError(e)) {
+        return applyRestSignIn(email, password);
+      }
+      throw e;
+    }
+
+    if (result.error && isStorageOrSecurityError(result.error)) {
+      return applyRestSignIn(email, password);
+    }
+
     if (result.error) {
       console.error('[AUTH ERROR] Sign in failed:', {
         status: result.error.status,
         message: result.error.message,
         name: result.error.name,
         email: email,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     } else if (result.data?.session) {
       syncSessionToBridge(result.data.session);
@@ -671,7 +752,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
       }
     }
-    
+
     return result;
   };
 

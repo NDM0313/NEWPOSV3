@@ -12,12 +12,18 @@ export type UserProfileRow = {
   is_active: boolean | null;
 };
 
+let bridgeSession: Session | null = null;
 let bridgeAccessToken: string | null = null;
 let bridgeUserId: string | null = null;
 
 export function setBridgeSession(session: Session | null): void {
+  bridgeSession = session;
   bridgeAccessToken = session?.access_token ?? null;
   bridgeUserId = session?.user?.id ?? null;
+}
+
+export function getBridgeSession(): Session | null {
+  return bridgeSession;
 }
 
 export function getBridgeAccessToken(): string | null {
