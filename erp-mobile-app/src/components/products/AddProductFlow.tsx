@@ -8,6 +8,7 @@ import * as productsApi from '../../api/products';
 import * as variationLibrary from '../../api/variationLibrary';
 import type { AttributeWithValues } from '../../api/variationLibrary';
 import { CustomSelect } from '../common';
+import { ProductImage } from './ProductImage';
 
 export interface AddProductFlowSavePayload {
   id?: string;
@@ -983,7 +984,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
             <div className="grid grid-cols-3 gap-2">
               {existingImageUrls.map((url, idx) => (
                 <div key={`existing-${idx}`} className="relative aspect-square rounded-lg overflow-hidden bg-[#111827]">
-                  <img src={url} alt="Product" className="w-full h-full object-cover" />
+                  <ProductImage src={url} alt="Product" />
                   <button
                     type="button"
                     onClick={() => removeExistingImage(idx)}

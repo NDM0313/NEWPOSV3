@@ -2,6 +2,24 @@ import { supabase } from '@/lib/supabase';
 
 const BUCKET = 'product-images';
 
+/** Storage object path from a public/signed URL or raw path. */
+export function extractProductImageStoragePath(rawUrl: string): string | null {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const trimmed = rawUrl.trim();
+  const idx = trimmed.indexOf(`/${BUCKET}/`);
+  if (idx >= 0) return trimmed.slice(idx + BUCKET.length + 2).split('?')[0] || null;
+  if (!trimmed.includes('://') && !trimmed.startsWith('/')) return trimmed.split('?')[0] || null;
+  return null;
+}
+
+/** Persist URL using the active Supabase project host (avoids stale localhost/dev URLs in DB). */
+export function normalizeProductImagePublicUrl(rawUrl: string, storagePath?: string): string {
+  const path = storagePath ?? extractProductImageStoragePath(rawUrl);
+  if (!path) return rawUrl;
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  return data.publicUrl || rawUrl;
+}
+
 /**
  * Get a URL suitable for displaying a product image (img src).
  * If the URL is from the product-images bucket, returns a signed URL so it works when the bucket is private.
@@ -62,8 +80,7 @@ export async function uploadProductImages(
       }
       throw new Error(msg || 'Failed to upload image');
     }
-    const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
-    urls.push(urlData.publicUrl);
+    urls.push(normalizeProductImagePublicUrl('', path));
   }
   return urls;
 }

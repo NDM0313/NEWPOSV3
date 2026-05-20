@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase';
 
 export const STUDIO_FINISHED_GOODS_QTY = 1 as const;
 
+const STUDIO_INWARD_MOVEMENT_TYPES = ['PRODUCTION_IN', 'PRODUCTION', 'production'] as const;
+
 function sumProductionCostFromStages(
   stages: Array<{ status?: string; cost?: unknown; expected_cost?: unknown }>
 ): number {
@@ -58,12 +60,13 @@ export async function ensureStudioProductionInForSale(
   );
   const { data: existingRows } = await supabase
     .from('stock_movements')
-    .select('id')
+    .select('id, quantity')
     .eq('reference_type', 'studio_production')
-    .eq('movement_type', 'PRODUCTION_IN')
     .eq('product_id', productId)
+    .in('movement_type', [...STUDIO_INWARD_MOVEMENT_TYPES])
     .in('reference_id', refIdsForDupCheck);
-  if (existingRows && existingRows.length > 0) {
+  const hasInward = (existingRows || []).some((r) => Number((r as { quantity?: number }).quantity) > 0);
+  if (hasInward) {
     return { inserted: false, skippedReason: 'already_exists' };
   }
 

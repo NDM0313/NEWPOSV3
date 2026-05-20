@@ -1,6 +1,6 @@
 /**
  * Studio replica: PRODUCTION_IN (+1 @ production cost) then SALE OUT (-qty) when finalized.
- * Idempotent per (studio_production, product_id, PRODUCTION_IN).
+ * Idempotent per (studio_production, product_id); treats legacy PRODUCTION + PRODUCTION_IN as one inward.
  */
 
 import { supabase } from '@/lib/supabase';
@@ -8,6 +8,9 @@ import { studioProductionService } from '@/app/services/studioProductionService'
 
 /** Finished studio SKU is always one billable unit per production completion (never fabric input qty). */
 export const STUDIO_FINISHED_GOODS_QTY = 1 as const;
+
+/** Inward studio receipt types (legacy PRODUCTION + canonical PRODUCTION_IN). */
+export const STUDIO_INWARD_MOVEMENT_TYPES = ['PRODUCTION_IN', 'PRODUCTION', 'production'] as const;
 
 function sumProductionCostFromStages(stages: Array<{ status?: string; cost?: unknown; expected_cost?: unknown }>): number {
   return stages.reduce((sum, s) => {
@@ -51,8 +54,7 @@ export async function ensureStudioProductionInForSale(saleId: string): Promise<{
   const productId = String(studioItem.product_id);
   const qty = STUDIO_FINISHED_GOODS_QTY;
 
-  // Treat as duplicate if PRODUCTION_IN already exists for this product tied to this production
-  // OR legacy rows keyed by studio_production_orders_v2.id (same sale) — avoids double IN.
+  // Idempotent: any inward studio receipt for this product + production refs (legacy PRODUCTION or PRODUCTION_IN).
   const { data: v2OrderRows } = await supabase
     .from('studio_production_orders_v2')
     .select('id')
@@ -62,12 +64,13 @@ export async function ensureStudioProductionInForSale(saleId: string): Promise<{
   );
   const { data: existingRows } = await supabase
     .from('stock_movements')
-    .select('id')
+    .select('id, quantity')
     .eq('reference_type', 'studio_production')
-    .eq('movement_type', 'PRODUCTION_IN')
     .eq('product_id', productId)
+    .in('movement_type', [...STUDIO_INWARD_MOVEMENT_TYPES])
     .in('reference_id', refIdsForDupCheck);
-  if (existingRows && existingRows.length > 0) {
+  const hasInward = (existingRows || []).some((r) => Number((r as { quantity?: number }).quantity) > 0);
+  if (hasInward) {
     return { inserted: false, skippedReason: 'already_exists' };
   }
 

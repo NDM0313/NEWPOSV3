@@ -323,38 +323,21 @@ export async function createProductFromProductionOrder(params: {
     .update({ product_id: created.id })
     .eq('id', productionOrderId);
 
-  const saleId = order.sale_id;
-  const { data: spRow } = await supabase
-    .from('studio_productions')
-    .select('id')
-    .eq('sale_id', saleId)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  const studioProductionId = (spRow as { id?: string } | null)?.id ?? null;
+  // Inward stock posts only via ensureStudioProductionInForSale when production completes / sale finalizes.
+  // (Avoid duplicate PRODUCTION_IN with legacy PRODUCTION rows.)
 
-  if (studioProductionId) {
-    await productService.createStockMovement({
-      company_id: companyId,
-      branch_id: branchId ?? (order as { branch_id?: string }).branch_id ?? undefined,
-      product_id: created.id,
-      movement_type: 'PRODUCTION_IN',
-      quantity: 1,
-      unit_cost: productionCost,
-      reference_type: 'studio_production',
-      reference_id: studioProductionId,
-      notes: `Studio production ${order.production_no}`,
-      created_by: createdBy ?? undefined,
-    });
-  } else {
-    const { ensureStudioProductionInForSale } = await import('@/app/services/studioStockLifecycleService');
-    const ensured = await ensureStudioProductionInForSale(saleId);
-    if (!ensured.inserted) {
-      console.warn(
-        '[createProductFromProductionOrder] PRODUCTION_IN not created yet:',
-        ensured.skippedReason,
-        '(will appear after studio_productions row + studio line exist)'
-      );
+  const saleId = order.sale_id;
+  let studioProductionRefId: string = productionOrderId;
+  if (saleId) {
+    const { data: spRow } = await supabase
+      .from('studio_productions')
+      .select('id')
+      .eq('sale_id', saleId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if ((spRow as { id?: string } | null)?.id) {
+      studioProductionRefId = (spRow as { id: string }).id;
     }
   }
 
@@ -372,7 +355,7 @@ export async function createProductFromProductionOrder(params: {
         entry_date: new Date().toISOString().split('T')[0],
         description: `Finished goods from studio production ${order.production_no}`,
         reference_type: 'studio_production',
-        reference_id: studioProductionId ?? productionOrderId,
+        reference_id: studioProductionRefId,
         created_by: createdBy ?? undefined,
       };
       const lines: JournalEntryLine[] = [

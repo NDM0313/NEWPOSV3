@@ -81,7 +81,7 @@ export async function syncInvoiceWithProductionPricing(
 
   try {
     const [saleRow, productions, itemsRows, shipmentsRows] = await Promise.all([
-      supabase.from('sales').select('id, invoice_no, total, paid_amount, due_amount').eq('id', saleId).single(),
+      supabase.from('sales').select('id, invoice_no, total, paid_amount, due_amount, status').eq('id', saleId).single(),
       studioProductionService.getProductionsBySaleId(saleId),
       supabase.from('sales_items').select('id, quantity, unit_price, total, product_id, is_studio_product').eq('sale_id', saleId).order('created_at'),
       supabase.from('sale_shipments').select('charged_to_customer').eq('sale_id', saleId),
@@ -91,7 +91,14 @@ export async function syncInvoiceWithProductionPricing(
       result.error = 'Sale not found';
       return result;
     }
-    const sale = saleRow.data as { id: string; invoice_no: string; total: number; paid_amount: number; due_amount: number };
+    const sale = saleRow.data as {
+      id: string;
+      invoice_no: string;
+      total: number;
+      paid_amount: number;
+      due_amount: number;
+      status?: string | null;
+    };
     result.invoiceNo = sale.invoice_no || '';
     result.paidAmount = Number(sale.paid_amount) || 0;
 
@@ -163,10 +170,15 @@ export async function syncInvoiceWithProductionPricing(
       await supabase.from('products').update({ cost_price: productionCost }).eq('id', studioItemProductId);
     }
 
-    try {
-      await ensureStudioProductionInForSale(saleId);
-    } catch (e) {
-      console.warn('[syncInvoiceWithProductionPricing] PRODUCTION_IN ensure:', e);
+    const saleStatus = String(sale.status || '').toLowerCase();
+    const productionStatus = String((production as { status?: string }).status || '').toLowerCase();
+    const shouldPostInward = saleStatus === 'final' || productionStatus === 'completed';
+    if (shouldPostInward) {
+      try {
+        await ensureStudioProductionInForSale(saleId);
+      } catch (e) {
+        console.warn('[syncInvoiceWithProductionPricing] PRODUCTION_IN ensure:', e);
+      }
     }
 
     const needsBackfill =

@@ -2,6 +2,22 @@ import { supabase } from '../lib/supabase';
 
 const BUCKET = 'product-images';
 
+export function extractProductImageStoragePath(rawUrl: string): string | null {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const trimmed = rawUrl.trim();
+  const idx = trimmed.indexOf(`/${BUCKET}/`);
+  if (idx >= 0) return trimmed.slice(idx + BUCKET.length + 2).split('?')[0] || null;
+  if (!trimmed.includes('://') && !trimmed.startsWith('/')) return trimmed.split('?')[0] || null;
+  return null;
+}
+
+export function normalizeProductImagePublicUrl(rawUrl: string, storagePath?: string): string {
+  const path = storagePath ?? extractProductImageStoragePath(rawUrl);
+  if (!path) return rawUrl;
+  const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  return pub.publicUrl || rawUrl;
+}
+
 /**
  * Get a display URL for a product image.
  * If the URL belongs to the product-images bucket we mint a signed URL (bucket may be private).
@@ -56,8 +72,7 @@ export async function uploadProductImages(
       }
       throw new Error(msg || 'Failed to upload image');
     }
-    const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
-    urls.push(pub.publicUrl);
+    urls.push(normalizeProductImagePublicUrl('', path));
   }
   return urls;
 }

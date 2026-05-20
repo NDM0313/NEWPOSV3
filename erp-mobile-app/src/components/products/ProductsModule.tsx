@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ArrowLeft, Package, Plus, Search, Loader2, Edit2, Image as ImageIcon, Boxes, AlertTriangle, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Package, Plus, Search, Loader2, Edit2, Boxes, AlertTriangle, TrendingUp } from 'lucide-react';
 import type { User } from '../../types';
 import * as productsApi from '../../api/products';
 import type { ProductVariationRow } from '../../api/products';
 import { AddProductFlow, type AddProductFlowSavePayload } from './AddProductFlow';
+import { ProductImage } from './ProductImage';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 import { PullToRefresh } from '../common';
 import { formatQty } from '../../utils/quantity';
@@ -318,11 +319,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-14 h-14 rounded-lg bg-[#111827] border border-[#374151] overflow-hidden flex items-center justify-center flex-shrink-0">
-                        {thumb ? (
-                          <img src={thumb} alt={p.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <ImageIcon size={20} className="text-[#4B5563]" />
-                        )}
+                        <ProductImage src={thumb} alt={p.name} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
