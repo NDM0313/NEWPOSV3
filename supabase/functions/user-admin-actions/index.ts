@@ -1,7 +1,12 @@
 // Supabase Edge Function: user-admin-actions
-// Admin-only: send password reset email, set new password
+// Admin or owner: send password reset email, set new password
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+function canPerformUserAdminActions(role: string | null | undefined): boolean {
+  const r = String(role ?? '').toLowerCase().trim();
+  return r === 'admin' || r === 'owner';
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,8 +36,9 @@ Deno.serve(async (req) => {
     }
 
     const { data: callerProfile } = await supabaseAdmin.from('users').select('role').or(`id.eq.${caller.id},auth_user_id.eq.${caller.id}`).limit(1).maybeSingle();
-    if ((callerProfile as any)?.role !== 'admin') {
-      return new Response(JSON.stringify({ success: false, error: 'Only admin can perform this action' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const callerRole = (callerProfile as { role?: string } | null)?.role;
+    if (!canPerformUserAdminActions(callerRole)) {
+      return new Response(JSON.stringify({ success: false, error: 'Only admin or owner can perform this action' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const body = await req.json();

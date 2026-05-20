@@ -1,7 +1,12 @@
 // Supabase Edge Function: create-erp-user
-// Creates auth user + ERP profile. Requires admin JWT. Uses service role for auth.admin.
+// Creates auth user + ERP profile. Requires admin or owner JWT. Uses service role for auth.admin.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+function canCreateUsers(role: string | null | undefined): boolean {
+  const r = String(role ?? '').toLowerCase().trim();
+  return r === 'admin' || r === 'owner';
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -73,10 +78,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    const role = (callerProfile as any)?.role;
-    if (role !== 'admin') {
+    const role = (callerProfile as { role?: string })?.role;
+    if (!canCreateUsers(role)) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Only admin can create users' }),
+        JSON.stringify({ success: false, error: 'Only admin or owner can create users' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
