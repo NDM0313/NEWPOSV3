@@ -349,8 +349,14 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
             default_commission_percent: formData.commission_rate,
             rental_commission_percent: formData.rental_commission_rate ?? null,
           });
-        } catch (empErr) {
-          console.error('[AddUserModal] Employee sync failed (silent):', empErr);
+        } catch (empErr: any) {
+          console.error('[AddUserModal] Employee sync failed:', empErr);
+          const code = empErr?.code ?? '';
+          if (code === 'PGRST116') {
+            toast.warning(
+              'User saved, but commission/salary fields could not be updated. Apply migration 20260520140000_users_rls_owner_manage on the database, or use an admin account.',
+            );
+          }
         }
       }
 

@@ -195,7 +195,7 @@ export const userService = {
         .update(updatePayload)
         .eq('id', id)
         .select()
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error('[USER SERVICE] Error updating user:', error);
@@ -206,6 +206,14 @@ export const userService = {
           code: error.code
         });
         throw error;
+      }
+
+      if (!data) {
+        const denied = new Error(
+          'User update was not applied (no matching row or insufficient permission). Admin or owner role required.',
+        );
+        (denied as { code?: string }).code = 'PGRST116';
+        throw denied;
       }
       
       console.log('[USER SERVICE] User updated successfully:', data);
