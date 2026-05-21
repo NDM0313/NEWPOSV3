@@ -58,7 +58,8 @@ posv3.zip
 !.env.example
 !.env.db.example
 
-# graphify ignore (pg_dump; do not commit)
+# graphify — AST cache is local-only; commit graph.json + GRAPH_REPORT.md
+graphify-out/cache/
 
 build/
 .dart_tool/
