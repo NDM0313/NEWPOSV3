@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { Lock, Mail, Zap, Loader2, KeyRound, AlertTriangle } from 'lucide-react';
+import { Lock, Mail, Loader2, KeyRound, AlertTriangle } from 'lucide-react';
 import { erpMobileUsingDemoSupabaseAnonKey } from '../lib/supabase';
 import type { User } from '../types';
 import * as authApi from '../api/auth';
 import { markUnlocked } from '../lib/pinLock';
 import { OAUTH_COMPLETE_EVENT, type OauthCompleteDetail } from '../lib/oauthCallback';
 import { CounterLoginPanel } from './auth/CounterLoginPanel';
+import { getLastCounterCompanyId } from '../lib/sharedCounterMode';
 import {
   formatCounterPinAuthError,
   getCounterVaultUserIdForPin,
   saveCounterUserForPin,
+  type CounterVaultPayload,
 } from '../lib/counterUserVault';
 
 interface LoginScreenProps {
@@ -42,6 +44,8 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
   const [setPinConfirm, setSetPinConfirm] = useState('');
   const [hasPinSet, setHasPinSet] = useState(false);
   const [pinLockedUntil, setPinLockedUntil] = useState(0);
+  const [confirmCounterSync, setConfirmCounterSync] = useState(false);
+  const [pendingCounterPayload, setPendingCounterPayload] = useState<{ pin: string; payload: CounterVaultPayload } | null>(null);
 
   useEffect(() => {
     authApi.hasPinSet().then(setHasPinSet);
@@ -79,10 +83,16 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
             branchId: profile.branchId ?? undefined,
             branchLocked: profile.branchLocked,
           };
-          setShowSetPin(true);
-          setUserForSetPin(user);
-          setCompanyIdForSetPin(profile.companyId);
-          setBranchIdForSetPin(profile.branchId ?? null);
+          const freshlyHasPin = await authApi.hasPinSet();
+          if (freshlyHasPin) {
+            markUnlocked();
+            onLogin(user, profile.companyId);
+          } else {
+            setShowSetPin(true);
+            setUserForSetPin(user);
+            setCompanyIdForSetPin(profile.companyId);
+            setBranchIdForSetPin(profile.branchId ?? null);
+          }
         } finally {
           setLoading(false);
         }
@@ -90,7 +100,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
     };
     window.addEventListener(OAUTH_COMPLETE_EVENT, onOauthComplete);
     return () => window.removeEventListener(OAUTH_COMPLETE_EVENT, onOauthComplete);
-  }, []);
+  }, [onLogin]);
 
   const isPinMode = hasPinSet;
   const isLocked = pinLockedUntil > Date.now();
@@ -119,10 +129,16 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
           branchId: data.branchId ?? undefined,
           branchLocked: data.branchLocked,
         };
-        setShowSetPin(true);
-        setUserForSetPin(user);
-        setCompanyIdForSetPin(data.companyId);
-        setBranchIdForSetPin(data.branchId ?? null);
+        const freshlyHasPin = await authApi.hasPinSet();
+        if (freshlyHasPin) {
+          markUnlocked();
+          onLogin(user, data.companyId);
+        } else {
+          setShowSetPin(true);
+          setUserForSetPin(user);
+          setCompanyIdForSetPin(data.companyId);
+          setBranchIdForSetPin(data.branchId ?? null);
+        }
       }
     } finally {
       setLoading(false);
@@ -132,6 +148,21 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
   const [userForSetPin, setUserForSetPin] = useState<User | null>(null);
   const [companyIdForSetPin, setCompanyIdForSetPin] = useState<string | null>(null);
   const [branchIdForSetPin, setBranchIdForSetPin] = useState<string | null>(null);
+
+  const finishLogin = (user: User | null = userForSetPin, companyId: string | null = companyIdForSetPin) => {
+    if (user) {
+      markUnlocked();
+      onLogin(user, companyId);
+    }
+    setShowSetPin(false);
+    setUserForSetPin(null);
+    setCompanyIdForSetPin(null);
+    setBranchIdForSetPin(null);
+    setSetPinValue('');
+    setSetPinConfirm('');
+    setConfirmCounterSync(false);
+    setPendingCounterPayload(null);
+  };
 
   const handleSetPinSubmit = async () => {
     if (setPinValue.length < 4 || setPinValue.length > 6 || setPinValue !== setPinConfirm) {
@@ -153,18 +184,22 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         branchId: branchIdForSetPin,
         email: userForSetPin.email,
       });
+
+      // 4-digit + free slot → ask user to also save Counter tablet PIN.
+      // branchId may be null (admin/owner with no user_branches row); vault payload accepts null.
       if (/^\d{4}$/.test(setPinValue) && companyIdForSetPin) {
         try {
           const prof = await authApi.getProfile(sessionWithRefresh.userId);
           const branchId = prof?.branchId ?? branchIdForSetPin ?? null;
-          if (branchId) {
-            const existingUid = await getCounterVaultUserIdForPin(setPinValue);
-            if (existingUid && existingUid !== sessionWithRefresh.userId) {
-              console.warn(
-                '[LoginScreen] Counter tablet PIN not saved: this 4-digit PIN is already used on this tablet by another login.',
-              );
-            } else {
-              await saveCounterUserForPin(setPinValue, {
+          const existingUid = await getCounterVaultUserIdForPin(setPinValue);
+          if (existingUid && existingUid !== sessionWithRefresh.userId) {
+            console.warn(
+              '[LoginScreen] Counter tablet PIN slot already taken by another user; skipping confirm.',
+            );
+          } else {
+            setPendingCounterPayload({
+              pin: setPinValue,
+              payload: {
                 refreshToken: sessionWithRefresh.refreshToken,
                 userId: sessionWithRefresh.userId,
                 companyId: companyIdForSetPin,
@@ -174,22 +209,17 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
                 displayName: prof?.name?.trim() || userForSetPin.name,
                 publicUsersId: userForSetPin.profileId,
                 role: userForSetPin.role,
-              });
-              void authApi.syncCurrentSessionToCounterVault();
-            }
+              },
+            });
+            setConfirmCounterSync(true);
+            return; // wait for Yes/No before finishing login
           }
         } catch (counterErr) {
-          console.warn('[LoginScreen] Counter tablet PIN not saved from first-time setup:', counterErr);
+          console.warn('[LoginScreen] Counter tablet PIN check error:', counterErr);
         }
       }
-      markUnlocked();
-      onLogin(userForSetPin, companyIdForSetPin);
-      setShowSetPin(false);
-      setUserForSetPin(null);
-      setCompanyIdForSetPin(null);
-      setBranchIdForSetPin(null);
-      setSetPinValue('');
-      setSetPinConfirm('');
+
+      finishLogin();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save PIN.');
     } finally {
@@ -197,12 +227,29 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
     }
   };
 
+  const handleConfirmCounterYes = async () => {
+    if (!pendingCounterPayload) {
+      finishLogin();
+      return;
+    }
+    setLoading(true);
+    try {
+      await saveCounterUserForPin(pendingCounterPayload.pin, pendingCounterPayload.payload);
+      void authApi.syncCurrentSessionToCounterVault();
+    } catch (e) {
+      console.warn('[LoginScreen] Counter tablet PIN save failed:', e);
+    } finally {
+      setLoading(false);
+      finishLogin();
+    }
+  };
+
+  const handleConfirmCounterNo = () => {
+    finishLogin();
+  };
+
   const handleSkipSetPin = () => {
-    if (userForSetPin) onLogin(userForSetPin, companyIdForSetPin);
-    setShowSetPin(false);
-    setUserForSetPin(null);
-    setCompanyIdForSetPin(null);
-    setBranchIdForSetPin(null);
+    finishLogin();
   };
 
   const handlePinUnlock = async (e: React.FormEvent) => {
@@ -261,42 +308,6 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
     }
   };
 
-  const quickLogin = async (em: string, pw: string) => {
-    setEmail(em);
-    setPassword(pw);
-    setError('');
-    setLoading(true);
-    try {
-      const { data, error: err } = await authApi.signIn(em, pw);
-      if (err) {
-        setError(err.message);
-        return;
-      }
-      if (data) {
-        const user: User = {
-          id: data.userId,
-          name: data.name,
-          email: data.email,
-          role: data.role,
-          profileId: data.profileId,
-          branchId: data.branchId ?? undefined,
-          branchLocked: data.branchLocked,
-        };
-        setShowSetPin(true);
-        setUserForSetPin(user);
-        setCompanyIdForSetPin(data.companyId);
-        setBranchIdForSetPin(data.branchId ?? null);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleMainLogin = () => quickLogin('ndm313@yahoo.com', 'iPhone@14max');
-  const handleInfoLogin = () => quickLogin('info@dincouture.pk', 'InfoDincouture2026');
-  const handleAdminLogin = () => quickLogin('admin@dincouture.pk', 'AdminDincouture2026');
-  const handleDemoLogin = () => quickLogin('demo@dincollection.com', 'demo123');
-
   const handleUseEmailInstead = async () => {
     await authApi.signOut();
     await authApi.clearPin();
@@ -343,6 +354,43 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
       </div>
     </div>
   ) : null;
+
+  if (showSetPin && userForSetPin && confirmCounterSync) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        {demoKeyBanner}
+        <div className="w-full max-w-sm">
+          <div className="mb-6 text-center">
+            <KeyRound className="w-12 h-12 mx-auto mb-2 text-emerald-400" />
+            <h2 className="text-lg font-semibold text-white">Counter tablet PIN bhi yeh banaayein?</h2>
+            <p className="text-sm text-[#9CA3AF] mt-2 leading-relaxed">
+              POS aur Expense "Switch user" + shared lock screen par aapka naam isi 4-digit PIN se khulay ga. Tablet
+              par har banda alag PIN choose kare — same PIN doosre user ka slot replace kar deti hai.
+            </p>
+            <p className="text-xs text-[#6B7280] mt-2">Device unlock PIN to already save ho chuki hai.</p>
+          </div>
+          <div className="space-y-3">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void handleConfirmCounterYes()}
+              className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-70 text-white font-medium rounded-lg flex items-center justify-center gap-2"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Yes, save counter PIN'}
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={handleConfirmCounterNo}
+              className="w-full h-11 text-[#9CA3AF] text-sm hover:text-white transition-colors"
+            >
+              No, sirf device PIN rakhein
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (showSetPin && userForSetPin) {
     return (
@@ -496,6 +544,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
 
       <div className="w-full max-w-sm">
         <CounterLoginPanel
+          companyId={getLastCounterCompanyId()}
           onLogin={onLogin}
           onUseFullLogin={() => {
             setError('');
@@ -560,45 +609,6 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
           ) : null}
         </div>
 
-        <p className="mt-4 mb-2 text-xs text-[#6B7280] text-center">
-          Quick login (auto-fills and signs in):
-        </p>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={handleMainLogin}
-          className="mt-2 w-full h-12 bg-[#3B82F6]/20 border border-[#3B82F6]/40 text-[#60A5FA] font-medium rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
-        >
-          <Zap className="w-5 h-5" />
-          Main (ndm313@yahoo.com)
-        </button>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={handleInfoLogin}
-          className="mt-2 w-full h-12 bg-[#10B981]/20 border border-[#10B981]/40 text-[#34D399] font-medium rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
-        >
-          <Zap className="w-5 h-5" />
-          Info (info@dincouture.pk)
-        </button>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={handleAdminLogin}
-          className="mt-2 w-full h-12 bg-[#F59E0B]/20 border border-[#F59E0B]/40 text-[#FBBF24] font-medium rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
-        >
-          <Zap className="w-5 h-5" />
-          Admin (admin@dincouture.pk)
-        </button>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={handleDemoLogin}
-          className="mt-2 w-full h-12 bg-[#8B5CF6]/20 border border-[#8B5CF6]/40 text-[#A78BFA] font-medium rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
-        >
-          <Zap className="w-5 h-5" />
-          Demo (demo@dincollection.com)
-        </button>
       </div>
     </div>
   );

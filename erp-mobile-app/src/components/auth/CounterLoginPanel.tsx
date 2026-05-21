@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Users } from 'lucide-react';
 import * as authApi from '../../api/auth';
-import { getCounterUserForPin, listCounterUserSlots, formatCounterPinAuthError, type CounterUserSlot } from '../../lib/counterUserVault';
+import { getCounterUserForPin, listCounterUserSlots, formatCounterPinAuthError, COUNTER_WRONG_COMPANY_MESSAGE, type CounterUserSlot } from '../../lib/counterUserVault';
 import type { User } from '../../types';
 
 interface CounterLoginPanelProps {
+  companyId?: string | null;
   onLogin: (user: User, companyId: string | null) => void;
   onUseFullLogin: () => void;
 }
 
-export function CounterLoginPanel({ onLogin, onUseFullLogin }: CounterLoginPanelProps) {
+export function CounterLoginPanel({ companyId, onLogin, onUseFullLogin }: CounterLoginPanelProps) {
   const [slots, setSlots] = useState<CounterUserSlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(true);
   const [selected, setSelected] = useState<CounterUserSlot | null>(null);
@@ -18,10 +19,11 @@ export function CounterLoginPanel({ onLogin, onUseFullLogin }: CounterLoginPanel
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listCounterUserSlots()
+    listCounterUserSlots(companyId)
       .then(setSlots)
+      .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false));
-  }, []);
+  }, [companyId]);
 
   const append = (d: string) => {
     setError(null);
@@ -64,6 +66,10 @@ export function CounterLoginPanel({ onLogin, onUseFullLogin }: CounterLoginPanel
       const profile = await authApi.getProfile(session.userId);
       if (!profile) {
         setError('Profile not found.');
+        return;
+      }
+      if (companyId && profile.companyId !== companyId) {
+        setError(COUNTER_WRONG_COMPANY_MESSAGE);
         return;
       }
       const user: User = {

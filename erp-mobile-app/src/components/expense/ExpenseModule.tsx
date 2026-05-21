@@ -570,6 +570,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
       {onCounterSessionReplaced && !isSharedCounterModeEnabled() ? (
         <SwitchUserPinOverlay
           open={showSwitchUser}
+          companyId={companyId}
           onClose={() => setShowSwitchUser(false)}
           onSessionReplaced={onCounterSessionReplaced}
         />

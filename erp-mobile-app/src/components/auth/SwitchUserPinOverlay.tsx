@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import * as authApi from '../../api/auth';
-import { getCounterUserForPin, formatCounterPinAuthError } from '../../lib/counterUserVault';
+import { getCounterUserForPin, formatCounterPinAuthError, COUNTER_WRONG_COMPANY_MESSAGE } from '../../lib/counterUserVault';
 
 interface SwitchUserPinOverlayProps {
   open: boolean;
+  companyId: string | null;
   onClose: () => void;
   onSessionReplaced: (profile: authApi.AuthProfile) => void | Promise<void>;
 }
 
-export function SwitchUserPinOverlay({ open, onClose, onSessionReplaced }: SwitchUserPinOverlayProps) {
+export function SwitchUserPinOverlay({ open, companyId, onClose, onSessionReplaced }: SwitchUserPinOverlayProps) {
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +57,11 @@ export function SwitchUserPinOverlay({ open, onClose, onSessionReplaced }: Switc
       const profile = await authApi.getProfile(session.userId);
       if (!profile) {
         setError('Could not load profile.');
+        setBusy(false);
+        return;
+      }
+      if (companyId && profile.companyId !== companyId) {
+        setError(COUNTER_WRONG_COMPANY_MESSAGE);
         setBusy(false);
         return;
       }

@@ -8,6 +8,64 @@ Copy this block for every new APK you ship. Keep the newest entry at the top.
 
 | Field | Value |
 |--------|--------|
+| **Date** | 2026-05-21 |
+| **versionName** | 1.0.4 |
+| **versionCode** | 5 |
+| **Git commit** | (current HEAD) |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.4-build5.apk` |
+| **Download URL** | GitHub release `mobile-v1.0.4-build5` (after upload) |
+
+### Changelog (user-facing) — build 5
+
+- Physical device WebView boot fix: relative `./assets/` paths (not absolute `/assets/`), single inlined JS bundle (~2.4 MB), ES5-safe boot watchdog, splash auto-hides after 2s so login/fallback is visible.
+
+### Install notes (build 5)
+
+1. **Uninstall** any previous ERP Mobile app (clears WebView cache and IndexedDB).
+2. Install `releases/erp-mobile-1.0.4-build5.apk`.
+3. Cold boot: splash ~2s, then login screen OR boot fallback with **Reload app** button.
+4. If still plain blue after 12s: `adb logcat | findstr /i "chromium capacitor ERP Failed"`
+
+---
+
+## Previous build (1.0.3 build 4)
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-21 |
+| **versionName** | 1.0.3 |
+| **versionCode** | 4 |
+| **APK path (local)** | `releases/erp-mobile-1.0.3-build4.apk` |
+
+### Changelog (user-facing) — build 4
+
+- Fix release APK blank/blue boot screen: Vite WebView-compatible transpile targets, dist verification before cap sync, pre-React boot fallback UI, lazy-loaded modules, auth bootstrap timeout.
+- Register native ErpPrinter plugin on Android startup (printing).
+
+### Install notes (build 4)
+
+1. **Uninstall** the old 1.0.2 app first (clears WebView cache and IndexedDB).
+2. Install `releases/erp-mobile-1.0.3-build4.apk`.
+3. Cold boot should show the login screen (dark UI). If startup fails, you should see a **Reload app** fallback instead of a blank screen.
+4. If still blank: connect tablet via USB and run `adb logcat | findstr /i "chromium capacitor ERP"`.
+
+---
+
+## Previous build (1.0.2 build 3)
+
+- Settings **Thermal / A4** now drives real printing (Sunmi built-in → Bluetooth ESC/POS → browser A4).
+- **Test print** in Settings; Bluetooth printer picker for paired devices.
+- **Auto-print receipt** after Sale and POS checkout when enabled.
+- **Print labels** on Products (barcode/SKU) with thermal or A4 layout.
+- Salesman can save printer settings (RLS fix for `auth_user_id` users).
+
+---
+
+## Previous build (1.0.1 build 2)
+
+| Field | Value |
+|--------|--------|
 | **Date** | 2026-05-20 |
 | **versionName** | 1.0.1 |
 | **versionCode** | 2 |

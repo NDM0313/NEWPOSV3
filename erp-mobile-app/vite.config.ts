@@ -1,9 +1,6 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-
-const base = process.env.VITE_BASE || '/';
-const useMlKitStub = process.env.VITE_TARGET !== 'capacitor';
 
 /** Kong may reject WS/API when forwarded Origin is localhost; set on the Node→Kong leg only. */
 const supabaseProxyOrigin = process.env.VITE_SUPABASE_PROXY_ORIGIN || 'https://erp.dincouture.pk';
@@ -34,33 +31,76 @@ const supabaseProxy = (extra: { ws?: boolean } = {}) => ({
   configure: (proxy: ProxyWithEvents) => attachSupabaseProxyOrigin(proxy),
 });
 
-export default defineConfig({
-  base,
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-      ...(useMlKitStub && {
-        '@capacitor-mlkit/barcode-scanning': path.resolve(__dirname, './src/features/barcode/mlkit-stub.ts'),
-      }),
+const MODULE_SCRIPT_RE =
+  /<script type="module" crossorigin src="([^"]+\.js)"(?: onerror="[^"]*")?><\/script>/;
+
+/** Surface module load failures before React mounts; keep boot watchdog before app bundle. */
+function bootScriptOnErrorPlugin() {
+  return {
+    name: 'erp-boot-script-onerror',
+    transformIndexHtml(html: string) {
+      let out = html.replace(
+        MODULE_SCRIPT_RE,
+        '<script type="module" crossorigin src="$1" onerror="window.__ERP_SHOW_BOOT_FALLBACK&&window.__ERP_SHOW_BOOT_FALLBACK(\'App script failed to load.\')"><\/script>',
+      );
+
+      const moduleMatch = out.match(
+        /<script type="module" crossorigin src="[^"]+\.js" onerror="[^"]*"><\/script>/,
+      );
+      if (moduleMatch) {
+        const moduleTag = moduleMatch[0];
+        out = out.replace(moduleTag, '');
+        out = out.replace(
+          /(<\/script>\s*)(\s*<\/body>)/,
+          `$1\n    ${moduleTag}$2`,
+        );
+      }
+
+      return out;
     },
-  },
-  server: {
-    port: 5174,
-    host: '0.0.0.0', // Network access for mobile devices (http://YOUR_IP:5174)
-    open: true,
-    hmr: true, // Explicitly enable Hot Module Replacement
-    // Same-origin Supabase in dev (see src/lib/supabase.ts): avoids Kong CORS (erp.dincouture.pk only)
-    // Prefix `/auth` (not only `/auth/v1`) so all auth routes are proxied.
-    proxy: {
-      '/auth': supabaseProxy(),
-      '/rest': supabaseProxy(),
-      '/storage': supabaseProxy(),
-      '/realtime': supabaseProxy({ ws: true }),
-      '/functions': supabaseProxy(),
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const isCapacitorBuild = env.VITE_TARGET === 'capacitor';
+  // Capacitor release (VITE_TARGET=capacitor in .env.production): base './' + single inlined bundle for device WebView.
+  const base = env.VITE_BASE || (isCapacitorBuild ? './' : '/');
+  const useMlKitStub = env.VITE_TARGET !== 'capacitor';
+
+  return {
+    base,
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
+        ...(useMlKitStub && {
+          '@capacitor-mlkit/barcode-scanning': path.resolve(__dirname, './src/features/barcode/mlkit-stub.ts'),
+        }),
+      },
     },
-  },
-  build: { 
-    outDir: 'dist',
-    sourcemap: true, // Enable source maps for debugging
-  },
+    plugins: [react(), bootScriptOnErrorPlugin()],
+    server: {
+      port: 5174,
+      host: '0.0.0.0',
+      open: true,
+      hmr: true,
+      proxy: {
+        '/auth': supabaseProxy(),
+        '/rest': supabaseProxy(),
+        '/storage': supabaseProxy(),
+        '/realtime': supabaseProxy({ ws: true }),
+        '/functions': supabaseProxy(),
+      },
+    },
+    build: {
+      outDir: 'dist',
+      sourcemap: true,
+      target: ['es2015', 'chrome87', 'safari13', 'edge88'],
+      cssTarget: ['chrome87', 'safari13'],
+      modulePreload: isCapacitorBuild ? false : undefined,
+      rollupOptions: isCapacitorBuild
+        ? { output: { inlineDynamicImports: true } }
+        : undefined,
+    },
+  };
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { initInputKeyboard } from './utils/inputKeyboard';
 import type { Screen, User, Branch, BottomNavTab } from './types';
 import * as authApi from './api/auth';
@@ -20,19 +20,6 @@ import { BottomNav } from './components/BottomNav';
 import { ModuleGrid } from './components/ModuleGrid';
 import { TabletSidebar } from './components/TabletSidebar';
 import { PlaceholderModule } from './components/PlaceholderModule';
-import { SalesModule } from './components/sales/SalesModule';
-import { POSModule } from './components/pos/POSModule';
-import { ContactsModule } from './components/contacts/ContactsModule';
-import { SettingsModule } from './components/settings/SettingsModule';
-import { ProductsModule } from './components/products/ProductsModule';
-import { PurchaseModule } from './components/purchase/PurchaseModule';
-import { RentalModule } from './components/rental/RentalModule';
-import { StudioModule } from './components/studio/StudioModule';
-import { AccountsModule } from './components/accounts/AccountsModule';
-import { ExpenseModule } from './components/expense/ExpenseModule';
-import { InventoryModule } from './components/inventory/InventoryModule';
-import { DashboardModule } from './components/dashboard/DashboardModule';
-import { PackingListModule } from './components/packing/PackingListModule';
 import { SyncStatusBar } from './components/SyncStatusBar';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { runSync, getUnsyncedCount } from './lib/syncEngine';
@@ -46,12 +33,46 @@ import { resetLocalDataPlaneForNewCompany } from './lib/sessionIsolation';
 import { dispatchSessionSwitched } from './lib/sessionSwitchBus';
 import { POSLockScreen } from './components/auth/POSLockScreen';
 import {
-  shouldActivateCounterLockScreen,
+  safeShouldActivateCounterLockScreen,
   requestCounterLockScreen,
+  setLastCounterCompanyId,
 } from './lib/sharedCounterMode';
 import { countCounterUsers } from './lib/counterUserVault';
 
 const LAST_AUTOSYNC_KEY = 'erp_mobile_last_autosync_at';
+const BOOT_AUTH_TIMEOUT_MS = 10_000;
+
+const SalesModule = lazy(() => import('./components/sales/SalesModule').then((m) => ({ default: m.SalesModule })));
+const POSModule = lazy(() => import('./components/pos/POSModule').then((m) => ({ default: m.POSModule })));
+const ContactsModule = lazy(() => import('./components/contacts/ContactsModule').then((m) => ({ default: m.ContactsModule })));
+const SettingsModule = lazy(() => import('./components/settings/SettingsModule').then((m) => ({ default: m.SettingsModule })));
+const ProductsModule = lazy(() => import('./components/products/ProductsModule').then((m) => ({ default: m.ProductsModule })));
+const PurchaseModule = lazy(() => import('./components/purchase/PurchaseModule').then((m) => ({ default: m.PurchaseModule })));
+const RentalModule = lazy(() => import('./components/rental/RentalModule').then((m) => ({ default: m.RentalModule })));
+const StudioModule = lazy(() => import('./components/studio/StudioModule').then((m) => ({ default: m.StudioModule })));
+const AccountsModule = lazy(() => import('./components/accounts/AccountsModule').then((m) => ({ default: m.AccountsModule })));
+const ExpenseModule = lazy(() => import('./components/expense/ExpenseModule').then((m) => ({ default: m.ExpenseModule })));
+const InventoryModule = lazy(() => import('./components/inventory/InventoryModule').then((m) => ({ default: m.InventoryModule })));
+const DashboardModule = lazy(() => import('./components/dashboard/DashboardModule').then((m) => ({ default: m.DashboardModule })));
+const PackingListModule = lazy(() => import('./components/packing/PackingListModule').then((m) => ({ default: m.PackingListModule })));
+
+function withBootTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error('Auth bootstrap timeout')), ms);
+    }),
+  ]);
+}
+
+function ModuleLoadingFallback() {
+  return (
+    <div className="min-h-screen bg-[#111827] flex flex-col items-center justify-center gap-4 p-6">
+      <div className="w-12 h-12 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
+      <p className="text-[#9CA3AF] text-center">Loading module...</p>
+    </div>
+  );
+}
 
 const MODULE_TITLES: Record<Screen, string> = {
   login: 'Login',
@@ -128,6 +149,7 @@ export default function App() {
       };
       setUser(u);
       setCompanyId(profile.companyId);
+      setLastCounterCompanyId(profile.companyId);
       setDocumentEditIntent(null);
       previousAuthUserIdRef.current = profile.userId;
       markUnlocked();
@@ -231,6 +253,7 @@ export default function App() {
       });
       reload(profile.userId, profile.role, profile.profileId, profile.companyId ?? undefined);
       dispatchSessionSwitched({ userId: profile.userId, companyId: profile.companyId });
+      setLastCounterCompanyId(profile.companyId);
       setIsCounterLocked(false);
       void authApi.syncCurrentSessionToCounterVault();
     },
@@ -238,28 +261,37 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (authLoading || !user?.id) return;
+    if (authLoading || !user?.id || !companyId) return;
     if (skipCounterBootLockAfterInteractiveLoginRef.current) {
       skipCounterBootLockAfterInteractiveLoginRef.current = false;
       counterBootLockCheckedRef.current = true;
       return;
     }
     if (counterBootLockCheckedRef.current) return;
-    counterBootLockCheckedRef.current = true;
-    void shouldActivateCounterLockScreen().then((lock) => {
-      if (lock) setIsCounterLocked(true);
-    });
-  }, [authLoading, user?.id]);
+    void safeShouldActivateCounterLockScreen(companyId)
+      .then((lock) => {
+        if (lock) setIsCounterLocked(true);
+      })
+      .catch(() => {
+        /* vault read failed — stay unlocked */
+      })
+      .finally(() => {
+        counterBootLockCheckedRef.current = true;
+      });
+  }, [authLoading, user?.id, companyId]);
 
   useEffect(() => {
     const onLockRequested = () => {
-      void shouldActivateCounterLockScreen().then((lock) => {
-        if (lock) setIsCounterLocked(true);
-      });
+      if (!companyId) return;
+      void safeShouldActivateCounterLockScreen(companyId)
+        .then((lock) => {
+          if (lock) setIsCounterLocked(true);
+        })
+        .catch(() => {});
     };
     window.addEventListener('erp-mobile:counter-lock-requested', onLockRequested);
     return () => window.removeEventListener('erp-mobile:counter-lock-requested', onLockRequested);
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     const cleanup = initInputKeyboard();
@@ -416,24 +448,22 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      const [session, pinSet] = await Promise.all([authApi.getSession(), authApi.hasPinSet()]);
-      if (cancelled) return;
-      if (pinSet && !session) {
-        setCurrentScreen('login');
-        setAuthLoading(false);
-        setIsBranchResolving(false);
-        return;
-      }
-      if (!session) {
-        setAuthLoading(false);
-        setIsBranchResolving(false);
-        return;
-      }
-      authApi.getProfile(session.userId).then(async (profile) => {
+      try {
+        const [session, pinSet] = await withBootTimeout(
+          Promise.all([authApi.getSession(), authApi.hasPinSet()]),
+          BOOT_AUTH_TIMEOUT_MS,
+        );
+        if (cancelled) return;
+        if (pinSet && !session) {
+          setCurrentScreen('login');
+          return;
+        }
+        if (!session) {
+          return;
+        }
+        const profile = await authApi.getProfile(session.userId);
         if (cancelled) return;
         if (!profile) {
-          setAuthLoading(false);
-          setIsBranchResolving(false);
           setCurrentScreen('login');
           return;
         }
@@ -448,10 +478,9 @@ export default function App() {
         };
         setUser(u);
         setCompanyId(profile.companyId);
+        setLastCounterCompanyId(profile.companyId);
         if (pinSet) {
           setCurrentScreen('login');
-          setAuthLoading(false);
-          setIsBranchResolving(false);
           return;
         }
         if (profile.branchLocked && profile.branchId) {
@@ -489,7 +518,6 @@ export default function App() {
               setCurrentScreen('home');
               setActiveBottomTab('home');
               setIsBranchResolving(false);
-              setAuthLoading(false);
               return;
             }
             if (!isAdmin && userBranchIds.length === 1) {
@@ -499,7 +527,6 @@ export default function App() {
               setCurrentScreen('home');
               setActiveBottomTab('home');
               setIsBranchResolving(false);
-              setAuthLoading(false);
               return;
             }
             const saved = localStorage.getItem(BRANCH_STORAGE_KEY);
@@ -517,10 +544,16 @@ export default function App() {
             setIsBranchResolving(false);
           }
         }
-        setAuthLoading(false);
-      }).catch(() => { if (!cancelled) { setAuthLoading(false); setIsBranchResolving(false); } });
+      } catch (e) {
+        console.warn('[ERP Mobile] auth bootstrap failed:', e);
+      } finally {
+        if (!cancelled) {
+          setAuthLoading(false);
+          setIsBranchResolving(false);
+        }
+      }
     };
-    run().catch(() => { setAuthLoading(false); });
+    void run();
     return () => { cancelled = true; };
   }, []);
 
@@ -532,6 +565,7 @@ export default function App() {
     previousAuthUserIdRef.current = u.id;
     setUser(u);
     setCompanyId(cid);
+    setLastCounterCompanyId(cid);
     setIsBranchResolving(true);
     setIsPinLocked(false);
     markUnlocked();
@@ -635,9 +669,13 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    if ((await countCounterUsers()) > 0) {
-      setIsCounterLocked(true);
-      return;
+    try {
+      if (companyId && (await countCounterUsers(companyId)) > 0) {
+        setIsCounterLocked(true);
+        return;
+      }
+    } catch (e) {
+      console.warn('[ERP Mobile] counter vault check on logout failed:', e);
     }
     await handleLogoutFull();
   };
@@ -687,6 +725,7 @@ export default function App() {
   if (isCounterLocked && user) {
     return (
       <POSLockScreen
+        companyId={companyId}
         onSessionReplaced={handleCounterSessionReplaced}
         onUseFullLogin={() => void handleLogoutFull()}
       />
@@ -745,6 +784,7 @@ export default function App() {
   }
 
   const content = (
+    <Suspense fallback={<ModuleLoadingFallback />}>
     <>
       {currentScreen === 'home' && user && selectedBranch && (
         <HomeScreen user={user} branch={selectedBranch} companyId={companyId} onNavigate={navigateToModule} onLogout={handleLogout} />
@@ -935,6 +975,7 @@ export default function App() {
         <PlaceholderModule title={MODULE_TITLES[currentScreen] || currentScreen} onBack={navigateHome} />
       )}
     </>
+    </Suspense>
   );
 
   const syncBar = user && selectedBranch ? (

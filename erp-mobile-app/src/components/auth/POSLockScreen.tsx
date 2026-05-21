@@ -6,11 +6,13 @@ import {
   getCounterUserForPin,
   listEnrolledCounterProfiles,
   formatCounterPinAuthError,
+  COUNTER_WRONG_COMPANY_MESSAGE,
   type EnrolledCounterProfile,
 } from '../../lib/counterUserVault';
 import { getFunctionalRoleLabel } from '../../config/functionalRoles';
 
 interface POSLockScreenProps {
+  companyId: string | null;
   onSessionReplaced: (profile: AuthProfile) => void | Promise<void>;
   /** Full sign-out (email/password login). */
   onUseFullLogin: () => void;
@@ -39,6 +41,7 @@ function avatarColor(seed: string): string {
 }
 
 export function POSLockScreen({
+  companyId,
   onSessionReplaced,
   onUseFullLogin,
   title = 'Who is using this counter?',
@@ -51,10 +54,11 @@ export function POSLockScreen({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listEnrolledCounterProfiles()
+    listEnrolledCounterProfiles(companyId)
       .then(setProfiles)
+      .catch(() => setProfiles([]))
       .finally(() => setLoadingProfiles(false));
-  }, []);
+  }, [companyId]);
 
   const append = (d: string) => {
     setError(null);
@@ -97,6 +101,10 @@ export function POSLockScreen({
       const profile = await authApi.getProfile(session.userId);
       if (!profile) {
         setError('Profile not found.');
+        return;
+      }
+      if (companyId && profile.companyId !== companyId) {
+        setError(COUNTER_WRONG_COMPANY_MESSAGE);
         return;
       }
       await onSessionReplaced(profile);

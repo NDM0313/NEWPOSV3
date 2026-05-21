@@ -14,6 +14,7 @@ import { BarcodeScanner } from '../../features/barcode';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
 import { localNowDateString } from '../../utils/localDate';
+import { maybeAutoPrintAfterTransaction } from '../../services/printAfterTransaction';
 
 interface POSModuleProps {
   onBack: () => void;
@@ -372,6 +373,13 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
     setLastInvoiceNo(data?.invoiceNo ?? null);
     setCart([]);
     setShowPaymentStep(false);
+    void maybeAutoPrintAfterTransaction(companyId, {
+      title: 'POS RECEIPT',
+      transactionNo: data?.invoiceNo ?? null,
+      partyName: 'Walk-in',
+      amount: total,
+      date: invoiceDate,
+    });
     });
   };
 
@@ -380,6 +388,7 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
       {onCounterSessionReplaced ? (
         <SwitchUserPinOverlay
           open={showSwitchUser}
+          companyId={companyId}
           onClose={() => setShowSwitchUser(false)}
           onSessionReplaced={onCounterSessionReplaced}
         />

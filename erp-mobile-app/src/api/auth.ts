@@ -298,6 +298,7 @@ export async function syncCurrentSessionToCounterVault(): Promise<void> {
         displayName: prof.name,
         email: prof.email,
         role: prof.role,
+        companyId: prof.companyId,
       });
     }
   } catch {

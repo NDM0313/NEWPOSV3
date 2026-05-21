@@ -21,7 +21,9 @@ import {
   Briefcase,
   Shirt,
   Users,
+  Plus,
 } from 'lucide-react';
+import { createBranch as createBranchApi } from '../../api/branches';
 import type { User, Branch } from '../../types';
 import * as authApi from '../../api/auth';
 import * as settingsApi from '../../api/settings';
@@ -51,6 +53,12 @@ import {
   setSharedCounterModeEnabled,
   subscribeSharedCounterMode,
 } from '../../lib/sharedCounterMode';
+import {
+  getCachedPrinterBackendLabel,
+  printTestReceipt,
+  probePrinterBackend,
+} from '../../services/printService';
+import { listPairedBluetoothDevices } from '../../lib/erpPrinterNative';
 
 interface SettingsModuleProps {
   onBack: () => void;
@@ -128,6 +136,17 @@ export function SettingsModule({
     method: 'keyboard_wedge',
   });
   const [printerSaving, setPrinterSaving] = useState(false);
+  const [printerError, setPrinterError] = useState<string | null>(null);
+  const [printerBackendLabel, setPrinterBackendLabel] = useState('');
+  const [bluetoothDevices, setBluetoothDevices] = useState<{ name: string; address: string }[]>([]);
+  const [labelSettings, setLabelSettings] = useState<settingsApi.MobileBarcodeLabelSettings>({
+    labelLayout: 'thermal',
+    showName: true,
+    showPrice: true,
+    showBusinessName: true,
+    defaultQuantity: 1,
+  });
+  const [labelSaving, setLabelSaving] = useState(false);
   const [barcodeSaving, setBarcodeSaving] = useState(false);
   const [showUserPermissions, setShowUserPermissions] = useState(false);
   const [showEmployees, setShowEmployees] = useState(false);
@@ -142,6 +161,16 @@ export function SettingsModule({
   const [lockScreenProfiles, setLockScreenProfiles] = useState<EnrolledCounterProfile[]>([]);
   const [lockProfilesLoading, setLockProfilesLoading] = useState(false);
   const [sharedCounterMode, setSharedCounterMode] = useState(() => isSharedCounterModeEnabled());
+  /**
+   * After saving counter PIN: if device quick PIN is not set yet, ask user to also set the same PIN
+   * as device quick PIN. State holds the PIN value while the confirm step is active.
+   */
+  const [askDevicePinSync, setAskDevicePinSync] = useState<{ pin: string } | null>(null);
+  const [showCreateBranch, setShowCreateBranch] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [newBranchCode, setNewBranchCode] = useState('');
+  const [createBranchBusy, setCreateBranchBusy] = useState(false);
+  const [createBranchMsg, setCreateBranchMsg] = useState<string | null>(null);
 
   const { hasPermission, isAdminOrOwner } = usePermissions();
   const canManageSettings =
@@ -158,7 +187,7 @@ export function SettingsModule({
     setLockProfilesLoading(true);
     void authApi
       .syncCurrentSessionToCounterVault()
-      .then(() => Promise.all([listEnrolledCounterProfiles(), countCounterUsers()]))
+      .then(() => Promise.all([listEnrolledCounterProfiles(companyId), countCounterUsers(companyId)]))
       .then(([profiles, count]) => {
         setLockScreenProfiles(profiles);
         setCounterSlotCount(count);
@@ -191,10 +220,18 @@ export function SettingsModule({
 
   useEffect(() => {
     if (!companyId) return;
-    settingsApi.getMobilePrinterSettings(companyId).then(({ data }) => setPrinterConfig(data));
+    settingsApi
+      .getEffectivePrinterSettings(companyId, { syncFromCompany: isAdminOrOwner })
+      .then(({ data, error }) => {
+        setPrinterConfig(data);
+        if (error) setPrinterError(error);
+      });
     settingsApi.getMobileBarcodeScannerSettings(companyId).then(({ data }) => setBarcodeSettings(data));
+    settingsApi.getMobileBarcodeLabelSettings(companyId).then(({ data }) => setLabelSettings(data));
     settingsApi.getDefaultDressDevaluation(companyId).then(({ data }) => setDefaultDressDevaluation(data));
-  }, [companyId]);
+    void listPairedBluetoothDevices().then(setBluetoothDevices);
+    void probePrinterBackend(null).then(() => setPrinterBackendLabel(getCachedPrinterBackendLabel()));
+  }, [companyId, isAdminOrOwner]);
 
   if (showUserPermissions) {
     return (
@@ -206,34 +243,64 @@ export function SettingsModule({
     );
   }
 
+  const persistPrinterConfig = async (next: settingsApi.MobilePrinterSettings) => {
+    if (!companyId) return;
+    setPrinterSaving(true);
+    setPrinterError(null);
+    const { error } = await settingsApi.setEffectivePrinterSettings(companyId, next, {
+      mirrorToCompany: isAdminOrOwner,
+    });
+    if (error) {
+      setPrinterError(error);
+    } else {
+      void probePrinterBackend(next.bluetoothDeviceAddress).then(() =>
+        setPrinterBackendLabel(getCachedPrinterBackendLabel())
+      );
+    }
+    setPrinterSaving(false);
+    return error;
+  };
+
   const handlePrinterMode = async (mode: settingsApi.MobilePrinterMode) => {
     if (printerSaving || !companyId) return;
     const prev = printerConfig;
-    setPrinterSaving(true);
-    setPrinterConfig((c) => ({ ...c, mode }));
-    const { error } = await settingsApi.setMobilePrinterSettings(companyId, { ...printerConfig, mode });
-    if (error) setPrinterConfig(prev);
-    setPrinterSaving(false);
+    const next = { ...printerConfig, mode };
+    setPrinterConfig(next);
+    const err = await persistPrinterConfig(next);
+    if (err) setPrinterConfig(prev);
   };
 
   const handlePaperSize = async (paperSize: settingsApi.MobilePrinterPaperSize) => {
     if (printerSaving || !companyId) return;
     const prev = printerConfig;
-    setPrinterSaving(true);
-    setPrinterConfig((c) => ({ ...c, paperSize }));
-    const { error } = await settingsApi.setMobilePrinterSettings(companyId, { ...printerConfig, paperSize });
-    if (error) setPrinterConfig(prev);
-    setPrinterSaving(false);
+    const next = { ...printerConfig, paperSize };
+    setPrinterConfig(next);
+    const err = await persistPrinterConfig(next);
+    if (err) setPrinterConfig(prev);
   };
 
   const handleAutoPrint = async (enabled: boolean) => {
     if (printerSaving || !companyId) return;
     const prev = printerConfig;
-    setPrinterSaving(true);
-    setPrinterConfig((c) => ({ ...c, autoPrintReceipt: enabled }));
-    const { error } = await settingsApi.setMobilePrinterSettings(companyId, { ...printerConfig, autoPrintReceipt: enabled });
-    if (error) setPrinterConfig(prev);
-    setPrinterSaving(false);
+    const next = { ...printerConfig, autoPrintReceipt: enabled };
+    setPrinterConfig(next);
+    const err = await persistPrinterConfig(next);
+    if (err) setPrinterConfig(prev);
+  };
+
+  const handleBluetoothSelect = async (address: string) => {
+    if (printerSaving || !companyId) return;
+    const prev = printerConfig;
+    const next = { ...printerConfig, bluetoothDeviceAddress: address || null };
+    setPrinterConfig(next);
+    const err = await persistPrinterConfig(next);
+    if (err) setPrinterConfig(prev);
+  };
+
+  const handleTestPrint = async () => {
+    setPrinterError(null);
+    const res = await printTestReceipt(printerConfig);
+    if (!res.ok && res.hint) setPrinterError(res.hint);
   };
 
   const handleBarcodeMethod = async (method: settingsApi.BarcodeScannerMethod) => {
@@ -393,6 +460,30 @@ export function SettingsModule({
           </button>
         )}
 
+        {isAdminOrOwner && companyId && (
+          <button
+            type="button"
+            onClick={() => {
+              setCreateBranchMsg(null);
+              setNewBranchName('');
+              setNewBranchCode('');
+              setShowCreateBranch(true);
+            }}
+            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between hover:border-[#3B82F6] transition-colors text-left"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-emerald-500/20 rounded-lg flex items-center justify-center">
+                <Plus className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <p className="font-medium text-white">Create branch</p>
+                <p className="text-sm text-[#9CA3AF]">Add a new branch for this company (same as Web ERP)</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-[#6B7280]" />
+          </button>
+        )}
+
         {isAdminOrOwner && companyId ? (
           <ModuleTogglesSection
             companyId={companyId}
@@ -491,7 +582,7 @@ export function SettingsModule({
               icon={Users}
               iconColor="bg-emerald-500/20"
               title="Counter tablet PIN"
-              subtitle={`Enroll signed-in user for POS/Expense PIN switch (${counterSlotCount} saved)`}
+              subtitle={`Enroll signed-in user for POS/Expense PIN switch (${counterSlotCount} for this company)`}
               onClick={() => {
                 setCounterPinMsg(null);
                 setCounterPinA('');
@@ -552,7 +643,7 @@ export function SettingsModule({
               <div className="min-w-0">
                 <p className="font-medium text-white">Shared Counter Mode</p>
                 <p className="text-sm text-[#9CA3AF]">
-                  On boot and logout, show the POS lock screen instead of signing out ({counterSlotCount} enrolled)
+                  On boot and logout, show the POS lock screen instead of signing out ({counterSlotCount} enrolled for this company)
                 </p>
               </div>
             </div>
@@ -643,6 +734,74 @@ export function SettingsModule({
               />
               <span className="text-sm text-[#E5E7EB]">Auto-print receipt after sale</span>
             </label>
+            <p className="text-xs text-[#6B7280]">
+              Printer source: <span className="text-[#9CA3AF]">{printerBackendLabel || '—'}</span>
+              {isAdminOrOwner && ' · Also synced to web company settings'}
+            </p>
+            {printerConfig.mode === 'thermal' && bluetoothDevices.length > 0 && (
+              <div>
+                <p className="text-xs text-[#9CA3AF] mb-1.5">Bluetooth printer (paired)</p>
+                <select
+                  value={printerConfig.bluetoothDeviceAddress ?? ''}
+                  onChange={(e) => void handleBluetoothSelect(e.target.value)}
+                  className="w-full bg-[#111827] border border-[#374151] rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="">Sunmi built-in (if available)</option>
+                  {bluetoothDevices.map((d) => (
+                    <option key={d.address} value={d.address}>
+                      {d.name} ({d.address})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleTestPrint()}
+              disabled={printerSaving}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-[#374151] text-white hover:bg-[#4B5563] disabled:opacity-50"
+            >
+              Test print
+            </button>
+            {printerError && <p className="text-sm text-red-400">{printerError}</p>}
+          </div>
+
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3">
+            <p className="font-medium text-white">Barcode labels</p>
+            <p className="text-xs text-[#6B7280]">Defaults for Products → Print labels</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = { ...labelSettings, labelLayout: 'thermal' as const };
+                  setLabelSettings(next);
+                  if (!companyId) return;
+                  setLabelSaving(true);
+                  void settingsApi.setMobileBarcodeLabelSettings(companyId, next).finally(() => setLabelSaving(false));
+                }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                  labelSettings.labelLayout === 'thermal' ? 'bg-[#3B82F6] text-white' : 'bg-[#374151] text-[#9CA3AF]'
+                }`}
+              >
+                Thermal label
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = { ...labelSettings, labelLayout: 'a4' as const };
+                  setLabelSettings(next);
+                  if (!companyId) return;
+                  setLabelSaving(true);
+                  void settingsApi.setMobileBarcodeLabelSettings(companyId, next).finally(() => setLabelSaving(false));
+                }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                  labelSettings.labelLayout === 'a4' ? 'bg-[#3B82F6] text-white' : 'bg-[#374151] text-[#9CA3AF]'
+                }`}
+              >
+                A4 sheet
+              </button>
+            </div>
+            {labelSaving && <Loader2 className="w-4 h-4 text-[#3B82F6] animate-spin" />}
           </div>
 
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3">
@@ -827,6 +986,68 @@ export function SettingsModule({
 
       {showCounterPinEnroll && branch?.id && branch.id !== 'all' && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+          {askDevicePinSync ? (
+            <div className="w-full max-w-md rounded-2xl bg-[#1F2937] border border-[#374151] p-5 shadow-xl">
+              <h3 className="text-lg font-semibold text-white mb-1">Device quick PIN bhi same set karein?</h3>
+              <p className="text-xs text-[#9CA3AF] mb-4 leading-relaxed">
+                Counter PIN save ho gayi. Aap is tablet par device unlock ke liye bhi same 4-digit PIN istemaal kar
+                sakte hain. (Aap baad mein Settings se Change/Remove PIN se badal bhi sakte hain.)
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={counterPinBusy}
+                  onClick={() => {
+                    setAskDevicePinSync(null);
+                    setShowCounterPinEnroll(false);
+                    setCounterPinA('');
+                    setCounterPinB('');
+                  }}
+                  className="flex-1 h-11 rounded-xl bg-[#374151] text-white font-medium disabled:opacity-50"
+                >
+                  No, skip
+                </button>
+                <button
+                  type="button"
+                  disabled={counterPinBusy}
+                  onClick={() => {
+                    void (async () => {
+                      setCounterPinMsg(null);
+                      setCounterPinBusy(true);
+                      try {
+                        const session = await authApi.getSessionWithRefresh();
+                        if (!session?.refreshToken) {
+                          setCounterPinMsg('No refresh token in session. Sign in again with email/password.');
+                          return;
+                        }
+                        await authApi.setPinWithPayload(askDevicePinSync.pin, {
+                          refreshToken: session.refreshToken,
+                          userId: session.userId,
+                          companyId,
+                          branchId: branch.id,
+                          email: session.email,
+                        });
+                        setHasPin(true);
+                        setSyncResult('Device quick PIN saved (same as counter PIN).');
+                        setAskDevicePinSync(null);
+                        setShowCounterPinEnroll(false);
+                        setCounterPinA('');
+                        setCounterPinB('');
+                      } catch (e) {
+                        setCounterPinMsg(e instanceof Error ? e.message : 'Failed to set device PIN.');
+                      } finally {
+                        setCounterPinBusy(false);
+                      }
+                    })();
+                  }}
+                  className="flex-1 h-11 rounded-xl bg-emerald-600 text-white font-medium disabled:opacity-50"
+                >
+                  {counterPinBusy ? 'Saving…' : 'Yes, set'}
+                </button>
+              </div>
+              {counterPinMsg ? <p className="text-sm text-red-400 mt-3">{counterPinMsg}</p> : null}
+            </div>
+          ) : (
           <div className="w-full max-w-md rounded-2xl bg-[#1F2937] border border-[#374151] p-5 shadow-xl">
             <h3 className="text-lg font-semibold text-white mb-1">Counter tablet PIN</h3>
             <p className="text-xs text-[#9CA3AF] mb-4">
@@ -915,10 +1136,7 @@ export function SettingsModule({
                         publicUsersId: user.profileId,
                         role: user.role,
                       });
-                      setShowCounterPinEnroll(false);
-                      setCounterPinA('');
-                      setCounterPinB('');
-                      void countCounterUsers().then((n) => {
+                      void countCounterUsers(companyId).then((n) => {
                         setCounterSlotCount(n);
                         if (hadNoSlots && n > 0) {
                           setSharedCounterModeEnabled(true);
@@ -926,6 +1144,14 @@ export function SettingsModule({
                         }
                       });
                       setSyncResult('Counter PIN saved for this user.');
+                      // If device quick PIN is not set yet, ask user to sync the same PIN as device PIN.
+                      if (!hasPin) {
+                        setAskDevicePinSync({ pin: counterPinA });
+                      } else {
+                        setShowCounterPinEnroll(false);
+                        setCounterPinA('');
+                        setCounterPinB('');
+                      }
                     } catch (e) {
                       setCounterPinMsg(e instanceof Error ? e.message : 'Save failed.');
                     } finally {
@@ -936,6 +1162,81 @@ export function SettingsModule({
                 className="flex-1 h-11 rounded-xl bg-emerald-600 text-white font-medium disabled:opacity-50"
               >
                 {counterPinBusy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+          )}
+        </div>
+      )}
+      {showCreateBranch && companyId && isAdminOrOwner && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-[#1F2937] border border-[#374151] p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-white mb-1">Create branch</h3>
+            <p className="text-xs text-[#9CA3AF] mb-4">
+              Naya branch is company ke liye add karein. Yeh wahi <span className="text-[#D1D5DB] font-medium">branches</span>
+              {' '}table mein jaata hai jo Web ERP istemaal karta hai, isliye Web par bhi turant dikh jaayega.
+            </p>
+            {createBranchMsg ? <p className="text-sm text-red-400 mb-3">{createBranchMsg}</p> : null}
+            <label className="block text-xs text-[#9CA3AF] mb-1">Branch name (required)</label>
+            <input
+              value={newBranchName}
+              onChange={(e) => setNewBranchName(e.target.value)}
+              className="w-full mb-3 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white"
+              maxLength={80}
+              placeholder="e.g. DHA Branch"
+              autoComplete="off"
+            />
+            <label className="block text-xs text-[#9CA3AF] mb-1">Code (optional)</label>
+            <input
+              value={newBranchCode}
+              onChange={(e) => setNewBranchCode(e.target.value.toUpperCase().slice(0, 20))}
+              className="w-full mb-4 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white"
+              maxLength={20}
+              placeholder="BR-002"
+              autoComplete="off"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCreateBranch(false)}
+                className="flex-1 h-11 rounded-xl bg-[#374151] text-white font-medium disabled:opacity-50"
+                disabled={createBranchBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={createBranchBusy}
+                onClick={() => {
+                  void (async () => {
+                    setCreateBranchMsg(null);
+                    const name = newBranchName.trim();
+                    if (!name) {
+                      setCreateBranchMsg('Branch name required.');
+                      return;
+                    }
+                    setCreateBranchBusy(true);
+                    try {
+                      const { data, error } = await createBranchApi(companyId, name, newBranchCode.trim() || undefined);
+                      if (error) {
+                        setCreateBranchMsg(error);
+                        return;
+                      }
+                      setSyncResult(`Branch "${data?.name ?? name}" created.`);
+                      setShowCreateBranch(false);
+                      setNewBranchName('');
+                      setNewBranchCode('');
+                      onChangeBranch();
+                    } catch (e) {
+                      setCreateBranchMsg(e instanceof Error ? e.message : 'Create failed.');
+                    } finally {
+                      setCreateBranchBusy(false);
+                    }
+                  })();
+                }}
+                className="flex-1 h-11 rounded-xl bg-emerald-600 text-white font-medium disabled:opacity-50"
+              >
+                {createBranchBusy ? 'Saving…' : 'Create'}
               </button>
             </div>
           </div>

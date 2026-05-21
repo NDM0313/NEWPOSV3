@@ -37,6 +37,7 @@ interface StoredRow {
   userId?: string;
   email?: string;
   role?: string;
+  companyId?: string;
 }
 
 interface MetaDeviceRow {
@@ -51,7 +52,11 @@ export interface EnrolledCounterProfile {
   displayName: string;
   email: string;
   role: string;
+  companyId: string;
 }
+
+export const COUNTER_WRONG_COMPANY_MESSAGE =
+  'This PIN belongs to a different company. Use a counter PIN for this company only.';
 
 /** @deprecated Use EnrolledCounterProfile */
 export interface CounterUserSlot {
@@ -117,6 +122,104 @@ function isFourDigitPin(pin: string): boolean {
   return /^\d{4}$/.test(pin);
 }
 
+function rowToProfile(row: StoredRow, index: number): EnrolledCounterProfile {
+  return {
+    pinHash: row.pinHash,
+    displayName: row.displayName?.trim() || `User ${index + 1}`,
+    userId: row.userId || '',
+    email: row.email?.trim() || '',
+    role: row.role?.trim() || '',
+    companyId: row.companyId?.trim() || '',
+  };
+}
+
+function matchesCompanyFilter(row: StoredRow, companyId: string | null | undefined): boolean {
+  if (!companyId) return true;
+  const rowCompany = row.companyId?.trim();
+  if (!rowCompany) return false;
+  return rowCompany === companyId;
+}
+
+async function lookupCompanyIdForAuthUser(userId: string): Promise<string | null> {
+  if (!userId) return null;
+  try {
+    const { supabase } = await import('./supabase');
+    const { data: row } = await supabase
+      .from('users')
+      .select('company_id')
+      .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
+      .limit(1)
+      .maybeSingle();
+    return (row as { company_id?: string } | null)?.company_id?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function hasActiveAuthSession(): Promise<boolean> {
+  try {
+    const { supabase } = await import('./supabase');
+    const { data } = await supabase.auth.getSession();
+    return Boolean(data.session?.user?.id);
+  } catch {
+    return false;
+  }
+}
+
+async function backfillMissingCompanyIds(rows: StoredRow[]): Promise<StoredRow[]> {
+  try {
+    const missing = rows.filter((r) => r.pinHash && r.userId && !r.companyId?.trim());
+    if (missing.length === 0) return rows;
+
+    // Skip network lookup on cold boot / logged-out — avoids blocking vault reads.
+    if (!(await hasActiveAuthSession())) return rows;
+
+    const patches = new Map<string, string>();
+    await Promise.all(
+      missing.map(async (row) => {
+        const cid = await lookupCompanyIdForAuthUser(row.userId!);
+        if (cid) patches.set(row.pinHash, cid);
+      })
+    );
+    if (patches.size === 0) return rows;
+
+    const database = await openCounterDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = database.transaction(STORE, 'readwrite');
+      const store = tx.objectStore(STORE);
+      for (const row of missing) {
+        const cid = patches.get(row.pinHash);
+        if (cid) store.put({ ...row, companyId: cid });
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+
+    return rows.map((row) => {
+      const cid = patches.get(row.pinHash);
+      return cid ? { ...row, companyId: cid } : row;
+    });
+  } catch (e) {
+    console.warn('[ERP Mobile] counter vault company backfill skipped:', e);
+    return rows;
+  }
+}
+
+async function readAllStoredRows(): Promise<StoredRow[]> {
+  try {
+    const database = await openCounterDb();
+    return await new Promise((resolve, reject) => {
+      const tx = database.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).getAll();
+      req.onsuccess = () => resolve((req.result as StoredRow[]) || []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[ERP Mobile] counter vault read failed:', e);
+    return [];
+  }
+}
+
 async function encryptRefreshTokenDeviceBound(refreshToken: string): Promise<{
   tokenIv: string;
   tokenCiphertext: string;
@@ -174,6 +277,7 @@ export async function saveCounterUserForPin(pin: string, payload: CounterVaultPa
     userId: payload.userId,
     email: payload.email?.trim() || '',
     role: payload.role?.trim() || '',
+    companyId: payload.companyId?.trim() || '',
     tokenIv: tokenEnc.tokenIv,
     tokenCiphertext: tokenEnc.tokenCiphertext,
     tokenAlgo: tokenEnc.tokenAlgo,
@@ -225,7 +329,7 @@ export async function syncCounterRefreshTokenForUserId(
 /** Update plaintext list labels for vault rows (same auth user). No PIN required. */
 export async function syncCounterVaultDisplayMetadataForUserId(
   userId: string,
-  meta: { displayName: string; email?: string; role?: string }
+  meta: { displayName: string; email?: string; role?: string; companyId?: string | null }
 ): Promise<void> {
   const trimmed = meta.displayName?.trim();
   if (!userId || !trimmed) return;
@@ -240,6 +344,7 @@ export async function syncCounterVaultDisplayMetadataForUserId(
   if (toUpdate.length === 0) return;
   const emailNext = meta.email?.trim();
   const roleNext = meta.role?.trim();
+  const companyNext = meta.companyId?.trim();
   await new Promise<void>((resolve, reject) => {
     const tx = database.transaction(STORE, 'readwrite');
     const store = tx.objectStore(STORE);
@@ -249,6 +354,7 @@ export async function syncCounterVaultDisplayMetadataForUserId(
         displayName: trimmed,
         email: emailNext || row.email || '',
         role: roleNext || row.role || '',
+        companyId: companyNext || row.companyId || '',
       });
     }
     tx.oncomplete = () => resolve();
@@ -300,37 +406,42 @@ export function formatCounterPinAuthError(message: string | undefined): string {
 }
 
 /** Enrolled users for lock screen / counter login (no tokens). */
-export async function listEnrolledCounterProfiles(): Promise<EnrolledCounterProfile[]> {
-  const database = await openCounterDb();
-  const rows = await new Promise<StoredRow[]>((resolve, reject) => {
-    const tx = database.transaction(STORE, 'readonly');
-    const req = tx.objectStore(STORE).getAll();
-    req.onsuccess = () => resolve((req.result as StoredRow[]) || []);
-    req.onerror = () => reject(req.error);
-  });
-  return rows
-    .filter((r) => r.pinHash)
-    .map((r, i) => ({
-      pinHash: r.pinHash,
-      displayName: r.displayName?.trim() || `User ${i + 1}`,
-      userId: r.userId || '',
-      email: r.email?.trim() || '',
-      role: r.role?.trim() || '',
-    }));
+export async function listEnrolledCounterProfiles(
+  companyId?: string | null
+): Promise<EnrolledCounterProfile[]> {
+  try {
+    let rows = await readAllStoredRows();
+    rows = await backfillMissingCompanyIds(rows);
+    return rows
+      .filter((r) => r.pinHash && matchesCompanyFilter(r, companyId))
+      .map((r, i) => rowToProfile(r, i));
+  } catch (e) {
+    console.warn('[ERP Mobile] listEnrolledCounterProfiles failed:', e);
+    return [];
+  }
 }
 
 /** @deprecated Use listEnrolledCounterProfiles */
-export async function listCounterUserSlots(): Promise<CounterUserSlot[]> {
-  const profiles = await listEnrolledCounterProfiles();
+export async function listCounterUserSlots(companyId?: string | null): Promise<CounterUserSlot[]> {
+  const profiles = await listEnrolledCounterProfiles(companyId);
   return profiles.map(({ pinHash, displayName, userId }) => ({ pinHash, displayName, userId }));
 }
 
-export async function countCounterUsers(): Promise<number> {
-  const database = await openCounterDb();
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction(STORE, 'readonly');
-    const req = tx.objectStore(STORE).count();
-    req.onsuccess = () => resolve(req.result ?? 0);
-    req.onerror = () => reject(req.error);
-  });
+export async function countCounterUsers(companyId?: string | null): Promise<number> {
+  try {
+    if (!companyId) {
+      const database = await openCounterDb();
+      return await new Promise((resolve, reject) => {
+        const tx = database.transaction(STORE, 'readonly');
+        const req = tx.objectStore(STORE).count();
+        req.onsuccess = () => resolve(req.result ?? 0);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    const profiles = await listEnrolledCounterProfiles(companyId);
+    return profiles.length;
+  } catch (e) {
+    console.warn('[ERP Mobile] countCounterUsers failed:', e);
+    return 0;
+  }
 }

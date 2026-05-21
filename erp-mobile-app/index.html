@@ -17,6 +17,50 @@
   </head>
   <body>
     <div id="root"></div>
+    <div
+      id="boot-fallback"
+      style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:#111827;color:#F9FAFB;flex-direction:column;align-items:center;justify-content:center;padding:24px;font-family:sans-serif;text-align:center"
+    >
+      <p id="boot-fallback-msg" style="margin:0 0 16px;font-size:14px;color:#9CA3AF">The app could not start.</p>
+      <button
+        type="button"
+        onclick="location.reload()"
+        style="padding:12px 24px;border-radius:12px;border:none;background:#3B82F6;color:white;font-weight:500;cursor:pointer"
+      >
+        Reload app
+      </button>
+    </div>
+    <script>
+      (function () {
+        var bootTimer;
+        window.__ERP_SHOW_BOOT_FALLBACK = function (msg) {
+          if (window.__ERP_BOOT_OK__) return;
+          var fb = document.getElementById('boot-fallback');
+          var el = document.getElementById('boot-fallback-msg');
+          if (el && msg) el.textContent = msg;
+          if (fb) fb.style.display = 'flex';
+        };
+        window.__ERP_CLEAR_BOOT_WATCH = function () {
+          window.__ERP_BOOT_OK__ = true;
+          if (bootTimer) clearTimeout(bootTimer);
+        };
+        if (window.addEventListener) {
+          window.addEventListener('error', function () {
+            window.__ERP_SHOW_BOOT_FALLBACK('The app encountered an error during startup.');
+          });
+          if ('onunhandledrejection' in window) {
+            window.addEventListener('unhandledrejection', function () {
+              window.__ERP_SHOW_BOOT_FALLBACK('The app encountered an error during startup.');
+            });
+          }
+        }
+        bootTimer = setTimeout(function () {
+          if (!window.__ERP_BOOT_OK__) {
+            window.__ERP_SHOW_BOOT_FALLBACK('The app is taking too long to start.');
+          }
+        }, 12000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -10,6 +10,7 @@ import * as reportsApi from '../api/reports';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
 import { usePermissions } from '../context/PermissionContext';
 import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from '../utils/permissionModules';
+import { isDeveloperModeUnlocked, subscribeDeveloperMode } from '../lib/developerMode';
 
 interface HomeScreenProps {
   user: User;
@@ -51,6 +52,9 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
   const [showFeatures, setShowFeatures] = useState(false);
   const [todaySales, setTodaySales] = useState<number>(0);
   const [pendingAmount, setPendingAmount] = useState<number>(0);
+  const [devUnlocked, setDevUnlocked] = useState<boolean>(() => isDeveloperModeUnlocked());
+
+  useEffect(() => subscribeDeveloperMode(() => setDevUnlocked(isDeveloperModeUnlocked())), []);
 
   useEffect(() => {
     if (!companyId || !branch?.id) return;
@@ -149,7 +153,7 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
       </div>
 
       <div className={responsive.spacing.page}>
-        {moduleConfigBanner && (
+        {devUnlocked && moduleConfigBanner && (
           <div className="mb-4 p-4 bg-amber-900/30 border border-amber-500/40 rounded-xl" role="status">
             <p className="text-sm text-amber-100">{moduleConfigBanner}</p>
           </div>

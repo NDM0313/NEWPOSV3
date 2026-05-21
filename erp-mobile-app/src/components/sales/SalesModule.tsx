@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { User } from '../../types';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
 import { useResponsive } from '../../hooks/useResponsive';
@@ -15,8 +15,8 @@ import type { PaymentResult } from './PaymentDialog';
 import { SaleConfirmation } from './SaleConfirmation';
 import { StudioDetailsStep, type StudioDetailsData } from './StudioDetailsStep';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
-import { getMobilePrinterSettings } from '../../api/settings';
-import { formatPlainReceiptLines, printThermalReceiptLines } from '../../services/thermalPrint';
+import { getEffectivePrinterSettings } from '../../api/settings';
+import { maybeAutoPrintAfterTransaction, manualPrintReceipt } from '../../services/printAfterTransaction';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { localNowDateString, formatLocalDateYYYYMMDD } from '../../utils/localDate';
 
@@ -281,6 +281,18 @@ export function SalesModule({
       branch: branchName ?? undefined,
       entityId: data?.id ?? null,
     });
+    void maybeAutoPrintAfterTransaction(
+      companyId,
+      {
+        title: 'SALE RECEIPT',
+        transactionNo: data?.invoiceNo ?? null,
+        partyName: saleData.customer?.name ?? 'Walk-in',
+        amount: saleData.total,
+        date: new Date().toISOString(),
+        branch: branchName ?? undefined,
+      },
+      { mirrorFromCompany: user.role === 'admin' || user.role === 'owner' }
+    );
     } finally {
       setSaving(false);
     }
@@ -331,15 +343,10 @@ export function SalesModule({
     onBack();
   };
 
-  const handleThermalPrint = useCallback(async () => {
+  const handlePrintReceipt = useCallback(async () => {
     const data = confirmationData;
     if (!companyId || !data) return;
-    const { data: settings } = await getMobilePrinterSettings(companyId);
-    if (settings.mode !== 'thermal') {
-      window.alert('Set printer mode to Thermal in Settings → Printer, or use Share slip.');
-      return;
-    }
-    const lines = formatPlainReceiptLines({
+    const res = await manualPrintReceipt(companyId, {
       title: 'SALE RECEIPT',
       transactionNo: data.transactionNo,
       partyName: data.partyName,
@@ -347,8 +354,15 @@ export function SalesModule({
       date: data.date,
       branch: data.branch,
     });
-    const res = await printThermalReceiptLines(lines);
     if (!res.ok && res.hint) window.alert(res.hint);
+  }, [companyId, confirmationData]);
+
+  const [printButtonLabel, setPrintButtonLabel] = useState('Print receipt');
+  useEffect(() => {
+    if (!companyId) return;
+    getEffectivePrinterSettings(companyId).then(({ data }) => {
+      setPrintButtonLabel(data.mode === 'thermal' ? 'Thermal print' : 'Print receipt (A4)');
+    });
   }, [companyId, confirmationData]);
 
   const closeSuccessModal = () => {
@@ -494,7 +508,8 @@ export function SalesModule({
         onClose={closeSuccessModal}
         onShareSlip={closeSuccessModal}
         onViewInvoice={closeSuccessModal}
-        onThermalPrint={handleThermalPrint}
+        onThermalPrint={handlePrintReceipt}
+        printReceiptLabel={printButtonLabel}
         onNewSale={handleSuccessNewSale}
         onHome={handleBackToHome}
       />

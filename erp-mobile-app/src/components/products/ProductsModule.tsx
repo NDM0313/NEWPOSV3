@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ArrowLeft, Package, Plus, Search, Loader2, Edit2, Boxes, AlertTriangle, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Package, Plus, Search, Loader2, Edit2, Boxes, AlertTriangle, TrendingUp, Printer } from 'lucide-react';
 import type { User } from '../../types';
 import * as productsApi from '../../api/products';
 import type { ProductVariationRow } from '../../api/products';
 import { AddProductFlow, type AddProductFlowSavePayload } from './AddProductFlow';
 import { ProductImage } from './ProductImage';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
+import { PrintBarcodeLabelModal } from './PrintBarcodeLabelModal';
+import * as settingsApi from '../../api/settings';
 import { PullToRefresh } from '../common';
 import { formatQty } from '../../utils/quantity';
 
@@ -51,6 +53,19 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
+  const [printProduct, setPrintProduct] = useState<Product | null>(null);
+  const [printerSettings, setPrinterSettings] = useState<settingsApi.MobilePrinterSettings>({
+    mode: 'a4',
+    paperSize: '80mm',
+    autoPrintReceipt: false,
+  });
+  const [labelSettings, setLabelSettings] = useState<settingsApi.MobileBarcodeLabelSettings>({
+    labelLayout: 'thermal',
+    showName: true,
+    showPrice: true,
+    showBusinessName: true,
+    defaultQuantity: 1,
+  });
 
   const loadProducts = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -70,6 +85,12 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
   useEffect(() => {
     void loadProducts();
   }, [loadProducts]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    settingsApi.getEffectivePrinterSettings(companyId).then(({ data }) => setPrinterSettings(data));
+    settingsApi.getMobileBarcodeLabelSettings(companyId).then(({ data }) => setLabelSettings(data));
+  }, [companyId]);
 
   const filtered = products.filter((p) => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
@@ -309,13 +330,17 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                 const isLow = p.minStock != null && displayStock <= (p.minStock ?? 0);
 
                 return (
-                  <button
+                  <div
                     key={p.id}
+                    className="bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#3B82F6]/50 transition-all"
+                  >
+                  <button
+                    type="button"
                     onClick={() => {
                       setEditingProduct(p);
                       setView('add');
                     }}
-                    className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#3B82F6]/50 active:scale-[0.99] transition-all"
+                    className="w-full text-left active:scale-[0.99]"
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-14 h-14 rounded-lg bg-[#111827] border border-[#374151] overflow-hidden flex items-center justify-center flex-shrink-0">
@@ -357,6 +382,18 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                       <Edit2 size={14} className="text-[#6B7280] mt-1 flex-shrink-0" />
                     </div>
                   </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPrintProduct(p);
+                    }}
+                    className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-[#374151] text-[#9CA3AF] hover:text-white hover:border-[#3B82F6]/50 text-xs font-medium"
+                  >
+                    <Printer size={14} />
+                    Print labels
+                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -370,6 +407,20 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         )}
         </div>
       </PullToRefresh>
+
+      {printProduct && (
+        <PrintBarcodeLabelModal
+          open={!!printProduct}
+          onClose={() => setPrintProduct(null)}
+          productName={printProduct.name}
+          sku={printProduct.sku}
+          barcode={printProduct.barcode || printProduct.sku}
+          price={printProduct.retailPrice}
+          businessName={undefined}
+          labelSettings={labelSettings}
+          printerSettings={printerSettings}
+        />
+      )}
     </div>
   );
 }

@@ -11,7 +11,10 @@ export interface ThermalPrintResult {
 }
 
 /** Minimal ESC/POS: initialize + text + feed + cut (when supported). */
-export function encodeEscPosUtf8(lines: string[]): Uint8Array {
+export function encodeEscPosUtf8(
+  lines: string[],
+  _paperSize: '58mm' | '80mm' = '80mm'
+): Uint8Array {
   const ESC = 0x1b;
   const GS = 0x1d;
   const parts: number[] = [ESC, 0x40, ESC, 0x74, 0x10];
@@ -72,7 +75,10 @@ export async function printEscPosBuffer(_data: Uint8Array): Promise<ThermalPrint
   };
 }
 
-export async function printThermalReceiptLines(lines: string[]): Promise<ThermalPrintResult> {
-  const buf = encodeEscPosUtf8(lines);
+export async function printThermalReceiptLines(
+  lines: string[],
+  paperSize: '58mm' | '80mm' = '80mm'
+): Promise<ThermalPrintResult> {
+  const buf = encodeEscPosUtf8(lines, paperSize);
   return printEscPosBuffer(buf);
 }

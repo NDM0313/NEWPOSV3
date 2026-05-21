@@ -7,7 +7,7 @@ This project uses **Gradle 9.1.0** and **Android Gradle Plugin 9.0**. Use **JDK 
 ## One-time setup
 
 1. Install Android Studio (SDK). Set `sdk.dir` in `android/local.properties`.
-2. Set `JAVA_HOME` to JDK 17 (recommended).
+2. Set `JAVA_HOME` to JDK 17 (recommended). If NetBeans/Android Studio uses **JDK 25**, run from `erp-mobile-app`: `npm run fix:gradle-jdk` (pins Gradle to JDK 17 via `org.gradle.java.home`).
 
 ## Debug build (from `erp-mobile-app`)
 

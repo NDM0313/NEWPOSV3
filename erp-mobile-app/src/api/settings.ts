@@ -4,6 +4,11 @@
  */
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  getCompanyPrinterConfig,
+  updateCompanyPrinterConfig,
+  type CompanyPrinterConfig,
+} from './companyPrinter';
 
 const MOBILE_SYNC_KEY = 'mobile_sync_status';
 const DEFAULT_DRESS_DEVALUATION_KEY = 'default_dress_devaluation';
@@ -108,13 +113,37 @@ export interface MobilePrinterSettings {
   mode: MobilePrinterMode;
   paperSize: MobilePrinterPaperSize;
   autoPrintReceipt: boolean;
+  /** Classic Bluetooth MAC for ESC/POS (e.g. 00:11:22:33:44:55). */
+  bluetoothDeviceAddress?: string | null;
 }
 
 const DEFAULT_MOBILE_PRINTER: MobilePrinterSettings = {
   mode: 'a4',
   paperSize: '80mm',
   autoPrintReceipt: false,
+  bluetoothDeviceAddress: null,
 };
+
+function parseMobilePrinterRaw(raw: Record<string, unknown>): MobilePrinterSettings {
+  return {
+    mode: (raw.mode === 'thermal' ? 'thermal' : 'a4') as MobilePrinterMode,
+    paperSize: (raw.paperSize === '58mm' ? '58mm' : '80mm') as MobilePrinterPaperSize,
+    autoPrintReceipt: !!raw.autoPrintReceipt,
+    bluetoothDeviceAddress:
+      typeof raw.bluetoothDeviceAddress === 'string' && raw.bluetoothDeviceAddress.trim()
+        ? raw.bluetoothDeviceAddress.trim()
+        : null,
+  };
+}
+
+function companyToMobilePrinter(c: CompanyPrinterConfig): MobilePrinterSettings {
+  return {
+    mode: c.mode,
+    paperSize: c.paperSize,
+    autoPrintReceipt: c.autoPrintReceipt,
+    bluetoothDeviceAddress: null,
+  };
+}
 
 export async function getMobilePrinterSettings(
   companyId: string | null
@@ -130,14 +159,45 @@ export async function getMobilePrinterSettings(
     .maybeSingle();
   if (error) return { data: DEFAULT_MOBILE_PRINTER, error: error.message };
   const raw = (data?.value as Record<string, unknown>) ?? {};
-  return {
-    data: {
-      mode: (raw.mode === 'thermal' ? 'thermal' : 'a4') as MobilePrinterMode,
-      paperSize: (raw.paperSize === '58mm' ? '58mm' : '80mm') as MobilePrinterPaperSize,
-      autoPrintReceipt: !!raw.autoPrintReceipt,
-    },
-    error: null,
-  };
+  return { data: parseMobilePrinterRaw(raw), error: null };
+}
+
+/** Mobile app printer settings; admins also merge company printer columns when mobile row is absent. */
+export async function getEffectivePrinterSettings(
+  companyId: string | null,
+  options?: { syncFromCompany?: boolean }
+): Promise<{ data: MobilePrinterSettings; error: string | null }> {
+  const mobile = await getMobilePrinterSettings(companyId);
+  if (!companyId || !options?.syncFromCompany) {
+    return mobile;
+  }
+  const { data: rowCheck, error: rowErr } = await supabase
+    .from('settings')
+    .select('key')
+    .eq('company_id', companyId)
+    .eq('key', MOBILE_PRINTER_KEY)
+    .maybeSingle();
+  if (rowErr) return mobile;
+  if (rowCheck?.key) return mobile;
+  const { data: company, error: companyErr } = await getCompanyPrinterConfig(companyId);
+  if (companyErr) return { data: mobile.data, error: companyErr };
+  return { data: companyToMobilePrinter(company), error: null };
+}
+
+export async function setEffectivePrinterSettings(
+  companyId: string | null,
+  payload: MobilePrinterSettings,
+  options?: { mirrorToCompany?: boolean }
+): Promise<{ error: string | null }> {
+  const { error: mobileErr } = await setMobilePrinterSettings(companyId, payload);
+  if (mobileErr) return { error: mobileErr };
+  if (!options?.mirrorToCompany || !companyId) return { error: null };
+  const { error: companyErr } = await updateCompanyPrinterConfig(companyId, {
+    mode: payload.mode,
+    paperSize: payload.paperSize,
+    autoPrintReceipt: payload.autoPrintReceipt,
+  });
+  return { error: companyErr };
 }
 
 export async function setMobilePrinterSettings(
@@ -153,6 +213,7 @@ export async function setMobilePrinterSettings(
         mode: payload.mode,
         paperSize: payload.paperSize,
         autoPrintReceipt: payload.autoPrintReceipt,
+        bluetoothDeviceAddress: payload.bluetoothDeviceAddress ?? null,
       },
       category: 'mobile',
       description: 'Printer: thermal receipt or A4 (normal)',
@@ -210,6 +271,72 @@ export async function setMobileBarcodeScannerSettings(
       value: { method: payload.method },
       category: 'mobile',
       description: 'Barcode scanner: keyboard wedge (hardware) or camera',
+    },
+    { onConflict: 'company_id,key' }
+  );
+  return { error: error?.message ?? null };
+}
+
+// --- Barcode label print defaults ---
+
+const MOBILE_BARCODE_LABEL_KEY = 'mobile_barcode_label';
+
+export type BarcodeLabelLayout = 'thermal' | 'a4';
+
+export interface MobileBarcodeLabelSettings {
+  labelLayout: BarcodeLabelLayout;
+  showName: boolean;
+  showPrice: boolean;
+  showBusinessName: boolean;
+  defaultQuantity: number;
+}
+
+const DEFAULT_BARCODE_LABEL: MobileBarcodeLabelSettings = {
+  labelLayout: 'thermal',
+  showName: true,
+  showPrice: true,
+  showBusinessName: true,
+  defaultQuantity: 1,
+};
+
+export async function getMobileBarcodeLabelSettings(
+  companyId: string | null
+): Promise<{ data: MobileBarcodeLabelSettings; error: string | null }> {
+  if (!isSupabaseConfigured || !companyId) {
+    return { data: DEFAULT_BARCODE_LABEL, error: null };
+  }
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('company_id', companyId)
+    .eq('key', MOBILE_BARCODE_LABEL_KEY)
+    .maybeSingle();
+  if (error) return { data: DEFAULT_BARCODE_LABEL, error: error.message };
+  const raw = (data?.value as Record<string, unknown>) ?? {};
+  return {
+    data: {
+      labelLayout: raw.labelLayout === 'a4' ? 'a4' : 'thermal',
+      showName: raw.showName !== false,
+      showPrice: raw.showPrice !== false,
+      showBusinessName: raw.showBusinessName !== false,
+      defaultQuantity: Math.max(1, Number(raw.defaultQuantity) || 1),
+    },
+    error: null,
+  };
+}
+
+export async function setMobileBarcodeLabelSettings(
+  companyId: string | null,
+  payload: MobileBarcodeLabelSettings
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured || !companyId) return { error: null };
+  const { error } = await supabase.from('settings').upsert(
+    {
+      company_id: companyId,
+      key: MOBILE_BARCODE_LABEL_KEY,
+      value: payload,
+      category: 'mobile',
+      description: 'Barcode label print defaults',
     },
     { onConflict: 'company_id,key' }
   );

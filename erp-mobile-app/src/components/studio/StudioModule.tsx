@@ -270,7 +270,7 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
   const refreshMergedOrder = useCallback(
     async (saleId: string): Promise<StudioOrder | null> => {
       if (!companyId) return null;
-      const { data: prods } = await studioApi.getStudioProductions(companyId, undefined);
+      const { data: prods } = await studioApi.getStudioProductions(companyId, branch?.id ?? null);
       const group = (prods || []).filter((p) => p.sale_id === saleId);
       if (group.length === 0) return null;
       const stagesByProdId = new Map<string, studioApi.StudioStageRow[]>();
@@ -282,7 +282,7 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
       );
       return mergeProductionsToOrder(group, stagesByProdId);
     },
-    [companyId],
+    [companyId, branch?.id],
   );
 
   const loadOrders = useCallback(async () => {
@@ -293,7 +293,7 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
     setLoading(true);
     setError(null);
     await studioApi.ensureStudioProductionsForCompany(companyId);
-    const { data: prods, error: prodErr } = await studioApi.getStudioProductions(companyId, undefined);
+    const { data: prods, error: prodErr } = await studioApi.getStudioProductions(companyId, branch?.id ?? null);
     if (prodErr) {
       setError(prodErr);
       setOrders([]);
@@ -325,7 +325,7 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
     ordersList.sort((a, b) => (saleFirstIndex.get(a.saleId) ?? 0) - (saleFirstIndex.get(b.saleId) ?? 0));
     setOrders(ordersList);
     setLoading(false);
-  }, [companyId]);
+  }, [companyId, branch?.id]);
 
   useEffect(() => {
     loadOrders();

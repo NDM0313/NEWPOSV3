@@ -18,6 +18,13 @@ Write-Host "== ERP Mobile Windows APK builder ==" -ForegroundColor Cyan
 Write-Host "App root: $AppRoot"
 Write-Host "Configuration: $Configuration  ProductionWebBuild: $($Production.IsPresent)  SkipSync: $($SkipSync.IsPresent)"
 
+if ($Production) {
+  node (Join-Path $AppRoot 'scripts\sync-env-production-from-local.mjs')
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  node (Join-Path $AppRoot 'scripts\verify-mobile-build-env.mjs')
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
 if (-not $SkipSync) {
   if ($Production) {
     npm run cap:sync:android:prod
@@ -52,7 +59,10 @@ Write-Host ""
 Write-Host "Build finished." -ForegroundColor Green
 if ($apk -and (Test-Path $apk)) {
   Write-Host "APK: $apk" -ForegroundColor Green
-  Write-Host "Tip: copy path into erp-mobile-app/releases/APK_UPDATE.md for your release notes."
+  if ($Configuration -eq 'Release') {
+    node (Join-Path $AppRoot 'scripts\copy-release-apk.mjs')
+  }
+  Write-Host "Tip: update erp-mobile-app/releases/APK_UPDATE.md for your release notes."
 } else {
   Write-Host "Check outputs under: $outBase" -ForegroundColor Yellow
 }
