@@ -19,6 +19,7 @@ RUN npm run build
 FROM node:20-alpine AS mobile-builder
 WORKDIR /app
 COPY erp-mobile-app/package.json erp-mobile-app/package-lock.json* ./
+COPY scripts/ensure-gradle-jdk17.mjs /scripts/ensure-gradle-jdk17.mjs
 RUN npm ci
 # CACHEBUST forces fresh copy on every deploy (no stale mobile build)
 ARG CACHEBUST=

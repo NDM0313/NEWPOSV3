@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "postinstall": "patch-package && node ../scripts/ensure-gradle-jdk17.mjs",
+    "postinstall": "patch-package && (node ../scripts/ensure-gradle-jdk17.mjs || true)",
     "fix:gradle-jdk": "node ../scripts/ensure-gradle-jdk17.mjs",
     "typecheck": "tsc -b",
     "dev": "vite --host",
