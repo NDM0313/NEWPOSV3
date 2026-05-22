@@ -12,6 +12,7 @@ function appendPayReferenceAllocationHint(message: string): string {
 }
 import { getNextDocumentNumber } from './documentNumber';
 import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
+import { resolveBranchUuidForWrite, safeRpcBranchId } from '../utils/branchId';
 
 export interface AccountRow {
   id: string;
@@ -61,32 +62,6 @@ const PAYMENT_METHOD_MAP: Record<string, 'cash' | 'bank' | 'card' | 'other'> = {
 function normalizePaymentMethod(method?: string): 'cash' | 'bank' | 'card' | 'other' {
   const m = String(method || 'cash').trim().toLowerCase();
   return PAYMENT_METHOD_MAP[m] || 'cash';
-}
-
-const WORKER_BRANCH_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function safeBranchForWorkerRpc(branchId: string | null | undefined): string | null {
-  if (!branchId || branchId === 'all' || branchId === 'default') return null;
-  const t = String(branchId).trim();
-  return WORKER_BRANCH_UUID_RE.test(t) ? t : null;
-}
-
-async function resolveBranchIdForPaymentMobile(
-  companyId: string,
-  branchId: string | null | undefined
-): Promise<string> {
-  const b = safeBranchForWorkerRpc(branchId);
-  if (b) return b;
-  const { data, error } = await supabase
-    .from('branches')
-    .select('id')
-    .eq('company_id', companyId)
-    .limit(1)
-    .maybeSingle();
-  if (error || !(data as { id?: string })?.id) {
-    throw new Error('No branch set up. Add a branch in Settings to record payments.');
-  }
-  return String((data as { id: string }).id);
 }
 
 /** Next account code in same series as web: 1000/1001… (cash), 1010/1011/1012… (bank), 1020… (wallet), 2000… (others). */
@@ -775,6 +750,16 @@ export async function recordSupplierPayment(params: {
   userId?: string;
 }): Promise<{ data: { payment_id: string; reference_number?: string | null } | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  let branchResolved: string;
+  try {
+    branchResolved = await resolveBranchUuidForWrite(
+      params.companyId,
+      params.branchId,
+      'No branch set up. Add a branch in Settings to record payments.',
+    );
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
+  }
   const baseNotes = params.notes?.trim() ?? '';
   const bankTraceId = params.reference?.trim() ?? '';
   const composedNotes = bankTraceId
@@ -782,7 +767,7 @@ export async function recordSupplierPayment(params: {
     : baseNotes;
   const { data, error } = await supabase.rpc('record_payment_with_accounting', {
     p_company_id: params.companyId,
-    p_branch_id: params.branchId,
+    p_branch_id: branchResolved,
     p_payment_type: 'paid',
     p_reference_type: 'purchase',
     p_reference_id: params.purchaseId,
@@ -1038,14 +1023,17 @@ export async function recordWorkerPayment(params: {
   if (!params.workerId || !params.paymentAccountId || Number(params.amount) <= 0) {
     return { data: null, error: 'workerId, paymentAccountId, amount are required.' };
   }
-  const validBranchId = params.branchId && params.branchId !== 'all' && params.branchId !== 'default' ? params.branchId : null;
   const amount = Number(params.amount) || 0;
   const paymentMethod = normalizePaymentMethod(params.paymentMethod);
   const notes = params.notes ?? params.workPeriod ?? 'Worker payment';
 
   let branchResolved: string;
   try {
-    branchResolved = await resolveBranchIdForPaymentMobile(params.companyId, validBranchId);
+    branchResolved = await resolveBranchUuidForWrite(
+      params.companyId,
+      safeRpcBranchId(params.branchId),
+      'No branch set up. Add a branch in Settings to record payments.',
+    );
   } catch (e) {
     return { data: null, error: e instanceof Error ? e.message : 'Branch required' };
   }

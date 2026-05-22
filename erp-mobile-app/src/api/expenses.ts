@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { listCacheKeys } from '../lib/listCache';
 import { readThroughCache } from '../lib/offlineData';
 import { localNowDateString } from '../utils/localDate';
+import { resolveBranchUuidForWrite } from '../utils/branchId';
 
 /** DB / RPC expect cash | bank | card | other — wallet accounts must map to other. */
 function normalizeExpensePaymentMethodForDb(raw: string | undefined): string {
@@ -18,14 +19,6 @@ function sanitizeUuid(v: string | null | undefined): string | null {
   if (v == null || typeof v !== 'string') return null;
   const t = v.trim();
   return UUID_RE.test(t) ? t : null;
-}
-
-async function resolveBranchId(companyId: string, branchId: string): Promise<string> {
-  if (branchId && branchId !== 'default') return branchId;
-  const { data } = await supabase.from('branches').select('id').eq('company_id', companyId).limit(1).maybeSingle();
-  const first = data?.id ?? null;
-  if (!first) throw new Error('No branch set up. Add a branch in Settings to create expenses.');
-  return first;
 }
 
 export interface ExpenseRow {
@@ -139,7 +132,11 @@ export async function createExpense(input: {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   let effectiveBranchId: string;
   try {
-    effectiveBranchId = await resolveBranchId(input.companyId, input.branchId);
+    effectiveBranchId = await resolveBranchUuidForWrite(
+      input.companyId,
+      input.branchId,
+      'No branch set up. Add a branch in Settings to create expenses.',
+    );
   } catch (err) {
     return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
   }

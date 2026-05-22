@@ -14,13 +14,10 @@ import {
   Shield,
   Database,
   Loader2,
-  Printer,
-  Scan,
   UserCog,
   UserPlus,
   Briefcase,
   Shirt,
-  Users,
   Plus,
 } from 'lucide-react';
 import { createBranch as createBranchApi } from '../../api/branches';
@@ -40,6 +37,9 @@ import { FEATURE_MOBILE_PERMISSION_V2 } from '../../config/featureFlags';
 import { APP_VERSION, registerAppVersionTap } from '../../lib/developerMode';
 import { DeveloperToolsSection } from './DeveloperToolsSection';
 import { ModuleTogglesSection } from './ModuleTogglesSection';
+import { SettingsCollapsible, SettingsRow } from './settingsUi';
+import { SettingsCounterSection } from './SettingsCounterSection';
+import { SettingsPrinterSection } from './SettingsPrinterSection';
 import {
   countCounterUsers,
   getCounterVaultUserIdForPin,
@@ -47,14 +47,7 @@ import {
   saveCounterUserForPin,
   type EnrolledCounterProfile,
 } from '../../lib/counterUserVault';
-import { getFunctionalRoleLabel } from '../../config/functionalRoles';
-import {
-  COUNTER_SESSION_POLICY_OPTIONS,
-  formatLastTokenSyncLabel,
-  getCounterSessionPolicy,
-  setCounterSessionPolicy,
-  type CounterSessionPolicyId,
-} from '../../lib/counterSessionPolicy';
+import { getCounterSessionPolicy, type CounterSessionPolicyId } from '../../lib/counterSessionPolicy';
 import {
   isSharedCounterModeEnabled,
   setSharedCounterModeEnabled,
@@ -83,43 +76,6 @@ interface SettingsModuleProps {
   onChangeBranch: () => void;
   onLogout: () => void;
   onSyncTriggered?: () => void;
-}
-
-function SettingsRow({
-  icon: Icon,
-  iconColor,
-  title,
-  subtitle,
-  onClick,
-  right,
-}: {
-  icon: React.ElementType;
-  iconColor: string;
-  title: string;
-  subtitle?: string;
-  onClick?: () => void;
-  right?: React.ReactNode;
-}) {
-  const Comp = onClick ? 'button' : 'div';
-  return (
-    <Comp
-      onClick={onClick}
-      className={`w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between hover:border-[#3B82F6] transition-colors text-left ${
-        onClick ? 'cursor-pointer' : ''
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${iconColor}`}>
-          <Icon className="w-5 h-5" />
-        </div>
-        <div>
-          <p className="font-medium text-white">{title}</p>
-          {subtitle && <p className="text-sm text-[#9CA3AF]">{subtitle}</p>}
-        </div>
-      </div>
-      {right ?? (onClick ? <ChevronRight className="w-5 h-5 text-[#6B7280]" /> : null)}
-    </Comp>
-  );
 }
 
 export function SettingsModule({
@@ -159,7 +115,6 @@ export function SettingsModule({
   const [labelSettings, setLabelSettings] = useState<settingsApi.MobileBarcodeLabelSettings>(
     settingsApi.DEFAULT_BARCODE_LABEL,
   );
-  const [labelSaving, setLabelSaving] = useState(false);
   const [barcodeSaving, setBarcodeSaving] = useState(false);
   const [showUserPermissions, setShowUserPermissions] = useState(false);
   const [showEmployees, setShowEmployees] = useState(false);
@@ -452,108 +407,101 @@ export function SettingsModule({
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
-        {/* Account */}
-        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-          <p className="text-xs text-[#9CA3AF] mb-1">Logged in as</p>
-          <p className="font-medium text-white">{user.name}</p>
-          <p className="text-sm text-[#6B7280]">{user.email}</p>
-          <span className="inline-block mt-2 px-2 py-0.5 bg-[#6B7280]/20 text-[#9CA3AF] text-xs rounded-full capitalize">
-            {user.role}
-          </span>
-        </div>
-
-        {/* Branch */}
-        {user.branchLocked ? (
-          <div className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center gap-3 text-left">
-            <div className="w-10 h-10 bg-[#6B7280]/20 rounded-lg flex items-center justify-center">
-              <MapPin className="w-5 h-5 text-[#9CA3AF]" />
-            </div>
-            <div>
-              <p className="font-medium text-white">Branch (set by admin)</p>
-              <p className="text-sm text-[#9CA3AF]">{branch?.name ?? '—'}</p>
-            </div>
+      <div className="p-4 space-y-3">
+        <SettingsCollapsible
+          title="Account & branch"
+          subtitle={`${user.name} · ${branch?.name ?? 'No branch'}`}
+          defaultOpen
+        >
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <p className="text-xs text-[#9CA3AF] mb-1">Logged in as</p>
+            <p className="font-medium text-white">{user.name}</p>
+            <p className="text-sm text-[#6B7280]">{user.email}</p>
+            <span className="inline-block mt-2 px-2 py-0.5 bg-[#6B7280]/20 text-[#9CA3AF] text-xs rounded-full capitalize">
+              {user.role}
+            </span>
           </div>
-        ) : (
-          <button
-            onClick={onChangeBranch}
-            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between hover:border-[#3B82F6] transition-colors text-left"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-[#3B82F6]/20 rounded-lg flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-[#3B82F6]" />
+          {user.branchLocked ? (
+            <div className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center gap-3 text-left">
+              <div className="w-10 h-10 bg-[#6B7280]/20 rounded-lg flex items-center justify-center">
+                <MapPin className="w-5 h-5 text-[#9CA3AF]" />
               </div>
               <div>
-                <p className="font-medium text-white">Current Branch</p>
-                <p className="text-sm text-[#9CA3AF]">{branch?.name ?? 'Not selected'}</p>
+                <p className="font-medium text-white">Branch (set by admin)</p>
+                <p className="text-sm text-[#9CA3AF]">{branch?.name ?? '—'}</p>
               </div>
             </div>
-            <ChevronRight className="w-5 h-5 text-[#6B7280]" />
-          </button>
-        )}
-
-        {isAdminOrOwner && companyId && (
-          <button
-            type="button"
-            onClick={() => {
-              setCreateBranchMsg(null);
-              setNewBranchName('');
-              setNewBranchCode('');
-              setShowCreateBranch(true);
-            }}
-            className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between hover:border-[#3B82F6] transition-colors text-left"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-500/20 rounded-lg flex items-center justify-center">
-                <Plus className="w-5 h-5 text-emerald-400" />
+          ) : (
+            <button
+              onClick={onChangeBranch}
+              className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between hover:border-[#3B82F6] transition-colors text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#3B82F6]/20 rounded-lg flex items-center justify-center">
+                  <MapPin className="w-5 h-5 text-[#3B82F6]" />
+                </div>
+                <div>
+                  <p className="font-medium text-white">Current Branch</p>
+                  <p className="text-sm text-[#9CA3AF]">{branch?.name ?? 'Not selected'}</p>
+                </div>
               </div>
-              <div>
-                <p className="font-medium text-white">Create branch</p>
-                <p className="text-sm text-[#9CA3AF]">Add a new branch for this company (same as Web ERP)</p>
+              <ChevronRight className="w-5 h-5 text-[#6B7280]" />
+            </button>
+          )}
+          {isAdminOrOwner && companyId && (
+            <button
+              type="button"
+              onClick={() => {
+                setCreateBranchMsg(null);
+                setNewBranchName('');
+                setNewBranchCode('');
+                setShowCreateBranch(true);
+              }}
+              className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between hover:border-[#3B82F6] transition-colors text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-500/20 rounded-lg flex items-center justify-center">
+                  <Plus className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="font-medium text-white">Create branch</p>
+                  <p className="text-sm text-[#9CA3AF]">Same as Web ERP</p>
+                </div>
               </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-[#6B7280]" />
-          </button>
-        )}
+              <ChevronRight className="w-5 h-5 text-[#6B7280]" />
+            </button>
+          )}
+        </SettingsCollapsible>
 
         {isAdminOrOwner && companyId ? (
-          <ModuleTogglesSection
-            companyId={companyId}
-            userId={user.id}
-            userRole={user.role}
-            profileId={user.profileId}
-          />
-        ) : null}
-
-        {/* User Permissions — same as Web ERP Permissions: only for users with settings.modify (or admin when V2 off) */}
-        <div className="space-y-2">
-          <p className="text-xs text-[#6B7280] font-medium px-1">Permissions</p>
-          {canManageSettings && (
-            <SettingsRow
-              icon={UserCog}
-              iconColor="bg-[#8B5CF6]/20"
-              title="User Permissions"
-              subtitle="Role, branch access & permission matrix"
-              onClick={() => setShowUserPermissions(true)}
+          <SettingsCollapsible title="Company" subtitle="Modules, users, payroll" badge="Admin">
+            <ModuleTogglesSection
+              companyId={companyId}
+              userId={user.id}
+              userRole={user.role}
+              profileId={user.profileId}
             />
-          )}
-
-          {isAdminOrOwner && (
+            {canManageSettings && (
+              <SettingsRow
+                icon={UserCog}
+                iconColor="bg-[#8B5CF6]/20"
+                title="User Permissions"
+                subtitle="Roles & permission matrix"
+                onClick={() => setShowUserPermissions(true)}
+              />
+            )}
             <SettingsRow
               icon={UserPlus}
               iconColor="bg-emerald-500/20"
               title="Add user"
-              subtitle="Invite or set temp password (same as web)"
+              subtitle="Invite or temp password"
               onClick={() => setShowAddUser(true)}
             />
-          )}
-
-          {isAdminOrOwner && (
             <SettingsRow
               icon={Shirt}
               iconColor="bg-pink-500/20"
               title="Default dress devaluation"
-              subtitle={`Rs. ${defaultDressDevaluation.toLocaleString()} (auto for rental booking)`}
+              subtitle={`Rs. ${defaultDressDevaluation.toLocaleString()}`}
               onClick={async () => {
                 if (!companyId) return;
                 const nextRaw = window.prompt('Set default dress devaluation (Rs.)', String(defaultDressDevaluation));
@@ -568,20 +516,17 @@ export function SettingsModule({
                 setSyncResult('Default dress devaluation updated');
               }}
             />
-          )}
+            <SettingsRow
+              icon={Briefcase}
+              iconColor="bg-blue-500/20"
+              title="Employees"
+              subtitle="Payroll & commissions"
+              onClick={() => setShowEmployees(true)}
+            />
+          </SettingsCollapsible>
+        ) : null}
 
-          <SettingsRow
-            icon={Briefcase}
-            iconColor="bg-blue-500/20"
-            title="Employees"
-            subtitle="Payroll, commissions & ledger"
-            onClick={() => setShowEmployees(true)}
-          />
-        </div>
-
-        {/* Security */}
-        <div className="space-y-2">
-          <p className="text-xs text-[#6B7280] font-medium px-1">Security</p>
+        <SettingsCollapsible title="Security" subtitle={hasPin ? 'PIN enabled' : 'No quick PIN'}>
           {hasPin && (
             <>
               <SettingsRow
@@ -595,7 +540,7 @@ export function SettingsModule({
                 icon={Lock}
                 iconColor="bg-amber-500/20"
                 title="Remove PIN"
-                subtitle="Sign in with email/password next time"
+                subtitle="Sign in with email/password"
                 onClick={handleRemovePin}
               />
             </>
@@ -609,388 +554,67 @@ export function SettingsModule({
               onClick={() => setShowSetPin(true)}
             />
           )}
-          {companyId && branch?.id && branch.id !== 'all' && (
-            <SettingsRow
-              icon={Users}
-              iconColor="bg-emerald-500/20"
-              title="Counter tablet PIN"
-              subtitle={`Enroll signed-in user for POS/Expense PIN switch (${counterSlotCount} for this company)`}
-              onClick={() => {
-                setCounterPinMsg(null);
-                setCounterPinA('');
-                setCounterPinB('');
-                setShowCounterPinEnroll(true);
-              }}
-            />
-          )}
-          {companyId && branch?.id && branch.id !== 'all' && (
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3">
-              <div className="flex items-start gap-2">
-                <Users className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-white">Who shows on the lock / home screen</p>
-                  <p className="text-xs text-[#9CA3AF] mt-0.5 leading-relaxed">
-                    Each person must use this tablet once: sign in with email and password, open Settings, tap{' '}
-                    <span className="text-[#D1D5DB] font-medium">Counter tablet PIN</span>, and save their own 4-digit
-                    code — use a <span className="text-[#D1D5DB] font-medium">different</span> PIN than anyone else on
-                    this tablet (same PIN replaces the other user). You cannot add someone else from here without their
-                    login on this device — that is how their session is stored safely.
-                  </p>
-                </div>
-              </div>
-              {lockProfilesLoading ? (
-                <p className="text-xs text-[#6B7280] px-1">Loading…</p>
-              ) : lockScreenProfiles.length === 0 ? (
-                <p className="text-xs text-amber-200/90 px-1">
-                  No counter users yet. Tap “Counter tablet PIN” above for the account that is signed in now.
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {lockScreenProfiles.map((p) => (
-                    <li
-                      key={p.pinHash}
-                      title={[p.displayName, p.email].filter(Boolean).join(' · ')}
-                      className="flex items-center justify-between gap-3 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-white truncate">{p.displayName}</p>
-                        {p.email ? (
-                          <p className="text-xs text-[#6B7280] truncate">{p.email}</p>
-                        ) : null}
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-xs text-[#9CA3AF] block">
-                          {p.role ? getFunctionalRoleLabel(p.role) : 'Staff'}
-                        </span>
-                        <span className="text-[10px] text-[#6B7280] block mt-0.5">
-                          {formatLastTokenSyncLabel(p.lastTokenSyncAt) ?? '—'}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="pt-2 border-t border-[#374151]">
-                <label className="block text-xs font-medium text-[#9CA3AF] mb-1.5">
-                  Counter PIN session freshness
-                </label>
-                <select
-                  value={counterSessionPolicy}
-                  onChange={(e) => {
-                    const id = e.target.value as CounterSessionPolicyId;
-                    setCounterSessionPolicy(id);
-                    setCounterSessionPolicyState(id);
-                  }}
-                  className="w-full px-3 py-2.5 bg-[#111827] border border-[#374151] rounded-lg text-white text-sm focus:outline-none focus:border-[#10B981]"
-                >
-                  {COUNTER_SESSION_POLICY_OPTIONS.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-[#6B7280] mt-2 leading-relaxed">
-                  Counter PIN uses a saved server session on this tablet. If PIN sign-in fails, have the owner or
-                  manager sign in once with email/password here — that refreshes every enrolled user.
-                </p>
-                <p className="text-xs text-[#6B7280] mt-1 leading-relaxed" dir="rtl">
-                  اگر PIN کام نہیں کرتا تو ایک بار ای میل سے لاگ ان کریں — پھر سب کے PIN دوبارہ چلیں گے۔
-                </p>
-              </div>
-            </div>
-          )}
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[#10B981]/20 shrink-0">
-                <Lock className="w-5 h-5 text-[#10B981]" />
-              </div>
-              <div className="min-w-0">
-                <p className="font-medium text-white">Shared Counter Mode</p>
-                <p className="text-sm text-[#9CA3AF]">
-                  On boot and logout, show the POS lock screen instead of signing out ({counterSlotCount} enrolled for this company)
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={sharedCounterMode}
-              disabled={counterSlotCount === 0}
-              onClick={() => {
-                const next = !sharedCounterMode;
-                setSharedCounterModeEnabled(next);
-                setSharedCounterMode(next);
-              }}
-              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium ${
-                sharedCounterMode ? 'bg-emerald-600/30 text-emerald-200' : 'bg-[#374151] text-[#9CA3AF]'
-              } disabled:opacity-40`}
-            >
-              {sharedCounterMode ? 'On' : 'Off'}
-            </button>
-          </div>
-        </div>
+        </SettingsCollapsible>
 
-        {/* Printer & Barcode (standard: thermal/A4 + barcode scanner) */}
-        <div className="space-y-2">
-          <p className="text-xs text-[#6B7280] font-medium px-1">Printer & Barcode</p>
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[#6B7280]/20">
-                <Printer className="w-5 h-5 text-[#9CA3AF]" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-white">Printer</p>
-                <p className="text-sm text-[#9CA3AF]">Thermal receipt or A4 (normal)</p>
-              </div>
-              {printerSaving && <Loader2 className="w-5 h-5 text-[#3B82F6] animate-spin" />}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => handlePrinterMode('thermal')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  printerConfig.mode === 'thermal'
-                    ? 'bg-[#3B82F6] text-white'
-                    : 'bg-[#374151] text-[#9CA3AF] hover:bg-[#4B5563]'
-                }`}
-              >
-                Thermal
-              </button>
-              <button
-                onClick={() => handlePrinterMode('a4')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  printerConfig.mode === 'a4'
-                    ? 'bg-[#3B82F6] text-white'
-                    : 'bg-[#374151] text-[#9CA3AF] hover:bg-[#4B5563]'
-                }`}
-              >
-                A4 (Normal)
-              </button>
-            </div>
-            <div className="border-t border-[#374151] pt-3 space-y-2">
-              <p className="text-xs text-[#9CA3AF] font-medium">Receipt header (thermal)</p>
-              {receiptBrandPreview && (
-                <p className="text-xs text-[#6B7280] leading-relaxed">{receiptBrandPreview}</p>
-              )}
-              <p className="text-[10px] text-[#6B7280]">Company name, address, and phone come from your company profile (edit on web if needed).</p>
-              {(
-                [
-                  ['showLogo', 'Show logo placeholder'],
-                  ['showCompanyAddress', 'Show address'],
-                  ['showPhone', 'Show phone'],
-                  ['showDiscount', 'Show discount line (only when non-zero)'],
-                  ['showTax', 'Show tax line (only when non-zero)'],
-                  ['showStudioCost', 'Show studio cost (only when non-zero)'],
-                  ['showNotes', 'Show notes'],
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key} className="flex items-start gap-3 w-full text-left cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={receiptFields[key]}
-                    disabled={receiptFieldsSaving}
-                    onChange={(e) => void toggleReceiptField(key, e.target.checked)}
-                    className="w-4 h-4 shrink-0 mt-0.5 rounded border-[#4B5563] bg-[#374151] text-[#3B82F6]"
-                  />
-                  <span className="text-sm text-[#E5E7EB]">{label}</span>
-                </label>
-              ))}
-            </div>
-            {printerConfig.mode === 'thermal' && (
-              <div>
-                <p className="text-xs text-[#9CA3AF] mb-1.5">Paper width</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handlePaperSize('58mm')}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                      printerConfig.paperSize === '58mm' ? 'bg-[#3B82F6] text-white' : 'bg-[#374151] text-[#9CA3AF]'
-                    }`}
-                  >
-                    58mm
-                  </button>
-                  <button
-                    onClick={() => handlePaperSize('80mm')}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                      printerConfig.paperSize === '80mm' ? 'bg-[#3B82F6] text-white' : 'bg-[#374151] text-[#9CA3AF]'
-                    }`}
-                  >
-                    80mm
-                  </button>
-                </div>
-              </div>
-            )}
-            <label className="flex items-start gap-3 w-full text-left cursor-pointer">
-              <input
-                type="checkbox"
-                checked={printerConfig.autoPrintReceipt}
-                onChange={(e) => handleAutoPrint(e.target.checked)}
-                className="w-4 h-4 shrink-0 mt-0.5 rounded border-[#4B5563] bg-[#374151] text-[#3B82F6] focus:ring-[#3B82F6]"
-              />
-              <span className="flex-1 min-w-0 text-sm leading-snug text-[#E5E7EB] pt-0.5">
-                Auto-print receipt after sale
-              </span>
-            </label>
-            <p className="text-xs text-[#6B7280]">
-              Printer source: <span className="text-[#9CA3AF]">{printerBackendLabel || '—'}</span>
-              {isAdminOrOwner && ' · Also synced to web company settings'}
-            </p>
-            {printerConfig.mode === 'thermal' && bluetoothDevices.length > 0 && (
-              <div>
-                <p className="text-xs text-[#9CA3AF] mb-1.5">Bluetooth printer (paired)</p>
-                <select
-                  value={printerConfig.bluetoothDeviceAddress ?? ''}
-                  onChange={(e) => void handleBluetoothSelect(e.target.value)}
-                  className="w-full bg-[#111827] border border-[#374151] rounded-lg px-3 py-2 text-sm text-white"
-                >
-                  <option value="">Sunmi built-in (if available)</option>
-                  {bluetoothDevices.map((d) => (
-                    <option key={d.address} value={d.address}>
-                      {d.name} ({d.address})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => void handleTestPrint()}
-              disabled={printerSaving}
-              className="px-3 py-2 rounded-lg text-sm font-medium bg-[#374151] text-white hover:bg-[#4B5563] disabled:opacity-50"
-            >
-              Test print
-            </button>
-            {printerError && <p className="text-sm text-red-400">{printerError}</p>}
-          </div>
+        <SettingsCollapsible
+          title="Counter & lock screen"
+          subtitle={`${counterSlotCount} enrolled`}
+          badge={sharedCounterMode ? 'On' : undefined}
+        >
+          <SettingsCounterSection
+            companyId={companyId}
+            branch={branch}
+            counterSlotCount={counterSlotCount}
+            lockScreenProfiles={lockScreenProfiles}
+            lockProfilesLoading={lockProfilesLoading}
+            sharedCounterMode={sharedCounterMode}
+            setSharedCounterMode={setSharedCounterMode}
+            counterSessionPolicy={counterSessionPolicy}
+            setCounterSessionPolicyState={setCounterSessionPolicyState}
+            onOpenCounterPinEnroll={() => {
+              setCounterPinMsg(null);
+              setCounterPinA('');
+              setCounterPinB('');
+              setShowCounterPinEnroll(true);
+            }}
+          />
+        </SettingsCollapsible>
 
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3">
-            <p className="font-medium text-white">Barcode labels</p>
-            <p className="text-xs text-[#6B7280]">Defaults for Products → Print labels</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const next = { ...labelSettings, labelLayout: 'thermal' as const };
-                  setLabelSettings(next);
-                  if (!companyId) return;
-                  setLabelSaving(true);
-                  void settingsApi.setMobileBarcodeLabelSettings(companyId, next).finally(() => setLabelSaving(false));
-                }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                  labelSettings.labelLayout === 'thermal' ? 'bg-[#3B82F6] text-white' : 'bg-[#374151] text-[#9CA3AF]'
-                }`}
-              >
-                Thermal label
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const next = { ...labelSettings, labelLayout: 'a4' as const };
-                  setLabelSettings(next);
-                  if (!companyId) return;
-                  setLabelSaving(true);
-                  void settingsApi.setMobileBarcodeLabelSettings(companyId, next).finally(() => setLabelSaving(false));
-                }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                  labelSettings.labelLayout === 'a4' ? 'bg-[#3B82F6] text-white' : 'bg-[#374151] text-[#9CA3AF]'
-                }`}
-              >
-                A4 sheet
-              </button>
-            </div>
-            {labelSettings.labelLayout === 'a4' && (
-              <div>
-                <p className="text-xs text-[#9CA3AF] mb-1.5">A4 sticker columns</p>
-                <div className="flex flex-wrap gap-2">
-                  {([2, 3, 4] as const).map((cols) => (
-                    <button
-                      key={cols}
-                      type="button"
-                      onClick={() => {
-                        const next = { ...labelSettings, a4Columns: cols };
-                        setLabelSettings(next);
-                        if (!companyId) return;
-                        setLabelSaving(true);
-                        void settingsApi
-                          .setMobileBarcodeLabelSettings(companyId, next)
-                          .finally(() => setLabelSaving(false));
-                      }}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                        labelSettings.a4Columns === cols
-                          ? 'bg-[#3B82F6] text-white'
-                          : 'bg-[#374151] text-[#9CA3AF]'
-                      }`}
-                    >
-                      {cols} columns
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <label className="flex items-start gap-3 w-full text-left cursor-pointer">
-              <input
-                type="checkbox"
-                checked={labelSettings.defaultLabelsFromPurchaseQty}
-                onChange={(e) => {
-                  const next = { ...labelSettings, defaultLabelsFromPurchaseQty: e.target.checked };
-                  setLabelSettings(next);
-                  if (!companyId) return;
-                  setLabelSaving(true);
-                  void settingsApi
-                    .setMobileBarcodeLabelSettings(companyId, next)
-                    .finally(() => setLabelSaving(false));
-                }}
-                className="w-4 h-4 shrink-0 mt-0.5 rounded border-[#4B5563] bg-[#374151] text-[#3B82F6] focus:ring-[#3B82F6]"
-              />
-              <span className="flex-1 min-w-0 text-sm leading-snug text-[#E5E7EB] pt-0.5">
-                Purchase labels: default qty from line quantity
-              </span>
-            </label>
-            {labelSaving && <Loader2 className="w-4 h-4 text-[#3B82F6] animate-spin" />}
-          </div>
+        <SettingsCollapsible title="Printer & barcode" subtitle={printerConfig.mode === 'thermal' ? 'Thermal' : 'A4'}>
+          <SettingsPrinterSection
+            companyId={companyId}
+            isAdminOrOwner={isAdminOrOwner}
+            printerConfig={printerConfig}
+            printerSaving={printerSaving}
+            printerError={printerError}
+            printerBackendLabel={printerBackendLabel}
+            receiptFields={receiptFields}
+            receiptFieldsSaving={receiptFieldsSaving}
+            receiptBrandPreview={receiptBrandPreview}
+            bluetoothDevices={bluetoothDevices}
+            labelSettings={labelSettings}
+            barcodeSettings={barcodeSettings}
+            barcodeSaving={barcodeSaving}
+            onPrinterMode={handlePrinterMode}
+            onPaperSize={handlePaperSize}
+            onAutoPrint={handleAutoPrint}
+            onBluetoothSelect={handleBluetoothSelect}
+            onTestPrint={() => void handleTestPrint()}
+            onToggleReceiptField={toggleReceiptField}
+            onLabelSettingsChange={setLabelSettings}
+            onBarcodeMethod={handleBarcodeMethod}
+            onPersistLabelSettings={async (next) => {
+              if (!companyId) return;
+              await settingsApi.setMobileBarcodeLabelSettings(companyId, next);
+            }}
+          />
+        </SettingsCollapsible>
 
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[#6B7280]/20">
-                <Scan className="w-5 h-5 text-[#9CA3AF]" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-white">Barcode scanner</p>
-                <p className="text-sm text-[#9CA3AF]">Hardware wedge or camera</p>
-              </div>
-              {barcodeSaving && <Loader2 className="w-5 h-5 text-[#3B82F6] animate-spin" />}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => handleBarcodeMethod('keyboard_wedge')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  barcodeSettings.method === 'keyboard_wedge'
-                    ? 'bg-[#3B82F6] text-white'
-                    : 'bg-[#374151] text-[#9CA3AF] hover:bg-[#4B5563]'
-                }`}
-              >
-                Keyboard wedge
-              </button>
-              <button
-                onClick={() => handleBarcodeMethod('camera')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  barcodeSettings.method === 'camera'
-                    ? 'bg-[#3B82F6] text-white'
-                    : 'bg-[#374151] text-[#9CA3AF] hover:bg-[#4B5563]'
-                }`}
-              >
-                Camera
-              </button>
-            </div>
-            <p className="text-xs text-[#6B7280]">
-              {barcodeSettings.method === 'keyboard_wedge'
-                ? 'Scanner types into focused field like a keyboard.'
-                : 'Use device camera to scan barcodes.'}
-            </p>
-          </div>
-        </div>
-
-        {/* Offline / Online mode & Data & Sync */}
-        <div className="space-y-2">
-          <p className="text-xs text-[#6B7280] font-medium px-1">Offline / Online</p>
+        <SettingsCollapsible
+          title="Data & sync"
+          subtitle={isOnline ? (unsyncedCount > 0 ? `${unsyncedCount} pending` : 'Up to date') : 'Offline'}
+          badge={isOnline ? 'Online' : 'Offline'}
+        >
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div
@@ -1024,7 +648,6 @@ export function SettingsModule({
             </div>
           </div>
 
-          <p className="text-xs text-[#6B7280] font-medium px-1 pt-2">Data & Sync</p>
           <SettingsRow
             icon={RefreshCw}
             iconColor="bg-emerald-500/20"
@@ -1078,18 +701,9 @@ export function SettingsModule({
               Cancel
             </button>
           )}
-        </div>
+        </SettingsCollapsible>
 
-        <ConnectionDebug
-          supabaseUrl={import.meta.env.VITE_SUPABASE_URL || ''}
-          companyId={companyId}
-          branchId={branch?.id ?? null}
-          userEmail={user.email}
-        />
-
-        {/* App */}
-        <div className="space-y-2">
-          <p className="text-xs text-[#6B7280] font-medium px-1">App</p>
+        <SettingsCollapsible title="App" subtitle={APP_VERSION}>
           <SettingsRow
             icon={Building2}
             iconColor="bg-[#8B5CF6]/20"
@@ -1104,7 +718,13 @@ export function SettingsModule({
             subtitle="ERP for bridal & rental business"
           />
           <DeveloperToolsSection />
-        </div>
+          <ConnectionDebug
+            supabaseUrl={import.meta.env.VITE_SUPABASE_URL || ''}
+            companyId={companyId}
+            branchId={branch?.id ?? null}
+            userEmail={user.email}
+          />
+        </SettingsCollapsible>
 
         {hasPin && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">

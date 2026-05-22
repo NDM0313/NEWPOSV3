@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Search, Plus, Minus, Package, Edit2, Trash2, Scan } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Minus, Package, Edit2, Trash2, Scan, Loader2 } from 'lucide-react';
 import type { Customer, Product } from './SalesModule';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
 import { PackingEntryModal } from '../transactions/PackingEntryModal';
@@ -9,6 +9,7 @@ import { useSettings } from '../../context/SettingsContext';
 import type { ProductVariationRow } from '../../api/products';
 import { BarcodeCameraModal } from './BarcodeCameraModal';
 import { MobileActionBar } from '../shared/MobileActionBar';
+import { useBarcodeScanner } from '../../features/barcode';
 
 interface AddProductsProps {
   companyId: string | null;
@@ -115,6 +116,7 @@ export function AddProducts({
   const [scannerInput, setScannerInput] = useState(''); // dedicated field for keyboard wedge (Speed-X, Sunmi, CS60)
   const [barcodeLookupLoading, setBarcodeLookupLoading] = useState(false);
   const scannerInputRef = useRef<HTMLInputElement>(null);
+  const barcode = useBarcodeScanner();
 
   useEffect(() => {
     if (!companyId) {
@@ -153,6 +155,10 @@ export function AddProducts({
     if (!companyId) return;
     settingsApi.getMobileBarcodeScannerSettings(companyId).then(({ data }) => setBarcodeMethod(data.method));
   }, [companyId]);
+
+  useEffect(() => {
+    if (barcodeMethod === 'camera') void barcode.checkStatus();
+  }, [barcodeMethod]);
 
   const searchLower = search.toLowerCase().trim();
   const filtered = available.filter((a) => {
@@ -218,6 +224,21 @@ export function AddProducts({
 
   const handleBarcodeDetected = (code: string) => {
     processBarcode(code);
+  };
+
+  const handleScanClick = async () => {
+    if (barcode.supported) {
+      if (barcode.permissionGranted === false) {
+        await barcode.requestPermission();
+      }
+      if (barcode.error) {
+        setScanMessage({ type: 'error', text: barcode.error });
+        return;
+      }
+      await barcode.startScan(handleBarcodeDetected);
+      return;
+    }
+    setCameraScanOpen(true);
   };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -385,11 +406,12 @@ export function AddProducts({
           {barcodeMethod === 'camera' && (
             <button
               type="button"
-              onClick={() => setCameraScanOpen(true)}
-              className="h-11 px-4 bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg flex items-center gap-2 text-white font-medium shrink-0"
+              onClick={() => void handleScanClick()}
+              disabled={barcode.loading}
+              className="h-11 px-4 bg-[#3B82F6] hover:bg-[#2563EB] disabled:opacity-60 rounded-lg flex items-center gap-2 text-white font-medium shrink-0"
               title="Scan barcode"
             >
-              <Scan className="w-5 h-5" />
+              {barcode.loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Scan className="w-5 h-5" />}
               <span className="hidden sm:inline">Scan</span>
             </button>
           )}

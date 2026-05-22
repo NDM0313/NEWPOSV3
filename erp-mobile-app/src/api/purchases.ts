@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { listCacheKeys } from '../lib/listCache';
 import { readThroughCache } from '../lib/offlineData';
 import { localNowDateString, toLocalDateString } from '../utils/localDate';
+import { resolveBranchUuidForWrite } from '../utils/branchId';
 
 export type PurchaseStatus = 'draft' | 'ordered' | 'received' | 'final';
 
@@ -35,15 +36,6 @@ export interface CreatePurchaseInput {
   userId: string;
   /** Purchase order date YYYY-MM-DD (local). */
   poDate?: string;
-}
-
-/** When branchId is 'default', use first branch — create RPC requires a UUID. */
-async function resolveBranchId(companyId: string, branchId: string): Promise<string> {
-  if (branchId && branchId !== 'default') return branchId;
-  const { data } = await supabase.from('branches').select('id').eq('company_id', companyId).limit(1).maybeSingle();
-  const first = data?.id ?? null;
-  if (!first) throw new Error('No branch set up. Add a branch on the Branch screen or in Settings to create purchases.');
-  return first;
 }
 
 const PURCHASE_ATTACHMENTS_BUCKET = 'purchase-attachments';
@@ -128,7 +120,11 @@ export async function createPurchase(
 
   let effectiveBranchId: string;
   try {
-    effectiveBranchId = await resolveBranchId(companyId, branchId);
+    effectiveBranchId = await resolveBranchUuidForWrite(
+      companyId,
+      branchId,
+      'No branch set up. Add a branch on the Branch screen or in Settings to create purchases.',
+    );
   } catch (err) {
     return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
   }

@@ -5,15 +5,7 @@ import {
   postRentalExpenseJournalMobile,
   postRentalPartyRevenueJournalMobile,
 } from './rentalBookingAccounting';
-
-/** When branchId is 'default', use first branch — RPC requires a UUID. */
-async function resolveBranchId(companyId: string, branchId: string): Promise<string> {
-  if (branchId && branchId !== 'default') return branchId;
-  const { data } = await supabase.from('branches').select('id').eq('company_id', companyId).limit(1).maybeSingle();
-  const first = data?.id ?? null;
-  if (!first) throw new Error('No branch set up. Add a branch in Settings to create rentals.');
-  return first;
-}
+import { isRealBranchUuid, resolveBranchUuidForWrite } from '../utils/branchId';
 
 /** UI status: map DB status (picked_up, active, closed) to web-like labels */
 export function mapRentalStatus(dbStatus: string): string {
@@ -190,7 +182,11 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
 
   let effectiveBranchId: string;
   try {
-    effectiveBranchId = await resolveBranchId(companyId, branchId);
+    effectiveBranchId = await resolveBranchUuidForWrite(
+      companyId,
+      branchId,
+      'No branch set up. Add a branch in Settings to create rentals.',
+    );
   } catch (err) {
     return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
   }
@@ -662,17 +658,28 @@ export async function addRentalPayment(
 
   const normalizedMethod = normalizePaymentMethod(params.method);
   const paymentDate = params.paymentDate ?? new Date().toISOString().split('T')[0];
-  const branchId = params.branchId ?? (r.branch_id as string | null) ?? null;
+  const rawBranchId = params.branchId ?? (r.branch_id as string | null) ?? null;
   let paymentId: string | null = null;
   let referenceNumber: string | null = null;
 
-  if (params.paymentAccountId && params.companyId && branchId) {
+  if (params.paymentAccountId && params.companyId) {
+    let branchResolved: string;
+    try {
+      const preferRentalBranch = isRealBranchUuid(r.branch_id as string) ? String(r.branch_id) : null;
+      branchResolved = await resolveBranchUuidForWrite(
+        params.companyId,
+        isRealBranchUuid(rawBranchId) ? rawBranchId : preferRentalBranch,
+        'Branch required for rental payment.',
+      );
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : 'Branch required for rental payment.' };
+    }
     // Pass reference_number as null so the DB trigger assigns a unique value atomically.
     // This avoids the "payments_reference_number_unique" race that occurred when two
     // quick payments independently fetched the same next-number from the client side.
     const { data: rpcData, error: rpcErr } = await supabase.rpc('record_payment_with_accounting', {
       p_company_id: params.companyId,
-      p_branch_id: branchId,
+      p_branch_id: branchResolved,
       p_payment_type: 'received',
       p_reference_type: 'rental',
       p_reference_id: params.rentalId,

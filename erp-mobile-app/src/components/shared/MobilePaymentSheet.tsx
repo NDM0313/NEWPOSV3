@@ -28,6 +28,7 @@ import { usePdfPreview } from './usePdfPreview';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
 import { localNowDateString } from '../../utils/localDate';
+import { isBranchSentinel } from '../../utils/branchId';
 
 export type PaymentSheetMode =
   | 'receive'
@@ -352,6 +353,11 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
     }
 
     if (submittingRef.current) return;
+
+    if (isBranchSentinel(branchId)) {
+      setToast({ message: 'Select a specific branch (not All Branches) before recording payment.', type: 'error' });
+      return;
+    }
 
     const acct = accounts.find((a) => a.id === accountId);
     submittingRef.current = true;

@@ -1,20 +1,67 @@
-# ERP Mobile — APK release log (fill on each build)
+# ERP Mobile — release log (APK + iOS)
 
-Copy this block for every new APK you ship. Keep the newest entry at the top.
+Copy a new block for every build. Keep the newest entry at the top.
 
 ---
 
-## Latest build
+## Latest build — 1.0.5 (build 6) — 2026-05-23
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-23 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 6 |
+| **Git commit** | `2a5dad94` (VPS deployed); local mobile assets may include uncommitted `gradle.properties` fix |
+| **VPS** | `dincouture-vps` — migrations + `deploy.sh` OK; `post_sale_shipment_journal` applied |
+| **GoTrue audit** | PASS (4 checks, 0 WARN) — no auth `.env` changes |
+| **Android** | Debug (unsigned test) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build6-debug.apk` (~31 MB) |
+| **Gradle source** | `android/app/build/outputs/apk/debug/app-debug.apk` |
+| **iOS** | `cap:sync:ios:prod` + Archive/Export OK |
+| **IPA path (local)** | `releases/erp-mobile-1.0.5-build6.ipa` (Development signing) |
+
+### Changelog (user-facing) — build 6
+
+- **My Activity:** date presets (7 / 15 / month), **Created by** on rows and detail sheet, balance masking (`****`) for workers.
+- **Accounts:** larger KPI typography; fund tiles masked when user cannot view balances.
+- **Counter PIN / session:** vault token maintenance, configurable max age (Settings), advisories on lock screens; after VPS deploy do **one email login** per tablet if PIN shows expired vault.
+- **Shipment & Cargo:** status/dates UI; backend `post_sale_shipment_journal` (requires VPS migration `20260526120000` — applied).
+
+### Install notes — Android (build 6 debug)
+
+1. **Uninstall** any previous ERP Mobile app (clears WebView cache and IndexedDB).
+2. Install: `erp-mobile-app/releases/erp-mobile-1.0.5-build6-debug.apk`  
+   `adb install -r releases/erp-mobile-1.0.5-build6-debug.apk`
+3. Debug builds use a different signing key than release build 5 — uninstall is required if install fails with signature conflict.
+4. Cold boot: splash ~2s, then login. API base: `https://erp.dincouture.pk` (from `.env.production` at sync time).
+5. If counter PIN fails after deploy: **log in once with email/password**, then use PIN again.
+
+### Install notes — iOS (build 6)
+
+1. Install via Xcode **Devices** window, Apple Configurator, or MDM using `releases/erp-mobile-1.0.5-build6.ipa` (Development profile — device must be registered in your Apple team).
+2. Or connect iPhone → `npx cap open ios` → scheme **NDM ERP** → **Product → Run**.
+3. Archive on disk: `ios/build/App.xcarchive` (re-export with Xcode Organizer if you need Ad Hoc / TestFlight).
+
+### Mobile test checklist (post-install)
+
+| Area | Verify |
+|------|--------|
+| **Counter PIN** | Settings → session policy; PIN after hours; one email login if vault expired |
+| **My Activity** | Date chips, Created by, masked balances (worker) |
+| **Shipment & Cargo** | Dates/status; journal after dispatch (needs VPS migration — live) |
+| **Accounts** | Larger KPIs (owner); `****` on fund tiles (worker) |
+
+---
+
+## Previous build — 1.0.4 (build 5)
 
 | Field | Value |
 |--------|--------|
 | **Date** | 2026-05-21 |
 | **versionName** | 1.0.4 |
 | **versionCode** | 5 |
-| **Git commit** | (current HEAD) |
 | **Configuration** | Release (signed) |
 | **APK path (local)** | `releases/erp-mobile-1.0.4-build5.apk` |
-| **Download URL** | GitHub release `mobile-v1.0.4-build5` (after upload) |
 
 ### Changelog (user-facing) — build 5
 

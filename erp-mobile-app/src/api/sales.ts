@@ -4,6 +4,7 @@ import { readThroughCache } from '../lib/offlineData';
 import { getNextDocumentNumber } from './documentNumber';
 import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 import { localNowDateString } from '../utils/localDate';
+import { resolveBranchUuidForWrite } from '../utils/branchId';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -114,15 +115,6 @@ export async function updateSaleAttachments(
   return { error: null };
 }
 
-/** When branchId is 'default' (no branches), use first branch for RPC. No auto-create (POST branches can 403). */
-async function resolveBranchId(companyId: string, branchId: string): Promise<string> {
-  if (branchId && branchId !== 'default') return branchId;
-  const { data } = await supabase.from('branches').select('id').eq('company_id', companyId).limit(1).maybeSingle();
-  const first = data?.id ?? null;
-  if (!first) throw new Error('No branch set up. Add a branch on the Branch screen or in Settings to create sales.');
-  return first;
-}
-
 export async function createSale(input: CreateSaleInput): Promise<{ data: { id: string; invoiceNo: string } | null; error: string | null }> {
   if (!isSupabaseConfigured) {
     return { data: null, error: 'App not configured.' };
@@ -163,7 +155,11 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
 
   let effectiveBranchId: string;
   try {
-    effectiveBranchId = await resolveBranchId(companyId, branchId);
+    effectiveBranchId = await resolveBranchUuidForWrite(
+      companyId,
+      branchId,
+      'No branch set up. Add a branch on the Branch screen or in Settings to create sales.',
+    );
   } catch (err) {
     return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
   }
@@ -824,8 +820,18 @@ export async function recordSalePayment(params: {
     notes,
     userId,
   } = params;
-  if (!companyId || !branchId || !saleId || amount <= 0 || !paymentAccountId) {
-    return { data: null, error: 'Company, branch, sale, amount and payment account are required.' };
+  if (!companyId || !saleId || amount <= 0 || !paymentAccountId) {
+    return { data: null, error: 'Company, sale, amount and payment account are required.' };
+  }
+  let branchResolved: string;
+  try {
+    branchResolved = await resolveBranchUuidForWrite(
+      companyId,
+      branchId,
+      'Branch required for payment.',
+    );
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
   }
   const normalized = String(paymentMethod || 'cash').toLowerCase();
   const methodMap: Record<string, 'cash' | 'bank' | 'card' | 'other'> = {
@@ -846,7 +852,7 @@ export async function recordSalePayment(params: {
   const dateVal = paymentDate || localNowDateString();
   const { data, error } = await supabase.rpc('record_payment_with_accounting', {
     p_company_id: companyId,
-    p_branch_id: branchId,
+    p_branch_id: branchResolved,
     p_payment_type: 'received',
     p_reference_type: 'sale',
     p_reference_id: saleId,
@@ -898,7 +904,7 @@ export async function recordCustomerPayment(params: {
   }
   let branchResolved: string;
   try {
-    branchResolved = await resolveBranchId(companyId, branchId ?? 'default');
+    branchResolved = await resolveBranchUuidForWrite(companyId, branchId, 'Branch required for payment.');
   } catch (e) {
     return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
   }
@@ -1218,8 +1224,19 @@ export async function createAndFinalizeSaleReturn(payload: CreateSaleReturnPaylo
   error: string | null;
 }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
-  if (!payload.companyId || !payload.branchId || !payload.saleId) {
-    return { data: null, error: 'Company, branch and sale are required.' };
+  if (!payload.companyId || !payload.saleId) {
+    return { data: null, error: 'Company and sale are required.' };
+  }
+
+  let effectiveBranchId: string;
+  try {
+    effectiveBranchId = await resolveBranchUuidForWrite(
+      payload.companyId,
+      payload.branchId,
+      'Branch required for sale return.',
+    );
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'Branch required for sale return.' };
   }
 
   const items = payload.items
@@ -1231,7 +1248,7 @@ export async function createAndFinalizeSaleReturn(payload: CreateSaleReturnPaylo
   try {
     const { data: numData, error: numErr } = await supabase.rpc('generate_document_number', {
       p_company_id: payload.companyId,
-      p_branch_id: payload.branchId,
+      p_branch_id: effectiveBranchId,
       p_document_type: 'sale_return',
       p_include_year: false,
     });
