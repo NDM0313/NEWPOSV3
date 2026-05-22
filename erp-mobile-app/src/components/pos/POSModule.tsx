@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2, X, Users } from 'lucide-react';
+import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2, X, Users, Package } from 'lucide-react';
+import { ProductImage } from '../products/ProductImage';
 import type { User } from '../../types';
 import type { AuthProfile } from '../../api/auth';
 import { SwitchUserPinOverlay } from '../auth/SwitchUserPinOverlay';
@@ -32,6 +33,7 @@ interface POSProduct {
   price: number;
   sku: string;
   stock: number;
+  imageUrl?: string | null;
   variations?: { id: string; sku: string; attributes: Record<string, string>; price: number; stock: number }[];
 }
 
@@ -96,6 +98,7 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
       price: p.retailPrice ?? 0,
       sku: p.sku ?? '—',
       stock: p.stock ?? 0,
+      imageUrl: p.imageUrls?.[0] ?? null,
       variations: p.variations?.length
         ? p.variations.map((v) => ({
             id: v.id,
@@ -250,6 +253,7 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
     price: p.retailPrice ?? 0,
     sku: p.sku ?? '—',
     stock: p.stock ?? 0,
+    imageUrl: p.imageUrls?.[0] ?? null,
     variations: p.variations?.length
       ? p.variations.map((v) => ({
           id: v.id,
@@ -506,8 +510,17 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
                 disabled={outOfStock}
                 className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#3B82F6] active:scale-95 transition-all text-left disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <div className="w-full h-20 bg-[#111827] rounded-lg mb-3 flex items-center justify-center text-3xl">
-                  📦
+                <div className="w-full h-20 bg-[#111827] rounded-lg mb-3 flex items-center justify-center overflow-hidden">
+                  {product.imageUrl ? (
+                    <ProductImage
+                      src={product.imageUrl}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                      placeholderClassName="text-[#6B7280]"
+                    />
+                  ) : (
+                    <Package className="w-8 h-8 text-[#6B7280]" aria-hidden />
+                  )}
                 </div>
                 <h3 className="text-white font-medium text-sm mb-1 line-clamp-2">{product.name}</h3>
                 <p className="text-[#6B7280] text-xs mb-2">{product.sku}</p>

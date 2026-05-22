@@ -287,17 +287,56 @@ export interface MobileBarcodeLabelSettings {
   labelLayout: BarcodeLabelLayout;
   showName: boolean;
   showPrice: boolean;
-  showBusinessName: boolean;
+  /** @deprecated Use showCompanyName — kept for JSON round-trip */
+  showBusinessName?: boolean;
+  showVariation: boolean;
+  showPacking: boolean;
+  showCompanyName: boolean;
+  showBranchName: boolean;
   defaultQuantity: number;
+  /** Columns on A4 sticker sheet (2–4). */
+  a4Columns: number;
+  /** Max labels per A4 page (safety cap). */
+  maxLabelsPerSheet: number;
+  /** When printing from purchase PO, default qty = line quantity sum. */
+  defaultLabelsFromPurchaseQty: boolean;
 }
 
-const DEFAULT_BARCODE_LABEL: MobileBarcodeLabelSettings = {
+export const DEFAULT_BARCODE_LABEL: MobileBarcodeLabelSettings = {
   labelLayout: 'thermal',
   showName: true,
   showPrice: true,
   showBusinessName: true,
+  showVariation: false,
+  showPacking: false,
+  showCompanyName: true,
+  showBranchName: false,
   defaultQuantity: 1,
+  a4Columns: 3,
+  maxLabelsPerSheet: 30,
+  defaultLabelsFromPurchaseQty: true,
 };
+
+function parseBarcodeLabelSettings(raw: Record<string, unknown>): MobileBarcodeLabelSettings {
+  const cols = Number(raw.a4Columns);
+  const legacyBiz = raw.showBusinessName !== false;
+  const showCompany =
+    raw.showCompanyName !== undefined ? raw.showCompanyName !== false : legacyBiz;
+  return {
+    labelLayout: raw.labelLayout === 'a4' ? 'a4' : 'thermal',
+    showName: raw.showName !== false,
+    showPrice: raw.showPrice !== false,
+    showBusinessName: showCompany,
+    showVariation: raw.showVariation === true,
+    showPacking: raw.showPacking === true,
+    showCompanyName: showCompany,
+    showBranchName: raw.showBranchName === true,
+    defaultQuantity: Math.max(1, Number(raw.defaultQuantity) || 1),
+    a4Columns: cols >= 2 && cols <= 4 ? cols : 3,
+    maxLabelsPerSheet: Math.max(6, Math.min(60, Number(raw.maxLabelsPerSheet) || 30)),
+    defaultLabelsFromPurchaseQty: raw.defaultLabelsFromPurchaseQty !== false,
+  };
+}
 
 export async function getMobileBarcodeLabelSettings(
   companyId: string | null
@@ -313,16 +352,7 @@ export async function getMobileBarcodeLabelSettings(
     .maybeSingle();
   if (error) return { data: DEFAULT_BARCODE_LABEL, error: error.message };
   const raw = (data?.value as Record<string, unknown>) ?? {};
-  return {
-    data: {
-      labelLayout: raw.labelLayout === 'a4' ? 'a4' : 'thermal',
-      showName: raw.showName !== false,
-      showPrice: raw.showPrice !== false,
-      showBusinessName: raw.showBusinessName !== false,
-      defaultQuantity: Math.max(1, Number(raw.defaultQuantity) || 1),
-    },
-    error: null,
-  };
+  return { data: parseBarcodeLabelSettings(raw), error: null };
 }
 
 export async function setMobileBarcodeLabelSettings(

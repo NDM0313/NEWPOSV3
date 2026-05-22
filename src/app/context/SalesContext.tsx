@@ -27,6 +27,7 @@ import {
   canPostStockForSaleStatus,
 } from '@/app/lib/postingStatusGate';
 import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
+import { localNowDateString } from '@/app/utils/localDate';
 import { assertDomainEditSafetyTestMode, classifySalesEdit } from '@/app/lib/accountingEditClassification';
 import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
 import {
@@ -347,7 +348,7 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
       customer: supabaseSale.customer_id || '',
       customerName: supabaseSale.customer_name || '',
       contactNumber: supabaseSale.customer?.phone || '',
-      date: supabaseSale.invoice_date || new Date().toISOString().split('T')[0],
+      date: supabaseSale.invoice_date || localNowDateString(),
     location: locationDisplay,
     items: (supabaseSale.items || []).map((item: any) => {
       // Packing: single source of truth from backend (same as Purchase – parse if JSON string from API)
@@ -791,7 +792,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             if (existingProd?.id) {
               await sb.from('studio_productions').update({ design_name: designTrim }).eq('id', existingProd.id);
             } else if (first?.product_id) {
-              const productionDate = new Date().toISOString().slice(0, 10);
+              const productionDate = localNowDateString();
               await sb.from('studio_productions').insert({
                 company_id: companyId,
                 branch_id: effectiveBranchId,
@@ -2368,7 +2369,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                   branch_id: branchIdRow,
                   sale_id: id,
                   production_no: productionNo,
-                  production_date: new Date().toISOString().slice(0, 10),
+                  production_date: localNowDateString(),
                   product_id: first.product_id,
                   variation_id: first.variation_id || null,
                   quantity: qty,

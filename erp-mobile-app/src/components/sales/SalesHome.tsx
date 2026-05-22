@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2, Zap, Store } from 'lucide-react';
 import * as salesApi from '../../api/sales';
 import * as studioApi from '../../api/studio';
 import * as reportsApi from '../../api/reports';
@@ -18,7 +18,13 @@ import {
   saleAccountingSnapshotFromRow,
   type SaleLedgerSyncSkipReason,
 } from '../../api/saleEditAccounting';
-import { CustomSearchableSheet } from '../common';
+import { CustomSearchableSheet, PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
+import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
+import { useMainScrollRef } from '../../contexts/MainScrollContext';
+import {
+  getPendingSaleRows,
+  mergeSalesWithPending,
+} from '../../lib/offlinePendingList';
 
 /** STD lives on order_no until finalized (matches web); invoice_no may be null pre-bill. */
 function saleDocumentDisplayNo(row: Record<string, unknown>): string {
@@ -41,16 +47,34 @@ function saleLedgerSkipHint(reason: SaleLedgerSyncSkipReason | undefined): strin
   return map[reason] || '';
 }
 import { MobileReceivePayment } from './MobileReceivePayment';
+import { SaleCargoSection } from './SaleCargoSection';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { SaleReturnModal } from './SaleReturnModal';
 import { PdfPreviewModal } from '../shared/PdfPreviewModal';
 import { usePdfPreview } from '../shared/usePdfPreview';
 import { NumericInput } from '../common';
 import { InvoicePreviewPdf, type InvoicePreviewItem } from '../shared/InvoicePreviewPdf';
+import { SaleActivitySheet } from './SaleActivitySheet';
+import { buildSaleThermalReceiptLines, saleRecordToThermalInput } from '../../services/saleThermalReceipt';
+import { printReceiptLines } from '../../services/printService';
+import { getEffectivePrinterSettings } from '../../api/settings';
 import { AttachmentsSection } from '../shared/AttachmentsSection';
 import { normalizeAttachments } from '../../lib/normalizeAttachments';
 import { usePermissions } from '../../context/PermissionContext';
 import { maskMoney } from '../../utils/balancePrivacy';
+import {
+  isLikelyPosSaleRow,
+  isStudioSaleRow,
+  matchesSaleListTypeFilter,
+  saleListTypeLabel,
+  type SaleListTypeFilter,
+} from '../../lib/saleTypeClassification';
+import { formatRelativeListDateTime } from '../../utils/localDate';
+
+const SALE_LIST_FETCH_CAP = 100;
+const SALE_LIST_DISPLAY_CAP = 50;
+
+const SALE_TYPE_FILTERS: SaleListTypeFilter[] = ['all', 'studio', 'pos', 'regular'];
 
 type SaleRecord = {
   raw: Record<string, unknown>;
@@ -75,13 +99,7 @@ function mapEnrichedRowToSaleRecord(s: Record<string, unknown>): SaleRecord {
   const cust = s.customer as { name?: string } | null;
   const createdByUser = (s.created_by ?? s.created_by_user) as { full_name?: string } | null;
   const d = (s.invoice_date as string) || (s.created_at as string) || '';
-  const dateObj = d ? new Date(d) : new Date();
-  const isToday = dateObj.toDateString() === new Date().toDateString();
-  const isYesterday = dateObj.toDateString() === new Date(Date.now() - 864e5).toDateString();
-  let dateStr = dateObj.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
-  if (isToday) dateStr = `Today, ${dateStr}`;
-  else if (isYesterday) dateStr = `Yesterday, ${dateStr}`;
-  else dateStr = dateObj.toLocaleDateString('en-PK', { day: 'numeric', month: 'short' });
+  const dateStr = formatRelativeListDateTime(d);
   const totalAmount = Number(s.total_amount ?? s.total ?? 0);
   const totalReceived = Number(s.total_received ?? 0);
   const balanceDue = Number(s.balance_due ?? 0);
@@ -97,7 +115,8 @@ function mapEnrichedRowToSaleRecord(s: Record<string, unknown>): SaleRecord {
     balance_due: balanceDue,
     credit_balance: creditBalance,
     date: dateStr,
-    created_by_name: (createdByUser?.full_name as string) || '',
+    created_by_name:
+      (s.created_by_name as string) || (createdByUser?.full_name as string) || '',
     studio_charges: studioCharges,
     grand_total: grandTotal,
     shipment_status: (s.shipment_status as string) || undefined,
@@ -110,6 +129,7 @@ interface SalesHomeProps {
   companyId: string | null;
   branchId: string | null;
   userId?: string | null;
+  userProfileId?: string | null;
   initialEditSaleId?: string | null;
   onConsumedInitialEditSaleId?: () => void;
 }
@@ -120,6 +140,7 @@ export function SalesHome({
   companyId,
   branchId,
   userId,
+  userProfileId,
   initialEditSaleId,
   onConsumedInitialEditSaleId,
 }: SalesHomeProps) {
@@ -128,8 +149,11 @@ export function SalesHome({
   const [stats, setStats] = useState<{ today: number; week: number; month: number }>({ today: 0, week: 0, month: 0 });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [saleTypeFilter, setSaleTypeFilter] = useState<SaleListTypeFilter>('all');
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
   const [menuSale, setMenuSale] = useState<SaleRecord | null>(null);
+  const [activitySale, setActivitySale] = useState<SaleRecord | null>(null);
+  const [thermalPrinting, setThermalPrinting] = useState(false);
   const [paymentHistory, setPaymentHistory] = useState<
     Array<{
       id: string;
@@ -156,16 +180,48 @@ export function SalesHome({
   } | null>(null);
   const [, setShowStudioBreakdown] = useState(false);
   const [studioBreakdownFallback, setStudioBreakdownFallback] = useState<Array<{ task_type: string; cost: number; worker_name?: string; completed_at?: string | null }>>([]);
+  const { online, pendingCount } = useOfflineListMeta();
+  const mainScrollRef = useMainScrollRef();
 
-  const openAttachmentPreview = (list: Array<{ url: string; name: string }>, startIndex = 0) => {
-    setAttachmentPreviewList(list);
-    setAttachmentPreviewStart(startIndex);
-  };
-
-  const filteredSales = recentSales.filter(
-    (sale) =>
-      sale.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      sale.customer.toLowerCase().includes(searchQuery.toLowerCase())
+  const refetchSales = useCallback(
+    async (opts?: { silent?: boolean }): Promise<SaleRecord[]> => {
+      if (!companyId) return [];
+      const effectiveBranchId = branchId && branchId !== 'all' ? branchId : null;
+      if (!opts?.silent) setLoading(true);
+      const [salesRes, todayRes, weekRes, monthRes, pendingRows] = await Promise.all([
+        salesApi.getAllSales(companyId, effectiveBranchId),
+        online
+          ? reportsApi.getSalesSummary(companyId, effectiveBranchId, 1)
+          : Promise.resolve({ data: null, error: null }),
+        online
+          ? reportsApi.getSalesSummary(companyId, effectiveBranchId, 7)
+          : Promise.resolve({ data: null, error: null }),
+        online
+          ? reportsApi.getSalesSummary(companyId, effectiveBranchId, 30)
+          : Promise.resolve({ data: null, error: null }),
+        getPendingSaleRows(companyId, effectiveBranchId),
+      ]);
+      if (!opts?.silent) setLoading(false);
+      const merged = mergeSalesWithPending(salesRes.data || [], pendingRows);
+      let list: SaleRecord[] = [];
+      if (merged.length) {
+        list = merged
+          .slice(0, SALE_LIST_FETCH_CAP)
+          .map((s: Record<string, unknown>) => mapEnrichedRowToSaleRecord(s));
+        setRecentSales(list);
+      } else {
+        setRecentSales([]);
+      }
+      if (online) {
+        setStats({
+          today: todayRes.data?.totalSales ?? 0,
+          week: weekRes.data?.totalSales ?? 0,
+          month: monthRes.data?.totalSales ?? 0,
+        });
+      }
+      return list;
+    },
+    [companyId, branchId, online],
   );
 
   useEffect(() => {
@@ -173,68 +229,62 @@ export function SalesHome({
       setLoading(false);
       return;
     }
-    let cancelled = false;
+    void refetchSales();
+  }, [companyId, branchId, refetchSales]);
 
-    const load = async () => {
-      const effectiveBranchId = branchId && branchId !== 'all' ? branchId : undefined;
-      const [salesRes, todayRes, weekRes, monthRes] = await Promise.all([
-        salesApi.getAllSales(companyId, effectiveBranchId ?? null),
-        reportsApi.getSalesSummary(companyId, effectiveBranchId ?? null, 1),
-        reportsApi.getSalesSummary(companyId, effectiveBranchId ?? null, 7),
-        reportsApi.getSalesSummary(companyId, effectiveBranchId ?? null, 30),
-      ]);
+  useEffect(() => {
+    const onSync = () => void refetchSales({ silent: true });
+    window.addEventListener('erp-mobile:autosync-complete', onSync);
+    return () => window.removeEventListener('erp-mobile:autosync-complete', onSync);
+  }, [refetchSales]);
 
-      if (cancelled) return;
+  const openAttachmentPreview = (list: Array<{ url: string; name: string }>, startIndex = 0) => {
+    setAttachmentPreviewList(list);
+    setAttachmentPreviewStart(startIndex);
+  };
 
-      if (salesRes.data && salesRes.data.length > 0) {
-        const list = salesRes.data.slice(0, 10).map((s: Record<string, unknown>) => {
-          const cust = s.customer as { name?: string } | null;
-          const createdByUser = (s.created_by ?? s.created_by_user) as { full_name?: string } | null;
-          const d = (s.invoice_date as string) || (s.created_at as string) || '';
-          const dateObj = d ? new Date(d) : new Date();
-          const isToday = dateObj.toDateString() === new Date().toDateString();
-          const isYesterday = dateObj.toDateString() === new Date(Date.now() - 864e5).toDateString();
-          let dateStr = dateObj.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
-          if (isToday) dateStr = `Today, ${dateStr}`;
-          else if (isYesterday) dateStr = `Yesterday, ${dateStr}`;
-          else dateStr = dateObj.toLocaleDateString('en-PK', { day: 'numeric', month: 'short' });
-          const totalAmount = Number(s.total_amount ?? s.total ?? 0);
-          const totalReceived = Number(s.total_received ?? 0);
-          const balanceDue = Number(s.balance_due ?? 0);
-          const creditBalance = Number(s.credit_balance ?? 0);
-          const studioCharges = Number(s.studio_charges ?? 0);
-          const grandTotal = Number(s.grand_total ?? totalAmount);
-          return {
-            raw: s,
-            id: saleDocumentDisplayNo(s) || (s.id as string) || '—',
-            customer: (cust?.name as string) || (s.customer_name as string) || 'Walk-in',
-            amount: totalAmount,
-            total_received: totalReceived,
-            balance_due: balanceDue,
-            credit_balance: creditBalance,
-            date: dateStr,
-            created_by_name: (createdByUser?.full_name as string) || '',
-            studio_charges: studioCharges,
-            grand_total: grandTotal,
-            shipment_status: (s.shipment_status as string) || undefined,
-          };
-        });
-        setRecentSales(list);
-      } else {
-        setRecentSales([]);
-      }
+  const filteredSales = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const byType = recentSales.filter((sale) => matchesSaleListTypeFilter(sale.raw, saleTypeFilter));
+    const searched = q
+      ? byType.filter(
+          (sale) =>
+            sale.id.toLowerCase().includes(q) || sale.customer.toLowerCase().includes(q)
+        )
+      : byType;
+    return searched.slice(0, SALE_LIST_DISPLAY_CAP);
+  }, [recentSales, saleTypeFilter, searchQuery]);
 
-      setStats({
-        today: todayRes.data?.totalSales ?? 0,
-        week: weekRes.data?.totalSales ?? 0,
-        month: monthRes.data?.totalSales ?? 0,
-      });
-      setLoading(false);
-    };
+  const saleTypeBadge = (sale: SaleRecord) => {
+    if (isStudioSaleRow(sale.raw)) {
+      return (
+        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/20 text-purple-300 border border-purple-500/40">
+          <Briefcase className="w-3 h-3" />
+          Studio
+        </span>
+      );
+    }
+    if (isLikelyPosSaleRow(sale.raw)) {
+      return (
+        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/40">
+          <Zap className="w-3 h-3" />
+          POS
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/20 text-blue-300 border border-blue-500/40">
+        <Store className="w-3 h-3" />
+        Regular
+      </span>
+    );
+  };
 
-    load();
-    return () => { cancelled = true; };
-  }, [companyId, branchId]);
+  const emptyListMessage = () => {
+    if (searchQuery.trim()) return 'No sales match your search';
+    if (saleTypeFilter === 'all') return 'No sales found';
+    return `No ${saleListTypeLabel(saleTypeFilter).toLowerCase()} sales found`;
+  };
 
   const loadPaymentHistory = useCallback(async (saleId: string) => {
     if (!saleId) return;
@@ -350,61 +400,6 @@ export function SalesHome({
     [branchId, companyId]
   );
 
-  const refetchSales = useCallback(async (): Promise<SaleRecord[]> => {
-    if (!companyId) return [];
-    const effectiveBranchId = branchId && branchId !== 'all' ? branchId : null;
-    const [salesRes, todayRes, weekRes, monthRes] = await Promise.all([
-      salesApi.getAllSales(companyId, effectiveBranchId),
-      reportsApi.getSalesSummary(companyId, effectiveBranchId, 1),
-      reportsApi.getSalesSummary(companyId, effectiveBranchId, 7),
-      reportsApi.getSalesSummary(companyId, effectiveBranchId, 30),
-    ]);
-    let list: SaleRecord[] = [];
-    if (salesRes.data?.length) {
-      list = salesRes.data.slice(0, 10).map((s: Record<string, unknown>) => {
-        const cust = s.customer as { name?: string } | null;
-        const createdByUser = (s.created_by ?? s.created_by_user) as { full_name?: string } | null;
-        const d = (s.invoice_date as string) || (s.created_at as string) || '';
-        const dateObj = d ? new Date(d) : new Date();
-        const isToday = dateObj.toDateString() === new Date().toDateString();
-        const isYesterday = dateObj.toDateString() === new Date(Date.now() - 864e5).toDateString();
-        let dateStr = dateObj.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
-        if (isToday) dateStr = `Today, ${dateStr}`;
-        else if (isYesterday) dateStr = `Yesterday, ${dateStr}`;
-        else dateStr = dateObj.toLocaleDateString('en-PK', { day: 'numeric', month: 'short' });
-        const totalAmount = Number(s.total_amount ?? s.total ?? 0);
-        const totalReceived = Number(s.total_received ?? 0);
-        const balanceDue = Number(s.balance_due ?? 0);
-        const creditBalance = Number(s.credit_balance ?? 0);
-        const studioCharges = Number(s.studio_charges ?? 0);
-        const grandTotal = Number(s.grand_total ?? totalAmount);
-        return {
-          raw: s,
-          id: saleDocumentDisplayNo(s) || (s.id as string) || '—',
-          customer: (cust?.name as string) || (s.customer_name as string) || 'Walk-in',
-          amount: totalAmount,
-          total_received: totalReceived,
-          balance_due: balanceDue,
-          credit_balance: creditBalance,
-          date: dateStr,
-          created_by_name: (createdByUser?.full_name as string) || '',
-          studio_charges: studioCharges,
-          grand_total: grandTotal,
-          shipment_status: (s.shipment_status as string) || undefined,
-        };
-      });
-      setRecentSales(list);
-    } else {
-      setRecentSales([]);
-    }
-    setStats({
-      today: todayRes.data?.totalSales ?? 0,
-      week: weekRes.data?.totalSales ?? 0,
-      month: monthRes.data?.totalSales ?? 0,
-    });
-    return list;
-  }, [companyId, branchId]);
-
   const handleReceivePaymentSuccess = useCallback(async () => {
     const paidSaleId = addPaymentSale?.raw.id as string | undefined;
     setAddPaymentSale(null);
@@ -471,8 +466,44 @@ export function SalesHome({
   const handlePrintA4 = (sale: SaleRecord) => {
     openInvoicePreview(sale, 'A4');
   };
-  const handlePrintThermal = (sale: SaleRecord) => {
-    openInvoicePreview(sale, 'Thermal');
+  const handlePrintThermal = async (sale: SaleRecord) => {
+    setMenuSale(null);
+    if (!companyId) {
+      setActionError('Company not configured for printing.');
+      return;
+    }
+    setThermalPrinting(true);
+    setActionError(null);
+    try {
+      const { data: settings } = await getEffectivePrinterSettings(companyId);
+      const input = saleRecordToThermalInput(
+        companyId,
+        sale.raw,
+        sale.id,
+        sale.customer,
+        sale.created_by_name || undefined,
+      );
+      input.saleAmount = sale.amount;
+      input.grandTotal = sale.grand_total ?? sale.amount + (sale.studio_charges ?? 0);
+      input.paid = sale.total_received;
+      input.due = sale.balance_due;
+      const lines = await buildSaleThermalReceiptLines(input, settings.paperSize);
+      const res = await printReceiptLines(lines, {
+        mode: 'thermal',
+        paperSize: settings.paperSize,
+        bluetoothDeviceAddress: settings.bluetoothDeviceAddress,
+      });
+      if (res.ok) {
+        salesApi.logPrint(saleIdRaw(sale), 'Thermal', userId).catch(() => {});
+        setActionSuccess('Sent to thermal printer.');
+      } else {
+        setActionError(res.hint || 'Thermal print failed. Pair a printer in Settings or use Print A4.');
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Thermal print failed.');
+    } finally {
+      setThermalPrinting(false);
+    }
   };
   const handleSharePdf = (sale: SaleRecord) => {
     openInvoicePreview(sale, 'PDF');
@@ -833,9 +864,9 @@ export function SalesHome({
     const up = Math.max(0, parseFloat(String(r.unitPrice).trim()) || 0);
     return s + Math.max(0, qty * up - (Number(r.discountAmount) || 0) + (Number(r.taxAmount) || 0));
   }, 0);
-  const handlePaymentHistory = (sale: SaleRecord) => {
+  const handleActivity = (sale: SaleRecord) => {
     setMenuSale(null);
-    setSelectedSale(sale);
+    setActivitySale(sale);
   };
   const handleReturn = (sale: SaleRecord) => {
     setMenuSale(null);
@@ -900,10 +931,16 @@ export function SalesHome({
     return () => clearTimeout(t);
   }, [actionError, cancelConfirmSale]);
 
+  useEffect(() => {
+    if (editSale || returnSale || previewSale || cancelConfirmSale || addPaymentSale) {
+      setMenuSale(null);
+    }
+  }, [editSale, returnSale, previewSale, cancelConfirmSale, addPaymentSale]);
+
   const renderSaleMenuActions = (sale: SaleRecord) => (
     <>
-      <button onClick={() => handlePaymentHistory(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
-        <History className="w-5 h-5 text-[#3B82F6]" /> Payment History
+      <button onClick={() => handleActivity(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+        <History className="w-5 h-5 text-[#3B82F6]" /> Activity
       </button>
       <button onClick={() => handleShareWhatsApp(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
         <Share2 className="w-5 h-5 text-[#10B981]" /> Share via WhatsApp
@@ -914,8 +951,12 @@ export function SalesHome({
       <button onClick={() => handlePrintA4(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
         <Printer className="w-5 h-5 text-[#3B82F6]" /> Print A4
       </button>
-      <button onClick={() => handlePrintThermal(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
-        <FileText className="w-5 h-5 text-[#9CA3AF]" /> Print Thermal
+      <button
+        onClick={() => void handlePrintThermal(sale)}
+        disabled={thermalPrinting}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151] disabled:opacity-50"
+      >
+        <FileText className="w-5 h-5 text-[#9CA3AF]" /> {thermalPrinting ? 'Printing…' : 'Print Thermal'}
       </button>
       <button onClick={() => handleDownloadPdf(sale)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
         <Download className="w-5 h-5 text-[#3B82F6]" /> Download PDF
@@ -947,7 +988,9 @@ export function SalesHome({
   };
 
   // Sale Detail View (full-page, same layout as Purchase detail)
-  if (selectedSale) {
+  return (
+  <>
+    {selectedSale ? (() => {
     const items = (selectedSale.raw.items as Array<{ product_name?: string; quantity?: number; unit_price?: number; total?: number; packing_details?: { total_boxes?: number; total_pieces?: number } }>) ?? [];
     const saleAmount = selectedSale.amount;
     const studioCost = selectedSale.studio_charges ?? 0;
@@ -968,6 +1011,7 @@ export function SalesHome({
     const saleDocumentAttachments = normalizeAttachments(selectedSale.raw.attachments);
 
     return (
+      <SwipeBackShell onBack={() => setSelectedSale(null)}>
       <div className="min-h-screen pb-24 bg-[#111827]">
         <div className="bg-[#1F2937] border-b border-[#374151] p-4 sticky top-0 z-10">
           <div className="flex items-center gap-3">
@@ -997,8 +1041,8 @@ export function SalesHome({
                 </button>
                 {menuSale?.id === selectedSale.id && (
                   <>
-                    <div className="fixed inset-0 z-40" onClick={() => setMenuSale(null)} aria-hidden="true" />
-                    <div className="absolute right-0 top-full mt-1 bg-[#1F2937] border border-[#374151] rounded-xl shadow-xl overflow-hidden min-w-[200px] z-50 max-h-[70vh] overflow-y-auto">
+                    <div className="fixed inset-0 z-[55]" onClick={() => setMenuSale(null)} aria-hidden="true" />
+                    <div className="absolute right-0 top-full mt-1 bg-[#1F2937] border border-[#374151] rounded-xl shadow-xl overflow-hidden min-w-[200px] z-[60] max-h-[70vh] overflow-y-auto">
                       {renderSaleMenuActions(selectedSale)}
                     </div>
                   </>
@@ -1024,6 +1068,12 @@ export function SalesHome({
                 <span className="text-[#9CA3AF]">Invoice Date:</span>
                 <span className="text-white">{selectedSale.date}</span>
               </div>
+              {selectedSale.created_by_name && (
+                <div className="flex justify-between">
+                  <span className="text-[#9CA3AF]">Created by:</span>
+                  <span className="text-white">{selectedSale.created_by_name}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1049,6 +1099,17 @@ export function SalesHome({
               ))}
             </div>
           </div>
+
+          {companyId && branchId && userId && (
+            <SaleCargoSection
+              saleId={selectedSale.raw.id as string}
+              saleLabel={selectedSale.id}
+              companyId={companyId}
+              branchId={branchId}
+              authUserId={userId}
+              dbUserId={userProfileId}
+            />
+          )}
 
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-2">
             <div className="flex justify-between text-sm">
@@ -1214,11 +1275,12 @@ export function SalesHome({
           )}
         </div>
       </div>
+      </SwipeBackShell>
     );
-  }
-
-  return (
+    })() : (
+    <SwipeBackShell onBack={onBack}>
     <div className="min-h-screen bg-[#111827] pb-24">
+      <OfflineBanner online={online} pendingCount={pendingCount} />
       <div className="bg-gradient-to-br from-[#1E3A8A] via-[#2563EB] to-[#3B82F6] p-4 sticky top-0 z-10 shadow-lg">
         <div className="flex items-center gap-3 mb-4">
           <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
@@ -1226,7 +1288,11 @@ export function SalesHome({
           </button>
           <div className="flex-1">
             <h1 className="font-semibold text-white text-lg">Sales</h1>
-            <p className="text-xs text-white/80">{recentSales.length} recent invoices</p>
+            <p className="text-xs text-white/80">
+              {saleTypeFilter === 'all'
+                ? `${filteredSales.length} invoice${filteredSales.length === 1 ? '' : 's'}`
+                : `${filteredSales.length} ${saleListTypeLabel(saleTypeFilter).toLowerCase()} invoice${filteredSales.length === 1 ? '' : 's'}`}
+            </p>
           </div>
           <button
             onClick={onNewSale}
@@ -1252,6 +1318,30 @@ export function SalesHome({
           </div>
         </div>
 
+        <div className="grid grid-cols-4 gap-1.5 mb-3">
+          {SALE_TYPE_FILTERS.map((tab) => {
+            const active = saleTypeFilter === tab;
+            const label = tab === 'all' ? 'All' : saleListTypeLabel(tab);
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setSaleTypeFilter(tab)}
+                className={`py-1.5 px-1 rounded-lg text-[11px] font-semibold transition-colors truncate ${
+                  active
+                    ? 'bg-white text-[#2563EB] shadow-sm'
+                    : 'bg-white/15 text-white/90 border border-white/20 hover:bg-white/25'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        {saleTypeFilter !== 'all' && (
+          <p className="text-[10px] text-white/60 mb-2 -mt-1">Totals include all sale types.</p>
+        )}
+
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
           <input
@@ -1264,6 +1354,14 @@ export function SalesHome({
         </div>
       </div>
 
+      <PullToRefresh
+        onRefresh={async () => {
+          await refetchSales({ silent: true });
+        }}
+        disabled={!companyId}
+        scrollElementRef={mainScrollRef}
+        spinnerAccentClass="border-t-[#3B82F6]"
+      >
       {loading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="w-8 h-8 text-[#3B82F6] animate-spin" />
@@ -1292,6 +1390,7 @@ export function SalesHome({
                     </span>
                   </div>
                   <p className="text-sm text-[#D1D5DB] truncate">{sale.customer}</p>
+                  <div className="mt-1">{saleTypeBadge(sale)}</div>
                   {sale.shipment_status && (
                     <span className="inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded bg-[#3B82F6]/20 text-[#93C5FD] border border-[#3B82F6]/30">
                       {sale.shipment_status === 'Delivered' || sale.shipment_status === 'delivered' ? '✅ Delivered' :
@@ -1408,42 +1507,47 @@ export function SalesHome({
             {filteredSales.length === 0 && (
               <div className="text-center py-12">
                 <ShoppingCart className="w-16 h-16 mx-auto mb-4 text-[#374151]" />
-                <p className="text-[#9CA3AF]">No sales found</p>
+                <p className="text-[#9CA3AF]">{emptyListMessage()}</p>
               </div>
             )}
           </div>
 
-          {addPaymentSale && companyId && (
-            <MobileReceivePayment
-              onClose={closeAddPayment}
-              onSuccess={handleReceivePaymentSuccess}
-              companyId={companyId}
-              branchId={branchId}
-              userId={userId ?? undefined}
-              referenceId={addPaymentSale.raw.id as string}
-              referenceNo={addPaymentSale.id}
-              customerName={addPaymentSale.customer}
-              customerId={(addPaymentSale.raw.customer_id as string) ?? (addPaymentSale.raw.customer as { id?: string } | null)?.id ?? null}
-              totalAmount={addPaymentSale.grand_total ?? addPaymentSale.amount}
-              alreadyPaid={addPaymentSale.total_received}
-              outstandingAmount={addPaymentSale.balance_due}
-            />
-          )}
-
-          {actionSuccess && (
-            <div className="fixed left-4 right-4 bottom-24 z-[75] py-3 px-4 rounded-lg text-sm font-medium text-center shadow-lg bg-[#10B981] text-white">
-              {actionSuccess}
-            </div>
-          )}
-          {!cancelConfirmSale && actionError && (
-            <div className="fixed left-4 right-4 bottom-24 z-[75] py-3 px-4 rounded-lg text-sm font-medium text-center shadow-lg bg-[#EF4444] text-white">
-              {actionError}
-            </div>
-          )}
         </>
       )}
+      </PullToRefresh>
+    </div>
+    </SwipeBackShell>
+    )}
 
-      {cancelConfirmSale && (
+    {addPaymentSale && companyId && (
+      <MobileReceivePayment
+        onClose={closeAddPayment}
+        onSuccess={handleReceivePaymentSuccess}
+        companyId={companyId}
+        branchId={branchId}
+        userId={userId ?? undefined}
+        referenceId={addPaymentSale.raw.id as string}
+        referenceNo={addPaymentSale.id}
+        customerName={addPaymentSale.customer}
+        customerId={(addPaymentSale.raw.customer_id as string) ?? (addPaymentSale.raw.customer as { id?: string } | null)?.id ?? null}
+        totalAmount={addPaymentSale.grand_total ?? addPaymentSale.amount}
+        alreadyPaid={addPaymentSale.total_received}
+        outstandingAmount={addPaymentSale.balance_due}
+      />
+    )}
+
+    {actionSuccess && (
+      <div className="fixed left-4 right-4 bottom-24 z-[75] py-3 px-4 rounded-lg text-sm font-medium text-center shadow-lg bg-[#10B981] text-white">
+        {actionSuccess}
+      </div>
+    )}
+    {!cancelConfirmSale && actionError && (
+      <div className="fixed left-4 right-4 bottom-24 z-[75] py-3 px-4 rounded-lg text-sm font-medium text-center shadow-lg bg-[#EF4444] text-white">
+        {actionError}
+      </div>
+    )}
+
+    {cancelConfirmSale && (
         <div className="fixed inset-0 z-[85] bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={() => setCancelConfirmSale(null)}>
           <div className="w-full max-w-sm bg-[#1F2937] border border-[#374151] rounded-2xl p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start gap-3">
@@ -1797,6 +1901,16 @@ export function SalesHome({
           </div>
         </div>
       )}
-    </div>
+
+    {activitySale && companyId && (
+      <SaleActivitySheet
+        open={true}
+        onClose={() => setActivitySale(null)}
+        companyId={companyId}
+        saleId={String(activitySale.raw.id || '')}
+        saleLabel={activitySale.id}
+      />
+    )}
+  </>
   );
 }

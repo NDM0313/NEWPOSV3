@@ -84,7 +84,16 @@ export function TransactionDetailSheet({
     setAttachmentPreviewStart(startIndex);
   };
 
-  const title = detail?.entryNo ? `${TYPE_LABEL[referenceType] ?? 'Transaction'} · ${detail.entryNo}` : fallbackTitle || TYPE_LABEL[referenceType] || 'Transaction';
+  const title = (() => {
+    if (detail?.entryNo && referenceType === 'stock_movement') {
+      const product = detail.headerMeta.Product ? String(detail.headerMeta.Product) : '';
+      return product ? `${product} · ${detail.entryNo}` : `${TYPE_LABEL.stock_movement} · ${detail.entryNo}`;
+    }
+    if (detail?.entryNo) {
+      return `${TYPE_LABEL[referenceType] ?? 'Transaction'} · ${detail.entryNo}`;
+    }
+    return fallbackTitle || TYPE_LABEL[referenceType] || 'Transaction';
+  })();
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4">

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Check,
@@ -301,7 +302,12 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   const selectedAccount = accounts.find((a) => a.id === accountId);
   const dueDisplay = outstandingAmount ?? 0;
   const amountExceedsBalance =
-    mode !== 'receive' && mode !== 'rental' && selectedAccount && amount > selectedAccount.balance && selectedAccount.balance >= 0;
+    canViewBalances &&
+    mode !== 'receive' &&
+    mode !== 'rental' &&
+    selectedAccount &&
+    amount > selectedAccount.balance &&
+    selectedAccount.balance >= 0;
 
   const amountExceedsDue =
     !allowOverpayment && mode !== 'expense' && mode !== 'pay-worker' && outstandingAmount != null && amount > outstandingAmount;
@@ -430,8 +436,8 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
     closeSuccess();
   };
 
-  return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-[#111827]">
+  const sheet = (
+    <div className="fixed inset-0 z-[70] flex flex-col bg-[#111827] max-h-[100dvh]">
       {submitting && (
         <div
           className="absolute inset-0 z-[100] bg-black/55 flex flex-col items-center justify-center gap-2 pointer-events-auto rounded-none"
@@ -461,7 +467,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-32">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 pb-24">
         {partyName && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
@@ -838,4 +844,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
       )}
     </div>
   );
+
+  if (typeof document === 'undefined') return sheet;
+  return createPortal(sheet, document.body);
 }

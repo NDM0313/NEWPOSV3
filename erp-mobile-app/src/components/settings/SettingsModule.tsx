@@ -49,6 +49,13 @@ import {
 } from '../../lib/counterUserVault';
 import { getFunctionalRoleLabel } from '../../config/functionalRoles';
 import {
+  COUNTER_SESSION_POLICY_OPTIONS,
+  formatLastTokenSyncLabel,
+  getCounterSessionPolicy,
+  setCounterSessionPolicy,
+  type CounterSessionPolicyId,
+} from '../../lib/counterSessionPolicy';
+import {
   isSharedCounterModeEnabled,
   setSharedCounterModeEnabled,
   subscribeSharedCounterMode,
@@ -58,6 +65,13 @@ import {
   printTestReceipt,
   probePrinterBackend,
 } from '../../services/printService';
+import {
+  getMergedPrintingSettings,
+  updateReceiptFieldToggles,
+  DEFAULT_RECEIPT_FIELDS,
+  type ReceiptFieldToggles,
+} from '../../api/printingSettings';
+import { getCompanyBrand } from '../../api/reports';
 import { listPairedBluetoothDevices } from '../../lib/erpPrinterNative';
 
 interface SettingsModuleProps {
@@ -138,14 +152,13 @@ export function SettingsModule({
   const [printerSaving, setPrinterSaving] = useState(false);
   const [printerError, setPrinterError] = useState<string | null>(null);
   const [printerBackendLabel, setPrinterBackendLabel] = useState('');
+  const [receiptFields, setReceiptFields] = useState<ReceiptFieldToggles>({ ...DEFAULT_RECEIPT_FIELDS });
+  const [receiptBrandPreview, setReceiptBrandPreview] = useState('');
+  const [receiptFieldsSaving, setReceiptFieldsSaving] = useState(false);
   const [bluetoothDevices, setBluetoothDevices] = useState<{ name: string; address: string }[]>([]);
-  const [labelSettings, setLabelSettings] = useState<settingsApi.MobileBarcodeLabelSettings>({
-    labelLayout: 'thermal',
-    showName: true,
-    showPrice: true,
-    showBusinessName: true,
-    defaultQuantity: 1,
-  });
+  const [labelSettings, setLabelSettings] = useState<settingsApi.MobileBarcodeLabelSettings>(
+    settingsApi.DEFAULT_BARCODE_LABEL,
+  );
   const [labelSaving, setLabelSaving] = useState(false);
   const [barcodeSaving, setBarcodeSaving] = useState(false);
   const [showUserPermissions, setShowUserPermissions] = useState(false);
@@ -161,6 +174,9 @@ export function SettingsModule({
   const [lockScreenProfiles, setLockScreenProfiles] = useState<EnrolledCounterProfile[]>([]);
   const [lockProfilesLoading, setLockProfilesLoading] = useState(false);
   const [sharedCounterMode, setSharedCounterMode] = useState(() => isSharedCounterModeEnabled());
+  const [counterSessionPolicy, setCounterSessionPolicyState] = useState<CounterSessionPolicyId>(() =>
+    getCounterSessionPolicy()
+  );
   /**
    * After saving counter PIN: if device quick PIN is not set yet, ask user to also set the same PIN
    * as device quick PIN. State holds the PIN value while the confirm step is active.
@@ -231,7 +247,23 @@ export function SettingsModule({
     settingsApi.getDefaultDressDevaluation(companyId).then(({ data }) => setDefaultDressDevaluation(data));
     void listPairedBluetoothDevices().then(setBluetoothDevices);
     void probePrinterBackend(null).then(() => setPrinterBackendLabel(getCachedPrinterBackendLabel()));
+    getMergedPrintingSettings(companyId).then(({ data }) => setReceiptFields(data.fields));
+    getCompanyBrand(companyId).then((b) => {
+      const parts = [b.name, b.phone, b.address].filter(Boolean);
+      setReceiptBrandPreview(parts.join(' · '));
+    });
   }, [companyId, isAdminOrOwner]);
+
+  const toggleReceiptField = async (key: keyof ReceiptFieldToggles, value: boolean) => {
+    if (!companyId || receiptFieldsSaving) return;
+    const prev = receiptFields;
+    const next = { ...receiptFields, [key]: value };
+    setReceiptFields(next);
+    setReceiptFieldsSaving(true);
+    const { error } = await updateReceiptFieldToggles(companyId, { [key]: value });
+    setReceiptFieldsSaving(false);
+    if (error) setReceiptFields(prev);
+  };
 
   if (showUserPermissions) {
     return (
@@ -626,13 +658,45 @@ export function SettingsModule({
                           <p className="text-xs text-[#6B7280] truncate">{p.email}</p>
                         ) : null}
                       </div>
-                      <span className="text-xs text-[#9CA3AF] shrink-0">
-                        {p.role ? getFunctionalRoleLabel(p.role) : 'Staff'}
-                      </span>
+                      <div className="text-right shrink-0">
+                        <span className="text-xs text-[#9CA3AF] block">
+                          {p.role ? getFunctionalRoleLabel(p.role) : 'Staff'}
+                        </span>
+                        <span className="text-[10px] text-[#6B7280] block mt-0.5">
+                          {formatLastTokenSyncLabel(p.lastTokenSyncAt) ?? '—'}
+                        </span>
+                      </div>
                     </li>
                   ))}
                 </ul>
               )}
+              <div className="pt-2 border-t border-[#374151]">
+                <label className="block text-xs font-medium text-[#9CA3AF] mb-1.5">
+                  Counter PIN session freshness
+                </label>
+                <select
+                  value={counterSessionPolicy}
+                  onChange={(e) => {
+                    const id = e.target.value as CounterSessionPolicyId;
+                    setCounterSessionPolicy(id);
+                    setCounterSessionPolicyState(id);
+                  }}
+                  className="w-full px-3 py-2.5 bg-[#111827] border border-[#374151] rounded-lg text-white text-sm focus:outline-none focus:border-[#10B981]"
+                >
+                  {COUNTER_SESSION_POLICY_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-[#6B7280] mt-2 leading-relaxed">
+                  Counter PIN uses a saved server session on this tablet. If PIN sign-in fails, have the owner or
+                  manager sign in once with email/password here — that refreshes every enrolled user.
+                </p>
+                <p className="text-xs text-[#6B7280] mt-1 leading-relaxed" dir="rtl">
+                  اگر PIN کام نہیں کرتا تو ایک بار ای میل سے لاگ ان کریں — پھر سب کے PIN دوبارہ چلیں گے۔
+                </p>
+              </div>
             </div>
           )}
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between gap-3">
@@ -702,6 +766,35 @@ export function SettingsModule({
                 A4 (Normal)
               </button>
             </div>
+            <div className="border-t border-[#374151] pt-3 space-y-2">
+              <p className="text-xs text-[#9CA3AF] font-medium">Receipt header (thermal)</p>
+              {receiptBrandPreview && (
+                <p className="text-xs text-[#6B7280] leading-relaxed">{receiptBrandPreview}</p>
+              )}
+              <p className="text-[10px] text-[#6B7280]">Company name, address, and phone come from your company profile (edit on web if needed).</p>
+              {(
+                [
+                  ['showLogo', 'Show logo placeholder'],
+                  ['showCompanyAddress', 'Show address'],
+                  ['showPhone', 'Show phone'],
+                  ['showDiscount', 'Show discount line (only when non-zero)'],
+                  ['showTax', 'Show tax line (only when non-zero)'],
+                  ['showStudioCost', 'Show studio cost (only when non-zero)'],
+                  ['showNotes', 'Show notes'],
+                ] as const
+              ).map(([key, label]) => (
+                <label key={key} className="flex items-start gap-3 w-full text-left cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={receiptFields[key]}
+                    disabled={receiptFieldsSaving}
+                    onChange={(e) => void toggleReceiptField(key, e.target.checked)}
+                    className="w-4 h-4 shrink-0 mt-0.5 rounded border-[#4B5563] bg-[#374151] text-[#3B82F6]"
+                  />
+                  <span className="text-sm text-[#E5E7EB]">{label}</span>
+                </label>
+              ))}
+            </div>
             {printerConfig.mode === 'thermal' && (
               <div>
                 <p className="text-xs text-[#9CA3AF] mb-1.5">Paper width</p>
@@ -725,14 +818,16 @@ export function SettingsModule({
                 </div>
               </div>
             )}
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-start gap-3 w-full text-left cursor-pointer">
               <input
                 type="checkbox"
                 checked={printerConfig.autoPrintReceipt}
                 onChange={(e) => handleAutoPrint(e.target.checked)}
-                className="rounded border-[#4B5563] bg-[#374151] text-[#3B82F6] focus:ring-[#3B82F6]"
+                className="w-4 h-4 shrink-0 mt-0.5 rounded border-[#4B5563] bg-[#374151] text-[#3B82F6] focus:ring-[#3B82F6]"
               />
-              <span className="text-sm text-[#E5E7EB]">Auto-print receipt after sale</span>
+              <span className="flex-1 min-w-0 text-sm leading-snug text-[#E5E7EB] pt-0.5">
+                Auto-print receipt after sale
+              </span>
             </label>
             <p className="text-xs text-[#6B7280]">
               Printer source: <span className="text-[#9CA3AF]">{printerBackendLabel || '—'}</span>
@@ -801,6 +896,54 @@ export function SettingsModule({
                 A4 sheet
               </button>
             </div>
+            {labelSettings.labelLayout === 'a4' && (
+              <div>
+                <p className="text-xs text-[#9CA3AF] mb-1.5">A4 sticker columns</p>
+                <div className="flex flex-wrap gap-2">
+                  {([2, 3, 4] as const).map((cols) => (
+                    <button
+                      key={cols}
+                      type="button"
+                      onClick={() => {
+                        const next = { ...labelSettings, a4Columns: cols };
+                        setLabelSettings(next);
+                        if (!companyId) return;
+                        setLabelSaving(true);
+                        void settingsApi
+                          .setMobileBarcodeLabelSettings(companyId, next)
+                          .finally(() => setLabelSaving(false));
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                        labelSettings.a4Columns === cols
+                          ? 'bg-[#3B82F6] text-white'
+                          : 'bg-[#374151] text-[#9CA3AF]'
+                      }`}
+                    >
+                      {cols} columns
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <label className="flex items-start gap-3 w-full text-left cursor-pointer">
+              <input
+                type="checkbox"
+                checked={labelSettings.defaultLabelsFromPurchaseQty}
+                onChange={(e) => {
+                  const next = { ...labelSettings, defaultLabelsFromPurchaseQty: e.target.checked };
+                  setLabelSettings(next);
+                  if (!companyId) return;
+                  setLabelSaving(true);
+                  void settingsApi
+                    .setMobileBarcodeLabelSettings(companyId, next)
+                    .finally(() => setLabelSaving(false));
+                }}
+                className="w-4 h-4 shrink-0 mt-0.5 rounded border-[#4B5563] bg-[#374151] text-[#3B82F6] focus:ring-[#3B82F6]"
+              />
+              <span className="flex-1 min-w-0 text-sm leading-snug text-[#E5E7EB] pt-0.5">
+                Purchase labels: default qty from line quantity
+              </span>
+            </label>
             {labelSaving && <Loader2 className="w-4 h-4 text-[#3B82F6] animate-spin" />}
           </div>
 

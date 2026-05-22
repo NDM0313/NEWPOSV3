@@ -17,8 +17,13 @@ const LoadingContext = createContext<LoadingContextValue | null>(null);
 
 /**
  * Global loading provider: renders a blurred, click-blocking overlay whenever
- * any async action is in flight. Use `useLoading().withLoading(label, task)`
- * from any component to gate a request behind the overlay.
+ * any async action is in flight.
+ *
+ * For save/sync/load buttons use either:
+ * - `useLoading().withLoading(label, task)` in the parent handler, or
+ * - `useSubmitLock().run(label, task)` for ref-guarded double-tap protection.
+ *
+ * Disable buttons while `isLoading` or `useSubmitLock().busy` is true.
  */
 export function LoadingProvider({ children }: { children: ReactNode }) {
   const counterRef = useRef(0);
@@ -93,4 +98,33 @@ export function useLoading(): LoadingContextValue {
     throw new Error('useLoading must be used within a LoadingProvider');
   }
   return ctx;
+}
+
+/**
+ * Submit guard: ignores duplicate taps (ref mutex) and shows the global overlay.
+ * Use `busy` to disable save buttons; use `run` for the click handler body.
+ */
+export function useSubmitLock() {
+  const { isLoading, withLoading } = useLoading();
+  const inFlightRef = useRef(false);
+  const [localInFlight, setLocalInFlight] = useState(false);
+
+  const busy = isLoading || localInFlight;
+
+  const run = useCallback(
+    async (label: string | undefined, task: () => Promise<void>): Promise<void> => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
+      setLocalInFlight(true);
+      try {
+        await withLoading(label, task);
+      } finally {
+        inFlightRef.current = false;
+        setLocalInFlight(false);
+      }
+    },
+    [withLoading],
+  );
+
+  return { busy, run, isLoading };
 }

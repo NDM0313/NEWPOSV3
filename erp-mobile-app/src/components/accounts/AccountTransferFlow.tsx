@@ -4,6 +4,9 @@ import type { User } from '../../types';
 import { DateInputField } from '../shared/DateTimePicker';
 import { getPaymentAccounts, createJournalEntry } from '../../api/accounts';
 import { addPending } from '../../lib/offlineStore';
+import { localNowDateString } from '../../utils/localDate';
+import { usePermissions } from '../../context/PermissionContext';
+import { formatAccountBalanceInline } from '../../utils/balancePrivacy';
 
 interface AccountTransferFlowProps {
   onBack: () => void;
@@ -41,6 +44,7 @@ const getAccountIcon = (type: string) => {
 };
 
 export function AccountTransferFlow({ onBack, onComplete, user, companyId, branchId }: AccountTransferFlowProps) {
+  const { canViewBalances } = usePermissions();
   const [step, setStep] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentAccounts, setPaymentAccounts] = useState<AccountRow[]>([]);
@@ -52,7 +56,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
     toAccountId: '',
     toAccountName: '',
     amount: 0,
-    date: new Date().toISOString().split('T')[0],
+    date: localNowDateString(),
     reference: '',
     notes: '',
     attachmentUrl: '',
@@ -188,7 +192,9 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
                         <span className="text-2xl">{getAccountIcon(account.type)}</span>
                         <div>
                           <p className="text-sm font-semibold text-white">{account.name}</p>
-                          <p className="text-xs text-[#9CA3AF]">Balance: Rs. {account.balance.toLocaleString()}</p>
+                          {formatAccountBalanceInline(account.balance, canViewBalances) && (
+                            <p className="text-xs text-[#9CA3AF]">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
+                          )}
                         </div>
                       </div>
                       {transferData.fromAccountId === account.id && <Check className="text-[#EF4444]" size={20} />}
@@ -246,7 +252,9 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
                           <span className="text-2xl">{getAccountIcon(account.type)}</span>
                           <div>
                             <p className="text-sm font-semibold text-white">{account.name}</p>
-                            <p className="text-xs text-[#9CA3AF]">Balance: Rs. {account.balance.toLocaleString()}</p>
+                            {formatAccountBalanceInline(account.balance, canViewBalances) && (
+                            <p className="text-xs text-[#9CA3AF]">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
+                          )}
                           </div>
                         </div>
                         {transferData.toAccountId === account.id && <Check className="text-[#10B981]" size={20} />}
@@ -298,7 +306,11 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
                 placeholder="0.00"
                 className="w-full max-w-full min-w-0 px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white text-lg font-semibold placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6] box-border"
               />
-              <p className="text-xs text-[#9CA3AF] mt-2">Available: Rs. {getAccount(transferData.fromAccountId)?.balance.toLocaleString()}</p>
+              {canViewBalances && getAccount(transferData.fromAccountId) && (
+                <p className="text-xs text-[#9CA3AF] mt-2">
+                  Available: Rs. {getAccount(transferData.fromAccountId)!.balance.toLocaleString()}
+                </p>
+              )}
             </div>
 
             <DateInputField label="Transfer Date" value={transferData.date} onChange={(date) => setTransferData({ ...transferData, date })} pickerLabel="SELECT TRANSFER DATE" />

@@ -4,6 +4,10 @@ import {
   hasModuleAction,
   canViewModule,
   setRolePermission,
+  canUseFullAccounting,
+  canViewCustomerLedger,
+  canViewSupplierLedger,
+  shouldScopeStudioToOwnOnly,
   type RolePermissionRow,
 } from './permissions.ts';
 
@@ -48,6 +52,27 @@ describe('canViewModule', () => {
       { role: 'user', module: 'pos', action: 'use', allowed: true },
     ];
     assert.equal(canViewModule(perms, 'pos'), true);
+  });
+});
+
+describe('ledger and studio scope helpers', () => {
+  const userPerms: RolePermissionRow[] = [
+    { role: 'user', module: 'ledger', action: 'view_customer', allowed: true },
+    { role: 'user', module: 'ledger', action: 'view_full_accounting', allowed: false },
+    { role: 'user', module: 'studio', action: 'view_own', allowed: true },
+    { role: 'user', module: 'studio', action: 'view_company', allowed: false },
+  ];
+
+  it('user role: party ledger only, studio own scope', () => {
+    assert.equal(canUseFullAccounting(userPerms, false), false);
+    assert.equal(canViewCustomerLedger(userPerms, false), true);
+    assert.equal(canViewSupplierLedger(userPerms, false), false);
+    assert.equal(shouldScopeStudioToOwnOnly(userPerms, false), true);
+  });
+
+  it('admin bypasses ledger and studio scope', () => {
+    assert.equal(canUseFullAccounting(userPerms, true), true);
+    assert.equal(shouldScopeStudioToOwnOnly(userPerms, true), false);
   });
 });
 

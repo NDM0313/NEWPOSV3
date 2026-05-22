@@ -10,6 +10,7 @@ import {
   type EnrolledCounterProfile,
 } from '../../lib/counterUserVault';
 import { getFunctionalRoleLabel } from '../../config/functionalRoles';
+import { getCounterSyncStaleWarning } from '../../lib/counterSessionPolicy';
 
 interface POSLockScreenProps {
   companyId: string | null;
@@ -202,6 +203,11 @@ export function POSLockScreen({
                 <p className="text-xs text-[#6B7280] mt-0.5">{selected.email}</p>
               ) : null}
             </div>
+            {getCounterSyncStaleWarning(selected.lastTokenSyncAt) ? (
+              <p className="text-xs text-amber-200/90 text-center mb-4 px-2 max-w-sm">
+                {getCounterSyncStaleWarning(selected.lastTokenSyncAt)}
+              </p>
+            ) : null}
             <div className="flex justify-center gap-2 mb-6">
               {[0, 1, 2, 3].map((i) => (
                 <div

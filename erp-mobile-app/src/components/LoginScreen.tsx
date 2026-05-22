@@ -13,6 +13,7 @@ import {
   saveCounterUserForPin,
   type CounterVaultPayload,
 } from '../lib/counterUserVault';
+import { maintainCounterVaultTokens } from '../lib/counterVaultMaintenance';
 
 interface LoginScreenProps {
   onLogin: (user: User, companyId: string | null) => void;
@@ -51,6 +52,12 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
     authApi.hasPinSet().then(setHasPinSet);
     authApi.getPinLockedUntil().then(setPinLockedUntil);
   }, []);
+
+  /** Refresh counter vault if Supabase still has a persisted session on the login screen. */
+  useEffect(() => {
+    if (pinUnlockUser) return;
+    void maintainCounterVaultTokens();
+  }, [pinUnlockUser]);
 
   useEffect(() => {
     const onOauthComplete = (ev: Event) => {

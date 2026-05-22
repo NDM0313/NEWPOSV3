@@ -1,12 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Calendar, DollarSign, User, Tag, Loader2 } from 'lucide-react';
+import { ArrowLeft, Calendar, DollarSign, User, Tag, Loader2, Plus } from 'lucide-react';
 import * as studioApi from '../../api/studio';
+import * as contactsApi from '../../api/contacts';
+import { useSubmitLock } from '../../contexts/LoadingContext';
 import type { StudioStage } from './StudioDashboard';
+import { localNowDateString } from '../../utils/localDate';
+import type { AddContactFormData } from '../contacts/AddContactFlow';
+import { AddContactFlow } from '../contacts/AddContactFlow';
+import { SwipeBackShell } from '../common';
 
 interface StudioStageAssignmentProps {
   companyId: string;
   onBack: () => void;
-  onComplete: (stageData: Partial<StudioStage>) => void;
+  onComplete: (stageData: Partial<StudioStage>) => void | Promise<void>;
   existingStage?: StudioStage;
   /** If provided, skips the stage-type picker (step 1) and uses this as the fixed stage type. */
   fixedStageType?: StudioStage['type'];
@@ -22,6 +28,10 @@ const STAGE_TYPES = [
 ] as const;
 
 export function StudioStageAssignment({ companyId, onBack, onComplete, existingStage, fixedStageType }: StudioStageAssignmentProps) {
+  const { busy } = useSubmitLock();
+  const [submitting, setSubmitting] = useState(false);
+  const formBusy = busy || submitting;
+
   const initialStageType = (fixedStageType ?? existingStage?.type ?? '') as (typeof STAGE_TYPES)[number]['id'] | '';
   const skipStageStep = !!(fixedStageType || existingStage);
   const [step, setStep] = useState(skipStageStep ? 2 : 1);
@@ -36,30 +46,85 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
   const [workers, setWorkers] = useState<studioApi.WorkerRow[]>([]);
   const [workersLoading, setWorkersLoading] = useState(true);
   const [showAllWorkers, setShowAllWorkers] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setWorkersLoading(true);
-      const filterStage = showAllWorkers ? undefined : (stageType || undefined);
-      const { data } = await studioApi.getWorkers(companyId, { stageType: filterStage as studioApi.UiStageType | undefined });
-      if (!cancelled) {
-        setWorkers(data || []);
-        setWorkersLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [companyId, stageType, showAllWorkers]);
+  const [screen, setScreen] = useState<'assign' | 'addWorker'>('assign');
+  const [addWorkerError, setAddWorkerError] = useState('');
+  const [addWorkerSaving, setAddWorkerSaving] = useState(false);
   const [internalCost, setInternalCost] = useState(
-    existingStage?.internalCost != null && existingStage.internalCost !== 0 ? String(existingStage.internalCost) : ''
+    existingStage?.internalCost != null && existingStage.internalCost !== 0 ? String(existingStage.internalCost) : '',
   );
   const [customerCharge, setCustomerCharge] = useState(
-    existingStage?.customerCharge != null && existingStage.customerCharge !== 0 ? String(existingStage.customerCharge) : ''
+    existingStage?.customerCharge != null && existingStage.customerCharge !== 0
+      ? String(existingStage.customerCharge)
+      : '',
   );
   const [hasCustomerCharge, setHasCustomerCharge] = useState(existingStage ? existingStage.customerCharge > 0 : false);
   const [expectedDate, setExpectedDate] = useState(existingStage?.expectedDate || '');
   const [notes, setNotes] = useState('');
   const dateInputRef = useRef<HTMLInputElement>(null);
+
+  const loadWorkers = async () => {
+    setWorkersLoading(true);
+    const filterStage = showAllWorkers ? undefined : (stageType || undefined);
+    const { data } = await studioApi.getWorkers(companyId, {
+      stageType: filterStage as studioApi.UiStageType | undefined,
+    });
+    setWorkers(data || []);
+    setWorkersLoading(false);
+  };
+
+  useEffect(() => {
+    void loadWorkers();
+  }, [companyId, stageType, showAllWorkers]);
+
+  const handleAddWorkerSubmit = async (data: AddContactFormData) => {
+    setAddWorkerError('');
+    setAddWorkerSaving(true);
+    try {
+      const { data: created, error } = await contactsApi.createContact(companyId, {
+        name: data.name.trim(),
+        phone: data.phone.trim(),
+        email: data.email?.trim() || undefined,
+        roles: ['worker'],
+        workerType: data.workerType || undefined,
+        workerRate: data.workerRate || undefined,
+      });
+      if (error) {
+        setAddWorkerError(error);
+        return;
+      }
+      setScreen('assign');
+      await loadWorkers();
+      if (created) {
+        setWorkerId(created.id);
+        setAssignedTo(created.name);
+        if (created.workerRate && created.workerRate > 0) {
+          setInternalCost(String(created.workerRate));
+        }
+      }
+    } finally {
+      setAddWorkerSaving(false);
+    }
+  };
+
+  if (screen === 'addWorker') {
+    return (
+      <SwipeBackShell onBack={() => { setScreen('assign'); setAddWorkerError(''); }}>
+        <AddContactFlow
+          onBack={() => { setScreen('assign'); setAddWorkerError(''); }}
+          onSubmit={handleAddWorkerSubmit}
+          error={addWorkerError}
+          defaultRoles={['worker']}
+          lockRoles={false}
+          title="Add Worker"
+        />
+        {addWorkerSaving && (
+          <div className="fixed inset-0 z-[90] bg-black/50 flex items-center justify-center">
+            <Loader2 className="w-10 h-10 text-white animate-spin" />
+          </div>
+        )}
+      </SwipeBackShell>
+    );
+  }
 
   /** Format YYYY-MM-DD → DD MMM YYYY (app standard) */
   const formatDisplayDate = (iso: string): string => {
@@ -71,17 +136,19 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
   };
 
   const handleNext = () => {
-    if (step < 5) setStep(step + 1);
+    if (formBusy || step >= 5) return;
+    setStep(step + 1);
   };
 
   const handleBackStep = () => {
+    if (formBusy) return;
     const minStep = skipStageStep ? 2 : 1;
     if (step > minStep) setStep(step - 1);
     else onBack();
   };
 
-  const handleComplete = () => {
-    if (!expectedDate) return;
+  const handleComplete = async () => {
+    if (formBusy || !expectedDate) return;
 
     const stageData: Partial<StudioStage> & { notes?: string } = {
       type: stageType as StudioStage['type'],
@@ -95,7 +162,12 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
       notes: notes.trim() || undefined,
     };
 
-    onComplete(stageData);
+    setSubmitting(true);
+    try {
+      await onComplete(stageData);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const selectedType = STAGE_TYPES.find((t) => t.id === stageType);
@@ -104,7 +176,12 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
     <div className="min-h-screen pb-24 bg-[#111827]">
       <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
         <div className="flex items-center gap-3 mb-4">
-          <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={formBusy}
+            className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white disabled:opacity-50 disabled:pointer-events-none"
+          >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1">
@@ -250,6 +327,14 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
                     No workers match this stage. Tap "Show all" above to see everyone.
                   </div>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setScreen('addWorker')}
+                  className="w-full py-3 border-2 border-dashed border-[#374151] rounded-xl text-[#9CA3AF] hover:border-[#8B5CF6] hover:text-[#8B5CF6] flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Worker
+                </button>
                 {workers.map((w) => (
                   <button
                     key={w.id}
@@ -461,7 +546,7 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
                     type="date"
                     value={expectedDate}
                     onChange={(e) => setExpectedDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={localNowDateString()}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     style={{ fontSize: '16px' }}
                     aria-label="Expected return date"
@@ -487,16 +572,20 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
           <div className="flex gap-3">
             {step > (skipStageStep ? 2 : 1) && (
               <button
+                type="button"
                 onClick={handleBackStep}
-                className="flex-1 py-3 bg-[#374151] hover:bg-[#4B5563] rounded-xl font-semibold transition-colors text-white"
+                disabled={formBusy}
+                className="flex-1 py-3 bg-[#374151] hover:bg-[#4B5563] rounded-xl font-semibold transition-colors text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Back
               </button>
             )}
             {step < 5 ? (
               <button
+                type="button"
                 onClick={handleNext}
                 disabled={
+                  formBusy ||
                   (step === 1 && !stageType) ||
                   (step === 2 && !stageName.trim()) ||
                   (step === 3 && !assignedTo) ||
@@ -505,17 +594,25 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
                       parseFloat(internalCost) <= 0 ||
                       (hasCustomerCharge && (!customerCharge || parseFloat(customerCharge) <= 0))))
                 }
-                className="flex-1 py-3 bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-opacity text-white"
+                className="flex-1 py-3 bg-gradient-to-r from-[#8B5CF6] to-[#7C3AED] rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-opacity text-white flex items-center justify-center gap-2"
               >
                 Continue
               </button>
             ) : (
               <button
-                onClick={handleComplete}
-                disabled={!expectedDate}
-                className="flex-1 py-3 bg-gradient-to-r from-[#10B981] to-[#059669] rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-opacity text-white"
+                type="button"
+                onClick={() => void handleComplete()}
+                disabled={formBusy || !expectedDate}
+                className="flex-1 py-3 bg-gradient-to-r from-[#10B981] to-[#059669] rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-opacity text-white flex items-center justify-center gap-2"
               >
-                {existingStage ? 'Update Stage' : 'Add Stage'}
+                {formBusy ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+                {formBusy
+                  ? existingStage
+                    ? 'Updating…'
+                    : 'Adding…'
+                  : existingStage
+                    ? 'Update Stage'
+                    : 'Add Stage'}
               </button>
             )}
           </div>

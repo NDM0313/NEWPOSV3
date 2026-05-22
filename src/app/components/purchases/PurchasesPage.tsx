@@ -3,7 +3,7 @@ import {
   Plus, ShoppingBag, DollarSign, AlertCircle, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
   Package, CheckCircle, Clock, XCircle, Receipt, ChevronDown, ChevronUp,
-  Paperclip, RotateCcw, Printer, Download
+  Paperclip, RotateCcw, Printer, Download, Barcode, Loader2
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -77,6 +77,19 @@ import {
   shouldAcceptInvalidation,
   type DataInvalidationDetail,
 } from '@/app/lib/dataInvalidationBus';
+import { BarcodeLabelPrintDialog } from '@/app/components/products/BarcodeLabelPrintDialog';
+import {
+  aggregatePurchaseItemsForLabels,
+  enrichLinesWithBarcodes,
+  purchaseItemsToLabelInput,
+} from '@/app/lib/barcodeLabelLines';
+import {
+  getBarcodeLabelSettings,
+  DEFAULT_BARCODE_LABEL,
+  type BarcodeLabelSettings,
+} from '@/app/services/barcodeLabelSettingsService';
+import type { LabelPrintLine } from '@/app/services/barcodeLabelPrint';
+import { supabase } from '@/lib/supabase';
 
 type PurchaseStatus = 'received' | 'ordered' | 'pending' | 'final' | 'draft' | 'cancelled';
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
@@ -132,6 +145,55 @@ export const PurchasesPage = () => {
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
+  const [labelLines, setLabelLines] = useState<LabelPrintLine[]>([]);
+  const [labelSettings, setLabelSettings] = useState<BarcodeLabelSettings>(DEFAULT_BARCODE_LABEL);
+  const [labelCompanyName, setLabelCompanyName] = useState('');
+  const [labelLoading, setLabelLoading] = useState(false);
+
+  useEffect(() => {
+    if (!companyId) return;
+    void getBarcodeLabelSettings(companyId).then(setLabelSettings);
+    void supabase
+      .from('companies')
+      .select('name')
+      .eq('id', companyId)
+      .maybeSingle()
+      .then(({ data }) => setLabelCompanyName((data?.name as string) || 'Company'));
+  }, [companyId]);
+
+  const canPrintPurchaseLabels = useCallback((purchase: Purchase) => {
+    if (purchase.items <= 0) return false;
+    const eff = getEffectivePurchaseStatus(purchase as any);
+    return eff === 'received' || eff === 'final';
+  }, []);
+
+  const openPurchaseLabels = useCallback(
+    async (purchaseUuid: string) => {
+      if (!companyId) return;
+      setLabelLoading(true);
+      try {
+        const row = await purchaseService.getPurchase(purchaseUuid);
+        const items = purchaseItemsToLabelInput((row as any)?.items || []);
+        if (items.length === 0) {
+          toast.error('No items on this purchase to print.');
+          return;
+        }
+        let lines = aggregatePurchaseItemsForLabels(items, labelSettings);
+        lines = await enrichLinesWithBarcodes(companyId, lines);
+        setLabelLines(lines);
+        setLabelDialogOpen(true);
+      } catch (e: any) {
+        toast.error(e?.message || 'Could not load purchase items.');
+      } finally {
+        setLabelLoading(false);
+      }
+    },
+    [companyId, labelSettings],
+  );
+
+  const labelBranchName =
+    branchId && branchId !== 'all' ? branchMap.get(branchId) ?? '' : '';
 
   // Realtime refresh: WebRealtimeBridge + PurchaseContext invalidation (avoid duplicate channels that double-fetch).
 
@@ -1791,6 +1853,20 @@ export const PurchasesPage = () => {
                               <FileText size={14} className="mr-2 text-purple-400" />
                               Print PO
                             </DropdownMenuItem>
+                            {canPrintPurchaseLabels(purchase) && (
+                              <DropdownMenuItem
+                                className="hover:bg-gray-800 cursor-pointer"
+                                disabled={labelLoading}
+                                onClick={() => void openPurchaseLabels(purchase.uuid)}
+                              >
+                                {labelLoading ? (
+                                  <Loader2 size={14} className="mr-2 text-purple-400 animate-spin" />
+                                ) : (
+                                  <Barcode size={14} className="mr-2 text-purple-400" />
+                                )}
+                                Print barcode labels
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator className="bg-gray-700" />
                             
                             {/* 🎯 MAKE PAYMENT - When payment allowed by effective status */}
@@ -2037,6 +2113,7 @@ export const PurchasesPage = () => {
             setViewDetailsOpen(false);
             setOriginalPurchaseIdToView(null);
           }}
+          onPrintBarcodeLabels={(id) => void openPurchaseLabels(id)}
           canDelete={canDeletePurchase}
         />
       )}
@@ -2636,6 +2713,20 @@ export const PurchasesPage = () => {
           }}
         />
       )}
+
+      <BarcodeLabelPrintDialog
+        open={labelDialogOpen}
+        onClose={() => setLabelDialogOpen(false)}
+        title={
+          labelLines.length <= 1
+            ? 'Print barcode labels'
+            : `Print barcode labels (${labelLines.length} products)`
+        }
+        lines={labelLines}
+        labelSettings={labelSettings}
+        companyName={labelCompanyName}
+        branchName={labelBranchName}
+      />
     </div>
   );
 };

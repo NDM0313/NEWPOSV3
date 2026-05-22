@@ -3,11 +3,12 @@ import {
   Search, Filter, Download, Upload, Package, DollarSign, AlertCircle, 
   MoreVertical, Eye, Edit, Trash2, FileText, X, ShoppingCart, Tag, Building2, Columns3,
   CheckCircle, TrendingDown, AlertTriangle, ImageIcon, Box, Check, Loader2,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Printer, Barcode, Square, CheckSquare
 } from 'lucide-react';
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Badge } from "@/app/components/ui/badge";
+import { Checkbox } from "@/app/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,6 +52,15 @@ import {
   shouldAcceptInvalidation,
   type DataInvalidationDetail,
 } from '@/app/lib/dataInvalidationBus';
+import { BarcodeLabelPrintDialog } from './BarcodeLabelPrintDialog';
+import { linesFromProducts, enrichLinesWithBarcodes } from '@/app/lib/barcodeLabelLines';
+import {
+  getBarcodeLabelSettings,
+  DEFAULT_BARCODE_LABEL,
+  type BarcodeLabelSettings,
+} from '@/app/services/barcodeLabelSettingsService';
+import type { LabelPrintLine } from '@/app/services/barcodeLabelPrint';
+import { supabase } from '@/lib/supabase';
 
 type ProductType = 'simple' | 'variable' | 'combo';
 type StockStatus = 'in-stock' | 'low-stock' | 'out-of-stock';
@@ -59,6 +69,7 @@ interface Product {
   id: number; // Display ID (index-based for UI compatibility)
   uuid: string; // Actual Supabase UUID for database operations
   sku: string;
+  barcode?: string;
   name: string;
   image?: string;
   image_urls?: string[];
@@ -84,6 +95,12 @@ export const ProductsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedUuids, setSelectedUuids] = useState<Set<string>>(() => new Set());
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
+  const [labelLines, setLabelLines] = useState<LabelPrintLine[]>([]);
+  const [labelSettings, setLabelSettings] = useState<BarcodeLabelSettings>(DEFAULT_BARCODE_LABEL);
+  const [labelCompanyName, setLabelCompanyName] = useState('');
 
   const loadProducts = useCallback(async () => {
     if (!companyId) return;
@@ -107,6 +124,7 @@ export const ProductsPage = () => {
         id: index + 1, // Use index-based ID for compatibility with existing UI
         uuid: p.id, // Store actual Supabase UUID for database operations
         sku: p.sku || '',
+        barcode: p.barcode || p.sku || '',
         name: p.name || '',
         image: (Array.isArray(p.image_urls) && p.image_urls[0]) ? p.image_urls[0] : (p.thumbnail || undefined),
         image_urls: Array.isArray(p.image_urls) ? p.image_urls : [],
@@ -140,6 +158,57 @@ export const ProductsPage = () => {
       setLoading(false);
     }
   }, [companyId, loadProducts]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    void getBarcodeLabelSettings(companyId).then(setLabelSettings);
+    void supabase
+      .from('companies')
+      .select('name')
+      .eq('id', companyId)
+      .maybeSingle()
+      .then(({ data }) => setLabelCompanyName((data?.name as string) || 'Company'));
+  }, [companyId]);
+
+  const openLabelDialog = useCallback(
+    async (items: Product[]) => {
+      if (!companyId) return;
+      let lines = linesFromProducts(
+        items.map((p) => ({
+          id: p.uuid,
+          name: p.name,
+          sku: p.sku,
+          barcode: p.barcode,
+          retailPrice: p.sellingPrice,
+        })),
+        labelSettings,
+      );
+      lines = await enrichLinesWithBarcodes(companyId, lines);
+      setLabelLines(lines);
+      setLabelDialogOpen(true);
+    },
+    [companyId, labelSettings],
+  );
+
+  const toggleSelectedUuid = (uuid: string) => {
+    setSelectedUuids((prev) => {
+      const next = new Set(prev);
+      if (next.has(uuid)) next.delete(uuid);
+      else next.add(uuid);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedUuids(new Set());
+  };
+
+  const handleBulkPrintLabels = () => {
+    const selected = products.filter((p) => selectedUuids.has(p.uuid));
+    if (selected.length === 0) return;
+    void openLabelDialog(selected);
+  };
 
   // Refresh list when a product is added/updated from GlobalDrawer (no full page reload)
   useEffect(() => {
@@ -631,13 +700,26 @@ export const ProductsPage = () => {
             <h1 className="text-2xl font-bold text-white">Products</h1>
             <p className="text-sm text-gray-400 mt-0.5">Manage your inventory across all branches</p>
           </div>
-          <Button 
-            onClick={() => openDrawer('addProduct')}
-            className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
-          >
-            <Package size={16} />
-            Add Product
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (selectMode) exitSelectMode();
+                else setSelectMode(true);
+              }}
+              className="border-gray-700 text-gray-300 h-10 gap-2"
+            >
+              {selectMode ? <CheckSquare size={16} /> : <Square size={16} />}
+              {selectMode ? 'Done' : 'Select'}
+            </Button>
+            <Button 
+              onClick={() => openDrawer('addProduct')}
+              className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
+            >
+              <Package size={16} />
+              Add Product
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -952,8 +1034,9 @@ export const ProductsPage = () => {
               {/* Table Header - full-width; order from Columns dropdown (Move Up/Down) */}
               <div className="sticky top-0 bg-gray-950/95 backdrop-blur-sm z-10 border-b border-gray-800 min-w-[1400px] w-max">
                 <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                  style={{ gridTemplateColumns: gridTemplateColumns }}
+                  style={{ gridTemplateColumns: selectMode ? `40px ${gridTemplateColumns}` : gridTemplateColumns }}
                 >
+                  {selectMode && <div />}
                   {columnOrder.map(key => {
                     if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
                     if (key === 'actions') return <div key="actions" className="text-center">Actions</div>;
@@ -1008,13 +1091,27 @@ export const ProductsPage = () => {
                   </div>
                 ) : (
                   paginatedProducts.map((product) => (
-                      <div
+                      <div 
                         key={product.id}
                         onMouseEnter={() => setHoveredRow(product.id)}
                         onMouseLeave={() => setHoveredRow(null)}
-                        className="grid gap-3 px-4 h-16 min-w-[1400px] w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0"
-                        style={{ gridTemplateColumns: gridTemplateColumns }}
+                        onClick={selectMode ? () => toggleSelectedUuid(product.uuid) : undefined}
+                        className={cn(
+                          "grid gap-3 px-4 h-16 min-w-[1400px] w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0",
+                          selectMode && "cursor-pointer",
+                          selectMode && selectedUuids.has(product.uuid) && "bg-blue-500/10"
+                        )}
+                        style={{ gridTemplateColumns: selectMode ? `40px ${gridTemplateColumns}` : gridTemplateColumns }}
                       >
+                        {selectMode && (
+                          <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedUuids.has(product.uuid)}
+                              onCheckedChange={() => toggleSelectedUuid(product.uuid)}
+                              className="border-gray-500 data-[state=checked]:bg-blue-600"
+                            />
+                          </div>
+                        )}
                         {columnOrder.map(key => {
                           if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
                           if (key === 'actions') {
@@ -1059,6 +1156,13 @@ export const ProductsPage = () => {
                                     >
                                       <Tag size={14} className="mr-2 text-yellow-400" />
                                       Adjust Price
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() => void openLabelDialog([product])}
+                                      className="hover:bg-gray-800 cursor-pointer"
+                                    >
+                                      <Barcode size={14} className="mr-2 text-purple-400" />
+                                      Print barcode labels
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator className="bg-gray-700" />
                                     <DropdownMenuItem 
@@ -1232,6 +1336,27 @@ export const ProductsPage = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {selectMode && selectedUuids.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+          <Button
+            onClick={handleBulkPrintLabels}
+            className="bg-blue-600 hover:bg-blue-500 shadow-lg gap-2 px-6 h-12"
+          >
+            <Printer size={18} />
+            Print labels ({selectedUuids.size})
+          </Button>
+        </div>
+      )}
+
+      <BarcodeLabelPrintDialog
+        open={labelDialogOpen}
+        onClose={() => setLabelDialogOpen(false)}
+        title="Print barcode labels"
+        lines={labelLines}
+        labelSettings={labelSettings}
+        companyName={labelCompanyName}
+      />
     </div>
   );
 };

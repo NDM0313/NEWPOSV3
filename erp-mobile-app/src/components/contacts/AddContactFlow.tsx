@@ -20,12 +20,24 @@ interface AddContactFlowProps {
   onBack: () => void;
   onSubmit: (data: AddContactFormData) => void;
   error?: string;
+  /** Pre-select roles (e.g. customer from sales flow). */
+  defaultRoles?: ContactRole[];
+  /** Hide role picker and keep defaultRoles only. */
+  lockRoles?: boolean;
+  title?: string;
 }
 
-export function AddContactFlow({ onBack, onSubmit, error }: AddContactFlowProps) {
+export function AddContactFlow({
+  onBack,
+  onSubmit,
+  error,
+  defaultRoles = [],
+  lockRoles = false,
+  title = 'Add New Contact',
+}: AddContactFlowProps) {
   const [formData, setFormData] = useState<AddContactFormData>({
     name: '',
-    roles: [],
+    roles: defaultRoles.length ? [...defaultRoles] : [],
     phone: '',
     email: '',
     address: '',
@@ -72,7 +84,7 @@ export function AddContactFlow({ onBack, onSubmit, error }: AddContactFlowProps)
           <div className="w-8 h-8 bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] rounded-lg flex items-center justify-center shadow-lg shadow-[#8B5CF6]/30">
             <User size={18} className="text-white" />
           </div>
-          <h1 className="text-white font-semibold text-base">Add New Contact</h1>
+          <h1 className="text-white font-semibold text-base">{title}</h1>
         </div>
       </div>
 
@@ -127,25 +139,30 @@ export function AddContactFlow({ onBack, onSubmit, error }: AddContactFlowProps)
           </div>
         </div>
 
-        <div className="space-y-3">
-          <h2 className="text-white font-semibold text-sm">Select Roles *</h2>
-          <p className="text-xs text-[#9CA3AF]">A contact can have multiple roles</p>
-          <div className="grid grid-cols-3 gap-3">
-            {(['customer', 'supplier', 'worker'] as const).map((role) => (
-              <button
-                key={role}
-                onClick={() => toggleRole(role)}
-                className={`p-4 rounded-xl border-2 transition-all ${formData.roles.includes(role) ? 'bg-[#8B5CF6]/10 border-[#8B5CF6]' : 'bg-[#1F2937] border-[#374151] hover:border-[#8B5CF6]/50'}`}
-              >
-                <div className="text-2xl mb-2">{role === 'customer' ? '👤' : role === 'supplier' ? '🏢' : '👷'}</div>
-                <div className={`text-sm font-medium ${formData.roles.includes(role) ? 'text-[#8B5CF6]' : 'text-[#9CA3AF]'}`}>
-                  {role.charAt(0).toUpperCase() + role.slice(1)}
-                </div>
-              </button>
-            ))}
+        {!lockRoles ? (
+          <div className="space-y-3">
+            <h2 className="text-white font-semibold text-sm">Select Roles *</h2>
+            <p className="text-xs text-[#9CA3AF]">A contact can have multiple roles</p>
+            <div className="grid grid-cols-3 gap-3">
+              {(['customer', 'supplier', 'worker'] as const).map((role) => (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => toggleRole(role)}
+                  className={`p-4 rounded-xl border-2 transition-all ${formData.roles.includes(role) ? 'bg-[#8B5CF6]/10 border-[#8B5CF6]' : 'bg-[#1F2937] border-[#374151] hover:border-[#8B5CF6]/50'}`}
+                >
+                  <div className="text-2xl mb-2">{role === 'customer' ? '👤' : role === 'supplier' ? '🏢' : '👷'}</div>
+                  <div className={`text-sm font-medium ${formData.roles.includes(role) ? 'text-[#8B5CF6]' : 'text-[#9CA3AF]'}`}>
+                    {role.charAt(0).toUpperCase() + role.slice(1)}
+                  </div>
+                </button>
+              ))}
+            </div>
+            {errors.roles && <p className="text-[#EF4444] text-xs mt-1">{errors.roles}</p>}
           </div>
-          {errors.roles && <p className="text-[#EF4444] text-xs mt-1">{errors.roles}</p>}
-        </div>
+        ) : (
+          <p className="text-xs text-[#9CA3AF]">Adding as customer</p>
+        )}
 
         {formData.roles.includes('worker') && (
           <div className="space-y-4 bg-[#1F2937] border border-[#F59E0B]/30 rounded-xl p-4">

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { CalendarDays } from 'lucide-react';
+import { formatLocalDateYYYYMMDD, localNowDateString } from '../../../../utils/localDate';
 
-export type DateRangePreset = 'today' | 'week' | 'month' | 'quarter' | 'year' | 'all' | 'custom';
+export type DateRangePreset = 'today' | 'last7' | 'last15' | 'week' | 'month' | 'quarter' | 'year' | 'all' | 'custom';
 
 export interface DateRangeValue {
   from: string;
@@ -16,11 +17,11 @@ export interface DateRangeBarProps {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localNowDateString();
 }
 
 function toIso(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return formatLocalDateYYYYMMDD(d);
 }
 
 function buildRange(preset: DateRangePreset): DateRangeValue {
@@ -30,6 +31,14 @@ function buildRange(preset: DateRangePreset): DateRangeValue {
   switch (preset) {
     case 'today':
       return { from: to, to, preset };
+    case 'last7': {
+      from.setDate(from.getDate() - 6);
+      return { from: toIso(from), to, preset };
+    }
+    case 'last15': {
+      from.setDate(from.getDate() - 14);
+      return { from: toIso(from), to, preset };
+    }
     case 'week': {
       const day = from.getDay();
       from.setDate(from.getDate() - day);
@@ -68,6 +77,8 @@ export function DateRangeBar({ value, onChange, hidePresets }: DateRangeBarProps
 
   const allChips: { id: DateRangePreset; label: string }[] = [
     { id: 'today', label: 'Today' },
+    { id: 'last7', label: 'Last 7 days' },
+    { id: 'last15', label: 'Last 15 days' },
     { id: 'week', label: 'This week' },
     { id: 'month', label: 'This month' },
     { id: 'quarter', label: 'Quarter' },

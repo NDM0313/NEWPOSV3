@@ -428,6 +428,7 @@ export function SalesModule({
           companyId={companyId}
           branchId={branchId}
           userId={user?.id ?? null}
+          userProfileId={user?.profileId ?? null}
           initialEditSaleId={initialEditSaleId}
           onConsumedInitialEditSaleId={onConsumedInitialEditSaleId}
         />

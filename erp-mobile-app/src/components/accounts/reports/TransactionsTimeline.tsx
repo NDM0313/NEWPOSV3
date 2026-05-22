@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   ArrowDownLeft,
   ArrowUpRight,
   Search,
-  Filter,
   Loader2,
   CalendarDays,
   RefreshCw,
@@ -15,6 +14,7 @@ import {
   type TransactionRow,
   type GetTransactionsFilters,
 } from '../../../api/transactions';
+import { getMyExpenseJournalEntries } from '../../../api/myActivity';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
 import { EditTransactionSheet } from './_shared/EditTransactionSheet';
 import { canEditTransaction } from '../../../api/transactions';
@@ -27,6 +27,12 @@ import {
   formatEventDateGroupLabel,
   getTransactionEventDateKey,
 } from '../../../utils/transactionDisplayDate';
+import {
+  DateRangeBar,
+  makeInitialRange,
+  type DateRangePreset,
+  type DateRangeValue,
+} from './_shared/DateRangeBar';
 
 interface TransactionsTimelineProps {
   onBack: () => void;
@@ -40,8 +46,73 @@ interface TransactionsTimelineProps {
   initialFilters?: Partial<GetTransactionsFilters>;
   /** Custom header title */
   title?: string;
+  /** Optional subtitle under title */
+  subtitle?: string;
   /** Optional user for share attribution. */
   userName?: string;
+  /** When set, only show rows created by this user (auth uid and/or profile id). */
+  scopeUser?: { authId: string; profileId?: string | null };
+  /** Merge expense journal entries created by scope user. */
+  includeOwnExpenses?: boolean;
+  /** Hide edit actions (worker My Activity). */
+  readOnly?: boolean;
+  /** Presets hidden from DateRangeBar (e.g. My Activity hides week/quarter/year/custom). */
+  hideDatePresets?: DateRangePreset[];
+  /** Initial date preset; defaults to month. */
+  defaultDatePreset?: DateRangePreset;
+}
+
+function isRowByUser(row: TransactionRow, scope: { authId: string; profileId?: string | null }): boolean {
+  const cb = row.createdBy;
+  if (!cb) return false;
+  if (cb === scope.authId) return true;
+  if (scope.profileId && cb === scope.profileId) return true;
+  return false;
+}
+
+function expenseInDateRange(entryDate: string, from: string, to: string): boolean {
+  const d = entryDate.slice(0, 10);
+  if (from && d < from) return false;
+  if (to && d > to) return false;
+  return true;
+}
+
+function expenseToTransactionRow(ex: {
+  id: string;
+  entryNo: string;
+  entryDate: string;
+  description: string;
+  amount: number;
+  referenceType: string;
+  createdBy?: string | null;
+  createdByName?: string | null;
+}): TransactionRow {
+  return {
+    id: `expense-${ex.id}`,
+    paymentId: ex.id,
+    createdAt: `${ex.entryDate}T12:00:00.000Z`,
+    paymentDate: ex.entryDate,
+    direction: 'paid',
+    referenceType: ex.referenceType || 'expense',
+    referenceId: ex.id,
+    referenceNumber: ex.entryNo,
+    amount: ex.amount,
+    method: 'other',
+    paymentAccountId: null,
+    paymentAccountName: null,
+    partyAccountId: null,
+    partyAccountName: null,
+    partyId: null,
+    partyName: ex.description || 'Expense',
+    branchId: null,
+    branchName: null,
+    notes: ex.description,
+    journalEntryId: ex.id,
+    entryNo: ex.entryNo,
+    createdBy: ex.createdBy ?? null,
+    createdByName: ex.createdByName ?? null,
+    attachments: null,
+  };
 }
 
 const METHOD_LABEL: Record<string, string> = {
@@ -127,19 +198,35 @@ export function TransactionsTimeline({
   onNavigateToDocumentEdit: _onNavigateToDocumentEdit,
   initialFilters,
   title = 'Transactions',
+  subtitle,
   userName,
+  scopeUser,
+  includeOwnExpenses = false,
+  readOnly = false,
+  hideDatePresets,
+  defaultDatePreset = 'month',
 }: TransactionsTimelineProps) {
   const preview = usePdfPreview(companyId);
   const [rows, setRows] = useState<TransactionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [direction, setDirection] = useState<'all' | 'received' | 'paid'>(initialFilters?.direction ?? 'all');
-  const [startDate, setStartDate] = useState<string>(initialFilters?.startDate ?? '');
-  const [endDate, setEndDate] = useState<string>(initialFilters?.endDate ?? '');
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => {
+    const initial = makeInitialRange(defaultDatePreset);
+    if (initialFilters?.startDate || initialFilters?.endDate) {
+      return {
+        from: initialFilters.startDate ?? initial.from,
+        to: initialFilters.endDate ?? initial.to,
+        preset: 'custom',
+      };
+    }
+    return initial;
+  });
+  const startDate = dateRange.from;
+  const endDate = dateRange.to;
   const [method, setMethod] = useState<string>('all');
   const [search, setSearch] = useState<string>('');
   const [debouncedSearch, setDebouncedSearch] = useState<string>('');
-  const [showFilters, setShowFilters] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<{ mode: 'payment' | 'journal'; id: string } | null>(null);
 
@@ -148,26 +235,58 @@ export function TransactionsTimeline({
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => {
+  const loadRows = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
     setError(null);
-    getPaymentTransactions({
-      companyId,
-      branchId: branchId ?? undefined,
-      direction,
-      startDate: startDate || undefined,
-      endDate: endDate || undefined,
-      method: method === 'all' ? undefined : method,
-      search: debouncedSearch || undefined,
-      limit: 300,
-    })
-      .then(({ data, error }) => {
-        if (error) setError(error);
-        setRows(data || []);
-      })
-      .finally(() => setLoading(false));
-  }, [companyId, branchId, direction, startDate, endDate, method, debouncedSearch, reportRefreshEpoch]);
+    try {
+      const payRes = await getPaymentTransactions({
+        companyId,
+        branchId: branchId ?? undefined,
+        direction,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        method: method === 'all' ? undefined : method,
+        search: debouncedSearch || undefined,
+        limit: 300,
+      });
+      if (payRes.error) setError(payRes.error);
+      let merged = payRes.data || [];
+      if (scopeUser) {
+        merged = merged.filter((r) => isRowByUser(r, scopeUser));
+      }
+      if (includeOwnExpenses && scopeUser) {
+        const expRes = await getMyExpenseJournalEntries(
+          companyId,
+          scopeUser.authId,
+          branchId ?? undefined,
+          80,
+          scopeUser.profileId,
+        );
+        const expenseRows = (expRes.data || [])
+          .filter((ex) => expenseInDateRange(ex.entryDate, startDate, endDate))
+          .map(expenseToTransactionRow);
+        merged = [...merged, ...expenseRows];
+      }
+      setRows(merged);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    companyId,
+    branchId,
+    direction,
+    startDate,
+    endDate,
+    method,
+    debouncedSearch,
+    scopeUser,
+    includeOwnExpenses,
+  ]);
+
+  useEffect(() => {
+    void loadRows();
+  }, [loadRows, reportRefreshEpoch]);
 
   const filteredRows = useMemo(() => {
     if (!debouncedSearch) return rows;
@@ -187,23 +306,7 @@ export function TransactionsTimeline({
   const groups = useMemo(() => groupByDate(filteredRows), [filteredRows]);
 
   const refresh = () => {
-    if (!companyId) return;
-    setLoading(true);
-    getPaymentTransactions({
-      companyId,
-      branchId: branchId ?? undefined,
-      direction,
-      startDate: startDate || undefined,
-      endDate: endDate || undefined,
-      method: method === 'all' ? undefined : method,
-      search: debouncedSearch || undefined,
-      limit: 300,
-    })
-      .then(({ data, error }) => {
-        if (error) setError(error);
-        setRows(data || []);
-      })
-      .finally(() => setLoading(false));
+    void loadRows();
   };
 
   return (
@@ -215,7 +318,7 @@ export function TransactionsTimeline({
           </button>
           <div className="flex-1 min-w-0">
             <h1 className="font-semibold text-white truncate">{title}</h1>
-            <p className="text-xs text-white/80">{stats.count} transactions</p>
+            <p className="text-xs text-white/80">{subtitle ?? `${stats.count} transactions`}</p>
           </div>
           <button
             onClick={refresh}
@@ -224,21 +327,16 @@ export function TransactionsTimeline({
           >
             <RefreshCw className="w-5 h-5" />
           </button>
-          <button
-            onClick={preview.openPreview}
-            disabled={preview.loading || filteredRows.length === 0}
-            className="p-2 hover:bg-white/10 rounded-lg text-white disabled:opacity-50"
-            aria-label="Share PDF"
-          >
-            <Share2 className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setShowFilters((v) => !v)}
-            className={`p-2 rounded-lg text-white ${showFilters ? 'bg-white/25' : 'hover:bg-white/10'}`}
-            aria-label="Toggle filters"
-          >
-            <Filter className="w-5 h-5" />
-          </button>
+          {!readOnly && (
+            <button
+              onClick={preview.openPreview}
+              disabled={preview.loading || filteredRows.length === 0}
+              className="p-2 hover:bg-white/10 rounded-lg text-white disabled:opacity-50"
+              aria-label="Share PDF"
+            >
+              <Share2 className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-3 gap-2">
@@ -256,6 +354,10 @@ export function TransactionsTimeline({
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:border-white/40"
           />
+        </div>
+
+        <div className="mt-3">
+          <DateRangeBar value={dateRange} onChange={setDateRange} hidePresets={hideDatePresets} />
         </div>
 
         <div className="mt-3 flex gap-1.5 overflow-x-auto">
@@ -282,29 +384,6 @@ export function TransactionsTimeline({
             </button>
           ))}
         </div>
-
-        {showFilters && (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-white/80">From</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full mt-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-white/80">To</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full mt-1 px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white"
-              />
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="p-4 space-y-5">
@@ -331,13 +410,15 @@ export function TransactionsTimeline({
                 <TransactionRowCard
                   key={t.id}
                   tx={t}
-                  onClick={() => setDetailId(t.id)}
+                  onClick={() => setDetailId(t.id.startsWith('expense-') ? t.journalEntryId ?? t.id : t.id)}
                   onEdit={() => {
+                    if (readOnly || t.id.startsWith('expense-')) return;
                     const check = canEditTransaction(t.referenceType, 'payment_row');
                     if (!check.editable) return;
                     if (check.kind === 'journal' && !t.journalEntryId) return;
                     setEditTarget({ mode: check.kind === 'journal' ? 'journal' : 'payment', id: check.kind === 'journal' ? t.journalEntryId! : t.id });
                   }}
+                  readOnly={readOnly || t.id.startsWith('expense-')}
                 />
               ))}
             </ul>
@@ -440,7 +521,17 @@ function StatCard({ label, value, color }: { label: string; value: number; color
   );
 }
 
-function TransactionRowCard({ tx, onClick, onEdit }: { tx: TransactionRow; onClick: () => void; onEdit: () => void }) {
+function TransactionRowCard({
+  tx,
+  onClick,
+  onEdit,
+  readOnly = false,
+}: {
+  tx: TransactionRow;
+  onClick: () => void;
+  onEdit: () => void;
+  readOnly?: boolean;
+}) {
   const isReceived = tx.direction === 'received';
   const amountColor = isReceived ? 'text-[#10B981]' : 'text-[#EF4444]';
   const pillBg = isReceived ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30' : 'bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/30';
@@ -481,24 +572,33 @@ function TransactionRowCard({ tx, onClick, onEdit }: { tx: TransactionRow; onCli
               <span className="text-[#6366F1]">→</span>
               <span className="truncate max-w-[45%]">{to}</span>
             </div>
-            <div className="mt-1 flex items-center justify-between text-[10px] text-[#6B7280]">
-              <span>{date}</span>
-              {tx.method && <span className="uppercase">{METHOD_LABEL[tx.method] ?? tx.method}</span>}
-              {tx.branchName && <span className="truncate max-w-[40%]">{tx.branchName}</span>}
+            <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-[#6B7280]">
+              <span className="truncate">
+                {date}
+                {tx.createdByName ? (
+                  <span className="text-[#9CA3AF]"> · Created by {tx.createdByName}</span>
+                ) : null}
+              </span>
+              <span className="shrink-0 flex items-center gap-1.5">
+                {tx.method && <span className="uppercase">{METHOD_LABEL[tx.method] ?? tx.method}</span>}
+                {tx.branchName && <span className="truncate max-w-[80px]">{tx.branchName}</span>}
+              </span>
             </div>
           </div>
         </div>
         </button>
-        <div className="mt-2 flex justify-end">
-          <button
-            type="button"
-            disabled={!editability.editable}
-            onClick={onEdit}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#374151] text-white disabled:opacity-40"
-          >
-            Edit
-          </button>
-        </div>
+        {!readOnly && (
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              disabled={!editability.editable}
+              onClick={onEdit}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#374151] text-white disabled:opacity-40"
+            >
+              Edit
+            </button>
+          </div>
+        )}
       </div>
     </li>
   );

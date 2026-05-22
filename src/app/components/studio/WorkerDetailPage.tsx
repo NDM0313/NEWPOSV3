@@ -27,6 +27,7 @@ import { useSupabase } from '../../context/SupabaseContext';
 import { cn } from '../ui/utils';
 import { studioService } from '../../services/studioService';
 import { studioProductionService } from '../../services/studioProductionService';
+import { StudioStageTimeline } from './StudioStageTimeline';
 import { studioCostsService, type WorkerLedgerEntry as CostWorkerLedgerEntry } from '../../services/studioCostsService';
 import { WorkerPaymentHistoryModal } from './WorkerPaymentHistoryModal';
 
@@ -180,6 +181,9 @@ export const WorkerDetailPage: React.FC = () => {
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [paymentHistoryJob, setPaymentHistoryJob] = useState<WorkerJob | null>(null);
+  const [jobDetailStageId, setJobDetailStageId] = useState<string | null>(null);
+  const [jobDetailLoading, setJobDetailLoading] = useState(false);
+  const [jobDetail, setJobDetail] = useState<Awaited<ReturnType<typeof studioProductionService.getStageJobDetail>> | null>(null);
 
   const loadDetail = useCallback(async () => {
     if (!companyId || !selectedWorkerId) {
@@ -306,12 +310,15 @@ export const WorkerDetailPage: React.FC = () => {
     // TODO: pass worker filter when accounting supports it
   };
 
-  const handleViewJob = (job: WorkerJob) => {
-    if (job.saleId && setSelectedStudioSaleId) {
-      setSelectedStudioSaleId(job.saleId);
-      setCurrentView('studio-sale-detail-new');
-    } else {
-      setCurrentView('studio-dashboard-new');
+  const handleViewJob = async (job: WorkerJob) => {
+    setJobDetailStageId(job.id);
+    setJobDetailLoading(true);
+    setJobDetail(null);
+    try {
+      const detail = await studioProductionService.getStageJobDetail(job.id);
+      setJobDetail(detail);
+    } finally {
+      setJobDetailLoading(false);
     }
   };
 
@@ -765,6 +772,55 @@ export const WorkerDetailPage: React.FC = () => {
           stageId={paymentHistoryJob.id}
           entries={ledgerEntries}
         />
+      )}
+
+      {jobDetailStageId && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-lg w-full max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-lg font-bold text-white">Job detail</h3>
+              <Button variant="ghost" size="sm" onClick={() => { setJobDetailStageId(null); setJobDetail(null); }}>Close</Button>
+            </div>
+            {jobDetailLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="animate-spin text-blue-500" /></div>
+            ) : jobDetail ? (
+              <>
+                <p className="text-sm text-gray-400 mb-3">
+                  {jobDetail.customer_name ?? '—'} · {jobDetail.production_no ?? jobDetail.invoice_no ?? '—'}
+                </p>
+                <StudioStageTimeline
+                  stageName={jobDetail.stage_type}
+                  stageType={jobDetail.stage_type}
+                  notes={jobDetail.notes}
+                  assignedAt={jobDetail.assigned_at}
+                  sentDate={jobDetail.sent_date}
+                  receivedDate={jobDetail.received_date}
+                  completedDate={jobDetail.completed_at}
+                  expectedCost={jobDetail.expected_cost ?? 0}
+                  workerCost={jobDetail.cost}
+                  customerCharge={jobDetail.customer_charge ?? 0}
+                  ledgerPaid={jobDetail.ledger_paid}
+                  ledgerDue={jobDetail.ledger_due}
+                />
+                {jobDetail.sale_id && setSelectedStudioSaleId ? (
+                  <Button
+                    variant="outline"
+                    className="w-full mt-4 border-gray-700"
+                    onClick={() => {
+                      setSelectedStudioSaleId(jobDetail.sale_id!);
+                      setJobDetailStageId(null);
+                      setCurrentView('studio-sale-detail-new');
+                    }}
+                  >
+                    Open studio order
+                  </Button>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-gray-500 text-sm">Could not load job detail.</p>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,5 +1,27 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { ArrowLeft, ShoppingBag, Plus, Search, Package, Calendar, Loader2, MapPin, Paperclip, MoreVertical, History, Share2, Printer, Download, SquarePen, RotateCcw, Ban, AlertTriangle, X, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  ShoppingBag,
+  Plus,
+  Search,
+  Package,
+  Calendar,
+  Loader2,
+  MapPin,
+  Paperclip,
+  MoreVertical,
+  History,
+  Share2,
+  Printer,
+  Download,
+  SquarePen,
+  RotateCcw,
+  Ban,
+  AlertTriangle,
+  X,
+  Trash2,
+  Barcode,
+} from 'lucide-react';
 import type { User } from '../../types';
 import * as purchasesApi from '../../api/purchases';
 import {
@@ -25,7 +47,21 @@ import { MobileActionBar } from '../shared/MobileActionBar';
 import { PdfPreviewModal } from '../shared/PdfPreviewModal';
 import { usePdfPreview } from '../shared/usePdfPreview';
 import { InvoicePreviewPdf, type InvoicePreviewItem } from '../shared/InvoicePreviewPdf';
-import { CustomSearchableSheet } from '../common';
+import { CustomSearchableSheet, PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
+import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
+import { useMainScrollRef } from '../../contexts/MainScrollContext';
+import {
+  getPendingPurchaseRows,
+  mergePurchasesWithPending,
+} from '../../lib/offlinePendingList';
+import { BarcodeLabelPrintSheet } from '../products/BarcodeLabelPrintSheet';
+import * as settingsApi from '../../api/settings';
+import {
+  aggregatePurchaseItemsForLabels,
+  enrichLinesWithBarcodes,
+} from '../../lib/barcodeLabelLines';
+import { getCompanyName } from '../../api/reports';
+import type { LabelPrintLine } from '../../services/barcodeLabelPrint';
 import { AttachmentsSection } from '../shared/AttachmentsSection';
 import { normalizeAttachments } from '../../lib/normalizeAttachments';
 
@@ -102,6 +138,20 @@ export function PurchaseModule({
   const [editLinesLoading, setEditLinesLoading] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [returnNotice, setReturnNotice] = useState<purchasesApi.PurchaseListItem | null>(null);
+  const [labelSheetOpen, setLabelSheetOpen] = useState(false);
+  const [labelSheetLines, setLabelSheetLines] = useState<LabelPrintLine[]>([]);
+  const [labelSheetLoading, setLabelSheetLoading] = useState(false);
+  const [postCreateLabelPurchaseId, setPostCreateLabelPurchaseId] = useState<string | null>(null);
+  const [printerSettings, setPrinterSettings] = useState<settingsApi.MobilePrinterSettings>({
+    mode: 'a4',
+    paperSize: '80mm',
+    autoPrintReceipt: false,
+  });
+  const [labelSettings, setLabelSettings] = useState<settingsApi.MobileBarcodeLabelSettings>(
+    settingsApi.DEFAULT_BARCODE_LABEL,
+  );
+  const [labelCompanyName, setLabelCompanyName] = useState<string>('');
+  const [labelBranchName, setLabelBranchName] = useState<string>('');
 
   const dispatchPurchaseEditInvalidation = useCallback(() => {
     if (!companyId) return;
@@ -120,6 +170,95 @@ export function PurchaseModule({
   }, [branchId, companyId]);
 
   const effectiveBranchId = branchId && branchId !== 'all' ? branchId : undefined;
+
+  useEffect(() => {
+    if (!companyId) return;
+    settingsApi.getEffectivePrinterSettings(companyId).then(({ data }) => setPrinterSettings(data));
+    settingsApi.getMobileBarcodeLabelSettings(companyId).then(({ data }) => setLabelSettings(data));
+    void getCompanyName(companyId).then(setLabelCompanyName);
+  }, [companyId]);
+
+  useEffect(() => {
+    if (!companyId || !branchId || branchId === 'all') {
+      setLabelBranchName('');
+      return;
+    }
+    void branchesApi.getBranches(companyId).then(({ data }) => {
+      const name = data?.find((b) => b.id === branchId)?.name;
+      setLabelBranchName(name ?? '');
+    });
+  }, [companyId, branchId]);
+
+  const canPrintPurchaseLabels = useCallback(
+    (status: string, itemCount: number) => {
+      if (itemCount <= 0) return false;
+      if (status === 'cancelled' || status === 'pending_sync') return false;
+      return status === 'received' || status === 'final';
+    },
+    [],
+  );
+
+  const openPurchaseLabels = useCallback(
+    async (purchaseId: string) => {
+      if (!companyId) return;
+      setMenuOrder(null);
+      setLabelSheetLoading(true);
+      const { data, error } = await purchasesApi.getPurchaseById(companyId, purchaseId);
+      if (error || !data?.items.length) {
+        setLabelSheetLoading(false);
+        window.alert(error || 'No items on this purchase to print.');
+        return;
+      }
+      let lines = aggregatePurchaseItemsForLabels(data.items, labelSettings);
+      lines = await enrichLinesWithBarcodes(companyId, lines);
+      setLabelSheetLines(lines);
+      setLabelSheetOpen(true);
+      setLabelSheetLoading(false);
+      setPostCreateLabelPurchaseId(null);
+    },
+    [companyId, labelSettings],
+  );
+
+  const labelPrintOverlay = (
+    <>
+      <BarcodeLabelPrintSheet
+        open={labelSheetOpen}
+        onClose={() => setLabelSheetOpen(false)}
+        title={
+          labelSheetLines.length <= 1
+            ? 'Print barcode labels'
+            : `Print barcode labels (${labelSheetLines.length} products)`
+        }
+        lines={labelSheetLines}
+        labelSettings={labelSettings}
+        printerSettings={printerSettings}
+        companyName={labelCompanyName}
+        branchName={labelBranchName}
+      />
+      {postCreateLabelPurchaseId && !labelSheetOpen && view === 'list' && (
+        <div className="fixed bottom-24 left-4 right-4 z-[85] rounded-xl border border-[#8B5CF6]/40 bg-[#1F2937] p-4 shadow-xl">
+          <p className="text-sm text-white font-medium mb-2">Print labels for new stock?</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={labelSheetLoading}
+              onClick={() => void openPurchaseLabels(postCreateLabelPurchaseId)}
+              className="flex-1 py-2.5 rounded-lg bg-[#8B5CF6] text-white text-sm font-medium disabled:opacity-50"
+            >
+              Print labels
+            </button>
+            <button
+              type="button"
+              onClick={() => setPostCreateLabelPurchaseId(null)}
+              className="px-4 py-2.5 rounded-lg bg-[#374151] text-[#9CA3AF] text-sm"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   const loadPaymentHistory = useCallback(async (purchaseId: string) => {
     if (!purchaseId) return;
@@ -142,18 +281,39 @@ export function PurchaseModule({
   const canAddDirect = !!companyId && !!effectiveBranchId;
   const canAddWithPicker = !!companyId && branchId === 'all' && !branchesLoading && branches.length > 0;
 
-  const loadOrders = useCallback(() => {
-    if (!companyId) {
-      setOrders([]);
-      setLoading(false);
-      return;
+  const { online, pendingCount: syncPendingCount } = useOfflineListMeta();
+  const mainScrollRef = useMainScrollRef();
+
+  const loadOrders = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!companyId) {
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
+      if (!opts?.silent) setLoading(true);
+      const [{ data, error }, pending] = await Promise.all([
+        purchasesApi.getPurchases(companyId, effectiveBranchId ?? null),
+        getPendingPurchaseRows(companyId, effectiveBranchId ?? null),
+      ]);
+      if (!opts?.silent) setLoading(false);
+      const merged = mergePurchasesWithPending(error ? [] : data, pending);
+      setOrders(merged);
+    },
+    [companyId, effectiveBranchId],
+  );
+
+  const handleSwipeBack = useCallback(() => {
+    if (view === 'create') {
+      setView('list');
+      setCreateBranchId(null);
+    } else if (view === 'details') {
+      setView('list');
+      setSelectedOrder(null);
+    } else {
+      onBack();
     }
-    setLoading(true);
-    purchasesApi.getPurchases(companyId, effectiveBranchId ?? null).then(({ data, error }) => {
-      setLoading(false);
-      setOrders(error ? [] : data);
-    });
-  }, [companyId, effectiveBranchId]);
+  }, [view, onBack]);
 
   useEffect(() => {
     if (!companyId) {
@@ -193,6 +353,12 @@ export function PurchaseModule({
       window.removeEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
     };
   }, [companyId, effectiveBranchId, loadOrders]);
+
+  useEffect(() => {
+    const onSync = () => void loadOrders({ silent: true });
+    window.addEventListener('erp-mobile:autosync-complete', onSync);
+    return () => window.removeEventListener('erp-mobile:autosync-complete', onSync);
+  }, [loadOrders]);
 
   useEffect(() => {
     if (companyId && branchId === 'all') {
@@ -754,6 +920,18 @@ export function PurchaseModule({
         <button onClick={() => handlePrint(order)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
           <Download className="w-5 h-5 text-[#3B82F6]" /> Download PDF
         </button>
+        {canPrintPurchaseLabels(order.status, order.itemCount) && (
+          <button
+            onClick={() => {
+              setMenuOrder(null);
+              void openPurchaseLabels(order.id);
+            }}
+            disabled={labelSheetLoading}
+            className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151] disabled:opacity-50"
+          >
+            <Barcode className="w-5 h-5 text-[#8B5CF6]" /> Print barcode labels
+          </button>
+        )}
         <div className="border-t border-[#374151]" />
         <button onClick={() => handleEdit(order)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
           <SquarePen className="w-5 h-5 text-[#3B82F6]" /> Edit Purchase
@@ -770,19 +948,23 @@ export function PurchaseModule({
 
   if (view === 'create' && companyId && createBranchId) {
     return (
+      <SwipeBackShell onBack={handleSwipeBack}>
       <CreatePurchaseFlow
         companyId={companyId}
         branchId={createBranchId}
         userId={user.id}
         onBack={() => { setView('list'); setCreateBranchId(null); }}
-        onDone={() => {
+        onDone={(createdPurchaseId) => {
           setView('list');
           setCreateBranchId(null);
           purchasesApi.getPurchases(companyId, effectiveBranchId ?? null).then(({ data }) => {
             if (data?.length) setOrders(data);
           });
+          if (createdPurchaseId) setPostCreateLabelPurchaseId(createdPurchaseId);
         }}
       />
+      {labelPrintOverlay}
+      </SwipeBackShell>
     );
   }
 
@@ -790,6 +972,7 @@ export function PurchaseModule({
     const showMarkAsFinal = ['ordered', 'draft', 'sent', 'confirmed'].includes(selectedOrder.status);
     const purchaseDocAttachments = normalizeAttachments(selectedOrder.attachments ?? null);
     return (
+      <SwipeBackShell onBack={handleSwipeBack}>
       <div className="min-h-screen bg-[#111827] flex flex-col">
         <div className="bg-[#1F2937] border-b border-[#374151] p-4 sticky top-0 z-10 shrink-0">
           <div className="flex items-center gap-3">
@@ -926,6 +1109,20 @@ export function PurchaseModule({
           )}
         </div>
 
+        {canPrintPurchaseLabels(selectedOrder.status, selectedOrder.items.length) && (
+          <div className="px-4 pb-2">
+            <button
+              type="button"
+              disabled={labelSheetLoading}
+              onClick={() => void openPurchaseLabels(selectedOrder.id)}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-[#8B5CF6]/50 bg-[#8B5CF6]/10 text-[#A78BFA] font-medium text-sm disabled:opacity-50"
+            >
+              <Barcode className="w-5 h-5" />
+              Print barcode labels ({selectedOrder.items.length} items)
+            </button>
+          </div>
+        )}
+
         {showMarkAsFinal && (
           <MobileActionBar
             label="Total"
@@ -953,6 +1150,8 @@ export function PurchaseModule({
           />
         )}
       </div>
+      {labelPrintOverlay}
+      </SwipeBackShell>
     );
   }
 
@@ -965,7 +1164,9 @@ export function PurchaseModule({
   }
 
   return (
+    <SwipeBackShell onBack={handleSwipeBack}>
     <div className="min-h-screen pb-24 bg-[#111827]">
+      <OfflineBanner online={online} pendingCount={syncPendingCount} />
       <div className="bg-gradient-to-br from-[#10B981] to-[#059669] p-4 sticky top-0 z-10">
         <div className="flex items-center gap-3 mb-4">
           <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
@@ -997,6 +1198,12 @@ export function PurchaseModule({
         </div>
       </div>
 
+      <PullToRefresh
+        onRefresh={() => loadOrders({ silent: true })}
+        disabled={!companyId}
+        scrollElementRef={mainScrollRef}
+        spinnerAccentClass="border-t-[#10B981]"
+      >
       {loading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="w-8 h-8 text-[#10B981] animate-spin" />
@@ -1127,6 +1334,7 @@ export function PurchaseModule({
           </div>
         </>
       )}
+      </PullToRefresh>
 
       {addPaymentOrder && companyId && (addPaymentOrder.branchId || effectiveBranchId) && (
         <MobilePaySupplier
@@ -1480,6 +1688,8 @@ export function PurchaseModule({
           </div>
         </div>
       )}
+      {labelPrintOverlay}
     </div>
+    </SwipeBackShell>
   );
 }

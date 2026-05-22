@@ -167,6 +167,12 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
                     <dd className="text-white text-right">{detail.partyPhone}</dd>
                   </>
                 )}
+                {detail.createdByName && (
+                  <>
+                    <dt className="text-[#9CA3AF]">Created by</dt>
+                    <dd className="text-white text-right">{detail.createdByName}</dd>
+                  </>
+                )}
               </dl>
             </section>
 

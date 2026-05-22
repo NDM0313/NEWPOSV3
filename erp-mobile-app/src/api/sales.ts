@@ -1,5 +1,9 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { listCacheKeys } from '../lib/listCache';
+import { readThroughCache } from '../lib/offlineData';
 import { getNextDocumentNumber } from './documentNumber';
+import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
+import { localNowDateString } from '../utils/localDate';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -173,7 +177,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
   const paid = isStudio ? 0 : paidNonStudio;
   const due = isStudio ? totalNum : dueNonStudio;
 
-  const defaultDay = new Date().toISOString().slice(0, 10);
+  const defaultDay = localNowDateString();
   const invoiceFromInput =
     invoiceDate != null && String(invoiceDate).trim() !== '' ? String(invoiceDate).trim().slice(0, 10) : null;
 
@@ -400,7 +404,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
       payment_date:
         paymentDate != null && String(paymentDate).trim() !== ''
           ? String(paymentDate).trim().slice(0, 10)
-          : new Date().toISOString().slice(0, 10),
+          : localNowDateString(),
       payment_account_id: paymentAccountId || null,
       created_by: userId,
     });
@@ -409,7 +413,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
 
   // One unified studio production per sale (single pipeline; sale total is one bill).
   if (isStudio && items.length > 0) {
-    const productionDate = new Date().toISOString().slice(0, 10);
+    const productionDate = localNowDateString();
     const first = items[0];
     const qtySum = items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
     const quantity = qtySum > 0 ? qtySum : Number(first.quantity) || 1;
@@ -463,6 +467,23 @@ export async function getAllSales(
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   if (!companyId) return { data: [], error: 'Company ID required.' };
 
+  const branchKey =
+    branchId && branchId !== 'all' && branchId !== 'default' ? branchId : 'all';
+  const cacheKey = listCacheKeys.sales(companyId, branchKey, 'all');
+
+  const onlineFetch = async (): Promise<{
+    data: Array<Record<string, unknown>>;
+    error: string | null;
+  }> => fetchAllSalesOnline(companyId, branchId);
+
+  const cached = await readThroughCache(cacheKey, onlineFetch, []);
+  return { data: cached.data, error: cached.error };
+}
+
+async function fetchAllSalesOnline(
+  companyId: string,
+  branchId?: string | null,
+): Promise<{ data: Array<Record<string, unknown>>; error: string | null }> {
   let query = supabase
     .from('sales')
     .select(`
@@ -495,7 +516,8 @@ export async function getAllSales(
       const retry = branchId && branchId !== 'all' && branchId !== 'default' ? retryQuery.eq('branch_id', branchId) : retryQuery;
       const { data: retryData, error: retryError } = await retry;
       if (retryError) return { data: [], error: retryError.message };
-      const retryList = retryData || [];
+      const retryList = (retryData || []) as Array<Record<string, unknown>>;
+      await enrichRowsWithCreatorNames(retryList);
       const withStudioRetry = await enrichSalesWithStudioChargesBatch(retryList);
       const withPaymentsRetry = await enrichSalesWithPayments(companyId, withStudioRetry);
       const enrichedRetry = await enrichSalesWithShipping(withPaymentsRetry);
@@ -504,7 +526,8 @@ export async function getAllSales(
     return { data: [], error: error.message };
   }
 
-  const list = data || [];
+  const list = (data || []) as Array<Record<string, unknown>>;
+  await enrichRowsWithCreatorNames(list);
   const withStudio = await enrichSalesWithStudioChargesBatch(list);
   const withPayments = await enrichSalesWithPayments(companyId, withStudio);
   const enriched = await enrichSalesWithShipping(withPayments);
@@ -557,6 +580,7 @@ export async function getSaleEnrichedById(
 
   if (!row) return { data: null, error: 'Sale not found.' };
 
+  await enrichRowsWithCreatorNames([row]);
   const withStudio = await enrichSalesWithStudioChargesBatch([row]);
   const withPayments = await enrichSalesWithPayments(companyId, withStudio);
   const enriched = await enrichSalesWithShipping(withPayments);
@@ -819,7 +843,7 @@ export async function recordSalePayment(params: {
   const composedNotes = bankTraceId
     ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${bankTraceId}`
     : baseNotes;
-  const dateVal = paymentDate || new Date().toISOString().split('T')[0];
+  const dateVal = paymentDate || localNowDateString();
   const { data, error } = await supabase.rpc('record_payment_with_accounting', {
     p_company_id: companyId,
     p_branch_id: branchId,
@@ -878,7 +902,7 @@ export async function recordCustomerPayment(params: {
   } catch (e) {
     return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
   }
-  const dateVal = paymentDate || new Date().toISOString().split('T')[0];
+  const dateVal = paymentDate || localNowDateString();
   const refTrim = referenceNumber != null ? String(referenceNumber).trim() : '';
   const baseNotes = notes?.trim() ?? '';
   const composedNotes = refTrim
@@ -1214,13 +1238,13 @@ export async function createAndFinalizeSaleReturn(payload: CreateSaleReturnPaylo
     if (numErr || !numData) throw new Error(numErr?.message || 'Numbering failed');
     returnNo = String(numData);
   } catch {
-    returnNo = `SRET-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(Math.random() * 9000) + 1000}`;
+    returnNo = `SRET-${localNowDateString().replace(/-/g, '')}-${Math.floor(Math.random() * 9000) + 1000}`;
   }
 
   const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0);
   const discountAmount = Math.max(0, Math.min(Number(payload.discountAmount ?? 0) || 0, subtotal));
   const total = Math.max(0, subtotal - discountAmount);
-  const normalizedDate = new Date().toISOString().slice(0, 10);
+  const normalizedDate = localNowDateString();
 
   // Client-side cap guard: return total must not exceed remaining returnable amount on original sale.
   try {

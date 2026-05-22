@@ -45,6 +45,12 @@ export async function getRolePermissionsByEngineRole(
   return (data ?? []) as RolePermissionRow[];
 }
 
+/** Admin/owner may pick any company branch (and "All Branches"). Others: user_branches only. */
+export function canPickAllCompanyBranches(role: string | undefined): boolean {
+  const r = (role || '').toLowerCase();
+  return r === 'admin' || r === 'owner';
+}
+
 /** Fetch branch IDs the user has access to (user_branches). Returns empty if admin/owner (all branches). */
 export async function getUserBranchIds(userId: string): Promise<string[]> {
   if (!isSupabaseConfigured) return [];
@@ -93,6 +99,44 @@ export function canViewModule(perms: RolePermissionRow[], module: string): boole
   };
   const actions = viewActions[module] ?? VIEW_ACTIONS;
   return actions.some((a) => perms.some((p) => p.module === module && p.action === a && p.allowed));
+}
+
+/** Full GL dashboard, cash/bank KPIs, manual entries, chart, daybook (owner/admin or ledger.view_full_accounting). */
+export function canUseFullAccounting(
+  perms: RolePermissionRow[],
+  isAdminOrOwner: boolean
+): boolean {
+  if (isAdminOrOwner) return true;
+  return hasModuleAction(perms, 'ledger', 'view_full_accounting');
+}
+
+/** Customer ledger / receivables aging. */
+export function canViewCustomerLedger(
+  perms: RolePermissionRow[],
+  isAdminOrOwner: boolean
+): boolean {
+  if (canUseFullAccounting(perms, isAdminOrOwner)) return true;
+  return hasModuleAction(perms, 'ledger', 'view_customer');
+}
+
+/** Supplier ledger / payables aging. */
+export function canViewSupplierLedger(
+  perms: RolePermissionRow[],
+  isAdminOrOwner: boolean
+): boolean {
+  if (canUseFullAccounting(perms, isAdminOrOwner)) return true;
+  return hasModuleAction(perms, 'ledger', 'view_supplier');
+}
+
+/** Studio list: restrict to sales the user created (view_own without company/branch scope). */
+export function shouldScopeStudioToOwnOnly(
+  perms: RolePermissionRow[],
+  isAdminOrOwner: boolean
+): boolean {
+  if (isAdminOrOwner) return false;
+  if (hasModuleAction(perms, 'studio', 'view_company')) return false;
+  if (hasModuleAction(perms, 'studio', 'view_branch')) return false;
+  return hasModuleAction(perms, 'studio', 'view_own');
 }
 
 /** Set one role permission (admin/owner only by RLS). */

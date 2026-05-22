@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { MapPin, ChevronRight, Loader2, LayoutGrid, PlusCircle, AlertCircle } from 'lucide-react';
+import { MapPin, ChevronRight, Loader2, LayoutGrid, PlusCircle } from 'lucide-react';
 import type { User, Branch } from '../types';
 import { getBranches, createBranch } from '../api/branches';
-import { getUserBranchIds } from '../api/permissions';
+import { canPickAllCompanyBranches, getUserBranchIds } from '../api/permissions';
+import { resolveEffectiveBranchIds } from '../lib/branchResolution';
 
 interface BranchSelectionProps {
   user: User;
@@ -21,7 +22,8 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
   const [error, setError] = useState<string | null>(null);
   const [addingBranch, setAddingBranch] = useState(false);
   const [addBranchError, setAddBranchError] = useState<string | null>(null);
-  const isAdmin = user.role === 'admin';
+  const unrestricted = canPickAllCompanyBranches(user.role);
+  const effectiveBranchIds = resolveEffectiveBranchIds(branches, userBranchIds, unrestricted);
 
   const refreshBranches = () => {
     if (!companyId) return;
@@ -80,13 +82,17 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
       return locked ? [locked] : branches;
     }
     let base = branches;
-    if (!isAdmin && userBranchIds.length > 0) {
-      base = branches.filter((b) => userBranchIds.includes(b.id));
+    if (!unrestricted) {
+      base =
+        effectiveBranchIds.length > 0
+          ? branches.filter((b) => effectiveBranchIds.includes(b.id))
+          : [];
     }
-    return isAdmin && base.length > 0 ? [ALL_BRANCHES_OPTION, ...base] : base;
+    return unrestricted && base.length > 0 ? [ALL_BRANCHES_OPTION, ...base] : base;
   })();
 
-  const noBranchAssigned = !isAdmin && userBranchIds.length === 0 && branches.length > 1;
+  const noCompanyBranches =
+    !unrestricted && !loading && !error && branches.length === 0;
 
   // Auto-select when user's branch is locked and only that branch is in list
   useEffect(() => {
@@ -97,11 +103,11 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
 
   // Single branch (and not locked): auto-select silently, no UI
   useEffect(() => {
-    if (loading || error || user.branchLocked || noBranchAssigned) return;
-    if (list.length === 1) {
+    if (loading || error || user.branchLocked || noCompanyBranches) return;
+    if (list.length === 1 && list[0].id !== 'all') {
       onBranchSelect(list[0]);
     }
-  }, [loading, error, user.branchLocked, noBranchAssigned, list, onBranchSelect]);
+  }, [loading, error, user.branchLocked, noCompanyBranches, list, onBranchSelect]);
 
   return (
     <div className="min-h-screen p-4">
@@ -120,13 +126,7 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
           {error && (
             <p className="text-sm text-amber-400 text-center mb-4">Could not load branches: {error}</p>
           )}
-          {!error && noBranchAssigned && (
-            <div className="max-w-md mx-auto p-4 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-xl flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-[#EF4444] flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-[#EF4444]">No branch assigned. Contact admin to assign you a branch.</p>
-            </div>
-          )}
-          {!error && !noBranchAssigned && branches.length === 0 && (
+          {!error && !noCompanyBranches && unrestricted && branches.length === 0 && (
             <div className="max-w-md mx-auto">
               <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-6 text-center">
                 <p className="text-white font-medium mb-1">No branch set up</p>
@@ -155,7 +155,7 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
               </div>
             </div>
           )}
-          {list.length > 0 && (
+          {!noCompanyBranches && list.length > 0 && (
           <div className="space-y-3 max-w-md mx-auto">
             {list.map((branch) => (
               <button

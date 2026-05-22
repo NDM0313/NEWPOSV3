@@ -1,4 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { listCacheKeys } from '../lib/listCache';
+import { readThroughCache } from '../lib/offlineData';
+import { localNowDateString } from '../utils/localDate';
 
 /** DB / RPC expect cash | bank | card | other — wallet accounts must map to other. */
 function normalizeExpensePaymentMethodForDb(raw: string | undefined): string {
@@ -56,7 +59,24 @@ export interface ExpenseCategoryTreeItem extends ExpenseCategoryRow {
 
 export async function getExpenses(companyId: string, branchId?: string | null) {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
-  let q = supabase.from('expenses').select('id, expense_no, expense_date, category, description, amount, payment_method, status').eq('company_id', companyId).order('expense_date', { ascending: false }).limit(50);
+  const branchKey =
+    branchId && branchId !== 'all' && branchId !== 'default' ? branchId : 'all';
+  const cacheKey = listCacheKeys.expenses(companyId, branchKey);
+  const cached = await readThroughCache(
+    cacheKey,
+    async () => fetchExpensesOnline(companyId, branchId),
+    [],
+  );
+  return { data: cached.data, error: cached.error };
+}
+
+async function fetchExpensesOnline(companyId: string, branchId?: string | null) {
+  let q = supabase
+    .from('expenses')
+    .select('id, expense_no, expense_date, category, description, amount, payment_method, status')
+    .eq('company_id', companyId)
+    .order('expense_date', { ascending: false })
+    .limit(50);
   if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
@@ -126,7 +146,7 @@ export async function createExpense(input: {
   const paymentMethod = normalizeExpensePaymentMethodForDb(input.paymentMethod);
 
   const expensePayload: Record<string, unknown> = {
-    expense_date: input.expenseDate || new Date().toISOString().slice(0, 10),
+    expense_date: input.expenseDate || localNowDateString(),
     category: input.category,
     description: input.description,
     amount: input.amount,

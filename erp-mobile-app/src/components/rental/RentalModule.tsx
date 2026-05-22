@@ -6,6 +6,7 @@ import type { RentalListItem } from '../../api/rentals';
 import { CreateRentalFlow } from './CreateRentalFlow';
 import { ViewRentalDetails } from './ViewRentalDetails';
 import { formatDate } from '../accounts/reports/_shared/format';
+import { localNowDateString } from '../../utils/localDate';
 
 type RentalTab = 'list' | 'pickupToday' | 'returnToday' | 'collections';
 
@@ -66,7 +67,7 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
     }
   }, [selectedId, showCreate]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localNowDateString();
 
   const filtered = useMemo(() => {
     if (!search.trim()) return list;

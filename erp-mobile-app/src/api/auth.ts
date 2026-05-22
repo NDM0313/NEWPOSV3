@@ -216,7 +216,10 @@ export async function signIn(email: string, password: string): Promise<{ data: A
   if (signInError) {
     let msg = signInError.message;
     if (msg.includes('Invalid login credentials')) msg = 'Invalid email or password.';
-    else if (msg.includes('Email not confirmed')) msg = 'Please confirm your email first.';
+    else if (/invalid authentication credentials/i.test(msg)) {
+      msg =
+        'API key mismatch: copy VITE_SUPABASE_ANON_KEY from .env.production (VPS ANON_KEY) into erp-mobile-app/.env, restart npm run dev.';
+    } else if (msg.includes('Email not confirmed')) msg = 'Please confirm your email first.';
     else if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(msg)) {
       msg = 'Cannot reach the server. Check network or contact admin.';
     }

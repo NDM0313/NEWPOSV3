@@ -7,6 +7,9 @@ import type { StudioInvoiceProductRow } from '../../api/studioInvoiceLine';
 import { getCategories } from '../../api/productCategories';
 import { useLoading } from '../../contexts/LoadingContext';
 import { StudioDashboard, type StudioOrder, type StudioStage } from './StudioDashboard';
+import { StudioWorkersList } from './StudioWorkersList';
+import { StudioWorkerDetail } from './StudioWorkerDetail';
+import { StudioWorkerJobDetail } from './StudioWorkerJobDetail';
 import { StudioOrderDetail } from './StudioOrderDetail';
 import { StudioStageAssignment } from './StudioStageAssignment';
 import { StudioStageSelection } from './StudioStageSelection';
@@ -17,7 +20,15 @@ import {
   readStudioProfitPctFromStorage,
   writeStudioProfitPctToStorage,
 } from './studioPricing';
-import { NumericInput, CustomSelect } from '../common';
+import { isBillGenerated, allStagesCompleted } from '../../lib/studioOrderDisplay';
+import { enrichRowsWithCreatorNames } from '../../lib/resolveCreatorName';
+import { toLocalDateString } from '../../utils/localDate';
+import { parseExtraStageDisplayName, extraStageUserNotes } from '../../lib/studioExtraStageNotes';
+import { NumericInput, CustomSelect, PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
+import { loadStudioSnapshot } from '../../lib/studioListCache';
+import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
+import { useMainScrollRef } from '../../contexts/MainScrollContext';
+import { usePermissions } from '../../context/PermissionContext';
 
 interface StudioModuleProps {
   onBack: () => void;
@@ -33,6 +44,8 @@ interface StudioModuleProps {
 
 type View =
   | 'dashboard'
+  | 'worker-detail'
+  | 'worker-job-detail'
   | 'order-detail'
   | 'select-stages'
   | 'add-stage'
@@ -40,6 +53,8 @@ type View =
   | 'update-status'
   | 'invoice'
   | 'shipment';
+
+type StudioMainTab = 'orders' | 'workers';
 
 const shortOrderStatusLabel: Record<StudioOrder['status'], string> = {
   pending: 'Pending',
@@ -58,6 +73,21 @@ function sortProductionsStable(prods: studioApi.StudioProductionRow[]): studioAp
   });
 }
 
+function resolveSaleCreatorId(sale: unknown): string | undefined {
+  if (!sale || typeof sale !== 'object') return undefined;
+  const cb = (sale as { created_by?: unknown }).created_by;
+  return typeof cb === 'string' && cb.trim() !== '' ? cb : undefined;
+}
+
+function filterStudioOrdersForScope(
+  orders: StudioOrder[],
+  scopeOwnOnly: boolean,
+  userId: string,
+): StudioOrder[] {
+  if (!scopeOwnOnly) return orders;
+  return orders.filter((o) => o.createdByUserId === userId);
+}
+
 function mergeAggregatedStatus(parts: StudioOrder['status'][]): StudioOrder['status'] {
   if (parts.length === 0) return 'pending';
   if (parts.every((s) => s === 'completed')) return 'completed';
@@ -70,9 +100,19 @@ function mergeAggregatedStatus(parts: StudioOrder['status'][]): StudioOrder['sta
 
 function mapProductionToOrder(
   prod: studioApi.StudioProductionRow,
-  stages: studioApi.StudioStageRow[]
+  stages: studioApi.StudioStageRow[],
+  createdByUserId?: string,
 ): StudioOrder {
-  const sale = prod.sale as { customer_name?: string; total?: number; invoice_no?: string; invoice_date?: string; deadline?: string | null } | undefined;
+  const sale = prod.sale as {
+    customer_name?: string;
+    total?: number;
+    invoice_no?: string;
+    invoice_date?: string;
+    deadline?: string | null;
+    status?: string | null;
+    created_by_name?: string | null;
+  } | undefined;
+  const creatorId = createdByUserId ?? resolveSaleCreatorId(prod.sale);
   const product = prod.product as { name?: string } | undefined;
   const completedCount = stages.filter((s) => s.status === 'completed').length;
   const inProgress = stages.find((s) => {
@@ -102,6 +142,11 @@ function mapProductionToOrder(
     const worker = s.worker as { id?: string; name?: string } | undefined;
     const cost = (s.status === 'received' || s.status === 'completed') ? Number(s.cost) || 0 : Number(s.expected_cost ?? s.cost) || 0;
     const expectedCostVal = Number(s.expected_cost ?? s.cost) || 0;
+    const customerChargeVal =
+      (s as { customer_charge?: number | null }).customer_charge != null &&
+      Number((s as { customer_charge?: number | null }).customer_charge) > 0
+        ? Number((s as { customer_charge?: number | null }).customer_charge)
+        : cost;
     const uiStatus: StudioStage['status'] =
       s.status === 'in_progress' ? 'in-progress' : (s.status as StudioStage['status']);
     const effectiveStatus: StudioStage['status'] =
@@ -111,35 +156,56 @@ function mapProductionToOrder(
             (uiStatus === 'assigned' || uiStatus === 'in-progress' || uiStatus === 'sent_to_worker' || uiStatus === 'received')
           ? uiStatus
           : 'pending';
-    const sentDate = s.sent_date ? new Date(s.sent_date).toISOString().slice(0, 10) : undefined;
-    const receivedDate = s.received_date ? new Date(s.received_date).toISOString().slice(0, 10) : undefined;
-    const completedDate = s.completed_at ? new Date(s.completed_at).toISOString().slice(0, 10) : undefined;
-    const typeUi = s.stage_type === 'dyer' ? 'dyeing' : s.stage_type === 'stitching' ? 'stitching' : s.stage_type === 'embroidery' ? 'embroidery' : s.stage_type === 'finishing' ? 'finishing' : s.stage_type === 'quality_check' ? 'quality-check' : 'handwork';
+    const sentDate = s.sent_date ? toLocalDateString(s.sent_date) : undefined;
+    const receivedDate = s.received_date ? toLocalDateString(s.received_date) : undefined;
+    const completedDate = s.completed_at ? toLocalDateString(s.completed_at) : undefined;
+    const isExtra = (s.stage_type || '').toLowerCase() === 'extra';
+    const extraDisplayName = parseExtraStageDisplayName(s.notes, s.stage_type);
+    const typeUi = isExtra
+      ? 'handwork'
+      : s.stage_type === 'dyer'
+        ? 'dyeing'
+        : s.stage_type === 'stitching'
+          ? 'stitching'
+          : s.stage_type === 'embroidery'
+            ? 'embroidery'
+            : s.stage_type === 'finishing'
+              ? 'finishing'
+              : s.stage_type === 'quality_check'
+                ? 'quality-check'
+                : 'handwork';
+    const displayName = extraDisplayName ?? stageTypeToName[s.stage_type] ?? 'Stage';
     return {
       id: s.id,
       productionId: prod.id,
       stageOrder: Number(s.stage_order) || 0,
-      name: stageTypeToName[s.stage_type] ?? 'Stage',
+      name: displayName,
       type: typeUi as StudioStage['type'],
+      isExtra,
+      dbStageType: s.stage_type,
       assignedTo: worker?.name ?? 'Unassigned',
       workerId: s.assigned_worker_id ?? undefined,
       internalCost: cost,
       expectedCost: expectedCostVal,
-      customerCharge: cost,
+      customerCharge: customerChargeVal,
       expectedDate: s.expected_completion_date ?? '',
       status: effectiveStatus,
       startedDate: sentDate ?? (effectiveStatus !== 'pending' ? s.expected_completion_date ?? undefined : undefined),
       completedDate,
       sentDate,
       receivedDate,
-      notes: s.notes ?? null,
+      notes: isExtra ? extraStageUserNotes(s.notes) || null : s.notes ?? null,
     };
   });
 
   const currentStageRow = prod.current_stage_id ? stages.find((s) => s.id === prod.current_stage_id) : inProgress;
-  const currentStageName = currentStageRow ? (stageTypeToName[currentStageRow.stage_type] ?? currentStageRow.stage_type) : 'Not Started';
+  const currentStageName = currentStageRow
+    ? parseExtraStageDisplayName(currentStageRow.notes, currentStageRow.stage_type) ??
+      stageTypeToName[currentStageRow.stage_type] ??
+      currentStageRow.stage_type
+    : 'Not Started';
 
-  const deadlineStr = sale?.deadline ? new Date(sale.deadline).toISOString().slice(0, 10) : undefined;
+  const deadlineStr = sale?.deadline ? toLocalDateString(sale.deadline) : undefined;
   const productLabel = product?.name ?? '—';
   const designTrim = (prod.design_name ?? '').trim();
   const customerInvoiceGenerated = Boolean(prod.generated_invoice_item_id);
@@ -150,14 +216,21 @@ function mapProductionToOrder(
     productionLineLabels: { [prod.id]: productLabel },
     designName: designTrim || null,
     customerInvoiceGenerated,
+    saleStatus: sale?.status ?? null,
     orderNumber: sale?.invoice_no ?? prod.production_no,
     customerName: sale?.customer_name ?? '—',
     productName: productLabel,
     totalAmount: Number(sale?.total) || 0,
-    createdDate: prod.production_date ? new Date(prod.production_date).toISOString().slice(0, 10) : '—',
+    createdDate: prod.production_date ? toLocalDateString(prod.production_date) : '—',
+    createdByName: sale?.created_by_name?.trim() || undefined,
+    createdByUserId: creatorId,
     deadline: deadlineStr,
     status,
-    currentStage: allDone ? 'Ready for Invoice' : currentStageName,
+    currentStage: customerInvoiceGenerated
+      ? 'Bill Generated'
+      : allDone
+        ? 'Ready for Invoice'
+        : currentStageName,
     stages: mappedStages,
     completedStages: completedCount,
     totalStages: stages.length,
@@ -166,11 +239,14 @@ function mapProductionToOrder(
 
 function mergeProductionsToOrder(
   group: studioApi.StudioProductionRow[],
-  stagesByProdId: Map<string, studioApi.StudioStageRow[]>
+  stagesByProdId: Map<string, studioApi.StudioStageRow[]>,
+  creatorBySaleId?: Map<string, string>,
 ): StudioOrder {
   const sorted = sortProductionsStable(group);
   const primary = sorted[0];
-  const partials = sorted.map((p) => mapProductionToOrder(p, stagesByProdId.get(p.id) ?? []));
+  const partials = sorted.map((p) =>
+    mapProductionToOrder(p, stagesByProdId.get(p.id) ?? [], creatorBySaleId?.get(p.sale_id)),
+  );
   const mergedStages = partials.flatMap((o) => o.stages);
   const prodIndex = new Map(sorted.map((p, i) => [p.id, i]));
   mergedStages.sort((a, b) => {
@@ -208,11 +284,26 @@ function mergeProductionsToOrder(
     }
   }
   if (partials.every((o) => o.status === 'ready')) currentStage = 'Ready for Invoice';
-  if (partials.every((o) => o.status === 'completed')) currentStage = 'Completed';
+  if (partials.every((o) => o.status === 'completed') && !partials.every((o) => o.customerInvoiceGenerated)) {
+    currentStage = 'Ready for Invoice';
+  }
 
   const base = partials[0];
   const designMerged = (primary.design_name ?? '').trim() || null;
   const customerInvoiceGenerated = partials.every((o) => o.customerInvoiceGenerated);
+  const mergedOrderDraft: StudioOrder = {
+    ...base,
+    customerInvoiceGenerated,
+    stages: mergedStages,
+    completedStages,
+    totalStages,
+    status,
+    currentStage,
+  };
+  if (isBillGenerated(mergedOrderDraft)) currentStage = 'Bill Generated';
+  else if (allStagesCompleted(mergedOrderDraft)) currentStage = 'Ready for Invoice';
+
+  const saleStatus = (primary.sale as { status?: string | null } | undefined)?.status ?? base.saleStatus ?? null;
   return {
     id: primary.id,
     saleId: primary.sale_id,
@@ -220,11 +311,14 @@ function mergeProductionsToOrder(
     productionLineLabels,
     designName: designMerged,
     customerInvoiceGenerated,
+    saleStatus,
     orderNumber: base.orderNumber,
     customerName: base.customerName,
     productName,
     totalAmount: base.totalAmount,
     createdDate: partials.map((o) => o.createdDate).sort()[0] ?? base.createdDate,
+    createdByName: base.createdByName,
+    createdByUserId: creatorBySaleId?.get(primary.sale_id) ?? base.createdByUserId,
     deadline: base.deadline,
     status,
     currentStage,
@@ -234,9 +328,21 @@ function mergeProductionsToOrder(
   };
 }
 
-export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focusSaleId, onFocusHandled }: StudioModuleProps) {
+export function StudioModule({
+  onBack,
+  user,
+  companyId,
+  branch,
+  onNewStudioSale,
+  focusSaleId,
+  onFocusHandled,
+}: StudioModuleProps) {
   const { withLoading } = useLoading();
+  const { shouldScopeStudioToOwnOnly } = usePermissions();
   const [view, setView] = useState<View>('dashboard');
+  const [studioMainTab, setStudioMainTab] = useState<StudioMainTab>('orders');
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
+  const [selectedWorkerJobStageId, setSelectedWorkerJobStageId] = useState<string | null>(null);
   const [dashboardVariant, setDashboardVariant] = useState<'classic' | 'test'>('classic');
   const [selectedOrder, setSelectedOrder] = useState<StudioOrder | null>(null);
   const [selectedStage, setSelectedStage] = useState<StudioStage | null>(null);
@@ -251,6 +357,8 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
   const [orders, setOrders] = useState<StudioOrder[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [error, setError] = useState<string | null>(null);
+  const { online, pendingCount } = useOfflineListMeta();
+  const mainScrollRef = useMainScrollRef();
   /** Generate invoice (mobile parity with web Product & Invoice) */
   const [invProductQuery, setInvProductQuery] = useState('');
   const [invSelectedProduct, setInvSelectedProduct] = useState<StudioInvoiceProductRow | null>(null);
@@ -280,56 +388,128 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
           stagesByProdId.set(p.id, stages || []);
         }),
       );
-      return mergeProductionsToOrder(group, stagesByProdId);
+      const creatorBySaleId = new Map<string, string>();
+      for (const p of group) {
+        const cid = resolveSaleCreatorId(p.sale);
+        if (cid) creatorBySaleId.set(p.sale_id, cid);
+      }
+      const order = mergeProductionsToOrder(group, stagesByProdId, creatorBySaleId);
+      if (shouldScopeStudioToOwnOnly && order.createdByUserId !== user.id) return null;
+      return order;
     },
-    [companyId, branch?.id],
+    [companyId, branch?.id, shouldScopeStudioToOwnOnly, user.id],
   );
 
-  const loadOrders = useCallback(async () => {
-    if (!companyId) {
+  const loadOrders = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!companyId) {
+        setLoading(false);
+        return;
+      }
+      if (!opts?.silent) setLoading(true);
+      setError(null);
+      const snapshot = await loadStudioSnapshot(companyId, branch?.id ?? null, async () => {
+        await studioApi.ensureStudioProductionsForCompany(companyId);
+        const { data: prods, error: prodErr } = await studioApi.getStudioProductions(
+          companyId,
+          branch?.id ?? null,
+        );
+        if (prodErr) {
+          return {
+            data: { productions: [] as studioApi.StudioProductionRow[], stagesByProductionId: {} },
+            error: prodErr,
+          };
+        }
+        const list = prods || [];
+        const stagesByProductionId: Record<string, studioApi.StudioStageRow[]> = {};
+        await Promise.all(
+          list.map(async (p) => {
+            const { data: stages } = await studioApi.getStudioStages(p.id);
+            stagesByProductionId[p.id] = stages || [];
+          }),
+        );
+        return { data: { productions: list, stagesByProductionId }, error: null };
+      });
+      if (snapshot.error && !snapshot.fromCache && snapshot.data.productions.length === 0) {
+        setError(snapshot.error);
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
+      const list = snapshot.data.productions;
+      const creatorBySaleId = new Map<string, string>();
+      const saleRows: Array<Record<string, unknown>> = [];
+      for (const p of list) {
+        const cid = resolveSaleCreatorId(p.sale);
+        if (cid) creatorBySaleId.set(p.sale_id, cid);
+        if (p.sale && typeof p.sale === 'object') {
+          saleRows.push(p.sale as Record<string, unknown>);
+        }
+      }
+      await enrichRowsWithCreatorNames(saleRows);
+      const stagesByProdId = new Map<string, studioApi.StudioStageRow[]>(
+        Object.entries(snapshot.data.stagesByProductionId),
+      );
+      const bySale = new Map<string, studioApi.StudioProductionRow[]>();
+      for (const p of list) {
+        const g = bySale.get(p.sale_id) ?? [];
+        g.push(p);
+        bySale.set(p.sale_id, g);
+      }
+      const saleFirstIndex = new Map<string, number>();
+      list.forEach((p, i) => {
+        if (!saleFirstIndex.has(p.sale_id)) saleFirstIndex.set(p.sale_id, i);
+      });
+      const ordersList: StudioOrder[] = [];
+      for (const [, group] of bySale) {
+        ordersList.push(mergeProductionsToOrder(group, stagesByProdId, creatorBySaleId));
+      }
+      ordersList.sort((a, b) => (saleFirstIndex.get(a.saleId) ?? 0) - (saleFirstIndex.get(b.saleId) ?? 0));
+      setOrders(filterStudioOrdersForScope(ordersList, shouldScopeStudioToOwnOnly, user.id));
       setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    await studioApi.ensureStudioProductionsForCompany(companyId);
-    const { data: prods, error: prodErr } = await studioApi.getStudioProductions(companyId, branch?.id ?? null);
-    if (prodErr) {
-      setError(prodErr);
-      setOrders([]);
-      setLoading(false);
-      return;
-    }
-    const list = prods || [];
-    const stagesByProdId = new Map<string, studioApi.StudioStageRow[]>();
-    await Promise.all(
-      list.map(async (p) => {
-        const { data: stages } = await studioApi.getStudioStages(p.id);
-        stagesByProdId.set(p.id, stages || []);
-      }),
-    );
-    const bySale = new Map<string, studioApi.StudioProductionRow[]>();
-    for (const p of list) {
-      const g = bySale.get(p.sale_id) ?? [];
-      g.push(p);
-      bySale.set(p.sale_id, g);
-    }
-    const saleFirstIndex = new Map<string, number>();
-    list.forEach((p, i) => {
-      if (!saleFirstIndex.has(p.sale_id)) saleFirstIndex.set(p.sale_id, i);
-    });
-    const ordersList: StudioOrder[] = [];
-    for (const [, group] of bySale) {
-      ordersList.push(mergeProductionsToOrder(group, stagesByProdId));
-    }
-    ordersList.sort((a, b) => (saleFirstIndex.get(a.saleId) ?? 0) - (saleFirstIndex.get(b.saleId) ?? 0));
-    setOrders(ordersList);
-    setLoading(false);
-  }, [companyId, branch?.id]);
+    },
+    [companyId, branch?.id, shouldScopeStudioToOwnOnly, user.id],
+  );
 
   useEffect(() => {
-    loadOrders();
+    void loadOrders();
   }, [loadOrders]);
+
+  useEffect(() => {
+    const onSync = () => void loadOrders({ silent: true });
+    window.addEventListener('erp-mobile:autosync-complete', onSync);
+    return () => window.removeEventListener('erp-mobile:autosync-complete', onSync);
+  }, [loadOrders]);
+
+  const handleSwipeBack = useCallback(() => {
+    switch (view) {
+      case 'dashboard':
+        onBack();
+        break;
+      case 'worker-job-detail':
+        setSelectedWorkerJobStageId(null);
+        setView(selectedWorkerId ? 'worker-detail' : 'dashboard');
+        break;
+      case 'worker-detail':
+        setView('dashboard');
+        setSelectedWorkerId(null);
+        break;
+      case 'order-detail':
+        setView('dashboard');
+        setSelectedOrder(null);
+        break;
+      case 'select-stages':
+      case 'add-stage':
+      case 'edit-stage':
+      case 'update-status':
+      case 'invoice':
+      case 'shipment':
+        setView('order-detail');
+        break;
+      default:
+        onBack();
+    }
+  }, [view, onBack, selectedWorkerId]);
 
   useEffect(() => {
     if (!selectedOrder) return;
@@ -416,13 +596,62 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
     onFocusHandled?.();
   }, [focusSaleId, loading, orders, onFocusHandled]);
 
+  const openOrderBySaleId = useCallback(
+    async (saleId: string) => {
+      let order = orders.find((o) => o.saleId === saleId) ?? null;
+      if (!order) order = await refreshMergedOrder(saleId);
+      if (order) {
+        setSelectedOrder(order);
+        setStudioMainTab('orders');
+        setView('order-detail');
+      }
+    },
+    [orders, refreshMergedOrder],
+  );
+
+  if (view === 'worker-job-detail' && selectedWorkerJobStageId) {
+    return (
+      <SwipeBackShell onBack={handleSwipeBack}>
+      <StudioWorkerJobDetail
+        stageId={selectedWorkerJobStageId}
+        onBack={() => {
+          setSelectedWorkerJobStageId(null);
+          setView(selectedWorkerId ? 'worker-detail' : 'dashboard');
+        }}
+        onOpenOrder={(saleId) => void openOrderBySaleId(saleId)}
+      />
+      </SwipeBackShell>
+    );
+  }
+
+  if (view === 'worker-detail' && selectedWorkerId && companyId) {
+    return (
+      <SwipeBackShell onBack={handleSwipeBack}>
+      <StudioWorkerDetail
+        companyId={companyId}
+        workerId={selectedWorkerId}
+        onBack={() => {
+          setView('dashboard');
+          setSelectedWorkerId(null);
+        }}
+        onOpenJob={(stageId) => {
+          setSelectedWorkerJobStageId(stageId);
+          setView('worker-job-detail');
+        }}
+      />
+      </SwipeBackShell>
+    );
+  }
+
   if (view === 'dashboard') {
     const openOrder = (order: StudioOrder) => {
       setSelectedOrder(order);
       setView('order-detail');
     };
     return (
+      <SwipeBackShell onBack={handleSwipeBack}>
       <div className="min-h-screen pb-24 bg-[#111827]">
+        <OfflineBanner online={online} pendingCount={pendingCount} />
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -434,34 +663,68 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
                 <p className="text-xs text-white/80">Production pipeline management</p>
               </div>
             </div>
-            <button
-              onClick={() => onNewStudioSale?.()}
-              className="flex items-center gap-2 px-3 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow-lg transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              Add
-            </button>
+            {studioMainTab === 'orders' && (
+              <button
+                onClick={() => onNewStudioSale?.()}
+                className="flex items-center gap-2 px-3 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow-lg transition-colors"
+              >
+                <Plus className="w-5 h-5" />
+                Add
+              </button>
+            )}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 bg-white/10 p-1 rounded-xl border border-white/20">
             <button
               type="button"
-              onClick={() => setDashboardVariant('classic')}
-              className={`h-9 rounded-lg text-sm font-medium transition-colors ${dashboardVariant === 'classic' ? 'bg-white text-[#7C3AED]' : 'text-white/80 hover:bg-white/10'}`}
+              onClick={() => setStudioMainTab('orders')}
+              className={`h-9 rounded-lg text-sm font-medium transition-colors ${studioMainTab === 'orders' ? 'bg-white text-[#7C3AED]' : 'text-white/80 hover:bg-white/10'}`}
             >
-              Studio (Classic)
+              Orders
             </button>
             <button
               type="button"
-              onClick={() => setDashboardVariant('test')}
-              className={`h-9 rounded-lg text-sm font-medium transition-colors inline-flex items-center justify-center gap-1.5 ${dashboardVariant === 'test' ? 'bg-white text-[#7C3AED]' : 'text-white/80 hover:bg-white/10'}`}
+              onClick={() => setStudioMainTab('workers')}
+              className={`h-9 rounded-lg text-sm font-medium transition-colors ${studioMainTab === 'workers' ? 'bg-white text-[#7C3AED]' : 'text-white/80 hover:bg-white/10'}`}
             >
-              <Sparkles className="w-4 h-4" />
-              Studio Test
+              Workers
             </button>
           </div>
+          {studioMainTab === 'orders' && (
+            <div className="mt-2 grid grid-cols-2 gap-2 bg-white/10 p-1 rounded-xl border border-white/20">
+              <button
+                type="button"
+                onClick={() => setDashboardVariant('classic')}
+                className={`h-9 rounded-lg text-sm font-medium transition-colors ${dashboardVariant === 'classic' ? 'bg-white text-[#7C3AED]' : 'text-white/80 hover:bg-white/10'}`}
+              >
+                Studio (Classic)
+              </button>
+              <button
+                type="button"
+                onClick={() => setDashboardVariant('test')}
+                className={`h-9 rounded-lg text-sm font-medium transition-colors inline-flex items-center justify-center gap-1.5 ${dashboardVariant === 'test' ? 'bg-white text-[#7C3AED]' : 'text-white/80 hover:bg-white/10'}`}
+              >
+                <Sparkles className="w-4 h-4" />
+                Studio Test
+              </button>
+            </div>
+          )}
         </div>
+        <PullToRefresh
+          onRefresh={() => loadOrders({ silent: true })}
+          disabled={!companyId}
+          scrollElementRef={mainScrollRef}
+          spinnerAccentClass="border-t-[#8B5CF6]"
+        >
         <div className="p-4">
-          {loading ? (
+          {studioMainTab === 'workers' && companyId ? (
+            <StudioWorkersList
+              companyId={companyId}
+              onSelectWorker={(id) => {
+                setSelectedWorkerId(id);
+                setView('worker-detail');
+              }}
+            />
+          ) : loading ? (
             <div className="flex justify-center py-12">
               <Loader2 className="w-8 h-8 text-[#8B5CF6] animate-spin" />
             </div>
@@ -535,12 +798,15 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
             </div>
           )}
         </div>
+        </PullToRefresh>
       </div>
+      </SwipeBackShell>
     );
   }
 
   if (view === 'order-detail' && selectedOrder) {
     return (
+      <SwipeBackShell onBack={handleSwipeBack}>
       <StudioOrderDetail
         order={selectedOrder}
         companyId={companyId}
@@ -571,15 +837,22 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
           setSelectedStage(stage);
           setView('update-status');
         }}
-        onSendToWorker={async (stage) => {
-          await orderDetailSyncAfterApi('Sending to worker...', () => studioApi.sendToWorker(stage.id));
+        onSendToWorker={async (stage, sentDate, notes) => {
+          await orderDetailSyncAfterApi('Sending to worker...', () =>
+            studioApi.sendToWorker(stage.id, { sentDate, notes })
+          );
         }}
-        onReceiveWork={async (stage) => {
-          await orderDetailSyncAfterApi('Receiving work...', () => studioApi.receiveWork(stage.id));
+        onReceiveWork={async (stage, receivedDate, notes) => {
+          await orderDetailSyncAfterApi('Receiving work...', () =>
+            studioApi.receiveWork(stage.id, { receivedDate, notes })
+          );
         }}
         onConfirmPayment={async (stage, params) => {
           await withLoading('Posting payment...', async () => {
-            const { error } = await studioApi.confirmStagePayment(stage.id, params);
+            const { error } = await studioApi.confirmStagePayment(stage.id, {
+              ...params,
+              customer_charge: params.customer_charge ?? null,
+            });
             if (error) {
               alert(error);
               throw new Error(error);
@@ -601,6 +874,7 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
         onGenerateInvoice={() => setView('invoice')}
         onShipment={() => setView('shipment')}
       />
+      </SwipeBackShell>
     );
   }
 
@@ -611,9 +885,9 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
         onBack={() => setView('order-detail')}
         orderId={selectedOrder.id}
         existingStageTypes={canonicalStages.map((s) => s.type) as UiStageType[]}
-        onSave={async (stageTypes) => {
+        onSave={async (pipelineStages) => {
           await withLoading('Adding stages...', async () => {
-            const { error: err } = await studioApi.addStudioStagesBatch(selectedOrder.id, stageTypes);
+            const { error: err } = await studioApi.addStudioStagesBatch(selectedOrder.id, pipelineStages);
             if (err) {
               alert(err);
               return;
@@ -634,85 +908,88 @@ export function StudioModule({ onBack, companyId, branch, onNewStudioSale, focus
         companyId={companyId}
         onBack={() => setView('order-detail')}
         onComplete={async (stageData) => {
-          const targetPid = selectedOrder.id;
-          if (view === 'add-stage') {
-            const { data, error: err } = await studioApi.createStudioStage(targetPid, {
-              stage_type: stageData.type ?? 'handwork',
-              assigned_worker_id: null,
-              cost: 0,
-              expected_completion_date: stageData.expectedDate || null,
-            });
-            if (err) {
-              alert(err);
-              return;
-            }
-            if (data) {
-              const workerId = stageData.workerId ?? undefined;
-              const internalCost = stageData.internalCost ?? 0;
-              const assignedNow = workerId && internalCost > 0;
-              if (assignedNow) {
-                const { error: assignErr } = await studioApi.assignWorkerToStep(data.id, {
-                  worker_id: workerId,
-                  expected_cost: internalCost,
-                  expected_completion_date: stageData.expectedDate || null,
-                  notes: (stageData as { notes?: string })?.notes ?? null,
-                });
-                if (assignErr) {
-                  alert(assignErr);
-                  return;
-                }
+          const isEdit = view === 'edit-stage';
+          await withLoading(isEdit ? 'Updating stage...' : 'Adding stage...', async () => {
+            const targetPid = selectedOrder.id;
+            if (view === 'add-stage') {
+              const { data, error: err } = await studioApi.createStudioStage(targetPid, {
+                stage_type: stageData.type ?? 'handwork',
+                assigned_worker_id: null,
+                cost: 0,
+                expected_completion_date: stageData.expectedDate || null,
+              });
+              if (err) {
+                alert(err);
+                return;
               }
-              const newStage: StudioStage = {
-                id: data.id,
-                productionId: targetPid,
-                name: stageData.name ?? 'Stage',
-                type: stageData.type ?? 'handwork',
-                assignedTo: stageData.assignedTo ?? 'Unassigned',
-                workerId: stageData.workerId,
-                internalCost: stageData.internalCost ?? 0,
-                expectedCost: stageData.internalCost ?? 0,
-                customerCharge: stageData.customerCharge ?? 0,
-                expectedDate: stageData.expectedDate ?? '',
-                status: assignedNow ? 'assigned' : 'pending',
-                notes: (stageData as { notes?: string | null })?.notes ?? null,
-              };
+              if (data) {
+                const workerId = stageData.workerId ?? undefined;
+                const internalCost = stageData.internalCost ?? 0;
+                const assignedNow = workerId && internalCost > 0;
+                if (assignedNow) {
+                  const { error: assignErr } = await studioApi.assignWorkerToStep(data.id, {
+                    worker_id: workerId,
+                    expected_cost: internalCost,
+                    expected_completion_date: stageData.expectedDate || null,
+                    notes: (stageData as { notes?: string })?.notes ?? null,
+                  });
+                  if (assignErr) {
+                    alert(assignErr);
+                    return;
+                  }
+                }
+                const newStage: StudioStage = {
+                  id: data.id,
+                  productionId: targetPid,
+                  name: stageData.name ?? 'Stage',
+                  type: stageData.type ?? 'handwork',
+                  assignedTo: stageData.assignedTo ?? 'Unassigned',
+                  workerId: stageData.workerId,
+                  internalCost: stageData.internalCost ?? 0,
+                  expectedCost: stageData.internalCost ?? 0,
+                  customerCharge: stageData.customerCharge ?? 0,
+                  expectedDate: stageData.expectedDate ?? '',
+                  status: assignedNow ? 'assigned' : 'pending',
+                  notes: (stageData as { notes?: string | null })?.notes ?? null,
+                };
+                setSelectedOrder({
+                  ...selectedOrder,
+                  stages: [...selectedOrder.stages, newStage],
+                  totalStages: selectedOrder.totalStages + 1,
+                  status: selectedOrder.status === 'pending' ? 'in-progress' : selectedOrder.status,
+                });
+              }
+            } else if (isEdit && selectedStage) {
+              const internalCostVal = stageData.internalCost ?? selectedStage.internalCost ?? 0;
+              const { error: err } = await studioApi.updateStudioStage(selectedStage.id, {
+                cost: internalCostVal,
+                expected_cost: internalCostVal,
+                assigned_worker_id: stageData.workerId ?? selectedStage.workerId ?? null,
+                expected_completion_date: stageData.expectedDate || null,
+              });
+              if (err) {
+                alert(err);
+                return;
+              }
               setSelectedOrder({
                 ...selectedOrder,
-                stages: [...selectedOrder.stages, newStage],
-                totalStages: selectedOrder.totalStages + 1,
-                status: selectedOrder.status === 'pending' ? 'in-progress' : selectedOrder.status,
+                stages: selectedOrder.stages.map((s) =>
+                  s.id === selectedStage.id
+                    ? {
+                        ...s,
+                        ...stageData,
+                        internalCost: stageData.internalCost ?? selectedStage.internalCost ?? s.internalCost,
+                        customerCharge: stageData.customerCharge ?? s.customerCharge,
+                        expectedDate: stageData.expectedDate ?? s.expectedDate,
+                        assignedTo: stageData.assignedTo ?? s.assignedTo,
+                        workerId: stageData.workerId ?? s.workerId,
+                      }
+                    : s,
+                ),
               });
             }
-          } else if (view === 'edit-stage' && selectedStage) {
-            const internalCostVal = stageData.internalCost ?? selectedStage.internalCost ?? 0;
-            const { error: err } = await studioApi.updateStudioStage(selectedStage.id, {
-              cost: internalCostVal,
-              expected_cost: internalCostVal,
-              assigned_worker_id: stageData.workerId ?? selectedStage.workerId ?? null,
-              expected_completion_date: stageData.expectedDate || null,
-            });
-            if (err) {
-              alert(err);
-              return;
-            }
-            setSelectedOrder({
-              ...selectedOrder,
-              stages: selectedOrder.stages.map((s) =>
-                    s.id === selectedStage.id
-                  ? {
-                      ...s,
-                      ...stageData,
-                      internalCost: stageData.internalCost ?? selectedStage.internalCost ?? s.internalCost,
-                      customerCharge: stageData.customerCharge ?? s.customerCharge,
-                      expectedDate: stageData.expectedDate ?? s.expectedDate,
-                      assignedTo: stageData.assignedTo ?? s.assignedTo,
-                      workerId: stageData.workerId ?? s.workerId,
-                    }
-                  : s
-              ),
-            });
-          }
-          setView('order-detail');
+            setView('order-detail');
+          });
         }}
         existingStage={selectedStage || undefined}
         fixedStageType={view === 'edit-stage' ? selectedStage?.type : undefined}

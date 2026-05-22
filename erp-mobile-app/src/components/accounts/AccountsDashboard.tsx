@@ -20,25 +20,19 @@ import type { User } from '../../types';
 import { useResponsive } from '../../hooks/useResponsive';
 import { getJournalEntries, getAccounts, type JournalEntryLineRow } from '../../api/accounts';
 import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
+import { localNowDateString } from '../../utils/localDate';
+import {
+  type EntrySourceKind,
+  type PaymentType,
+  classifyJournalSource,
+  resolveCashFlowDirection,
+  cashFlowDirectionLabel,
+  sourceLabel,
+} from '../../lib/cashFlowDirection';
+import { usePermissions } from '../../context/PermissionContext';
 
-/** Derived from journal_entries.reference_type (+ payment_id) for badges and filters. */
-export type EntrySourceKind =
-  | 'sale'
-  | 'sale_reversal'
-  | 'purchase'
-  | 'purchase_reversal'
-  | 'payment_supplier'
-  | 'payment_worker'
-  | 'payment_customer'
-  | 'studio_stage'
-  | 'studio_stage_reversal'
-  | 'rental'
-  | 'expense'
-  | 'transfer'
-  | 'opening_balance'
-  | 'sale_return'
-  | 'journal_manual'
-  | 'general';
+export type { EntrySourceKind };
+export { sourceLabel };
 
 export interface AccountEntry {
   id: string;
@@ -63,12 +57,17 @@ export interface AccountEntry {
   referenceId?: string | null;
   paymentId?: string | null;
   paymentNotes?: string | null;
+  paymentType?: PaymentType | null;
+  paymentReferenceNumber?: string | null;
 }
+
+export type AccountsDashboardMode = 'full' | 'party';
 
 interface AccountsDashboardProps {
   user: User;
   companyId?: string | null;
   branchId?: string | null;
+  mode?: AccountsDashboardMode;
   onGeneralEntry: () => void;
   onAccountTransfer: () => void;
   onSupplierPayment: () => void;
@@ -77,6 +76,7 @@ interface AccountsDashboardProps {
   onViewReports: () => void;
   onChartOfAccounts: () => void;
   onEntryClick: (entry: AccountEntry) => void;
+  onMyActivity?: () => void;
 }
 
 function mapReferenceTypeToEntryType(ref: string): AccountEntry['type'] {
@@ -88,48 +88,33 @@ function mapReferenceTypeToEntryType(ref: string): AccountEntry['type'] {
   return 'general';
 }
 
-export function classifySource(referenceType: string, paymentId: string | null | undefined): EntrySourceKind {
-  const r = (referenceType || '').toLowerCase();
-  const hasPay = Boolean(paymentId);
-  if (r === 'sale') return 'sale';
-  if (r === 'sale_reversal') return 'sale_reversal';
-  if (r === 'purchase' || r === 'purchase_order') return 'purchase';
-  if (r === 'purchase_reversal' || r === 'purchase_cancel') return 'purchase_reversal';
-  if (r === 'worker_payment') return 'payment_worker';
-  if (r === 'payment' || r === 'manual_payment' || r === 'supplier_payment') return hasPay ? 'payment_supplier' : 'general';
-  if (r === 'customer_payment' || r === 'receipt' || r === 'sale_payment') return 'payment_customer';
-  if (r === 'studio_production_stage') return 'studio_stage';
-  if (r === 'studio_production_stage_reversal') return 'studio_stage_reversal';
-  if (r === 'rental' || r === 'rental_payment') return 'rental';
-  if (r === 'expense' || r === 'expense_payment') return 'expense';
-  if (r === 'transfer') return 'transfer';
-  if (r === 'opening_balance' || r === 'opening_stock') return 'opening_balance';
-  if (r === 'sale_return') return 'sale_return';
-  if (r === 'journal' || r === 'manual_journal' || r === 'general_journal') return 'journal_manual';
-  return 'general';
+export function classifySource(
+  referenceType: string,
+  paymentId: string | null | undefined,
+  paymentType?: string | null,
+  paymentReferenceNumber?: string | null,
+): EntrySourceKind {
+  return classifyJournalSource({
+    referenceType,
+    paymentId,
+    paymentType,
+    paymentReferenceNumber,
+  });
 }
 
-export function sourceLabel(kind: EntrySourceKind): string {
-  const labels: Record<EntrySourceKind, string> = {
-    sale: 'Sale',
-    sale_reversal: 'Sale cancel',
-    purchase: 'Purchase',
-    purchase_reversal: 'Purchase cancel',
-    payment_supplier: 'Supplier payment',
-    payment_worker: 'Worker payment',
-    payment_customer: 'Customer receipt',
-    studio_stage: 'Studio stage',
-    studio_stage_reversal: 'Studio reversal',
-    rental: 'Rental',
-    expense: 'Expense',
-    transfer: 'Transfer',
-    opening_balance: 'Opening balance',
-    sale_return: 'Sale return',
-    journal_manual: 'Manual JE',
-    general: 'Journal',
-  };
-  return labels[kind] ?? 'Journal';
+export function entryDirection(entry: AccountEntry): 'in' | 'out' | 'neutral' {
+  const sourceKind =
+    entry.sourceKind ??
+    classifySource(
+      String(entry.referenceType || ''),
+      entry.paymentId ?? null,
+      entry.paymentType,
+      entry.paymentReferenceNumber ?? entry.entryNumber,
+    );
+  return resolveCashFlowDirection({ paymentType: entry.paymentType, sourceKind });
 }
+
+export { cashFlowDirectionLabel };
 
 function summarizeJournalLines(lines: JournalEntryLineRow[] | undefined): {
   lineCount: number;
@@ -186,26 +171,18 @@ function summarizeJournalLines(lines: JournalEntryLineRow[] | undefined): {
   };
 }
 
-/**
- * Classify an entry as cash-in (green) vs cash-out (red) using the broad reference type
- * semantics. Supplier / worker payments and expenses flow OUT; transfers are neutral; a
- * general entry is best classified by comparing cash/bank account movement, but since
- * the dashboard row only surfaces the summed amount we infer direction from type.
- */
-function entryDirection(type: AccountEntry['type'], sourceKind?: EntrySourceKind): 'in' | 'out' | 'neutral' {
-  if (sourceKind === 'sale_reversal' || sourceKind === 'purchase_reversal' || sourceKind === 'studio_stage_reversal') {
-    return 'neutral';
-  }
-  if (type === 'supplier-payment' || type === 'worker-payment' || type === 'expense') return 'out';
-  if (type === 'transfer') return 'neutral';
-  return 'in';
-}
-
 type EntryDisplayConfig = { label: string; color: string; bg: string; icon: LucideIcon };
 
 /** Shared with AccountsModule entry detail header. */
 export function getAccountEntryDisplayConfig(entry: AccountEntry): EntryDisplayConfig {
-  const k = entry.sourceKind ?? classifySource(String(entry.referenceType || ''), entry.paymentId ?? null);
+  const k =
+    entry.sourceKind ??
+    classifySource(
+      String(entry.referenceType || ''),
+      entry.paymentId ?? null,
+      entry.paymentType,
+      entry.paymentReferenceNumber ?? entry.entryNumber,
+    );
   const lbl = entry.sourceLabel ?? sourceLabel(k);
   if (k === 'sale') return { label: lbl, color: 'text-[#60A5FA]', bg: 'bg-[#3B82F6]/15', icon: BookOpen };
   if (k === 'sale_reversal') return { label: lbl, color: 'text-[#FBBF24]', bg: 'bg-[#D97706]/20', icon: BookOpen };
@@ -240,6 +217,7 @@ export function AccountsDashboard({
   user,
   companyId,
   branchId,
+  mode = 'full',
   onGeneralEntry,
   onAccountTransfer,
   onSupplierPayment,
@@ -248,14 +226,21 @@ export function AccountsDashboard({
   onViewReports,
   onChartOfAccounts,
   onEntryClick,
+  onMyActivity,
 }: AccountsDashboardProps) {
   useResponsive();
+  const { canViewBalances } = usePermissions();
+  const isPartyMode = mode === 'party';
   const [searchQuery, setSearchQuery] = useState('');
   const [entries, setEntries] = useState<AccountEntry[]>([]);
   const [stats, setStats] = useState({ todayEntries: 0, totalAmount: 0, cashBalance: 0, bankBalance: 0 });
   const [loading, setLoading] = useState(true);
 
   const loadDashboardData = async () => {
+    if (isPartyMode) {
+      setLoading(false);
+      return;
+    }
     if (!companyId) return;
     setLoading(true);
     const [jeRes, accRes] = await Promise.all([
@@ -265,9 +250,18 @@ export function AccountsDashboard({
     if (jeRes.error) {
       setEntries([]);
     } else {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localNowDateString();
       const mapped: AccountEntry[] = jeRes.data.map((e) => {
-        const sourceKind = classifySource(e.reference_type, e.payment_id);
+        const paymentRef =
+          e.payment_reference_number && String(e.payment_reference_number).trim()
+            ? String(e.payment_reference_number).trim()
+            : null;
+        const sourceKind = classifySource(
+          e.reference_type,
+          e.payment_id,
+          e.payment_type,
+          paymentRef,
+        );
         const { lineCount, debitAccount, creditAccount, accountsSummary } = summarizeJournalLines(
           e.lines as JournalEntryLineRow[] | undefined
         );
@@ -275,7 +269,7 @@ export function AccountsDashboard({
         const postedAt = e.posted_at || e.created_at || null;
         return {
           id: e.id,
-          entryNumber: (e.payment_reference_number && String(e.payment_reference_number).trim()) || e.entry_no,
+          entryNumber: paymentRef || e.entry_no,
           type: mapReferenceTypeToEntryType(e.reference_type),
           date: e.entry_date,
           description: e.description,
@@ -295,6 +289,8 @@ export function AccountsDashboard({
           referenceId: e.reference_id,
           paymentId: e.payment_id ?? null,
           paymentNotes: e.payment_notes ?? null,
+          paymentType: e.payment_type ?? null,
+          paymentReferenceNumber: paymentRef,
         };
       });
       setEntries(mapped);
@@ -317,17 +313,17 @@ export function AccountsDashboard({
   };
 
   useEffect(() => {
-    if (!companyId) return;
+    if (!companyId || isPartyMode) return;
     let cancelled = false;
     (async () => {
       await loadDashboardData();
       if (cancelled) return;
     })();
     return () => { cancelled = true; };
-  }, [companyId, branchId, user.name, user.role]);
+  }, [companyId, branchId, user.name, user.role, isPartyMode]);
 
   useEffect(() => {
-    if (!companyId) return;
+    if (!companyId || isPartyMode) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const onInvalidated = (event: Event) => {
       const detail = (event as CustomEvent<MobileInvalidationDetail>).detail;
@@ -351,7 +347,7 @@ export function AccountsDashboard({
       if (timer) clearTimeout(timer);
       window.removeEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
     };
-  }, [branchId, companyId, user.name, user.role]);
+  }, [branchId, companyId, user.name, user.role, isPartyMode]);
 
   const getEntryTypeConfig = (entry: AccountEntry) => getAccountEntryDisplayConfig(entry);
 
@@ -370,10 +366,29 @@ export function AccountsDashboard({
   );
 
   const formatCurrency = (n: number): string => {
+    if (!canViewBalances) return '****';
     if (Math.abs(n) >= 1_000_000) return `Rs. ${(n / 1_000_000).toFixed(1)}M`;
     if (Math.abs(n) >= 1_000) return `Rs. ${(n / 1_000).toFixed(0)}k`;
     return `Rs. ${n.toLocaleString()}`;
   };
+
+  if (isPartyMode) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-[#9CA3AF] px-1">
+          Payments you received or paid, and expenses you posted. Company-wide ledgers are not available for your role.
+        </p>
+        {onMyActivity && (
+          <ActionButton
+            icon={Clock}
+            label="My Activity"
+            color="from-[#6366F1] to-[#4F46E5]"
+            onClick={onMyActivity}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -386,7 +401,7 @@ export function AccountsDashboard({
             </div>
             <p className="text-xs text-[#9CA3AF]">Today</p>
           </div>
-          <p className="text-xl font-bold text-white">{stats.todayEntries}</p>
+          <p className="text-2xl font-bold text-white">{stats.todayEntries}</p>
           <p className="text-xs text-[#6B7280]">Entries</p>
         </div>
 
@@ -397,7 +412,7 @@ export function AccountsDashboard({
             </div>
             <p className="text-xs text-[#9CA3AF]">Cash</p>
           </div>
-          <p className="text-lg font-bold text-white">{formatCurrency(stats.cashBalance)}</p>
+          <p className="text-xl font-bold text-white">{formatCurrency(stats.cashBalance)}</p>
           <p className="text-xs text-[#6B7280]">Available</p>
         </div>
 
@@ -408,7 +423,7 @@ export function AccountsDashboard({
             </div>
             <p className="text-xs text-[#9CA3AF]">Bank</p>
           </div>
-          <p className="text-lg font-bold text-white">{formatCurrency(stats.bankBalance)}</p>
+          <p className="text-xl font-bold text-white">{formatCurrency(stats.bankBalance)}</p>
           <p className="text-xs text-[#6B7280]">Balance</p>
         </div>
 
@@ -419,7 +434,7 @@ export function AccountsDashboard({
             </div>
             <p className="text-xs text-[#9CA3AF]">30 Day</p>
           </div>
-          <p className="text-lg font-bold text-white">{formatCurrency(stats.totalAmount)}</p>
+          <p className="text-xl font-bold text-white">{formatCurrency(stats.totalAmount)}</p>
           <p className="text-xs text-[#6B7280]">Volume</p>
         </div>
       </div>
@@ -469,7 +484,7 @@ export function AccountsDashboard({
             {filteredEntries.map((entry) => {
               const typeConfig = getEntryTypeConfig(entry);
               const TypeIcon = typeConfig.icon;
-              const direction = entryDirection(entry.type, entry.sourceKind);
+              const direction = entryDirection(entry);
               const DirIcon = direction === 'out' ? ArrowUpRight : direction === 'in' ? ArrowDownLeft : ArrowLeftRight;
               const dirColor = direction === 'out' ? 'text-[#EF4444]' : direction === 'in' ? 'text-[#10B981]' : 'text-[#93C5FD]';
               const postedShort = entry.postedAt
@@ -514,10 +529,10 @@ export function AccountsDashboard({
                     <div className="text-right shrink-0">
                       <div className={`flex items-center gap-1 justify-end ${dirColor}`}>
                         <DirIcon size={14} />
-                        <p className="text-sm font-bold">Rs. {entry.amount.toLocaleString()}</p>
+                        <p className="text-base font-bold">Rs. {entry.amount.toLocaleString()}</p>
                       </div>
                       <p className="text-[10px] text-[#6B7280] mt-0.5">
-                        {direction === 'out' ? 'Out' : direction === 'in' ? 'In' : 'Net'}
+                        {cashFlowDirectionLabel(direction)}
                       </p>
                     </div>
                   </div>

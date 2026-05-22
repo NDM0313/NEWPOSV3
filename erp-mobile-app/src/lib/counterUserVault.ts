@@ -38,6 +38,8 @@ interface StoredRow {
   email?: string;
   role?: string;
   companyId?: string;
+  /** When device-bound refresh token was last synced (ms epoch). */
+  lastTokenSyncAt?: number;
 }
 
 interface MetaDeviceRow {
@@ -53,6 +55,7 @@ export interface EnrolledCounterProfile {
   email: string;
   role: string;
   companyId: string;
+  lastTokenSyncAt?: number;
 }
 
 export const COUNTER_WRONG_COMPANY_MESSAGE =
@@ -130,6 +133,7 @@ function rowToProfile(row: StoredRow, index: number): EnrolledCounterProfile {
     email: row.email?.trim() || '',
     role: row.role?.trim() || '',
     companyId: row.companyId?.trim() || '',
+    lastTokenSyncAt: row.lastTokenSyncAt,
   };
 }
 
@@ -268,6 +272,7 @@ export async function saveCounterUserForPin(pin: string, payload: CounterVaultPa
   const enc = await encryptPayload(json, key);
   const displayName = payload.displayName?.trim() || payload.email?.trim() || 'User';
   const tokenEnc = await encryptRefreshTokenDeviceBound(payload.refreshToken);
+  const now = Date.now();
   const row: StoredRow = {
     pinHash,
     iv: enc.iv,
@@ -281,6 +286,7 @@ export async function saveCounterUserForPin(pin: string, payload: CounterVaultPa
     tokenIv: tokenEnc.tokenIv,
     tokenCiphertext: tokenEnc.tokenCiphertext,
     tokenAlgo: tokenEnc.tokenAlgo,
+    lastTokenSyncAt: now,
   };
   const database = await openCounterDb();
   return new Promise((resolve, reject) => {
@@ -310,6 +316,7 @@ export async function syncCounterRefreshTokenForUserId(
   });
   const toUpdate = rows.filter((r) => r.pinHash && r.userId === userId);
   if (toUpdate.length === 0) return;
+  const syncedAt = Date.now();
   await new Promise<void>((resolve, reject) => {
     const tx = database.transaction(STORE, 'readwrite');
     const store = tx.objectStore(STORE);
@@ -319,6 +326,7 @@ export async function syncCounterRefreshTokenForUserId(
         tokenIv: tokenEnc.tokenIv,
         tokenCiphertext: tokenEnc.tokenCiphertext,
         tokenAlgo: tokenEnc.tokenAlgo,
+        lastTokenSyncAt: syncedAt,
       });
     }
     tx.oncomplete = () => resolve();

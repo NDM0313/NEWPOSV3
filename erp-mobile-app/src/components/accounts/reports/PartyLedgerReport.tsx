@@ -9,6 +9,7 @@ import {
 import { getContacts, type ContactRole } from '../../../api/contacts';
 import { getWorkersWithPayable } from '../../../api/accounts';
 import { getWorkerPartyGlLedgerLines } from '../../../api/workerPartyGlLedger';
+import { getWorkerOperationalLedgerLines } from '../../../api/workerOperationalLedger';
 import {
   fetchContactPartyGlBalancesMap,
   partyGlDueForListRole,
@@ -70,6 +71,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
   const [listRefreshNonce, setListRefreshNonce] = useState(0);
   const [ledgerRefreshNonce, setLedgerRefreshNonce] = useState(0);
   const [manualLedgerRefresh, setManualLedgerRefresh] = useState(false);
+  const [ledgerSourceHint, setLedgerSourceHint] = useState<string | null>(null);
   const preview = usePdfPreview(companyId);
 
   useEffect(() => {
@@ -146,7 +148,21 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
     (async () => {
       try {
         if (kind === 'worker') {
-          const rpcRes = await getWorkerPartyGlLedgerLines(
+          const opRes = await getWorkerOperationalLedgerLines(
+            companyId,
+            selected.id,
+            range.from || undefined,
+            range.to || undefined,
+          );
+          if (cancelled) return;
+          if (opRes.lines.length > 0) {
+            setOpening(opRes.openingBalance);
+            setLines(opRes.lines);
+            setDetailError(opRes.error);
+            setLedgerSourceHint('Studio jobs & worker payments (operational ledger)');
+            return;
+          }
+          const glRes = await getWorkerPartyGlLedgerLines(
             companyId,
             selected.id,
             branchId ?? null,
@@ -154,15 +170,17 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
             range.to || undefined,
           );
           if (cancelled) return;
-          if (rpcRes.error) {
-            setDetailError(rpcRes.error);
+          if (glRes.error && opRes.error) {
+            setDetailError(`${opRes.error} · ${glRes.error}`);
             setOpening(0);
             setLines([]);
+            setLedgerSourceHint(null);
             return;
           }
-          setOpening(rpcRes.openingBalance);
-          setLines(sortLedgerLinesAndRebuildRunningBalance(rpcRes.lines, rpcRes.openingBalance));
-          setDetailError(null);
+          setOpening(glRes.openingBalance);
+          setLines(sortLedgerLinesAndRebuildRunningBalance(glRes.lines, glRes.openingBalance));
+          setDetailError(glRes.error ?? opRes.error);
+          setLedgerSourceHint(glRes.lines.length > 0 ? 'GL journal (2010 / 1180)' : null);
         } else {
           const rpcLoad =
             kind === 'supplier'
@@ -356,15 +374,22 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
     { label: 'Closing', value: `Rs. ${formatAmount(totals.closing, 0)}` },
   ];
 
-  const detailPartySubtitle =
+  const detailPartySubtitle = [
     branchId && branchId !== 'all' && branchId !== 'default'
       ? `${selected.meta || cfg.title} · GL: this branch + company-wide`
-      : selected.meta || cfg.title;
+      : selected.meta || cfg.title,
+    kind === 'worker' && ledgerSourceHint ? ledgerSourceHint : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
       <ReportHeader
-        onBack={() => setSelected(null)}
+        onBack={() => {
+          setSelected(null);
+          setLedgerSourceHint(null);
+        }}
         title={selected.name}
         subtitle={detailPartySubtitle}
         stats={stats}

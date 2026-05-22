@@ -17,6 +17,7 @@ import {
   Users,
   Briefcase,
   ListFilter,
+  Truck,
 } from 'lucide-react';
 import { getPaymentTransactions, type TransactionRow } from '../../../api/transactions';
 import { ReportHeader } from './_shared/ReportHeader';
@@ -45,7 +46,8 @@ export type LegacyReportKey =
   | 'expense-report'
   | 'studio-report'
   | 'rental-report'
-  | 'inventory-report';
+  | 'inventory-report'
+  | 'courier-shipments';
 
 interface ReportsHubProps {
   onBack: () => void;
@@ -55,13 +57,26 @@ interface ReportsHubProps {
   onNavigateToDocumentEdit?: (kind: 'sale' | 'purchase', documentId: string) => void;
   /** Incremented when accounting data invalidates; refetches hub preview without remounting timeline. */
   reportRefreshEpoch?: number;
+  fullAccounting?: boolean;
+  canViewCustomerLedger?: boolean;
+  canViewSupplierLedger?: boolean;
 }
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function ReportsHub({ onBack, onOpenReport, companyId, branchId, onNavigateToDocumentEdit, reportRefreshEpoch = 0 }: ReportsHubProps) {
+export function ReportsHub({
+  onBack,
+  onOpenReport,
+  companyId,
+  branchId,
+  onNavigateToDocumentEdit,
+  reportRefreshEpoch = 0,
+  fullAccounting = true,
+  canViewCustomerLedger = true,
+  canViewSupplierLedger = false,
+}: ReportsHubProps) {
   const [view, setView] = useState<'hub' | 'timeline'>('hub');
   const [todayRows, setTodayRows] = useState<TransactionRow[]>([]);
   const [recentRows, setRecentRows] = useState<TransactionRow[]>([]);
@@ -71,6 +86,12 @@ export function ReportsHub({ onBack, onOpenReport, companyId, branchId, onNaviga
   useEffect(() => {
     if (!companyId) {
       setLoading(false);
+      return;
+    }
+    if (!fullAccounting) {
+      setLoading(false);
+      setTodayRows([]);
+      setRecentRows([]);
       return;
     }
     let cancelled = false;
@@ -89,7 +110,7 @@ export function ReportsHub({ onBack, onOpenReport, companyId, branchId, onNaviga
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId, reportRefreshEpoch]);
+  }, [companyId, branchId, reportRefreshEpoch, fullAccounting]);
 
   const todayStats = useMemo(() => {
     let received = 0;
@@ -130,176 +151,210 @@ export function ReportsHub({ onBack, onOpenReport, companyId, branchId, onNaviga
       />
 
       <div className="p-4 space-y-5">
-        <button
-          onClick={() => setView('timeline')}
-          className="w-full bg-gradient-to-br from-[#1F2937] to-[#111827] border border-[#374151] hover:border-[#6366F1] rounded-2xl p-4 text-left transition-colors"
-        >
-          <div className="flex items-start gap-3">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#6366F1] to-[#4F46E5] flex items-center justify-center">
-              <CalendarClock className="w-5 h-5 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white">Transactions Timeline</p>
-              <p className="text-xs text-[#9CA3AF] mt-0.5">
-                All payments with date, time, from → to accounts, party & amount.
-              </p>
-              <div className="mt-2 flex items-center gap-2 text-[11px] text-[#6B7280]">
-                <ListFilter className="w-3 h-3" /> Filters: date · direction · method · account
+        {fullAccounting && (
+          <>
+            <button
+              onClick={() => setView('timeline')}
+              className="w-full bg-gradient-to-br from-[#1F2937] to-[#111827] border border-[#374151] hover:border-[#6366F1] rounded-2xl p-4 text-left transition-colors"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#6366F1] to-[#4F46E5] flex items-center justify-center">
+                  <CalendarClock className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white">Transactions Timeline</p>
+                  <p className="text-xs text-[#9CA3AF] mt-0.5">
+                    All payments with date, time, from → to accounts, party & amount.
+                  </p>
+                  <div className="mt-2 flex items-center gap-2 text-[11px] text-[#6B7280]">
+                    <ListFilter className="w-3 h-3" /> Filters: date · direction · method · account
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0 mt-1" />
               </div>
+            </button>
+
+            <Section
+              title="Recent transactions"
+              right={
+                <button onClick={() => setView('timeline')} className="text-xs text-[#6366F1] hover:underline">
+                  See all
+                </button>
+              }
+            >
+              {loading ? null : recentRows.length === 0 ? (
+                <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-6 text-center">
+                  <p className="text-sm text-[#9CA3AF]">No transactions yet.</p>
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {recentRows.slice(0, 5).map((t) => (
+                    <MiniTxRow key={t.id} tx={t} onClick={() => setDetailId(t.id)} />
+                  ))}
+                </ul>
+              )}
+            </Section>
+          </>
+        )}
+
+        {(canViewCustomerLedger || canViewSupplierLedger) && (
+          <Section title="Party ledgers">
+            <div className="grid grid-cols-2 gap-3">
+              {canViewCustomerLedger && (
+                <ReportTile
+                  title="Customer Ledger"
+                  description="Per-customer AR statement"
+                  gradient="from-[#6366F1] to-[#4F46E5]"
+                  icon={<Users className="w-5 h-5 text-white" />}
+                  onClick={() => onOpenReport('customer-ledger')}
+                />
+              )}
+              {canViewSupplierLedger && (
+                <ReportTile
+                  title="Supplier Ledger"
+                  description="Per-supplier AP statement"
+                  gradient="from-[#F59E0B] to-[#D97706]"
+                  icon={<Briefcase className="w-5 h-5 text-white" />}
+                  onClick={() => onOpenReport('supplier-ledger')}
+                />
+              )}
+              {fullAccounting && (
+                <>
+                  <ReportTile
+                    title="Worker Ledger"
+                    description="Payables to workers"
+                    gradient="from-[#10B981] to-[#059669]"
+                    icon={<Users className="w-5 h-5 text-white" />}
+                    onClick={() => onOpenReport('worker-ledger')}
+                  />
+                  <ReportTile
+                    title="Account Ledger"
+                    description="Running balance per GL"
+                    gradient="from-[#8B5CF6] to-[#6366F1]"
+                    icon={<BookOpen className="w-5 h-5 text-white" />}
+                    onClick={() => onOpenReport('account-ledger')}
+                  />
+                </>
+              )}
             </div>
-            <ChevronRight className="w-5 h-5 text-[#6B7280] shrink-0 mt-1" />
-          </div>
-        </button>
+          </Section>
+        )}
 
-        <Section title="Recent transactions" right={
-          <button onClick={() => setView('timeline')} className="text-xs text-[#6366F1] hover:underline">
-            See all
-          </button>
-        }>
-          {loading ? null : recentRows.length === 0 ? (
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-6 text-center">
-              <p className="text-sm text-[#9CA3AF]">No transactions yet.</p>
+        {fullAccounting && (
+          <Section title="Cash & bank">
+            <div className="grid grid-cols-2 gap-3">
+              <ReportTile
+                title="Cash Summary"
+                description="Cash account movements"
+                gradient="from-[#10B981] to-[#059669]"
+                icon={<Wallet className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('cash-summary')}
+              />
+              <ReportTile
+                title="Bank Summary"
+                description="Bank account activity"
+                gradient="from-[#0EA5E9] to-[#0284C7]"
+                icon={<Landmark className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('bank-summary')}
+              />
+              <ReportTile
+                title="Wallet Summary"
+                description="Mobile wallets"
+                gradient="from-[#F97316] to-[#C2410C]"
+                icon={<Smartphone className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('wallet-summary')}
+              />
+              <ReportTile
+                title="Day Book / Roznamcha"
+                description="Daily cash-in / cash-out"
+                gradient="from-[#3B82F6] to-[#2563EB]"
+                icon={<CalendarClock className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('daybook')}
+              />
             </div>
-          ) : (
-            <ul className="space-y-2">
-              {recentRows.slice(0, 5).map((t) => (
-                <MiniTxRow key={t.id} tx={t} onClick={() => setDetailId(t.id)} />
-              ))}
-            </ul>
-          )}
-        </Section>
+          </Section>
+        )}
 
-        <Section title="Party ledgers">
-          <div className="grid grid-cols-2 gap-3">
-            <ReportTile
-              title="Customer Ledger"
-              description="Per-customer AR statement"
-              gradient="from-[#6366F1] to-[#4F46E5]"
-              icon={<Users className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('customer-ledger')}
-            />
-            <ReportTile
-              title="Supplier Ledger"
-              description="Per-supplier AP statement"
-              gradient="from-[#F59E0B] to-[#D97706]"
-              icon={<Briefcase className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('supplier-ledger')}
-            />
-            <ReportTile
-              title="Worker Ledger"
-              description="Payables to workers"
-              gradient="from-[#10B981] to-[#059669]"
-              icon={<Users className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('worker-ledger')}
-            />
-            <ReportTile
-              title="Account Ledger"
-              description="Running balance per GL"
-              gradient="from-[#8B5CF6] to-[#6366F1]"
-              icon={<BookOpen className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('account-ledger')}
-            />
-          </div>
-        </Section>
+        {(canViewCustomerLedger || canViewSupplierLedger) && (
+          <Section title="Receivables & payables">
+            <div className="grid grid-cols-2 gap-3">
+              {canViewCustomerLedger && (
+                <ReportTile
+                  title="Receivables"
+                  description="Customer outstanding + aging"
+                  gradient="from-[#EC4899] to-[#DB2777]"
+                  icon={<ArrowDownLeft className="w-5 h-5 text-white" />}
+                  onClick={() => onOpenReport('receivables')}
+                />
+              )}
+              {canViewSupplierLedger && (
+                <ReportTile
+                  title="Payables"
+                  description="Supplier dues + aging"
+                  gradient="from-[#F59E0B] to-[#D97706]"
+                  icon={<ArrowUpRight className="w-5 h-5 text-white" />}
+                  onClick={() => onOpenReport('payables')}
+                />
+              )}
+            </div>
+          </Section>
+        )}
 
-        <Section title="Cash & bank">
-          <div className="grid grid-cols-2 gap-3">
-            <ReportTile
-              title="Cash Summary"
-              description="Cash account movements"
-              gradient="from-[#10B981] to-[#059669]"
-              icon={<Wallet className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('cash-summary')}
-            />
-            <ReportTile
-              title="Bank Summary"
-              description="Bank account activity"
-              gradient="from-[#0EA5E9] to-[#0284C7]"
-              icon={<Landmark className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('bank-summary')}
-            />
-            <ReportTile
-              title="Wallet Summary"
-              description="Mobile wallets"
-              gradient="from-[#F97316] to-[#C2410C]"
-              icon={<Smartphone className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('wallet-summary')}
-            />
-            <ReportTile
-              title="Day Book / Roznamcha"
-              description="Daily cash-in / cash-out"
-              gradient="from-[#3B82F6] to-[#2563EB]"
-              icon={<CalendarClock className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('daybook')}
-            />
-          </div>
-        </Section>
-
-        <Section title="Receivables & payables">
-          <div className="grid grid-cols-2 gap-3">
-            <ReportTile
-              title="Receivables"
-              description="Customer outstanding + aging"
-              gradient="from-[#EC4899] to-[#DB2777]"
-              icon={<ArrowDownLeft className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('receivables')}
-            />
-            <ReportTile
-              title="Payables"
-              description="Supplier dues + aging"
-              gradient="from-[#F59E0B] to-[#D97706]"
-              icon={<ArrowUpRight className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('payables')}
-            />
-          </div>
-        </Section>
-
-        <Section title="Operations">
-          <div className="grid grid-cols-2 gap-3">
-            <ReportTile
-              title="Sales Report"
-              description="Invoice & revenue activity"
-              gradient="from-[#6366F1] to-[#4F46E5]"
-              icon={<Receipt className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('sales-report')}
-            />
-            <ReportTile
-              title="Purchase Report"
-              description="Purchase orders / GRNs"
-              gradient="from-[#F59E0B] to-[#D97706]"
-              icon={<ShoppingCart className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('purchase-report')}
-            />
-            <ReportTile
-              title="Expense Report"
-              description="Expenses by category"
-              gradient="from-[#F43F5E] to-[#E11D48]"
-              icon={<TrendingDown className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('expense-report')}
-            />
-            <ReportTile
-              title="Studio Report"
-              description="Custom productions"
-              gradient="from-[#8B5CF6] to-[#7C3AED]"
-              icon={<Palette className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('studio-report')}
-            />
-            <ReportTile
-              title="Rental Report"
-              description="Rental bookings"
-              gradient="from-[#F97316] to-[#C2410C]"
-              icon={<Shirt className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('rental-report')}
-            />
-            <ReportTile
-              title="Inventory Report"
-              description="Stock movements (in / out)"
-              gradient="from-[#475569] to-[#1E293B]"
-              icon={<Package className="w-5 h-5 text-white" />}
-              onClick={() => onOpenReport('inventory-report')}
-            />
-          </div>
-        </Section>
+        {fullAccounting && (
+          <Section title="Operations">
+            <div className="grid grid-cols-2 gap-3">
+              <ReportTile
+                title="Sales Report"
+                description="Invoice & revenue activity"
+                gradient="from-[#6366F1] to-[#4F46E5]"
+                icon={<Receipt className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('sales-report')}
+              />
+              <ReportTile
+                title="Purchase Report"
+                description="Purchase orders / GRNs"
+                gradient="from-[#F59E0B] to-[#D97706]"
+                icon={<ShoppingCart className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('purchase-report')}
+              />
+              <ReportTile
+                title="Expense Report"
+                description="Expenses by category"
+                gradient="from-[#F43F5E] to-[#E11D48]"
+                icon={<TrendingDown className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('expense-report')}
+              />
+              <ReportTile
+                title="Studio Report"
+                description="Custom productions"
+                gradient="from-[#8B5CF6] to-[#7C3AED]"
+                icon={<Palette className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('studio-report')}
+              />
+              <ReportTile
+                title="Rental Report"
+                description="Rental bookings"
+                gradient="from-[#F97316] to-[#C2410C]"
+                icon={<Shirt className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('rental-report')}
+              />
+              <ReportTile
+                title="Inventory Report"
+                description="Stock movements (in / out)"
+                gradient="from-[#475569] to-[#1E293B]"
+                icon={<Package className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('inventory-report')}
+              />
+              <ReportTile
+                title="Courier Shipments"
+                description="Cargo bookings & tracking"
+                gradient="from-[#0EA5E9] to-[#0284C7]"
+                icon={<Truck className="w-5 h-5 text-white" />}
+                onClick={() => onOpenReport('courier-shipments')}
+              />
+            </div>
+          </Section>
+        )}
       </div>
 
       {detailId && companyId && (

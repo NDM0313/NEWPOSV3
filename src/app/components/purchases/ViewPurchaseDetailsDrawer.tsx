@@ -29,6 +29,7 @@ import {
   Building2,
   UserCheck,
   Printer,
+  Barcode,
   Download,
   Share2,
   MoreVertical,
@@ -132,6 +133,8 @@ interface ViewPurchaseDetailsDrawerProps {
   onDelete?: (id: string) => void;
   onAddPayment?: (id: string) => void;
   onPrint?: (id: string) => void;
+  /** Print barcode labels for PO line items (received/final). */
+  onPrintBarcodeLabels?: (id: string) => void;
   /** When provided, "Return Items" opens the Purchase Return dialog (same layout as Sales Return) instead of inline return mode */
   onOpenReturn?: () => void;
   /** Permission: show delete option. Default true for backward compat. */
@@ -146,6 +149,7 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
   onDelete,
   onAddPayment,
   onPrint,
+  onPrintBarcodeLabels,
   onOpenReturn,
   canDelete = true,
 }) => {
@@ -721,6 +725,21 @@ export const ViewPurchaseDetailsDrawer: React.FC<ViewPurchaseDetailsDrawerProps>
               <Printer size={16} className="mr-2" />
               Print
             </Button>
+            {onPrintBarcodeLabels &&
+              !returnMode &&
+              (getEffectivePurchaseStatus(purchase as any) === 'received' ||
+                getEffectivePurchaseStatus(purchase as any) === 'final') &&
+              (Array.isArray(purchase.items) ? purchase.items.length : 0) > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-purple-400 hover:text-purple-300 hover:bg-gray-800"
+                  onClick={() => onPrintBarcodeLabels(purchase.id)}
+                >
+                  <Barcode size={16} className="mr-2" />
+                  Print labels
+                </Button>
+              )}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

@@ -30,6 +30,7 @@ function workerGlLineMatchesWorker(
   line: { journal_entry?: Record<string, unknown> | null },
   workerId: string,
   workerPaymentIds: Set<string>,
+  workerStageIds: Set<string>,
 ): boolean {
   const entry = line.journal_entry;
   if (!entry) return false;
@@ -39,6 +40,9 @@ function workerGlLineMatchesWorker(
     return true;
   }
   if (rt === 'opening_balance_contact_worker' && rid && String(rid) === String(workerId)) {
+    return true;
+  }
+  if (rt === 'studio_production_stage' && rid && workerStageIds.has(String(rid))) {
     return true;
   }
   const pid = entry.payment_id;
@@ -110,6 +114,12 @@ export async function getWorkerPartyGlLedgerLines(
       .eq('contact_id', workerId);
     const workerPaymentIds = new Set((workerPayments || []).map((p: { id: string }) => p.id));
 
+    const { data: workerStages } = await supabase
+      .from('studio_production_stages')
+      .select('id')
+      .eq('assigned_worker_id', workerId);
+    const workerStageIds = new Set((workerStages || []).map((s: { id: string }) => String(s.id)));
+
     const workerLines = linesToUse.filter((line) => {
       const entry = line.journal_entry;
       if (!entry) return false;
@@ -119,10 +129,10 @@ export async function getWorkerPartyGlLedgerLines(
         return linesToUse.some((ol) => {
           const oe = ol.journal_entry;
           if (!oe || String((oe as { id?: string }).id) !== origId) return false;
-          return workerGlLineMatchesWorker(ol, workerId, workerPaymentIds);
+          return workerGlLineMatchesWorker(ol, workerId, workerPaymentIds, workerStageIds);
         });
       }
-      return workerGlLineMatchesWorker(line, workerId, workerPaymentIds);
+      return workerGlLineMatchesWorker(line, workerId, workerPaymentIds, workerStageIds);
     });
 
     const branchFiltered = branchUuid

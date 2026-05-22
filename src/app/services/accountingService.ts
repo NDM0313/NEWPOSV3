@@ -323,7 +323,12 @@ function supplierApJournalLineMatchesSupplier(
   return false;
 }
 
-function workerGlLineMatchesWorker(line: any, workerId: string, workerPaymentIds: Set<string>): boolean {
+function workerGlLineMatchesWorker(
+  line: any,
+  workerId: string,
+  workerPaymentIds: Set<string>,
+  workerStageIds: Set<string>
+): boolean {
   const entry = line.journal_entry;
   if (!entry) return false;
   const rt = String(entry.reference_type || '').toLowerCase();
@@ -332,6 +337,9 @@ function workerGlLineMatchesWorker(line: any, workerId: string, workerPaymentIds
     return true;
   }
   if (rt === 'opening_balance_contact_worker' && rid && String(rid) === String(workerId)) {
+    return true;
+  }
+  if (rt === 'studio_production_stage' && rid && workerStageIds.has(String(rid))) {
     return true;
   }
   if (entry.payment_id && workerPaymentIds.has(entry.payment_id)) return true;
@@ -3207,6 +3215,12 @@ export const accountingService = {
         .eq('contact_id', workerId);
       const workerPaymentIds = new Set((workerPayments || []).map((p: { id: string }) => p.id));
 
+      const { data: workerStages } = await supabase
+        .from('studio_production_stages')
+        .select('id')
+        .eq('assigned_worker_id', workerId);
+      const workerStageIds = new Set((workerStages || []).map((s: { id: string }) => String(s.id)));
+
       const workerLines = linesToUse.filter((line: any) => {
         const entry = line.journal_entry;
         if (!entry) return false;
@@ -3216,10 +3230,10 @@ export const accountingService = {
           return linesToUse.some((ol: any) => {
             const oe = ol.journal_entry;
             if (!oe || String(oe.id) !== origId) return false;
-            return workerGlLineMatchesWorker(ol, workerId, workerPaymentIds);
+            return workerGlLineMatchesWorker(ol, workerId, workerPaymentIds, workerStageIds);
           });
         }
-        return workerGlLineMatchesWorker(line, workerId, workerPaymentIds);
+        return workerGlLineMatchesWorker(line, workerId, workerPaymentIds, workerStageIds);
       });
 
       const branchFiltered = branchId

@@ -1,6 +1,10 @@
 /**
  * Registers sync handlers for offline records.
  * When online, runSync() pushes pending records to Supabase via these handlers.
+ *
+ * Pending types: sale, purchase (create/cancel), expense, payment, journal_entry.
+ * Payload shapes must match addPending() calls in Sales/POS, Purchase, Expense, Accounts flows.
+ * On success, App dispatches erp-mobile:autosync-complete so list caches refetch.
  */
 import { registerSyncHandler } from './syncEngine';
 import * as salesApi from '../api/sales';

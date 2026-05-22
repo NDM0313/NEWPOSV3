@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Users } from 'lucide-react';
 import * as authApi from '../../api/auth';
-import { getCounterUserForPin, listCounterUserSlots, formatCounterPinAuthError, COUNTER_WRONG_COMPANY_MESSAGE, type CounterUserSlot } from '../../lib/counterUserVault';
+import {
+  getCounterUserForPin,
+  listEnrolledCounterProfiles,
+  formatCounterPinAuthError,
+  COUNTER_WRONG_COMPANY_MESSAGE,
+  type EnrolledCounterProfile,
+} from '../../lib/counterUserVault';
+import { getCounterSyncStaleWarning } from '../../lib/counterSessionPolicy';
 import type { User } from '../../types';
 
 interface CounterLoginPanelProps {
@@ -11,15 +18,15 @@ interface CounterLoginPanelProps {
 }
 
 export function CounterLoginPanel({ companyId, onLogin, onUseFullLogin }: CounterLoginPanelProps) {
-  const [slots, setSlots] = useState<CounterUserSlot[]>([]);
+  const [slots, setSlots] = useState<EnrolledCounterProfile[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(true);
-  const [selected, setSelected] = useState<CounterUserSlot | null>(null);
+  const [selected, setSelected] = useState<EnrolledCounterProfile | null>(null);
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listCounterUserSlots(companyId)
+    listEnrolledCounterProfiles(companyId)
       .then(setSlots)
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false));
@@ -138,6 +145,11 @@ export function CounterLoginPanel({ companyId, onLogin, onUseFullLogin }: Counte
             ← Choose another user
           </button>
           <p className="text-sm text-white font-medium mb-2">{selected.displayName}</p>
+          {getCounterSyncStaleWarning(selected.lastTokenSyncAt) ? (
+            <p className="text-xs text-amber-200/90 text-center mb-3 px-2">
+              {getCounterSyncStaleWarning(selected.lastTokenSyncAt)}
+            </p>
+          ) : null}
           <div className="flex justify-center gap-2 mb-4">
             {[0, 1, 2, 3].map((i) => (
               <div

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import * as permissionsApi from '../api/permissions';
+import { pickCompanyDefaultBranch } from '../lib/branchResolution';
 import { getModuleConfigs, type ModuleToggles } from '../api/settings';
 import { getBranches } from '../api/branches';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
@@ -21,8 +22,12 @@ interface PermissionState {
 }
 
 interface PermissionContextValue extends PermissionState {
-  hasPermission: (module: string, action?: string) => boolean;
+  hasPermission: (code: string) => boolean;
   hasBranchAccess: (branchId: string) => boolean;
+  canUseFullAccounting: boolean;
+  canViewCustomerLedger: boolean;
+  canViewSupplierLedger: boolean;
+  shouldScopeStudioToOwnOnly: boolean;
   /** Company Module Toggles (same as Web): apply to all users/roles in this business. If module is off, hidden for everyone. */
   isModuleEnabled: (screenId: Screen) => boolean;
   /** User-facing hint when modules are hidden due to config load failure or admin toggles. */
@@ -92,6 +97,10 @@ const PermissionContext = createContext<PermissionContextValue>({
   ...defaultState,
   hasPermission: () => false,
   hasBranchAccess: () => false,
+  canUseFullAccounting: true,
+  canViewCustomerLedger: true,
+  canViewSupplierLedger: true,
+  shouldScopeStudioToOwnOnly: false,
   isModuleEnabled: () => true,
   moduleConfigBanner: null,
   reload: async () => {},
@@ -127,8 +136,9 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       let branchIds = userBranchIds;
       if (branchIds.length === 0 && companyId) {
         const { data: companyBranches } = await getBranches(companyId);
-        if (companyBranches?.length === 1) {
-          branchIds = [companyBranches[0].id];
+        const def = pickCompanyDefaultBranch(companyBranches ?? []);
+        if (def) {
+          branchIds = [def.id];
         }
       }
       const isAdminOrOwner = isAdminOrOwnerAppRole(appRole);
@@ -207,12 +217,29 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     ? buildModuleConfigBanner(state.moduleConfigStatus, state.moduleToggles, state.isAdminOrOwner)
     : null;
 
+  const fullAccounting = !FEATURE_MOBILE_PERMISSION_V2
+    ? true
+    : permissionsApi.canUseFullAccounting(state.permissions, state.isAdminOrOwner);
+  const customerLedger = !FEATURE_MOBILE_PERMISSION_V2
+    ? true
+    : permissionsApi.canViewCustomerLedger(state.permissions, state.isAdminOrOwner);
+  const supplierLedger = !FEATURE_MOBILE_PERMISSION_V2
+    ? true
+    : permissionsApi.canViewSupplierLedger(state.permissions, state.isAdminOrOwner);
+  const studioOwnOnly = !FEATURE_MOBILE_PERMISSION_V2
+    ? false
+    : permissionsApi.shouldScopeStudioToOwnOnly(state.permissions, state.isAdminOrOwner);
+
   return (
     <PermissionContext.Provider
       value={{
         ...state,
         hasPermission,
         hasBranchAccess,
+        canUseFullAccounting: fullAccounting,
+        canViewCustomerLedger: customerLedger,
+        canViewSupplierLedger: supplierLedger,
+        shouldScopeStudioToOwnOnly: studioOwnOnly,
         isModuleEnabled,
         moduleConfigBanner,
         reload,
@@ -231,5 +258,5 @@ export function usePermissions() {
 /** Screen-level: can user view this module? (sales, purchase, pos, studio, rentals, reports, inventory, products, contacts, accounts, expense, settings, dashboard) */
 export function useCanViewModule(module: string): boolean {
   const { hasPermission } = usePermissions();
-  return hasPermission(module, 'view');
+  return hasPermission(`${module}.view`);
 }

@@ -1,6 +1,6 @@
 # iOS build (Mac only)
 
-Build on a Mac with Xcode installed. Windows cannot produce iOS binaries.
+Build on a Mac with Xcode installed. **Windows cannot produce iOS binaries** — only refresh web assets (see below).
 
 ## Prerequisites
 
@@ -8,16 +8,37 @@ Build on a Mac with Xcode installed. Windows cannot produce iOS binaries.
 - Node.js LTS
 - Apple Developer account (for device install / TestFlight / App Store)
 - Bundle ID: `com.dincouture.erp` (see `capacitor.config.ts`)
+- Supabase env: same `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` as web ERP ([`docs/infra/MOBILE_APK_LOCKED_PATTERN.md`](../../docs/infra/MOBILE_APK_LOCKED_PATTERN.md))
 
-## Steps
+---
 
-From `erp-mobile-app`:
+## Step A — Windows (prep for GitHub / Mac pull)
+
+From `erp-mobile-app` on the Windows dev machine:
+
+```powershell
+npm ci
+# Copy .env.example → .env and set VITE_SUPABASE_* if not already present
+npm run cap:sync:ios:prod
+```
+
+This runs production Vite build + copies `dist/` into `ios/App/App/public` (gitignored locally; regenerated on Mac after pull).
+
+**Do not** run `npx cap add ios` — the Xcode project already exists under `ios/`.
+
+Commit and push source changes (`index.html`, `package.json`, `ios/` boilerplate, docs). Mac pulls and continues at Step B.
+
+---
+
+## Step B — Mac (Xcode run / TestFlight)
+
+From `erp-mobile-app` on the MacBook:
 
 ```bash
+git pull
 npm ci
-cp .env.example .env   # set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (same as web ERP)
-npm run build:mobile
-npx cap sync ios
+cp .env.example .env   # set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+npm run cap:sync:ios:prod
 npx cap open ios
 ```
 
@@ -27,13 +48,25 @@ In Xcode:
 2. Choose a simulator or connected iPhone.
 3. **Product → Run** for debug, or **Product → Archive** for TestFlight / App Store.
 
+Launch screen background matches app shell (`#111827`) — no white flash before WebView.
+
+---
+
 ## After web or native changes
 
 ```bash
-npm run build:mobile && npx cap sync ios
+npm run cap:sync:ios:prod
 ```
 
 Then rebuild in Xcode.
+
+Dev bundle (non-prod URL bake):
+
+```bash
+npm run cap:sync:ios
+```
+
+---
 
 ## Company modules (same as Android)
 

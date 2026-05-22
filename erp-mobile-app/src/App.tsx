@@ -3,7 +3,11 @@ import { initInputKeyboard } from './utils/inputKeyboard';
 import type { Screen, User, Branch, BottomNavTab } from './types';
 import * as authApi from './api/auth';
 import { getBranches } from './api/branches';
-import { getUserBranchIds } from './api/permissions';
+import { canPickAllCompanyBranches, getUserBranchIds } from './api/permissions';
+import {
+  resolveBranchForSingleEffectiveId,
+  resolveEffectiveBranchIds,
+} from './lib/branchResolution';
 import { usePermissions } from './context/PermissionContext';
 import { useSettings } from './context/SettingsContext';
 import { FEATURE_MOBILE_PERMISSION_V2 } from './config/featureFlags';
@@ -22,6 +26,7 @@ import { TabletSidebar } from './components/TabletSidebar';
 import { PlaceholderModule } from './components/PlaceholderModule';
 import { SyncStatusBar } from './components/SyncStatusBar';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
+import { MainScrollContext } from './contexts/MainScrollContext';
 import { runSync, getUnsyncedCount } from './lib/syncEngine';
 import { clearAllPending } from './lib/offlineStore';
 import type { AuthProfile } from './api/auth';
@@ -38,6 +43,10 @@ import {
   setLastCounterCompanyId,
 } from './lib/sharedCounterMode';
 import { countCounterUsers } from './lib/counterUserVault';
+import {
+  maintainCounterVaultTokens,
+  COUNTER_VAULT_MAINTENANCE_INTERVAL_MS,
+} from './lib/counterVaultMaintenance';
 
 const LAST_AUTOSYNC_KEY = 'erp_mobile_last_autosync_at';
 const BOOT_AUTH_TIMEOUT_MS = 10_000;
@@ -90,7 +99,7 @@ const MODULE_TITLES: Record<Screen, string> = {
   pos: 'POS',
   contacts: 'Contacts',
   reports: 'Reports',
-  packing: 'Packing List',
+  packing: 'Shipment & Cargo',
   ledger: 'Ledger',
   settings: 'Settings',
 };
@@ -98,7 +107,7 @@ const MODULE_TITLES: Record<Screen, string> = {
 export default function App() {
   const responsive = useResponsive();
   const { online, status, setStatus } = useNetworkStatus();
-  const { hasPermission, hasBranchAccess, isModuleEnabled, reload, isPermissionLoaded } = usePermissions();
+  const { hasPermission, hasBranchAccess, isModuleEnabled, reload, isPermissionLoaded, canUseFullAccounting } = usePermissions();
   const { reload: reloadSettings } = useSettings();
   const [authLoading, setAuthLoading] = useState(true);
   const [isBranchResolving, setIsBranchResolving] = useState(true);
@@ -119,6 +128,7 @@ export default function App() {
   const [showCreateBusiness, setShowCreateBusiness] = useState(false);
   const previousAuthUserIdRef = useRef<string | null>(null);
   const onlineWasOfflineRef = useRef(false);
+  const mainScrollRef = useRef<HTMLDivElement>(null);
 
   const applyProfileAfterCounterSwitch = useCallback(
     async (profile: AuthProfile) => {
@@ -184,7 +194,12 @@ export default function App() {
             getUserBranchIds(profile.profileId),
           ]);
           const companyBranches = branchesRes.data || [];
-          const isAdmin = (profile.role || '').toLowerCase() === 'admin';
+          const unrestricted = canPickAllCompanyBranches(profile.role);
+          const effectiveBranchIds = resolveEffectiveBranchIds(
+            companyBranches,
+            userBranchIds,
+            unrestricted
+          );
           if (companyBranches.length === 1) {
             setSelectedBranch(companyBranches[0]);
             try {
@@ -197,27 +212,28 @@ export default function App() {
             setIsBranchResolving(false);
             return;
           }
-          if (!isAdmin && userBranchIds.length === 1) {
-            const assigned =
-              companyBranches.find((b) => b.id === userBranchIds[0]) ?? {
-                id: userBranchIds[0],
-                name: 'Branch',
-                location: '—',
-              };
-            setSelectedBranch(assigned);
-            try {
-              localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(assigned));
-            } catch {
-              /* ignore */
+          if (!unrestricted && effectiveBranchIds.length === 1) {
+            const assigned = resolveBranchForSingleEffectiveId(companyBranches, effectiveBranchIds);
+            if (assigned) {
+              setSelectedBranch(assigned);
+              try {
+                localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(assigned));
+              } catch {
+                /* ignore */
+              }
+              setCurrentScreen('home');
+              setActiveBottomTab('home');
+              setIsBranchResolving(false);
+              return;
             }
-            setCurrentScreen('home');
-            setActiveBottomTab('home');
-            setIsBranchResolving(false);
-            return;
           }
           const saved = localStorage.getItem(BRANCH_STORAGE_KEY);
           const branch = saved ? (JSON.parse(saved) as Branch) : null;
-          if (branch?.id && branch?.name && (isAdmin || userBranchIds.length === 0 || userBranchIds.includes(branch.id))) {
+          const mayRestoreSavedBranch =
+            branch?.id &&
+            branch?.name &&
+            (unrestricted || effectiveBranchIds.includes(branch.id));
+          if (mayRestoreSavedBranch) {
             setSelectedBranch(branch);
             setCurrentScreen('home');
             setActiveBottomTab('home');
@@ -328,9 +344,13 @@ export default function App() {
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
         void checkLock();
+        void maintainCounterVaultTokens();
       }
     };
-    const onFocus = () => { void checkLock(); };
+    const onFocus = () => {
+      void checkLock();
+      void maintainCounterVaultTokens();
+    };
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('focus', onFocus);
     return () => {
@@ -339,6 +359,15 @@ export default function App() {
       window.removeEventListener('focus', onFocus);
     };
   }, [user?.id, isPinLocked]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void maintainCounterVaultTokens();
+    const id = window.setInterval(() => {
+      void maintainCounterVaultTokens();
+    }, COUNTER_VAULT_MAINTENANCE_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -350,12 +379,20 @@ export default function App() {
     const justReconnected = onlineWasOfflineRef.current;
     onlineWasOfflineRef.current = false;
 
+    const notifyListsRefreshed = () => {
+      window.dispatchEvent(new CustomEvent('erp-mobile:autosync-complete'));
+    };
+
     const doSync = () => {
       getUnsyncedCount().then((n) => {
-        if (cancelled || n === 0) return;
+        if (cancelled) return;
+        if (n === 0) {
+          if (justReconnected) notifyListsRefreshed();
+          return;
+        }
         setStatus('syncing');
         runSync()
-          .then(({ errors }) => {
+          .then(({ synced, errors }) => {
             if (cancelled) return;
             if (errors === 0) {
               try {
@@ -363,7 +400,14 @@ export default function App() {
               } catch {
                 /* ignore */
               }
-              window.dispatchEvent(new CustomEvent('erp-mobile:autosync-complete'));
+              notifyListsRefreshed();
+              if (synced > 0 && typeof document !== 'undefined') {
+                window.dispatchEvent(
+                  new CustomEvent('erp-mobile:toast', {
+                    detail: { message: `${synced} item${synced === 1 ? '' : 's'} synced` },
+                  }),
+                );
+              }
             }
             setStatus(errors > 0 ? 'sync_error' : 'online');
           })
@@ -375,6 +419,7 @@ export default function App() {
 
     const start = () => {
       if (justReconnected) {
+        notifyListsRefreshed();
         window.setTimeout(() => doSync(), 450);
       } else {
         doSync();
@@ -510,7 +555,12 @@ export default function App() {
               profileId ? getUserBranchIds(profileId) : Promise.resolve([]),
             ]);
             const companyBranches = branchesRes.data || [];
-            const isAdmin = (profile.role || '').toLowerCase() === 'admin';
+            const unrestricted = canPickAllCompanyBranches(profile.role);
+            const effectiveBranchIds = resolveEffectiveBranchIds(
+              companyBranches,
+              userBranchIds,
+              unrestricted
+            );
 
             if (companyBranches.length === 1) {
               setSelectedBranch(companyBranches[0]);
@@ -520,18 +570,24 @@ export default function App() {
               setIsBranchResolving(false);
               return;
             }
-            if (!isAdmin && userBranchIds.length === 1) {
-              const assigned = companyBranches.find((b) => b.id === userBranchIds[0]) ?? { id: userBranchIds[0], name: 'Branch', location: '—' };
-              setSelectedBranch(assigned);
-              try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(assigned)); } catch { /* ignore */ }
-              setCurrentScreen('home');
-              setActiveBottomTab('home');
-              setIsBranchResolving(false);
-              return;
+            if (!unrestricted && effectiveBranchIds.length === 1) {
+              const assigned = resolveBranchForSingleEffectiveId(companyBranches, effectiveBranchIds);
+              if (assigned) {
+                setSelectedBranch(assigned);
+                try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(assigned)); } catch { /* ignore */ }
+                setCurrentScreen('home');
+                setActiveBottomTab('home');
+                setIsBranchResolving(false);
+                return;
+              }
             }
             const saved = localStorage.getItem(BRANCH_STORAGE_KEY);
             const branch = saved ? (JSON.parse(saved) as Branch) : null;
-            if (branch?.id && branch?.name && (isAdmin || userBranchIds.length === 0 || userBranchIds.includes(branch.id))) {
+            const mayRestoreSavedBranch =
+              branch?.id &&
+              branch?.name &&
+              (unrestricted || effectiveBranchIds.includes(branch.id));
+            if (mayRestoreSavedBranch) {
               setSelectedBranch(branch);
               setCurrentScreen('home');
               setActiveBottomTab('home');
@@ -588,7 +644,12 @@ export default function App() {
       try {
         const [branchesRes, userBranchIds] = await Promise.all([getBranches(cid), getUserBranchIds(u.profileId)]);
         const companyBranches = branchesRes.data || [];
-        const isAdmin = (u.role || '').toLowerCase() === 'admin';
+        const unrestricted = canPickAllCompanyBranches(u.role);
+        const effectiveBranchIds = resolveEffectiveBranchIds(
+          companyBranches,
+          userBranchIds,
+          unrestricted
+        );
         if (companyBranches.length === 1) {
           setSelectedBranch(companyBranches[0]);
           try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(companyBranches[0])); } catch { /* ignore */ }
@@ -598,15 +659,17 @@ export default function App() {
           void authApi.syncCurrentSessionToCounterVault();
           return;
         }
-        if (!isAdmin && userBranchIds.length === 1) {
-          const assigned = companyBranches.find((b) => b.id === userBranchIds[0]) ?? { id: userBranchIds[0], name: 'Branch', location: '—' };
-          setSelectedBranch(assigned);
-          try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(assigned)); } catch { /* ignore */ }
-          setCurrentScreen('home');
-          setActiveBottomTab('home');
-          setIsBranchResolving(false);
-          void authApi.syncCurrentSessionToCounterVault();
-          return;
+        if (!unrestricted && effectiveBranchIds.length === 1) {
+          const assigned = resolveBranchForSingleEffectiveId(companyBranches, effectiveBranchIds);
+          if (assigned) {
+            setSelectedBranch(assigned);
+            try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(assigned)); } catch { /* ignore */ }
+            setCurrentScreen('home');
+            setActiveBottomTab('home');
+            setIsBranchResolving(false);
+            void authApi.syncCurrentSessionToCounterVault();
+            return;
+          }
         }
       } catch { /* ignore */ }
     }
@@ -954,7 +1017,9 @@ export default function App() {
               user={user}
               companyId={companyId}
               branch={selectedBranch}
-              initialView="reports"
+              initialView={canUseFullAccounting ? 'reports' : undefined}
+              initialReport={canUseFullAccounting ? 'customer-ledger' : undefined}
+              initialWorkerActivity={!canUseFullAccounting}
               onNavigateToDocumentEdit={navigateToDocumentEdit}
             />
             )
@@ -1005,7 +1070,14 @@ export default function App() {
         )}
         <div className="flex-1 flex flex-col overflow-hidden">
           {syncBar}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden max-w-full min-w-0">{content}</div>
+          <MainScrollContext.Provider value={mainScrollRef}>
+            <div
+              ref={mainScrollRef}
+              className="flex-1 overflow-y-auto overflow-x-hidden max-w-full min-w-0"
+            >
+              {content}
+            </div>
+          </MainScrollContext.Provider>
         </div>
       </div>
     );

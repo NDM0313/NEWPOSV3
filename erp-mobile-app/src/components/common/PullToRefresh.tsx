@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 
-function getScrollTop(): number {
+function getScrollTop(scrollEl?: HTMLElement | null): number {
+  if (scrollEl && typeof scrollEl.scrollTop === 'number') return scrollEl.scrollTop;
   const se = document.scrollingElement;
   if (se && typeof se.scrollTop === 'number') return se.scrollTop;
   return window.scrollY ?? 0;
@@ -18,6 +19,8 @@ export interface PullToRefreshProps {
   className?: string;
   /** Tailwind classes for spinner top border accent (e.g. `border-t-[#EF4444]`). */
   spinnerAccentClass?: string;
+  /** Tablet layout: pass App scroll container so PTR works when not document-scrolled. */
+  scrollElementRef?: RefObject<HTMLElement | null>;
 }
 
 /**
@@ -32,8 +35,10 @@ export function PullToRefresh({
   maxPull = 88,
   className = '',
   spinnerAccentClass = 'border-t-[#8B5CF6]',
+  scrollElementRef,
 }: PullToRefreshProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const scrollEl = scrollElementRef?.current ?? null;
   const refreshingRef = useRef(false);
   const pullRef = useRef(0);
   const startYRef = useRef(0);
@@ -52,14 +57,14 @@ export function PullToRefresh({
 
     const onStart = (e: TouchEvent) => {
       if (refreshingRef.current) return;
-      if (getScrollTop() > 2) return;
+      if (getScrollTop(scrollEl) > 2) return;
       startYRef.current = e.touches[0].clientY;
       startXRef.current = e.touches[0].clientX;
     };
 
     const onMove = (e: TouchEvent) => {
       if (refreshingRef.current) return;
-      if (getScrollTop() > 2) {
+      if (getScrollTop(scrollEl) > 2) {
         pullRef.current = 0;
         setPullPx(0);
         return;
@@ -116,7 +121,7 @@ export function PullToRefresh({
       el.removeEventListener('touchend', onEnd);
       el.removeEventListener('touchcancel', onCancel);
     };
-  }, [disabled, maxPull, threshold, onRefresh, endPullVisual]);
+  }, [disabled, maxPull, threshold, onRefresh, endPullVisual, scrollEl]);
 
   const dragOpacity = Math.min(1, pullPx / threshold);
 
@@ -140,10 +145,14 @@ export function PullToRefresh({
         </div>
       )}
       <div
-        style={{
-          transform: `translateY(${pullPx}px)`,
-          transition: pullPx === 0 ? 'transform 0.2s ease-out' : undefined,
-        }}
+        style={
+          pullPx > 0
+            ? {
+                transform: `translateY(${pullPx}px)`,
+                transition: pullPx === 0 ? 'transform 0.2s ease-out' : undefined,
+              }
+            : undefined
+        }
       >
         {children}
       </div>

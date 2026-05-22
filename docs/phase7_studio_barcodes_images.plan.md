@@ -99,6 +99,35 @@ Replace fake barcode preview in [`PrintBarcodeModal.tsx`](../src/app/components/
 
 ---
 
+## Mobile APK — device matrix (Build 5)
+
+Physical device QA on the Capacitor APK (Build 5):
+
+| Device | Result | Notes |
+|--------|--------|-------|
+| Samsung | OK | Baseline |
+| OnePlus 9 Pro | Works; UI distorted with Force Dark | Fixed via `color-scheme` meta + solid `#111827` root background in [`erp-mobile-app/index.html`](../erp-mobile-app/index.html) — retest with **Settings → Display → Force Dark** on |
+| Google Pixel 6 Pro | Stuck on blue screen | **Diagnosis only** — codebase stable on Samsung/OnePlus; capture WebView logs before code changes |
+
+### Pixel 6 Pro — logcat (host machine, USB debugging)
+
+From PowerShell on the Windows dev machine (device connected, `adb devices` shows the Pixel):
+
+```powershell
+adb devices
+adb logcat | findstr /i "chromium capacitor ERP"
+```
+
+Reproduce: force-stop app → cold start → blue screen. Save **30–60 seconds** of filtered log output for the next fix pass.
+
+Related runbooks: [`mobile_phase3_device_qa_runbook.md`](mobile_phase3_device_qa_runbook.md), [`infra/ANDROID_DEBUG_WEBVIEW_SSL.md`](infra/ANDROID_DEBUG_WEBVIEW_SSL.md).
+
+### iOS prep (Mac only)
+
+iOS Xcode project already exists under [`erp-mobile-app/ios/`](../erp-mobile-app/ios/). **Step A (Windows):** `npm run cap:sync:ios:prod` → push. **Step B (Mac):** `git pull` → same command → `npx cap open ios` → sign & Run. Full checklist: [`erp-mobile-app/ios/README_BUILD.md`](../erp-mobile-app/ios/README_BUILD.md).
+
+---
+
 ## Lockdown compliance
 
 | Area | This phase |

@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Search, Plus, Phone, X, Building2 } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Phone, Star, Building2, Loader2 } from 'lucide-react';
+import type { AddContactFormData } from '../contacts/AddContactFlow';
+import { AddContactFlow } from '../contacts/AddContactFlow';
+import { SwipeBackShell } from '../common';
 import * as contactsApi from '../../api/contacts';
 import { usePermissions } from '../../context/PermissionContext';
 
@@ -21,9 +24,9 @@ export function SelectSupplierTablet({ onBack, onSelect, companyId }: SelectSupp
   const [searchQuery, setSearchQuery] = useState('');
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(!!companyId);
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [newSupplier, setNewSupplier] = useState({ name: '', phone: '' });
+  const [view, setView] = useState<'pick' | 'addContact'>('pick');
   const [addError, setAddError] = useState('');
+  const [addSaving, setAddSaving] = useState(false);
 
   useEffect(() => {
     if (!companyId) {
@@ -42,44 +45,75 @@ export function SelectSupplierTablet({ onBack, onSelect, companyId }: SelectSupp
               name: c.name,
               phone: c.phone || '',
               balance: c.balance || 0,
-            }))
+            })),
       );
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [companyId]);
 
   const filteredSuppliers = suppliers.filter(
     (s) =>
       s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.phone.includes(searchQuery)
+      s.phone.includes(searchQuery),
   );
   const recentSuppliers = suppliers.slice(0, 2);
 
-  const handleAddNewSupplier = async () => {
-    if (!newSupplier.name.trim() || !companyId) return;
+  const handleAddContactSubmit = async (data: AddContactFormData) => {
+    if (!companyId) return;
     setAddError('');
-    const { data, error } = await contactsApi.createContact(companyId, {
-      name: newSupplier.name.trim(),
-      phone: newSupplier.phone.trim(),
-      roles: ['supplier'],
-    });
-    if (error) {
-      setAddError(error);
-      return;
-    }
-    if (data) {
-      const supplier: Supplier = {
-        id: data.id,
-        name: data.name,
-        phone: data.phone || '',
-        balance: 0,
-      };
-      setSuppliers([supplier, ...suppliers]);
-      setShowAddDialog(false);
-      setNewSupplier({ name: '', phone: '' });
-      onSelect(supplier);
+    setAddSaving(true);
+    try {
+      const { data: created, error } = await contactsApi.createContact(companyId, {
+        name: data.name.trim(),
+        phone: data.phone.trim(),
+        email: data.email?.trim() || undefined,
+        address: data.address?.trim() || undefined,
+        city: data.city?.trim() || undefined,
+        roles: data.roles.length ? data.roles : ['supplier'],
+        openingBalance: data.balance,
+        creditLimit: data.creditLimit || undefined,
+      });
+      if (error) {
+        setAddError(error);
+        return;
+      }
+      if (created) {
+        const supplier: Supplier = {
+          id: created.id,
+          name: created.name,
+          phone: created.phone || '',
+          balance: 0,
+        };
+        setSuppliers([supplier, ...suppliers]);
+        setView('pick');
+        onSelect(supplier);
+      }
+    } finally {
+      setAddSaving(false);
     }
   };
+
+  if (view === 'addContact') {
+    return (
+      <SwipeBackShell onBack={() => { setView('pick'); setAddError(''); }}>
+        <AddContactFlow
+          onBack={() => { setView('pick'); setAddError(''); }}
+          onSubmit={handleAddContactSubmit}
+          error={addError}
+          defaultRoles={['supplier']}
+          lockRoles
+          title="Add New Supplier"
+        />
+        {addSaving && (
+          <div className="fixed inset-0 z-[90] bg-black/50 flex items-center justify-center">
+            <Loader2 className="w-10 h-10 text-white animate-spin" />
+          </div>
+        )}
+      </SwipeBackShell>
+    );
+  }
 
   const stats = {
     total: suppliers.length,
@@ -108,153 +142,80 @@ export function SelectSupplierTablet({ onBack, onSelect, companyId }: SelectSupp
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search supplier by name or phone..."
-              className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg pl-11 pr-4 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#10B981]"
+              placeholder="Search suppliers..."
+              className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg pl-11 pr-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#10B981]"
             />
           </div>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 space-y-6">
-            {loading ? (
-              <div className="flex justify-center py-12">
-                <div className="w-8 h-8 border-2 border-[#10B981] border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : (
-              <>
-                {!searchQuery && recentSuppliers.length > 0 && (
-                  <div>
-                    <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">RECENT SUPPLIERS</h2>
-                    <div className="space-y-2">
-                      {recentSuppliers.map((supplier) => (
-                        <SupplierCard key={supplier.id} supplier={supplier} canViewBalances={canViewBalances} onSelect={onSelect} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">
-                    {searchQuery ? 'SEARCH RESULTS' : 'ALL SUPPLIERS'}
-                  </h2>
-                  <div className="space-y-2">
-                    {filteredSuppliers.map((supplier) => (
-                      <SupplierCard key={supplier.id} supplier={supplier} canViewBalances={canViewBalances} onSelect={onSelect} />
-                    ))}
-                  </div>
-                  {filteredSuppliers.length === 0 && (
-                    <div className="text-center py-12 bg-[#1F2937] rounded-xl border border-[#374151]">
-                      <Search className="w-8 h-8 mx-auto mb-4 text-[#6B7280]" />
-                      <p className="text-[#9CA3AF]">No suppliers found</p>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => setShowAddDialog(true)}
-                  className="w-full py-3 border-2 border-dashed border-[#374151] rounded-lg text-[#9CA3AF] hover:border-[#10B981] hover:text-[#10B981] transition-colors flex items-center justify-center gap-2"
-                >
-                  <Plus className="w-5 h-5" />
-                  <span className="font-medium text-sm">Add New Supplier</span>
-                </button>
-              </>
-            )}
+      <div className="max-w-4xl mx-auto px-6 py-4">
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="bg-[#1F2937] border border-[#374151] rounded-lg p-3 text-center">
+            <p className="text-xs text-[#6B7280]">Total</p>
+            <p className="text-lg font-bold text-white">{stats.total}</p>
           </div>
-          <div className="space-y-4">
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Building2 className="w-4 h-4 text-[#10B981]" />
-                <h3 className="text-sm font-semibold text-white">Supplier Stats</h3>
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-[#6B7280]">Total Suppliers</span>
-                  <span className="text-sm font-semibold text-white">{stats.total}</span>
-                </div>
-                {canViewBalances && (
-                  <>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-[#6B7280]">Payables</span>
-                      <span className="text-sm font-semibold text-[#EF4444]">{stats.withDue}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-[#6B7280]">Receivables</span>
-                      <span className="text-sm font-semibold text-[#10B981]">{stats.withCredit}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="bg-[#10B981]/10 border border-[#10B981]/30 rounded-xl p-4">
-              <div className="text-lg mb-2">💡</div>
-              <p className="text-xs text-[#9CA3AF] leading-relaxed">
-                <span className="text-white font-medium">Quick Tip:</span> Select supplier to start purchase order
-              </p>
-            </div>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-lg p-3 text-center">
+            <p className="text-xs text-[#6B7280]">With Due</p>
+            <p className="text-lg font-bold text-[#EF4444]">{stats.withDue}</p>
+          </div>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-lg p-3 text-center">
+            <p className="text-xs text-[#6B7280]">With Credit</p>
+            <p className="text-lg font-bold text-[#10B981]">{stats.withCredit}</p>
           </div>
         </div>
-      </div>
 
-      {showAddDialog && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1F2937] rounded-2xl w-full max-w-md">
-            <div className="px-6 py-4 border-b border-[#374151] flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Add New Supplier</h2>
-              <button
-                onClick={() => {
-                  setShowAddDialog(false);
-                  setNewSupplier({ name: '', phone: '' });
-                  setAddError('');
-                }}
-                className="p-2 hover:bg-[#374151] rounded-lg transition-colors text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Supplier Name *</label>
-                <input
-                  type="text"
-                  value={newSupplier.name}
-                  onChange={(e) => setNewSupplier({ ...newSupplier, name: e.target.value })}
-                  placeholder="Enter supplier name"
-                  className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#10B981]"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Phone Number *</label>
-                <input
-                  type="tel"
-                  value={newSupplier.phone}
-                  onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
-                  placeholder="+92-300-1234567"
-                  className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#10B981]"
-                />
-              </div>
-              {addError && <p className="text-sm text-red-400">{addError}</p>}
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => {
-                    setShowAddDialog(false);
-                    setNewSupplier({ name: '', phone: '' });
-                  }}
-                  className="flex-1 h-12 border border-[#374151] rounded-lg font-medium hover:bg-[#374151] transition-colors text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddNewSupplier}
-                  disabled={!newSupplier.name.trim() || !newSupplier.phone.trim()}
-                  className="flex-1 h-12 bg-[#10B981] hover:bg-[#059669] disabled:bg-[#374151] disabled:text-[#6B7280] rounded-lg font-medium transition-colors text-white"
-                >
-                  Add Supplier
-                </button>
-              </div>
-            </div>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-8 h-8 text-[#10B981] animate-spin" />
           </div>
-        </div>
-      )}
+        ) : (
+          <>
+            {!searchQuery && recentSuppliers.length > 0 && (
+              <div className="mb-4">
+                <h2 className="text-xs font-medium text-[#9CA3AF] mb-2 uppercase">Recent</h2>
+                <div className="space-y-2">
+                  {recentSuppliers.map((supplier) => (
+                    <SupplierCard
+                      key={supplier.id}
+                      supplier={supplier}
+                      canViewBalances={canViewBalances}
+                      onSelect={() => onSelect(supplier)}
+                      isRecent
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <h2 className="text-xs font-medium text-[#9CA3AF] mb-2 uppercase">
+              {searchQuery ? 'Search Results' : 'All Suppliers'}
+            </h2>
+            <div className="space-y-2 mb-4">
+              {filteredSuppliers.map((supplier) => (
+                <SupplierCard
+                  key={supplier.id}
+                  supplier={supplier}
+                  canViewBalances={canViewBalances}
+                  onSelect={() => onSelect(supplier)}
+                />
+              ))}
+              {filteredSuppliers.length === 0 && (
+                <p className="text-center py-8 text-[#9CA3AF]">No suppliers found</p>
+              )}
+            </div>
+          </>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setView('addContact')}
+          className="w-full py-3 border-2 border-dashed border-[#374151] rounded-lg text-[#9CA3AF] hover:border-[#10B981] hover:text-[#10B981] flex items-center justify-center gap-2"
+        >
+          <Plus className="w-5 h-5" />
+          Add New Supplier
+        </button>
+      </div>
     </div>
   );
 }
@@ -263,19 +224,29 @@ function SupplierCard({
   supplier,
   canViewBalances,
   onSelect,
+  isRecent,
 }: {
   supplier: Supplier;
   canViewBalances: boolean;
-  onSelect: (s: Supplier) => void;
+  onSelect: () => void;
+  isRecent?: boolean;
 }) {
   return (
     <button
-      onClick={() => onSelect(supplier)}
-      className="w-full bg-[#1F2937] border border-[#374151] rounded-lg p-3 hover:border-[#10B981] transition-all active:scale-[0.98] text-left group"
+      onClick={onSelect}
+      className="w-full bg-[#1F2937] border border-[#374151] rounded-lg p-3 hover:border-[#10B981] transition-all text-left"
     >
       <div className="flex items-center gap-3">
-        <div className="w-9 h-9 bg-[#10B981]/10 rounded-full flex items-center justify-center flex-shrink-0">
-          <span className="text-sm font-semibold text-[#10B981]">{supplier.name.charAt(0)}</span>
+        <div
+          className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
+            isRecent ? 'bg-[#10B981]/10' : 'bg-[#10B981]/10'
+          }`}
+        >
+          {isRecent ? (
+            <Star className="w-4 h-4 text-[#10B981] fill-[#10B981]" />
+          ) : (
+            <Building2 className="w-4 h-4 text-[#10B981]" />
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-medium text-white text-sm truncate">{supplier.name}</h3>
@@ -287,7 +258,7 @@ function SupplierCard({
         {canViewBalances && supplier.balance !== 0 && (
           <div className="text-right flex-shrink-0">
             <p className={`text-xs font-medium ${supplier.balance > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
-              {supplier.balance > 0 ? 'Payable' : 'Receivable'}
+              {supplier.balance > 0 ? 'Due' : 'Credit'}
             </p>
             <p className={`text-sm font-semibold ${supplier.balance > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
               Rs. {Math.abs(supplier.balance).toLocaleString()}

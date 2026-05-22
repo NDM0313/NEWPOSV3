@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Search, Plus, Phone, X, Loader2, Star, ShoppingCart, Palette } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Phone, Loader2, Star, ShoppingCart, Palette } from 'lucide-react';
 import type { Customer } from './SalesModule';
+import type { AddContactFormData } from '../contacts/AddContactFlow';
+import { AddContactFlow } from '../contacts/AddContactFlow';
+import { SwipeBackShell } from '../common';
 import * as contactsApi from '../../api/contacts';
 import { usePermissions } from '../../context/PermissionContext';
 import { getPartyBalanceLabel } from '../../utils/balancePrivacy';
@@ -31,6 +34,9 @@ export function SelectCustomer({ companyId, onBack, onSelect, initialSaleType = 
   const [loading, setLoading] = useState(!!companyId);
   const [searchQuery, setSearchQuery] = useState('');
   const [saleType, setSaleType] = useState<'regular' | 'studio'>(initialSaleType);
+  const [view, setView] = useState<'pick' | 'addContact'>('pick');
+  const [addError, setAddError] = useState('');
+  const [addSaving, setAddSaving] = useState(false);
 
   useEffect(() => {
     setSaleType(initialSaleType);
@@ -40,10 +46,6 @@ export function SelectCustomer({ companyId, onBack, onSelect, initialSaleType = 
     setSaleType(type);
     onSaleTypeChange?.(type);
   };
-  const [showAdd, setShowAdd] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newPhone, setNewPhone] = useState('');
-  const [addError, setAddError] = useState('');
 
   useEffect(() => {
     if (!companyId) {
@@ -69,36 +71,68 @@ export function SelectCustomer({ companyId, onBack, onSelect, initialSaleType = 
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.phone.includes(searchQuery)
   );
 
-  const handleAdd = async () => {
-    if (!newName.trim() || !newPhone.trim()) return;
+  const handleAddContactSubmit = async (data: AddContactFormData) => {
     setAddError('');
-    if (companyId) {
-      const { data, error } = await contactsApi.createContact(companyId, {
-        name: newName.trim(),
-        phone: newPhone.trim(),
-        roles: ['customer'],
-      });
-      if (error) {
-        setAddError(error);
-        return;
-      }
-      if (data) {
-        const c = contactToCustomer(data);
+    setAddSaving(true);
+    try {
+      if (companyId) {
+        const { data: created, error } = await contactsApi.createContact(companyId, {
+          name: data.name.trim(),
+          phone: data.phone.trim(),
+          email: data.email?.trim() || undefined,
+          address: data.address?.trim() || undefined,
+          city: data.city?.trim() || undefined,
+          roles: data.roles.length ? data.roles : ['customer'],
+          openingBalance: data.balance,
+          creditLimit: data.creditLimit || undefined,
+          workerType: data.workerType || undefined,
+          workerRate: data.workerRate || undefined,
+        });
+        if (error) {
+          setAddError(error);
+          return;
+        }
+        if (created) {
+          const c = contactToCustomer(created);
+          setCustomers((prev) => [c, ...prev]);
+          setView('pick');
+          onSelect(c, saleType);
+        }
+      } else {
+        const c: Customer = {
+          id: `c${Date.now()}`,
+          name: data.name.trim(),
+          phone: data.phone.trim(),
+          balance: 0,
+        };
         setCustomers((prev) => [c, ...prev]);
-        setShowAdd(false);
-        setNewName('');
-        setNewPhone('');
+        setView('pick');
         onSelect(c, saleType);
       }
-    } else {
-      const c: Customer = { id: `c${Date.now()}`, name: newName.trim(), phone: newPhone.trim(), balance: 0 };
-      setCustomers((prev) => [c, ...prev]);
-      setShowAdd(false);
-      setNewName('');
-      setNewPhone('');
-      onSelect(c, saleType);
+    } finally {
+      setAddSaving(false);
     }
   };
+
+  if (view === 'addContact') {
+    return (
+      <SwipeBackShell onBack={() => { setView('pick'); setAddError(''); }}>
+        <AddContactFlow
+          onBack={() => { setView('pick'); setAddError(''); }}
+          onSubmit={handleAddContactSubmit}
+          error={addError}
+          defaultRoles={['customer']}
+          lockRoles
+          title="Add New Customer"
+        />
+        {addSaving && (
+          <div className="fixed inset-0 z-[90] bg-black/50 flex items-center justify-center">
+            <Loader2 className="w-10 h-10 text-white animate-spin" />
+          </div>
+        )}
+      </SwipeBackShell>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
@@ -214,50 +248,12 @@ export function SelectCustomer({ companyId, onBack, onSelect, initialSaleType = 
       </div>
 
       <button
-        onClick={() => setShowAdd(true)}
+        onClick={() => setView('addContact')}
         className="mx-4 mt-4 w-[calc(100%-2rem)] py-4 border-2 border-dashed border-[#374151] rounded-xl text-[#9CA3AF] hover:border-[#3B82F6] hover:text-[#3B82F6] flex items-center justify-center gap-2"
       >
         <Plus className="w-5 h-5" />
         Add New Customer
       </button>
-
-      {showAdd && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center p-4">
-          <div className="bg-[#1F2937] rounded-t-2xl w-full max-w-md p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-white">Add New Customer</h2>
-              <button onClick={() => { setShowAdd(false); setAddError(''); }} className="p-2 hover:bg-[#374151] rounded-lg text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            {addError && <p className="text-sm text-red-400 mb-2">{addError}</p>}
-            <div className="space-y-4">
-              <input
-                type="text"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Customer name"
-                className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-              />
-              <input
-                type="tel"
-                value={newPhone}
-                onChange={(e) => setNewPhone(e.target.value)}
-                placeholder="Phone"
-                className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-              />
-              <div className="flex gap-3">
-                <button onClick={() => setShowAdd(false)} className="flex-1 h-12 border border-[#374151] rounded-lg text-white hover:bg-[#374151]">
-                  Cancel
-                </button>
-                <button onClick={handleAdd} disabled={!newName.trim() || !newPhone.trim()} className="flex-1 h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] rounded-lg font-medium text-white">
-                  Add
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

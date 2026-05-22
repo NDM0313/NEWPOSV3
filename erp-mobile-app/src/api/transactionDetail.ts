@@ -102,6 +102,136 @@ export interface TransactionDetail {
   attachments?: NormalizedAttachment[];
 }
 
+async function loadStockMovementHeaderMeta(
+  companyId: string,
+  movementId: string,
+): Promise<Record<string, string | number | null>> {
+  const { data, error } = await supabase
+    .from('stock_movements')
+    .select(
+      'id, movement_type, quantity, unit_cost, total_cost, reference_type, reference_id, notes, created_at, created_by, product_id, variation_id',
+    )
+    .eq('id', movementId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+
+  if (error || !data) return {};
+
+  const productId = String(data.product_id ?? '');
+  let productName = '';
+  let sku = '';
+  if (productId) {
+    const { data: p } = await supabase
+      .from('products')
+      .select('name, sku')
+      .eq('id', productId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (p) {
+      productName = String(p.name ?? '');
+      sku = String(p.sku ?? '');
+    }
+  }
+
+  let byName = '';
+  if (data.created_by) {
+    const { data: u } = await supabase
+      .from('users')
+      .select('name, email')
+      .eq('id', data.created_by)
+      .maybeSingle();
+    byName = String((u as { name?: string; email?: string } | null)?.name || (u as { email?: string } | null)?.email || '');
+  }
+
+  const headerMeta: Record<string, string | number | null> = {
+    Product: productName,
+    SKU: sku,
+    Type: String(data.movement_type ?? ''),
+    Qty: Number(data.quantity) || 0,
+    'Unit Cost': Number(data.unit_cost) || 0,
+    'Total Cost': Number(data.total_cost) || 0,
+    'Ref Type': String(data.reference_type ?? ''),
+    Notes: String(data.notes ?? ''),
+    By: byName,
+    Date: data.created_at ? String(data.created_at).slice(0, 10) : '',
+  };
+
+  const refType = String(data.reference_type ?? '').toLowerCase();
+  const refId = data.reference_id ? String(data.reference_id) : '';
+
+  if (refType === 'studio_production' && refId) {
+    const { data: sp } = await supabase
+      .from('studio_productions')
+      .select(
+        `production_no, status, production_date, quantity,
+         sale:sales(invoice_no, customer_name, total)`,
+      )
+      .eq('id', refId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (sp) {
+      const sale = (sp.sale as { invoice_no?: string; customer_name?: string; total?: number } | null) || {};
+      headerMeta['Production #'] = String(sp.production_no ?? '');
+      headerMeta.Invoice = String(sale.invoice_no ?? '');
+      headerMeta.Customer = String(sale.customer_name ?? '');
+      headerMeta['Studio Status'] = String(sp.status ?? '');
+    }
+  } else if (refType === 'sale' && refId) {
+    const { data: sale } = await supabase
+      .from('sales')
+      .select('invoice_no, customer_name')
+      .eq('id', refId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (sale) {
+      headerMeta['Sale #'] = String(sale.invoice_no ?? '');
+      headerMeta.Customer = String(sale.customer_name ?? '');
+    }
+  } else if (refType === 'purchase' && refId) {
+    const { data: po } = await supabase
+      .from('purchases')
+      .select('po_no, supplier_name')
+      .eq('id', refId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (po) {
+      headerMeta['PO #'] = String(po.po_no ?? '');
+      headerMeta.Supplier = String(po.supplier_name ?? '');
+    }
+  }
+
+  return headerMeta;
+}
+
+async function loadJournalEntryForDetail(
+  companyId: string,
+  referenceType: TransactionReferenceType,
+  referenceId: string,
+): Promise<{ je?: Record<string, unknown>; error: string | null }> {
+  let jeQuery = supabase
+    .from('journal_entries')
+    .select(
+      `id, entry_no, entry_date, description, reference_type, reference_id, created_at, is_void,
+       lines:journal_entry_lines(debit, credit, description, account:accounts(code, name))`,
+    )
+    .eq('company_id', companyId)
+    .limit(1);
+
+  if (referenceType === 'journal') {
+    jeQuery = jeQuery.eq('id', referenceId);
+  } else if (referenceType === 'stock_movement') {
+    jeQuery = jeQuery
+      .eq('reference_id', referenceId)
+      .in('reference_type', ['stock_adjustment', 'inventory', 'stock_movement']);
+  } else {
+    jeQuery = jeQuery.eq('reference_id', referenceId);
+  }
+
+  const { data: jeRows, error: jeError } = await jeQuery;
+  if (jeError) return { error: jeError.message };
+  return { je: (jeRows || [])[0] as Record<string, unknown> | undefined, error: null };
+}
+
 /**
  * Load a single transaction's full detail (journal entry lines + optional header
  * metadata pulled from the source table). referenceId is the source row id.
@@ -114,26 +244,14 @@ export async function getTransactionDetail(
 ): Promise<{ data: TransactionDetail | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
 
-  let jeQuery = supabase
-    .from('journal_entries')
-    .select(
-      `id, entry_no, entry_date, description, reference_type, reference_id, created_at, is_void,
-       lines:journal_entry_lines(debit, credit, description, account:accounts(code, name))`,
-    )
-    .eq('company_id', companyId)
-    .limit(1);
-
-  if (referenceType === 'journal') {
-    jeQuery = jeQuery.eq('id', referenceId);
-  } else {
-    jeQuery = jeQuery.eq('reference_id', referenceId);
+  let headerMeta: Record<string, string | number | null> = {};
+  if (referenceType === 'stock_movement') {
+    headerMeta = await loadStockMovementHeaderMeta(companyId, referenceId);
   }
 
-  const { data: jeRows, error: jeError } = await jeQuery;
-  if (jeError) return { data: null, error: jeError.message };
-  const je = (jeRows || [])[0] as Record<string, unknown> | undefined;
+  const { je, error: jeError } = await loadJournalEntryForDetail(companyId, referenceType, referenceId);
+  if (jeError) return { data: null, error: jeError };
 
-  let headerMeta: Record<string, string | number | null> = {};
   let sourceAttachments: NormalizedAttachment[] | undefined;
   try {
     if (referenceType === 'sale') {
@@ -218,32 +336,6 @@ export async function getTransactionDetail(
         const att = normalizeAttachments((data as { attachments?: unknown }).attachments);
         if (att.length) sourceAttachments = att;
       }
-    } else if (referenceType === 'stock_movement') {
-      const { data } = await supabase
-        .from('stock_movements')
-        .select(
-          `id, movement_type, quantity, unit_cost, total_cost, reference_type, reference_id, notes, created_at,
-           product:products(name, sku),
-           user:users(name, email)`,
-        )
-        .eq('id', referenceId)
-        .maybeSingle();
-      if (data) {
-        const prod = (data.product as { name?: string; sku?: string } | null) || {};
-        const u = (data.user as { name?: string; email?: string } | null) || {};
-        headerMeta = {
-          Product: String(prod.name ?? ''),
-          SKU: String(prod.sku ?? ''),
-          Type: String(data.movement_type ?? ''),
-          Qty: Number(data.quantity) || 0,
-          'Unit Cost': Number(data.unit_cost) || 0,
-          'Total Cost': Number(data.total_cost) || 0,
-          'Ref Type': String(data.reference_type ?? ''),
-          Notes: String(data.notes ?? ''),
-          By: String(u.name || u.email || ''),
-          Date: data.created_at ? String(data.created_at).slice(0, 10) : '',
-        };
-      }
     } else if (referenceType === 'studio') {
       const { data } = await supabase
         .from('studio_productions')
@@ -327,16 +419,20 @@ export async function getTransactionDetail(
     sourceAttachments && sourceAttachments.length > 0 ? { attachments: sourceAttachments } : {};
 
   if (!je) {
-    if (Object.keys(headerMeta).length === 0) return { data: null, error: 'Transaction not found.' };
+    if (Object.keys(headerMeta).length === 0) {
+      return { data: null, error: 'Transaction not found.' };
+    }
+    const typeLabel = String(headerMeta.Type ?? referenceType);
+    const productLabel = String(headerMeta.Product ?? '');
     return {
       data: {
         id: referenceId,
-        entryNo: '',
-        date: '',
-        createdAt: '',
+        entryNo: typeLabel,
+        date: String(headerMeta.Date ?? ''),
+        createdAt: String(headerMeta.Date ?? ''),
         referenceType,
         referenceId,
-        description: '',
+        description: productLabel ? `${productLabel} · ${typeLabel}` : typeLabel,
         lines: [],
         totals: { debit: 0, credit: 0 },
         headerMeta,

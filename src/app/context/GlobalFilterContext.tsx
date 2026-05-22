@@ -8,6 +8,7 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef, ReactNode } from 'react';
 import { useSupabase } from './SupabaseContext';
 import { safeLocalStorageGetItem, safeLocalStorageSetItem } from '@/app/lib/safeBrowserStorage';
+import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
 
 const STORAGE_KEY = 'erp-global-filters';
 
@@ -208,8 +209,8 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
   }, []);
 
   const setCustomDateRange = useCallback((startDate: Date, endDate: Date) => {
-    const start = startDate.toISOString().slice(0, 10);
-    const end = endDate.toISOString().slice(0, 10);
+    const start = formatLocalDateYYYYMMDD(startDate);
+    const end = formatLocalDateYYYYMMDD(endDate);
     setPersisted((prev) => {
       const next = { ...prev, dateRangeType: 'customRange', customStartDate: start, customEndDate: end };
       saveToStorage(next);

@@ -3,7 +3,8 @@
 // ============================================
 // Supabase connection for Din Collection ERP
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { RealtimeClient } from '@supabase/realtime-js';
 import { getBrowserStorage } from '@/app/lib/safeBrowserStorage';
 import {
   getBridgeAccessToken,
@@ -20,6 +21,8 @@ import {
 // IMPORTANT: Vite inlines these at BUILD time. For production Docker build,
 // pass VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY as build args (see deploy/Dockerfile).
 let supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+/** Baked env host (e.g. https://supabase.dincouture.pk) — used for direct Realtime WSS in Vite dev while REST uses /supabase proxy. */
+const configuredSupabaseHost = supabaseUrl.replace(/\/$/, '');
 // Production (app served from erp.dincouture.pk): same-origin so /auth/, /rest/ go through nginx → Kong (avoids SecurityError).
 // Vite dev: always use same-origin `/supabase` (see vite.config.ts proxy). LAN IPs (e.g. 192.168.x.x:5173) must not call
 // https://supabase.dincouture.pk directly or Kong may reject the browser Origin with CORS (localhost-only bypass was insufficient).
@@ -242,6 +245,51 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storage: safeStorage(),
   },
 });
+
+/**
+ * Vite dev proxies REST/auth to Kong via `/supabase`, but Realtime WebSockets through that
+ * hop often fail (ws://localhost:5173/supabase/realtime/...). Keep HTTP on the proxy; attach
+ * a direct wss:// client to the configured production Supabase host.
+ */
+function attachDirectRealtimeInLocalDev(client: SupabaseClient): void {
+  if (typeof window === 'undefined' || !import.meta.env.DEV) return;
+  if (!canUseRealtime) return;
+  if (!configuredSupabaseHost.startsWith('https://') || configuredSupabaseHost.includes('localhost')) {
+    return;
+  }
+  const origin = window.location.origin;
+  const isLocalDev =
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin) ||
+    /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(origin);
+  if (!isLocalDev) return;
+  if (!supabaseUrl.includes('/supabase') && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+    return;
+  }
+
+  const realtimeHref = `${configuredSupabaseHost.replace(/^https/i, 'wss')}/realtime/v1`;
+  try {
+    client.realtime.disconnect();
+  } catch {
+    /* ignore */
+  }
+  const rc = new RealtimeClient(realtimeHref, {
+    params: { apikey: supabaseAnonKey },
+    accessToken: async () => {
+      const { data } = await client.auth.getSession();
+      return data.session?.access_token ?? supabaseAnonKey;
+    },
+  });
+  (client as unknown as { realtime: RealtimeClient }).realtime = rc;
+  void client.auth.getSession().then(({ data }) => {
+    const token = data.session?.access_token ?? supabaseAnonKey;
+    void rc.setAuth(token);
+  });
+  if (import.meta.env.DEV) {
+    console.info('[Supabase] Realtime WebSocket (dev direct):', realtimeHref);
+  }
+}
+
+attachDirectRealtimeInLocalDev(supabase);
 
 /** SecurityError / storage denied – GoTrue cannot read persisted session. */
 function isStorageSecurityError(err: unknown): boolean {

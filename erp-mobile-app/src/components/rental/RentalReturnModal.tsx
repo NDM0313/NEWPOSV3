@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { CustomSelect } from '../common';
 import type { RentalDetail } from '../../api/rentals';
+import { localNowDateString } from '../../utils/localDate';
 import * as accountsApi from '../../api/accounts';
 
 interface RentalReturnModalProps {
@@ -22,7 +23,7 @@ interface RentalReturnModalProps {
 }
 
 export function RentalReturnModal({ rental, companyId, onClose, onConfirm, loading }: RentalReturnModalProps) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localNowDateString();
   const [actualReturnDate, setActualReturnDate] = useState(today);
   const [conditionType, setConditionType] = useState('good');
   const [damageNotes, setDamageNotes] = useState('');

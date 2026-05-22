@@ -13,6 +13,7 @@ import { PdfPreviewModal } from '../shared/PdfPreviewModal';
 import { ReportBrandHeader } from '../shared/ReportBrandHeader';
 import { usePdfPreview } from '../shared/usePdfPreview';
 import type { StockMovementEntry, StockMovementType } from '../../api/inventory';
+import { normalizeMovementType } from '../../api/inventory';
 
 interface ProductHistoryModalProps {
   companyId: string;
@@ -41,8 +42,9 @@ const fmtTime = (iso: string): string => {
   return d.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', hour12: true });
 };
 
-const typeLabel = (t: StockMovementType): string => {
-  switch (t) {
+const typeLabel = (t: StockMovementType | string): string => {
+  const n = typeof t === 'string' ? normalizeMovementType(t) : t;
+  switch (n) {
     case 'purchase':
       return 'Purchase';
     case 'sale':
@@ -60,10 +62,25 @@ const typeLabel = (t: StockMovementType): string => {
       return 'Transfer Out';
     case 'opening':
       return 'Opening';
+    case 'production_in':
+      return 'Production In';
     default:
-      return String(t);
+      return String(n).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
 };
+
+/** PDF Type column: movement label + invoice/PO when known (e.g. Sale · STD-0002). */
+function formatPdfTypeCell(entry: StockMovementEntry): string {
+  const base = typeLabel(entry.movementType);
+  const ref = entry.referenceNumber?.trim();
+  return ref ? `${base} · ${ref}` : base;
+}
+
+function formatPdfPartyCell(entry: StockMovementEntry): string {
+  const party = entry.partyName?.trim();
+  if (party) return party;
+  return '—';
+}
 
 const typeColor = (qty: number): string => (qty > 0 ? '#10B981' : qty < 0 ? '#EF4444' : '#9CA3AF');
 
@@ -402,9 +419,9 @@ function ProductHistoryPdf({
                   {fmtDate(e.createdAt)}
                   <div style={{ fontSize: 9, color: '#666' }}>{fmtTime(e.createdAt)}</div>
                 </td>
-                <td>{typeLabel(e.movementType)}</td>
+                <td>{formatPdfTypeCell(e)}</td>
                 <td style={{ fontFamily: 'monospace' }}>{e.referenceNumber || '—'}</td>
-                <td>{e.partyName || '—'}</td>
+                <td>{formatPdfPartyCell(e)}</td>
                 <td
                   style={{
                     textAlign: 'right',

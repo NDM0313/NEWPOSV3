@@ -53,7 +53,8 @@ interface CreatePurchaseFlowProps {
   branchId: string;
   userId: string;
   onBack: () => void;
-  onDone: () => void;
+  /** Called after success modal closes; pass created purchase id when available. */
+  onDone: (createdPurchaseId?: string | null) => void;
 }
 
 /** Map PaymentDialog label to API payment method */
@@ -315,8 +316,9 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   };
 
   const closePurchaseSuccessModal = () => {
+    const createdId = confirmationData?.entityId ?? null;
     setConfirmationData(null);
-    onDone();
+    onDone(createdId);
   };
 
   if (confirmationData) {

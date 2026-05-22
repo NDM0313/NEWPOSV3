@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { CustomSelect } from '../common';
 import type { RentalDetail } from '../../api/rentals';
+import { localNowDateString } from '../../utils/localDate';
 
 interface RentalPickupModalProps {
   rental: RentalDetail;
@@ -19,7 +20,7 @@ interface RentalPickupModalProps {
 }
 
 export function RentalPickupModal({ rental, onClose, onConfirm, loading }: RentalPickupModalProps) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localNowDateString();
   const [actualPickupDate, setActualPickupDate] = useState(today);
   const [documentType, setDocumentType] = useState<'cnic' | 'card' | 'other'>('cnic');
   const [documentNumber, setDocumentNumber] = useState('');

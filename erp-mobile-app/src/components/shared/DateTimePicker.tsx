@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { formatLocalDateYYYYMMDD } from '../../utils/localDate';
 
 interface DateTimePickerProps {
   value: string;
@@ -53,7 +54,7 @@ export function DateTimePicker({ value, onChange, onClose, showTime = false, lab
     }
 
     const newDate = new Date(scrollYear, scrollMonth, scrollDay, hour, scrollMinute);
-    const formattedDate = newDate.toISOString().split('T')[0];
+    const formattedDate = formatLocalDateYYYYMMDD(newDate);
     onChange(formattedDate);
     onClose();
   };

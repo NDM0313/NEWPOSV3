@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Search, Plus, Phone, X, Star, ShoppingCart, Palette } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Phone, Star, ShoppingCart, Palette, Loader2 } from 'lucide-react';
 import type { Customer } from './SalesModule';
+import type { AddContactFormData } from '../contacts/AddContactFlow';
+import { AddContactFlow } from '../contacts/AddContactFlow';
+import { SwipeBackShell } from '../common';
 import * as contactsApi from '../../api/contacts';
 import { usePermissions } from '../../context/PermissionContext';
 
@@ -13,7 +16,6 @@ interface SelectCustomerTabletProps {
   onBack: () => void;
   onSelect: (customer: Customer, saleType: 'regular' | 'studio') => void;
   initialSaleType?: 'regular' | 'studio';
-  /** Sync saleType to parent when user toggles Regular/Studio (ensures Studio Sale saves correctly) */
   onSaleTypeChange?: (saleType: 'regular' | 'studio') => void;
 }
 
@@ -23,8 +25,10 @@ export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleT
   const [loading, setLoading] = useState(!!companyId);
   const [searchQuery, setSearchQuery] = useState('');
   const [saleType, setSaleType] = useState<'regular' | 'studio'>(initialSaleType);
+  const [view, setView] = useState<'pick' | 'addContact'>('pick');
+  const [addError, setAddError] = useState('');
+  const [addSaving, setAddSaving] = useState(false);
 
-  // Sync local saleType when parent's initialSaleType changes (e.g. back from products)
   useEffect(() => {
     setSaleType(initialSaleType);
   }, [initialSaleType]);
@@ -33,9 +37,6 @@ export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleT
     setSaleType(type);
     onSaleTypeChange?.(type);
   };
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' });
-  const [addError, setAddError] = useState('');
 
   useEffect(() => {
     if (!companyId) return;
@@ -56,26 +57,57 @@ export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleT
   );
   const recentCustomers = customers.slice(0, 2);
 
-  const handleAddNewCustomer = async () => {
-    if (!newCustomer.name.trim() || !companyId) return;
+  const handleAddContactSubmit = async (data: AddContactFormData) => {
+    if (!companyId) return;
     setAddError('');
-    const { data, error } = await contactsApi.createContact(companyId, {
-      name: newCustomer.name.trim(),
-      phone: newCustomer.phone.trim(),
-      roles: ['customer'],
-    });
-    if (error) {
-      setAddError(error);
-      return;
-    }
-    if (data) {
-      const c = contactToCustomer(data);
-      setCustomers([c, ...customers]);
-      setShowAddDialog(false);
-      setNewCustomer({ name: '', phone: '' });
-      onSelect(c, saleType);
+    setAddSaving(true);
+    try {
+      const { data: created, error } = await contactsApi.createContact(companyId, {
+        name: data.name.trim(),
+        phone: data.phone.trim(),
+        email: data.email?.trim() || undefined,
+        address: data.address?.trim() || undefined,
+        city: data.city?.trim() || undefined,
+        roles: data.roles.length ? data.roles : ['customer'],
+        openingBalance: data.balance,
+        creditLimit: data.creditLimit || undefined,
+        workerType: data.workerType || undefined,
+        workerRate: data.workerRate || undefined,
+      });
+      if (error) {
+        setAddError(error);
+        return;
+      }
+      if (created) {
+        const c = contactToCustomer(created);
+        setCustomers([c, ...customers]);
+        setView('pick');
+        onSelect(c, saleType);
+      }
+    } finally {
+      setAddSaving(false);
     }
   };
+
+  if (view === 'addContact') {
+    return (
+      <SwipeBackShell onBack={() => { setView('pick'); setAddError(''); }}>
+        <AddContactFlow
+          onBack={() => { setView('pick'); setAddError(''); }}
+          onSubmit={handleAddContactSubmit}
+          error={addError}
+          defaultRoles={['customer']}
+          lockRoles
+          title="Add New Customer"
+        />
+        {addSaving && (
+          <div className="fixed inset-0 z-[90] bg-black/50 flex items-center justify-center">
+            <Loader2 className="w-10 h-10 text-white animate-spin" />
+          </div>
+        )}
+      </SwipeBackShell>
+    );
+  }
 
   const stats = {
     total: customers.length,
@@ -124,144 +156,79 @@ export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleT
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search customer by name or phone..."
-              className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg pl-11 pr-4 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
+              placeholder="Search customers..."
+              className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg pl-11 pr-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
             />
           </div>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 space-y-6">
-            {loading ? (
-              <div className="flex justify-center py-12">
-                <div className="w-8 h-8 border-2 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : (
-              <>
-                {!searchQuery && recentCustomers.length > 0 && (
-                  <div>
-                    <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">RECENT CUSTOMERS</h2>
-                    <div className="space-y-2">
-                      {recentCustomers.map((c) => (
-                        <CustomerCard key={c.id} customer={c} canViewBalances={canViewBalances} onSelect={() => onSelect(c, saleType)} isRecent />
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">
-                    {searchQuery ? 'SEARCH RESULTS' : 'ALL CUSTOMERS'}
-                  </h2>
-                  <div className="space-y-2">
-                    {filteredCustomers.map((c) => (
-                      <CustomerCard key={c.id} customer={c} canViewBalances={canViewBalances} onSelect={() => onSelect(c, saleType)} />
-                    ))}
-                  </div>
-                  {filteredCustomers.length === 0 && (
-                    <div className="text-center py-12 bg-[#1F2937] rounded-xl border border-[#374151]">
-                      <Search className="w-8 h-8 mx-auto mb-4 text-[#6B7280]" />
-                      <p className="text-[#9CA3AF]">No customers found</p>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => setShowAddDialog(true)}
-                  className="w-full py-3 border-2 border-dashed border-[#374151] rounded-lg text-[#9CA3AF] hover:border-[#3B82F6] hover:text-[#3B82F6] transition-colors flex items-center justify-center gap-2"
-                >
-                  <Plus className="w-5 h-5" />
-                  <span className="font-medium text-sm">Add New Customer</span>
-                </button>
-              </>
-            )}
+      <div className="max-w-4xl mx-auto px-6 py-4">
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="bg-[#1F2937] border border-[#374151] rounded-lg p-3 text-center">
+            <p className="text-xs text-[#6B7280]">Total</p>
+            <p className="text-lg font-bold text-white">{stats.total}</p>
           </div>
-          <div className="space-y-4">
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-white mb-4">Customer Stats</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-[#6B7280]">Total Customers</span>
-                  <span className="text-sm font-semibold text-white">{stats.total}</span>
-                </div>
-                {canViewBalances && (
-                  <>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-[#6B7280]">With Due</span>
-                      <span className="text-sm font-semibold text-[#EF4444]">{stats.withDue}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-[#6B7280]">With Credit</span>
-                      <span className="text-sm font-semibold text-[#10B981]">{stats.withCredit}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-lg p-3 text-center">
+            <p className="text-xs text-[#6B7280]">With Due</p>
+            <p className="text-lg font-bold text-[#EF4444]">{stats.withDue}</p>
+          </div>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-lg p-3 text-center">
+            <p className="text-xs text-[#6B7280]">With Credit</p>
+            <p className="text-lg font-bold text-[#10B981]">{stats.withCredit}</p>
           </div>
         </div>
-      </div>
 
-      {showAddDialog && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1F2937] rounded-2xl w-full max-w-md">
-            <div className="px-6 py-4 border-b border-[#374151] flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Add New Customer</h2>
-              <button
-                onClick={() => {
-                  setShowAddDialog(false);
-                  setNewCustomer({ name: '', phone: '' });
-                  setAddError('');
-                }}
-                className="p-2 hover:bg-[#374151] rounded-lg transition-colors text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Customer Name *</label>
-                <input
-                  type="text"
-                  value={newCustomer.name}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, name: e.target.value })}
-                  placeholder="Enter customer name"
-                  className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Phone Number *</label>
-                <input
-                  type="tel"
-                  value={newCustomer.phone}
-                  onChange={(e) => setNewCustomer({ ...newCustomer, phone: e.target.value })}
-                  placeholder="+92-300-1234567"
-                  className="w-full h-12 bg-[#111827] border border-[#374151] rounded-lg px-4 text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-                />
-              </div>
-              {addError && <p className="text-sm text-red-400">{addError}</p>}
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => {
-                    setShowAddDialog(false);
-                    setNewCustomer({ name: '', phone: '' });
-                  }}
-                  className="flex-1 h-12 border border-[#374151] rounded-lg font-medium hover:bg-[#374151] transition-colors text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddNewCustomer}
-                  disabled={!newCustomer.name.trim() || !newCustomer.phone.trim()}
-                  className="flex-1 h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] disabled:text-[#6B7280] rounded-lg font-medium transition-colors text-white"
-                >
-                  Add Customer
-                </button>
-              </div>
-            </div>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-8 h-8 text-[#3B82F6] animate-spin" />
           </div>
-        </div>
-      )}
+        ) : (
+          <>
+            {!searchQuery && recentCustomers.length > 0 && (
+              <div className="mb-4">
+                <h2 className="text-xs font-medium text-[#9CA3AF] mb-2 uppercase">Recent</h2>
+                <div className="space-y-2">
+                  {recentCustomers.map((customer) => (
+                    <CustomerCard
+                      key={customer.id}
+                      customer={customer}
+                      canViewBalances={canViewBalances}
+                      onSelect={() => onSelect(customer, saleType)}
+                      isRecent
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <h2 className="text-xs font-medium text-[#9CA3AF] mb-2 uppercase">
+              {searchQuery ? 'Search Results' : 'All Customers'}
+            </h2>
+            <div className="space-y-2 mb-4">
+              {filteredCustomers.map((customer) => (
+                <CustomerCard
+                  key={customer.id}
+                  customer={customer}
+                  canViewBalances={canViewBalances}
+                  onSelect={() => onSelect(customer, saleType)}
+                />
+              ))}
+              {filteredCustomers.length === 0 && (
+                <p className="text-center py-8 text-[#9CA3AF]">No customers found</p>
+              )}
+            </div>
+          </>
+        )}
+
+        <button
+          onClick={() => setView('addContact')}
+          className="w-full py-3 border-2 border-dashed border-[#374151] rounded-lg text-[#9CA3AF] hover:border-[#3B82F6] hover:text-[#3B82F6] flex items-center justify-center gap-2"
+        >
+          <Plus className="w-5 h-5" />
+          Add New Customer
+        </button>
+      </div>
     </div>
   );
 }

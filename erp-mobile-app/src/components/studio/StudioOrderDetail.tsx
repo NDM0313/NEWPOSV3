@@ -6,6 +6,9 @@ import type { AccountRow } from '../../api/accounts';
 import { useLoading } from '../../contexts/LoadingContext';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { getTotalInternalProductionCost } from './studioPricing';
+import { getStudioDetailStatusLabel } from '../../lib/studioOrderDisplay';
+import { todayDateInputValue } from '../../lib/studioWorkflowDates';
+import { StudioStageTimeline } from './StudioStageTimeline';
 
 type StudioPayMethod = 'cash' | 'bank' | 'wallet';
 const STUDIO_METHOD_TO_TYPE: Record<StudioPayMethod, string[]> = {
@@ -24,8 +27,8 @@ interface StudioOrderDetailProps {
   onEditStage: (stage: StudioStage) => void;
   onDeleteStage?: (stage: StudioStage) => void;
   onUpdateStatus: (stage: StudioStage) => void;
-  onSendToWorker?: (stage: StudioStage) => void;
-  onReceiveWork?: (stage: StudioStage) => void;
+  onSendToWorker?: (stage: StudioStage, sentDate: string, notes?: string | null) => void;
+  onReceiveWork?: (stage: StudioStage, receivedDate: string, notes?: string | null) => void;
   onConfirmPayment?: (
     stage: StudioStage,
     params: {
@@ -33,6 +36,7 @@ interface StudioOrderDetailProps {
       pay_now: boolean;
       payment_account_id?: string | null;
       notes?: string | null;
+      customer_charge?: number | null;
     }
   ) => void;
   onCompleteStage?: (stage: StudioStage) => void;
@@ -67,9 +71,14 @@ export function StudioOrderDetail({
   const [paymentAccountsLoading, setPaymentAccountsLoading] = useState(false);
   const [paymentAccountsError, setPaymentAccountsError] = useState<string | null>(null);
   const [paymentRemarks, setPaymentRemarks] = useState('');
+  const [paymentCustomerCharge, setPaymentCustomerCharge] = useState('');
   const [stageDetailSheet, setStageDetailSheet] = useState<StudioStage | null>(null);
-  /** After receive with zero internal cost: web-parity gate before opening Confirm Payment (no accrual until invoice + all stages). */
-  const [workerPaymentChoiceStage, setWorkerPaymentChoiceStage] = useState<StudioStage | null>(null);
+  const [workflowDateSheet, setWorkflowDateSheet] = useState<{
+    type: 'send' | 'receive';
+    stage: StudioStage;
+  } | null>(null);
+  const [workflowDate, setWorkflowDate] = useState(todayDateInputValue);
+  const [workflowNotes, setWorkflowNotes] = useState('');
   const { isLoading } = useLoading();
   const { runSingleFlight, isRunning: isConfirmPaymentRunning } = useSingleFlightAction();
 
@@ -102,10 +111,44 @@ export function StudioOrderDetail({
 
   const paymentBusy = paymentSubmitting || isConfirmPaymentRunning;
 
-  const invoiceLinked = order.customerInvoiceGenerated;
-  const allTasksCompleted =
-    order.stages.length > 0 && order.stages.every((s) => s.status === 'completed');
-  const workerPaymentEligible = invoiceLinked && allTasksCompleted;
+  const billGenerated = order.customerInvoiceGenerated;
+  const structuralLocked = billGenerated;
+  const openSettlementDialog = (stage: StudioStage) => {
+    const workerPay = stage.expectedCost ?? stage.internalCost ?? stage.customerCharge ?? 0;
+    const customer =
+      stage.customerCharge > 0 ? stage.customerCharge : workerPay > 0 ? Math.round(workerPay * 1.25) : 0;
+    setPaymentFinalCost(workerPay ? String(workerPay) : '');
+    setPaymentCustomerCharge(customer ? String(customer) : '');
+    setPaymentRemarks('');
+    setPaymentPayStep(1);
+    setPaymentPayMethod(null);
+    setPaymentDialogStage(stage);
+  };
+
+  const requestDesignNameEdit = () => {
+    if (!structuralLocked) {
+      setDesignNameEditing(true);
+      setDesignNameInput(order.designName?.trim() ?? '');
+      return;
+    }
+    const ok = window.confirm(
+      'Bill generate ho chuka hai. Design name change se invoice/ledger mismatch ho sakta hai. Sirf chhoti spelling fix ke liye continue karein.',
+    );
+    if (ok) {
+      setDesignNameCautionUnlock(true);
+      setDesignNameEditing(true);
+      setDesignNameInput(order.designName?.trim() ?? '');
+    }
+  };
+
+  const settlementAmounts = () => {
+    const stage = paymentDialogStage;
+    const workerPay =
+      parseFloat(paymentFinalCost) ||
+      (stage?.expectedCost ?? stage?.internalCost ?? stage?.customerCharge ?? 0);
+    const customer = parseFloat(paymentCustomerCharge) || 0;
+    return { workerPay, customer };
+  };
 
   const postConfirmPayment = async (
     stage: StudioStage,
@@ -114,6 +157,7 @@ export function StudioOrderDetail({
       pay_now: boolean;
       payment_account_id?: string | null;
       notes?: string | null;
+      customer_charge?: number | null;
     },
   ) => {
     await runSingleFlight(async () => {
@@ -124,39 +168,7 @@ export function StudioOrderDetail({
         setPaymentPayStep(1);
         setPaymentPayMethod(null);
         setPaymentRemarks('');
-      } finally {
-        setPaymentSubmitting(false);
-      }
-    });
-  };
-
-  /** Accrual (pay later) then complete — DB requires cost > 0 before rpc_complete_stage. */
-  const postPayLaterAccrualAndComplete = async (stage: StudioStage) => {
-    if (!onConfirmPayment) return;
-    const final_cost =
-      parseFloat(paymentFinalCost) ||
-      (stage.expectedCost ?? stage.internalCost ?? stage.customerCharge ?? 0);
-    if (final_cost <= 0) {
-      setWorkerPaymentChoiceStage(null);
-      setPaymentPayStep(1);
-      setPaymentPayMethod(null);
-      setPaymentRemarks('');
-      setPaymentDialogStage(stage);
-      return;
-    }
-    if (!onCompleteStage) return;
-    await runSingleFlight(async () => {
-      setPaymentSubmitting(true);
-      try {
-        await Promise.resolve(
-          onConfirmPayment(stage, {
-            final_cost,
-            pay_now: false,
-            notes: null,
-          }),
-        );
-        await Promise.resolve(onCompleteStage(stage));
-        setWorkerPaymentChoiceStage(null);
+        setPaymentCustomerCharge('');
       } finally {
         setPaymentSubmitting(false);
       }
@@ -197,12 +209,14 @@ export function StudioOrderDetail({
 
   const [designNameInput, setDesignNameInput] = useState(() => order.designName?.trim() ?? '');
   const [designNameEditing, setDesignNameEditing] = useState(false);
+  const [designNameCautionUnlock, setDesignNameCautionUnlock] = useState(false);
   const [savingDesignName, setSavingDesignName] = useState(false);
   const [designNameSaveOk, setDesignNameSaveOk] = useState(false);
 
   useEffect(() => {
     setDesignNameInput(order.designName?.trim() ?? '');
     setDesignNameEditing(false);
+    setDesignNameCautionUnlock(false);
   }, [order.id, order.designName]);
 
   const totalInternalCost = useMemo(() => getTotalInternalProductionCost(order), [order]);
@@ -213,6 +227,8 @@ export function StudioOrderDetail({
   const canProcessShipment =
     allStagesCompleted && order.customerInvoiceGenerated && order.status === 'completed';
   const savedDesignName = Boolean(order.designName?.trim());
+  const designNameReadOnly =
+    structuralLocked && !designNameCautionUnlock && !designNameEditing;
 
   return (
     <div className="min-h-screen pb-24 bg-[#111827]">
@@ -249,12 +265,19 @@ export function StudioOrderDetail({
           </div>
           <div className="bg-white/10 rounded-lg p-2">
             <p className="text-xs text-white/60">Status</p>
-            <p className="text-sm font-semibold text-white capitalize">{order.status.replace('-', ' ')}</p>
+            <p className="text-sm font-semibold text-white">{getStudioDetailStatusLabel(order)}</p>
           </div>
         </div>
       </div>
 
       <div className="p-4">
+        {structuralLocked && (
+          <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100 leading-relaxed">
+            Bill generate ho chuka hai. Production pipeline aur design name locked hain taake ledger/stock na bigre.
+            Invoice update ke liye neeche wala button use karein.
+          </div>
+        )}
+
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-4">
           <h2 className="text-sm font-semibold text-[#8B5CF6] mb-3">New design name (replica title)</h2>
           <p className="text-xs text-[#6B7280] mb-2">Name this custom outfit / replica when production is ready to bill—saved with this studio order.</p>
@@ -264,16 +287,15 @@ export function StudioOrderDetail({
               <button
                 type="button"
                 disabled={isLoading}
-                onClick={() => {
-                  setDesignNameEditing(true);
-                  setDesignNameInput(order.designName?.trim() ?? '');
-                }}
+                onClick={requestDesignNameEdit}
                 className="inline-flex items-center justify-center gap-2 shrink-0 px-4 py-2.5 rounded-lg border border-[#8B5CF6] text-[#A78BFA] hover:bg-[#8B5CF6]/10 text-sm font-semibold disabled:opacity-50"
               >
                 <Edit2 className="w-4 h-4" />
-                Edit
+                {structuralLocked ? 'Edit with caution' : 'Edit'}
               </button>
             </div>
+          ) : designNameReadOnly ? (
+            <p className="text-sm text-white">{order.designName?.trim() || '—'}</p>
           ) : (
             <>
               <div className="flex flex-col sm:flex-row gap-2">
@@ -282,7 +304,8 @@ export function StudioOrderDetail({
                   value={designNameInput}
                   onChange={(e) => setDesignNameInput(e.target.value)}
                   placeholder="e.g. Replica — Ivory bridal"
-                  className="flex-1 bg-[#111827] border border-[#374151] rounded-lg px-3 py-2.5 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#8B5CF6]"
+                  readOnly={designNameReadOnly}
+                  className="flex-1 bg-[#111827] border border-[#374151] rounded-lg px-3 py-2.5 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#8B5CF6] disabled:opacity-70"
                 />
                 <button
                   type="button"
@@ -366,14 +389,16 @@ export function StudioOrderDetail({
         <div className="mb-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-white">Production Pipeline</h2>
-            <button
-              type="button"
-              onClick={onAddStage}
-              disabled={isLoading}
-              className="p-2 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg transition-colors text-white disabled:opacity-50 disabled:pointer-events-none"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
+            {!structuralLocked && (
+              <button
+                type="button"
+                onClick={onAddStage}
+                disabled={isLoading}
+                className="p-2 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg transition-colors text-white disabled:opacity-50 disabled:pointer-events-none"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           {order.stages.length === 0 ? (
@@ -392,7 +417,10 @@ export function StudioOrderDetail({
                 const prevStage = order.stages[index - 1];
                 const prevCompleted = !prevStage || prevStage.status === 'completed';
                 const stepLocked = !prevCompleted;
-                const canDelete = stage.status === 'pending' && stage.assignedTo === 'Unassigned';
+                const canDelete =
+                  (stage.status === 'pending' || stage.status === 'assigned') &&
+                  !stage.sentDate &&
+                  !stage.receivedDate;
 
                 return (
                   <div key={stage.id} className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
@@ -416,7 +444,7 @@ export function StudioOrderDetail({
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        {canDelete && onDeleteStage && (
+                        {canDelete && onDeleteStage && !structuralLocked && (
                           <button
                             type="button"
                             onClick={() => onDeleteStage(stage)}
@@ -427,7 +455,7 @@ export function StudioOrderDetail({
                             <Trash2 size={14} />
                           </button>
                         )}
-                        {stage.status !== 'completed' && (
+                        {stage.status !== 'completed' && !structuralLocked && (
                           <button
                             type="button"
                             onClick={() => onEditStage(stage)}
@@ -494,7 +522,7 @@ export function StudioOrderDetail({
                       </div>
                     </button>
 
-                    {stage.status !== 'completed' && (
+                    {stage.status !== 'completed' && !structuralLocked && (
                       <button
                         type="button"
                         onClick={() => {
@@ -505,21 +533,20 @@ export function StudioOrderDetail({
                             return;
                           }
                           if (stage.status === 'assigned' && onSendToWorker) {
-                            onSendToWorker(stage);
+                            setWorkflowDate(todayDateInputValue());
+                            setWorkflowNotes('');
+                            setWorkflowDateSheet({ type: 'send', stage });
                             return;
                           }
                           if ((stage.status === 'sent_to_worker' || stage.status === 'in-progress') && onReceiveWork) {
-                            onReceiveWork(stage);
+                            setWorkflowDate(todayDateInputValue());
+                            setWorkflowNotes('');
+                            setWorkflowDateSheet({ type: 'receive', stage });
                             return;
                           }
                           if (stage.status === 'received') {
                             if ((stage.internalCost ?? 0) <= 0 && onConfirmPayment) {
-                              const assignedAmount = stage.expectedCost ?? stage.internalCost ?? stage.customerCharge ?? 0;
-                              setPaymentFinalCost(assignedAmount ? String(assignedAmount) : '');
-                              setPaymentPayStep(1);
-                              setPaymentPayMethod(null);
-                              setPaymentRemarks('');
-                              setWorkerPaymentChoiceStage(stage);
+                              openSettlementDialog(stage);
                               return;
                             }
                             if (onCompleteStage) {
@@ -553,7 +580,7 @@ export function StudioOrderDetail({
                                   : 'Update'}
                       </button>
                     )}
-                    {stage.status === 'completed' && onReopen && (
+                    {stage.status === 'completed' && onReopen && !structuralLocked && (
                       <button
                         type="button"
                         onClick={() => onReopen(stage)}
@@ -563,7 +590,7 @@ export function StudioOrderDetail({
                         Reopen
                       </button>
                     )}
-                    {stage.status === 'completed' && !onReopen && (
+                    {stage.status === 'completed' && !onReopen && !structuralLocked && (
                       <button
                         type="button"
                         onClick={() => onUpdateStatus(stage)}
@@ -590,6 +617,20 @@ export function StudioOrderDetail({
             >
               <CheckCircle size={20} />
               Generate Final Invoice
+            </button>
+          </div>
+        )}
+
+        {billGenerated && (
+          <div className="mb-3">
+            <button
+              type="button"
+              onClick={!isLoading ? onGenerateInvoice : undefined}
+              disabled={isLoading}
+              className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all text-white bg-gradient-to-r from-[#3B82F6] to-[#2563EB] hover:opacity-90 shadow-lg shadow-[#3B82F6]/20 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <CheckCircle size={20} />
+              View / update invoice
             </button>
           </div>
         )}
@@ -637,102 +678,17 @@ export function StudioOrderDetail({
                 Close
               </button>
             </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between gap-2">
-                <span className="text-[#9CA3AF]">Expected cost</span>
-                <span className="text-white tabular-nums">
-                  Rs. {(stageDetailSheet.expectedCost ?? 0).toLocaleString()}
-                </span>
-              </div>
-              <div className="flex justify-between gap-2">
-                <span className="text-[#9CA3AF]">Recorded cost</span>
-                <span className="text-white tabular-nums">
-                  Rs. {(stageDetailSheet.internalCost ?? 0).toLocaleString()}
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-xs pt-1 border-t border-[#374151]">
-                <div>
-                  <p className="text-[#9CA3AF]">Sent</p>
-                  <p className="text-white">{stageDetailSheet.sentDate ?? '—'}</p>
-                </div>
-                <div>
-                  <p className="text-[#9CA3AF]">Received</p>
-                  <p className="text-white">{stageDetailSheet.receivedDate ?? '—'}</p>
-                </div>
-                <div>
-                  <p className="text-[#9CA3AF]">Completed</p>
-                  <p className="text-white">{stageDetailSheet.completedDate ?? '—'}</p>
-                </div>
-              </div>
-              <div className="pt-2 border-t border-[#374151]">
-                <p className="text-xs text-[#9CA3AF] mb-1">Notes</p>
-                <p className="text-xs text-[#E5E7EB] whitespace-pre-wrap leading-relaxed">
-                  {stageDetailSheet.notes?.trim() ? stageDetailSheet.notes : '—'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {workerPaymentChoiceStage && onConfirmPayment && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[55] p-4">
-          <div
-            className="relative bg-[#1F2937] border border-[#374151] rounded-lg p-5 w-full max-w-sm"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {paymentBusy && workerPaymentChoiceStage ? (
-              <div
-                className="absolute inset-0 z-[60] rounded-lg bg-black/55 flex flex-col items-center justify-center gap-2 pointer-events-auto"
-                aria-busy
-              >
-                <Loader2 className="w-8 h-8 animate-spin text-[#A78BFA]" />
-                <span className="text-xs text-[#D1D5DB]">Processing…</span>
-              </div>
-            ) : null}
-            <h3 className="text-lg font-semibold text-white mb-1">Worker payment</h3>
-            <p className="text-sm text-[#9CA3AF] mb-3">
-              This stage is received. Do you want to pay the worker now?
-            </p>
-            {!workerPaymentEligible && (
-              <p className="text-xs text-amber-400/90 mb-4">
-                {!invoiceLinked
-                  ? 'Generate the studio invoice (bill) and finalize production first — then you can pay the worker from Pay Now.'
-                  : 'Complete every stage on this order first — then pay the worker after the bill is ready.'}
-              </p>
-            )}
-            <div className="flex gap-2 mt-4">
-              <button
-                type="button"
-                className="flex-1 py-3 rounded-xl text-sm font-medium border border-[#4B5563] text-[#E5E7EB] hover:bg-[#374151] disabled:opacity-50"
-                disabled={isLoading || paymentBusy}
-                onClick={() => {
-                  const stage = workerPaymentChoiceStage;
-                  if (!stage) return;
-                  void postPayLaterAccrualAndComplete(stage);
-                }}
-              >
-                No, pay later
-              </button>
-              <button
-                type="button"
-                disabled={!workerPaymentEligible || paymentBusy}
-                title={
-                  !workerPaymentEligible
-                    ? 'Studio invoice + all stages complete / production ready — then worker payment.'
-                    : undefined
-                }
-                className="flex-1 py-3 rounded-xl text-sm font-medium bg-[#10B981] text-white hover:bg-[#059669] disabled:opacity-40 disabled:cursor-not-allowed"
-                onClick={() => {
-                  if (!workerPaymentEligible) return;
-                  const s = workerPaymentChoiceStage;
-                  setWorkerPaymentChoiceStage(null);
-                  setPaymentDialogStage(s);
-                }}
-              >
-                Yes, pay now
-              </button>
-            </div>
+            <StudioStageTimeline
+              stageName={stageDetailSheet.name}
+              stageType={stageDetailSheet.type}
+              notes={stageDetailSheet.notes}
+              sentDate={stageDetailSheet.sentDate}
+              receivedDate={stageDetailSheet.receivedDate}
+              completedDate={stageDetailSheet.completedDate}
+              expectedCost={stageDetailSheet.expectedCost ?? 0}
+              workerCost={stageDetailSheet.internalCost ?? 0}
+              customerCharge={stageDetailSheet.customerCharge ?? 0}
+            />
           </div>
         </div>
       )}
@@ -784,21 +740,17 @@ export function StudioOrderDetail({
                         key={a.id}
                         type="button"
                         onClick={() => {
-                          const cost =
-                            parseFloat(paymentFinalCost) ||
-                            (paymentDialogStage.expectedCost ??
-                              paymentDialogStage.internalCost ??
-                              paymentDialogStage.customerCharge ??
-                              0);
-                          if (cost <= 0) {
-                            alert('Enter final cost');
+                          const { workerPay, customer } = settlementAmounts();
+                          if (workerPay <= 0) {
+                            alert('Enter worker pay amount');
                             return;
                           }
                           void postConfirmPayment(paymentDialogStage, {
-                            final_cost: cost,
+                            final_cost: workerPay,
                             pay_now: true,
                             payment_account_id: a.id,
                             notes: paymentRemarks.trim() || null,
+                            customer_charge: customer > 0 ? customer : null,
                           });
                         }}
                         disabled={paymentBusy}
@@ -815,11 +767,20 @@ export function StudioOrderDetail({
               </>
             ) : (
               <>
-                <h3 className="text-lg font-semibold text-white mb-1">Confirm Payment</h3>
+                <h3 className="text-lg font-semibold text-white mb-1">Worker settlement</h3>
                 <p className="text-sm text-[#9CA3AF] mb-4">
                   {paymentDialogStage.name} – Worker: {paymentDialogStage.assignedTo}
                 </p>
-                <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Final Cost (Rs)</label>
+                <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Charge customer (Rs)</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={paymentCustomerCharge}
+                  onChange={(e) => setPaymentCustomerCharge(e.target.value)}
+                  placeholder="Amount to bill customer for this task"
+                  className="w-full bg-[#374151] border border-[#4B5563] rounded-lg px-4 py-3 text-white text-base mb-3 focus:outline-none focus:border-[#8B5CF6]"
+                />
+                <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Pay worker (Rs)</label>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -837,13 +798,12 @@ export function StudioOrderDetail({
                 <textarea
                   value={paymentRemarks}
                   onChange={(e) => setPaymentRemarks(e.target.value)}
-                  placeholder="Saved with payment confirmation as [Payment Remarks]"
+                  placeholder="Saved as [Payment Remarks] on this stage"
                   rows={2}
                   className="w-full bg-[#374151] border border-[#4B5563] rounded-lg px-3 py-2 text-white text-sm mb-4 resize-none focus:outline-none focus:border-[#8B5CF6]"
                 />
                 <p className="text-xs text-[#6B7280] mb-3">
-                  Pay now (pick method, then account)
-                  {workerPaymentEligible ? ' or record accrual in the worker ledger.' : '.'}
+                  Pick payment method, then account — posts to GL and worker ledger immediately.
                 </p>
                 {!companyId ? (
                   <p className="text-xs text-amber-400 mb-3">Company context missing — Pay Now requires account selection.</p>
@@ -852,14 +812,9 @@ export function StudioOrderDetail({
                   <button
                     type="button"
                     onClick={() => {
-                      const cost =
-                        parseFloat(paymentFinalCost) ||
-                        (paymentDialogStage.expectedCost ??
-                          paymentDialogStage.internalCost ??
-                          paymentDialogStage.customerCharge ??
-                          0);
-                      if (cost <= 0) {
-                        alert('Enter final cost');
+                      const { workerPay } = settlementAmounts();
+                      if (workerPay <= 0) {
+                        alert('Enter worker pay amount');
                         return;
                       }
                       if (!companyId) {
@@ -878,14 +833,9 @@ export function StudioOrderDetail({
                   <button
                     type="button"
                     onClick={() => {
-                      const cost =
-                        parseFloat(paymentFinalCost) ||
-                        (paymentDialogStage.expectedCost ??
-                          paymentDialogStage.internalCost ??
-                          paymentDialogStage.customerCharge ??
-                          0);
-                      if (cost <= 0) {
-                        alert('Enter final cost');
+                      const { workerPay } = settlementAmounts();
+                      if (workerPay <= 0) {
+                        alert('Enter worker pay amount');
                         return;
                       }
                       if (!companyId) {
@@ -904,14 +854,9 @@ export function StudioOrderDetail({
                   <button
                     type="button"
                     onClick={() => {
-                      const cost =
-                        parseFloat(paymentFinalCost) ||
-                        (paymentDialogStage.expectedCost ??
-                          paymentDialogStage.internalCost ??
-                          paymentDialogStage.customerCharge ??
-                          0);
-                      if (cost <= 0) {
-                        alert('Enter final cost');
+                      const { workerPay } = settlementAmounts();
+                      if (workerPay <= 0) {
+                        alert('Enter worker pay amount');
                         return;
                       }
                       if (!companyId) {
@@ -928,32 +873,6 @@ export function StudioOrderDetail({
                     <span className="text-xs font-medium">Wallet</span>
                   </button>
                 </div>
-                {workerPaymentEligible ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const cost =
-                        parseFloat(paymentFinalCost) ||
-                        (paymentDialogStage.expectedCost ??
-                          paymentDialogStage.internalCost ??
-                          paymentDialogStage.customerCharge ??
-                          0);
-                      if (cost <= 0) {
-                        alert('Enter final cost');
-                        return;
-                      }
-                      void postConfirmPayment(paymentDialogStage, {
-                        final_cost: cost,
-                        pay_now: false,
-                        notes: paymentRemarks.trim() || null,
-                      });
-                    }}
-                    disabled={paymentBusy}
-                    className="w-full py-3 rounded-xl text-sm font-medium bg-[#374151] hover:bg-[#4B5563] text-white mb-2 disabled:opacity-50"
-                  >
-                    {paymentBusy ? 'Posting…' : 'Record in worker ledger (accrual)'}
-                  </button>
-                ) : null}
               </>
             )}
             <button
@@ -963,12 +882,72 @@ export function StudioOrderDetail({
                 setPaymentPayStep(1);
                 setPaymentPayMethod(null);
                 setPaymentRemarks('');
+                setPaymentCustomerCharge('');
               }}
               disabled={paymentBusy}
               className="w-full py-2 rounded-lg text-sm text-[#9CA3AF] hover:bg-[#374151] disabled:opacity-50"
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {workflowDateSheet && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-[#374151] bg-[#1F2937] p-5">
+            <h3 className="text-base font-semibold text-white mb-1">
+              {workflowDateSheet.type === 'send' ? 'Send to Worker' : 'Receive Work'}
+            </h3>
+            <p className="text-xs text-[#9CA3AF] mb-4">
+              {workflowDateSheet.stage.name} — pick date (default today). Add a note if there are issues to record for the next user.
+            </p>
+            <label className="block text-sm text-[#9CA3AF] mb-2">
+              {workflowDateSheet.type === 'send' ? 'Send date' : 'Receive date'}
+            </label>
+            <input
+              type="date"
+              value={workflowDate}
+              onChange={(e) => setWorkflowDate(e.target.value)}
+              className="w-full bg-[#111827] border border-[#374151] rounded-lg px-4 py-3 text-white mb-3"
+            />
+            <label className="block text-sm text-[#9CA3AF] mb-2">
+              {workflowDateSheet.type === 'send' ? 'Send note (optional)' : 'Receive note (optional)'}
+            </label>
+            <textarea
+              value={workflowNotes}
+              onChange={(e) => setWorkflowNotes(e.target.value)}
+              placeholder="e.g. damage, delay, quality issue…"
+              rows={3}
+              className="w-full bg-[#111827] border border-[#374151] rounded-lg px-3 py-2 text-white text-sm mb-4 resize-none"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setWorkflowDateSheet(null);
+                  setWorkflowNotes('');
+                }}
+                className="flex-1 py-3 rounded-xl bg-[#374151] text-white text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={() => {
+                  const { type, stage } = workflowDateSheet;
+                  const notes = workflowNotes.trim() || null;
+                  setWorkflowDateSheet(null);
+                  setWorkflowNotes('');
+                  if (type === 'send') onSendToWorker?.(stage, workflowDate, notes);
+                  else onReceiveWork?.(stage, workflowDate, notes);
+                }}
+                className="flex-1 py-3 rounded-xl bg-[#8B5CF6] text-white text-sm font-semibold disabled:opacity-50"
+              >
+                Confirm
+              </button>
+            </div>
           </div>
         </div>
       )}

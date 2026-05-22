@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import type { User } from '../../types';
+import { usePermissions } from '../../context/PermissionContext';
 import { AccountsDashboard, type AccountEntry } from './AccountsDashboard';
 import { GeneralEntryFlow } from './GeneralEntryFlow';
 import { AccountTransferFlow } from './AccountTransferFlow';
@@ -22,6 +23,8 @@ import { StudioReport } from './reports/StudioReport';
 import { RentalReport } from './reports/RentalReport';
 import { InventoryReport } from './reports/InventoryReport';
 import { JournalEntryDetailPanel } from './JournalEntryDetailPanel';
+import { MyFinancialActivity } from './MyFinancialActivity';
+import { CourierShipmentsReport } from './reports/CourierShipmentsReport';
 import {
   MOBILE_DATA_INVALIDATED_EVENT,
   shouldAcceptMobileInvalidation,
@@ -36,6 +39,10 @@ interface AccountsModuleProps {
   /** If true, the module opens directly on the reports hub (used when navigating from the legacy
    * Reports / Ledger tiles on the home screen). */
   initialView?: 'dashboard' | 'reports';
+  /** Open a specific report directly (e.g. customer-ledger from home Ledger tile). */
+  initialReport?: LegacyReportKey;
+  /** Worker home tile: open My Activity instead of company ledger. */
+  initialWorkerActivity?: boolean;
   onNavigateToDocumentEdit?: (kind: 'sale' | 'purchase', documentId: string) => void;
 }
 
@@ -66,13 +73,55 @@ type View =
   | 'expense-report'
   | 'studio-report'
   | 'rental-report'
-  | 'inventory-report';
+  | 'inventory-report'
+  | 'my-activity'
+  | 'courier-shipments';
 
-export function AccountsModule({ onBack, user, companyId, branch, initialView, onNavigateToDocumentEdit }: AccountsModuleProps) {
-  const [view, setView] = useState<View>(initialView === 'reports' ? 'reports' : 'dashboard');
+const PARTY_VIEWS: View[] = ['dashboard', 'my-activity'];
+
+function isPartyViewAllowed(view: View): boolean {
+  return PARTY_VIEWS.includes(view);
+}
+
+function resolveInitialAccountsView(
+  fullAccounting: boolean,
+  initialReport?: LegacyReportKey,
+  initialView?: 'dashboard' | 'reports',
+  initialWorkerActivity?: boolean,
+): View {
+  if (!fullAccounting) {
+    if (initialWorkerActivity) return 'my-activity';
+    return 'dashboard';
+  }
+  if (initialReport) return initialReport as View;
+  return initialView === 'reports' ? 'reports' : 'dashboard';
+}
+
+export function AccountsModule({
+  onBack,
+  user,
+  companyId,
+  branch,
+  initialView,
+  initialReport,
+  initialWorkerActivity,
+  onNavigateToDocumentEdit,
+}: AccountsModuleProps) {
+  const { canUseFullAccounting, canViewCustomerLedger, canViewSupplierLedger } = usePermissions();
+
+  const [view, setView] = useState<View>(() =>
+    resolveInitialAccountsView(canUseFullAccounting, initialReport, initialView, initialWorkerActivity),
+  );
   const [selectedEntry, setSelectedEntry] = useState<AccountEntry | null>(null);
   const [ledgerInitialAccountId, setLedgerInitialAccountId] = useState<string | null>(null);
   const [reportRefreshEpoch, setReportRefreshEpoch] = useState(0);
+
+  useEffect(() => {
+    if (canUseFullAccounting) return;
+    if (!isPartyViewAllowed(view)) {
+      setView('my-activity');
+    }
+  }, [canUseFullAccounting, view]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -100,23 +149,46 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
     };
   }, [companyId]);
 
-  const backToReports = () => setView('reports');
+  const backToDashboard = () => setView('dashboard');
+  const backToReports = () => setView(canUseFullAccounting ? 'reports' : 'dashboard');
   const backFromReportsHub = () => {
-    if (initialView === 'reports') {
+    if (initialView === 'reports' || (initialReport === 'customer-ledger' && canUseFullAccounting)) {
       onBack();
     } else {
       setView('dashboard');
     }
   };
-
-  const openReport = (
-    key: LegacyReportKey,
-    opts?: { accountId?: string | null; partyId?: string | null; partyName?: string | null },
-  ) => {
-    if (opts?.accountId) setLedgerInitialAccountId(opts.accountId);
-    else setLedgerInitialAccountId(null);
-    setView(key as View);
+  const backFromPartyLedger = () => {
+    if (initialWorkerActivity || (!canUseFullAccounting && view === 'my-activity')) onBack();
+    else if (initialReport === 'customer-ledger') onBack();
+    else if (canUseFullAccounting) backToReports();
+    else backToDashboard();
   };
+  const backFromPartyReport = () => {
+    if (canUseFullAccounting) backToReports();
+    else backToDashboard();
+  };
+
+  const openReport = useCallback(
+    (
+      key: LegacyReportKey,
+      opts?: { accountId?: string | null; partyId?: string | null; partyName?: string | null },
+    ) => {
+      const target = key as View;
+      if (!canUseFullAccounting && !isPartyViewAllowed(target)) {
+        setView('my-activity');
+        return;
+      }
+      if (opts?.accountId) setLedgerInitialAccountId(opts.accountId);
+      else setLedgerInitialAccountId(null);
+      setView(target);
+    },
+    [canUseFullAccounting],
+  );
+
+  const dashboardSubtitle = canUseFullAccounting
+    ? 'Financial control center'
+    : 'Your payments and expenses';
 
   if (view === 'dashboard') {
     return (
@@ -128,7 +200,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
             </button>
             <div className="flex-1">
               <h1 className="font-semibold text-white">Accounts</h1>
-              <p className="text-xs text-white/80">Financial control center</p>
+              <p className="text-xs text-white/80">{dashboardSubtitle}</p>
             </div>
           </div>
         </div>
@@ -138,6 +210,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
             user={user}
             companyId={companyId}
             branchId={branch?.id}
+            mode={canUseFullAccounting ? 'full' : 'party'}
             onGeneralEntry={() => setView('general-entry')}
             onAccountTransfer={() => setView('account-transfer')}
             onSupplierPayment={() => setView('supplier-payment')}
@@ -149,6 +222,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
               setSelectedEntry(entry);
               setView('entry-detail');
             }}
+            onMyActivity={() => setView('my-activity')}
           />
         </div>
       </div>
@@ -187,6 +261,18 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
     return <AddAccountForm companyId={companyId ?? null} onBack={() => setView('chart')} onSuccess={() => setView('chart')} />;
   }
 
+  if (view === 'my-activity') {
+    return (
+      <MyFinancialActivity
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backFromPartyLedger}
+        user={user}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+      />
+    );
+  }
+
   if (view === 'reports') {
     return (
       <ReportsHub
@@ -196,6 +282,9 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
         companyId={companyId ?? null}
         branchId={branch?.id ?? null}
         onNavigateToDocumentEdit={onNavigateToDocumentEdit}
+        fullAccounting={canUseFullAccounting}
+        canViewCustomerLedger={canViewCustomerLedger}
+        canViewSupplierLedger={canViewSupplierLedger}
       />
     );
   }
@@ -219,7 +308,7 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
     return (
       <PartyLedgerReport
         key={`customer-ledger-${reportRefreshEpoch}`}
-        onBack={backToReports}
+        onBack={backFromPartyLedger}
         kind="customer"
         companyId={companyId ?? null}
         branchId={branch?.id ?? null}
@@ -294,10 +383,28 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
     );
   }
   if (view === 'payables') {
-    return <AgingReport key={`payables-${reportRefreshEpoch}`} onBack={backToReports} kind="payables" companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+    return (
+      <AgingReport
+        key={`payables-${reportRefreshEpoch}`}
+        onBack={backFromPartyReport}
+        kind="payables"
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        user={user}
+      />
+    );
   }
   if (view === 'receivables') {
-    return <AgingReport key={`receivables-${reportRefreshEpoch}`} onBack={backToReports} kind="receivables" companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+    return (
+      <AgingReport
+        key={`receivables-${reportRefreshEpoch}`}
+        onBack={backFromPartyReport}
+        kind="receivables"
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        user={user}
+      />
+    );
   }
   if (view === 'sales-report') {
     return <SalesReport key={`sales-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
@@ -319,6 +426,17 @@ export function AccountsModule({ onBack, user, companyId, branch, initialView, o
   }
   if (view === 'inventory-report') {
     return <InventoryReport key={`inventory-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} user={user} />;
+  }
+  if (view === 'courier-shipments') {
+    return (
+      <CourierShipmentsReport
+        key={`courier-shipments-${reportRefreshEpoch}`}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        onOpenSale={(saleId) => onNavigateToDocumentEdit?.('sale', saleId)}
+      />
+    );
   }
 
   if (view === 'entry-detail' && selectedEntry && companyId) {

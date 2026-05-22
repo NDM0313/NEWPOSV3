@@ -1,5 +1,10 @@
 import { useState } from 'react';
 import { Search, Clock, CheckCircle, Package } from 'lucide-react';
+import {
+  getStudioDashboardBadge,
+  isBillGenerated,
+  resolveStudioCurrentStageLabel,
+} from '../../lib/studioOrderDisplay';
 
 export interface StudioOrder {
   /** Primary production id (first line in the sale); APIs that need one production default here */
@@ -18,11 +23,17 @@ export interface StudioOrder {
   designName?: string | null;
   totalAmount: number;
   createdDate: string;
+  /** Resolved from sale.created_by via users lookup */
+  createdByName?: string;
+  /** Auth user id of the sale creator (for view_own scoping). */
+  createdByUserId?: string;
   /** Deadline date (from sale) for display on card */
   deadline?: string;
   status: 'pending' | 'in-progress' | 'ready' | 'completed' | 'shipped';
   /** True when every production has studio invoice line linked (generated_invoice_item_id). */
   customerInvoiceGenerated: boolean;
+  /** From sales.status — e.g. final after bill finalize. */
+  saleStatus?: string | null;
   currentStage?: string;
   stages: StudioStage[];
   completedStages: number;
@@ -37,6 +48,10 @@ export interface StudioStage {
   stageOrder?: number;
   name: string;
   type: 'dyeing' | 'stitching' | 'handwork' | 'embroidery' | 'finishing' | 'quality-check';
+  /** True when DB stage_type is `extra` (custom task). */
+  isExtra?: boolean;
+  /** Raw studio_production_stages.stage_type from DB. */
+  dbStageType?: string;
   assignedTo: string;
   /** Worker UUID for API (when available from backend) */
   workerId?: string;
@@ -61,7 +76,7 @@ interface StudioDashboardProps {
 
 export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | StudioOrder['status']>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | StudioOrder['status'] | 'bill-generated'>('all');
 
   const filteredOrders = orders.filter((order) => {
     const matchesSearch =
@@ -69,24 +84,14 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
       order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (order.designName && order.designName.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesStatus = filterStatus === 'all' || order.status === filterStatus;
+    const matchesStatus =
+      filterStatus === 'all'
+        ? true
+        : filterStatus === 'bill-generated'
+          ? isBillGenerated(order)
+          : order.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
-
-  const getStatusConfig = (status: StudioOrder['status']) => {
-    switch (status) {
-      case 'pending':
-        return { color: '#F59E0B', bg: 'bg-[#F59E0B]/10', text: 'Pending', icon: Clock };
-      case 'in-progress':
-        return { color: '#3B82F6', bg: 'bg-[#3B82F6]/10', text: 'In Progress', icon: Package };
-      case 'ready':
-        return { color: '#8B5CF6', bg: 'bg-[#8B5CF6]/10', text: 'Ready', icon: CheckCircle };
-      case 'completed':
-        return { color: '#10B981', bg: 'bg-[#10B981]/10', text: 'Completed', icon: CheckCircle };
-      case 'shipped':
-        return { color: '#6B7280', bg: 'bg-[#6B7280]/10', text: 'Shipped', icon: Package };
-    }
-  };
 
   const getStageIcon = (type: StudioStage['type']) => {
     const icons: Record<StudioStage['type'], string> = {
@@ -140,10 +145,11 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
           { id: 'in-progress', label: 'In Progress' },
           { id: 'ready', label: 'Ready' },
           { id: 'completed', label: 'Completed' },
+          { id: 'bill-generated', label: 'Bill Generated' },
         ].map((filter) => (
           <button
             key={filter.id}
-            onClick={() => setFilterStatus(filter.id as StudioOrder['status'])}
+            onClick={() => setFilterStatus(filter.id as typeof filterStatus)}
             className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               filterStatus === filter.id
                 ? 'bg-[#8B5CF6] text-white'
@@ -166,8 +172,9 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
       ) : (
         <div className="space-y-3">
           {filteredOrders.map((order) => {
-            const statusConfig = getStatusConfig(order.status);
-            const StatusIcon = statusConfig.icon;
+            const statusBadge = getStudioDashboardBadge(order);
+            const StatusIcon = statusBadge.icon;
+            const stageLabel = resolveStudioCurrentStageLabel(order);
             const progressPercent = order.totalStages > 0 ? (order.completedStages / order.totalStages) * 100 : 0;
 
             return (
@@ -181,11 +188,11 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <p className="font-semibold text-white truncate min-w-0">{order.orderNumber}</p>
                       <span
-                        className={`px-2 py-0.5 ${statusConfig.bg} rounded-full text-xs font-medium flex items-center gap-1 shrink-0 max-w-full`}
-                        style={{ color: statusConfig.color }}
+                        className={`px-2 py-0.5 ${statusBadge.bg} rounded-full text-xs font-medium flex items-center gap-1 shrink-0 max-w-full`}
+                        style={{ color: statusBadge.color }}
                       >
                         <StatusIcon size={12} />
-                        <span className="truncate">{statusConfig.text}</span>
+                        <span className="truncate">{statusBadge.label}</span>
                       </span>
                     </div>
                     <p className="text-sm text-[#9CA3AF] truncate">{order.customerName}</p>
@@ -200,6 +207,9 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
                   <p className="text-sm text-white line-clamp-2 break-words">{order.productName}</p>
                   <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 text-xs text-[#6B7280]">
                     <span>Created: {order.createdDate}</span>
+                    {order.createdByName && (
+                      <span>Created by: {order.createdByName}</span>
+                    )}
                     {order.deadline && (
                       <span className="flex items-center gap-1">
                         <Clock size={10} />
@@ -250,10 +260,10 @@ export function StudioDashboard({ orders, onOrderClick }: StudioDashboardProps) 
                 {(order.currentStage || order.stages.length === 0) && (
                   <div className="bg-[#374151] rounded-lg p-2 space-y-0.5 min-w-0">
                     <p className="text-xs text-[#9CA3AF] line-clamp-2 break-words">
-                      Stage: <span className="text-white font-medium">{order.currentStage}</span>
+                      Stage: <span className="text-white font-medium">{stageLabel}</span>
                     </p>
                     <p className="text-xs text-[#9CA3AF] truncate">
-                      Status: <span className="text-white font-medium">{statusConfig.text}</span>
+                      Status: <span className="text-white font-medium">{statusBadge.label}</span>
                     </p>
                   </div>
                 )}

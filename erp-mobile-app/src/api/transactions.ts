@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { fetchReferenceAttachments } from './transactionDetail';
+import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 
 /**
  * A single payment transaction flattened for UI display.
@@ -29,7 +30,18 @@ export interface TransactionRow {
   journalEntryId: string | null;
   entryNo: string | null;
   createdBy: string | null;
+  createdByName?: string | null;
   attachments: Array<{ url: string; name?: string | null }> | null;
+}
+
+async function enrichTransactionCreatorNames(rows: TransactionRow[]): Promise<TransactionRow[]> {
+  if (!rows.length) return rows;
+  const mutable: Array<Record<string, unknown>> = rows.map((r) => ({ created_by: r.createdBy }));
+  await enrichRowsWithCreatorNames(mutable);
+  return rows.map((r, i) => ({
+    ...r,
+    createdByName: (mutable[i].created_by_name as string | undefined) ?? null,
+  }));
 }
 
 export interface TransactionJournalLine {
@@ -343,23 +355,22 @@ export async function getPaymentTransactions(
     };
   });
 
+  let result = out;
   if (filters.search && filters.search.trim().length > 0) {
     const q = filters.search.toLowerCase();
-    return {
-      data: out.filter(
-        (t) =>
-          (t.partyName || '').toLowerCase().includes(q) ||
-          (t.partyAccountName || '').toLowerCase().includes(q) ||
-          (t.paymentAccountName || '').toLowerCase().includes(q) ||
-          (t.referenceNumber || '').toLowerCase().includes(q) ||
-          (t.entryNo || '').toLowerCase().includes(q) ||
-          (t.notes || '').toLowerCase().includes(q),
-      ),
-      error: null,
-    };
+    result = result.filter(
+      (t) =>
+        (t.partyName || '').toLowerCase().includes(q) ||
+        (t.partyAccountName || '').toLowerCase().includes(q) ||
+        (t.paymentAccountName || '').toLowerCase().includes(q) ||
+        (t.referenceNumber || '').toLowerCase().includes(q) ||
+        (t.entryNo || '').toLowerCase().includes(q) ||
+        (t.notes || '').toLowerCase().includes(q),
+    );
   }
 
-  return { data: out, error: null };
+  const enriched = await enrichTransactionCreatorNames(result);
+  return { data: enriched, error: null };
 }
 
 /** Detailed view — includes full journal-lines breakdown for the tx modal. */

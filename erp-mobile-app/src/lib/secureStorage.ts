@@ -8,6 +8,7 @@
  */
 
 import CryptoJS from 'crypto-js';
+import { getDevicePinMaxAgeMs } from './counterSessionPolicy';
 
 const DB_NAME = 'erp_mobile_secure';
 const DB_VERSION = 1;
@@ -16,7 +17,7 @@ const PIN_SALT = 'erp_mobile_pin_salt_v1';
 const KEY_SALT = 'erp_mobile_aes_salt_v1';
 const MAX_PIN_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
-/** Auto logout if session not refreshed within this period (7 days) */
+/** Default device PIN max age when policy unset (7 days). Prefer `getDevicePinMaxAgeMs()`. */
 export const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface SecurePayload {
@@ -249,7 +250,7 @@ export async function verifyPinAndUnlock(pin: string): Promise<VerifyResult> {
     const json = await decryptPayload(row.iv, row.ciphertext, key, row.algo);
     const payload = JSON.parse(json) as SecurePayload;
     const now = Date.now();
-    if (payload.savedAt && now - payload.savedAt > SESSION_MAX_AGE_MS) {
+    if (payload.savedAt && now - payload.savedAt > getDevicePinMaxAgeMs()) {
       await clearSecure();
       return { success: false, locked: false, message: 'Session expired. Please sign in again.', expired: true };
     }

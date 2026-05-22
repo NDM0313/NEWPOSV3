@@ -1,15 +1,34 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ArrowLeft, Package, Plus, Search, Loader2, Edit2, Boxes, AlertTriangle, TrendingUp, Printer } from 'lucide-react';
+import {
+  ArrowLeft,
+  Package,
+  Plus,
+  Search,
+  Loader2,
+  Edit2,
+  Boxes,
+  AlertTriangle,
+  TrendingUp,
+  Printer,
+  CheckSquare,
+  Square,
+} from 'lucide-react';
 import type { User } from '../../types';
 import * as productsApi from '../../api/products';
 import type { ProductVariationRow } from '../../api/products';
 import { AddProductFlow, type AddProductFlowSavePayload } from './AddProductFlow';
 import { ProductImage } from './ProductImage';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
-import { PrintBarcodeLabelModal } from './PrintBarcodeLabelModal';
+import { BarcodeLabelPrintSheet } from './BarcodeLabelPrintSheet';
+import { linesFromProducts } from '../../lib/barcodeLabelLines';
+import type { LabelPrintLine } from '../../services/barcodeLabelPrint';
 import * as settingsApi from '../../api/settings';
-import { PullToRefresh } from '../common';
+import { PullToRefresh, OfflineBanner } from '../common';
+import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
+import { useMainScrollRef } from '../../contexts/MainScrollContext';
 import { formatQty } from '../../utils/quantity';
+import { getCompanyName } from '../../api/reports';
+import * as branchesApi from '../../api/branches';
 
 /** Total stock: sum of variation stocks when hasVariations, else product stock */
 function getDisplayStock(p: productsApi.Product): number {
@@ -53,19 +72,22 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
-  const [printProduct, setPrintProduct] = useState<Product | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [labelSheetOpen, setLabelSheetOpen] = useState(false);
+  const [labelSheetLines, setLabelSheetLines] = useState<LabelPrintLine[]>([]);
   const [printerSettings, setPrinterSettings] = useState<settingsApi.MobilePrinterSettings>({
     mode: 'a4',
     paperSize: '80mm',
     autoPrintReceipt: false,
   });
-  const [labelSettings, setLabelSettings] = useState<settingsApi.MobileBarcodeLabelSettings>({
-    labelLayout: 'thermal',
-    showName: true,
-    showPrice: true,
-    showBusinessName: true,
-    defaultQuantity: 1,
-  });
+  const [labelSettings, setLabelSettings] = useState<settingsApi.MobileBarcodeLabelSettings>(
+    settingsApi.DEFAULT_BARCODE_LABEL,
+  );
+  const [labelCompanyName, setLabelCompanyName] = useState('');
+  const [labelBranchName, setLabelBranchName] = useState('');
+  const { online, pendingCount } = useOfflineListMeta();
+  const mainScrollRef = useMainScrollRef();
 
   const loadProducts = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -90,7 +112,19 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
     if (!companyId) return;
     settingsApi.getEffectivePrinterSettings(companyId).then(({ data }) => setPrinterSettings(data));
     settingsApi.getMobileBarcodeLabelSettings(companyId).then(({ data }) => setLabelSettings(data));
+    void getCompanyName(companyId).then(setLabelCompanyName);
   }, [companyId]);
+
+  useEffect(() => {
+    if (!companyId || !branchId || branchId === 'all') {
+      setLabelBranchName('');
+      return;
+    }
+    void branchesApi.getBranches(companyId).then(({ data }) => {
+      const name = data?.find((b) => b.id === branchId)?.name;
+      setLabelBranchName(name ?? '');
+    });
+  }, [companyId, branchId]);
 
   const filtered = products.filter((p) => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
@@ -99,6 +133,34 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
   });
 
   const categories = ['all', ...Array.from(new Set(products.map((p) => p.category)))];
+
+  const openLabelSheet = useCallback(
+    (items: Product[]) => {
+      setLabelSheetLines(linesFromProducts(items, labelSettings));
+      setLabelSheetOpen(true);
+    },
+    [labelSettings],
+  );
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkPrintLabels = () => {
+    const items = filtered.filter((p) => selectedIds.has(p.id));
+    if (items.length === 0) return;
+    openLabelSheet(items);
+  };
 
   const handleAddEditSave = async (payload: AddProductFlowSavePayload) => {
     if (!companyId) return;
@@ -229,6 +291,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
 
   return (
     <div className="min-h-screen bg-[#0B1120] pb-24">
+      <OfflineBanner online={online} pendingCount={pendingCount} />
       {/* Gradient header */}
       <div className="bg-gradient-to-br from-[#1E3A8A] via-[#1E40AF] to-[#3B82F6] sticky top-0 z-40 shadow-lg">
         <div className="flex items-center justify-between px-4 h-14">
@@ -244,16 +307,33 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
               <p className="text-[11px] text-white/70 leading-tight">{stats.totalProducts} items</p>
             </div>
           </div>
-          <button
-            onClick={() => {
-              setEditingProduct(null);
-              setView('add');
-            }}
-            className="flex items-center gap-1.5 px-3 h-9 bg-white text-[#1E40AF] rounded-lg font-semibold shadow-md hover:bg-white/95"
-          >
-            <Plus size={16} />
-            <span className="text-sm">New</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (selectMode) exitSelectMode();
+                else setSelectMode(true);
+              }}
+              className={`flex items-center gap-1 px-2.5 h-9 rounded-lg text-sm font-medium ${
+                selectMode ? 'bg-white text-[#1E40AF]' : 'bg-white/15 text-white hover:bg-white/25'
+              }`}
+            >
+              {selectMode ? <CheckSquare size={16} /> : <Square size={16} />}
+              {selectMode ? 'Done' : 'Select'}
+            </button>
+            {!selectMode && (
+              <button
+                onClick={() => {
+                  setEditingProduct(null);
+                  setView('add');
+                }}
+                className="flex items-center gap-1.5 px-3 h-9 bg-white text-[#1E40AF] rounded-lg font-semibold shadow-md hover:bg-white/95"
+              >
+                <Plus size={16} />
+                <span className="text-sm">New</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* KPI row inside gradient */}
@@ -281,7 +361,12 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         </div>
       </div>
 
-      <PullToRefresh onRefresh={() => loadProducts({ silent: true })} disabled={!companyId} spinnerAccentClass="border-t-[#3B82F6]">
+      <PullToRefresh
+        onRefresh={() => loadProducts({ silent: true })}
+        disabled={!companyId}
+        scrollElementRef={mainScrollRef}
+        spinnerAccentClass="border-t-[#3B82F6]"
+      >
         <div className="p-4">
         {loading ? (
           <div className="flex justify-center py-12">
@@ -329,20 +414,38 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                 const thumb = (p.imageUrls && p.imageUrls[0]) || null;
                 const isLow = p.minStock != null && displayStock <= (p.minStock ?? 0);
 
+                const isSelected = selectedIds.has(p.id);
+
                 return (
                   <div
                     key={p.id}
-                    className="bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#3B82F6]/50 transition-all"
+                    className={`bg-[#1F2937] border rounded-xl p-3 transition-all ${
+                      isSelected ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/40' : 'border-[#374151] hover:border-[#3B82F6]/50'
+                    }`}
                   >
                   <button
                     type="button"
                     onClick={() => {
-                      setEditingProduct(p);
-                      setView('add');
+                      if (selectMode) toggleSelected(p.id);
+                      else {
+                        setEditingProduct(p);
+                        setView('add');
+                      }
                     }}
                     className="w-full text-left active:scale-[0.99]"
                   >
                     <div className="flex items-start gap-3">
+                      {selectMode && (
+                        <div className="pt-4 shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelected(p.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4"
+                          />
+                        </div>
+                      )}
                       <div className="w-14 h-14 rounded-lg bg-[#111827] border border-[#374151] overflow-hidden flex items-center justify-center flex-shrink-0">
                         <ProductImage src={thumb} alt={p.name} />
                       </div>
@@ -382,17 +485,19 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                       <Edit2 size={14} className="text-[#6B7280] mt-1 flex-shrink-0" />
                     </div>
                   </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPrintProduct(p);
-                    }}
-                    className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-[#374151] text-[#9CA3AF] hover:text-white hover:border-[#3B82F6]/50 text-xs font-medium"
-                  >
-                    <Printer size={14} />
-                    Print labels
-                  </button>
+                  {!selectMode && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openLabelSheet([p]);
+                      }}
+                      className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-[#374151] text-[#9CA3AF] hover:text-white hover:border-[#3B82F6]/50 text-xs font-medium"
+                    >
+                      <Printer size={14} />
+                      Print labels
+                    </button>
+                  )}
                   </div>
                 );
               })}
@@ -408,19 +513,29 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         </div>
       </PullToRefresh>
 
-      {printProduct && (
-        <PrintBarcodeLabelModal
-          open={!!printProduct}
-          onClose={() => setPrintProduct(null)}
-          productName={printProduct.name}
-          sku={printProduct.sku}
-          barcode={printProduct.barcode || printProduct.sku}
-          price={printProduct.retailPrice}
-          businessName={undefined}
-          labelSettings={labelSettings}
-          printerSettings={printerSettings}
-        />
+      {selectMode && selectedIds.size > 0 && (
+        <div className="fixed bottom-20 left-4 right-4 z-50">
+          <button
+            type="button"
+            onClick={handleBulkPrintLabels}
+            className="w-full py-3.5 rounded-xl bg-[#3B82F6] text-white font-semibold shadow-lg flex items-center justify-center gap-2"
+          >
+            <Printer className="w-5 h-5" />
+            Print labels ({selectedIds.size})
+          </button>
+        </div>
       )}
+
+      <BarcodeLabelPrintSheet
+        open={labelSheetOpen}
+        onClose={() => setLabelSheetOpen(false)}
+        title="Print barcode labels"
+        lines={labelSheetLines}
+        labelSettings={labelSettings}
+        printerSettings={printerSettings}
+        companyName={labelCompanyName}
+        branchName={labelBranchName}
+      />
     </div>
   );
 }

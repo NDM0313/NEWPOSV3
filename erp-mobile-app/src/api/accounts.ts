@@ -234,6 +234,8 @@ export interface JournalEntryRow {
   reference_id?: string | null;
   payment_id?: string | null;
   payment_notes?: string | null;
+  /** From linked payments row — received = cash in (RCV), paid = cash out (PAY). */
+  payment_type?: 'received' | 'paid' | null;
   total_debit: number;
   total_credit: number;
   posted_at?: string | null;
@@ -288,8 +290,12 @@ export async function getJournalEntries(
   );
   const paymentNotesById = new Map<string, string | null>();
   const paymentRefNoById = new Map<string, string | null>();
+  const paymentTypeById = new Map<string, 'received' | 'paid' | null>();
   if (paymentIds.length > 0) {
-    const { data: paymentRows } = await supabase.from('payments').select('id, notes, reference_number').in('id', paymentIds);
+    const { data: paymentRows } = await supabase
+      .from('payments')
+      .select('id, notes, reference_number, payment_type')
+      .in('id', paymentIds);
     for (const row of paymentRows || []) {
       const id = String((row as Record<string, unknown>).id ?? '');
       if (!id) continue;
@@ -300,6 +306,8 @@ export async function getJournalEntries(
         id,
         rn != null && String(rn).trim() !== '' ? String(rn).trim() : null,
       );
+      const pt = String((row as Record<string, unknown>).payment_type ?? '').trim().toLowerCase();
+      paymentTypeById.set(id, pt === 'received' ? 'received' : pt === 'paid' ? 'paid' : null);
     }
   }
   const rows = (data || []).map((e: Record<string, unknown>) => {
@@ -317,6 +325,7 @@ export async function getJournalEntries(
       reference_id: e.reference_id != null && e.reference_id !== '' ? String(e.reference_id) : null,
       payment_id: paymentId,
       payment_notes: paymentId ? paymentNotesById.get(paymentId) ?? null : null,
+      payment_type: paymentId ? paymentTypeById.get(paymentId) ?? null : null,
       total_debit: totalDebit,
       total_credit: totalCredit,
       posted_at: (e as { posted_at?: string }).posted_at
@@ -354,11 +363,12 @@ export async function getJournalEntryById(
   if (!e) return { data: null, error: null };
   let paymentNotes: string | null = null;
   let paymentReferenceNumber: string | null = null;
+  let paymentType: 'received' | 'paid' | null = null;
   const paymentIdRaw = e.payment_id != null && e.payment_id !== '' ? String(e.payment_id) : null;
   if (paymentIdRaw) {
     const { data: paymentRow } = await supabase
       .from('payments')
-      .select('notes, reference_number')
+      .select('notes, reference_number, payment_type')
       .eq('id', paymentIdRaw)
       .maybeSingle();
     const notesVal = (paymentRow as Record<string, unknown> | null)?.notes;
@@ -366,6 +376,10 @@ export async function getJournalEntryById(
     const rnVal = (paymentRow as Record<string, unknown> | null)?.reference_number;
     paymentReferenceNumber =
       rnVal != null && String(rnVal).trim() !== '' ? String(rnVal).trim() : null;
+    const ptVal = String((paymentRow as Record<string, unknown> | null)?.payment_type ?? '')
+      .trim()
+      .toLowerCase();
+    paymentType = ptVal === 'received' ? 'received' : ptVal === 'paid' ? 'paid' : null;
   }
   const lines = normalizeJeLines(e.lines);
   const totalDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
@@ -380,6 +394,7 @@ export async function getJournalEntryById(
       reference_id: e.reference_id != null && e.reference_id !== '' ? String(e.reference_id) : null,
       payment_id: paymentIdRaw,
       payment_notes: paymentNotes,
+      payment_type: paymentType,
       payment_reference_number: paymentReferenceNumber,
       total_debit: totalDebit,
       total_credit: totalCredit,

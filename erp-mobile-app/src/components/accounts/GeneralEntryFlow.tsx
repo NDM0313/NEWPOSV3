@@ -4,6 +4,9 @@ import type { User } from '../../types';
 import { DateInputField } from '../shared/DateTimePicker';
 import { getAccounts, createJournalEntry } from '../../api/accounts';
 import { addPending } from '../../lib/offlineStore';
+import { localNowDateString } from '../../utils/localDate';
+import { usePermissions } from '../../context/PermissionContext';
+import { formatAccountBalanceInline } from '../../utils/balancePrivacy';
 
 interface GeneralEntryFlowProps {
   onBack: () => void;
@@ -25,6 +28,7 @@ interface EntryData {
 }
 
 export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId }: GeneralEntryFlowProps) {
+  const { canViewBalances } = usePermissions();
   const [step, setStep] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [accounts, setAccounts] = useState<{ id: string; name: string; type: string; balance: number }[]>([]);
@@ -36,7 +40,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
     creditAccountId: '',
     creditAccountName: '',
     amount: '',
-    date: new Date().toISOString().split('T')[0],
+    date: localNowDateString(),
     description: '',
     reference: '',
   });
@@ -167,7 +171,9 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                       <div>
                         <p className="text-sm font-semibold text-white">{account.name}</p>
                         <p className="text-xs text-[#9CA3AF]">{account.type}</p>
-                        {account.balance > 0 && <p className="text-xs text-[#6B7280] mt-1">Balance: Rs. {account.balance.toLocaleString()}</p>}
+                        {formatAccountBalanceInline(account.balance, canViewBalances) && (
+                          <p className="text-xs text-[#6B7280] mt-1">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
+                        )}
                       </div>
                       {entryData.debitAccountId === account.id && <Check className="text-[#EF4444]" size={20} />}
                     </div>
@@ -220,7 +226,9 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                         <div>
                           <p className="text-sm font-semibold text-white">{account.name}</p>
                           <p className="text-xs text-[#9CA3AF]">{account.type}</p>
-                          {account.balance > 0 && <p className="text-xs text-[#6B7280] mt-1">Balance: Rs. {account.balance.toLocaleString()}</p>}
+                          {formatAccountBalanceInline(account.balance, canViewBalances) && (
+                          <p className="text-xs text-[#6B7280] mt-1">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
+                        )}
                         </div>
                         {entryData.creditAccountId === account.id && <Check className="text-[#10B981]" size={20} />}
                       </div>

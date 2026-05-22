@@ -1,4 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { listCacheKeys } from '../lib/listCache';
+import { readThroughCache } from '../lib/offlineData';
+import { localNowDateString, toLocalDateString } from '../utils/localDate';
 
 export type PurchaseStatus = 'draft' | 'ordered' | 'received' | 'final';
 
@@ -133,7 +136,7 @@ export async function createPurchase(
   const paid = Math.max(0, Math.min(Number(paidAmount) || 0, Number(total) || 0));
   const due = Math.max(0, (Number(total) || 0) - paid);
   const paymentStatus = paid <= 0 ? 'unpaid' : paid >= (Number(total) || 0) ? 'paid' : 'partial';
-  const defaultPoDay = new Date().toISOString().slice(0, 10);
+  const defaultPoDay = localNowDateString();
   const poDay =
     poDate != null && String(poDate).trim() !== '' ? String(poDate).trim().slice(0, 10) : defaultPoDay;
 
@@ -243,7 +246,7 @@ export async function createPurchase(
       branchId: effectiveBranchId,
       purchaseId,
       amount: paid,
-      paymentDate: new Date().toISOString().slice(0, 10),
+      paymentDate: localNowDateString(),
       paymentAccountId,
       paymentMethod,
       userId,
@@ -364,6 +367,17 @@ export async function getPurchases(
   branchId?: string | null
 ): Promise<{ data: PurchaseListItem[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const branchKey =
+    branchId && branchId !== 'all' && branchId !== 'default' ? branchId : 'all';
+  const cacheKey = listCacheKeys.purchases(companyId, branchKey, 'list');
+  const cached = await readThroughCache(cacheKey, () => fetchPurchasesOnline(companyId, branchId), []);
+  return { data: cached.data, error: cached.error };
+}
+
+async function fetchPurchasesOnline(
+  companyId: string,
+  branchId?: string | null,
+): Promise<{ data: PurchaseListItem[]; error: string | null }> {
   let query = supabase
     .from('purchases')
     .select('id, po_no, supplier_name, contact_number, total, subtotal, discount_amount, paid_amount, due_amount, status, payment_status, po_date, created_by, branch_id')
@@ -396,7 +410,7 @@ export async function getPurchases(
 
   const list = rows.map((r) => {
     const poDate = r.po_date as string | undefined;
-    const dateStr = poDate ? new Date(poDate).toISOString().slice(0, 10) : '—';
+    const dateStr = poDate ? toLocalDateString(poDate) : '—';
     const dateObj = poDate ? new Date(poDate) : new Date();
     const isToday = dateObj.toDateString() === new Date().toDateString();
     const isYesterday = dateObj.toDateString() === new Date(Date.now() - 864e5).toDateString();
@@ -516,7 +530,7 @@ export async function getPurchaseById(
       dueAmount: Number(p.due_amount) || 0,
       status: String(p.status || 'ordered'),
       paymentStatus: String(p.payment_status || 'unpaid'),
-      orderDate: p.po_date ? new Date(p.po_date as string).toISOString().slice(0, 10) : '—',
+      orderDate: p.po_date ? toLocalDateString(p.po_date as string) : '—',
       notes: (p.notes as string) ?? null,
       paymentMethod: (p.payment_method as string) ?? null,
       supplierId: (p.supplier_id as string) ?? null,

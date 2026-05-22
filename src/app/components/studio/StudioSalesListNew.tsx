@@ -36,6 +36,7 @@ import { ViewSaleDetailsDrawer } from '@/app/components/sales/ViewSaleDetailsDra
 import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { getStudioDeadlineFromNotes, parseStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
 import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
+import { allStagesCompleted, getStudioListBadge } from '@/app/lib/studioOrderDisplay';
 import { toast } from 'sonner';
 import {
   DATA_INVALIDATED_EVENT,
@@ -72,6 +73,8 @@ interface StudioSale {
   productionStatus: ProductionStatus;
   /** Raw `sales.status` (e.g. cancelled) for badges */
   saleStatus?: string | null;
+  customerInvoiceGenerated?: boolean;
+  allStagesCompleted?: boolean;
   source?: 'studio_order' | 'sale';
 }
 
@@ -80,7 +83,7 @@ export const StudioSalesListNew = () => {
   const { companyId, branchId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | ProductionStatus>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | ProductionStatus | 'bill-generated'>('all');
   const [filterOpen, setFilterOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [sales, setSales] = useState<StudioSale[]>([]);
@@ -179,6 +182,8 @@ export const StudioSalesListNew = () => {
       balanceDue: Number(sale.due_amount) ?? (Number(sale.total) || 0) - (Number(sale.paid_amount) || 0),
       productionStatus,
       saleStatus: sale.status ?? null,
+      customerInvoiceGenerated: false,
+      allStagesCompleted: stages ? allStagesCompleted(stages) : false,
       source: 'sale' as const
     };
   }, [deriveProductionStatus]);
@@ -234,9 +239,22 @@ export const StudioSalesListNew = () => {
         if (sid && name && !designBySaleId[sid]) designBySaleId[sid] = name;
       }
 
-      const fromSales = (studioSalesFromSales || []).map((sale: any) =>
-        convertFromSale(sale, stagesBySaleId[sale.id], designBySaleId[sale.id] ?? null)
-      );
+      const invoiceBySaleId: Record<string, boolean> = {};
+      for (const p of productionsBySale) {
+        const sid = p.sale_id;
+        if (!sid) continue;
+        if ((p as { generated_invoice_item_id?: string | null }).generated_invoice_item_id) {
+          invoiceBySaleId[sid] = true;
+        }
+      }
+
+      const fromSales = (studioSalesFromSales || []).map((sale: any) => {
+        const stages = stagesBySaleId[sale.id];
+        const row = convertFromSale(sale, stages, designBySaleId[sale.id] ?? null);
+        row.customerInvoiceGenerated = Boolean(invoiceBySaleId[sale.id]);
+        row.allStagesCompleted = allStagesCompleted(stages);
+        return row;
+      });
       setSales(fromSales);
     } catch (error) {
       console.error('Error loading studio orders:', error);
@@ -319,8 +337,10 @@ export const StudioSalesListNew = () => {
     }
 
     // Status filter
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(s => s.productionStatus === filterStatus);
+    if (filterStatus === 'bill-generated') {
+      filtered = filtered.filter((s) => s.customerInvoiceGenerated);
+    } else if (filterStatus !== 'all') {
+      filtered = filtered.filter((s) => s.productionStatus === filterStatus);
     }
 
     // Auto-sort: Overdue → Near → Normal
@@ -513,6 +533,7 @@ export const StudioSalesListNew = () => {
                     <option value="Not Started">Not Started</option>
                     <option value="In Progress">In Progress</option>
                     <option value="Completed">Completed</option>
+                    <option value="bill-generated">Bill Generated</option>
                     <option value="Cancelled">Cancelled</option>
                   </select>
                 </div>
@@ -668,8 +689,24 @@ export const StudioSalesListNew = () => {
 
                     {/* Production Status */}
                     <td className="p-4">
-                      <Badge variant="outline" className={cn("text-[11px] px-2 py-0.5", getStatusBadge(sale.productionStatus))}>
-                        {sale.productionStatus}
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-[11px] px-2 py-0.5 border',
+                          getStudioListBadge({
+                            customerInvoiceGenerated: sale.customerInvoiceGenerated,
+                            allStagesCompleted: sale.allStagesCompleted,
+                            productionStatus: sale.productionStatus,
+                            saleStatus: sale.saleStatus,
+                          }).className
+                        )}
+                      >
+                        {getStudioListBadge({
+                          customerInvoiceGenerated: sale.customerInvoiceGenerated,
+                          allStagesCompleted: sale.allStagesCompleted,
+                          productionStatus: sale.productionStatus,
+                          saleStatus: sale.saleStatus,
+                        }).label}
                       </Badge>
                     </td>
 

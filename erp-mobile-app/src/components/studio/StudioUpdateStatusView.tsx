@@ -4,6 +4,7 @@ import * as studioApi from '../../api/studio';
 import { getPaymentAccounts } from '../../api/accounts';
 import type { AccountRow } from '../../api/accounts';
 import type { StudioOrder, StudioStage } from './StudioDashboard';
+import { todayDateInputValue } from '../../lib/studioWorkflowDates';
 
 type StudioPayMethod = 'cash' | 'bank' | 'wallet';
 const STUDIO_METHOD_TO_TYPE: Record<StudioPayMethod, string[]> = {
@@ -41,6 +42,8 @@ export function StudioUpdateStatusView({
   const [payAccounts, setPayAccounts] = useState<AccountRow[]>([]);
   const [payAccountsLoading, setPayAccountsLoading] = useState(false);
   const [payAccountsError, setPayAccountsError] = useState<string | null>(null);
+  const [workflowDate, setWorkflowDate] = useState(todayDateInputValue);
+  const [workflowNotes, setWorkflowNotes] = useState('');
   const isPending = selectedStage.status === 'pending';
   const isAssigned = selectedStage.status === 'assigned';
   const isSentToWorker = selectedStage.status === 'sent_to_worker' || selectedStage.status === 'in-progress';
@@ -75,7 +78,10 @@ export function StudioUpdateStatusView({
 
   const handleSendToWorker = async () => {
     setLoading(true);
-    const { error } = await studioApi.sendToWorker(selectedStage.id);
+    const { error } = await studioApi.sendToWorker(selectedStage.id, {
+      sentDate: workflowDate,
+      notes: workflowNotes.trim() || undefined,
+    });
     setLoading(false);
     if (error) {
       alert(error);
@@ -86,7 +92,10 @@ export function StudioUpdateStatusView({
 
   const handleReceiveWork = async () => {
     setLoading(true);
-    const { error } = await studioApi.receiveWork(selectedStage.id);
+    const { error } = await studioApi.receiveWork(selectedStage.id, {
+      receivedDate: workflowDate,
+      notes: workflowNotes.trim() || undefined,
+    });
     setLoading(false);
     if (error) {
       alert(error);
@@ -318,7 +327,7 @@ export function StudioUpdateStatusView({
                 type="date"
                 value={expectedDate}
                 onChange={(e) => setExpectedDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
+                min={todayDateInputValue()}
                 className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
               />
             </div>
@@ -348,6 +357,25 @@ export function StudioUpdateStatusView({
         {isAssigned && (
           <div className="space-y-4">
             <p className="text-sm text-[#9CA3AF]">Mark that the item has been sent to the worker.</p>
+            <div>
+              <label className="block text-sm text-[#9CA3AF] mb-2">Send date</label>
+              <input
+                type="date"
+                value={workflowDate}
+                onChange={(e) => setWorkflowDate(e.target.value)}
+                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#9CA3AF] mb-2">Notes (optional)</label>
+              <textarea
+                value={workflowNotes}
+                onChange={(e) => setWorkflowNotes(e.target.value)}
+                placeholder="Damage, delay, quality issues…"
+                rows={3}
+                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white resize-none"
+              />
+            </div>
             <button
               onClick={handleSendToWorker}
               disabled={loading}
@@ -362,6 +390,25 @@ export function StudioUpdateStatusView({
         {isSentToWorker && (
           <div className="space-y-4">
             <p className="text-sm text-[#9CA3AF]">Mark that work has been received back from the worker.</p>
+            <div>
+              <label className="block text-sm text-[#9CA3AF] mb-2">Receive date</label>
+              <input
+                type="date"
+                value={workflowDate}
+                onChange={(e) => setWorkflowDate(e.target.value)}
+                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-[#9CA3AF] mb-2">Notes (optional)</label>
+              <textarea
+                value={workflowNotes}
+                onChange={(e) => setWorkflowNotes(e.target.value)}
+                placeholder="Damage, delay, quality issues…"
+                rows={3}
+                className="w-full bg-[#1F2937] border border-[#374151] rounded-lg px-4 py-3 text-white resize-none"
+              />
+            </div>
             <button
               onClick={handleReceiveWork}
               disabled={loading}

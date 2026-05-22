@@ -6,7 +6,9 @@ import type { Contact, ContactRole } from '../../api/contacts';
 import { AddContactFlow, type AddContactFormData } from './AddContactFlow';
 import { EditContactFlow } from './EditContactFlow';
 import { ContactDetailView } from './ContactDetailView';
-import { PullToRefresh } from '../common';
+import { PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
+import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
+import { useMainScrollRef } from '../../contexts/MainScrollContext';
 
 export type { Contact, ContactRole };
 
@@ -28,6 +30,17 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
   const [addError, setAddError] = useState('');
   const [updateError, setUpdateError] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { online, pendingCount } = useOfflineListMeta();
+  const mainScrollRef = useMainScrollRef();
+
+  const handleSwipeBack = useCallback(() => {
+    if (view === 'add') setView('list');
+    else if (view === 'detail') {
+      setView('list');
+      setSelected(null);
+    } else if (view === 'edit') setView('detail');
+    else onBack();
+  }, [view, onBack]);
 
   const loadContacts = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -53,6 +66,12 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
 
   useEffect(() => {
     void loadContacts();
+  }, [loadContacts]);
+
+  useEffect(() => {
+    const onSync = () => void loadContacts({ silent: true });
+    window.addEventListener('erp-mobile:autosync-complete', onSync);
+    return () => window.removeEventListener('erp-mobile:autosync-complete', onSync);
   }, [loadContacts]);
 
   const filtered = contacts.filter((c) => {
@@ -120,38 +139,46 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
 
   if (view === 'add') {
     return (
+      <SwipeBackShell onBack={handleSwipeBack}>
       <AddContactFlow
         onBack={() => { setAddError(''); setView('list'); }}
         onSubmit={handleAdd}
         error={addError}
       />
+      </SwipeBackShell>
     );
   }
 
   if (view === 'edit' && selected) {
     return (
+      <SwipeBackShell onBack={handleSwipeBack}>
       <EditContactFlow
         contact={selected}
         onBack={() => { setUpdateError(''); setView('detail'); }}
         onSubmit={handleUpdate}
         error={updateError}
       />
+      </SwipeBackShell>
     );
   }
 
   if (view === 'detail' && selected) {
     return (
+      <SwipeBackShell onBack={handleSwipeBack}>
       <ContactDetailView
         contact={selected}
         onBack={() => { setView('list'); setSelected(null); }}
         onEdit={() => setView('edit')}
         user={user}
       />
+      </SwipeBackShell>
     );
   }
 
   return (
+    <SwipeBackShell onBack={handleSwipeBack}>
     <div className="min-h-screen bg-[#111827] pb-24">
+      <OfflineBanner online={online} pendingCount={pendingCount} />
       <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
         <div className="flex items-center justify-between px-4 h-14">
           <div className="flex items-center gap-3">
@@ -169,7 +196,12 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
         </div>
       </div>
 
-      <PullToRefresh onRefresh={() => loadContacts({ silent: true })} disabled={!companyId} spinnerAccentClass="border-t-[#8B5CF6]">
+      <PullToRefresh
+        onRefresh={() => loadContacts({ silent: true })}
+        disabled={!companyId}
+        scrollElementRef={mainScrollRef}
+        spinnerAccentClass="border-t-[#8B5CF6]"
+      >
         <div className="p-4">
         {loadError && (
           <div className="mb-4 p-3 bg-[#EF4444]/10 border border-[#EF4444]/50 rounded-xl text-[#FCA5A5] text-sm">
@@ -263,5 +295,6 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
         </div>
       </PullToRefresh>
     </div>
+    </SwipeBackShell>
   );
 }

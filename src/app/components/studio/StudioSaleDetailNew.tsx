@@ -60,9 +60,9 @@ import { DatePicker } from '../ui/DatePicker';
 import { format } from 'date-fns';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { contactService } from '@/app/services/contactService';
 import { saleService } from '@/app/services/saleService';
 import { studioProductionService } from '@/app/services/studioProductionService';
+import { studioService } from '@/app/services/studioService';
 import { syncInvoiceWithProductionPricing, type SyncInvoiceResult } from '@/app/services/studioProductionInvoiceSyncService';
 import { branchService } from '@/app/services/branchService';
 import { shipmentService, mapShipmentRowsToUi } from '@/app/services/shipmentService';
@@ -71,6 +71,22 @@ import { documentNumberService } from '@/app/services/documentNumberService';
 import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { productCategoryService } from '@/app/services/productCategoryService';
 import { getStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
+import { isStudioPipelineStructurallyLocked, todayDateInputValue } from '@/app/lib/studioOrderDisplay';
+import {
+  formatExtraStageNotes,
+  parseExtraStageDisplayName,
+  extraStageUserNotes,
+  mergeExtraStageNotes,
+  preserveExtraNotesOnUpdate,
+} from '@/app/lib/studioExtraStageNotes';
+import {
+  parseSendNotes,
+  parseReceiveNotes,
+  displayNotesWithoutWorkflowPrefixes,
+  formatIsoDateShort,
+} from '@/app/lib/studioWorkflowNotes';
+import { accountService } from '@/app/services/accountService';
+import { StudioStageTimeline } from './StudioStageTimeline';
 import { uploadProductImages } from '@/app/utils/productImageUpload';
 import { supabase } from '@/lib/supabase';
 import { useDropzone } from 'react-dropzone';
@@ -130,7 +146,11 @@ interface ProductionStep {
   icon: any;
   order: number;
   /** Backend stage_type for category-wise worker filtering (dyer | stitching | handwork) */
-  stageType?: 'dyer' | 'stitching' | 'handwork';
+  stageType?: 'dyer' | 'stitching' | 'handwork' | 'extra';
+  expectedCost?: number;
+  customerCharge?: number;
+  sentDate?: string;
+  receivedDate?: string;
   assignedWorker: string; // Legacy - for backward compatibility
   workerId?: string; // Legacy
   assignedWorkers?: AssignedWorker[]; // NEW: Multiple workers support
@@ -143,6 +163,8 @@ interface ProductionStep {
   workerPaidAmount?: number;
   workerRemainingDue?: number;
   status: StepStatus;
+  /** Raw DB status (assigned, sent_to_worker, received, …) for Send/Receive actions */
+  dbStatus?: string;
   notes?: string;
 }
 
@@ -262,16 +284,23 @@ export const StudioSaleDetailNew = () => {
   const [showDocumentUpload, setShowDocumentUpload] = useState<string | null>(null);
   const [showWorkerEditModal, setShowWorkerEditModal] = useState<string | null>(null);
   const [showReceiveModal, setShowReceiveModal] = useState<string | null>(null);
-  const [receiveActualCost, setReceiveActualCost] = useState('');
+  const [showSendModal, setShowSendModal] = useState<string | null>(null);
+  const [sendWorkflowDate, setSendWorkflowDate] = useState(todayDateInputValue);
+  const [sendNotes, setSendNotes] = useState('');
+  const [receiveWorkflowDate, setReceiveWorkflowDate] = useState(todayDateInputValue);
   const [receiveNotes, setReceiveNotes] = useState('');
-  /** After Confirm Receive: show "Worker Payment" modal (Pay Now / Pay Later) */
-  const [payChoiceAfterReceive, setPayChoiceAfterReceive] = useState<{
+  const [settlementModal, setSettlementModal] = useState<{
     stageId: string;
     workerId: string;
     workerName: string;
-    amount: number;
+    stepName: string;
   } | null>(null);
-  const [showWorkerPaymentDialog, setShowWorkerPaymentDialog] = useState(false);
+  const [settlementWorkerPay, setSettlementWorkerPay] = useState('');
+  const [settlementCustomerCharge, setSettlementCustomerCharge] = useState('');
+  const [settlementRemarks, setSettlementRemarks] = useState('');
+  const [settlementAccounts, setSettlementAccounts] = useState<Array<{ id: string; name: string; code: string; type: string; balance?: number }>>([]);
+  const [settlementAccountsLoading, setSettlementAccountsLoading] = useState(false);
+  const [showStageDetailModal, setShowStageDetailModal] = useState<string | null>(null);
   const [showCustomerPaymentDialog, setShowCustomerPaymentDialog] = useState(false);
   const [showTrackingModal, setShowTrackingModal] = useState<string | null>(null);
   const [showTaskCustomizationModal, setShowTaskCustomizationModal] = useState(false);
@@ -555,24 +584,43 @@ export const StudioSaleDetailNew = () => {
   }, []);
 
   // Map backend stage_type to display name and icon (includes custom type 'extra')
-  const stageTypeToStep = (stageType: string, index: number): { name: string; icon: any } => {
+  const stageTypeToStep = (
+    stageType: string,
+    index: number,
+    notes?: string | null
+  ): { name: string; icon: any } => {
+    const extraName = parseExtraStageDisplayName(notes, stageType);
     if (stageType === 'dyer') return { name: 'Dyeing', icon: Palette };
     if (stageType === 'handwork') return { name: 'Handwork / Embroidery', icon: Sparkles };
     if (stageType === 'stitching') return { name: 'Stitching', icon: Scissors };
-    if (stageType === 'extra') return { name: 'Extra', icon: Scissors };
+    if (stageType === 'extra') return { name: extraName ?? 'Extra', icon: MoreHorizontal };
     return { name: stageType, icon: Scissors };
   };
+
+  const sortStagesByOrder = <T extends { stage_order?: number | null; created_at?: string | null }>(
+    stages: T[]
+  ): T[] =>
+    [...stages].sort((a, b) => {
+      const oa = Number(a.stage_order) || 0;
+      const ob = Number(b.stage_order) || 0;
+      if (oa !== ob) return oa - ob;
+      return String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''));
+    });
 
   // Convert studio_production_stages to ProductionStep[] (so UI can show and persist edits)
   // ledgerStatusByStageId: optional map from stage id to 'unpaid'|'partial'|'paid' for Payable vs Partial vs Paid
   const stagesToProductionSteps = useCallback((
-    stages: Array<{ id: string; stage_type: string; assigned_worker_id?: string | null; assigned_at?: string | null; cost?: number; expected_cost?: number | null; status?: string; expected_completion_date?: string | null; completed_at?: string | null; notes?: string | null; worker?: { id: string; name: string } }>,
+    stages: Array<{ id: string; stage_type: string; stage_order?: number | null; assigned_worker_id?: string | null; assigned_at?: string | null; cost?: number; expected_cost?: number | null; status?: string; expected_completion_date?: string | null; completed_at?: string | null; notes?: string | null; worker?: { id: string; name: string } }>,
     ledgerStatusByStageId?: Record<string, 'unpaid' | 'partial' | 'paid'>,
     paymentDetailByStageId?: Record<string, { paidAmount: number; remainingDue: number }>
   ): ProductionStep[] => {
-    const stageTypeMap: Record<string, 'dyer' | 'stitching' | 'handwork' | 'extra'> = { dyer: 'dyer', dyeing: 'dyer', stitching: 'stitching', handwork: 'handwork', extra: 'extra' };
-    return stages.map((s, i) => {
-      const { name, icon } = stageTypeToStep(s.stage_type, i);
+    const stageTypeMap: Record<string, 'dyer' | 'stitching' | 'handwork' | 'extra'> = {
+      dyer: 'dyer', dyeing: 'dyer', stitching: 'stitching', handwork: 'handwork', extra: 'extra',
+    };
+    const ordered = sortStagesByOrder(stages);
+    return ordered.map((s, i) => {
+      const { name, icon } = stageTypeToStep(s.stage_type, i, s.notes);
+      const orderNum = Number(s.stage_order) > 0 ? Number(s.stage_order) : i + 1;
       const workerName = s.assigned_worker_id ? (s.worker?.name || '') : '';
       const stageType = stageTypeMap[s.stage_type] ?? (s.stage_type || undefined);
       const ledgerStatus = ledgerStatusByStageId?.[s.id];
@@ -589,6 +637,7 @@ export const StudioSaleDetailNew = () => {
       const hasWorker = !!s.assigned_worker_id;
       let status: StepStatus;
       if (isCompleted) status = 'Completed';
+      else if (hasWorker && (rawStatus === 'sent_to_worker' || rawStatus === 'received')) status = 'In Progress';
       else if (hasWorker && (rawStatus === 'assigned' || rawStatus === 'in_progress')) status = 'Assigned';
       else {
         if ((rawStatus === 'assigned' || rawStatus === 'in_progress') && !hasWorker) {
@@ -600,7 +649,7 @@ export const StudioSaleDetailNew = () => {
         id: s.id,
         name,
         icon,
-        order: i + 1,
+        order: orderNum,
         stageType,
         assignedWorker: workerName,
         workerId: s.assigned_worker_id || undefined,
@@ -609,11 +658,27 @@ export const StudioSaleDetailNew = () => {
         expectedCompletionDate: s.expected_completion_date || '',
         actualCompletionDate: s.completed_at || undefined,
         workerCost: displayCost,
+        expectedCost: Number(s.expected_cost) || displayCost,
+        customerCharge:
+          (s as { customer_charge?: number | null }).customer_charge != null &&
+          Number((s as { customer_charge?: number | null }).customer_charge) > 0
+            ? Number((s as { customer_charge?: number | null }).customer_charge)
+            : displayCost,
+        sentDate: (s as { sent_date?: string | null }).sent_date
+          ? formatIsoDateShort((s as { sent_date?: string }).sent_date)
+          : undefined,
+        receivedDate: (s as { received_date?: string | null }).received_date
+          ? formatIsoDateShort((s as { received_date?: string }).received_date)
+          : undefined,
         workerPaymentStatus,
         workerPaidAmount,
         workerRemainingDue,
         status,
-        notes: s.notes || ''
+        dbStatus: rawStatus,
+        notes:
+          (s.stage_type || '').toLowerCase() === 'extra'
+            ? extraStageUserNotes(s.notes) || s.notes || ''
+            : s.notes || '',
       };
     });
   }, []);
@@ -831,18 +896,18 @@ export const StudioSaleDetailNew = () => {
     });
   }, []);
 
-  // Workers = contacts (type=worker). Same ID (synced via workers_sync_from_contacts migration).
+  /** Workers from workers table + contacts merge (valid FK ids for assigned_worker_id). */
   const loadWorkers = useCallback(async () => {
     if (!companyId) return;
     try {
-      const workerContacts = await contactService.getAllContacts(companyId, 'worker');
-      const converted: Worker[] = (workerContacts || []).map((c: any) => ({
-        id: c.id,
-        name: c.name || '',
-        department: c.worker_role || 'General',
-        phone: c.phone || c.mobile || '',
-        isActive: c.is_active !== false,
-        defaultRate: Math.max(0, Number(c.worker_default_rate) || 0),
+      const merged = await studioService.getAllWorkers(companyId);
+      const converted: Worker[] = (merged || []).map((w) => ({
+        id: w.id,
+        name: w.name || '',
+        department: w.worker_type || 'General',
+        phone: w.phone || '',
+        isActive: w.is_active !== false,
+        defaultRate: Math.max(0, Number(w.rate) || 0),
       }));
       setWorkers(converted);
     } catch (error) {
@@ -884,6 +949,31 @@ export const StudioSaleDetailNew = () => {
       }),
     }));
   }, [workers, showWorkerEditModal]);
+
+  useEffect(() => {
+    if (!settlementModal || !companyId) {
+      setSettlementAccounts([]);
+      return;
+    }
+    let cancelled = false;
+    setSettlementAccountsLoading(true);
+    accountService.getPaymentAccountsOnly(companyId).then((list) => {
+      if (cancelled) return;
+      setSettlementAccounts(
+        (list || []).map((a) => ({
+          id: a.id,
+          name: a.name,
+          code: a.code,
+          type: a.type,
+          balance: a.balance,
+        }))
+      );
+      setSettlementAccountsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [settlementModal, companyId]);
 
   /** Reload production steps from DB. Returns the loaded steps (with real server ids) for next-step auto-apply. */
   const reloadProductionSteps = useCallback(async (): Promise<ProductionStep[] | undefined> => {
@@ -968,6 +1058,13 @@ export const StudioSaleDetailNew = () => {
   const saleIsCancelled = saleDetail?.saleStatus === 'Cancelled';
   /** No structural edits when invoice final or sale cancelled. */
   const saleLockedForEditing = saleIsFinalized || saleIsCancelled;
+  /** Pipeline lock after bill / finalize / cancel (parity with mobile). */
+  const structuralLocked = isStudioPipelineStructurallyLocked(
+    invoiceLinked,
+    saleIsFinalized,
+    saleIsCancelled
+  );
+  const pipelineLocked = structuralLocked;
   const roundInt = (n: number) => Math.round(n);
   const completedStepKey = completedProductionSteps.map((s) => s.id).join(',');
   // Sync profit distribution: round figures only (no decimals)
@@ -1140,6 +1237,46 @@ export const StudioSaleDetailNew = () => {
     setHasUnsavedChanges(true);
   };
 
+  const handleSendConfirm = async () => {
+    const stageId = showSendModal;
+    if (!stageId) return;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stageId);
+    if (!isUuid) {
+      toast.error('Save your changes first to create production stages, then try Send again.');
+      return;
+    }
+    setSavingStage(true);
+    try {
+      await studioProductionService.sendToWorker(stageId, {
+        sentDate: sendWorkflowDate,
+        notes: sendNotes.trim() || null,
+      });
+      toast.success('Sent to worker.');
+      setShowSendModal(null);
+      setSendNotes('');
+      await reloadProductionSteps();
+      window.dispatchEvent(new CustomEvent('studio-production-saved'));
+    } catch (e: any) {
+      toast.error(e?.message || 'Send to worker failed');
+    } finally {
+      setSavingStage(false);
+    }
+  };
+
+  const openSettlementForStep = (step: ProductionStep) => {
+    const workerPay = step.expectedCost ?? step.workerCost ?? 0;
+    const customer = workerPay > 0 ? Math.round(workerPay * 1.25) : 0;
+    setSettlementWorkerPay(workerPay ? String(workerPay) : '');
+    setSettlementCustomerCharge(customer ? String(customer) : '');
+    setSettlementRemarks('');
+    setSettlementModal({
+      stageId: step.id,
+      workerId: step.workerId || '',
+      workerName: step.assignedWorker || 'Worker',
+      stepName: step.name,
+    });
+  };
+
   const handleReceiveConfirm = async () => {
     const stageId = showReceiveModal;
     if (!stageId) return;
@@ -1148,38 +1285,53 @@ export const StudioSaleDetailNew = () => {
       toast.error('Save your changes first to create production stages, then try Receive again.');
       return;
     }
-    const actual = parseFloat(receiveActualCost);
-    if (isNaN(actual) || actual < 0) {
-      toast.error('Enter valid actual cost (Rs)');
-      return;
-    }
     const step = saleDetail?.productionSteps.find(s => s.id === stageId);
-    const workerId = step?.workerId || '';
-    const workerName = step?.assignedWorker || 'Worker';
+    if (!step) return;
     setSavingStage(true);
     try {
-      await studioProductionService.receiveStage(stageId, actual, receiveNotes.trim() || null, workerId || undefined);
-      toast.success('Received from worker. Stage saved — worker accounting posts after studio invoice is generated.');
+      await studioProductionService.receiveWork(stageId, {
+        receivedDate: receiveWorkflowDate,
+        notes: receiveNotes.trim() || null,
+      });
+      toast.success('Work received. Enter customer charge and worker payment next.');
       setShowReceiveModal(null);
-      setReceiveActualCost('');
       setReceiveNotes('');
-      savedSuccessfullyRef.current = false;
-      setHasUnsavedChanges(true);
-      const currentStep = saleDetail?.productionSteps.find((s) => s.id === stageId);
-      const nextOrder = currentStep ? currentStep.order + 1 : 0;
-      const stepsAfterReload = await reloadProductionSteps();
-      const nextStep = stepsAfterReload?.find((s) => s.order === nextOrder);
-      if (nextStep) {
-        setExpandedSteps((prev) => new Set(prev).add(nextStep.id));
-        // Do not auto-open Assign worker dialog – user opens it by clicking Assign
-      }
+      const stepsAfter = await reloadProductionSteps();
       window.dispatchEvent(new CustomEvent('studio-production-saved'));
-      window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: workerId } }));
-      setPayChoiceAfterReceive({ stageId, workerId, workerName, amount: actual });
-      // Auto-sync invoice if linked and still draft
-      await autoSyncInvoiceAfterCostChange();
+      const updated = stepsAfter?.find((s) => s.id === stageId) ?? step;
+      openSettlementForStep(updated);
     } catch (e: any) {
       toast.error(e?.message || 'Receive failed');
+    } finally {
+      setSavingStage(false);
+    }
+  };
+
+  const handleSettlementConfirm = async (paymentAccountId: string) => {
+    if (!settlementModal || !companyId) return;
+    const workerPay = parseFloat(settlementWorkerPay);
+    const customer = parseFloat(settlementCustomerCharge);
+    if (isNaN(workerPay) || workerPay <= 0) {
+      toast.error('Enter worker pay amount (Rs)');
+      return;
+    }
+    setSavingStage(true);
+    try {
+      await studioProductionService.confirmStagePayment(settlementModal.stageId, {
+        final_cost: workerPay,
+        pay_now: true,
+        payment_account_id: paymentAccountId,
+        notes: settlementRemarks.trim() || null,
+        customer_charge: !isNaN(customer) && customer > 0 ? customer : null,
+      });
+      toast.success('Worker payment posted to accounts.');
+      setSettlementModal(null);
+      await reloadProductionSteps();
+      await autoSyncInvoiceAfterCostChange();
+      window.dispatchEvent(new CustomEvent('studio-production-saved'));
+      window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: settlementModal.workerId } }));
+    } catch (e: any) {
+      toast.error(e?.message || 'Payment failed');
     } finally {
       setSavingStage(false);
     }
@@ -1314,7 +1466,15 @@ export const StudioSaleDetailNew = () => {
         for (let i = 0; i < localSteps.length; i++) {
           const step = localSteps[i];
           const st = step.stageType || 'handwork';
-          await studioProductionService.createStage(currentProductionId, { stage_type: st, cost: 0 }, step.order ?? i + 1);
+          const notes =
+            st === 'extra'
+              ? mergeExtraStageNotes(step.name, step.notes)
+              : step.notes?.trim() || null;
+          await studioProductionService.createStage(
+            currentProductionId,
+            { stage_type: st, cost: 0, notes },
+            step.order ?? i + 1
+          );
         }
         serverStages = await studioProductionService.getStagesByProductionId(currentProductionId);
       }
@@ -1324,11 +1484,31 @@ export const StudioSaleDetailNew = () => {
         return;
       }
       const serverStageById = new Map(serverStages.map((s: any) => [s.id, s]));
-      const serverStagesByOrder = [...serverStages].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+      let serverStagesByOrder = sortStagesByOrder(serverStages);
       const completedOrdersJustSaved: number[] = [];
       for (const step of localSteps) {
-        const serverStageByOrder = serverStagesByOrder[step.order - 1];
-        const serverStage = serverStageById.get(step.id) ?? serverStageByOrder;
+        let serverStage = serverStageById.get(step.id);
+        if (!serverStage) {
+          serverStage = serverStagesByOrder[step.order - 1];
+        }
+        if (!serverStage) {
+          const st = step.stageType || 'handwork';
+          const notes =
+            st === 'extra'
+              ? mergeExtraStageNotes(step.name, step.notes)
+              : step.notes?.trim() || null;
+          const created = await studioProductionService.createStage(
+            currentProductionId,
+            { stage_type: st, cost: 0, notes },
+            step.order
+          );
+          serverStage = created as any;
+          serverStageById.set(created.id, created);
+          serverStagesByOrder = sortStagesByOrder([
+            ...serverStagesByOrder.filter((s: any) => s.id !== created.id),
+            created,
+          ]);
+        }
         if (!serverStage) continue;
         const stageId = (serverStage as any).id;
         const serverIsCompleted = (serverStage as any).status === 'completed';
@@ -1354,7 +1534,11 @@ export const StudioSaleDetailNew = () => {
           assigned_worker_id: workerId,
           cost: step.workerCost ?? 0,
           expected_completion_date: step.expectedCompletionDate || null,
-          notes: step.notes || null,
+          notes: preserveExtraNotesOnUpdate(
+            (serverStage as any).notes,
+            step.notes,
+            step.stageType || (serverStage as any).stage_type || ''
+          ),
           status: backendStatus as 'pending' | 'assigned' | 'in_progress' | 'completed',
           completed_at: step.status === 'Completed' && step.actualCompletionDate
             ? new Date(step.actualCompletionDate).toISOString()
@@ -2233,35 +2417,42 @@ export const StudioSaleDetailNew = () => {
           toast.error('Select at least one task.');
           return;
         }
-        const taskIdToStageType: Record<string, 'dyer' | 'handwork' | 'stitching' | 'extra'> = {
+        const taskIdToStageType: Record<string, 'dyer' | 'handwork' | 'stitching'> = {
           dyeing: 'dyer',
           handwork: 'handwork',
           stitching: 'stitching',
         };
-        // Include custom tasks as 'extra' (one per production due to DB unique (production_id, stage_type))
-        let addedExtra = false;
-        const customSelected = selectedTaskIds.filter((tid) => customTasks.some((ct) => ct.id === tid));
-        const stagesToSave: Array<'dyer' | 'handwork' | 'stitching' | 'extra'> = [];
+        type StageToSave = { stage_type: 'dyer' | 'handwork' | 'stitching' | 'extra'; position: number; notes?: string | null };
+        const stagesToSave: StageToSave[] = [];
+        let position = 1;
+        const seenCustomNames = new Set<string>();
         for (const tid of selectedTaskIds) {
           const st = taskIdToStageType[tid];
           if (st) {
-            stagesToSave.push(st);
+            stagesToSave.push({ stage_type: st, position: position++ });
             continue;
           }
-          if (customTasks.some((ct) => ct.id === tid) && !addedExtra) {
-            stagesToSave.push('extra');
-            addedExtra = true;
+          const customTask = customTasks.find((ct) => ct.id === tid);
+          if (customTask) {
+            const nameKey = customTask.name.trim().toLowerCase();
+            if (seenCustomNames.has(nameKey)) {
+              toast.warning(`Duplicate custom task "${customTask.name}" — only one row saved per name.`);
+              continue;
+            }
+            seenCustomNames.add(nameKey);
+            stagesToSave.push({
+              stage_type: 'extra',
+              position: position++,
+              notes: formatExtraStageNotes(customTask.name),
+            });
           }
-        }
-        if (customSelected.length > 1) {
-          toast.info('Only one custom task is persisted per order. Others are kept in this session only.');
         }
         if (stagesToSave.length === 0) {
           toast.error('Select at least one task (Dyeing, Handwork, Stitching, or a custom task).');
           return;
         }
         if (import.meta.env?.DEV) {
-          console.log('[StudioSaleDetail] Saving production stages:', stagesToSave.map((t, i) => ({ stage_type: t, position: i + 1 })));
+          console.log('[StudioSaleDetail] Saving production stages:', stagesToSave);
         }
         const stages = await studioProductionService.getStagesByProductionId(currentProductionId);
         const stagesArr = stages as any[];
@@ -2273,55 +2464,61 @@ export const StudioSaleDetailNew = () => {
           if (import.meta.env?.DEV) {
             console.log('[StudioSaleDetail] Apply config: replaceStages', { productionId: currentProductionId, stagesToSave, noStagesYet });
           }
-          await studioProductionService.replaceStages(
-            currentProductionId,
-            stagesToSave.map((stage_type, i) => ({ stage_type, position: i + 1 }))
-          );
+          await studioProductionService.replaceStages(currentProductionId, stagesToSave);
         } else {
-          // Some stages have workers or are completed: only remove unselected, add missing with correct position
-          const selectedTypes = new Set(stagesToSave);
-          const keptStages = stagesArr.filter((s: any) => selectedTypes.has(s.stage_type));
+          // Some stages have workers or are completed: remove unselected rows, add missing by order
+          const desiredKeys = new Set(
+            stagesToSave.map((row) =>
+              row.stage_type === 'extra'
+                ? `extra:${parseExtraStageDisplayName(row.notes, 'extra') ?? ''}`
+                : row.stage_type
+            )
+          );
+          const serverKey = (s: any) =>
+            s.stage_type === 'extra'
+              ? `extra:${parseExtraStageDisplayName(s.notes, 'extra') ?? ''}`
+              : s.stage_type;
+          const keptStages = stagesArr.filter((s: any) => desiredKeys.has(serverKey(s)));
           for (const s of stagesArr) {
-            const stageType = s.stage_type;
-            if (!selectedTypes.has(stageType)) {
+            if (!desiredKeys.has(serverKey(s))) {
               try {
                 await studioProductionService.deleteStage(s.id);
               } catch (delErr: any) {
-                toast.warning(delErr?.message || `Could not remove ${stageType}. It may have a worker assigned or be completed.`);
+                toast.warning(delErr?.message || `Could not remove ${s.stage_type}. It may have a worker assigned or be completed.`);
               }
             }
           }
-          const existingTypes = new Set(keptStages.map((s: any) => s.stage_type));
+          const keptKeys = new Set(keptStages.map((s: any) => serverKey(s)));
           const maxOrder = keptStages.length > 0
             ? Math.max(...(keptStages.map((s: any) => (s.stage_order != null ? s.stage_order : 1)) as number[]))
             : 0;
           let nextPosition = maxOrder + 1;
-          for (const taskId of selectedTaskIds) {
-            const stageType = taskIdToStageType[taskId];
-            if (stageType && !existingTypes.has(stageType)) {
-              await studioProductionService.createStage(currentProductionId, { stage_type: stageType, cost: 0 }, nextPosition);
-              existingTypes.add(stageType);
-              nextPosition += 1;
+          for (const row of stagesToSave) {
+            if (keptKeys.has(row.stage_type === 'extra' ? `extra:${parseExtraStageDisplayName(row.notes, 'extra') ?? ''}` : row.stage_type)) {
+              continue;
             }
+            await studioProductionService.createStage(
+              currentProductionId,
+              { stage_type: row.stage_type, cost: 0, notes: row.notes ?? null },
+              nextPosition
+            );
+            keptKeys.add(row.stage_type === 'extra' ? `extra:${parseExtraStageDisplayName(row.notes, 'extra') ?? ''}` : row.stage_type);
+            nextPosition += 1;
           }
         }
 
-        // Update local step IDs with server UUIDs so Assign worker works (backend expects real stage ids)
+        // Remap local step IDs by stage_order index (supports multiple extra rows)
         const stagesAfterSync = await studioProductionService.getStagesByProductionId(currentProductionId);
-        const stageByType = new Map((stagesAfterSync as any[]).map((s: any) => [s.stage_type, s]));
+        const sortedServer = sortStagesByOrder(stagesAfterSync as any[]);
         setSaleDetail((prev) => {
           if (!prev) return prev;
-          return {
-            ...prev,
-            productionSteps: prev.productionSteps.map((step) => {
-              const st = step.stageType;
-              if (st && stageByType.has(st)) {
-                const serverStage = stageByType.get(st);
-                return { ...step, id: serverStage.id };
-              }
-              return step;
-            }),
-          };
+          const sortedLocal = [...prev.productionSteps].sort((a, b) => a.order - b.order);
+          const remapped = sortedLocal.map((step, idx) => {
+            const serverStage = sortedServer[idx];
+            if (serverStage) return { ...step, id: serverStage.id };
+            return step;
+          });
+          return { ...prev, productionSteps: remapped };
         });
 
         toast.success('Configuration saved.');
@@ -2490,6 +2687,14 @@ export const StudioSaleDetailNew = () => {
                 </Button>
               );
             })()}
+            {invoiceLinked && (
+              <Badge
+                variant="outline"
+                className="text-xs px-3 py-1.5 bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
+              >
+                Bill Generated
+              </Badge>
+            )}
             <Badge 
               variant="outline" 
               title="Sale / production status"
@@ -2517,6 +2722,12 @@ export const StudioSaleDetailNew = () => {
             )}
           </div>
         </div>
+
+        {structuralLocked && invoiceLinked && (
+          <div className="mx-6 mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 leading-relaxed">
+            Bill generate ho chuka hai — production pipeline locked. Pipeline updates ke liye Product &amp; Invoice use karein; ledger/stock safe rahega.
+          </div>
+        )}
 
         {/* Info Bar */}
         <div className="px-6 py-3 bg-[#0F1419]">
@@ -2810,6 +3021,7 @@ export const StudioSaleDetailNew = () => {
                   </h2>
                   <Button
                     size="sm"
+                    disabled={pipelineLocked}
                     onClick={() => {
                       const templateIds: string[] = [];
                       const customToAdd: Array<{ id: string; name: string }> = [];
@@ -2829,7 +3041,7 @@ export const StudioSaleDetailNew = () => {
                       setSelectedTasksForModal([...new Set(templateIds)]);
                       setShowTaskCustomizationModal(true);
                     }}
-                    className="bg-purple-600 hover:bg-purple-700 h-8"
+                    className="bg-purple-600 hover:bg-purple-700 h-8 disabled:opacity-50"
                   >
                     <Edit2 size={14} className="mr-1" />
                     Customize Tasks
@@ -2843,11 +3055,12 @@ export const StudioSaleDetailNew = () => {
                     <p className="text-xs text-gray-600 mb-4">Click "Customize Tasks" to add tasks for this sale</p>
                     <Button
                       size="sm"
+                      disabled={pipelineLocked}
                       onClick={() => {
                         setSelectedTasksForModal([]);
                         setShowTaskCustomizationModal(true);
                       }}
-                      className="bg-purple-600 hover:bg-purple-700"
+                      className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50"
                     >
                       <Plus size={14} className="mr-1" />
                       Configure Tasks
@@ -2925,11 +3138,11 @@ export const StudioSaleDetailNew = () => {
                                           <DollarSign size={14} className="text-orange-500" />
                                           <button
                                             type="button"
-                                            onClick={() => !stepLocked && !saleLockedForEditing && handleOpenWorkerEdit(step.id)}
+                                            onClick={() => !stepLocked && !pipelineLocked && handleOpenWorkerEdit(step.id)}
                                             className={cn(
                                               "text-orange-400 font-medium rounded px-1 -mx-1",
-                                              !stepLocked && !saleLockedForEditing && "hover:bg-orange-500/20 hover:text-orange-300 cursor-pointer",
-                                              (stepLocked || saleLockedForEditing) && "cursor-default opacity-60"
+                                              !stepLocked && !pipelineLocked && "hover:bg-orange-500/20 hover:text-orange-300 cursor-pointer",
+                                              (stepLocked || pipelineLocked) && "cursor-default opacity-60"
                                             )}
                                             title={saleIsFinalized ? 'Invoice finalized – cost locked' : saleIsCancelled ? 'Sale cancelled' : stepLocked ? undefined : 'Click to edit worker / cost'}
                                           >
@@ -2989,7 +3202,7 @@ export const StudioSaleDetailNew = () => {
                                   {/* Action Buttons */}
                                   <div className="flex items-center gap-2">
                                     {/* Assign / Change worker (no Edit button) */}
-                                    {!stepLocked && step.status !== 'Completed' && (
+                                    {!stepLocked && !pipelineLocked && step.status !== 'Completed' && (
                                       <Button
                                         size="sm"
                                         onClick={() => handleOpenWorkerEdit(step.id)}
@@ -2999,9 +3212,28 @@ export const StudioSaleDetailNew = () => {
                                         {step.assignedWorker ? 'Change worker' : 'Assign'}
                                       </Button>
                                     )}
+
+                                    {!stepLocked && !pipelineLocked && step.dbStatus === 'assigned' && step.assignedWorker && (
+                                      <Button
+                                        size="sm"
+                                        onClick={() => {
+                                          if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(step.id)) {
+                                            toast.error('Save your changes first to create production stages, then try Send again.');
+                                            return;
+                                          }
+                                          setSendWorkflowDate(todayDateInputValue());
+                                          setSendNotes('');
+                                          setShowSendModal(step.id);
+                                        }}
+                                        className="text-xs h-8 bg-blue-600 hover:bg-blue-700"
+                                        title="Mark item sent to worker (optional backdate)"
+                                      >
+                                        Send to Worker
+                                      </Button>
+                                    )}
                                     
-                                    {/* Assigned → Receive from Worker: job done? Enter actual cost & confirm to mark complete */}
-                                    {!stepLocked && (step.status === 'Assigned' || step.status === 'In Progress') && step.assignedWorker && (
+                                    {/* Assigned / sent → Receive from Worker: job done? Enter actual cost & confirm to mark complete */}
+                                    {!stepLocked && !pipelineLocked && (step.status === 'Assigned' || step.status === 'In Progress') && step.assignedWorker && step.dbStatus !== 'assigned' && (
                                       <Button
                                         size="sm"
                                         onClick={() => {
@@ -3009,14 +3241,30 @@ export const StudioSaleDetailNew = () => {
                                             toast.error('Save your changes first to create production stages, then try Receive again.');
                                             return;
                                           }
-                                          setReceiveActualCost(String(step.workerCost || ''));
+                                          setReceiveWorkflowDate(todayDateInputValue());
                                           setReceiveNotes('');
                                           setShowReceiveModal(step.id);
                                         }}
                                         className="text-xs h-8 bg-green-600 hover:bg-green-700"
-                                        title="Worker job done? Enter actual cost and confirm to mark this task complete"
+                                        title="Record receive date and any issues in notes"
                                       >
                                         Receive from Worker
+                                      </Button>
+                                    )}
+
+                                    {!stepLocked && !pipelineLocked && step.dbStatus === 'received' && (
+                                      <Button
+                                        size="sm"
+                                        onClick={() => {
+                                          if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(step.id)) {
+                                            toast.error('Save your changes first.');
+                                            return;
+                                          }
+                                          openSettlementForStep(step);
+                                        }}
+                                        className="text-xs h-8 bg-emerald-600 hover:bg-emerald-700"
+                                      >
+                                        Worker payment
                                       </Button>
                                     )}
                                     
@@ -3025,13 +3273,13 @@ export const StudioSaleDetailNew = () => {
                                         <Button
                                           size="sm"
                                           variant="ghost"
-                                          onClick={() => handleOpenWorkerEdit(step.id)}
+                                          onClick={() => setShowStageDetailModal(step.id)}
                                           className="h-8 w-8 p-0 text-green-400 hover:text-green-300 hover:bg-green-900/20"
-                                          title="View details"
+                                          title="View timeline & notes"
                                         >
                                           <Eye size={16} />
                                         </Button>
-                                        {!stepLocked && canReopenStep(step) && (
+                                        {!stepLocked && !pipelineLocked && canReopenStep(step) && (
                                           <Button
                                             size="sm"
                                             variant="ghost"
@@ -4836,41 +5084,79 @@ export const StudioSaleDetailNew = () => {
         document.body
       )}
 
-      {/* Receive from Worker Modal */}
-      {showReceiveModal && (
+      {/* Send to Worker Modal */}
+      {showSendModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
-            <h3 className="text-lg font-bold text-white mb-1">Receive from Worker</h3>
+            <h3 className="text-lg font-bold text-white mb-1">Send to Worker</h3>
             <p className="text-sm text-gray-400 mb-4">
-              Enter actual cost (Rs) and optional remarks for this receive only. Remarks are appended to stage notes as{' '}
-              <span className="text-gray-300">[Receive]:</span>. Stage is marked completed operationally; worker journal entries post after you generate the studio invoice (bill).
+              Confirm send date (default today). Use yesterday for backdated entries.
             </p>
             <div className="space-y-4">
               <div>
-                <label className="text-sm text-gray-400 mb-1 block">Actual Cost (Rs) *</label>
+                <label className="text-sm text-gray-400 mb-1 block">Send date</label>
                 <Input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={receiveActualCost}
-                  onChange={(e) => setReceiveActualCost(e.target.value)}
-                  placeholder="0"
+                  type="date"
+                  value={sendWorkflowDate}
+                  onChange={(e) => setSendWorkflowDate(e.target.value)}
                   className="bg-gray-950 border-gray-700"
                 />
               </div>
               <div>
-                <label className="text-sm text-gray-400 mb-1 block">Remarks (optional)</label>
+                <label className="text-sm text-gray-400 mb-1 block">Send note (optional)</label>
                 <textarea
-                  value={receiveNotes}
-                  onChange={(e) => setReceiveNotes(e.target.value)}
-                  placeholder="Issues, notes..."
+                  value={sendNotes}
+                  onChange={(e) => setSendNotes(e.target.value)}
+                  placeholder="Record issues or instructions for the worker…"
                   rows={2}
                   className="w-full bg-gray-950 border border-gray-700 rounded-lg text-white px-3 py-2 text-sm resize-none"
                 />
               </div>
             </div>
             <div className="flex gap-3 mt-6">
-              <Button variant="outline" className="flex-1 border-gray-700" onClick={() => { setShowReceiveModal(null); setReceiveActualCost(''); setReceiveNotes(''); }} disabled={savingStage}>
+              <Button variant="outline" className="flex-1 border-gray-700" onClick={() => { setShowSendModal(null); setSendNotes(''); }} disabled={savingStage}>
+                Cancel
+              </Button>
+              <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={handleSendConfirm} disabled={savingStage}>
+                {savingStage ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+                Confirm Send
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receive from Worker Modal */}
+      {showReceiveModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
+            <h3 className="text-lg font-bold text-white mb-1">Receive from Worker</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Confirm receive date and optional note (saved as <span className="text-gray-300">[Receive]:</span>). Next, enter customer charge and worker payment.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-400 mb-1 block">Receive date</label>
+                <Input
+                  type="date"
+                  value={receiveWorkflowDate}
+                  onChange={(e) => setReceiveWorkflowDate(e.target.value)}
+                  className="bg-gray-950 border-gray-700"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-400 mb-1 block">Receive note (optional)</label>
+                <textarea
+                  value={receiveNotes}
+                  onChange={(e) => setReceiveNotes(e.target.value)}
+                  placeholder="Damage, delay, quality issues…"
+                  rows={2}
+                  className="w-full bg-gray-950 border border-gray-700 rounded-lg text-white px-3 py-2 text-sm resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <Button variant="outline" className="flex-1 border-gray-700" onClick={() => { setShowReceiveModal(null); setReceiveNotes(''); setReceiveWorkflowDate(todayDateInputValue()); }} disabled={savingStage}>
                 Cancel
               </Button>
               <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={handleReceiveConfirm} disabled={savingStage}>
@@ -4882,86 +5168,73 @@ export const StudioSaleDetailNew = () => {
         </div>
       )}
 
-      {/* Worker Payment choice modal (after Receive): Pay Now / Pay Later */}
-      {payChoiceAfterReceive && !showWorkerPaymentDialog && (
+      {settlementModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full">
-            <h3 className="text-lg font-bold text-white mb-1">Worker Payment</h3>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-white mb-1">Worker settlement</h3>
             <p className="text-sm text-gray-400 mb-4">
-              Is stage ka kaam receive ho gaya hai. Kya aap abhi worker ko payment karna chahte hain?
+              {settlementModal.stepName} — {settlementModal.workerName}
             </p>
-            {(!invoiceLinked || !allTasksCompleted) && (
-              <p className="text-xs text-amber-400/90 mb-4">
-                {!invoiceLinked
-                  ? 'Studio invoice (bill) generate karein aur production finalize ho — phir worker ko Pay Now se ada kar sakte hain.'
-                  : 'Tamam stages complete hon — phir bill ke baad worker ledger par payment.'}
-              </p>
-            )}
-            <div className="flex gap-3 mt-6">
-              <Button
-                variant="outline"
-                className="flex-1 border-gray-700"
-                onClick={() => {
-                  setPayChoiceAfterReceive(null);
-                  reloadProductionSteps();
-                }}
-              >
-                No, Pay Later
-              </Button>
-              <Button
-                className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                disabled={!invoiceLinked || !allTasksCompleted}
-                title={
-                  !invoiceLinked || !allTasksCompleted
-                    ? 'Pehle studio invoice + saari stages complete / production finalize — tab worker payment ledger par.'
-                    : undefined
-                }
-                onClick={() =>
-                  invoiceLinked && allTasksCompleted && setShowWorkerPaymentDialog(true)
-                }
-              >
-                Yes, Pay Now
-              </Button>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-gray-400 mb-1 block">Charge customer (Rs)</label>
+                <Input type="number" min={0} value={settlementCustomerCharge} onChange={(e) => setSettlementCustomerCharge(e.target.value)} className="bg-gray-950 border-gray-700" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-400 mb-1 block">Pay worker (Rs)</label>
+                <Input type="number" min={0} value={settlementWorkerPay} onChange={(e) => setSettlementWorkerPay(e.target.value)} className="bg-gray-950 border-gray-700" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-400 mb-1 block">Remarks (optional)</label>
+                <textarea value={settlementRemarks} onChange={(e) => setSettlementRemarks(e.target.value)} rows={2} className="w-full bg-gray-950 border border-gray-700 rounded-lg text-white px-3 py-2 text-sm resize-none" />
+              </div>
+              <p className="text-xs text-gray-500">Select account to post payment:</p>
+              {settlementAccountsLoading ? (
+                <p className="text-sm text-gray-400 flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Loading…</p>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {settlementAccounts.map((a) => (
+                    <button key={a.id} type="button" disabled={savingStage} onClick={() => void handleSettlementConfirm(a.id)} className="w-full text-left px-3 py-2 rounded-lg border border-gray-700 hover:border-green-500 bg-gray-950">
+                      <span className="text-white text-sm">{a.name}</span>
+                      <span className="text-gray-500 text-xs ml-2">{a.code}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+            <Button variant="outline" className="w-full mt-4 border-gray-700" onClick={() => setSettlementModal(null)} disabled={savingStage}>Cancel</Button>
           </div>
         </div>
       )}
 
-      {/* Worker Payment dialog (Pay Now flow): records payment and marks ledger paid */}
-      {payChoiceAfterReceive && (
-        <UnifiedPaymentDialog
-          isOpen={showWorkerPaymentDialog}
-          onClose={() => {
-            setShowWorkerPaymentDialog(false);
-            setPayChoiceAfterReceive(null);
-            reloadProductionSteps();
-          }}
-          context="worker"
-          entityName={payChoiceAfterReceive.workerName}
-          entityId={payChoiceAfterReceive.workerId}
-          outstandingAmount={payChoiceAfterReceive.amount}
-          referenceNo={saleDetail?.invoiceNo ? `STD-${payChoiceAfterReceive.stageId.slice(0, 8)}` : undefined}
-          workerStageId={payChoiceAfterReceive.stageId}
-          onSuccess={async (paymentRef, amountPaid) => {
-            try {
-              // Only mark the job row as paid when payment is full (amount >= job amount); partial payments use a separate ledger row
-              if (amountPaid != null && amountPaid >= payChoiceAfterReceive.amount) {
-                await studioProductionService.markStageLedgerPaid(
-                  payChoiceAfterReceive.stageId,
-                  paymentRef ?? undefined
-                );
-              }
-              toast.success('Worker payment recorded. Ledger updated.');
-              window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: payChoiceAfterReceive.workerId } }));
-            } catch (e: any) {
-              toast.error(e?.message || 'Failed to update ledger');
-            }
-            setShowWorkerPaymentDialog(false);
-            setPayChoiceAfterReceive(null);
-            await reloadProductionSteps();
-          }}
-        />
-      )}
+      {showStageDetailModal && saleDetail && (() => {
+        const step = saleDetail.productionSteps.find((s) => s.id === showStageDetailModal);
+        if (!step) return null;
+        return (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999] p-4" style={{ zIndex: 9999 }}>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 max-w-md w-full max-h-[85vh] overflow-y-auto">
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="text-lg font-bold text-white">Stage detail</h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowStageDetailModal(null)}>Close</Button>
+              </div>
+              <StudioStageTimeline
+                stageName={step.name}
+                stageType={step.stageType || 'handwork'}
+                notes={step.notes}
+                assignedAt={step.assignedDate}
+                sentDate={step.sentDate}
+                receivedDate={step.receivedDate}
+                completedDate={step.actualCompletionDate}
+                expectedCost={step.expectedCost ?? step.workerCost}
+                workerCost={step.workerCost}
+                customerCharge={step.customerCharge ?? step.workerCost}
+                ledgerPaid={step.workerPaidAmount ?? 0}
+                ledgerDue={step.workerRemainingDue ?? 0}
+              />
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Customer Receive Payment – records against this sale so it shows in customer ledger (only when source = sale) */}
       {saleDetail && saleDetail.source === 'sale' && (

@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Check, Plus, X } from 'lucide-react';
-import { CustomSelect } from '../common';
-import type { UiStageType } from '../../api/studio';
+import { ArrowLeft, Check, Loader2, Plus, X } from 'lucide-react';
+import type { StudioPipelineStageInput, UiStageType } from '../../api/studio';
+import { useSubmitLock } from '../../contexts/LoadingContext';
 
 /**
- * Built-in stage presets (always available). Custom stages are added at runtime
- * and map to the 'handwork' DB stage type since the stage_type enum is fixed;
- * the user-chosen display name is persisted in localStorage keyed per order.
+ * Built-in stage presets (always available). Custom stages persist as stage_type `extra`
+ * with display name in notes (`[Task]: …`).
  */
 const STAGE_OPTIONS: { id: UiStageType; name: string; icon: string }[] = [
   { id: 'dyeing', name: 'Dyeing', icon: '🎨' },
@@ -18,117 +17,84 @@ const STAGE_OPTIONS: { id: UiStageType; name: string; icon: string }[] = [
 ];
 
 const DRAFT_KEY_PREFIX = 'studio:stageDraft:';
-const CUSTOM_KEY_PREFIX = 'studio:customStageNames:';
 
-interface CustomStageEntry {
-  localId: string;
-  name: string;
-  mapsTo: UiStageType;
-}
+type PipelineEntry =
+  | { kind: 'preset'; stageType: UiStageType }
+  | { kind: 'extra'; localId: string; name: string };
 
 interface StudioStageSelectionProps {
   onBack: () => void;
-  onSave: (stageTypes: UiStageType[]) => void;
+  onSave: (stages: StudioPipelineStageInput[]) => void | Promise<void>;
   existingStageTypes?: UiStageType[];
   /** When set, the current selection is persisted in localStorage keyed by this id so back-nav preserves the draft. */
   orderId?: string;
 }
 
 export function StudioStageSelection({ onBack, onSave, existingStageTypes = [], orderId }: StudioStageSelectionProps) {
+  const { busy } = useSubmitLock();
   const draftKey = orderId ? `${DRAFT_KEY_PREFIX}${orderId}` : null;
-  const customKey = orderId ? `${CUSTOM_KEY_PREFIX}${orderId}` : null;
 
-  const [selected, setSelected] = useState<UiStageType[]>(() => {
+  const [pipeline, setPipeline] = useState<PipelineEntry[]>(() => {
     if (!draftKey) return [];
     try {
       const raw = localStorage.getItem(draftKey);
       if (!raw) return [];
-      const parsed = JSON.parse(raw) as UiStageType[];
-      if (Array.isArray(parsed)) {
-        return parsed.filter((s) => !existingStageTypes.includes(s));
-      }
-      return [];
-    } catch {
-      return [];
-    }
-  });
-
-  // Custom stages buffer — rendered alongside presets but selections ultimately map
-  // to the chosen DB stage type (defaults to 'handwork'). Name persists so the user
-  // sees their label on return even though the DB type is fixed.
-  const [customStages, setCustomStages] = useState<CustomStageEntry[]>(() => {
-    if (!customKey) return [];
-    try {
-      const raw = localStorage.getItem(customKey);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as CustomStageEntry[];
+      const parsed = JSON.parse(raw) as PipelineEntry[];
       return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
   });
+
   const [showAdd, setShowAdd] = useState(false);
   const [draftName, setDraftName] = useState('');
-  const [draftMapsTo, setDraftMapsTo] = useState<UiStageType>('handwork');
 
   useEffect(() => {
     if (!draftKey) return;
     try {
-      if (selected.length > 0) localStorage.setItem(draftKey, JSON.stringify(selected));
+      if (pipeline.length > 0) localStorage.setItem(draftKey, JSON.stringify(pipeline));
       else localStorage.removeItem(draftKey);
     } catch {
       /* ignore */
     }
-  }, [draftKey, selected]);
+  }, [draftKey, pipeline]);
 
-  useEffect(() => {
-    if (!customKey) return;
-    try {
-      if (customStages.length > 0) localStorage.setItem(customKey, JSON.stringify(customStages));
-      else localStorage.removeItem(customKey);
-    } catch {
-      /* ignore */
-    }
-  }, [customKey, customStages]);
-
-  const toggle = (id: UiStageType) => {
-    setSelected((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+  const togglePreset = (id: UiStageType) => {
+    setPipeline((prev) => {
+      const idx = prev.findIndex((e) => e.kind === 'preset' && e.stageType === id);
+      if (idx >= 0) return [...prev.slice(0, idx), ...prev.slice(idx + 1)];
+      return [...prev, { kind: 'preset', stageType: id }];
+    });
   };
 
   const addCustom = () => {
     const name = draftName.trim();
     if (!name) return;
     const localId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-    setCustomStages((prev) => [...prev, { localId, name, mapsTo: draftMapsTo }]);
-    setSelected((prev) => [...prev, draftMapsTo]);
+    setPipeline((prev) => [...prev, { kind: 'extra', localId, name }]);
     setDraftName('');
-    setDraftMapsTo('handwork');
     setShowAdd(false);
   };
 
-  const removeCustom = (entry: CustomStageEntry) => {
-    setCustomStages((prev) => prev.filter((c) => c.localId !== entry.localId));
-    // Each custom row appended exactly one `mapsTo` slot in `selected` (see addCustom).
-    // Remove one matching occurrence from the end so preset + custom both mapping to
-    // the same type stay correct when only the custom row is deleted.
-    setSelected((sel) => {
-      const i = sel.lastIndexOf(entry.mapsTo);
-      if (i === -1) return sel;
-      return [...sel.slice(0, i), ...sel.slice(i + 1)];
-    });
+  const removeCustom = (localId: string) => {
+    setPipeline((prev) => prev.filter((e) => !(e.kind === 'extra' && e.localId === localId)));
   };
 
-  const orderLabel = useMemo(() => {
-    if (selected.length === 0) return 'none';
-    return selected
-      .map((id) => STAGE_OPTIONS.find((o) => o.id === id)?.name ?? id)
-      .join(' → ');
-  }, [selected]);
+  const customEntries = pipeline.filter((e): e is Extract<PipelineEntry, { kind: 'extra' }> => e.kind === 'extra');
 
-  const handleSave = () => {
-    if (selected.length === 0) return;
+  const orderLabel = useMemo(() => {
+    if (pipeline.length === 0) return 'none';
+    return pipeline
+      .map((e) =>
+        e.kind === 'extra'
+          ? e.name
+          : STAGE_OPTIONS.find((o) => o.id === e.stageType)?.name ?? e.stageType
+      )
+      .join(' → ');
+  }, [pipeline]);
+
+  const handleSave = async () => {
+    if (busy || pipeline.length === 0) return;
     if (draftKey) {
       try {
         localStorage.removeItem(draftKey);
@@ -136,14 +102,22 @@ export function StudioStageSelection({ onBack, onSave, existingStageTypes = [], 
         /* ignore */
       }
     }
-    onSave(selected);
+    const entries: StudioPipelineStageInput[] = pipeline.map((e) =>
+      e.kind === 'extra' ? { kind: 'extra', label: e.name } : { kind: 'preset', stageType: e.stageType }
+    );
+    await onSave(entries);
   };
 
   return (
     <div className="min-h-screen pb-24 bg-[#111827]">
       <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
         <div className="flex items-center gap-3 mb-2">
-          <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={busy}
+            className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white disabled:opacity-50 disabled:pointer-events-none"
+          >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1">
@@ -160,13 +134,14 @@ export function StudioStageSelection({ onBack, onSave, existingStageTypes = [], 
 
         <div className="space-y-2">
           {STAGE_OPTIONS.map((opt) => {
-            const isSelected = selected.includes(opt.id);
+            const idx = pipeline.findIndex((e) => e.kind === 'preset' && e.stageType === opt.id);
+            const isSelected = idx >= 0;
             const isExisting = existingStageTypes.includes(opt.id);
             return (
               <button
                 key={opt.id}
                 type="button"
-                onClick={() => !isExisting && toggle(opt.id)}
+                onClick={() => !isExisting && togglePreset(opt.id)}
                 disabled={isExisting}
                 className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
                   isExisting
@@ -187,35 +162,33 @@ export function StudioStageSelection({ onBack, onSave, existingStageTypes = [], 
                   </div>
                 )}
                 {isSelected && !isExisting && (
-                  <span className="text-xs text-[#8B5CF6]">
-                    #{selected.indexOf(opt.id) + 1}
-                  </span>
+                  <span className="text-xs text-[#8B5CF6]">#{idx + 1}</span>
                 )}
               </button>
             );
           })}
         </div>
 
-        {customStages.length > 0 && (
+        {customEntries.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide">Custom Stages</p>
-            {customStages.map((c) => {
-              const preset = STAGE_OPTIONS.find((o) => o.id === c.mapsTo);
+            <p className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide">Custom tasks</p>
+            {customEntries.map((c) => {
+              const idx = pipeline.findIndex((e) => e.kind === 'extra' && e.localId === c.localId);
               return (
                 <div
                   key={c.localId}
-                  className="w-full flex items-center gap-3 p-4 rounded-xl border-2 bg-[#1F2937] border-[#374151] text-white"
+                  className="w-full flex items-center gap-3 p-4 rounded-xl border-2 bg-[#8B5CF6]/20 border-[#8B5CF6] text-white"
                 >
-                  <span className="text-2xl">{preset?.icon ?? '⭐'}</span>
+                  <span className="text-2xl">⭐</span>
                   <div className="flex-1">
                     <p className="font-medium">{c.name}</p>
-                    <p className="text-xs text-[#9CA3AF]">Maps to {preset?.name ?? 'Handwork'}</p>
+                    <p className="text-xs text-[#C4B5FD]">Custom task · #{idx + 1}</p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => removeCustom(c)}
+                    onClick={() => removeCustom(c.localId)}
                     className="p-1.5 rounded-lg text-[#9CA3AF] hover:bg-[#374151]"
-                    aria-label="Remove custom stage"
+                    aria-label="Remove custom task"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -228,7 +201,7 @@ export function StudioStageSelection({ onBack, onSave, existingStageTypes = [], 
         {showAdd ? (
           <div className="p-4 rounded-xl border-2 border-[#8B5CF6] bg-[#1F2937] space-y-3">
             <div>
-              <label className="text-xs text-[#9CA3AF] mb-1 block">Custom stage name</label>
+              <label className="text-xs text-[#9CA3AF] mb-1 block">Custom task name</label>
               <input
                 type="text"
                 value={draftName}
@@ -236,15 +209,6 @@ export function StudioStageSelection({ onBack, onSave, existingStageTypes = [], 
                 placeholder="e.g. Printing, Pressing, Packaging"
                 className="w-full px-3 py-2 rounded-lg bg-[#111827] border border-[#374151] text-white placeholder-[#6B7280] focus:outline-none focus:border-[#8B5CF6]"
                 autoFocus
-              />
-            </div>
-            <div>
-              <CustomSelect
-                label="Worker category (for routing)"
-                value={draftMapsTo}
-                onChange={(v) => setDraftMapsTo(v as UiStageType)}
-                options={STAGE_OPTIONS.map((o) => ({ value: o.id, label: `${o.icon} ${o.name}` }))}
-                zIndexClass="z-[100]"
               />
             </div>
             <div className="flex gap-2">
@@ -275,16 +239,18 @@ export function StudioStageSelection({ onBack, onSave, existingStageTypes = [], 
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-[#4B5563] text-[#9CA3AF] hover:border-[#8B5CF6] hover:text-[#8B5CF6] transition-colors"
           >
             <Plus className="w-4 h-4" />
-            <span className="text-sm font-medium">Add custom stage</span>
+            <span className="text-sm font-medium">Add custom task</span>
           </button>
         )}
 
         <button
-          onClick={handleSave}
-          disabled={selected.length === 0}
-          className="w-full py-3 rounded-xl font-semibold text-white bg-[#8B5CF6] disabled:opacity-50 disabled:cursor-not-allowed"
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={busy || pipeline.length === 0}
+          className="w-full py-3 rounded-xl font-semibold text-white bg-[#8B5CF6] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
-          Save {selected.length > 0 ? `${selected.length} stage(s)` : 'stages'}
+          {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+          {busy ? 'Saving…' : `Save ${pipeline.length > 0 ? `${pipeline.length} stage(s)` : 'stages'}`}
         </button>
       </div>
     </div>

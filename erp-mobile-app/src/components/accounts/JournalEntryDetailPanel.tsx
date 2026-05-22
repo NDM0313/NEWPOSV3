@@ -7,6 +7,8 @@ import {
 import { getJournalEntryById, type JournalEntryRow } from '../../api/accounts';
 import {
   getAccountEntryDisplayConfig,
+  entryDirection,
+  cashFlowDirectionLabel,
   type AccountEntry,
 } from './AccountsDashboard';
 import { EditTransactionSheet } from './reports/_shared/EditTransactionSheet';
@@ -49,6 +51,9 @@ export function JournalEntryDetailPanel({
   }, [companyId, entry.id]);
 
   const typeConfig = getAccountEntryDisplayConfig(entry);
+  const cashFlow = entryDirection(entry);
+  const cashFlowColor =
+    cashFlow === 'in' ? 'text-[#10B981]' : cashFlow === 'out' ? 'text-[#EF4444]' : 'text-[#93C5FD]';
   const canEditFromAccounts = allowsDayBookUnifiedEdit(entry.referenceType, entry.paymentId ?? null);
   const salePurchaseTarget = getMobileSalePurchaseOpenTarget(
     entry.referenceType,
@@ -129,8 +134,14 @@ export function JournalEntryDetailPanel({
                 </div>
               )}
               <div className="flex justify-between pb-3 border-b border-[#374151]">
+                <span className="text-sm text-[#9CA3AF]">Cash flow</span>
+                <span className={`text-sm font-semibold ${cashFlowColor}`}>
+                  {cashFlowDirectionLabel(cashFlow)}
+                </span>
+              </div>
+              <div className="flex justify-between pb-3 border-b border-[#374151]">
                 <span className="text-sm text-[#9CA3AF]">Total</span>
-                <span className="text-lg text-white font-bold">
+                <span className={`text-lg font-bold ${cashFlowColor}`}>
                   Rs. {(detail?.total_debit || entry.amount).toLocaleString()}
                 </span>
               </div>

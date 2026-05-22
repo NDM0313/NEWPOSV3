@@ -13,6 +13,7 @@ import * as reportsApi from '../../api/reports';
 import * as inventoryApi from '../../api/inventory';
 import { getJournalEntries } from '../../api/accounts';
 import { getFinancialDashboardMetrics, sumTrendTail } from '../../api/financialDashboard';
+import { formatLocalDateYYYYMMDD, localNowDateString } from '../../utils/localDate';
 import { supabase } from '../../lib/supabase';
 import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
 
@@ -90,8 +91,8 @@ export function DashboardModule({ onBack, user: _user, companyId, branchId, onNe
     const invBranch = branchId && branchId !== 'all' && branchId !== 'default' ? branchId : null;
     const rangeStart = new Date();
     rangeStart.setDate(rangeStart.getDate() - Math.max(1, days) + 1);
-    const fromDate = rangeStart.toISOString().slice(0, 10);
-    const toDate = new Date().toISOString().slice(0, 10);
+    const fromDate = formatLocalDateYYYYMMDD(rangeStart);
+    const toDate = localNowDateString();
     const [salesRes, invRes, finRes] = await Promise.all([
       reportsApi.getSalesSummary(companyId, branchId, days),
       inventoryApi.getInventory(companyId, invBranch),

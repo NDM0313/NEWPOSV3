@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Plus, Calendar, DollarSign, Search, Loader2, Upload, X, Users } from 'lucide-react';
-import { TextInput, NumericInput, ActionBar, CustomSelect, CustomSearchableSheet, PullToRefresh } from '../common';
+import { TextInput, NumericInput, ActionBar, CustomSelect, CustomSearchableSheet, PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
+import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
+import { useMainScrollRef } from '../../contexts/MainScrollContext';
 import type { User, Branch } from '../../types';
 import type { AuthProfile } from '../../api/auth';
 import { SwitchUserPinOverlay } from '../auth/SwitchUserPinOverlay';
@@ -12,6 +14,8 @@ import * as branchesApi from '../../api/branches';
 import { getUsersForSalary, type SalaryUserRow } from '../../api/users';
 import { addPending } from '../../lib/offlineStore';
 import { localNowDateString } from '../../utils/localDate';
+import { usePermissions } from '../../context/PermissionContext';
+import { formatAccountPickerSubtitle } from '../../utils/balancePrivacy';
 
 interface ExpenseModuleProps {
   onBack: () => void;
@@ -78,6 +82,7 @@ function getCategoryIcon(cat: string): string {
 }
 
 export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessionReplaced, onRequestCounterLock }: ExpenseModuleProps) {
+  const { canViewBalances } = usePermissions();
   const [list, setList] = useState<{ id: string; expense_no: string; date: string; category: string; description: string; amount: number }[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [showAdd, setShowAdd] = useState(false);
@@ -104,6 +109,8 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
   const [showSwitchUser, setShowSwitchUser] = useState(false);
   /** Calendar date in device local TZ (`YYYY-MM-DD`); matches `expenses.expense_date`. */
   const [addExpenseDate, setAddExpenseDate] = useState(localNowDateString);
+  const { online, pendingCount } = useOfflineListMeta();
+  const mainScrollRef = useMainScrollRef();
 
   useEffect(() => {
     if (showAdd) setAddExpenseDate(localNowDateString());
@@ -136,6 +143,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
 
   useEffect(() => {
     void loadExpenses();
+  }, [loadExpenses]);
+
+  useEffect(() => {
+    const onSync = () => void loadExpenses({ silent: true });
+    window.addEventListener('erp-mobile:autosync-complete', onSync);
+    return () => window.removeEventListener('erp-mobile:autosync-complete', onSync);
   }, [loadExpenses]);
 
   useEffect(() => {
@@ -365,6 +378,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
 
   if (showAdd) {
     return (
+      <SwipeBackShell onBack={() => setShowAdd(false)}>
       <div className="min-h-screen bg-[#111827] pb-32">
         <div className="bg-gradient-to-br from-[#EF4444] to-[#DC2626] p-4 sticky top-0 z-10">
           <div className="flex items-center gap-3">
@@ -412,7 +426,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
                     ...paymentAccounts.map((acc) => ({
                       value: acc.id,
                       label: `${acc.name} (${acc.type})`,
-                      subtitle: `Rs. ${acc.balance.toLocaleString()}`,
+                      subtitle: formatAccountPickerSubtitle(acc.balance, canViewBalances),
                     })),
                   ]}
                   placeholder="Select account"
@@ -562,11 +576,14 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
           </button>
         </ActionBar>
       </div>
+      </SwipeBackShell>
     );
   }
 
   return (
+    <SwipeBackShell onBack={onBack}>
     <div className="min-h-screen bg-[#111827] pb-24">
+      <OfflineBanner online={online} pendingCount={pendingCount} />
       {onCounterSessionReplaced && !isSharedCounterModeEnabled() ? (
         <SwitchUserPinOverlay
           open={showSwitchUser}
@@ -651,7 +668,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
         )}
       </div>
 
-      <PullToRefresh onRefresh={() => loadExpenses({ silent: true })} disabled={!companyId} spinnerAccentClass="border-t-[#EF4444]">
+      <PullToRefresh
+        onRefresh={() => loadExpenses({ silent: true })}
+        disabled={!companyId}
+        scrollElementRef={mainScrollRef}
+        spinnerAccentClass="border-t-[#EF4444]"
+      >
       <div className="p-4 space-y-4">
         {loading ? (
           <div className="flex justify-center py-12">
@@ -715,5 +737,6 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
         <Plus className="w-6 h-6 text-white" strokeWidth={3} />
       </button>
     </div>
+    </SwipeBackShell>
   );
 }

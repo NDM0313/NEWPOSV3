@@ -19,6 +19,7 @@ import {
   normalizePurchaseStatusForPosting,
 } from '@/app/lib/postingStatusGate';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
+import { localNowDateString } from '@/app/utils/localDate';
 import { assertDomainEditSafetyTestMode, classifyPurchaseEdit } from '@/app/lib/accountingEditClassification';
 import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
 import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
@@ -1190,7 +1191,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           const supplierId = (updated as any).supplier_id || (updated as any).supplier?.id;
           const supplierName = (updated as any).supplier_name || (updated as any).supplier?.name || 'Supplier';
           const poNo = (updated as any).po_no || `PUR-${id.substring(0, 8)}`;
-          const entryDate = (updated as any).po_date || new Date().toISOString().slice(0, 10);
+          const entryDate = (updated as any).po_date || localNowDateString();
           let effectiveBranchId = (updated as any).branch_id || branchId;
           if (!effectiveBranchId || effectiveBranchId === 'all') {
             const branches = await branchService.getAllBranches(companyId);

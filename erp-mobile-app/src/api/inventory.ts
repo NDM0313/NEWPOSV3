@@ -115,7 +115,28 @@ export type StockMovementType =
   | 'adjustment'
   | 'transfer_in'
   | 'transfer_out'
-  | 'opening';
+  | 'opening'
+  | 'production_in';
+
+/** Lowercase movement_type from DB (e.g. SALE → sale, PRODUCTION_IN → production_in). */
+export function normalizeMovementType(raw: string): StockMovementType {
+  const t = String(raw || 'adjustment').trim().toLowerCase().replace(/-/g, '_');
+  if (t === 'production_in' || t === 'production') return 'production_in';
+  if (t === 'sell_return') return 'sale_return';
+  const known: StockMovementType[] = [
+    'purchase',
+    'sale',
+    'return',
+    'sale_return',
+    'purchase_return',
+    'adjustment',
+    'transfer_in',
+    'transfer_out',
+    'opening',
+    'production_in',
+  ];
+  return (known.includes(t as StockMovementType) ? t : 'adjustment') as StockMovementType;
+}
 
 export interface StockMovementEntry {
   id: string;
@@ -169,20 +190,23 @@ export async function getProductStockMovements(
   const rows = (data || []) as Array<Record<string, unknown>>;
   const saleIds = new Set<string>();
   const purchaseIds = new Set<string>();
+  const studioProductionIds = new Set<string>();
   const branchIds = new Set<string>();
   for (const r of rows) {
     const rt = String(r.reference_type || '').toLowerCase();
     const rid = r.reference_id as string | null;
     if (!rid) continue;
-    if (rt.includes('sale')) saleIds.add(rid);
-    else if (rt.includes('purchase')) purchaseIds.add(rid);
+    if (rt === 'studio_production') studioProductionIds.add(rid);
+    else if (rt.includes('sale') && !rt.includes('return')) saleIds.add(rid);
+    else if (rt.includes('purchase') && !rt.includes('return')) purchaseIds.add(rid);
     const bid = r.branch_id as string | null;
     if (bid) branchIds.add(bid);
   }
 
-  const [salesMap, purchasesMap, branchMap] = await Promise.all([
+  const [salesMap, purchasesMap, studioMap, branchMap] = await Promise.all([
     fetchSaleRefs(saleIds),
     fetchPurchaseRefs(purchaseIds),
+    fetchStudioProductionRefs(studioProductionIds),
     fetchBranches(branchIds),
   ]);
 
@@ -195,19 +219,23 @@ export async function getProductStockMovements(
     let refNo: string | null = null;
     let partyName: string | null = null;
     if (rid) {
-      if (rt.includes('sale') && salesMap[rid]) {
+      if (rt === 'studio_production' && studioMap[rid]) {
+        refNo = studioMap[rid].refNo;
+        partyName = studioMap[rid].partyName;
+      } else if (rt.includes('sale') && !rt.includes('return') && salesMap[rid]) {
         refNo = salesMap[rid].invoiceNo;
         partyName = salesMap[rid].partyName;
-      } else if (rt.includes('purchase') && purchasesMap[rid]) {
+      } else if (rt.includes('purchase') && !rt.includes('return') && purchasesMap[rid]) {
         refNo = purchasesMap[rid].invoiceNo;
         partyName = purchasesMap[rid].partyName;
       }
     }
     const bid = r.branch_id as string | null;
+    const movementType = normalizeMovementType(String(r.movement_type ?? 'adjustment'));
     return {
       id: String(r.id ?? ''),
       createdAt: String(r.created_at ?? ''),
-      movementType: String(r.movement_type ?? 'adjustment') as StockMovementType,
+      movementType,
       quantity: qty,
       unitCost: Number(r.unit_cost ?? 0),
       totalCost: Number(r.total_cost ?? 0),
@@ -285,14 +313,17 @@ async function fetchSaleRefs(
   if (!ids.size) return {};
   const { data } = await supabase
     .from('sales')
-    .select('id, invoice_no, customers(name)')
+    .select('id, invoice_no, order_no, customer_name')
     .in('id', Array.from(ids));
   const map: Record<string, { invoiceNo: string; partyName: string | null }> = {};
   for (const r of (data || []) as Array<Record<string, unknown>>) {
-    const c = r.customers as { name?: string } | null;
+    const invoice = String(r.invoice_no ?? '').trim();
+    const order = String(r.order_no ?? '').trim();
+    const invoiceNo = invoice || order || '';
+    const customer = String(r.customer_name ?? '').trim();
     map[String(r.id)] = {
-      invoiceNo: String(r.invoice_no ?? ''),
-      partyName: c?.name ?? null,
+      invoiceNo,
+      partyName: customer || null,
     };
   }
   return map;
@@ -304,14 +335,44 @@ async function fetchPurchaseRefs(
   if (!ids.size) return {};
   const { data } = await supabase
     .from('purchases')
-    .select('id, po_no, suppliers(name)')
+    .select('id, po_no, supplier_name')
     .in('id', Array.from(ids));
   const map: Record<string, { invoiceNo: string; partyName: string | null }> = {};
   for (const r of (data || []) as Array<Record<string, unknown>>) {
-    const s = r.suppliers as { name?: string } | null;
+    const po = String(r.po_no ?? '').trim();
+    const supplier = String(r.supplier_name ?? '').trim();
     map[String(r.id)] = {
-      invoiceNo: String(r.po_no ?? ''),
-      partyName: s?.name ?? null,
+      invoiceNo: po,
+      partyName: supplier || null,
+    };
+  }
+  return map;
+}
+
+async function fetchStudioProductionRefs(
+  ids: Set<string>
+): Promise<Record<string, { refNo: string; partyName: string | null }>> {
+  if (!ids.size) return {};
+  const { data: prodRows } = await supabase
+    .from('studio_productions')
+    .select('id, production_no, sale_id')
+    .in('id', Array.from(ids));
+  const saleIds = new Set<string>();
+  for (const r of (prodRows || []) as Array<Record<string, unknown>>) {
+    const sid = r.sale_id != null ? String(r.sale_id) : '';
+    if (sid) saleIds.add(sid);
+  }
+  const salesMap = await fetchSaleRefs(saleIds);
+  const map: Record<string, { refNo: string; partyName: string | null }> = {};
+  for (const r of (prodRows || []) as Array<Record<string, unknown>>) {
+    const id = String(r.id ?? '');
+    const prodNo = String(r.production_no ?? '').trim();
+    const saleId = r.sale_id != null ? String(r.sale_id) : '';
+    const sale = saleId ? salesMap[saleId] : null;
+    const saleInv = sale?.invoiceNo?.trim() ?? '';
+    map[id] = {
+      refNo: prodNo || saleInv || '',
+      partyName: sale?.partyName ?? null,
     };
   }
   return map;

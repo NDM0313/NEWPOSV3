@@ -16,14 +16,29 @@ export function formatBalanceAmount(
   return `${prefix}${n.toLocaleString()}`;
 }
 
+const MASKED_BALANCE = '****';
+
 export function formatAccountBalanceLine(balance: number, appRole: string | null | undefined): string {
-  if (!canViewFinancialBalances(appRole)) return 'Balance: ***';
+  if (!canViewFinancialBalances(appRole)) return MASKED_BALANCE;
   return `Balance: Rs. ${(Number(balance) || 0).toLocaleString()}`;
 }
 
 export function formatAccountBalanceLineIfAllowed(balance: number, canView: boolean): string {
-  if (!canView) return 'Balance: ***';
+  if (!canView) return MASKED_BALANCE;
   return `Balance: Rs. ${(Number(balance) || 0).toLocaleString()}`;
+}
+
+/** Subtitle for account picker rows: "Rs. 1,234" or masked. */
+export function formatAccountPickerSubtitle(balance: number, canView: boolean): string {
+  if (!canView) return MASKED_BALANCE;
+  return `Rs. ${(Number(balance) || 0).toLocaleString()}`;
+}
+
+/** Inline balance line for account lists in forms. */
+export function formatAccountBalanceInline(balance: number, canView: boolean): string | null {
+  if (!canView) return null;
+  if (balance <= 0) return null;
+  return `Balance: Rs. ${balance.toLocaleString()}`;
 }
 
 /** Mask a money amount for list/detail rows when the viewer cannot see balances. */

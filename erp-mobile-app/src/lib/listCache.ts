@@ -42,7 +42,31 @@ export const listCacheKeys = {
   branches: (companyId: string) => `br:${companyId}`,
   products: (companyId: string) => `pr:${companyId}`,
   contacts: (companyId: string, type: string, branchId: string) => `ct:${companyId}:${type}:${branchId}`,
+  sales: (companyId: string, branchId: string, rangeKey: string) =>
+    `sl:${companyId}:${branchId}:${rangeKey}`,
+  purchases: (companyId: string, branchId: string, rangeKey: string) =>
+    `pu:${companyId}:${branchId}:${rangeKey}`,
+  expenses: (companyId: string, branchId: string) => `ex:${companyId}:${branchId}`,
+  studio: (companyId: string, branchId: string) => `st:${companyId}:${branchId}`,
+  workers: (companyId: string) => `wk:${companyId}`,
+  ledger: (companyId: string, partyKind: string, partyId: string, rangeKey: string) =>
+    `lg:${companyId}:${partyKind}:${partyId}:${rangeKey}`,
 };
+
+export async function listCacheGetMeta(key: string): Promise<{ cachedAt: number | null }> {
+  try {
+    const database = await openDb();
+    const row = await new Promise<CacheEntry | undefined>((resolve, reject) => {
+      const tx = database.transaction(STORE, 'readonly');
+      const r = tx.objectStore(STORE).get(key);
+      r.onsuccess = () => resolve(r.result as CacheEntry | undefined);
+      r.onerror = () => reject(r.error);
+    });
+    return { cachedAt: row?.updated_at ?? null };
+  } catch {
+    return { cachedAt: null };
+  }
+}
 
 export async function listCacheGet<T>(key: string): Promise<T | null> {
   try {
