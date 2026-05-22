@@ -192,9 +192,9 @@ set -a
 . ./.env.production
 set +a
 echo "[deploy] Using VITE_SUPABASE_URL=$VITE_SUPABASE_URL (anon key length: ${#VITE_SUPABASE_ANON_KEY})"
-# Ensure mobile source has latest login UI (4 buttons, "auto-fills"); fail so user runs git pull
-if ! grep -q "auto-fills and signs in" erp-mobile-app/src/components/LoginScreen.tsx 2>/dev/null; then
-  echo "[deploy] ERROR: LoginScreen.tsx is old (no 'auto-fills and signs in'). Run: git pull origin main && bash deploy/deploy.sh"
+# Ensure mobile login has counter vault maintenance (post-202605 mobile UX)
+if ! grep -q "maintainCounterVaultTokens" erp-mobile-app/src/components/LoginScreen.tsx 2>/dev/null; then
+  echo "[deploy] ERROR: LoginScreen.tsx is old (no maintainCounterVaultTokens). Run: git pull origin main && bash deploy/deploy.sh"
   exit 1
 fi
 # Fresh CACHEBUST so Docker never uses cached mobile build (always get latest login UI on /m/)
