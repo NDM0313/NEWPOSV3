@@ -4,7 +4,50 @@ Copy a new block for every build. Keep the newest entry at the top.
 
 ---
 
-## Latest build — 1.0.5 (build 7) — 2026-05-23
+## Latest build — 1.0.5 (build 8) — 2026-05-24
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-24 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 8 |
+| **Git commit** | `74c847d0` (+ `versionCode` bump local) |
+| **VPS migrations** | `20260527120000_get_company_negative_stock_allowed.sql`, `20260527140000_ensure_sale_stock_movements_rpc.sql` — **applied** |
+| **Android** | Debug (unsigned test) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build8-debug.apk` (~30 MB) |
+| **Gradle source** | `android/app/build/outputs/apk/debug/app-debug.apk` |
+| **Built on** | Mac — `cap:sync:android:prod` + `./gradlew assembleDebug` |
+
+### Changelog (user-facing) — build 8
+
+- **Sale posting fix:** salesman Confirm Payment no longer fails with 403 on `stock_movements` (uses `ensure_sale_stock_movements` RPC).
+- **Negative stock:** company-wide setting applies to all roles when admin enables it (Sales/POS product pickers).
+- **Performance:** faster product/stock load; reduced Settings render loop; lighter app bootstrap.
+- Includes build 7: native barcode scan (Add Products), Settings accordions, branch `"all"` UUID fix.
+
+### Install notes — Android (build 8 debug)
+
+1. **Uninstall** any previous ERP Mobile app (clears WebView cache and IndexedDB).
+2. Install: `erp-mobile-app/releases/erp-mobile-1.0.5-build8-debug.apk`  
+   `adb install -r releases/erp-mobile-1.0.5-build8-debug.apk`
+3. Debug builds use a different signing key than release build 5 — uninstall is required if install fails with signature conflict.
+4. Cold boot: splash ~2s, then login. API base: `https://erp.dincouture.pk`.
+5. One **email login** after VPS deploy if counter PIN vault expired.
+
+### Mobile test checklist (build 8)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Salesman → New Sale → Confirm Payment | Sale saves; no 403 on `stock_movements` |
+| 2 | Negative stock ON (admin) → salesman Add Products | Out-of-stock items selectable |
+| 3 | Cold boot | Login within ~15s |
+| 4 | Sales → Scan / POS Scan | Native camera still works (build 7 regression) |
+| 5 | All Branches payment | No `uuid: "all"` toast |
+| 6 | Settings accordions | Counter + Printer expand OK |
+
+---
+
+## Previous build — 1.0.5 (build 7) — 2026-05-23
 
 | Field | Value |
 |--------|--------|
