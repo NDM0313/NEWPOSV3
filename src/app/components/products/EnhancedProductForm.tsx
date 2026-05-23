@@ -18,6 +18,7 @@ import { brandService } from '@/app/services/brandService';
 import { productCategoryService } from '@/app/services/productCategoryService';
 import { unitService } from '@/app/services/unitService';
 import { contactService } from '@/app/services/contactService';
+import { branchService } from '@/app/services/branchService';
 import { comboService } from '@/app/services/comboService';
 import { supabase } from '@/lib/supabase';
 import { uploadProductImages } from '@/app/utils/productImageUpload';
@@ -163,6 +164,8 @@ export const EnhancedProductForm = ({
   const [loadingUnits, setLoadingUnits] = useState(false);
   const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
+  const [companyBranches, setCompanyBranches] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
 
   // Variations State
   const [variantAttributes, setVariantAttributes] = useState<Array<{
@@ -391,6 +394,27 @@ export const EnhancedProductForm = ({
     };
     loadSuppliers();
   }, [companyId]);
+
+  useEffect(() => {
+    if (!companyId) return;
+    void branchService.getBranches(companyId).then((branches) => {
+      const list = (branches || []).map((b: { id: string; name: string }) => ({ id: b.id, name: b.name }));
+      setCompanyBranches(list);
+      const productId = initialProduct?.uuid ?? initialProduct?.id;
+      if (list.length > 1 && !productId) {
+        setSelectedBranchIds(list.map((b) => b.id));
+      }
+    }).catch(() => setCompanyBranches([]));
+  }, [companyId, initialProduct?.uuid, initialProduct?.id]);
+
+  useEffect(() => {
+    const productId = initialProduct?.uuid ?? initialProduct?.id;
+    if (!companyId || !productId || companyBranches.length <= 1) return;
+    void productService.getProductBranchIds(companyId, productId).then((ids) => {
+      if (ids.length > 0) setSelectedBranchIds(ids);
+      else setSelectedBranchIds(companyBranches.map((b) => b.id));
+    }).catch(() => {});
+  }, [companyId, initialProduct?.uuid, initialProduct?.id, companyBranches]);
 
   // Load variations for "copy from" – format: Supplier — AttributeName: Value (e.g. variant: Size: L, SUPLIER: Ibrahim)
   useEffect(() => {
@@ -1290,6 +1314,17 @@ export const EnhancedProductForm = ({
             toast.error('Product updated but opening stock could not be recorded. You can add an adjustment in Inventory.');
           }
         }
+        if (companyBranches.length > 1 && productId) {
+          try {
+            await productService.setProductBranchAvailability(
+              finalCompanyId,
+              productId,
+              selectedBranchIds,
+            );
+          } catch (branchErr) {
+            console.warn('[PRODUCT FORM] branch availability save failed:', branchErr);
+          }
+        }
         const payload = {
           ...data,
           sku: finalSKU,
@@ -1310,6 +1345,18 @@ export const EnhancedProductForm = ({
         // CREATE new product
         const result = await productService.createProduct(productData);
         incrementNextNumber('production'); // So next product gets next SKU for next product.
+
+        if (companyBranches.length > 1 && result?.id) {
+          try {
+            await productService.setProductBranchAvailability(
+              finalCompanyId,
+              result.id,
+              selectedBranchIds,
+            );
+          } catch (branchErr) {
+            console.warn('[PRODUCT FORM] branch availability save failed:', branchErr);
+          }
+        }
 
         // RULE 1: Opening stock at parent only when variations OFF; with variations ON, opening is per variation
         const hasVariations = enableVariations;
@@ -2004,6 +2051,33 @@ export const EnhancedProductForm = ({
         {activeTab === 'inventory' && (
           <>
             <div className="space-y-4">
+              {companyBranches.length > 1 && (
+                <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg space-y-2">
+                  <Label className="text-gray-200 font-medium">Available in branches</Label>
+                  <p className="text-xs text-gray-500">Select which branches can sell this product.</p>
+                  <div className="space-y-2">
+                    {companyBranches.map((b) => {
+                      const checked = selectedBranchIds.includes(b.id);
+                      return (
+                        <label key={b.id} className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setSelectedBranchIds((prev) =>
+                                checked ? prev.filter((id) => id !== b.id) : [...prev, b.id],
+                              );
+                            }}
+                            className="rounded border-gray-600"
+                          />
+                          {b.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Enable Variations toggle (opt-in, default OFF for new product) */}
               <div className="flex items-center justify-between p-3 bg-gray-800 border border-gray-700 rounded-lg">
                 <div>

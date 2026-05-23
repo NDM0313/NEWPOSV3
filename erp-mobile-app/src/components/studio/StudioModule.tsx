@@ -29,13 +29,15 @@ import { loadStudioSnapshot } from '../../lib/studioListCache';
 import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
 import { useMainScrollRef } from '../../contexts/MainScrollContext';
 import { usePermissions } from '../../context/PermissionContext';
+import { useDocumentBranchGate } from '../../hooks/useDocumentBranchGate';
+import { DocumentBranchGateModal } from '../shared/DocumentBranchGateModal';
 
 interface StudioModuleProps {
   onBack: () => void;
   user: User;
   companyId: string | null;
   branch: Branch | null;
-  onNewStudioSale?: () => void;
+  onNewStudioSale?: (documentBranchId: string) => void;
   /** When set on mount, the module auto-selects the matching production and opens stage-selection. */
   focusSaleId?: string | null;
   /** Called after the module handles focusSaleId so the caller can clear it. */
@@ -339,6 +341,14 @@ export function StudioModule({
 }: StudioModuleProps) {
   const { withLoading } = useLoading();
   const { shouldScopeStudioToOwnOnly } = usePermissions();
+  const { runWithBranch, modalProps: branchGateModalProps } = useDocumentBranchGate({
+    companyId,
+    globalBranchId: branch?.id ?? null,
+    userRole: user.role,
+    authUserId: user.id,
+    profileId: user.profileId,
+    invalidateDomains: ['contacts', 'sales', 'inventory'],
+  });
   const [view, setView] = useState<View>('dashboard');
   const [studioMainTab, setStudioMainTab] = useState<StudioMainTab>('orders');
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
@@ -375,6 +385,7 @@ export function StudioModule({
     lineSummary?: string;
     detail: string;
   } | null>(null);
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
   const refreshMergedOrder = useCallback(
     async (saleId: string): Promise<StudioOrder | null> => {
       if (!companyId) return null;
@@ -665,7 +676,12 @@ export function StudioModule({
             </div>
             {studioMainTab === 'orders' && (
               <button
-                onClick={() => onNewStudioSale?.()}
+                onClick={() =>
+                  runWithBranch(
+                    (pickedId) => onNewStudioSale?.(pickedId),
+                    { title: 'Select branch for studio sale' },
+                  )
+                }
                 className="flex items-center gap-2 px-3 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow-lg transition-colors"
               >
                 <Plus className="w-5 h-5" />
@@ -800,6 +816,10 @@ export function StudioModule({
         </div>
         </PullToRefresh>
       </div>
+      <DocumentBranchGateModal
+        {...branchGateModalProps}
+        accentClass="text-[#7C3AED] hover:border-[#7C3AED]"
+      />
       </SwipeBackShell>
     );
   }
@@ -1022,10 +1042,11 @@ export function StudioModule({
     const handleInvoiceSearch = async () => {
       if (!companyId) return;
       const q = invProductQuery.trim();
+      setInvoiceError(null);
       setInvSearchBusy(true);
       try {
         const { data, error } = await studioInvoiceApi.searchProductsForStudioInvoice(companyId, q);
-        if (error) alert(error);
+        if (error) setInvoiceError(error);
         else setInvSearchResults(data);
       } finally {
         setInvSearchBusy(false);
@@ -1033,17 +1054,18 @@ export function StudioModule({
     };
 
     const handleConfirmInvoice = () => {
+      setInvoiceError(null);
       if (!companyId) {
-        alert('Select a company to create the invoice line.');
+        setInvoiceError('Select a company to create the invoice line.');
         return;
       }
       const price = Number(String(invSalePrice).replace(/,/g, '')) || 0;
       if (price <= 0) {
-        alert('Enter a valid sale price.');
+        setInvoiceError('Enter a valid sale price.');
         return;
       }
       if (invProductQuery.trim().length < 1 && !invSelectedProduct) {
-        alert('Enter a product name or pick an existing product.');
+        setInvoiceError('Enter a product name or pick an existing product.');
         return;
       }
       void withLoading('Saving invoice line...', async () => {
@@ -1060,7 +1082,11 @@ export function StudioModule({
           syncReplicaTitle: invSyncReplica,
         });
         if (error) {
-          alert(error);
+          setInvoiceError(error);
+          return;
+        }
+        if (!data) {
+          setInvoiceError('Invoice line could not be saved. Please try again.');
           return;
         }
         const detail = selectedOrder.customerInvoiceGenerated
@@ -1069,7 +1095,7 @@ export function StudioModule({
         setInvoiceBillSuccess({
           saleId: selectedOrder.saleId,
           refLabel: selectedOrder.orderNumber ? `Ref: ${selectedOrder.orderNumber}` : undefined,
-          lineSummary: data?.invoiceItemId
+          lineSummary: data.invoiceItemId
             ? `Line item: ${data.invoiceItemId.slice(0, 8)}…`
             : undefined,
           detail,
@@ -1107,7 +1133,7 @@ export function StudioModule({
         setInvoiceProfitSaveOk(true);
         setTimeout(() => setInvoiceProfitSaveOk(false), 1800);
       } else {
-        alert(error);
+        setInvoiceError(error);
       }
     };
 
@@ -1293,6 +1319,7 @@ export function StudioModule({
                   onChange={(e) => {
                     setInvProductQuery(e.target.value);
                     setInvSelectedProduct(null);
+                    setInvoiceError(null);
                   }}
                   className="flex-1 min-w-0 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2.5 text-sm text-white placeholder:text-[#6B7280]"
                   placeholder="Product name"
@@ -1386,6 +1413,7 @@ export function StudioModule({
                 onChange={(v) => {
                   setInvSalePriceUserEdited(true);
                   setInvSalePrice(v);
+                  setInvoiceError(null);
                 }}
                 allowDecimal
                 className="w-full"
@@ -1407,6 +1435,12 @@ export function StudioModule({
               </span>
             </label>
           </div>
+
+          {invoiceError ? (
+            <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {invoiceError}
+            </div>
+          ) : null}
 
           <button
             type="button"

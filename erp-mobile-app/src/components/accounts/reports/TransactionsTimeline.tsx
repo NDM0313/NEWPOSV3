@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import {
   getPaymentTransactions,
+  getJournalTimelineEntries,
   type TransactionRow,
   type GetTransactionsFilters,
 } from '../../../api/transactions';
@@ -252,6 +253,28 @@ export function TransactionsTimeline({
       });
       if (payRes.error) setError(payRes.error);
       let merged = payRes.data || [];
+
+      if (direction === 'all' || direction === 'paid') {
+        if (method === 'all' || method === 'other') {
+          const jeRes = await getJournalTimelineEntries({
+            companyId,
+            branchId: branchId ?? undefined,
+            startDate: startDate || undefined,
+            endDate: endDate || undefined,
+            search: debouncedSearch || undefined,
+            limit: 300,
+          });
+          if (jeRes.error && !payRes.error) setError(jeRes.error);
+          const payJeIds = new Set(
+            merged.map((r) => r.journalEntryId).filter((id): id is string => !!id),
+          );
+          const journalOnly = (jeRes.data || []).filter(
+            (r) => !r.journalEntryId || !payJeIds.has(r.journalEntryId),
+          );
+          merged = [...merged, ...journalOnly];
+        }
+      }
+
       if (scopeUser) {
         merged = merged.filter((r) => isRowByUser(r, scopeUser));
       }
@@ -410,13 +433,23 @@ export function TransactionsTimeline({
                 <TransactionRowCard
                   key={t.id}
                   tx={t}
-                  onClick={() => setDetailId(t.id.startsWith('expense-') ? t.journalEntryId ?? t.id : t.id)}
+                  onClick={() =>
+                    setDetailId(
+                      t.id.startsWith('expense-') || t.id.startsWith('journal-')
+                        ? t.journalEntryId ?? t.paymentId ?? t.id.replace(/^journal-/, '')
+                        : t.id,
+                    )
+                  }
                   onEdit={() => {
                     if (readOnly || t.id.startsWith('expense-')) return;
-                    const check = canEditTransaction(t.referenceType, 'payment_row');
+                    const source = t.id.startsWith('journal-') ? 'journal_entry' : 'payment_row';
+                    const check = canEditTransaction(t.referenceType, source);
                     if (!check.editable) return;
                     if (check.kind === 'journal' && !t.journalEntryId) return;
-                    setEditTarget({ mode: check.kind === 'journal' ? 'journal' : 'payment', id: check.kind === 'journal' ? t.journalEntryId! : t.id });
+                    setEditTarget({
+                      mode: check.kind === 'journal' ? 'journal' : 'payment',
+                      id: check.kind === 'journal' ? t.journalEntryId! : t.id,
+                    });
                   }}
                   readOnly={readOnly || t.id.startsWith('expense-')}
                 />
@@ -537,10 +570,23 @@ function TransactionRowCard({
   const pillBg = isReceived ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30' : 'bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/30';
   const Icon = isReceived ? ArrowDownLeft : ArrowUpRight;
   const { date, time } = formatPaymentDateTime(tx.paymentDate, tx.createdAt);
-  const from = isReceived ? (tx.paymentAccountName ?? '—') : (tx.partyAccountName ?? tx.partyName ?? '—');
-  const to = isReceived ? (tx.partyAccountName ?? tx.partyName ?? '—') : (tx.paymentAccountName ?? '—');
+  const isTransferLike =
+    tx.referenceType === 'transfer' || tx.referenceType === 'general' || tx.id.startsWith('journal-');
+  const from = isTransferLike
+    ? (tx.paymentAccountName ?? '—')
+    : isReceived
+      ? (tx.paymentAccountName ?? '—')
+      : (tx.partyAccountName ?? tx.partyName ?? '—');
+  const to = isTransferLike
+    ? (tx.partyAccountName ?? '—')
+    : isReceived
+      ? (tx.partyAccountName ?? tx.partyName ?? '—')
+      : (tx.paymentAccountName ?? '—');
 
-  const editability = canEditTransaction(tx.referenceType, 'payment_row');
+  const editSource: 'payment_row' | 'journal_entry' = tx.id.startsWith('journal-')
+    ? 'journal_entry'
+    : 'payment_row';
+  const editability = canEditTransaction(tx.referenceType, editSource);
   return (
     <li>
       <div className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-3 transition-colors hover:border-[#4B5563]">

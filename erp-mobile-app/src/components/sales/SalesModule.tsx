@@ -3,8 +3,10 @@ import type { User } from '../../types';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
 import { useResponsive } from '../../hooks/useResponsive';
 import * as salesApi from '../../api/sales';
-import { getBranches } from '../../api/branches';
 import { addPending } from '../../lib/offlineStore';
+import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
+import { useDocumentBranchGate } from '../../hooks/useDocumentBranchGate';
+import { DocumentBranchGateModal } from '../shared/DocumentBranchGateModal';
 import { SalesHome } from './SalesHome';
 import { SelectCustomer } from './SelectCustomer';
 import { SelectCustomerTablet } from './SelectCustomerTablet';
@@ -19,6 +21,7 @@ import { getEffectivePrinterSettings } from '../../api/settings';
 import { maybeAutoPrintAfterTransaction, manualPrintReceipt } from '../../services/printAfterTransaction';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { localNowDateString, formatLocalDateYYYYMMDD } from '../../utils/localDate';
+import { useSettings } from '../../context/SettingsContext';
 
 function localDatePlusDays(days: number): string {
   const d = new Date();
@@ -77,6 +80,9 @@ interface SalesModuleProps {
   /** From App branch context only; do not compute inside Payment. */
   branchId: string | null;
   initialSaleType?: 'regular' | 'studio';
+  /** Branch chosen upstream (e.g. Studio Add gate) before opening create flow. */
+  initialDocumentBranchId?: string | null;
+  onConsumedInitialDocumentBranchId?: () => void;
   /** If provided, completing a studio sale navigates to the Studio module with the new sale focused. */
   onOpenStudio?: (saleId: string) => void;
   initialEditSaleId?: string | null;
@@ -89,12 +95,23 @@ export function SalesModule({
   companyId,
   branchId,
   initialSaleType,
+  initialDocumentBranchId,
+  onConsumedInitialDocumentBranchId,
   onOpenStudio,
   initialEditSaleId,
   onConsumedInitialEditSaleId,
 }: SalesModuleProps) {
   const responsive = useResponsive();
-  const [step, setStep] = useState<SalesStep>(initialSaleType === 'studio' ? 'customer' : 'home');
+  const { reload: reloadSettings } = useSettings();
+
+  useEffect(() => {
+    if (companyId) void reloadSettings(companyId);
+  }, [companyId, reloadSettings]);
+
+  const [step, setStep] = useState<SalesStep>(
+    initialSaleType === 'studio' && initialDocumentBranchId ? 'customer' : initialSaleType === 'studio' ? 'home' : 'home',
+  );
+  const [documentBranchId, setDocumentBranchId] = useState<string | null>(initialDocumentBranchId ?? null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [createdInvoiceNo, setCreatedInvoiceNo] = useState<string | null>(null);
@@ -119,6 +136,79 @@ export function SalesModule({
     productionNotes: '',
   });
 
+  const { runWithBranch, modalProps: branchGateModalProps } = useDocumentBranchGate({
+    companyId,
+    globalBranchId: branchId,
+    userRole: user.role,
+    authUserId: user.id,
+    profileId: user.profileId,
+    invalidateDomains: ['contacts', 'sales', 'inventory'],
+  });
+
+  const {
+    effectiveBranchId,
+    needsPicker,
+    pickerBranches,
+    pickedBranchId,
+    setPickedBranchId,
+    ready: branchReady,
+    error: branchSelectionError,
+    accessibleBranches,
+  } = useWriteBranchSelection({
+    companyId,
+    globalBranchId: branchId,
+    documentBranchId,
+    userRole: user.role,
+    authUserId: user.id,
+    profileId: user.profileId,
+  });
+
+  useEffect(() => {
+    if (!initialDocumentBranchId) return;
+    setDocumentBranchId(initialDocumentBranchId);
+    setPickedBranchId(initialDocumentBranchId);
+    if (initialSaleType === 'studio') setStep('customer');
+    onConsumedInitialDocumentBranchId?.();
+  }, [initialDocumentBranchId, initialSaleType, onConsumedInitialDocumentBranchId, setPickedBranchId]);
+
+  const resetSaleData = useCallback((saleType: 'regular' | 'studio' = 'regular') => {
+    setSaleData({
+      customer: null,
+      products: [],
+      subtotal: 0,
+      discount: 0,
+      shipping: 0,
+      tax: 0,
+      total: 0,
+      notes: '',
+      attachmentFiles: [],
+      saleDate: localNowDateString(),
+      saleType,
+      orderDate: localNowDateString(),
+      deadlineDate: localDatePlusDays(7),
+      studioProductName: '',
+      productionNotes: '',
+    });
+  }, []);
+
+  const startNewSaleFlow = useCallback(
+    (options?: { saleType?: 'regular' | 'studio' }) => {
+      const saleType = options?.saleType ?? 'regular';
+      runWithBranch(
+        (pickedId) => {
+          setDocumentBranchId(pickedId);
+          setPickedBranchId(pickedId);
+          resetSaleData(saleType);
+          setStep('customer');
+        },
+        {
+          title: saleType === 'studio' ? 'Select branch for studio sale' : 'Select branch for sale',
+        },
+      );
+    },
+    [runWithBranch, resetSaleData, setPickedBranchId],
+  );
+
   const handleStepBack = () => {
     if (step === 'customer') setStep('home');
     else if (step === 'products') setStep('customer');
@@ -129,7 +219,7 @@ export function SalesModule({
     else onBack();
   };
 
-  const handleNewSale = () => setStep('customer');
+  const handleNewSale = () => startNewSaleFlow();
   const handleCustomerSelect = (customer: Customer, saleType: 'regular' | 'studio') => {
     setSaleData((prev) => ({ ...prev, customer, saleType }));
     setStep('products');
@@ -159,6 +249,10 @@ export function SalesModule({
   };
   const handleProceedToPayment = () => {
     setSaveError(null);
+    if (!branchReady || !effectiveBranchId) {
+      setSaveError(branchSelectionError ?? 'Select a branch for this sale.');
+      return;
+    }
     setStep('payment');
   };
   const handlePaymentComplete = async (result: PaymentResult) => {
@@ -175,14 +269,8 @@ export function SalesModule({
     setSaving(true);
     setSaveError(null);
     try {
-    // When "All Branches" selected, use first branch (RPC requires valid UUID)
-    let effectiveBranchId = branchId && branchId !== 'all' ? branchId : null;
-    if (!effectiveBranchId && companyId) {
-      const { data: branches } = await getBranches(companyId);
-      effectiveBranchId = branches?.[0]?.id ?? null;
-    }
     if (!effectiveBranchId) {
-      setSaveError('Please select a specific branch to create sales.');
+      setSaveError(branchSelectionError ?? 'Select a branch for this sale.');
       return;
     }
     if (saleData.saleType === 'studio' && !(saleData.studioProductName ?? '').trim()) {
@@ -267,9 +355,8 @@ export function SalesModule({
     setCreatedInvoiceNo(data?.invoiceNo ?? null);
     setCreatedSaleId(data?.id ?? null);
     let branchName: string | null = null;
-    if (companyId) {
-      const { data: branches } = await getBranches(companyId);
-      branchName = branches?.find((b) => b.id === effectiveBranchId)?.name ?? null;
+    if (effectiveBranchId) {
+      branchName = accessibleBranches.find((b) => b.id === effectiveBranchId)?.name ?? null;
     }
     setConfirmationData({
       type: 'sale',
@@ -300,24 +387,7 @@ export function SalesModule({
   };
   const handleNewSaleFromConfirmation = () => {
     setCreatedInvoiceNo(null);
-    setSaleData({
-      customer: null,
-      products: [],
-      subtotal: 0,
-      discount: 0,
-      shipping: 0,
-      tax: 0,
-      total: 0,
-      notes: '',
-      attachmentFiles: [],
-      saleDate: localNowDateString(),
-      saleType: 'regular',
-      orderDate: localNowDateString(),
-      deadlineDate: localDatePlusDays(7),
-      studioProductName: '',
-      productionNotes: '',
-    });
-    setStep('customer');
+    startNewSaleFlow();
   };
   const handleBackToHome = () => {
     setCreatedInvoiceNo(null);
@@ -399,24 +469,7 @@ export function SalesModule({
     setConfirmationData(null);
     setCreatedSaleId(null);
     setCreatedInvoiceNo(null);
-    setSaleData({
-      customer: null,
-      products: [],
-      subtotal: 0,
-      discount: 0,
-      shipping: 0,
-      tax: 0,
-      total: 0,
-      notes: '',
-      attachmentFiles: [],
-      saleDate: localNowDateString(),
-      saleType: 'regular',
-      orderDate: localNowDateString(),
-      deadlineDate: localDatePlusDays(7),
-      studioProductName: '',
-      productionNotes: '',
-    });
-    setStep('customer');
+    startNewSaleFlow();
   };
 
   return (
@@ -436,6 +489,7 @@ export function SalesModule({
       {step === 'customer' && (responsive.isTablet ? (
         <SelectCustomerTablet
           companyId={companyId}
+          branchId={documentBranchId ?? effectiveBranchId}
           onBack={handleStepBack}
           onSelect={handleCustomerSelect}
           initialSaleType={saleData.saleType}
@@ -444,6 +498,7 @@ export function SalesModule({
       ) : (
         <SelectCustomer
           companyId={companyId}
+          branchId={documentBranchId ?? effectiveBranchId}
           onBack={handleStepBack}
           onSelect={handleCustomerSelect}
           initialSaleType={saleData.saleType}
@@ -453,6 +508,7 @@ export function SalesModule({
       {step === 'products' && saleData.customer && (
         <AddProducts
           companyId={companyId}
+          branchId={documentBranchId ?? effectiveBranchId}
           onBack={handleStepBack}
           customer={saleData.customer}
           initialProducts={saleData.products}
@@ -472,12 +528,27 @@ export function SalesModule({
           onNext={handleStudioDetailsNext}
         />
       )}
-      {step === 'summary' && <SaleSummary onBack={handleStepBack} saleData={saleData} onUpdate={handleSummaryUpdate} onProceedToPayment={handleProceedToPayment} />}
+      {step === 'summary' && (
+        <SaleSummary
+          onBack={handleStepBack}
+          saleData={saleData}
+          onUpdate={handleSummaryUpdate}
+          onProceedToPayment={handleProceedToPayment}
+          needsBranchPicker={needsPicker}
+          branchPickerBranches={pickerBranches}
+          pickedBranchId={pickedBranchId}
+          onPickedBranchChange={setPickedBranchId}
+          branchSelectionError={branchSelectionError}
+          branchReady={branchReady}
+        />
+      )}
       {step === 'payment' && (
-        !branchId
+        !branchReady || !effectiveBranchId
           ? (
             <div className="min-h-[50vh] flex flex-col items-center justify-center p-6">
-              <p className="text-[#EF4444] text-center font-medium mb-4">No branch assigned. Contact admin.</p>
+              <p className="text-[#EF4444] text-center font-medium mb-4">
+                {branchSelectionError ?? 'Select a branch for this sale.'}
+              </p>
               <button type="button" onClick={handleStepBack} className="px-4 py-2 bg-[#3B82F6] text-white rounded-lg font-medium">Go back</button>
             </div>
             )
@@ -513,6 +584,11 @@ export function SalesModule({
         printReceiptLabel={printButtonLabel}
         onNewSale={handleSuccessNewSale}
         onHome={handleBackToHome}
+      />
+
+      <DocumentBranchGateModal
+        {...branchGateModalProps}
+        accentClass="text-[#2563EB] hover:border-[#2563EB]"
       />
     </>
   );

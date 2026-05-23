@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import * as permissionsApi from '../api/permissions';
-import { pickCompanyDefaultBranch } from '../lib/branchResolution';
 import { getModuleConfigs, type ModuleToggles } from '../api/settings';
 import { getBranches } from '../api/branches';
+import { listCacheKeys, listCacheRemove } from '../lib/listCache';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
 import { isAdminOrOwnerAppRole, canViewFinancialBalances } from '../config/functionalRoles';
 import type { RolePermissionRow } from '../api/permissions';
@@ -33,7 +33,13 @@ interface PermissionContextValue extends PermissionState {
   /** User-facing hint when modules are hidden due to config load failure or admin toggles. */
   moduleConfigBanner: string | null;
   /** profileId = public users.id for user_branches; companyId = fallback when user has no assigned branches (single-branch company). */
-  reload: (userId: string, appRole: string, profileId?: string, companyId?: string) => Promise<void>;
+  reload: (
+    userId: string,
+    appRole: string,
+    profileId?: string,
+    companyId?: string,
+    options?: { fresh?: boolean },
+  ) => Promise<void>;
 }
 
 const defaultModuleToggles: ModuleToggles = {
@@ -109,8 +115,15 @@ const PermissionContext = createContext<PermissionContextValue>({
 export function PermissionProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<PermissionState>(defaultState);
 
-  const reload = useCallback(async (userId: string, appRole: string, profileId?: string, companyId?: string) => {
+  const reload = useCallback(async (
+    userId: string,
+    appRole: string,
+    profileId?: string,
+    companyId?: string,
+    options?: { fresh?: boolean },
+  ) => {
     const branchUserId = profileId ?? userId;
+    const useFresh = Boolean(options?.fresh);
     if (!FEATURE_MOBILE_PERMISSION_V2) {
       const moduleRes = companyId ? await getModuleConfigs(companyId) : { data: null, error: new Error('No company') };
       const moduleConfigStatus = resolveModuleConfigStatus(companyId, moduleRes);
@@ -128,17 +141,24 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       return;
     }
     try {
-      const [perms, userBranchIds, moduleRes] = await Promise.all([
+      if (companyId && useFresh) {
+        await listCacheRemove(listCacheKeys.branches(companyId));
+      }
+      const branchResult = await permissionsApi.getUserAccessibleBranches(
+        userId,
+        profileId ?? branchUserId,
+        companyId,
+        companyId && useFresh ? { fresh: true } : undefined,
+      );
+      const [perms, moduleRes] = await Promise.all([
         permissionsApi.getRolePermissions(appRole),
-        permissionsApi.getUserBranchIds(branchUserId),
         companyId ? getModuleConfigs(companyId) : Promise.resolve({ data: null, error: new Error('No company') }),
       ]);
-      let branchIds = userBranchIds;
-      if (branchIds.length === 0 && companyId) {
+      let branchIds = branchResult.branchIds;
+      if (branchIds.length === 0 && companyId && branchResult.branchCount <= 1) {
         const { data: companyBranches } = await getBranches(companyId);
-        const def = pickCompanyDefaultBranch(companyBranches ?? []);
-        if (def) {
-          branchIds = [def.id];
+        if ((companyBranches ?? []).length === 1) {
+          branchIds = [companyBranches![0].id];
         }
       }
       const isAdminOrOwner = isAdminOrOwnerAppRole(appRole);
@@ -148,15 +168,20 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       const moduleToggles =
         moduleConfigStatus === 'ok' && moduleRes.data ? moduleRes.data : safeModuleTogglesWhenFail;
 
-      setState({
-        permissions: perms,
-        branchIds,
-        moduleToggles,
-        moduleConfigStatus,
-        isPermissionLoaded: true,
-        isAdminOrOwner,
-        isOwner,
-        canViewBalances,
+      setState((prev) => {
+        if (companyId && branchIds.length > prev.branchIds.length) {
+          void listCacheRemove(listCacheKeys.branches(companyId));
+        }
+        return {
+          permissions: perms,
+          branchIds,
+          moduleToggles,
+          moduleConfigStatus,
+          isPermissionLoaded: true,
+          isAdminOrOwner,
+          isOwner,
+          canViewBalances,
+        };
       });
     } catch (err) {
       console.error("[PermissionContext] Error loading permissions:", err);

@@ -6,6 +6,13 @@ import { PackingEntryModal } from '../transactions/PackingEntryModal';
 import * as productsApi from '../../api/products';
 import * as settingsApi from '../../api/settings';
 import { useSettings } from '../../context/SettingsContext';
+import {
+  formatStockLabel,
+  getTotalProductStock,
+  isSaleBlockedByStock,
+  isVariationSaleBlocked,
+  stockLabelClassName,
+} from '../../utils/productStockGate';
 import type { ProductVariationRow } from '../../api/products';
 import { BarcodeCameraModal } from './BarcodeCameraModal';
 import { MobileActionBar } from '../shared/MobileActionBar';
@@ -13,6 +20,7 @@ import { useBarcodeScanner } from '../../features/barcode';
 
 interface AddProductsProps {
   companyId: string | null;
+  branchId?: string | null;
   onBack: () => void;
   customer: Customer;
   initialProducts: Product[];
@@ -32,6 +40,7 @@ type AvailableProduct = {
   variations?: ProductVariationRow[];
   unitAllowDecimal?: boolean;
   imageUrl?: string;
+  stock?: number;
 };
 
 /** Resolve barcode/sku to a single product (base or first variation match). */
@@ -62,6 +71,7 @@ function mapApiProductToAvailable(p: productsApi.Product): AvailableProduct {
     variations: p.variations,
     unitAllowDecimal: p.unitAllowDecimal ?? false,
     imageUrl: p.imageUrls?.[0],
+    stock: p.stock ?? 0,
   };
 }
 
@@ -97,6 +107,7 @@ function addProductToCart(
 
 export function AddProducts({
   companyId,
+  branchId,
   onBack,
   customer,
   initialProducts,
@@ -117,6 +128,20 @@ export function AddProducts({
   const [barcodeLookupLoading, setBarcodeLookupLoading] = useState(false);
   const scannerInputRef = useRef<HTMLInputElement>(null);
   const barcode = useBarcodeScanner();
+  const { negativeStockAllowed, loaded: settingsLoaded, reload: reloadSettings } = useSettings();
+
+  useEffect(() => {
+    if (companyId) void reloadSettings(companyId);
+  }, [companyId, reloadSettings]);
+
+  /** Do not block sales until company policy is loaded (avoids false "Out of stock" for staff). */
+  const effectiveAllowNegative = !settingsLoaded || negativeStockAllowed;
+
+  const isProductBlocked = useCallback(
+    (product: AvailableProduct) =>
+      settingsLoaded && isSaleBlockedByStock(getTotalProductStock(product), negativeStockAllowed),
+    [settingsLoaded, negativeStockAllowed],
+  );
 
   useEffect(() => {
     if (!companyId) {
@@ -126,7 +151,7 @@ export function AddProducts({
     }
     let cancelled = false;
     setLoading(true);
-    productsApi.getProducts(companyId).then(({ data, error }) => {
+    productsApi.getProducts(companyId, { branchId: branchId ?? undefined }).then(({ data, error }) => {
       if (cancelled) return;
       setLoading(false);
       if (error || !data.length) setAvailable([]);
@@ -143,13 +168,15 @@ export function AddProducts({
             hasVariations: p.hasVariations ?? false,
             variations: p.variations,
             unitAllowDecimal: p.unitAllowDecimal ?? false,
+            stock: p.stock ?? 0,
+            imageUrl: p.imageUrls?.[0],
           }))
         );
     });
     return () => {
       cancelled = true;
     };
-  }, [companyId]);
+  }, [companyId, branchId]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -181,6 +208,10 @@ export function AddProducts({
       if (!trimmed) return;
       const match = findProductByBarcode(available, trimmed);
       if (match) {
+        if (isProductBlocked(match)) {
+          setScanMessage({ type: 'error', text: `${match.name} is out of stock.` });
+          return;
+        }
         if (match.hasVariations && (match.variations?.length ?? 0) > 0) {
           openAddModal(match);
         } else {
@@ -207,6 +238,10 @@ export function AddProducts({
       }
       const ap = mapApiProductToAvailable(data);
       setAvailable((prev) => (prev.some((x) => x.id === ap.id) ? prev : [...prev, ap]));
+      if (isProductBlocked(ap)) {
+        setScanMessage({ type: 'error', text: `${ap.name} is out of stock.` });
+        return;
+      }
       if (ap.hasVariations && (ap.variations?.length ?? 0) > 0) {
         openAddModal(ap);
       } else {
@@ -219,7 +254,7 @@ export function AddProducts({
       setSearch('');
       setScannerInput('');
     },
-    [companyId, available, products, onProductsUpdate]
+    [companyId, available, products, onProductsUpdate, isProductBlocked]
   );
 
   const handleBarcodeDetected = (code: string) => {
@@ -255,6 +290,7 @@ export function AddProducts({
   const subtotal = products.reduce((sum, p) => sum + p.total, 0);
 
   const openAddModal = (item: AvailableProduct) => {
+    if (isProductBlocked(item)) return;
     setSelectedProduct(item);
     setEditingIndex(null);
     setShowModal(true);
@@ -456,11 +492,15 @@ export function AddProducts({
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            {filtered.map((item) => (
+            {filtered.map((item) => {
+              const totalStock = getTotalProductStock(item);
+              const blocked = isProductBlocked(item);
+              return (
               <button
                 key={item.id}
                 onClick={() => openAddModal(item)}
-                className="bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#3B82F6] transition-all text-left"
+                disabled={blocked}
+                className={`bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#3B82F6] transition-all text-left ${blocked ? 'opacity-60 cursor-not-allowed' : ''}`}
               >
                 <div className="w-full h-20 bg-[#111827] rounded-lg mb-2 flex items-center justify-center overflow-hidden">
                   {item.imageUrl ? (
@@ -478,7 +518,11 @@ export function AddProducts({
                   )}
                 </div>
                 <h3 className="font-medium text-sm text-[#F9FAFB] line-clamp-1 mb-1">{item.name}</h3>
-                <p className="text-xs text-[#9CA3AF] mb-2">{item.unit}</p>
+                <p className="text-xs text-[#9CA3AF] mb-1">{item.unit}</p>
+                <p className={`text-xs mb-2 ${stockLabelClassName(totalStock, effectiveAllowNegative)}`}>
+                  {formatStockLabel(totalStock, effectiveAllowNegative)}
+                  {item.hasVariations && !blocked ? ' (options)' : ''}
+                </p>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-[#3B82F6]">
                     Rs. {item.price.toLocaleString()}
@@ -486,7 +530,8 @@ export function AddProducts({
                   <Plus className="w-4 h-4 text-[#10B981]" />
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -516,6 +561,7 @@ export function AddProducts({
         <AddToCartModal
           product={selectedProduct}
           existingProduct={editingIndex !== null ? products[editingIndex] : null}
+          allowNegativeStock={effectiveAllowNegative}
           onClose={() => {
             setShowModal(false);
             setSelectedProduct(null);
@@ -531,6 +577,7 @@ export function AddProducts({
 interface AddToCartModalProps {
   product: AvailableProduct;
   existingProduct: Product | null;
+  allowNegativeStock: boolean;
   onClose: () => void;
   onSave: (product: Product) => void;
 }
@@ -545,6 +592,7 @@ function formatVariationLabel(attrs: Record<string, string>): string {
 function AddToCartModal({
   product,
   existingProduct,
+  allowNegativeStock,
   onClose,
   onSave,
 }: AddToCartModalProps) {
@@ -613,24 +661,29 @@ function AddToCartModal({
                   {product.variations!.map((v) => {
                     const label = formatVariationLabel(v.attributes);
                     const isSelected = selectedVariation?.id === v.id;
+                    const varBlocked = isVariationSaleBlocked(v.stock, allowNegativeStock);
                     return (
                       <button
                         key={v.id}
                         type="button"
+                        disabled={varBlocked}
                         onClick={() => {
+                          if (varBlocked) return;
                           setSelectedVariation(v);
                           setPrice(v.price || product.price);
                         }}
                         className={`p-3 rounded-xl border text-left transition-all ${
                           isSelected
                             ? 'border-[#3B82F6] bg-[#3B82F6]/10 text-white'
-                            : 'border-[#374151] bg-[#111827] text-[#D1D5DB] hover:border-[#4B5563]'
+                            : varBlocked
+                              ? 'border-[#374151] bg-[#111827] text-[#6B7280] opacity-60 cursor-not-allowed'
+                              : 'border-[#374151] bg-[#111827] text-[#D1D5DB] hover:border-[#4B5563]'
                         }`}
                       >
                         <p className="text-sm font-medium truncate">{label || v.sku}</p>
                         <p className="text-xs text-[#9CA3AF] mt-0.5">Rs. {(v.price || 0).toLocaleString()}</p>
-                        <p className={`text-xs mt-0.5 ${(v.stock ?? 0) < 10 ? 'text-[#F59E0B]' : 'text-[#9CA3AF]'}`}>
-                          Stock: {v.stock != null ? Number(v.stock) : '—'}
+                        <p className={`text-xs mt-0.5 ${stockLabelClassName(v.stock ?? 0, allowNegativeStock)}`}>
+                          {formatStockLabel(v.stock ?? 0, allowNegativeStock)}
                         </p>
                       </button>
                     );

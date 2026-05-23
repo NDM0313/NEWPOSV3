@@ -14,6 +14,7 @@ import {
 import { normalizeAppRole, type AssignableAppRole } from '../config/functionalRoles';
 import { getOAuthRedirectTo } from '../lib/oauthRedirect';
 import { syncCounterRefreshTokenForUserId, syncCounterVaultDisplayMetadataForUserId } from '../lib/counterUserVault';
+import { getUserAccessibleBranchIds } from './permissions';
 
 export { getOAuthRedirectTo } from '../lib/oauthRedirect';
 
@@ -362,11 +363,8 @@ export async function getProfile(userId: string): Promise<AuthProfile | null> {
   let branchId: string | null = null;
   let branchLocked = false;
   if (profileId && isSupabaseConfigured) {
-    const { data: ubRows } = await supabase
-      .from('user_branches')
-      .select('branch_id')
-      .eq('user_id', profileId);
-    const branchIds = (ubRows ?? []).map((r: { branch_id: string }) => r.branch_id);
+    const companyId = row.company_id || null;
+    const branchIds = await getUserAccessibleBranchIds(user.id, profileId, companyId);
     if (branchIds.length === 1) {
       branchId = branchIds[0];
       branchLocked = true;

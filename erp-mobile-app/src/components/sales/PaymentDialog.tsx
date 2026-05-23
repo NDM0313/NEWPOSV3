@@ -31,6 +31,8 @@ interface PaymentDialogProps {
   showCreditOption?: boolean;
   /** App role for balance privacy (defaults from PermissionContext). */
   viewerRole?: string;
+  /** When true, fill parent flex container and allow vertical scroll (POS overlay). */
+  embedded?: boolean;
 }
 
 type PaymentMethod = 'cash' | 'bank' | 'wallet' | 'card' | 'credit';
@@ -61,6 +63,7 @@ export function PaymentDialog({
   hasCustomer,
   showCreditOption,
   viewerRole: viewerRoleProp,
+  embedded = false,
 }: PaymentDialogProps) {
   const { canViewBalances: canViewBalancesCtx } = usePermissions();
   const canViewBalances =
@@ -180,7 +183,11 @@ export function PaymentDialog({
       paymentDate,
     };
     await runSingleFlight(async () => {
-      await onComplete(result);
+      try {
+        await onComplete(result);
+      } catch (e) {
+        console.error('[PaymentDialog] onComplete failed:', e);
+      }
     });
   };
 
@@ -202,7 +209,13 @@ export function PaymentDialog({
   const remaining = totalAmount - paymentAmount;
 
   return (
-    <div className="min-h-screen bg-[#111827] pb-24 relative">
+    <div
+      className={
+        embedded
+          ? 'h-full flex flex-col overflow-y-auto bg-[#111827] pb-8'
+          : 'min-h-screen bg-[#111827] pb-24 relative'
+      }
+    >
       {saving ? (
         <div
           className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm"
@@ -274,7 +287,7 @@ export function PaymentDialog({
 
       {/* Step 1: Payment Method Selection */}
       {step === 1 && (
-        <div className="p-6 space-y-3">
+        <div className="p-6 space-y-3 flex-1">
           <h2 className="text-sm font-medium text-[#9CA3AF] mb-4">SELECT PAYMENT METHOD</h2>
 
           <button
@@ -580,7 +593,8 @@ export function PaymentDialog({
           </div>
 
           <button
-            onClick={handleConfirmPayment}
+            type="button"
+            onClick={() => void handleConfirmPayment()}
             disabled={isBusy}
             className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] rounded-lg font-medium transition-colors active:scale-[0.98] text-white flex items-center justify-center gap-2"
           >

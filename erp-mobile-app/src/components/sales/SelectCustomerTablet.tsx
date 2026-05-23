@@ -13,13 +13,14 @@ function contactToCustomer(c: contactsApi.Contact): Customer {
 
 interface SelectCustomerTabletProps {
   companyId: string | null;
+  branchId?: string | null;
   onBack: () => void;
   onSelect: (customer: Customer, saleType: 'regular' | 'studio') => void;
   initialSaleType?: 'regular' | 'studio';
   onSaleTypeChange?: (saleType: 'regular' | 'studio') => void;
 }
 
-export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerTabletProps) {
+export function SelectCustomerTablet({ companyId, branchId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerTabletProps) {
   const { canViewBalances } = usePermissions();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(!!companyId);
@@ -42,13 +43,13 @@ export function SelectCustomerTablet({ companyId, onBack, onSelect, initialSaleT
     if (!companyId) return;
     let cancelled = false;
     setLoading(true);
-    contactsApi.getContacts(companyId, 'customer').then(({ data, error }) => {
+    contactsApi.getContacts(companyId, 'customer', branchId ?? undefined).then(({ data, error }) => {
       if (cancelled) return;
       setLoading(false);
       setCustomers(error ? [] : (data || []).map(contactToCustomer));
     });
     return () => { cancelled = true; };
-  }, [companyId]);
+  }, [companyId, branchId]);
 
   const filteredCustomers = customers.filter(
     (c) =>

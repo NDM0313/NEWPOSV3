@@ -21,6 +21,35 @@ function purchaseRowNeedsPostedPoAllocation(row: Record<string, unknown>): boole
   return /^(PDR-|POR-)/i.test(po);
 }
 
+function isUniquePoNumberViolation(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const e = error as { code?: string; message?: string };
+  if (e.code !== '23505') return false;
+  const msg = String(e.message || '').toLowerCase();
+  return msg.includes('po_no') || msg.includes('draft_no') || msg.includes('order_no') || msg.includes('idx_purchases_company_po_no');
+}
+
+async function reallocatePurchaseDocumentNumbers(
+  purchase: Purchase,
+  row: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const companyId = String(purchase.company_id ?? row.company_id ?? '');
+  if (!companyId) return row;
+  const status = String(purchase.status ?? row.status ?? 'draft');
+  const seqType = status === 'draft' ? 'PDR' : status === 'ordered' ? 'POR' : 'PUR';
+  const purchaseNo = await documentNumberService.getNextDocumentNumberGlobal(companyId, seqType);
+  const posted = canPostAccountingForPurchaseStatus(status);
+  purchase.po_no = posted ? purchaseNo : null;
+  purchase.draft_no = status === 'draft' ? purchaseNo : null;
+  purchase.order_no = status === 'ordered' ? purchaseNo : null;
+  return {
+    ...row,
+    po_no: posted ? purchaseNo : null,
+    draft_no: status === 'draft' ? purchaseNo : null,
+    order_no: status === 'ordered' ? purchaseNo : null,
+  };
+}
+
 /** PostgREST / proxy 5xx — must not be reported as "Purchase not found" (misleading when API is down). */
 function isTransientSupabaseHttpError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
@@ -404,20 +433,31 @@ export const purchaseService = {
     charges?: PurchaseChargeInsert[],
     _options?: Record<string, never>
   ) {
-    const purchaseRow = buildPurchaseInsertRow(purchase);
+    let purchaseRow = buildPurchaseInsertRow(purchase);
 
-    const { data: purchaseData, error: purchaseError } = await supabase
-      .from('purchases')
-      .insert(purchaseRow)
-      .select('*')
-      .single();
+    let purchaseData: Record<string, unknown> | null = null;
+    let purchaseError: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await supabase.from('purchases').insert(purchaseRow).select('*').single();
+      purchaseData = res.data as Record<string, unknown> | null;
+      purchaseError = res.error;
+      if (!purchaseError) break;
+      if (attempt === 0 && isUniquePoNumberViolation(purchaseError)) {
+        purchaseRow = await reallocatePurchaseDocumentNumbers(purchase, purchaseRow);
+        continue;
+      }
+      break;
+    }
 
     if (purchaseError) {
       console.error('[PURCHASE SERVICE] Error creating purchase:', purchaseError);
       throw purchaseError;
     }
+    if (!purchaseData) {
+      throw new Error('Failed to create purchase.');
+    }
 
-    const itemsWithPurchaseId = items.map(item => buildPurchaseItemInsertRow(item, purchaseData.id));
+    const itemsWithPurchaseId = items.map(item => buildPurchaseItemInsertRow(item, purchaseData!.id as string));
 
     let itemsError: any = null;
     let res = await supabase.from('purchase_items').insert(itemsWithPurchaseId);

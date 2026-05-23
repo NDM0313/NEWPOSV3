@@ -18,6 +18,7 @@ import { createPortal } from 'react-dom';
 import { useSettings } from '../../context/SettingsContext';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { localNowDateString } from '../../utils/localDate';
+import { formatStockLabel, getTotalProductStock, stockLabelClassName } from '../../utils/productStockGate';
 
 interface PurchaseItem {
   id: string;
@@ -46,6 +47,7 @@ interface ProductForPurchase {
   hasVariations?: boolean;
   variations?: ProductVariationRow[];
   unitAllowDecimal?: boolean;
+  stock?: number;
 }
 
 interface CreatePurchaseFlowProps {
@@ -95,7 +97,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   useEffect(() => {
     if (step === 'items' && vendor) {
       setLoading(true);
-      productsApi.getProducts(companyId).then(({ data, error: err }) => {
+      productsApi.getProducts(companyId, { branchId }).then(({ data, error: err }) => {
         setLoading(false);
         setProducts(
           err
@@ -108,11 +110,12 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
                 hasVariations: p.hasVariations ?? false,
                 variations: p.variations,
                 unitAllowDecimal: p.unitAllowDecimal ?? false,
+                stock: p.stock ?? 0,
               }))
         );
       });
     }
-  }, [companyId, step, vendor]);
+  }, [companyId, branchId, step, vendor]);
 
   const subtotal = items.reduce((s, i) => s + i.total, 0);
   const total = subtotal - discount;
@@ -469,7 +472,9 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              {filteredProducts.map((prod) => (
+              {filteredProducts.map((prod) => {
+                const totalStock = getTotalProductStock(prod);
+                return (
                 <button
                   key={prod.id}
                   onClick={() => {
@@ -482,12 +487,17 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
                     <Package className="w-8 h-8 text-[#6B7280]" />
                   </div>
                   <h4 className="font-medium text-sm mb-1 text-white line-clamp-1">{prod.name}</h4>
+                  <p className={`text-xs mb-2 ${stockLabelClassName(totalStock, true)}`}>
+                    {formatStockLabel(totalStock, true)}
+                    {prod.hasVariations ? ' (options)' : ''}
+                  </p>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-[#10B981]">Rs. {prod.costPrice.toLocaleString()}</span>
                     <Plus className="w-4 h-4 text-[#10B981]" />
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

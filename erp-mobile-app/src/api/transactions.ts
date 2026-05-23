@@ -373,6 +373,271 @@ export async function getPaymentTransactions(
   return { data: enriched, error: null };
 }
 
+type JournalEntryTimelineRow = {
+  id: string;
+  entry_no: string | null;
+  entry_date: string;
+  created_at: string;
+  description: string | null;
+  reference_type: string;
+  reference_id: string | null;
+  branch_id: string | null;
+  created_by: string | null;
+  total_debit: number | string | null;
+  total_credit: number | string | null;
+  attachments: unknown;
+};
+
+/**
+ * Journal-only timeline rows (account transfers, manual JEs) — no payment record.
+ */
+export async function getJournalTimelineEntries(
+  filters: GetTransactionsFilters,
+): Promise<{ data: TransactionRow[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+
+  let q = supabase
+    .from('journal_entries')
+    .select(
+      'id, entry_no, entry_date, created_at, description, reference_type, reference_id, branch_id, created_by, total_debit, total_credit, attachments',
+    )
+    .eq('company_id', filters.companyId)
+    .in('reference_type', ['transfer', 'general'])
+    .or('is_void.is.null,is_void.eq.false')
+    .order('entry_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(filters.limit ?? 150);
+
+  if (filters.branchId && filters.branchId !== 'all' && filters.branchId !== 'default') {
+    q = q.eq('branch_id', filters.branchId);
+  }
+  if (filters.startDate) q = q.gte('entry_date', filters.startDate);
+  if (filters.endDate) q = q.lte('entry_date', filters.endDate);
+
+  const { data: entries, error } = await q;
+  if (error) return { data: [], error: error.message };
+  const rows = (entries || []) as JournalEntryTimelineRow[];
+  if (!rows.length) return { data: [], error: null };
+
+  const entryIds = rows.map((r) => r.id);
+  const { data: lines } = await supabase
+    .from('journal_entry_lines')
+    .select('id, journal_entry_id, account_id, debit, credit, description')
+    .in('journal_entry_id', entryIds);
+
+  const linesByEntry: Record<string, JournalLineLite[]> = {};
+  ((lines || []) as JournalLineLite[]).forEach((l) => {
+    const key = String(l.journal_entry_id);
+    if (!linesByEntry[key]) linesByEntry[key] = [];
+    linesByEntry[key].push(l);
+  });
+
+  const accountIds = new Set<string>();
+  Object.values(linesByEntry)
+    .flat()
+    .forEach((l) => accountIds.add(String(l.account_id)));
+
+  let accountsById: Record<string, AccountLite> = {};
+  if (accountIds.size) {
+    const { data: accs } = await supabase
+      .from('accounts')
+      .select('id, code, name')
+      .in('id', Array.from(accountIds));
+    ((accs || []) as AccountLite[]).forEach((a) => {
+      accountsById[String(a.id)] = a;
+    });
+  }
+
+  const branchIdSet = new Set<string>();
+  rows.forEach((r) => {
+    if (r.branch_id) branchIdSet.add(r.branch_id);
+  });
+  let branchesById: Record<string, BranchLite> = {};
+  if (branchIdSet.size) {
+    const { data: branches } = await supabase
+      .from('branches')
+      .select('id, name')
+      .in('id', Array.from(branchIdSet));
+    ((branches || []) as BranchLite[]).forEach((b) => {
+      branchesById[String(b.id)] = b;
+    });
+  }
+
+  const out: TransactionRow[] = rows.map((row) => {
+    const entryLines = linesByEntry[row.id] ?? [];
+    const creditLine = entryLines.reduce(
+      (best, l) => (Number(l.credit) > Number(best?.credit ?? 0) ? l : best),
+      entryLines[0] as JournalLineLite | undefined,
+    );
+    const debitLine = entryLines.reduce(
+      (best, l) => (Number(l.debit) > Number(best?.debit ?? 0) ? l : best),
+      entryLines[0] as JournalLineLite | undefined,
+    );
+    const fromAcc = creditLine ? accountsById[String(creditLine.account_id)] ?? null : null;
+    const toAcc = debitLine ? accountsById[String(debitLine.account_id)] ?? null : null;
+    const lineSum = entryLines.reduce((s, l) => s + (Number(l.debit) || Number(l.credit) || 0), 0);
+    const amount =
+      Number(row.total_debit) ||
+      Number(row.total_credit) ||
+      (lineSum > 0 ? lineSum / 2 : 0);
+
+    const attachments = Array.isArray(row.attachments)
+      ? (row.attachments as Array<{ url: string; name?: string | null }>)
+      : null;
+
+    return {
+      id: `journal-${row.id}`,
+      paymentId: row.id,
+      createdAt: row.created_at || `${row.entry_date}T12:00:00.000Z`,
+      paymentDate: row.entry_date,
+      direction: 'paid' as const,
+      referenceType: row.reference_type,
+      referenceId: row.reference_id ?? row.id,
+      referenceNumber: row.entry_no,
+      amount,
+      method: 'other',
+      paymentAccountId: fromAcc?.id ?? null,
+      paymentAccountName: fromAcc?.name ?? null,
+      partyAccountId: toAcc?.id ?? null,
+      partyAccountName: toAcc?.name ?? null,
+      partyId: null,
+      partyName: row.description?.trim() || row.reference_type.replace('_', ' '),
+      branchId: row.branch_id,
+      branchName: row.branch_id ? branchesById[row.branch_id]?.name ?? null : null,
+      notes: row.description,
+      journalEntryId: row.id,
+      entryNo: row.entry_no,
+      createdBy: row.created_by,
+      attachments,
+    };
+  });
+
+  let result = out;
+  if (filters.search && filters.search.trim().length > 0) {
+    const qStr = filters.search.toLowerCase();
+    result = result.filter(
+      (t) =>
+        (t.partyName || '').toLowerCase().includes(qStr) ||
+        (t.partyAccountName || '').toLowerCase().includes(qStr) ||
+        (t.paymentAccountName || '').toLowerCase().includes(qStr) ||
+        (t.referenceNumber || '').toLowerCase().includes(qStr) ||
+        (t.entryNo || '').toLowerCase().includes(qStr) ||
+        (t.notes || '').toLowerCase().includes(qStr),
+    );
+  }
+
+  const enriched = await enrichTransactionCreatorNames(result);
+  return { data: enriched, error: null };
+}
+
+async function loadJournalOnlyTransactionDetail(
+  companyId: string,
+  journalEntryId: string,
+): Promise<{ data: TransactionDetail | null; error: string | null }> {
+  const { data: je, error: jeErr } = await supabase
+    .from('journal_entries')
+    .select(
+      'id, entry_no, entry_date, created_at, description, reference_type, reference_id, branch_id, created_by, total_debit, total_credit, attachments, is_void',
+    )
+    .eq('company_id', companyId)
+    .eq('id', journalEntryId)
+    .maybeSingle();
+  if (jeErr || !je) return { data: null, error: jeErr?.message || 'Transaction not found.' };
+  if ((je as { is_void?: boolean }).is_void) return { data: null, error: 'Transaction is void.' };
+
+  const row = je as Record<string, unknown>;
+  const { data: lines } = await supabase
+    .from('journal_entry_lines')
+    .select('id, account_id, debit, credit, description')
+    .eq('journal_entry_id', journalEntryId);
+
+  const ids = (lines || []).map((l: Record<string, unknown>) => String(l.account_id));
+  let accountsById: Record<string, AccountLite> = {};
+  if (ids.length) {
+    const { data: accs } = await supabase
+      .from('accounts')
+      .select('id, code, name')
+      .in('id', ids);
+    ((accs || []) as AccountLite[]).forEach((a) => (accountsById[a.id] = a));
+  }
+
+  const journalLines: TransactionJournalLine[] = (lines || []).map((l: Record<string, unknown>) => {
+    const acc = accountsById[String(l.account_id)];
+    return {
+      id: String(l.id),
+      accountId: String(l.account_id),
+      accountName: acc?.name ?? null,
+      accountCode: acc?.code ?? null,
+      debit: Number(l.debit) || 0,
+      credit: Number(l.credit) || 0,
+      description: (l.description as string | null) ?? null,
+    };
+  });
+
+  const creditLine = journalLines.reduce(
+    (best, l) => (l.credit > (best?.credit ?? 0) ? l : best),
+    journalLines[0],
+  );
+  const debitLine = journalLines.reduce(
+    (best, l) => (l.debit > (best?.debit ?? 0) ? l : best),
+    journalLines[0],
+  );
+  const lineSum = journalLines.reduce((s, l) => s + (l.debit || l.credit), 0);
+  const amount =
+    Number(row.total_debit) ||
+    Number(row.total_credit) ||
+    (lineSum > 0 ? lineSum / 2 : 0);
+
+  let branchName: string | null = null;
+  const branchId = (row.branch_id as string | null) ?? null;
+  if (branchId) {
+    const { data: br } = await supabase.from('branches').select('name').eq('id', branchId).maybeSingle();
+    branchName = (br as { name?: string } | null)?.name ?? null;
+  }
+
+  const attachments = Array.isArray(row.attachments)
+    ? (row.attachments as Array<{ url: string; name?: string | null }>)
+    : null;
+
+  const refType = String(row.reference_type || '');
+  const base: TransactionRow = {
+    id: `journal-${journalEntryId}`,
+    paymentId: journalEntryId,
+    createdAt: String(row.created_at || `${row.entry_date}T12:00:00.000Z`),
+    paymentDate: String(row.entry_date || ''),
+    direction: 'paid',
+    referenceType: refType,
+    referenceId: String(row.reference_id || journalEntryId),
+    referenceNumber: (row.entry_no as string | null) ?? null,
+    amount,
+    method: 'other',
+    paymentAccountId: creditLine?.accountId ?? null,
+    paymentAccountName: creditLine?.accountName ?? null,
+    partyAccountId: debitLine?.accountId ?? null,
+    partyAccountName: debitLine?.accountName ?? null,
+    partyId: null,
+    partyName: String(row.description || refType.replace('_', ' ')),
+    branchId,
+    branchName,
+    notes: (row.description as string | null) ?? null,
+    journalEntryId,
+    entryNo: (row.entry_no as string | null) ?? null,
+    createdBy: (row.created_by as string | null) ?? null,
+    attachments,
+  };
+
+  const enriched = await enrichTransactionCreatorNames([base]);
+  return {
+    data: {
+      ...enriched[0],
+      journalLines,
+      partyPhone: null,
+      partyType: null,
+    },
+    error: null,
+  };
+}
+
 /** Detailed view — includes full journal-lines breakdown for the tx modal. */
 export async function getTransactionDetail(
   companyId: string,
@@ -382,7 +647,9 @@ export async function getTransactionDetail(
   const { data: baseArr, error } = await getPaymentTransactions({ companyId, limit: 500 });
   if (error) return { data: null, error };
   const base = baseArr.find((t) => t.paymentId === paymentId);
-  if (!base) return { data: null, error: 'Transaction not found.' };
+  if (!base) {
+    return loadJournalOnlyTransactionDetail(companyId, paymentId);
+  }
 
   let journalLines: TransactionJournalLine[] = [];
   if (base.journalEntryId) {

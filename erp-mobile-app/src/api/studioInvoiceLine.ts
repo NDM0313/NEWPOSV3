@@ -129,35 +129,58 @@ export async function upsertStudioInvoiceLine(
     } else {
       const name =
         (input.productName || '').trim() || `Studio – ${input.invoiceNoLabel}`;
-      const { data: existingRows } = await supabase
+      const { data: exactRows } = await supabase
         .from('products')
         .select('id, name, sku')
         .eq('company_id', input.companyId)
         .ilike('name', name)
-        .limit(1);
-      if (existingRows && existingRows.length > 0) {
-        const r = existingRows[0] as { id: string; name: string; sku: string };
+        .limit(5);
+      const exactMatch = (exactRows || []).find(
+        (r: { name?: string }) => String(r.name || '').trim().toLowerCase() === name.toLowerCase(),
+      ) as { id: string; name: string; sku: string } | undefined;
+      if (exactMatch) {
+        product = { id: exactMatch.id, name: exactMatch.name, sku: exactMatch.sku ?? '' };
+      } else if (exactRows && exactRows.length === 1) {
+        const r = exactRows[0] as { id: string; name: string; sku: string };
         product = { id: r.id, name: r.name, sku: r.sku ?? '' };
       } else {
-        const sku = await getNextProductSKU(input.companyId, input.branchId).catch(() =>
-          `STD-PROD-${Date.now().toString(36).toUpperCase()}`
-        );
-        const { data: created, error: ce } = await createProduct(input.companyId, {
-          name,
-          sku,
-          categoryId: input.categoryId ?? null,
-          description: input.description ?? undefined,
-          costPrice: 0,
-          retailPrice: price,
-          wholesalePrice: price,
-          stock: 0,
-          minStock: 0,
-          unit: 'piece',
-          status: 'active',
-          hasVariations: false,
-        });
-        if (ce || !created) return { data: null, error: ce || 'Failed to create product' };
-        product = { id: created.id, name: created.name, sku: created.sku };
+        const SKU_DUP_MSG =
+          'Could not create product: SKU already in use. Try a different product name or pick an existing catalog product.';
+        let created: { id: string; name: string; sku: string } | null = null;
+        let lastErr: string | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const sku = await getNextProductSKU(input.companyId, input.branchId).catch(() =>
+            `STD-PROD-${Date.now().toString(36).toUpperCase()}-${attempt}`,
+          );
+          const { data: row, error: ce } = await createProduct(input.companyId, {
+            name,
+            sku,
+            categoryId: input.categoryId ?? null,
+            description: input.description ?? undefined,
+            costPrice: 0,
+            retailPrice: price,
+            wholesalePrice: price,
+            stock: 0,
+            minStock: 0,
+            unit: 'piece',
+            status: 'active',
+            hasVariations: false,
+          });
+          if (row) {
+            created = { id: row.id, name: row.name, sku: row.sku };
+            break;
+          }
+          lastErr = ce || 'Failed to create product';
+          const isDup = /sku already in use|duplicate|23505/i.test(lastErr);
+          if (!isDup) break;
+        }
+        if (!created) {
+          return {
+            data: null,
+            error: /sku already in use|duplicate|23505/i.test(lastErr || '') ? SKU_DUP_MSG : lastErr,
+          };
+        }
+        product = created;
       }
     }
 

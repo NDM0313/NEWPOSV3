@@ -102,3 +102,17 @@ export async function listCacheSet(key: string, value: unknown): Promise<void> {
     /* ignore quota / private mode */
   }
 }
+
+export async function listCacheRemove(key: string): Promise<void> {
+  try {
+    const database = await openDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = database.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    /* ignore */
+  }
+}

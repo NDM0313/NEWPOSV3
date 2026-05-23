@@ -166,7 +166,7 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     const isAdmin = canManageSettings;
     const { createPurchase, updatePurchase, refreshPurchases } = usePurchases();
     const { openDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, createdProduct, setCreatedProduct, openPackingModal } = useNavigation();
-    const { generateDocumentNumber, generateDocumentNumberSafe } = useDocumentNumbering();
+    const { generateDocumentNumber } = useDocumentNumbering();
     const dataLoadedRef = useRef(false);
 
     useEffect(() => {
@@ -1106,31 +1106,18 @@ export const PurchaseForm = ({ purchase: initialPurchase, onClose }: PurchaseFor
     // Track if PO number has been generated for new purchases
     const poNumberGeneratedRef = useRef(false);
     
-    // CRITICAL FIX: Generate collision-safe document number when form opens (new purchase only)
+    // CRITICAL FIX: Generate display-only PO preview when form opens (new purchase only).
+    // Do NOT call generateDocumentNumberSafe here — that consumes the global sequence before save.
     useEffect(() => {
         if (!initialPurchase && !poNumberGeneratedRef.current && companyId) {
-            // New purchase: Generate collision-safe PO number (only once)
             poNumberGeneratedRef.current = true;
-            const generateSafeNumber = async () => {
-                try {
-                    const safeNumber = await generateDocumentNumberSafe('purchase');
-                    setPoNumber(safeNumber);
-                    console.log('[PURCHASE FORM] Generated safe document number:', safeNumber);
-                } catch (error) {
-                    console.error('[PURCHASE FORM] Error generating safe document number:', error);
-                    // Fallback to sync generation
-                    const fallbackNumber = generateDocumentNumber('purchase');
-                    setPoNumber(fallbackNumber);
-                }
-            };
-            generateSafeNumber();
+            setPoNumber(generateDocumentNumber('purchase'));
         }
-        
-        // Reset when switching to edit mode
+
         if (initialPurchase) {
             poNumberGeneratedRef.current = false;
         }
-    }, [initialPurchase, companyId, generateDocumentNumberSafe, generateDocumentNumber]);
+    }, [initialPurchase, companyId, generateDocumentNumber]);
 
     // STEP 2: Load full purchase data from backend when editing
     useEffect(() => {

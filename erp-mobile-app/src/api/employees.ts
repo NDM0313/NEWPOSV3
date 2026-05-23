@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getUserAccessibleBranchIds } from './permissions';
 
 export interface Employee {
   id: string;
@@ -168,16 +169,26 @@ export async function updateUserRole(
   return { error: error ? error.message : null };
 }
 
+async function resolveAuthUserId(publicOrAuthUserId: string): Promise<string | null> {
+  if (!isSupabaseConfigured) return null;
+  const { data } = await supabase
+    .from('users')
+    .select('auth_user_id, id')
+    .or(`id.eq.${publicOrAuthUserId},auth_user_id.eq.${publicOrAuthUserId}`)
+    .limit(1)
+    .maybeSingle();
+  if (!data) return publicOrAuthUserId;
+  const row = data as { auth_user_id?: string | null; id?: string };
+  return row.auth_user_id ?? row.id ?? publicOrAuthUserId;
+}
+
 export async function getUserBranches(
   userId: string
 ): Promise<{ data: string[]; error: string | null }> {
-  const { data, error } = await supabase
-    .from('user_branches')
-    .select('branch_id')
-    .eq('user_id', userId);
-  
-  if (error) return { data: [], error: error.message };
-  return { data: (data || []).map(d => d.branch_id), error: null };
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const authId = await resolveAuthUserId(userId);
+  const branchIds = await getUserAccessibleBranchIds(authId, userId);
+  return { data: branchIds, error: null };
 }
 
 export async function updateUserBranches(
@@ -185,26 +196,18 @@ export async function updateUserBranches(
   branchIds: string[],
   companyId: string
 ): Promise<{ error: string | null }> {
-  // Delete existing
-  const { error: delError } = await supabase
-    .from('user_branches')
-    .delete()
-    .eq('user_id', userId);
-  
-  if (delError) return { error: delError.message };
-
-  if (branchIds.length === 0) return { error: null };
-
-  // Insert new
-  const { error: insError } = await supabase
-    .from('user_branches')
-    .insert(branchIds.map(branchId => ({
-      user_id: userId,
-      branch_id: branchId,
-      company_id: companyId
-    })));
-  
-  return { error: insError ? insError.message : null };
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const authId = await resolveAuthUserId(userId);
+  if (!authId) return { error: 'User not found.' };
+  const ids = Array.from(new Set(branchIds)).filter(Boolean);
+  const defaultId = ids[0] ?? null;
+  const { error } = await supabase.rpc('set_user_branches', {
+    p_user_id: authId,
+    p_branch_ids: ids,
+    p_default_branch_id: defaultId,
+    p_company_id: companyId,
+  });
+  return { error: error?.message ?? null };
 }
 
 export async function createEmployee(

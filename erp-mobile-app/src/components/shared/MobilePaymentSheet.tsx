@@ -30,6 +30,11 @@ import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
 import { localNowDateString } from '../../utils/localDate';
 import { isBranchSentinel } from '../../utils/branchId';
 
+function blurActiveInput(): void {
+  const el = document.activeElement as HTMLElement | null;
+  el?.blur?.();
+}
+
 export type PaymentSheetMode =
   | 'receive'
   | 'pay-supplier'
@@ -427,6 +432,12 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   const closeSuccess = () => {
     setSuccess(null);
     onSuccess();
+    blurActiveInput();
+    onClose();
+  };
+
+  const handleClose = () => {
+    blurActiveInput();
     onClose();
   };
 
@@ -464,7 +475,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         </div>
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           disabled={submitting}
           className="p-2 rounded-lg text-[#9CA3AF] hover:bg-[#374151] hover:text-white transition-colors shrink-0 disabled:opacity-40 disabled:pointer-events-none"
           aria-label="Close"
@@ -708,7 +719,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Add extra description/details (auto description is added by system)..."
                   rows={3}
-                  className="w-full px-3 py-2 rounded-lg bg-[#111827] border border-[#374151] text-white placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-[#3B82F6] resize-none text-sm"
+                  className="w-full px-3 py-2 rounded-lg bg-[#111827] border border-[#374151] text-white placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-[#3B82F6] resize-none text-base"
                 />
               </div>
               <div>
@@ -775,7 +786,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
       <div className="absolute bottom-0 left-0 right-0 p-4 bg-[#111827] border-t border-[#374151] flex gap-3 z-[60]">
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           disabled={submitting}
           className="flex-1 py-3 rounded-lg border border-[#374151] text-[#9CA3AF] font-medium hover:bg-[#374151] transition-colors disabled:opacity-50 disabled:pointer-events-none"
         >

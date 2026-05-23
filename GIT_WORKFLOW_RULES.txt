@@ -52,7 +52,7 @@ git commit -m "Bug fix: Purchase service FK issue"
 
 On current machine:
 git add .
-git commit -m "mobile login"
+git commit -m "apk build8"
 git push origin main
 
 On new machine:

@@ -1,8 +1,9 @@
 import React, { createContext, useCallback, useContext, useState } from 'react';
-import { getEnablePacking } from '../api/settings';
+import { getEnablePacking, getNegativeStockAllowed } from '../api/settings';
 
 interface SettingsState {
   enablePacking: boolean;
+  negativeStockAllowed: boolean;
   loaded: boolean;
 }
 
@@ -12,6 +13,7 @@ interface SettingsContextValue extends SettingsState {
 
 const defaultState: SettingsState = {
   enablePacking: false,
+  negativeStockAllowed: false,
   loaded: false,
 };
 
@@ -20,20 +22,23 @@ const SettingsContext = createContext<SettingsContextValue>({
   reload: async () => {},
 });
 
-/** Per-company feature flags (enable_packing, etc.). Call reload(companyId) from App.tsx on login/company change. */
+/** Per-company feature flags (enable_packing, negative stock, etc.). Call reload(companyId) from App.tsx on login/company change. */
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<SettingsState>(defaultState);
 
   const reload = useCallback(async (companyId: string | null) => {
     if (!companyId) {
-      setState({ enablePacking: false, loaded: true });
+      setState({ enablePacking: false, negativeStockAllowed: false, loaded: true });
       return;
     }
     try {
-      const enablePacking = await getEnablePacking(companyId);
-      setState({ enablePacking, loaded: true });
+      const [enablePacking, negativeStockAllowed] = await Promise.all([
+        getEnablePacking(companyId),
+        getNegativeStockAllowed(companyId),
+      ]);
+      setState({ enablePacking, negativeStockAllowed, loaded: true });
     } catch {
-      setState({ enablePacking: false, loaded: true });
+      setState({ enablePacking: false, negativeStockAllowed: false, loaded: true });
     }
   }, []);
 

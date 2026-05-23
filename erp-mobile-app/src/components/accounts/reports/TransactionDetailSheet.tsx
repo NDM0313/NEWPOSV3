@@ -78,7 +78,14 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
       accountId: detail.partyAccountId,
     });
   };
-  const editability = detail ? canEditTransaction(detail.referenceType, 'payment_row') : { editable: false, kind: 'locked' as const };
+  const editability = detail
+    ? canEditTransaction(
+        detail.referenceType,
+        detail.id.startsWith('journal-') || detail.journalEntryId === detail.paymentId
+          ? 'journal_entry'
+          : 'payment_row',
+      )
+    : { editable: false, kind: 'locked' as const };
 
   const openAttachmentPreview = (items: Array<{ url: string; name: string }>, startIndex = 0) => {
     setAttachmentPreviewList(items);
@@ -135,8 +142,26 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
             <section className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
               <h3 className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide mb-3">Route</h3>
               <div className="space-y-2">
-                <RouteRow label="From" value={isReceived ? detail.paymentAccountName : (detail.partyAccountName ?? detail.partyName ?? '—')} />
-                <RouteRow label="To" value={isReceived ? (detail.partyAccountName ?? detail.partyName ?? '—') : detail.paymentAccountName} />
+                <RouteRow
+                  label="From"
+                  value={
+                    detail.referenceType === 'transfer' || detail.referenceType === 'general'
+                      ? detail.paymentAccountName
+                      : isReceived
+                        ? detail.paymentAccountName
+                        : (detail.partyAccountName ?? detail.partyName ?? '—')
+                  }
+                />
+                <RouteRow
+                  label="To"
+                  value={
+                    detail.referenceType === 'transfer' || detail.referenceType === 'general'
+                      ? detail.partyAccountName
+                      : isReceived
+                        ? (detail.partyAccountName ?? detail.partyName ?? '—')
+                        : detail.paymentAccountName
+                  }
+                />
               </div>
             </section>
 

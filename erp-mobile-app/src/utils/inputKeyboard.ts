@@ -19,6 +19,7 @@ function applyInputAttributes(el: HTMLInputElement | HTMLTextAreaElement) {
   if (tag === 'textarea') {
     el.setAttribute('inputMode', 'text');
     el.setAttribute('enterKeyHint', 'done');
+    el.style.fontSize = '16px';
     el.dataset.keyboardApplied = 'true';
     return;
   }

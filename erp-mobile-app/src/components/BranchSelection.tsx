@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { MapPin, ChevronRight, Loader2, LayoutGrid, PlusCircle } from 'lucide-react';
 import type { User, Branch } from '../types';
 import { getBranches, createBranch } from '../api/branches';
-import { canPickAllCompanyBranches, getUserBranchIds } from '../api/permissions';
+import { canPickAllCompanyBranches, getUserAccessibleBranchIds } from '../api/permissions';
 import { resolveEffectiveBranchIds } from '../lib/branchResolution';
 
 interface BranchSelectionProps {
@@ -14,6 +14,14 @@ interface BranchSelectionProps {
 }
 
 const ALL_BRANCHES_OPTION: Branch = { id: 'all', name: 'All Branches', location: 'All locations' };
+
+function withMissingBranchStubs(branches: Branch[], ids: string[]): Branch[] {
+  const known = new Set(branches.map((b) => b.id));
+  const stubs = ids
+    .filter((id) => !known.has(id))
+    .map((id) => ({ id, name: 'Branch', location: '' }));
+  return stubs.length ? [...branches, ...stubs] : branches;
+}
 
 export function BranchSelection({ user, companyId, profileId, onBranchSelect }: BranchSelectionProps) {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -49,16 +57,17 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
     setError(null);
     Promise.all([
       getBranches(companyId),
-      profileId ? getUserBranchIds(profileId) : Promise.resolve([]),
+      getUserAccessibleBranchIds(user.id, profileId, companyId),
     ]).then(([branchesRes, ubIds]) => {
       if (cancelled) return;
       setLoading(false);
       setError(branchesRes.error || null);
-      setBranches(branchesRes.error ? [] : (branchesRes.data || []));
+      const loaded = branchesRes.error ? [] : (branchesRes.data || []);
+      setBranches(withMissingBranchStubs(loaded, ubIds));
       setUserBranchIds(ubIds);
     });
     return () => { cancelled = true; };
-  }, [companyId, profileId]);
+  }, [companyId, profileId, user.id]);
 
   const handleAddMainBranch = async () => {
     if (!companyId) return;
@@ -77,7 +86,9 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
   };
 
   const list = (() => {
-    if (user.branchLocked && user.branchId) {
+    const lockedToSingle =
+      user.branchLocked && user.branchId && effectiveBranchIds.length <= 1;
+    if (lockedToSingle) {
       const locked = branches.find((b) => b.id === user.branchId);
       return locked ? [locked] : branches;
     }
@@ -96,14 +107,14 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
 
   // Auto-select when user's branch is locked and only that branch is in list
   useEffect(() => {
-    if (user.branchLocked && user.branchId && list.length === 1 && list[0].id === user.branchId) {
+    if (user.branchLocked && user.branchId && effectiveBranchIds.length <= 1 && list.length === 1 && list[0].id === user.branchId) {
       onBranchSelect(list[0]);
     }
-  }, [user.branchLocked, user.branchId, list, onBranchSelect]);
+  }, [user.branchLocked, user.branchId, effectiveBranchIds.length, list, onBranchSelect]);
 
   // Single branch (and not locked): auto-select silently, no UI
   useEffect(() => {
-    if (loading || error || user.branchLocked || noCompanyBranches) return;
+    if (loading || error || (user.branchLocked && effectiveBranchIds.length <= 1) || noCompanyBranches) return;
     if (list.length === 1 && list[0].id !== 'all') {
       onBranchSelect(list[0]);
     }
@@ -114,7 +125,9 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
       <div className="pt-8 pb-6 text-center">
         <h1 className="text-xl font-semibold mb-2 text-white">Welcome, {user.name}</h1>
         <p className="text-sm text-[#9CA3AF]">
-          {user.branchLocked ? 'Your branch is set by admin.' : 'Select your branch to continue'}
+          {user.branchLocked && effectiveBranchIds.length <= 1
+            ? 'Your branch is set by admin.'
+            : 'Select your branch to continue'}
         </p>
       </div>
       {loading ? (

@@ -187,6 +187,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         existingImageUrls: payload.existingImageUrls,
         isCombo: payload.isCombo,
         comboItems: payload.comboItems,
+        branchIds: payload.branchIds,
       });
       setSaving(false);
       if (error) {
@@ -218,6 +219,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         imageFiles: payload.imageFiles,
         isCombo: payload.isCombo,
         comboItems: payload.comboItems,
+        branchIds: payload.branchIds,
       });
       setSaving(false);
       if (error) {

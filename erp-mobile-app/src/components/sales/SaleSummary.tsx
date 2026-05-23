@@ -3,15 +3,34 @@ import { createPortal } from 'react-dom';
 import { ArrowLeft, FileText, Upload, X, Calendar } from 'lucide-react';
 import type { SaleData } from './SalesModule';
 import { localNowDateString } from '../../utils/localDate';
+import type { Branch } from '../../api/branches';
+import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 
 interface SaleSummaryProps {
   onBack: () => void;
   saleData: SaleData;
   onUpdate: (data: Partial<SaleData>) => void;
   onProceedToPayment: () => void;
+  needsBranchPicker?: boolean;
+  branchPickerBranches?: Branch[];
+  pickedBranchId?: string;
+  onPickedBranchChange?: (branchId: string) => void;
+  branchSelectionError?: string | null;
+  branchReady?: boolean;
 }
 
-export function SaleSummary({ onBack, saleData, onUpdate, onProceedToPayment }: SaleSummaryProps) {
+export function SaleSummary({
+  onBack,
+  saleData,
+  onUpdate,
+  onProceedToPayment,
+  needsBranchPicker,
+  branchPickerBranches = [],
+  pickedBranchId = '',
+  onPickedBranchChange,
+  branchSelectionError,
+  branchReady = true,
+}: SaleSummaryProps) {
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
   const [discountValue, setDiscountValue] = useState(
     saleData.discount ? String(saleData.discount) : ''
@@ -55,6 +74,19 @@ export function SaleSummary({ onBack, saleData, onUpdate, onProceedToPayment }: 
       </div>
 
       <div className="p-4 space-y-4">
+        {needsBranchPicker && onPickedBranchChange && (
+          <WriteBranchPickerField
+            branches={branchPickerBranches}
+            value={pickedBranchId}
+            onChange={onPickedBranchChange}
+            helperText="This sale will be recorded under the selected branch."
+          />
+        )}
+        {branchSelectionError && (
+          <div className="p-3 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-xl text-sm text-[#FCA5A5]">
+            {branchSelectionError}
+          </div>
+        )}
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <div className="flex items-start gap-3 mb-4">
             <div className="w-10 h-10 bg-[#3B82F6]/10 rounded-lg flex items-center justify-center">
@@ -216,7 +248,8 @@ export function SaleSummary({ onBack, saleData, onUpdate, onProceedToPayment }: 
         <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0))] z-[60]">
           <button
             onClick={onProceedToPayment}
-            className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg font-medium text-white transition-colors"
+            disabled={!branchReady}
+            className="w-full h-12 bg-[#3B82F6] hover:bg-[#2563EB] disabled:bg-[#374151] disabled:text-[#9CA3AF] rounded-lg font-medium text-white transition-colors"
           >
             Proceed to Payment →
           </button>

@@ -135,9 +135,9 @@ export const TopHeader = () => {
 
   // Handle branch change — update global filter (persists + syncs to Supabase)
   const handleBranchChange = (newBranchId: string) => {
+    if (newBranchId === branchId) return;
     setGlobalBranchId(newBranchId);
     toast.success('Branch switched successfully');
-    window.location.reload();
   };
 
   const handleLogout = async () => {

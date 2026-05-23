@@ -10,6 +10,7 @@ import { getPartyBalanceLabel } from '../../utils/balancePrivacy';
 
 interface SelectCustomerProps {
   companyId: string | null;
+  branchId?: string | null;
   onBack: () => void;
   onSelect: (customer: Customer, saleType: 'regular' | 'studio') => void;
   initialSaleType?: 'regular' | 'studio';
@@ -28,7 +29,7 @@ function CustomerBalanceLine({ balance, canView }: { balance: number; canView: b
   );
 }
 
-export function SelectCustomer({ companyId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerProps) {
+export function SelectCustomer({ companyId, branchId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerProps) {
   const { canViewBalances } = usePermissions();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(!!companyId);
@@ -55,13 +56,13 @@ export function SelectCustomer({ companyId, onBack, onSelect, initialSaleType = 
     }
     let cancelled = false;
     setLoading(true);
-    contactsApi.getContacts(companyId, 'customer').then(({ data, error }) => {
+    contactsApi.getContacts(companyId, 'customer', branchId ?? undefined).then(({ data, error }) => {
       if (cancelled) return;
       setLoading(false);
       setCustomers(error ? [] : data.map(contactToCustomer));
     });
     return () => { cancelled = true; };
-  }, [companyId]);
+  }, [companyId, branchId]);
 
   const list = customers;
   const recentCustomers = list.slice(0, 3);

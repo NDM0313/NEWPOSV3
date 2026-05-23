@@ -1,4 +1,9 @@
-import { supabase, webRealtimeHealth } from '@/lib/supabase';
+import {
+  supabase,
+  webRealtimeHealth,
+  noteWebRealtimeConnectionFailure,
+  resetWebRealtimeFailureCount,
+} from '@/lib/supabase';
 
 export type RealtimeDomain =
   | 'sales'
@@ -47,6 +52,8 @@ export interface RealtimeScope {
   channelKey: string;
 }
 
+const REALTIME_SUBSCRIBE_DEFER_MS = 2000;
+
 export function createDebouncedCallback(cb: () => void, waitMs = 220): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   return () => {
@@ -58,8 +65,7 @@ export function createDebouncedCallback(cb: () => void, waitMs = 220): () => voi
   };
 }
 
-export function subscribeRealtimeDomains(scope: RealtimeScope): (() => void) | null {
-  if (!webRealtimeHealth.canUseRealtime) return null;
+function subscribeRealtimeDomainsNow(scope: RealtimeScope): () => void {
   const branchFilter = scope.branchId && scope.branchId !== 'all' ? scope.branchId : null;
   const channel = supabase.channel(`web-live-${scope.channelKey}-${scope.companyId}-${branchFilter ?? 'all'}`);
   const domainSet = new Set(scope.domains);
@@ -72,13 +78,39 @@ export function subscribeRealtimeDomains(scope: RealtimeScope): (() => void) | n
       channel.on(
         'postgres_changes',
         { event: '*', schema: 'public', table, filter: filters.join(',') },
-        () => scope.onChange(domain, table)
+        () => scope.onChange(domain, table),
       );
     }
   }
 
-  channel.subscribe();
+  channel.subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      resetWebRealtimeFailureCount();
+      return;
+    }
+    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+      noteWebRealtimeConnectionFailure();
+    }
+  });
+
   return () => {
     void supabase.removeChannel(channel);
+  };
+}
+
+export function subscribeRealtimeDomains(scope: RealtimeScope): (() => void) | null {
+  if (!webRealtimeHealth.canUseRealtime) return null;
+
+  let cancelled = false;
+  let innerCleanup: (() => void) | null = null;
+  const timer = setTimeout(() => {
+    if (cancelled || !webRealtimeHealth.canUseRealtime) return;
+    innerCleanup = subscribeRealtimeDomainsNow(scope);
+  }, REALTIME_SUBSCRIBE_DEFER_MS);
+
+  return () => {
+    cancelled = true;
+    clearTimeout(timer);
+    innerCleanup?.();
   };
 }

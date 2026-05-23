@@ -3,6 +3,7 @@ import { Building2, Lock, Loader2 } from 'lucide-react';
 import { Label } from '@/app/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useGlobalFilterOptional } from '@/app/context/GlobalFilterContext';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { branchService, Branch } from '@/app/services/branchService';
 
@@ -27,12 +28,14 @@ export const BranchSelector: React.FC<BranchSelectorProps> = ({
   showAllBranchesOption = true,
 }) => {
   const { companyId, branchId: contextBranchId, setBranchId: contextSetBranchId } = useSupabase();
+  const globalFilter = useGlobalFilterOptional();
   const { canManageSettings } = useCheckPermission();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const branchId = propBranchId ?? contextBranchId ?? null;
-  const setBranchId = propSetBranchId ?? contextSetBranchId;
+  const useGlobalBranch = variant === 'header' && !propSetBranchId && globalFilter != null;
+  const branchId = propBranchId ?? (useGlobalBranch ? globalFilter.branchId : contextBranchId) ?? null;
+  const setBranchId = propSetBranchId ?? (useGlobalBranch ? globalFilter.setBranchId : contextSetBranchId);
 
   const isAdmin = canManageSettings;
   const isBranchLocked = disabled || !isAdmin;

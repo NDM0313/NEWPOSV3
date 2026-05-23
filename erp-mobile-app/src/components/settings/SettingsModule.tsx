@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   ArrowLeft,
   Settings as SettingsIcon,
@@ -20,7 +20,7 @@ import {
   Shirt,
   Plus,
 } from 'lucide-react';
-import { createBranch as createBranchApi } from '../../api/branches';
+import { createBranch as createBranchApi, getBranches } from '../../api/branches';
 import type { User, Branch } from '../../types';
 import * as authApi from '../../api/auth';
 import * as settingsApi from '../../api/settings';
@@ -142,12 +142,45 @@ export function SettingsModule({
   const [newBranchCode, setNewBranchCode] = useState('');
   const [createBranchBusy, setCreateBranchBusy] = useState(false);
   const [createBranchMsg, setCreateBranchMsg] = useState<string | null>(null);
+  const [rlsBranches, setRlsBranches] = useState<Branch[]>([]);
+  const [branchAccessLoading, setBranchAccessLoading] = useState(true);
 
-  const { hasPermission, isAdminOrOwner } = usePermissions();
+  const { hasPermission, isAdminOrOwner, branchIds, isPermissionLoaded } = usePermissions();
+  const mergedBranchIds = useMemo(
+    () => [...new Set([...branchIds, ...rlsBranches.map((b) => b.id)])],
+    [branchIds, rlsBranches],
+  );
   const canManageSettings =
     isAdminOrOwner || (FEATURE_MOBILE_PERMISSION_V2 && hasPermission('settings.modify'));
+  const canSwitchBranch = isAdminOrOwner || mergedBranchIds.length > 1 || rlsBranches.length > 1;
+  const accessibleBranchNames = useMemo(() => {
+    if (!companyId || isAdminOrOwner) return [];
+    if (rlsBranches.length > 1) return rlsBranches.map((b) => b.name);
+    if (mergedBranchIds.length === 0) return [];
+    return rlsBranches.filter((b) => mergedBranchIds.includes(b.id)).map((b) => b.name);
+  }, [companyId, isAdminOrOwner, rlsBranches, mergedBranchIds]);
 
   const refreshUnsynced = () => getUnsyncedCount().then(setUnsyncedCount);
+
+  useEffect(() => {
+    if (!companyId) {
+      setRlsBranches([]);
+      setBranchAccessLoading(false);
+      return;
+    }
+    if (!isPermissionLoaded) {
+      setBranchAccessLoading(true);
+      return;
+    }
+    let cancelled = false;
+    setBranchAccessLoading(true);
+    void getBranches(companyId).then((branchesRes) => {
+      if (cancelled) return;
+      setRlsBranches(branchesRes.data ?? []);
+      setBranchAccessLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [companyId, isPermissionLoaded]);
 
   useEffect(() => {
     if (!companyId) {
@@ -421,17 +454,12 @@ export function SettingsModule({
               {user.role}
             </span>
           </div>
-          {user.branchLocked ? (
-            <div className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center gap-3 text-left">
-              <div className="w-10 h-10 bg-[#6B7280]/20 rounded-lg flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-[#9CA3AF]" />
-              </div>
-              <div>
-                <p className="font-medium text-white">Branch (set by admin)</p>
-                <p className="text-sm text-[#9CA3AF]">{branch?.name ?? '—'}</p>
-              </div>
+          {branchAccessLoading && !isAdminOrOwner ? (
+            <div className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center gap-3">
+              <Loader2 className="w-5 h-5 text-[#6B7280] animate-spin" />
+              <p className="text-sm text-[#9CA3AF]">Loading branch access…</p>
             </div>
-          ) : (
+          ) : canSwitchBranch ? (
             <button
               onClick={onChangeBranch}
               className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between hover:border-[#3B82F6] transition-colors text-left"
@@ -447,7 +475,22 @@ export function SettingsModule({
               </div>
               <ChevronRight className="w-5 h-5 text-[#6B7280]" />
             </button>
+          ) : (
+            <div className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center gap-3 text-left">
+              <div className="w-10 h-10 bg-[#6B7280]/20 rounded-lg flex items-center justify-center">
+                <MapPin className="w-5 h-5 text-[#9CA3AF]" />
+              </div>
+              <div>
+                <p className="font-medium text-white">Branch (set by admin)</p>
+                <p className="text-sm text-[#9CA3AF]">{branch?.name ?? '—'}</p>
+              </div>
+            </div>
           )}
+          {canSwitchBranch && accessibleBranchNames.length > 1 ? (
+            <p className="text-xs text-[#9CA3AF] px-1">
+              Branch access: {accessibleBranchNames.join(', ')}
+            </p>
+          ) : null}
           {isAdminOrOwner && companyId && (
             <button
               type="button"

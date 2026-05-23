@@ -745,4 +745,43 @@ export const productService = {
     await inventoryService.syncOpeningJournalIfApplicable(movement);
     return movement;
   },
+
+  async getProductBranchIds(companyId: string, productId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from('product_branches')
+      .select('branch_id')
+      .eq('company_id', companyId)
+      .eq('product_id', productId);
+    if (error) {
+      if (/product_branches|does not exist|pgrst/i.test(error.message || '')) return [];
+      throw error;
+    }
+    return (data || []).map((r: { branch_id: string }) => r.branch_id);
+  },
+
+  async setProductBranchAvailability(
+    companyId: string,
+    productId: string,
+    branchIds: string[] | null | undefined,
+  ): Promise<void> {
+    const { error: delErr } = await supabase
+      .from('product_branches')
+      .delete()
+      .eq('company_id', companyId)
+      .eq('product_id', productId);
+    if (delErr && !/product_branches|does not exist|pgrst/i.test(delErr.message || '')) {
+      throw delErr;
+    }
+    const ids = (branchIds || []).filter(Boolean);
+    if (ids.length === 0) return;
+    const rows = ids.map((branch_id) => ({
+      company_id: companyId,
+      product_id: productId,
+      branch_id,
+    }));
+    const { error: insErr } = await supabase.from('product_branches').insert(rows);
+    if (insErr && !/product_branches|does not exist|pgrst/i.test(insErr.message || '')) {
+      throw insErr;
+    }
+  },
 };

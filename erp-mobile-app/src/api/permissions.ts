@@ -3,10 +3,27 @@
  */
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getBranches } from './branches';
 import {
   mapAppRoleToEngineRole,
   type EngineRole,
 } from '../config/functionalRoles';
+
+const branchAccessLogKeys = new Set<string>();
+const BRANCH_ACCESS_TTL_MS = 60_000;
+const branchAccessSessionCache = new Map<
+  string,
+  { expires: number; result: UserAccessibleBranchesResult }
+>();
+
+export interface BranchAccessOptions {
+  fresh?: boolean;
+}
+
+export function invalidateBranchAccessSessionCache(): void {
+  branchAccessSessionCache.clear();
+  branchAccessLogKeys.clear();
+}
 
 export type { EngineRole };
 
@@ -51,15 +68,198 @@ export function canPickAllCompanyBranches(role: string | undefined): boolean {
   return r === 'admin' || r === 'owner';
 }
 
-/** Fetch branch IDs the user has access to (user_branches). Returns empty if admin/owner (all branches). */
-export async function getUserBranchIds(userId: string): Promise<string[]> {
-  if (!isSupabaseConfigured) return [];
-  const { data, error } = await supabase
-    .from('user_branches')
-    .select('branch_id')
-    .eq('user_id', userId);
-  if (error) return [];
-  return (data ?? []).map((r: { branch_id: string }) => r.branch_id);
+export interface UserAccessibleBranchesResult {
+  branchIds: string[];
+  branchCount: number;
+  effectiveBranchId: string | null;
+  requiresBranchSelection: boolean;
+}
+
+function parseAccessibleBranchIds(raw: unknown): string[] {
+  if (raw == null) return [];
+  if (typeof raw === 'string') {
+    try {
+      return parseAccessibleBranchIds(JSON.parse(raw));
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((x) => (typeof x === 'string' ? x : (x as { id?: string })?.id ?? String(x)))
+    .filter(Boolean);
+}
+
+async function fetchUserBranchesDualId(
+  authUserId: string | null | undefined,
+  profileId?: string | null,
+): Promise<UserAccessibleBranchesResult> {
+  const uniqueIds = [...new Set([authUserId, profileId].filter((id): id is string => !!id?.trim()))];
+  if (!uniqueIds.length) {
+    return { branchIds: [], branchCount: 0, effectiveBranchId: null, requiresBranchSelection: false };
+  }
+
+  let query = supabase.from('user_branches').select('branch_id, is_default');
+  if (uniqueIds.length > 1) {
+    query = query.or(`user_id.eq.${uniqueIds[0]},user_id.eq.${uniqueIds[1]}`);
+  } else {
+    query = query.eq('user_id', uniqueIds[0]);
+  }
+
+  const { data, error } = await query;
+  if (error || !data?.length) {
+    return { branchIds: [], branchCount: 0, effectiveBranchId: null, requiresBranchSelection: false };
+  }
+
+  const branchIds = [
+    ...new Set(data.map((r: { branch_id: string }) => r.branch_id).filter(Boolean)),
+  ];
+  const defaultRow =
+    data.find((r: { is_default?: boolean | null }) => r.is_default === true) ?? data[0];
+  const effectiveBranchId =
+    (defaultRow as { branch_id?: string })?.branch_id ?? branchIds[0] ?? null;
+
+  return {
+    branchIds,
+    branchCount: branchIds.length,
+    effectiveBranchId,
+    requiresBranchSelection: branchIds.length > 1 && !effectiveBranchId,
+  };
+}
+
+/**
+ * Canonical branch access (mirrors Web SupabaseContext).
+ * Merges get_effective_user_branch RPC with direct user_branches query (auth + profile ids).
+ */
+export async function getUserAccessibleBranches(
+  authUserId: string | null | undefined,
+  profileId?: string | null,
+  companyId?: string | null,
+  options?: BranchAccessOptions,
+): Promise<UserAccessibleBranchesResult> {
+  if (!isSupabaseConfigured) {
+    return { branchIds: [], branchCount: 0, effectiveBranchId: null, requiresBranchSelection: false };
+  }
+  const lookupIds = [...new Set([authUserId, profileId].filter((id): id is string => !!id?.trim()))];
+  if (!lookupIds.length) {
+    return { branchIds: [], branchCount: 0, effectiveBranchId: null, requiresBranchSelection: false };
+  }
+
+  const cacheKey = `${authUserId ?? ''}:${profileId ?? ''}:${companyId ?? ''}`;
+  if (!options?.fresh) {
+    const cached = branchAccessSessionCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      return cached.result;
+    }
+  }
+
+  const direct = await fetchUserBranchesDualId(authUserId, profileId);
+  let rlsBranchIds: string[] = [];
+  if (companyId) {
+    const { data: rlsBranches } = await getBranches(
+      companyId,
+      options?.fresh ? { skipCache: true } : undefined,
+    );
+    rlsBranchIds = (rlsBranches ?? []).map((b) => b.id);
+  }
+
+  let rpcBranchIds: string[] = [];
+  let effectiveBranchId: string | null = null;
+  let requiresBranchSelection = false;
+  let branchCount = 0;
+
+  for (const lookupId of lookupIds) {
+    const { data: rpcData, error: rpcError } = await supabase.rpc('get_effective_user_branch', {
+      p_user_id: lookupId,
+    });
+
+    if (!rpcError && rpcData && typeof (rpcData as { branch_count?: number }).branch_count === 'number') {
+      const payload = rpcData as {
+        effective_branch_id?: string | null;
+        accessible_branch_ids?: unknown;
+        requires_branch_selection?: boolean;
+        branch_count?: number;
+      };
+      branchCount = Math.max(branchCount, payload.branch_count ?? 0);
+      rpcBranchIds = [
+        ...new Set([...rpcBranchIds, ...parseAccessibleBranchIds(payload.accessible_branch_ids)]),
+      ];
+      if (payload.effective_branch_id) {
+        effectiveBranchId = payload.effective_branch_id;
+      }
+      requiresBranchSelection =
+        requiresBranchSelection || Boolean(payload.requires_branch_selection);
+    }
+  }
+
+  const mergedIds = [...new Set([...rpcBranchIds, ...direct.branchIds])];
+  let finalIds =
+    mergedIds.length > 0
+      ? mergedIds
+      : branchCount <= 1 && rpcBranchIds.length > 0
+        ? rpcBranchIds
+        : direct.branchIds;
+
+  if (branchCount > finalIds.length) {
+    const longer =
+      direct.branchIds.length >= rlsBranchIds.length ? direct.branchIds : rlsBranchIds;
+    if (longer.length > finalIds.length) {
+      finalIds = [...new Set([...finalIds, ...longer])];
+    }
+  }
+
+  if (rlsBranchIds.length > 0) {
+    finalIds = [...new Set([...finalIds, ...rlsBranchIds])];
+  }
+
+  const eff =
+    effectiveBranchId ?? direct.effectiveBranchId ?? (finalIds.length === 1 ? finalIds[0] : null);
+
+  const logKey = `${authUserId ?? ''}:${profileId ?? ''}:${companyId ?? ''}`;
+  if (!branchAccessLogKeys.has(logKey)) {
+    branchAccessLogKeys.add(logKey);
+    console.log('[BRANCH ACCESS]', {
+      authUserId,
+      profileId,
+      companyId,
+      branchCount,
+      rpcCount: rpcBranchIds.length,
+      directCount: direct.branchIds.length,
+      rlsCount: rlsBranchIds.length,
+      mergedCount: finalIds.length,
+    });
+  }
+
+  const result: UserAccessibleBranchesResult = {
+    branchIds: finalIds,
+    branchCount: Math.max(branchCount, finalIds.length),
+    effectiveBranchId: eff,
+    requiresBranchSelection:
+      finalIds.length > 1 && (requiresBranchSelection || direct.requiresBranchSelection),
+  };
+
+  branchAccessSessionCache.set(cacheKey, {
+    expires: Date.now() + BRANCH_ACCESS_TTL_MS,
+    result,
+  });
+
+  return result;
+}
+
+/** Branch IDs the user can access (restricted users). Admin/owner callers use empty + unrestricted flag elsewhere. */
+export async function getUserAccessibleBranchIds(
+  authUserId: string | null | undefined,
+  profileId?: string | null,
+  companyId?: string | null,
+  options?: BranchAccessOptions,
+): Promise<string[]> {
+  const result = await getUserAccessibleBranches(authUserId, profileId, companyId, options);
+  return result.branchIds;
+}
+
+/** @deprecated Prefer getUserAccessibleBranchIds(authUserId, profileId). */
+export async function getUserBranchIds(userId: string, profileId?: string | null): Promise<string[]> {
+  return getUserAccessibleBranchIds(userId, profileId ?? userId);
 }
 
 const VIEW_ACTIONS = ['view', 'view_own', 'view_branch', 'view_company'];

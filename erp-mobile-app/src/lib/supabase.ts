@@ -91,16 +91,41 @@ export const erpMobileUsingDemoSupabaseAnonKey = hasConfig && isDemoSupabaseAnon
 export const erpMobileCanUseRealtime =
   hasConfig && env.VITE_DISABLE_REALTIME !== 'true' && !isDemoSupabaseAnonKey(supabaseAnonKey);
 
+let mobileRealtimeRuntimeDisabled = false;
+let mobileRealtimeFailureCount = 0;
+const MOBILE_REALTIME_MAX_FAILURES = 3;
+
+export function noteMobileRealtimeConnectionFailure(): void {
+  if (!env.DEV) return;
+  mobileRealtimeFailureCount += 1;
+  if (mobileRealtimeFailureCount >= MOBILE_REALTIME_MAX_FAILURES) {
+    mobileRealtimeRuntimeDisabled = true;
+    console.warn('[ERP Mobile] Realtime disabled for this session after repeated WebSocket failures');
+  }
+}
+
+export function resetMobileRealtimeFailureCount(): void {
+  mobileRealtimeFailureCount = 0;
+}
+
+export function mobileCanSubscribeRealtime(): boolean {
+  return erpMobileCanUseRealtime && !mobileRealtimeRuntimeDisabled;
+}
+
 export const mobileRealtimeHealth = {
   configured: hasConfig,
-  canUseRealtime: erpMobileCanUseRealtime,
+  get canUseRealtime() {
+    return mobileCanSubscribeRealtime();
+  },
   reason: !hasConfig
     ? 'missing-env'
     : isDemoSupabaseAnonKey(supabaseAnonKey)
       ? 'demo-anon-key'
       : env.VITE_DISABLE_REALTIME === 'true'
         ? 'disabled-by-env'
-        : 'ok',
+        : mobileRealtimeRuntimeDisabled
+          ? 'runtime-ws-failures'
+          : 'ok',
 } as const;
 
 /**

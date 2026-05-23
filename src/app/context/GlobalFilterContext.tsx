@@ -9,6 +9,7 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useEf
 import { useSupabase } from './SupabaseContext';
 import { safeLocalStorageGetItem, safeLocalStorageSetItem } from '@/app/lib/safeBrowserStorage';
 import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
+import { dispatchDataInvalidated, type InvalidationDomain } from '@/app/lib/dataInvalidationBus';
 
 const STORAGE_KEY = 'erp-global-filters';
 
@@ -169,11 +170,23 @@ export function useGlobalFilterOptional(): GlobalFilterContextType | null {
 
 const DEFAULT_MODULE: GlobalFilterModule = 'default';
 
+const BRANCH_FILTER_INVALIDATION_DOMAINS: InvalidationDomain[] = [
+  'sales',
+  'purchases',
+  'expenses',
+  'accounting',
+  'inventory',
+  'rentals',
+  'studio',
+];
+
 export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { setBranchId: setSupabaseBranchId, branchId: supabaseBranchId } = useSupabase();
+  const { setBranchId: setSupabaseBranchId, companyId } = useSupabase();
   const [currentModule, setCurrentModuleState] = useState<GlobalFilterModule>(DEFAULT_MODULE);
   const [persisted, setPersisted] = useState<PersistedFilters>(loadFromStorage);
   const initialSyncDone = useRef(false);
+  const persistedRef = useRef(persisted);
+  persistedRef.current = persisted;
 
   // Hydrate SupabaseContext branchId from persisted on first load (once we have Supabase)
   useEffect(() => {
@@ -187,14 +200,23 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
   // Keep SupabaseContext in sync when user changes branch in header (header calls setBranchId here and setBranchId in Supabase)
   const setBranchId = useCallback(
     (id: string | null) => {
-      setPersisted((prev) => {
-        const next = { ...prev, branchId: id };
-        saveToStorage(next);
-        return next;
-      });
+      if (persistedRef.current.branchId === id) return;
+      const next = { ...persistedRef.current, branchId: id };
+      saveToStorage(next);
+      setPersisted(next);
       setSupabaseBranchId?.(id);
+      if (companyId) {
+        for (const domain of BRANCH_FILTER_INVALIDATION_DOMAINS) {
+          dispatchDataInvalidated({
+            domain,
+            companyId,
+            branchId: id,
+            reason: 'branch_filter_changed',
+          });
+        }
+      }
     },
-    [setSupabaseBranchId]
+    [setSupabaseBranchId, companyId]
   );
 
   // Do not sync Supabase -> persisted; only persisted -> Supabase on init.

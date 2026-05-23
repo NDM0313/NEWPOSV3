@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2, X, Users, Package } from 'lucide-react';
+import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2, X, Users, Package, Calendar } from 'lucide-react';
 import { ProductImage } from '../products/ProductImage';
 import type { User } from '../../types';
 import type { AuthProfile } from '../../api/auth';
@@ -8,14 +8,21 @@ import { isSharedCounterModeEnabled } from '../../lib/sharedCounterMode';
 import * as productsApi from '../../api/products';
 import * as salesApi from '../../api/sales';
 import { addPending } from '../../lib/offlineStore';
-import { supabase } from '../../lib/supabase';
-import { balanceFromMovements } from '../../utils/stockBalance';
 import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
 import { BarcodeScanner } from '../../features/barcode';
-import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
 import { localNowDateString } from '../../utils/localDate';
 import { maybeAutoPrintAfterTransaction } from '../../services/printAfterTransaction';
+import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
+import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
+import { useSettings } from '../../context/SettingsContext';
+import {
+  formatStockLabel,
+  getTotalProductStock,
+  isSaleBlockedByStock,
+  isVariationSaleBlocked,
+  stockLabelClassName,
+} from '../../utils/productStockGate';
 
 interface POSModuleProps {
   onBack: () => void;
@@ -63,10 +70,38 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
   const [variationModalProduct, setVariationModalProduct] = useState<POSProduct | null>(null);
   const [showPaymentStep, setShowPaymentStep] = useState(false);
   const [invoiceDate, setInvoiceDate] = useState(() => localNowDateString());
-  const { runSingleFlight, isRunning: isCheckoutSubmitRunning } = useSingleFlightAction();
   const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [scannerInput, setScannerInput] = useState(''); // keyboard wedge (Speed-X, Sunmi, CS60)
   const [showSwitchUser, setShowSwitchUser] = useState(false);
+  const { negativeStockAllowed, loaded: settingsLoaded, reload: reloadSettings } = useSettings();
+
+  useEffect(() => {
+    if (companyId) void reloadSettings(companyId);
+  }, [companyId, reloadSettings]);
+
+  const effectiveAllowNegative = !settingsLoaded || negativeStockAllowed;
+
+  const isProductBlocked = useCallback(
+    (product: POSProduct) =>
+      settingsLoaded && isSaleBlockedByStock(getTotalProductStock(product), negativeStockAllowed),
+    [settingsLoaded, negativeStockAllowed],
+  );
+
+  const {
+    effectiveBranchId,
+    needsPicker,
+    pickerBranches,
+    pickedBranchId,
+    setPickedBranchId,
+    ready: branchReady,
+    error: branchSelectionError,
+  } = useWriteBranchSelection({
+    companyId,
+    globalBranchId: branchId,
+    userRole: user.role,
+    authUserId: user.id,
+    profileId: user.profileId,
+  });
 
   useEffect(() => {
     setCart([]);
@@ -86,7 +121,10 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
   const loadProducts = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-    const { data, error } = await productsApi.getProducts(companyId);
+    const branchForStock = effectiveBranchId || branchId;
+    const { data, error } = await productsApi.getProducts(companyId, {
+      branchId: branchForStock ?? undefined,
+    });
     if (error) {
       setProducts([]);
       setLoading(false);
@@ -110,39 +148,8 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
         : undefined,
     }));
     setProducts(mapped);
-
-    if (branchId && branchId !== 'all') {
-      try {
-        const { data: movements } = await supabase
-          .from('stock_movements')
-          .select('product_id, variation_id, quantity')
-          .eq('company_id', companyId)
-          .eq('branch_id', branchId);
-        if (movements?.length) {
-          const balanceByKey = balanceFromMovements(
-            movements as { product_id: string; variation_id: string | null; quantity: number }[]
-          );
-          setProducts((prev) =>
-            prev.map((p) => {
-              if (p.variations?.length) {
-                return {
-                  ...p,
-                  variations: p.variations.map((v) => ({
-                    ...v,
-                    stock: balanceByKey.get(`${p.id}_${v.id}`) ?? v.stock ?? 0,
-                  })),
-                };
-              }
-              return { ...p, stock: balanceByKey.get(p.id) ?? p.stock ?? 0 };
-            })
-          );
-        }
-      } catch (e) {
-        console.warn('[POS] Branch stock overlay failed:', e);
-      }
-    }
     setLoading(false);
-  }, [companyId, branchId]);
+  }, [companyId, branchId, effectiveBranchId]);
 
   useEffect(() => {
     if (!companyId) {
@@ -224,6 +231,7 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
   };
 
   const onProductClick = (product: POSProduct) => {
+    if (isProductBlocked(product)) return;
     if (product.variations && product.variations.length > 0) {
       setVariationModalProduct(product);
     } else {
@@ -297,6 +305,10 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
 
   const openPaymentStep = () => {
     setCheckoutError(null);
+    if (!branchReady || !effectiveBranchId) {
+      setCheckoutError(branchSelectionError ?? 'Select a branch for this POS sale.');
+      return;
+    }
     setShowCart(false);
     setShowPaymentStep(true);
   };
@@ -312,19 +324,18 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
   };
 
   const handlePaymentComplete = async (result: PaymentResult): Promise<void> => {
-    await runSingleFlight(async () => {
-    if (cart.length === 0 || !companyId || !branchId || branchId === 'all' || !user?.id) {
-      setCheckoutError('Select a specific branch.');
+    if (cart.length === 0 || !companyId || !effectiveBranchId || !user?.id) {
+      setCheckoutError(branchSelectionError ?? 'Select a branch for this POS sale.');
       return;
     }
     const paid = result.paidAmount ?? 0;
-    const due = result.dueAmount ?? total - paid;
     if (paid > 0 && !result.accountId) {
       setCheckoutError('Please select a payment account for accounting.');
       return;
     }
     setCheckoutLoading(true);
     setCheckoutError(null);
+    try {
     const items = cart.map((item) => ({
       productId: item.productId,
       variationId: item.variationId,
@@ -336,7 +347,7 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
     }));
     const salePayload = {
       companyId,
-      branchId,
+      branchId: effectiveBranchId,
       customerId: null,
       customerName: 'Walk-in',
       items,
@@ -347,29 +358,28 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
       total,
       paymentMethod: mapPaymentMethodForApi(result.paymentMethod),
       paidAmount: paid,
-      dueAmount: due,
+      dueAmount: result.dueAmount ?? total - paid,
       paymentAccountId: result.accountId ?? null,
       isStudio: false,
       userId: user.id,
       invoiceDate,
       paymentDate: result.paymentDate || invoiceDate,
+      isPOS: true,
     };
 
     if (!navigator.onLine) {
       try {
-        await addPending('sale', salePayload, companyId, branchId);
+        await addPending('sale', salePayload, companyId, effectiveBranchId);
         setLastInvoiceNo('Pending sync');
         setCart([]);
         setShowPaymentStep(false);
       } catch (e) {
         setCheckoutError(e instanceof Error ? e.message : 'Failed to save offline.');
       }
-      setCheckoutLoading(false);
       return;
     }
 
     const { data, error } = await salesApi.createSale(salePayload);
-    setCheckoutLoading(false);
     if (error) {
       setCheckoutError(error);
       return;
@@ -384,7 +394,11 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
       amount: total,
       date: invoiceDate,
     });
-    });
+    } catch (e) {
+      setCheckoutError(e instanceof Error ? e.message : 'Checkout failed.');
+    } finally {
+      setCheckoutLoading(false);
+    }
   };
 
   return (
@@ -498,16 +512,14 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
 
         <div className="grid grid-cols-2 gap-3">
           {filtered.map((product) => {
+            const totalStock = getTotalProductStock(product);
+            const blocked = isProductBlocked(product);
             const hasVariations = product.variations && product.variations.length > 0;
-            const totalStock = hasVariations
-              ? (product.variations?.reduce((s, v) => s + (v.stock ?? 0), 0) ?? 0)
-              : (product.stock ?? 0);
-            const outOfStock = totalStock <= 0;
             return (
               <button
                 key={product.id}
-                onClick={() => !outOfStock && onProductClick(product)}
-                disabled={outOfStock}
+                onClick={() => !blocked && onProductClick(product)}
+                disabled={blocked}
                 className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#3B82F6] active:scale-95 transition-all text-left disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <div className="w-full h-20 bg-[#111827] rounded-lg mb-3 flex items-center justify-center overflow-hidden">
@@ -525,13 +537,10 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
                 <h3 className="text-white font-medium text-sm mb-1 line-clamp-2">{product.name}</h3>
                 <p className="text-[#6B7280] text-xs mb-2">{product.sku}</p>
                 <p className="text-[#10B981] font-semibold">Rs. {product.price.toLocaleString()}</p>
-                {outOfStock ? (
-                  <p className="text-xs text-[#EF4444] mt-1">Out of stock</p>
-                ) : hasVariations ? (
-                  <p className="text-xs text-[#9CA3AF] mt-1">Stock: {totalStock} (options)</p>
-                ) : (
-                  <p className="text-xs text-[#9CA3AF] mt-1">Stock: {totalStock}</p>
-                )}
+                <p className={`text-xs mt-1 ${stockLabelClassName(totalStock, effectiveAllowNegative)}`}>
+                  {formatStockLabel(totalStock, effectiveAllowNegative)}
+                  {hasVariations && !blocked ? ' (options)' : ''}
+                </p>
               </button>
             );
           })}
@@ -618,9 +627,33 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
             </div>
             {cart.length > 0 && (
               <div className="p-4 border-t border-[#374151] space-y-2">
-                {checkoutError && (
-                  <div className="p-3 bg-[#EF4444]/20 border border-[#EF4444] rounded-lg text-[#FCA5A5] text-sm">{checkoutError}</div>
+                {(checkoutError || branchSelectionError) && (
+                  <div className="p-3 bg-[#EF4444]/20 border border-[#EF4444] rounded-lg text-[#FCA5A5] text-sm">
+                    {checkoutError ?? branchSelectionError}
+                  </div>
                 )}
+                {needsPicker && (
+                  <WriteBranchPickerField
+                    branches={pickerBranches}
+                    value={pickedBranchId}
+                    onChange={setPickedBranchId}
+                    helperText="POS sale will post to the selected branch."
+                    zIndexClass="z-[70]"
+                  />
+                )}
+                <div className="bg-[#111827] border border-[#374151] rounded-lg px-3 py-2.5">
+                  <label className="text-xs text-[#9CA3AF] mb-1.5 block">Invoice date</label>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-[#6B7280] shrink-0" />
+                    <input
+                      type="date"
+                      max={localNowDateString()}
+                      value={invoiceDate}
+                      onChange={(e) => setInvoiceDate(e.target.value)}
+                      className="flex-1 min-w-0 bg-transparent text-white text-sm outline-none"
+                    />
+                  </div>
+                </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-[#9CA3AF]">Subtotal</span>
                   <span className="text-white">Rs. {subtotal.toLocaleString()}</span>
@@ -631,7 +664,8 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
                 </div>
                 <button
                   onClick={openPaymentStep}
-                  className="w-full h-12 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg font-semibold mt-2"
+                  disabled={!branchReady}
+                  className="w-full h-12 bg-[#10B981] hover:bg-[#059669] disabled:bg-[#374151] disabled:text-[#9CA3AF] text-white rounded-lg font-semibold mt-2"
                 >
                   Proceed to Payment
                 </button>
@@ -644,26 +678,17 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
       {/* Payment: same flow as Sales — PaymentDialog (method → account → amount → post) */}
       {showPaymentStep && (
         <div className="fixed inset-0 z-[60] bg-[#111827] flex flex-col">
-          <div className="px-4 pt-4 pb-2 border-b border-[#374151] shrink-0">
-            <label className="block text-xs text-[#9CA3AF] mb-1">Invoice date</label>
-            <input
-              type="date"
-              max={localNowDateString()}
-              value={invoiceDate}
-              onChange={(e) => setInvoiceDate(e.target.value)}
-              className="w-full max-w-xs h-10 bg-[#1F2937] border border-[#374151] rounded-lg px-3 text-sm text-white"
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            <PaymentDialog
+              embedded
+              onBack={() => { setShowPaymentStep(false); setShowCart(true); }}
+              totalAmount={total}
+              companyId={companyId}
+              onComplete={handlePaymentComplete}
+              saving={checkoutLoading}
+              saveError={checkoutError}
+              viewerRole={user.role}
             />
-          </div>
-          <div className="flex-1 min-h-0 flex flex-col">
-          <PaymentDialog
-            onBack={() => { setShowPaymentStep(false); setShowCart(true); }}
-            totalAmount={total}
-            companyId={companyId}
-            onComplete={handlePaymentComplete}
-            saving={checkoutLoading || isCheckoutSubmitRunning}
-            saveError={checkoutError}
-            viewerRole={user.role}
-          />
           </div>
         </div>
       )}
@@ -682,23 +707,24 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
             <p className="px-4 pt-2 text-[#9CA3AF] text-sm">{variationModalProduct.name}</p>
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {variationModalProduct.variations?.map((v) => {
-                const outOfStock = (v.stock ?? 0) <= 0;
+                const blocked =
+                  settingsLoaded && isVariationSaleBlocked(v.stock, negativeStockAllowed);
                 const label = Object.keys(v.attributes || {}).length
                   ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(', ')
                   : v.sku;
                 return (
                   <button
                     key={v.id}
-                    onClick={() => !outOfStock && addToCart(variationModalProduct, v)}
-                    disabled={outOfStock}
+                    onClick={() => !blocked && addToCart(variationModalProduct, v)}
+                    disabled={blocked}
                     className="w-full text-left bg-[#111827] border border-[#374151] rounded-xl p-3 hover:border-[#3B82F6] disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <div className="flex justify-between items-center">
                       <span className="text-white font-medium text-sm">{label}</span>
                       <span className="text-[#10B981] font-semibold">Rs. {v.price.toLocaleString()}</span>
                     </div>
-                    <p className="text-xs text-[#9CA3AF] mt-1">
-                      {outOfStock ? 'Out of stock' : `Stock: ${v.stock ?? 0}`}
+                    <p className={`text-xs mt-1 ${stockLabelClassName(v.stock ?? 0, effectiveAllowNegative)}`}>
+                      {formatStockLabel(v.stock ?? 0, effectiveAllowNegative)}
                     </p>
                   </button>
                 );

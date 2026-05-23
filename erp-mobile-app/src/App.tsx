@@ -3,7 +3,8 @@ import { initInputKeyboard } from './utils/inputKeyboard';
 import type { Screen, User, Branch, BottomNavTab } from './types';
 import * as authApi from './api/auth';
 import { getBranches } from './api/branches';
-import { canPickAllCompanyBranches, getUserBranchIds } from './api/permissions';
+import { canPickAllCompanyBranches, getUserAccessibleBranchIds, invalidateBranchAccessSessionCache } from './api/permissions';
+import { listCacheKeys, listCacheRemove } from './lib/listCache';
 import {
   resolveBranchForSingleEffectiveId,
   resolveEffectiveBranchIds,
@@ -107,7 +108,7 @@ const MODULE_TITLES: Record<Screen, string> = {
 export default function App() {
   const responsive = useResponsive();
   const { online, status, setStatus } = useNetworkStatus();
-  const { hasPermission, hasBranchAccess, isModuleEnabled, reload, isPermissionLoaded, canUseFullAccounting } = usePermissions();
+  const { hasPermission, hasBranchAccess, isModuleEnabled, reload, isPermissionLoaded, canUseFullAccounting, branchIds, isAdminOrOwner } = usePermissions();
   const { reload: reloadSettings } = useSettings();
   const [authLoading, setAuthLoading] = useState(true);
   const [isBranchResolving, setIsBranchResolving] = useState(true);
@@ -118,12 +119,15 @@ export default function App() {
   const [activeBottomTab, setActiveBottomTab] = useState<BottomNavTab>('home');
   const [showModuleGrid, setShowModuleGrid] = useState(false);
   const [salesInitialType, setSalesInitialType] = useState<'regular' | 'studio' | null>(null);
+  const [salesInitialDocumentBranchId, setSalesInitialDocumentBranchId] = useState<string | null>(null);
   const [studioFocusSaleId, setStudioFocusSaleId] = useState<string | null>(null);
   const [isPinLocked, setIsPinLocked] = useState(false);
   const [isCounterLocked, setIsCounterLocked] = useState(false);
   const counterBootLockCheckedRef = useRef(false);
   /** When true, skip cold-boot POS lock once — user just came through `handleLogin` (already authenticated). */
   const skipCounterBootLockAfterInteractiveLoginRef = useRef(false);
+  /** Next PermissionContext.reload should bust branch cache (login / session restore only). */
+  const permissionReloadFreshRef = useRef(false);
   const [documentEditIntent, setDocumentEditIntent] = useState<{ kind: 'sale' | 'purchase'; id: string } | null>(null);
   const [showCreateBusiness, setShowCreateBusiness] = useState(false);
   const previousAuthUserIdRef = useRef<string | null>(null);
@@ -166,32 +170,13 @@ export default function App() {
       setIsPinLocked(false);
       setIsBranchResolving(true);
 
-      if (profile.branchLocked && profile.branchId && cid) {
+      if (cid && (profile.profileId || profile.userId)) {
         try {
-          const { data: branches } = await getBranches(cid);
-          const lockedBranch = branches?.find((b) => b.id === profile.branchId);
-          if (lockedBranch) {
-            setSelectedBranch(lockedBranch);
-            try {
-              localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(lockedBranch));
-            } catch {
-              /* ignore */
-            }
-            setCurrentScreen('home');
-            setActiveBottomTab('home');
-            setIsBranchResolving(false);
-            return;
-          }
-        } catch {
-          /* fall through */
-        }
-      }
-
-      if (cid && profile.profileId) {
-        try {
+          await listCacheRemove(listCacheKeys.branches(cid));
+          invalidateBranchAccessSessionCache();
           const [branchesRes, userBranchIds] = await Promise.all([
             getBranches(cid),
-            getUserBranchIds(profile.profileId),
+            getUserAccessibleBranchIds(profile.userId, profile.profileId, cid, { fresh: true }),
           ]);
           const companyBranches = branchesRes.data || [];
           const unrestricted = canPickAllCompanyBranches(profile.role);
@@ -336,10 +321,17 @@ export default function App() {
     const checkLock = async () => {
       if (cancelled) return;
       if (document.visibilityState !== 'visible') return;
-      if (isPinLocked) return;
+      if (isPinLocked || isCounterLocked) return;
+      if (!shouldRelock()) return;
+      const useCounter = await safeShouldActivateCounterLockScreen(companyId);
+      if (cancelled) return;
+      if (useCounter) {
+        setIsCounterLocked(true);
+        return;
+      }
       const pinSet = await authApi.hasPinSet();
       if (cancelled || !pinSet) return;
-      if (shouldRelock()) setIsPinLocked(true);
+      setIsPinLocked(true);
     };
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
@@ -353,12 +345,29 @@ export default function App() {
     };
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('focus', onFocus);
+
+    let appStateListener: { remove: () => void } | undefined;
+    void import('@capacitor/app')
+      .then(({ App }) =>
+        App.addListener('appStateChange', ({ isActive }) => {
+          if (isActive) {
+            void checkLock();
+            void maintainCounterVaultTokens();
+          }
+        }),
+      )
+      .then((handle) => {
+        appStateListener = handle;
+      })
+      .catch(() => {});
+
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', onFocus);
+      appStateListener?.remove();
     };
-  }, [user?.id, isPinLocked]);
+  }, [user?.id, companyId, isPinLocked, isCounterLocked]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -471,20 +480,34 @@ export default function App() {
 
   useEffect(() => {
     if (!companyId || !online) return;
-    const bid = selectedBranch?.id ?? null;
     void Promise.all([
       import('./api/accounts').then((m) => m.getPaymentAccounts(companyId)),
       import('./api/branches').then((m) => m.getBranches(companyId)),
-      import('./api/products').then((m) => m.getProducts(companyId)),
-      import('./api/contacts').then((m) => m.getContacts(companyId, undefined, bid)),
-      import('./api/contacts').then((m) => m.getContacts(companyId, 'customer', bid)),
-      import('./api/contacts').then((m) => m.getContacts(companyId, 'supplier', bid)),
     ]).catch(() => {});
-  }, [companyId, selectedBranch?.id, online]);
+  }, [companyId, online]);
 
   useEffect(() => {
-    if (user?.id && user?.role) reload(user.id, user.role, user.profileId, companyId ?? undefined);
+    if (!user?.id || !user?.role) return;
+    const fresh = permissionReloadFreshRef.current;
+    permissionReloadFreshRef.current = false;
+    void reload(user.id, user.role, user.profileId, companyId ?? undefined, fresh ? { fresh: true } : undefined);
   }, [user?.id, user?.role, user?.profileId, companyId, reload]);
+
+  /** Keep branchLocked in sync with live permission branchIds (e.g. admin added a second branch). */
+  useEffect(() => {
+    if (!user || !isPermissionLoaded || isAdminOrOwner) return;
+    const locked = branchIds.length === 1;
+    if (user.branchLocked === locked && (!locked || user.branchId === branchIds[0])) return;
+    setUser((prev) =>
+      prev
+        ? {
+            ...prev,
+            branchLocked: locked,
+            branchId: locked ? branchIds[0] : prev.branchId,
+          }
+        : prev,
+    );
+  }, [user?.id, user?.branchLocked, user?.branchId, branchIds, isPermissionLoaded, isAdminOrOwner]);
 
   useEffect(() => {
     void reloadSettings(companyId);
@@ -521,6 +544,7 @@ export default function App() {
           branchId: profile.branchId ?? undefined,
           branchLocked: profile.branchLocked,
         };
+        permissionReloadFreshRef.current = true;
         setUser(u);
         setCompanyId(profile.companyId);
         setLastCounterCompanyId(profile.companyId);
@@ -528,77 +552,61 @@ export default function App() {
           setCurrentScreen('login');
           return;
         }
-        if (profile.branchLocked && profile.branchId) {
-          try {
-            const { data: branches } = await getBranches(profile.companyId || '');
-            const lockedBranch = branches?.find((b) => b.id === profile.branchId);
-            if (lockedBranch) {
-              setSelectedBranch(lockedBranch);
-              try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(lockedBranch)); } catch { /* ignore */ }
-              setCurrentScreen('home');
-              setActiveBottomTab('home');
-              setIsBranchResolving(false);
-            } else {
-              setCurrentScreen('branch-selection');
-              setIsBranchResolving(false);
-            }
-          } catch {
-            setCurrentScreen('branch-selection');
-            setIsBranchResolving(false);
+        try {
+          const cid = profile.companyId || '';
+          const profileId = profile.profileId;
+          if (cid) {
+            await listCacheRemove(listCacheKeys.branches(cid));
+            invalidateBranchAccessSessionCache();
           }
-        } else {
-          try {
-            const cid = profile.companyId || '';
-            const profileId = profile.profileId;
-            const [branchesRes, userBranchIds] = await Promise.all([
-              cid ? getBranches(cid) : { data: [] as Branch[], error: null },
-              profileId ? getUserBranchIds(profileId) : Promise.resolve([]),
-            ]);
-            const companyBranches = branchesRes.data || [];
-            const unrestricted = canPickAllCompanyBranches(profile.role);
-            const effectiveBranchIds = resolveEffectiveBranchIds(
-              companyBranches,
-              userBranchIds,
-              unrestricted
-            );
+          const [branchesRes, userBranchIds] = await Promise.all([
+            cid ? getBranches(cid) : { data: [] as Branch[], error: null },
+            getUserAccessibleBranchIds(profile.userId, profileId, cid, cid ? { fresh: true } : undefined),
+          ]);
+          const companyBranches = branchesRes.data || [];
+          const unrestricted = canPickAllCompanyBranches(profile.role);
+          const effectiveBranchIds = resolveEffectiveBranchIds(
+            companyBranches,
+            userBranchIds,
+            unrestricted
+          );
 
-            if (companyBranches.length === 1) {
-              setSelectedBranch(companyBranches[0]);
-              try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(companyBranches[0])); } catch { /* ignore */ }
+          if (companyBranches.length === 1) {
+            setSelectedBranch(companyBranches[0]);
+            try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(companyBranches[0])); } catch { /* ignore */ }
+            setCurrentScreen('home');
+            setActiveBottomTab('home');
+            setIsBranchResolving(false);
+            return;
+          }
+          if (!unrestricted && effectiveBranchIds.length === 1) {
+            const assigned = resolveBranchForSingleEffectiveId(companyBranches, effectiveBranchIds);
+            if (assigned) {
+              setSelectedBranch(assigned);
+              try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(assigned)); } catch { /* ignore */ }
               setCurrentScreen('home');
               setActiveBottomTab('home');
               setIsBranchResolving(false);
               return;
             }
-            if (!unrestricted && effectiveBranchIds.length === 1) {
-              const assigned = resolveBranchForSingleEffectiveId(companyBranches, effectiveBranchIds);
-              if (assigned) {
-                setSelectedBranch(assigned);
-                try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(assigned)); } catch { /* ignore */ }
-                setCurrentScreen('home');
-                setActiveBottomTab('home');
-                setIsBranchResolving(false);
-                return;
-              }
-            }
-            const saved = localStorage.getItem(BRANCH_STORAGE_KEY);
-            const branch = saved ? (JSON.parse(saved) as Branch) : null;
-            const mayRestoreSavedBranch =
-              branch?.id &&
-              branch?.name &&
-              (unrestricted || effectiveBranchIds.includes(branch.id));
-            if (mayRestoreSavedBranch) {
-              setSelectedBranch(branch);
-              setCurrentScreen('home');
-              setActiveBottomTab('home');
-            } else {
-              setCurrentScreen('branch-selection');
-            }
-            setIsBranchResolving(false);
-          } catch {
-            setCurrentScreen('branch-selection');
-            setIsBranchResolving(false);
           }
+          const saved = localStorage.getItem(BRANCH_STORAGE_KEY);
+          const branch = saved ? (JSON.parse(saved) as Branch) : null;
+          const mayRestoreSavedBranch =
+            branch?.id &&
+            branch?.name &&
+            (unrestricted || effectiveBranchIds.includes(branch.id));
+          if (mayRestoreSavedBranch) {
+            setSelectedBranch(branch);
+            setCurrentScreen('home');
+            setActiveBottomTab('home');
+          } else {
+            setCurrentScreen('branch-selection');
+          }
+          setIsBranchResolving(false);
+        } catch {
+          setCurrentScreen('branch-selection');
+          setIsBranchResolving(false);
         }
       } catch (e) {
         console.warn('[ERP Mobile] auth bootstrap failed:', e);
@@ -615,6 +623,7 @@ export default function App() {
 
   const handleLogin = async (u: User, cid: string | null) => {
     skipCounterBootLockAfterInteractiveLoginRef.current = true;
+    permissionReloadFreshRef.current = true;
     if (previousAuthUserIdRef.current !== null && previousAuthUserIdRef.current !== u.id) {
       await resetLocalDataPlaneForNewCompany();
     }
@@ -625,24 +634,16 @@ export default function App() {
     setIsBranchResolving(true);
     setIsPinLocked(false);
     markUnlocked();
-    if (u.branchLocked && u.branchId && cid) {
-      try {
-        const { data: branches } = await getBranches(cid);
-        const lockedBranch = branches?.find((b) => b.id === u.branchId);
-        if (lockedBranch) {
-          setSelectedBranch(lockedBranch);
-          try { localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(lockedBranch)); } catch { /* ignore */ }
-          setCurrentScreen('home');
-          setActiveBottomTab('home');
-          setIsBranchResolving(false);
-          void authApi.syncCurrentSessionToCounterVault();
-          return;
-        }
-      } catch { /* fall through */ }
+    if (cid) {
+      await listCacheRemove(listCacheKeys.branches(cid));
+      invalidateBranchAccessSessionCache();
     }
-    if (cid && u.profileId) {
+    if (cid && (u.profileId || u.id)) {
       try {
-        const [branchesRes, userBranchIds] = await Promise.all([getBranches(cid), getUserBranchIds(u.profileId)]);
+        const [branchesRes, userBranchIds] = await Promise.all([
+          getBranches(cid),
+          getUserAccessibleBranchIds(u.id, u.profileId, cid, { fresh: true }),
+        ]);
         const companyBranches = branchesRes.data || [];
         const unrestricted = canPickAllCompanyBranches(u.role);
         const effectiveBranchIds = resolveEffectiveBranchIds(
@@ -687,10 +688,11 @@ export default function App() {
     void authApi.syncCurrentSessionToCounterVault();
   };
 
-  const navigateToModule = (screen: Screen, options?: { studioSale?: boolean }) => {
+  const navigateToModule = (screen: Screen, options?: { studioSale?: boolean; documentBranchId?: string }) => {
     setCurrentScreen(screen);
     setShowModuleGrid(false);
     if (options?.studioSale) setSalesInitialType('studio');
+    if (options?.documentBranchId) setSalesInitialDocumentBranchId(options.documentBranchId);
     if (screen === 'home') setActiveBottomTab('home');
     else if (screen === 'sales') setActiveBottomTab('sales');
     else if (screen === 'pos') setActiveBottomTab('pos');
@@ -774,12 +776,12 @@ export default function App() {
   const showBottomNav = currentScreen === 'home' && user && selectedBranch;
   const showSidebar = (currentScreen !== 'login' && currentScreen !== 'branch-selection' && user && selectedBranch) && responsive.isTablet;
 
-  if (authLoading || (user && FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded)) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
-          <div className="text-[#9CA3AF] animate-pulse">Loading permissions...</div>
+          <div className="text-[#9CA3AF] animate-pulse">Loading...</div>
         </div>
       </div>
     );
@@ -870,11 +872,13 @@ export default function App() {
             : !canAccessScreen('sales', selectedBranch?.id)
               ? <AccessDenied onBack={navigateHome} />
               : <SalesModule
-                  onBack={() => { setSalesInitialType(null); navigateHome(); }}
+                  onBack={() => { setSalesInitialType(null); setSalesInitialDocumentBranchId(null); navigateHome(); }}
                   user={user}
                   companyId={companyId}
                   branchId={selectedBranch.id}
                   initialSaleType={salesInitialType ?? undefined}
+                  initialDocumentBranchId={salesInitialDocumentBranchId}
+                  onConsumedInitialDocumentBranchId={() => setSalesInitialDocumentBranchId(null)}
                   onOpenStudio={(saleId) => {
                     setSalesInitialType(null);
                     setStudioFocusSaleId(saleId);
@@ -968,7 +972,9 @@ export default function App() {
               user={user}
               companyId={companyId}
               branch={selectedBranch}
-              onNewStudioSale={() => navigateToModule('sales', { studioSale: true })}
+              onNewStudioSale={(documentBranchId) =>
+                navigateToModule('sales', { studioSale: true, documentBranchId })
+              }
               focusSaleId={studioFocusSaleId}
               onFocusHandled={() => setStudioFocusSaleId(null)}
             />
@@ -1056,6 +1062,14 @@ export default function App() {
     </div>
   ) : null;
 
+  const permissionBar =
+    user && FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded ? (
+      <div className="px-3 py-2 text-sm text-[#FCD34D] bg-[#78350F]/40 border-b border-[#92400E]/50 flex items-center gap-2">
+        <div className="w-4 h-4 border-2 border-[#FCD34D] border-t-transparent rounded-full animate-spin shrink-0" />
+        Loading permissions…
+      </div>
+    ) : null;
+
   if (responsive.isTablet) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB] flex overflow-hidden">
@@ -1069,6 +1083,7 @@ export default function App() {
           />
         )}
         <div className="flex-1 flex flex-col overflow-hidden">
+          {permissionBar}
           {syncBar}
           <MainScrollContext.Provider value={mainScrollRef}>
             <div
@@ -1085,6 +1100,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
+      {permissionBar}
       {syncBar}
       {content}
       {showBottomNav && (

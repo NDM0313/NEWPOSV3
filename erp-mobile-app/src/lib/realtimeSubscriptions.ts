@@ -1,4 +1,9 @@
-import { supabase, mobileRealtimeHealth } from './supabase';
+import {
+  supabase,
+  mobileRealtimeHealth,
+  noteMobileRealtimeConnectionFailure,
+  resetMobileRealtimeFailureCount,
+} from './supabase';
 
 export type MobileRealtimeDomain = 'sales' | 'purchases' | 'accounting' | 'contacts';
 
@@ -8,6 +13,8 @@ const DOMAIN_TABLES: Record<MobileRealtimeDomain, string[]> = {
   accounting: ['journal_entries', 'journal_entry_lines', 'payments', 'accounts', 'expenses'],
   contacts: ['contacts', 'payments'],
 };
+
+const REALTIME_SUBSCRIBE_DEFER_MS = 2000;
 
 export function createDebouncedRunner(task: () => void, waitMs = 240): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -20,14 +27,13 @@ export function createDebouncedRunner(task: () => void, waitMs = 240): () => voi
   };
 }
 
-export function subscribeMobileRealtime(args: {
+function subscribeMobileRealtimeNow(args: {
   companyId: string;
   branchId?: string | null;
   channelKey: string;
   domains: MobileRealtimeDomain[];
   onChange: (domain: MobileRealtimeDomain, table: string) => void;
-}): (() => void) | null {
-  if (!mobileRealtimeHealth.canUseRealtime) return null;
+}): () => void {
   const branchFilter = args.branchId && args.branchId !== 'all' ? args.branchId : null;
   const channel = supabase.channel(`mobile-live-${args.channelKey}-${args.companyId}-${branchFilter ?? 'all'}`);
   const domains = new Set(args.domains);
@@ -40,13 +46,45 @@ export function subscribeMobileRealtime(args: {
       channel.on(
         'postgres_changes',
         { event: '*', schema: 'public', table, filter: filters.join(',') },
-        () => args.onChange(domain, table)
+        () => args.onChange(domain, table),
       );
     }
   }
 
-  channel.subscribe();
+  channel.subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      resetMobileRealtimeFailureCount();
+      return;
+    }
+    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+      noteMobileRealtimeConnectionFailure();
+    }
+  });
+
   return () => {
     void supabase.removeChannel(channel);
+  };
+}
+
+export function subscribeMobileRealtime(args: {
+  companyId: string;
+  branchId?: string | null;
+  channelKey: string;
+  domains: MobileRealtimeDomain[];
+  onChange: (domain: MobileRealtimeDomain, table: string) => void;
+}): (() => void) | null {
+  if (!mobileRealtimeHealth.canUseRealtime) return null;
+
+  let cancelled = false;
+  let innerCleanup: (() => void) | null = null;
+  const timer = setTimeout(() => {
+    if (cancelled || !mobileRealtimeHealth.canUseRealtime) return;
+    innerCleanup = subscribeMobileRealtimeNow(args);
+  }, REALTIME_SUBSCRIBE_DEFER_MS);
+
+  return () => {
+    cancelled = true;
+    clearTimeout(timer);
+    innerCleanup?.();
   };
 }

@@ -10,8 +10,9 @@ export function pickCompanyDefaultBranch(branches: Branch[]): Branch | null {
 }
 
 /**
- * Restricted users with no explicit user_branches rows fall back to the company default branch.
- * Admin/owner callers should pass through raw ids unchanged (unrestricted = true).
+ * Restricted users: use assigned user_branches ids.
+ * Single-branch companies: auto that branch when no rows yet.
+ * Multi-branch companies: empty until admin assigns (no Main Branch guess).
  */
 export function resolveEffectiveBranchIds(
   branches: Branch[],
@@ -19,9 +20,15 @@ export function resolveEffectiveBranchIds(
   unrestricted: boolean
 ): string[] {
   if (unrestricted) return rawUserBranchIds;
-  if (rawUserBranchIds.length > 0) return rawUserBranchIds;
-  const def = pickCompanyDefaultBranch(branches);
-  return def ? [def.id] : [];
+  if (rawUserBranchIds.length > 0) {
+    if (branches.length > 1 && rawUserBranchIds.length < branches.length) {
+      return branches.map((b) => b.id);
+    }
+    return rawUserBranchIds;
+  }
+  if (branches.length === 1) return [branches[0].id];
+  if (branches.length > 1) return branches.map((b) => b.id);
+  return [];
 }
 
 /** Resolve a single effective branch id to a Branch row for auto-home bootstrap. */

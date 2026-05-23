@@ -7,6 +7,10 @@ import { addPending } from '../../lib/offlineStore';
 import { localNowDateString } from '../../utils/localDate';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceInline } from '../../utils/balancePrivacy';
+import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
+import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
+import { AttachmentFilePicker } from '../shared/AttachmentFilePicker';
+import { uploadJournalEntryAttachments } from '../../api/journalAttachments';
 
 interface AccountTransferFlowProps {
   onBack: () => void;
@@ -32,8 +36,6 @@ interface TransferData {
   date: string;
   reference: string;
   notes: string;
-  attachmentUrl: string;
-  attachmentName: string;
 }
 
 const getAccountIcon = (type: string) => {
@@ -45,11 +47,26 @@ const getAccountIcon = (type: string) => {
 
 export function AccountTransferFlow({ onBack, onComplete, user, companyId, branchId }: AccountTransferFlowProps) {
   const { canViewBalances } = usePermissions();
+  const {
+    effectiveBranchId,
+    needsPicker,
+    pickerBranches,
+    pickedBranchId,
+    setPickedBranchId,
+    error: branchSelectionError,
+  } = useWriteBranchSelection({
+    companyId,
+    globalBranchId: branchId,
+    userRole: user.role,
+    authUserId: user.id,
+    profileId: user.profileId,
+  });
   const [step, setStep] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentAccounts, setPaymentAccounts] = useState<AccountRow[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [transferData, setTransferData] = useState<TransferData>({
     fromAccountId: '',
     fromAccountName: '',
@@ -59,8 +76,6 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
     date: localNowDateString(),
     reference: '',
     notes: '',
-    attachmentUrl: '',
-    attachmentName: '',
   });
 
   useEffect(() => {
@@ -88,16 +103,20 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
 
   const handleSubmit = async () => {
     if (!companyId || !transferData.fromAccountId || !transferData.toAccountId || transferData.amount <= 0) return;
+    if (!effectiveBranchId) {
+      setError(branchSelectionError ?? 'Select a branch for this transfer.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     const desc = transferData.notes?.trim() || `Transfer from ${transferData.fromAccountName} to ${transferData.toAccountName}`;
-    const attachments =
-      transferData.attachmentUrl?.trim()
-        ? [{ url: transferData.attachmentUrl.trim(), name: transferData.attachmentName?.trim() || 'Attachment' }]
-        : undefined;
+    let attachments: { url: string; name: string }[] | undefined;
+    if (attachmentFiles.length > 0) {
+      attachments = await uploadJournalEntryAttachments(companyId, attachmentFiles);
+    }
     const payload = {
       companyId,
-      branchId: branchId ?? undefined,
+      branchId: effectiveBranchId,
       entryDate: transferData.date,
       description: desc,
       referenceType: 'transfer',
@@ -108,7 +127,6 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
       userId: user.id,
     };
     if (!navigator.onLine) {
-      const effectiveBranchId = branchId ?? '';
       try {
         await addPending('journal_entry', payload, companyId, effectiveBranchId);
         onComplete();
@@ -128,6 +146,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
   };
 
   const canProceed = () => {
+    if (needsPicker && !effectiveBranchId) return false;
     switch (step) {
       case 1:
         return transferData.fromAccountId !== '';
@@ -161,6 +180,19 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
       </div>
 
       <div className="p-4">
+        {needsPicker && step === 1 && (
+          <WriteBranchPickerField
+            branches={pickerBranches}
+            value={pickedBranchId}
+            onChange={setPickedBranchId}
+            helperText="Transfer will post under the selected branch."
+          />
+        )}
+        {branchSelectionError && (
+          <div className="mb-4 p-3 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-xl text-sm text-[#FCA5A5]">
+            {branchSelectionError}
+          </div>
+        )}
         {step === 1 && (
           <div className="space-y-4">
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-4">
@@ -340,22 +372,12 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Paperclip className="w-4 h-4 text-[#9CA3AF]" />
-                <label className="block text-sm font-medium text-[#D1D5DB]">Attachment (Optional)</label>
+                <span className="block text-sm font-medium text-[#D1D5DB]">Attachment (Optional)</span>
               </div>
-              <p className="text-xs text-[#9CA3AF] mb-2">Link to document or image (saved to database with entry).</p>
-              <input
-                type="url"
-                value={transferData.attachmentUrl}
-                onChange={(e) => setTransferData({ ...transferData, attachmentUrl: e.target.value })}
-                placeholder="https://..."
-                className="w-full px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6] mb-2"
-              />
-              <input
-                type="text"
-                value={transferData.attachmentName}
-                onChange={(e) => setTransferData({ ...transferData, attachmentName: e.target.value })}
-                placeholder="Label (e.g. Receipt, Transfer slip)"
-                className="w-full px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
+              <AttachmentFilePicker
+                files={attachmentFiles}
+                onChange={setAttachmentFiles}
+                onError={(message) => setError(message)}
               />
             </div>
 

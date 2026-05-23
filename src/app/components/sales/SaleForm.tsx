@@ -189,6 +189,39 @@ const saleFormBootstrapCache = new Map<
   }
 >();
 
+function mergeOverviewStockIntoSaleProducts(
+  productsList: Array<{ id: string | number; variations?: any[]; hasVariations?: boolean; stock?: number; [key: string]: unknown }>,
+  overview: Awaited<ReturnType<typeof inventoryService.getInventoryOverview>>,
+) {
+  const overviewByProductId: Record<
+    string,
+    { stock: number; hasVariations?: boolean; variations?: Array<{ id: string; stock: number }> }
+  > = {};
+  overview.forEach((row) => {
+    const key = String(row.id ?? row.productId);
+    overviewByProductId[key] = {
+      stock: row.stock ?? 0,
+      hasVariations: row.hasVariations,
+      variations: row.variations?.map((v) => ({ id: v.id, stock: v.stock ?? 0 })),
+    };
+  });
+  return productsList.map((p) => {
+    const row = overviewByProductId[String(p.id)];
+    if (!row) return p;
+    if (row.hasVariations && row.variations?.length) {
+      return {
+        ...p,
+        stock: row.stock,
+        variations: (p.variations || []).map((v: { id: string; stock?: number }) => {
+          const vStock = row.variations?.find((vv) => String(vv.id) === String(v.id));
+          return { ...v, stock: vStock?.stock ?? v.stock ?? 0 };
+        }),
+      };
+    }
+    return { ...p, stock: row.stock };
+  });
+}
+
 export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFormProps) => {
     useEffect(() => {
         if (!initialSale?.id || !convertToFinal) return;
@@ -229,6 +262,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     const [customerSearchHighlightIndex, setCustomerSearchHighlightIndex] = useState(-1);
     const [pendingCustomerId, setPendingCustomerId] = useState<string | null>(null);
     const dataLoadedRef = useRef(false); // Track if initial data load has completed
+    const stockBranchRef = useRef<string | null>(null);
     const [saleDate, setSaleDate] = useState<Date>(new Date());
     const [refNumber, setRefNumber] = useState("");
     const [saleNotes, setSaleNotes] = useState(""); // Notes field for sale (saves to database)
@@ -621,6 +655,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 }
                 dataLoadedRef.current = true;
                 if (import.meta.env?.DEV) console.log('[SALE FORM] Reused bootstrap cache');
+                stockBranchRef.current = branchForBalances ?? 'all';
                 return;
             }
             
@@ -692,52 +727,37 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     }
                 }
                 
-                // CRITICAL FIX: Load products with calculated stock from movements
-                // Instead of using products.current_stock, calculate from stock_movements
-                const productsData = await productService.getAllProducts(companyId);
-                
-                // Load units for decimal validation
+                // Load products + stock via single inventory overview (no per-product movement queries)
+                const branchForStock =
+                  branchForBalances && branchForBalances !== 'all' ? branchForBalances : undefined;
                 const { unitService } = await import('@/app/services/unitService');
-                const unitsData = await unitService.getAll(companyId);
-                const unitsMap = new Map(unitsData.map(u => [u.id, u]));
-                
-                // Calculate stock for each product from movements only (no current_stock; stock_movements is source of truth)
-                const productsList = await Promise.all(
-                  productsData.map(async (p) => {
-                    let calculatedStock = 0;
-                    try {
-                      const movements = await productService.getStockMovements(
-                        p.id,
-                        companyId,
-                        undefined,
-                        contextBranchId || undefined
-                      );
-                      if (movements && movements.length > 0) {
-                        const { calculateStockFromMovements } = await import('@/app/utils/stockCalculation');
-                        const stockCalc = calculateStockFromMovements(movements);
-                        calculatedStock = Math.max(0, stockCalc.currentBalance);
-                      }
-                    } catch {
-                      calculatedStock = 0;
-                    }
-                    const unit = p.unit_id ? unitsMap.get(p.unit_id) : null;
-                    return {
-                      id: p.id || p.uuid || '',
-                      name: p.name || '',
-                      sku: p.sku || '',
-                      price: (p.retail_price ?? p.sellingPrice ?? p.salePrice ?? p.price) || 0,
-                      stock: calculatedStock,
-                      lastPurchasePrice: (p.cost_price ?? p.costPrice) ?? undefined,
-                      lastSupplier: undefined, // Can be enhanced later
-                      hasVariations: (p.variations && p.variations.length > 0) || false,
-                      needsPacking: false, // Can be enhanced based on product type
-                      variations: p.variations || [], // Backend variations for inline selector (no dummy data)
-                      unitAllowDecimal: unit?.allow_decimal ?? false // Default to false if no unit
-                    };
-                  })
-                );
+                const [productsData, unitsData, overview] = await Promise.all([
+                  productService.getAllProducts(companyId),
+                  unitService.getAll(companyId),
+                  inventoryService.getInventoryOverview(companyId, branchForStock),
+                ]);
+                const unitsMap = new Map(unitsData.map((u) => [u.id, u]));
+
+                const productsListBase = productsData.map((p) => {
+                  const unit = p.unit_id ? unitsMap.get(p.unit_id) : null;
+                  return {
+                    id: p.id || p.uuid || '',
+                    name: p.name || '',
+                    sku: p.sku || '',
+                    price: (p.retail_price ?? p.sellingPrice ?? p.salePrice ?? p.price) || 0,
+                    stock: 0,
+                    lastPurchasePrice: (p.cost_price ?? p.costPrice) ?? undefined,
+                    lastSupplier: undefined,
+                    hasVariations: (p.variations && p.variations.length > 0) || false,
+                    needsPacking: false,
+                    variations: p.variations || [],
+                    unitAllowDecimal: unit?.allow_decimal ?? false,
+                  };
+                });
+                const productsList = mergeOverviewStockIntoSaleProducts(productsListBase, overview);
                 
                 setProducts(productsList);
+                stockBranchRef.current = branchForBalances ?? 'all';
                 saleFormBootstrapCache.set(cacheKey, {
                     ts: Date.now(),
                     customers: customerList,
@@ -819,47 +839,29 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
         });
     }, [branches, accessibleBranchIds, isAdmin, contextBranchId]);
 
-    // Merge live stock from inventory overview (same source as Inventory page) into products for search dropdown
+    // Refresh product stock when branch changes (after initial bootstrap)
     useEffect(() => {
-        if (!companyId || !products.length) return;
+        if (!companyId || !dataLoadedRef.current || !products.length) return;
         const rawBranch = branchId || contextBranchId;
-        const branchToUse = (rawBranch && rawBranch !== 'all') ? rawBranch : null;
+        const branchToUse = rawBranch && rawBranch !== 'all' ? rawBranch : null;
+        const branchKey = branchToUse ?? 'all';
+        if (stockBranchRef.current === branchKey) return;
+        stockBranchRef.current = branchKey;
         let cancelled = false;
         (async () => {
             try {
-                const overview = await inventoryService.getInventoryOverview(companyId, branchToUse || undefined);
+                const overview = await inventoryService.getInventoryOverview(
+                  companyId,
+                  branchToUse || undefined,
+                );
                 if (cancelled || !overview?.length) return;
-                const overviewByProductId: Record<string, { stock: number; hasVariations?: boolean; variations?: Array<{ id: string; stock: number }> }> = {};
-                overview.forEach((row: any) => {
-                    const key = String(row.id ?? row.productId);
-                    overviewByProductId[key] = {
-                        stock: row.stock ?? 0,
-                        hasVariations: row.hasVariations,
-                        variations: row.variations?.map((v: any) => ({ id: v.id, stock: v.stock ?? 0 })),
-                    };
-                });
-                setProducts(prev => prev.map(p => {
-                    const key = String(p.id);
-                    const row = overviewByProductId[key];
-                    if (!row) return p;
-                    if (row.hasVariations && row.variations?.length) {
-                        return {
-                            ...p,
-                            stock: row.stock,
-                            variations: (p.variations || []).map(v => {
-                                const vStock = row.variations?.find((vv: any) => String(vv.id) === String(v.id));
-                                return { ...v, stock: vStock?.stock ?? (v as any).stock };
-                            }),
-                        };
-                    }
-                    return { ...p, stock: row.stock };
-                }));
+                setProducts((prev) => mergeOverviewStockIntoSaleProducts(prev, overview));
             } catch {
-                if (!cancelled) { /* keep existing product stock on error */ }
+                /* keep existing stock on error */
             }
         })();
         return () => { cancelled = true; };
-    }, [companyId, branchId, contextBranchId, products.length]);
+    }, [companyId, branchId, contextBranchId]);
 
     // Load salesmen from userService
     useEffect(() => {

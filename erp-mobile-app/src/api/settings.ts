@@ -411,6 +411,76 @@ export async function getEnablePacking(companyId: string | null): Promise<boolea
   return data?.value === true;
 }
 
+function parseNegativeStockValue(raw: unknown): boolean | null {
+  if (raw == null) return null;
+  let val = raw;
+  if (typeof val === 'string') {
+    try {
+      val = JSON.parse(val);
+    } catch {
+      return val === 'true' || String(val).toLowerCase() === 'true';
+    }
+  }
+  if (typeof val === 'object' && val !== null && 'negativeStockAllowed' in val) {
+    const v = (val as { negativeStockAllowed?: boolean | string }).negativeStockAllowed;
+    if (typeof v === 'boolean') return v;
+    if (v === 'true' || String(v).toLowerCase() === 'true') return true;
+    return false;
+  }
+  if (typeof val === 'boolean') return val;
+  if (val === 'true' || String(val).toLowerCase() === 'true') return true;
+  return false;
+}
+
+function parseLegacyNegativeStockFlag(raw: unknown): boolean {
+  return raw === true || raw === 'true' || String(raw ?? '').toLowerCase() === 'true';
+}
+
+function resolveNegativeStockAllowed(
+  inventory: boolean | null,
+  pos: boolean | null,
+  legacy: boolean,
+): boolean {
+  if (inventory === true || pos === true || legacy) return true;
+  return false;
+}
+
+async function getNegativeStockAllowedFromSettings(companyId: string): Promise<boolean> {
+  const { data: rows } = await supabase
+    .from('settings')
+    .select('key, value')
+    .eq('company_id', companyId)
+    .in('key', ['inventory_settings', 'pos_settings', 'allow_negative_stock']);
+
+  let inventory: boolean | null = null;
+  let pos: boolean | null = null;
+  let legacy = false;
+  for (const row of rows || []) {
+    if (row.key === 'inventory_settings') inventory = parseNegativeStockValue(row.value);
+    else if (row.key === 'pos_settings') pos = parseNegativeStockValue(row.value);
+    else if (row.key === 'allow_negative_stock') legacy = parseLegacyNegativeStockFlag(row.value);
+  }
+  return resolveNegativeStockAllowed(inventory, pos, legacy);
+}
+
+async function getNegativeStockAllowedViaRpc(companyId: string): Promise<boolean | null> {
+  const { data, error } = await supabase.rpc('get_company_negative_stock_allowed', {
+    p_company_id: companyId,
+  });
+  if (error) return null;
+  return data === true;
+}
+
+/** Company-level negative stock policy — OR inventory_settings, pos_settings, legacy; RPC fallback for staff RLS. */
+export async function getNegativeStockAllowed(companyId: string | null): Promise<boolean> {
+  if (!isSupabaseConfigured || !companyId) return false;
+  const direct = await getNegativeStockAllowedFromSettings(companyId);
+  if (direct) return true;
+  const rpc = await getNegativeStockAllowedViaRpc(companyId);
+  if (rpc === true) return true;
+  return direct;
+}
+
 export async function getModuleConfigs(
   companyId: string | null
 ): Promise<{ data: ModuleToggles; error: string | null }> {

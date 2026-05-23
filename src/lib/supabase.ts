@@ -97,11 +97,34 @@ if (import.meta.env.DEV && (isPlaceholderSupabaseAnonKey || isDemoSupabaseAnonKe
 const isDemoAnonKey = isDemoSupabaseAnonKey(supabaseAnonKey);
 const isPlaceholderUrl = /placeholder/i.test(supabaseUrl);
 const isRealtimeDisabledByEnv = import.meta.env.VITE_DISABLE_REALTIME === 'true';
-const canUseRealtime = !isPlaceholderUrl && !isDemoAnonKey && !isRealtimeDisabledByEnv;
+const erpWebCanUseRealtime = !isPlaceholderUrl && !isDemoAnonKey && !isRealtimeDisabledByEnv;
+
+let webRealtimeRuntimeDisabled = false;
+let webRealtimeFailureCount = 0;
+const WEB_REALTIME_MAX_FAILURES = 3;
+
+export function noteWebRealtimeConnectionFailure(): void {
+  if (!import.meta.env.DEV) return;
+  webRealtimeFailureCount += 1;
+  if (webRealtimeFailureCount >= WEB_REALTIME_MAX_FAILURES) {
+    webRealtimeRuntimeDisabled = true;
+    console.warn('[Supabase] Realtime disabled for this session after repeated WebSocket failures');
+  }
+}
+
+export function resetWebRealtimeFailureCount(): void {
+  webRealtimeFailureCount = 0;
+}
+
+export function webCanSubscribeRealtime(): boolean {
+  return erpWebCanUseRealtime && !webRealtimeRuntimeDisabled;
+}
 
 export const webRealtimeHealth = {
   configured: Boolean(supabaseUrl && supabaseAnonKey && !isPlaceholderUrl),
-  canUseRealtime,
+  get canUseRealtime() {
+    return webCanSubscribeRealtime();
+  },
   reason: !supabaseUrl || !isValidSupabaseUrl || !supabaseAnonKey
     ? 'missing-env'
     : isPlaceholderUrl
@@ -110,7 +133,9 @@ export const webRealtimeHealth = {
         ? 'demo-anon-key'
         : isRealtimeDisabledByEnv
           ? 'disabled-by-env'
-          : 'ok',
+          : webRealtimeRuntimeDisabled
+            ? 'runtime-ws-failures'
+            : 'ok',
 } as const;
 
 // Self-hosted stack / local dev: demo anon key → Realtime WS and auth refresh often fail while REST via proxy may work.
@@ -253,7 +278,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
  */
 function attachDirectRealtimeInLocalDev(client: SupabaseClient): void {
   if (typeof window === 'undefined' || !import.meta.env.DEV) return;
-  if (!canUseRealtime) return;
+  if (!erpWebCanUseRealtime) return;
   if (!configuredSupabaseHost.startsWith('https://') || configuredSupabaseHost.includes('localhost')) {
     return;
   }

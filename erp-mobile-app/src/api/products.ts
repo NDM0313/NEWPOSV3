@@ -1,5 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
+import { isBrowserOffline, listCacheGet, listCacheGetMeta, listCacheKeys, listCacheSet } from '../lib/listCache';
+import { fetchProductStockByKey } from '../utils/productStockFetch';
+import { isRealBranchUuid } from '../utils/branchId';
 
 import { getNextDocumentNumber } from './documentNumber';
 import { uploadProductImages } from '../utils/productImageUpload';
@@ -12,6 +14,84 @@ import {
 /** Get next product SKU – PRD-0001 format, same as web ERP. */
 export async function getNextProductSKU(companyId: string, branchId: string | null): Promise<string> {
   return getNextDocumentNumber(companyId, branchId, 'product');
+}
+
+/** Branch IDs where product is sold. Empty array = no rows = all branches. */
+export async function getProductBranchIds(
+  companyId: string,
+  productId: string,
+): Promise<{ data: string[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const { data, error } = await supabase
+    .from('product_branches')
+    .select('branch_id')
+    .eq('company_id', companyId)
+    .eq('product_id', productId);
+  if (error) {
+    if (/product_branches|does not exist|PGRST/i.test(error.message || '')) {
+      return { data: [], error: null };
+    }
+    return { data: [], error: error.message };
+  }
+  return { data: (data || []).map((r: { branch_id: string }) => r.branch_id), error: null };
+}
+
+/** Replace branch availability rows. Pass empty/null to clear restrictions (all branches). */
+export async function setProductBranchAvailability(
+  companyId: string,
+  productId: string,
+  branchIds: string[] | null | undefined,
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { error: delErr } = await supabase
+    .from('product_branches')
+    .delete()
+    .eq('company_id', companyId)
+    .eq('product_id', productId);
+  if (delErr && !/product_branches|does not exist|PGRST/i.test(delErr.message || '')) {
+    return { error: delErr.message };
+  }
+  const ids = (branchIds || []).filter((id) => isRealBranchUuid(id));
+  if (ids.length === 0) return { error: null };
+  const rows = ids.map((branchId) => ({
+    company_id: companyId,
+    product_id: productId,
+    branch_id: branchId,
+  }));
+  const { error: insErr } = await supabase.from('product_branches').insert(rows);
+  if (insErr && !/product_branches|does not exist|PGRST/i.test(insErr.message || '')) {
+    return { error: insErr.message };
+  }
+  return { error: null };
+}
+
+async function filterProductRowsForBranch<T extends { id: string }>(
+  companyId: string,
+  branchId: string,
+  rows: T[],
+): Promise<{ rows: T[]; error: string | null }> {
+  const { data, error } = await supabase
+    .from('product_branches')
+    .select('product_id, branch_id')
+    .eq('company_id', companyId);
+  if (error) {
+    if (/product_branches|does not exist|PGRST/i.test(error.message || '')) {
+      return { rows, error: null };
+    }
+    return { rows: [], error: error.message };
+  }
+  const restrictions = new Map<string, Set<string>>();
+  for (const row of (data || []) as { product_id: string; branch_id: string }[]) {
+    if (!restrictions.has(row.product_id)) restrictions.set(row.product_id, new Set());
+    restrictions.get(row.product_id)!.add(row.branch_id);
+  }
+  if (restrictions.size === 0) return { rows, error: null };
+  const filtered = rows.filter((row) => {
+    const allowed = restrictions.get(row.id);
+    if (!allowed) return true;
+    return allowed.has(branchId);
+  });
+  return { rows: filtered, error: null };
 }
 
 /** Products table select: omit current_stock so query works when column is missing. Stock from variations or 0. */
@@ -209,28 +289,15 @@ export async function getProductByBarcodeOrSku(
   return { data: product, error: null };
 }
 
-/** Stock from stock_movements only (single source of truth). Key: product_id or product_id_variationId. */
-function stockMapFromMovements(
-  movements: { product_id: string; variation_id: string | null; quantity: number }[]
-): Record<string, number> {
-  const map: Record<string, number> = {};
-  for (const m of movements) {
-    const key = m.variation_id ? `${m.product_id}_${m.variation_id}` : m.product_id;
-    map[key] = (map[key] ?? 0) + Number(m.quantity) || 0;
-  }
-  return map;
-}
 
-export async function getProducts(companyId: string): Promise<{ data: Product[]; error: string | null }> {
-  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
-  const cacheKey = listCacheKeys.products(companyId);
-  if (isBrowserOffline()) {
-    const cached = await listCacheGet<Product[]>(cacheKey);
-    return {
-      data: cached ?? [],
-      error: cached?.length ? null : 'Offline: products not cached. Connect once while logged in.',
-    };
-  }
+const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
+const getProductsInFlight = new Map<string, Promise<{ data: Product[]; error: string | null }>>();
+
+async function getProductsInner(
+  companyId: string,
+  branchId: string | null,
+  cacheKey: string,
+): Promise<{ data: Product[]; error: string | null }> {
   const { data, error } = await supabase
     .from('products')
     .select(PRODUCTS_SELECT)
@@ -238,18 +305,25 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
     .order('name');
 
   if (error) return { data: [], error: error.message };
-  const rows = data || [];
-  const productIds = rows.map((r: { id: string }) => r.id);
+  let rows = (data || []) as { id: string; has_variations?: boolean }[];
+  if (branchId) {
+    const filtered = await filterProductRowsForBranch(companyId, branchId, rows);
+    if (filtered.error) return { data: [], error: filtered.error };
+    rows = filtered.rows;
+  }
+  const productIds = rows.map((r) => r.id);
   const withVariations = rows.filter((r: { has_variations?: boolean }) => r.has_variations);
   const varProductIds = withVariations.map((r: { id: string }) => r.id);
+  const simpleProductIds = rows.filter((r: { has_variations?: boolean }) => !r.has_variations).map((r) => r.id);
   let varMap: Record<string, ProductVariationRow[]> = {};
 
-  const { data: movData } = await supabase
-    .from('stock_movements')
-    .select('product_id, variation_id, quantity')
-    .eq('company_id', companyId)
-    .in('product_id', productIds);
-  const stockByKey = stockMapFromMovements((movData || []) as { product_id: string; variation_id: string | null; quantity: number }[]);
+  const stockByKey = await fetchProductStockByKey(
+    companyId,
+    productIds,
+    simpleProductIds,
+    varProductIds,
+    branchId,
+  );
 
   if (varProductIds.length > 0) {
     const { data: varData } = await supabase
@@ -303,6 +377,37 @@ export async function getProducts(companyId: string): Promise<{ data: Product[];
   }
   void listCacheSet(cacheKey, list);
   return { data: list, error: null };
+}
+
+export async function getProducts(
+  companyId: string,
+  options?: { branchId?: string | null },
+): Promise<{ data: Product[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const branchId = options?.branchId && isRealBranchUuid(options.branchId) ? options.branchId.trim() : null;
+  const cacheKey = branchId ? `${listCacheKeys.products(companyId)}:${branchId}` : listCacheKeys.products(companyId);
+  if (isBrowserOffline()) {
+    const cached = await listCacheGet<Product[]>(cacheKey);
+    return {
+      data: cached ?? [],
+      error: cached?.length ? null : 'Offline: products not cached. Connect once while logged in.',
+    };
+  }
+
+  const { cachedAt } = await listCacheGetMeta(cacheKey);
+  if (cachedAt && Date.now() - cachedAt < PRODUCTS_CACHE_TTL_MS) {
+    const cached = await listCacheGet<Product[]>(cacheKey);
+    if (cached?.length) return { data: cached, error: null };
+  }
+
+  const inFlight = getProductsInFlight.get(cacheKey);
+  if (inFlight) return inFlight;
+
+  const run = getProductsInner(companyId, branchId, cacheKey).finally(() => {
+    getProductsInFlight.delete(cacheKey);
+  });
+  getProductsInFlight.set(cacheKey, run);
+  return run;
 }
 
 export interface RentalProductVariation {
@@ -418,6 +523,8 @@ export interface CreateProductInput {
   /** Combo toggle + items. Persisted in product_combos / product_combo_items. */
   isCombo?: boolean;
   comboItems?: Array<{ productId: string; variationId?: string | null; name: string; quantity: number; unitPrice: number }>;
+  /** When set for multi-branch companies, limits which branches can sell this product. Empty = all branches. */
+  branchIds?: string[] | null;
 }
 
 export async function createProduct(
@@ -621,6 +728,13 @@ export async function createProduct(
     }
   }
 
+  if (p.branchIds !== undefined) {
+    const branchRes = await setProductBranchAvailability(companyId, row.id, p.branchIds);
+    if (branchRes.error) {
+      console.warn('[createProduct] branch availability save failed:', branchRes.error);
+    }
+  }
+
   return {
     data: {
       id: row.id,
@@ -677,7 +791,7 @@ export async function updateProduct(
   }
   if (nextImageUrls !== undefined) payload.image_urls = nextImageUrls;
 
-  if (Object.keys(payload).length === 0 && p.isCombo === undefined) {
+  if (Object.keys(payload).length === 0 && p.isCombo === undefined && p.branchIds === undefined) {
     return { data: null, error: 'No fields to update.' };
   }
   let row: ProductRow | null = null;
@@ -756,6 +870,14 @@ export async function updateProduct(
   }
 
   if (!row) return { data: null, error: 'Product not found after update.' };
+
+  if (p.branchIds !== undefined) {
+    const branchRes = await setProductBranchAvailability(companyId, productId, p.branchIds);
+    if (branchRes.error) {
+      console.warn('[updateProduct] branch availability save failed:', branchRes.error);
+    }
+  }
+
   return {
     data: {
       id: row.id,

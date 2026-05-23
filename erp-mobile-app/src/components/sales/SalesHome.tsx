@@ -70,6 +70,7 @@ import {
   type SaleListTypeFilter,
 } from '../../lib/saleTypeClassification';
 import { formatRelativeListDateTime } from '../../utils/localDate';
+import { resolvePaymentBranchId } from '../../utils/writeBranchResolution';
 
 const SALE_LIST_FETCH_CAP = 100;
 const SALE_LIST_DISPLAY_CAP = 50;
@@ -1519,12 +1520,12 @@ export function SalesHome({
     </SwipeBackShell>
     )}
 
-    {addPaymentSale && companyId && (
+    {addPaymentSale && companyId && resolvePaymentBranchId(branchId, addPaymentSale.raw.branch_id as string) && (
       <MobileReceivePayment
         onClose={closeAddPayment}
         onSuccess={handleReceivePaymentSuccess}
         companyId={companyId}
-        branchId={branchId}
+        branchId={resolvePaymentBranchId(branchId, addPaymentSale.raw.branch_id as string)}
         userId={userId ?? undefined}
         referenceId={addPaymentSale.raw.id as string}
         referenceNo={addPaymentSale.id}

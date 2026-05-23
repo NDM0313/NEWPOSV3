@@ -166,37 +166,52 @@ export const settingsService = {
   },
 
   /**
-   * Company-level: allow negative stock (inventory_settings.negativeStockAllowed).
+   * Company-level: allow negative stock (inventory_settings OR pos_settings OR legacy).
    * Single source of truth for validation — always read from DB so all users get same behavior.
-   * Normalizes boolean/string so "true" or true both work.
    */
   async getAllowNegativeStock(companyId: string): Promise<boolean> {
-    const invRecord = await this.getSetting(companyId, 'inventory_settings');
-    if (import.meta.env?.DEV) {
-      console.log('[SETTINGS] getAllowNegativeStock:', { companyId, hasRecord: !!invRecord, rawValue: invRecord?.value });
-    }
-    let invVal = invRecord?.value as { negativeStockAllowed?: boolean | string } | undefined;
-    if (typeof invVal === 'string') {
-      try {
-        invVal = JSON.parse(invVal) as { negativeStockAllowed?: boolean | string };
-      } catch {
-        invVal = undefined;
+    const [invRecord, posRecord, legacyRecord] = await Promise.all([
+      this.getSetting(companyId, 'inventory_settings'),
+      this.getSetting(companyId, 'pos_settings'),
+      this.getSetting(companyId, 'allow_negative_stock'),
+    ]);
+
+    const parseModuleFlag = (raw: unknown): boolean | null => {
+      if (raw == null) return null;
+      let val = raw as { negativeStockAllowed?: boolean | string } | string;
+      if (typeof val === 'string') {
+        try {
+          val = JSON.parse(val) as { negativeStockAllowed?: boolean | string };
+        } catch {
+          return null;
+        }
       }
+      if (typeof val === 'object' && val !== null && 'negativeStockAllowed' in val) {
+        const v = val.negativeStockAllowed;
+        if (typeof v === 'boolean') return v;
+        if (v === 'true' || String(v).toLowerCase() === 'true') return true;
+        return false;
+      }
+      return null;
+    };
+
+    const invFlag = parseModuleFlag(invRecord?.value);
+    const posFlag = parseModuleFlag(posRecord?.value);
+    const legacyVal = legacyRecord?.value;
+    const legacy =
+      legacyVal === true || legacyVal === 'true' || String(legacyVal ?? '').toLowerCase() === 'true';
+
+    const result = invFlag === true || posFlag === true || legacy;
+
+    if (import.meta.env?.DEV) {
+      console.log('[SETTINGS] getAllowNegativeStock:', {
+        companyId,
+        invFlag,
+        posFlag,
+        legacy,
+        result,
+      });
     }
-    if (invVal != null && 'negativeStockAllowed' in invVal) {
-      const v = invVal.negativeStockAllowed;
-      if (typeof v === 'boolean') return v;
-      if (v === 'true') return true;
-      if (String(v).toLowerCase() === 'true') return true;
-    }
-    const legacy = await this.getSetting(companyId, 'allow_negative_stock');
-    const legacyVal = legacy?.value;
-    const out = legacyVal === true || legacyVal === 'true' || String(legacyVal).toLowerCase() === 'true';
-    // Deterministic default: missing inventory_settings + no legacy = do NOT allow negative stock
-    // (avoids unreliable certification when no settings row exists).
-    const result = out;
-    if (import.meta.env?.DEV)
-      console.log('[SETTINGS] getAllowNegativeStock result:', result, '(inventory row:', !!invRecord, ', legacy:', !!legacy, ')');
     return result;
   },
 

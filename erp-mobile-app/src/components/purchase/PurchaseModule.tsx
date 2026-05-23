@@ -7,7 +7,6 @@ import {
   Package,
   Calendar,
   Loader2,
-  MapPin,
   Paperclip,
   MoreVertical,
   History,
@@ -42,6 +41,8 @@ import {
 } from '../../lib/dataInvalidationBus';
 import { CreatePurchaseFlow } from './CreatePurchaseFlow';
 import { MobilePaySupplier } from './MobilePaySupplier';
+import { DocumentBranchGateModal } from '../shared/DocumentBranchGateModal';
+import { useDocumentBranchGate } from '../../hooks/useDocumentBranchGate';
 import { AttachmentPreviewModal } from '../sales/AttachmentPreviewModal';
 import { MobileActionBar } from '../shared/MobileActionBar';
 import { PdfPreviewModal } from '../shared/PdfPreviewModal';
@@ -101,8 +102,6 @@ export function PurchaseModule({
   const [loading, setLoading] = useState(!!companyId);
   const [detailLoading, setDetailLoading] = useState(false);
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
-  const [branchesLoading, setBranchesLoading] = useState(false);
-  const [showBranchPicker, setShowBranchPicker] = useState(false);
   const [createBranchId, setCreateBranchId] = useState<string | null>(null);
   const [addPaymentOrder, setAddPaymentOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
   const [menuOrder, setMenuOrder] = useState<purchasesApi.PurchaseListItem | null>(null);
@@ -278,8 +277,14 @@ export function PurchaseModule({
       setPaymentHistory([]);
     }
   }, [selectedOrder, loadPaymentHistory]);
-  const canAddDirect = !!companyId && !!effectiveBranchId;
-  const canAddWithPicker = !!companyId && branchId === 'all' && !branchesLoading && branches.length > 0;
+  const { runWithBranch, modalProps: branchGateModalProps, loading: branchGateLoading } = useDocumentBranchGate({
+    companyId,
+    globalBranchId: branchId,
+    userRole: user.role,
+    authUserId: user.id,
+    profileId: user.profileId,
+    invalidateDomains: ['contacts', 'purchases', 'inventory'],
+  });
 
   const { online, pendingCount: syncPendingCount } = useOfflineListMeta();
   const mainScrollRef = useMainScrollRef();
@@ -362,34 +367,24 @@ export function PurchaseModule({
 
   useEffect(() => {
     if (companyId && branchId === 'all') {
-      setBranchesLoading(true);
       branchesApi.getBranches(companyId).then(({ data }) => {
-        setBranchesLoading(false);
         if (data?.length) setBranches(data);
         else setBranches([]);
       });
     } else {
       setBranches([]);
-      setBranchesLoading(false);
     }
   }, [companyId, branchId]);
 
   const handleAddClick = () => {
-    if (canAddDirect) {
-      setCreateBranchId(branchId);
-      setView('create');
-    } else if (canAddWithPicker && branches.length === 1) {
-      setCreateBranchId(branches[0].id);
-      setView('create');
-    } else if (canAddWithPicker && branches.length > 1) {
-      setShowBranchPicker(true);
-    }
-  };
-
-  const handleBranchPick = (id: string) => {
-    setCreateBranchId(id);
-    setShowBranchPicker(false);
-    setView('create');
+    if (!companyId || branchGateLoading) return;
+    runWithBranch(
+      (id) => {
+        setCreateBranchId(id);
+        setView('create');
+      },
+      { title: 'Select branch for purchase' },
+    );
   };
 
   const handleOrderClick = async (order: purchasesApi.PurchaseListItem) => {
@@ -1178,7 +1173,7 @@ export function PurchaseModule({
           </div>
           <button
             onClick={handleAddClick}
-            disabled={!companyId || (!canAddDirect && !canAddWithPicker)}
+            disabled={!companyId || branchGateLoading}
             className="flex items-center gap-2 px-3 py-2.5 bg-white text-[#059669] hover:bg-white/90 disabled:opacity-50 rounded-lg font-medium text-sm shadow-lg transition-colors"
           >
             <Plus className="w-5 h-5" />
@@ -1363,36 +1358,10 @@ export function PurchaseModule({
         />
       )}
 
-      {showBranchPicker && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center" onClick={() => setShowBranchPicker(false)}>
-          <div className="bg-[#1F2937] border-t sm:border border-[#374151] rounded-t-2xl sm:rounded-xl w-full max-w-md max-h-[70vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b border-[#374151]">
-              <h3 className="font-semibold text-white">Select branch for purchase</h3>
-              <p className="text-sm text-[#9CA3AF]">Choose which branch this purchase is for</p>
-            </div>
-            <div className="p-4 overflow-y-auto max-h-[50vh] space-y-2">
-              {branches.map((b) => (
-                <button
-                  key={b.id}
-                  onClick={() => handleBranchPick(b.id)}
-                  className="w-full flex items-center gap-3 p-4 bg-[#111827] border border-[#374151] rounded-xl hover:border-[#10B981] text-left transition-colors"
-                >
-                  <MapPin className="w-5 h-5 text-[#10B981] flex-shrink-0" />
-                  <span className="font-medium text-white">{b.name}</span>
-                </button>
-              ))}
-            </div>
-            <div className="p-4 border-t border-[#374151]">
-              <button
-                onClick={() => setShowBranchPicker(false)}
-                className="w-full py-3 bg-[#374151] hover:bg-[#4B5563] text-white rounded-lg font-medium"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DocumentBranchGateModal
+        {...branchGateModalProps}
+        accentClass="text-[#10B981] hover:border-[#10B981]"
+      />
 
       {actionError && !cancelOrder && (
         <div className="fixed left-4 right-4 bottom-24 z-[75] py-3 px-4 rounded-lg text-sm font-medium text-center shadow-lg bg-[#EF4444] text-white">

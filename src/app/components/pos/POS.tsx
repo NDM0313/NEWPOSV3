@@ -35,14 +35,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { productService } from '../../services/productService';
+import { fetchBranchStockMaps } from '../../services/inventoryService';
 import { contactService } from '../../services/contactService';
 import { saleService } from '../../services/saleService';
 import { useSales } from '../../context/SalesContext';
 import { useSettings } from '../../context/SettingsContext';
 import { settingsService } from '../../services/settingsService';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
-import { calculateStockFromMovements } from '../../utils/stockCalculation';
-import { supabase } from '@/lib/supabase';
+
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
@@ -346,36 +346,29 @@ export const POS = () => {
 
       if (branchId && branchId !== 'all') {
         try {
-          const { data: movements } = await supabase
-            .from('stock_movements')
-            .select('product_id, variation_id, quantity, movement_type')
-            .eq('company_id', companyId)
-            .eq('branch_id', branchId);
-          if (movements && movements.length > 0) {
-            const byKey = new Map<string, { quantity: number; movement_type: string }[]>();
-            movements.forEach((m: any) => {
-              const key = m.variation_id ? `${m.product_id}_${m.variation_id}` : m.product_id;
-              if (!byKey.has(key)) byKey.set(key, []);
-              byKey.get(key)!.push({ quantity: m.quantity ?? 0, movement_type: m.movement_type || '' });
-            });
-            const balanceByKey = new Map<string, number>();
-            byKey.forEach((arr, key) => {
-              const result = calculateStockFromMovements(arr.map(a => ({ movement_type: a.movement_type, quantity: a.quantity })));
-              balanceByKey.set(key, result.currentBalance);
-            });
-            setProducts(prev => prev.map(p => {
+          const stockMeta = convertedProducts.map((p) => ({
+            id: p.id,
+            hasVariations: Boolean(p.variations?.length),
+          }));
+          const { productStockMap, variationStockMap } = await fetchBranchStockMaps(
+            companyId,
+            branchId,
+            stockMeta,
+          );
+          setProducts((prev) =>
+            prev.map((p) => {
               if (p.variations?.length) {
                 return {
                   ...p,
-                  variations: p.variations.map(v => ({
+                  variations: p.variations.map((v) => ({
                     ...v,
-                    current_stock: balanceByKey.get(`${p.id}_${v.id}`) ?? (v as any).stock ?? 0,
+                    current_stock: variationStockMap[v.id] ?? (v as { current_stock?: number }).current_stock ?? 0,
                   })),
                 };
               }
-              return { ...p, stock: balanceByKey.get(p.id) ?? p.stock };
-            }));
-          }
+              return { ...p, stock: productStockMap[p.id] ?? p.stock };
+            }),
+          );
         } catch (e) {
           console.warn('[POS] Branch stock overlay failed, using product stock:', e);
         }

@@ -5,6 +5,7 @@ import * as productCategoriesApi from '../../api/productCategories';
 import * as brandsApi from '../../api/brands';
 import * as unitsApi from '../../api/units';
 import * as productsApi from '../../api/products';
+import * as branchesApi from '../../api/branches';
 import * as variationLibrary from '../../api/variationLibrary';
 import type { AttributeWithValues } from '../../api/variationLibrary';
 import { CustomSelect } from '../common';
@@ -36,6 +37,8 @@ export interface AddProductFlowSavePayload {
   /** Combo item lines. */
   isCombo?: boolean;
   comboItems?: Array<{ productId: string; variationId?: string | null; name: string; quantity: number; unitPrice: number }>;
+  /** Branch availability when company has multiple branches. */
+  branchIds?: string[] | null;
 }
 
 interface AddProductFlowProps {
@@ -99,6 +102,8 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
   >([]);
   const [comboProductPicker, setComboProductPicker] = useState<boolean>(false);
   const [availableComboProducts, setAvailableComboProducts] = useState<productsApi.Product[]>([]);
+  const [companyBranches, setCompanyBranches] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
 
   // Global variation library (company-level attribute suggestions)
   const [library, setLibrary] = useState<AttributeWithValues[]>([]);
@@ -132,6 +137,31 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
   }>>([]);
   const [productsWithVariations, setProductsWithVariations] = useState<Array<{ id: string; name: string; variations?: Array<{ attributes?: Record<string, string> }> }>>([]);
   const [attrCopySelectNonce, setAttrCopySelectNonce] = useState(0);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    void branchesApi.getBranches(companyId).then(({ data }) => {
+      if (cancelled) return;
+      const list = data ?? [];
+      setCompanyBranches(list.map((b) => ({ id: b.id, name: b.name })));
+      if (list.length > 1 && !editProduct) {
+        setSelectedBranchIds(list.map((b) => b.id));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [companyId, editProduct]);
+
+  useEffect(() => {
+    if (!companyId || !editProduct?.id || companyBranches.length <= 1) return;
+    let cancelled = false;
+    void productsApi.getProductBranchIds(companyId, editProduct.id).then(({ data }) => {
+      if (cancelled) return;
+      if (data.length > 0) setSelectedBranchIds(data);
+      else setSelectedBranchIds(companyBranches.map((b) => b.id));
+    });
+    return () => { cancelled = true; };
+  }, [companyId, editProduct?.id, companyBranches]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -348,6 +378,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
         existingImageUrls,
         isCombo,
         comboItems: isCombo ? comboItems : undefined,
+        branchIds: companyBranches.length > 1 ? selectedBranchIds : undefined,
       });
     } else {
       const variations: { sku: string; attributes: Record<string, string>; price: number; stock: number }[] = [];
@@ -386,6 +417,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
         imageFiles: imageFiles.length > 0 ? imageFiles : undefined,
         isCombo,
         comboItems: isCombo ? comboItems : undefined,
+        branchIds: companyBranches.length > 1 ? selectedBranchIds : undefined,
       });
     }
   };
@@ -1108,6 +1140,36 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
                     ))
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {companyBranches.length > 1 && (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <h3 className="text-sm font-semibold text-white mb-2">Available in branches</h3>
+            <p className="text-xs text-[#9CA3AF] mb-3">Select which branches can sell this product.</p>
+            <div className="space-y-2">
+              {companyBranches.map((b) => {
+                const checked = selectedBranchIds.includes(b.id);
+                return (
+                  <label
+                    key={b.id}
+                    className="flex items-center gap-3 p-3 rounded-lg bg-[#111827] border border-[#374151] cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => {
+                        setSelectedBranchIds((prev) =>
+                          checked ? prev.filter((id) => id !== b.id) : [...prev, b.id],
+                        );
+                      }}
+                      className="w-4 h-4 rounded border-[#374151] text-[#3B82F6] focus:ring-[#3B82F6]"
+                    />
+                    <span className="text-sm text-white">{b.name}</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
         )}

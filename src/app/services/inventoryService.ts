@@ -45,6 +45,164 @@ const PRODUCT_VARIATIONS_OVERVIEW_SELECT_LAYERS = [
 /** In-flight guard: reuse same promise for overlapping getInventoryOverview(companyId, branchId) to avoid duplicate timers. */
 const inventoryOverviewInFlight = new Map<string, Promise<InventoryOverviewRow[]>>();
 
+interface OverviewStockMaps {
+  productStockMap: Record<string, number>;
+  variationStockMap: Record<string, number>;
+  productBoxMap: Record<string, number>;
+  variationBoxMap: Record<string, number>;
+  productPieceMap: Record<string, number>;
+  variationPieceMap: Record<string, number>;
+  productCostWeighted: Record<string, { sum: number; q: number }>;
+  variationCostWeighted: Record<string, { sum: number; q: number }>;
+}
+
+function emptyOverviewStockMaps(): OverviewStockMaps {
+  return {
+    productStockMap: {},
+    variationStockMap: {},
+    productBoxMap: {},
+    variationBoxMap: {},
+    productPieceMap: {},
+    variationPieceMap: {},
+    productCostWeighted: {},
+    variationCostWeighted: {},
+  };
+}
+
+function applyMovementRowsToStockMaps(movRows: any[], maps: OverviewStockMaps): void {
+  for (const m of movRows) {
+    const productId = m.product_id;
+    const variationId = m.variation_id;
+    const qty = Number(m.quantity) || 0;
+    const boxCh = Number(m.box_change) || 0;
+    const pieceCh = Number(m.piece_change) || 0;
+    const uc = Number(m.unit_cost);
+    const absQ = Math.abs(qty);
+    if (!productId) continue;
+
+    if (variationId && Number.isFinite(uc) && uc > 0 && absQ > 0) {
+      if (!maps.variationCostWeighted[variationId]) maps.variationCostWeighted[variationId] = { sum: 0, q: 0 };
+      maps.variationCostWeighted[variationId].sum += uc * absQ;
+      maps.variationCostWeighted[variationId].q += absQ;
+    } else if (!variationId && Number.isFinite(uc) && uc > 0 && absQ > 0) {
+      if (!maps.productCostWeighted[productId]) maps.productCostWeighted[productId] = { sum: 0, q: 0 };
+      maps.productCostWeighted[productId].sum += uc * absQ;
+      maps.productCostWeighted[productId].q += absQ;
+    }
+
+    if (variationId) {
+      maps.variationStockMap[variationId] = (maps.variationStockMap[variationId] || 0) + qty;
+      maps.variationBoxMap[variationId] = (maps.variationBoxMap[variationId] || 0) + boxCh;
+      maps.variationPieceMap[variationId] = (maps.variationPieceMap[variationId] || 0) + pieceCh;
+    } else {
+      maps.productStockMap[productId] = (maps.productStockMap[productId] || 0) + qty;
+      maps.productBoxMap[productId] = (maps.productBoxMap[productId] || 0) + boxCh;
+      maps.productPieceMap[productId] = (maps.productPieceMap[productId] || 0) + pieceCh;
+    }
+  }
+}
+
+const MOVEMENT_STOCK_SELECT =
+  'product_id, variation_id, quantity, box_change, piece_change, unit_cost, movement_type';
+
+/** Fast path: inventory_balance for simple products; targeted movements for variation products. */
+async function fetchOverviewStockMaps(
+  companyId: string,
+  productIds: string[],
+  simpleProductIds: string[],
+  varProductIds: string[],
+  branchId?: string | null
+): Promise<{ maps: OverviewStockMaps; movRows: any[] | null; movementsError: { code?: string; message?: string } | null }> {
+  const maps = emptyOverviewStockMaps();
+  let balanceHasData = false;
+
+  if (simpleProductIds.length > 0) {
+    let balanceQuery = supabase
+      .from('inventory_balance')
+      .select('product_id, qty, boxes, pieces')
+      .eq('company_id', companyId)
+      .in('product_id', simpleProductIds);
+    if (branchId && branchId !== 'all') {
+      balanceQuery = balanceQuery.eq('branch_id', branchId);
+    }
+    const { data: balances, error: balanceError } = await balanceQuery;
+    if (!balanceError && balances?.length) {
+      balanceHasData = true;
+      for (const row of balances as { product_id: string; qty: number; boxes?: number; pieces?: number }[]) {
+        maps.productStockMap[row.product_id] = Number(row.qty) || 0;
+        maps.productBoxMap[row.product_id] = Number(row.boxes) || 0;
+        maps.productPieceMap[row.product_id] = Number(row.pieces) || 0;
+      }
+    }
+  }
+
+  if (balanceHasData) {
+    let movRows: any[] = [];
+    if (varProductIds.length > 0) {
+      let varQuery = supabase
+        .from('stock_movements')
+        .select(MOVEMENT_STOCK_SELECT)
+        .eq('company_id', companyId)
+        .in('product_id', varProductIds);
+      if (branchId && branchId !== 'all') varQuery = varQuery.eq('branch_id', branchId);
+      const { data, error } = await varQuery;
+      if (error && !isMissingColumnError(error)) {
+        return { maps, movRows: null, movementsError: error };
+      }
+      movRows = data || [];
+      if (error && isMissingColumnError(error)) {
+        let fb = supabase
+          .from('stock_movements')
+          .select('product_id, variation_id, quantity, box_change, piece_change')
+          .eq('company_id', companyId)
+          .in('product_id', varProductIds);
+        if (branchId && branchId !== 'all') fb = fb.eq('branch_id', branchId);
+        const { data: m2 } = await fb;
+        movRows = m2 || [];
+      }
+      applyMovementRowsToStockMaps(movRows, maps);
+    }
+    return { maps, movRows, movementsError: null };
+  }
+
+  let stockQuery = supabase
+    .from('stock_movements')
+    .select(MOVEMENT_STOCK_SELECT)
+    .eq('company_id', companyId)
+    .in('product_id', productIds);
+  if (branchId && branchId !== 'all') stockQuery = stockQuery.eq('branch_id', branchId);
+  const { data: movements, error: movementsError } = await stockQuery;
+  let movRows = movements;
+  if (movementsError && isMissingColumnError(movementsError)) {
+    let qFallback = supabase
+      .from('stock_movements')
+      .select('product_id, variation_id, quantity, box_change, piece_change')
+      .eq('company_id', companyId)
+      .in('product_id', productIds);
+    if (branchId && branchId !== 'all') qFallback = qFallback.eq('branch_id', branchId);
+    const { data: m2, error: e2 } = await qFallback;
+    if (!e2) movRows = m2;
+    else return { maps, movRows: null, movementsError: e2 };
+  } else if (movementsError) {
+    return { maps, movRows: null, movementsError };
+  }
+  applyMovementRowsToStockMaps(movRows || [], maps);
+  return { maps, movRows: movRows || [], movementsError: movementsError ?? null };
+}
+
+/** Branch-scoped stock maps for POS and pickers. */
+export async function fetchBranchStockMaps(
+  companyId: string,
+  branchId: string,
+  products: Array<{ id: string; hasVariations?: boolean }>
+): Promise<{ productStockMap: Record<string, number>; variationStockMap: Record<string, number> }> {
+  const productIds = products.map((p) => p.id);
+  const simpleProductIds = products.filter((p) => !p.hasVariations).map((p) => p.id);
+  const varProductIds = products.filter((p) => p.hasVariations).map((p) => p.id);
+  const { maps } = await fetchOverviewStockMaps(companyId, productIds, simpleProductIds, varProductIds, branchId);
+  return { productStockMap: maps.productStockMap, variationStockMap: maps.variationStockMap };
+}
+
 export interface InventoryOverviewRow {
   id: string;
   productId: string;
@@ -183,20 +341,11 @@ export const inventoryService = {
     if (!products?.length) return [];
 
     const productIds = products.map((p: any) => p.id);
+    const simpleProductIds = products.filter((p: any) => !p.has_variations).map((p: any) => p.id);
+    const varProductIds = products.filter((p: any) => p.has_variations).map((p: any) => p.id);
     const comboProductIds = products.filter((p: any) => p.is_combo_product).map((p: any) => p.id);
     const unitIds = [...new Set((products || []).map((p: any) => p.unit_id).filter(Boolean))] as string[];
 
-    // Build stock movements query
-    let stockQuery = supabase
-      .from('stock_movements')
-      .select('product_id, variation_id, quantity, box_change, piece_change, unit_cost, movement_type')
-      .eq('company_id', companyId)
-      .in('product_id', productIds);
-    if (branchId && branchId !== 'all') {
-      stockQuery = stockQuery.eq('branch_id', branchId);
-    }
-
-    // Run movements, variations, and units queries in parallel (they only need productIds from Step 1)
     const fetchVariationsForOverview = async () => {
       for (const sel of PRODUCT_VARIATIONS_OVERVIEW_SELECT_LAYERS) {
         const { data, error } = await supabase
@@ -215,12 +364,12 @@ export const inventoryService = {
 
     console.time('inventoryOverview:parallel');
     const [
-      { data: movements, error: movementsError },
+      stockPack,
       variationsPack,
       { data: units },
       combosResult,
     ] = await Promise.all([
-      stockQuery,
+      fetchOverviewStockMaps(companyId, productIds, simpleProductIds, varProductIds, branchId),
       fetchVariationsForOverview(),
       unitIds.length > 0
         ? supabase.from('units').select('id, short_code').in('id', unitIds)
@@ -231,20 +380,20 @@ export const inventoryService = {
     ]);
     console.timeEnd('inventoryOverview:parallel');
 
-    let movRows = movements;
-    if (movementsError && isMissingColumnError(movementsError)) {
-      let qFallback = supabase
-        .from('stock_movements')
-        .select('product_id, variation_id, quantity, box_change, piece_change')
-        .eq('company_id', companyId)
-        .in('product_id', productIds);
-      if (branchId && branchId !== 'all') qFallback = qFallback.eq('branch_id', branchId);
-      const { data: m2, error: e2 } = await qFallback;
-      if (!e2) movRows = m2;
-      else console.warn('[INVENTORY SERVICE] stock_movements fallback fetch:', e2.message);
-    } else if (movementsError) {
-      console.warn('[INVENTORY SERVICE] stock_movements:', movementsError.message);
-    }
+    const {
+      maps: {
+        productStockMap,
+        variationStockMap,
+        productBoxMap,
+        variationBoxMap,
+        productPieceMap,
+        variationPieceMap,
+        productCostWeighted,
+        variationCostWeighted,
+      },
+      movRows,
+      movementsError,
+    } = stockPack;
 
     const variations = variationsPack.data;
     const variationsError = variationsPack.error;
@@ -281,59 +430,9 @@ export const inventoryService = {
       });
     }
 
-    // Step 4: Calculate stock + boxes + pieces from stock_movements (SINGLE SOURCE OF TRUTH)
-    const productStockMap: Record<string, number> = {};
-    const variationStockMap: Record<string, number> = {};
-    const productBoxMap: Record<string, number> = {};
-    const variationBoxMap: Record<string, number> = {};
-    const productPieceMap: Record<string, number> = {};
-    const variationPieceMap: Record<string, number> = {};
-    /** Quantity-weighted unit_cost from movements (when product_variations row has no cost yet). */
-    const variationCostWeighted: Record<string, { sum: number; q: number }> = {};
-    /** Quantity-weighted unit_cost from non-variation movements for parent product fallback cost. */
-    const productCostWeighted: Record<string, { sum: number; q: number }> = {};
-
-    const canProcessMovements =
-      Array.isArray(movRows) && (!movementsError || isMissingColumnError(movementsError));
-
-    if (canProcessMovements) {
-      movRows!.forEach((m: any) => {
-        const productId = m.product_id;
-        const variationId = m.variation_id;
-        const qty = Number(m.quantity) || 0;
-        const boxCh = Number(m.box_change) || 0;
-        const pieceCh = Number(m.piece_change) || 0;
-        const uc = Number(m.unit_cost);
-        const absQ = Math.abs(qty);
-
-        if (!productId) {
-          console.warn('[INVENTORY SERVICE] ⚠️ Movement with null product_id:', m);
-          return;
-        }
-
-        if (variationId && Number.isFinite(uc) && uc > 0 && absQ > 0) {
-          if (!variationCostWeighted[variationId]) variationCostWeighted[variationId] = { sum: 0, q: 0 };
-          variationCostWeighted[variationId].sum += uc * absQ;
-          variationCostWeighted[variationId].q += absQ;
-        } else if (!variationId && Number.isFinite(uc) && uc > 0 && absQ > 0) {
-          if (!productCostWeighted[productId]) productCostWeighted[productId] = { sum: 0, q: 0 };
-          productCostWeighted[productId].sum += uc * absQ;
-          productCostWeighted[productId].q += absQ;
-        }
-
-        if (variationId) {
-          variationStockMap[variationId] = (variationStockMap[variationId] || 0) + qty;
-          variationBoxMap[variationId] = (variationBoxMap[variationId] || 0) + boxCh;
-          variationPieceMap[variationId] = (variationPieceMap[variationId] || 0) + pieceCh;
-        } else {
-          productStockMap[productId] = (productStockMap[productId] || 0) + qty;
-          productBoxMap[productId] = (productBoxMap[productId] || 0) + boxCh;
-          productPieceMap[productId] = (productPieceMap[productId] || 0) + pieceCh;
-        }
-      });
-    } else if (movementsError && !isMissingColumnError(movementsError)) {
+    if (movementsError && !isMissingColumnError(movementsError)) {
       console.error('[INVENTORY SERVICE] ❌ Error fetching stock movements:', movementsError);
-    } else if (!movRows?.length) {
+    } else if (!movRows?.length && !Object.keys(productStockMap).length && !Object.keys(variationStockMap).length) {
       console.warn('[INVENTORY SERVICE] ⚠️ No movements found or movements is null');
     }
 
@@ -363,7 +462,7 @@ export const inventoryService = {
         const alreadyWarned = negativeStockWarnedIds.has(p.id);
         if (!alreadyWarned && import.meta.env?.DEV && isDebugErpEnabled()) {
           negativeStockWarnedIds.add(p.id);
-          const productMovements = movements?.filter((m: any) =>
+          const productMovements = movRows?.filter((m: any) =>
             m.product_id === p.id && (!m.variation_id || !hasVariations)
           ) || [];
           const movementSummary = {

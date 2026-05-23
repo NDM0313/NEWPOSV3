@@ -37,13 +37,15 @@ export function StudioDetailsStep({ onBack, initialData, onNext }: StudioDetails
   const [deadlineDate, setDeadlineDate] = useState(initialData.deadlineDate || todayPlus7());
   const [studioProductName, setStudioProductName] = useState(initialData.studioProductName || '');
   const [productionNotes, setProductionNotes] = useState(initialData.productionNotes || '');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const handleNext = () => {
     const name = studioProductName.trim();
     if (!name) {
-      alert('Enter studio product name (replica / outfit title).');
+      setValidationError('Please fill required fields.');
       return;
     }
+    setValidationError(null);
     onNext({ orderDate, deadlineDate, studioProductName: name, productionNotes });
   };
 
@@ -92,12 +94,19 @@ export function StudioDetailsStep({ onBack, initialData, onNext }: StudioDetails
             <label className="block text-sm font-medium text-[#F9FAFB] mb-2">
               Studio product name <span className="text-red-400">*</span>
             </label>
-            <div className="flex items-start gap-2 bg-[#111827] border border-[#374151] rounded-lg px-3 py-2.5">
+            <div
+              className={`flex items-start gap-2 bg-[#111827] border rounded-lg px-3 py-2.5 ${
+                validationError ? 'border-red-500 ring-1 ring-red-500/30' : 'border-[#374151]'
+              }`}
+            >
               <Tag className="w-5 h-5 text-[#8B5CF6] flex-shrink-0 mt-0.5" />
               <input
                 type="text"
                 value={studioProductName}
-                onChange={(e) => setStudioProductName(e.target.value)}
+                onChange={(e) => {
+                  setStudioProductName(e.target.value);
+                  if (validationError && e.target.value.trim()) setValidationError(null);
+                }}
                 placeholder="Replica / outfit title for this studio order"
                 className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-[#6B7280]"
               />
@@ -119,6 +128,12 @@ export function StudioDetailsStep({ onBack, initialData, onNext }: StudioDetails
             </div>
           </div>
         </div>
+
+        {validationError ? (
+          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            {validationError}
+          </div>
+        ) : null}
 
         <button
           onClick={handleNext}

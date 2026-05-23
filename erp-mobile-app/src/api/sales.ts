@@ -4,7 +4,7 @@ import { readThroughCache } from '../lib/offlineData';
 import { getNextDocumentNumber } from './documentNumber';
 import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 import { localNowDateString } from '../utils/localDate';
-import { resolveBranchUuidForWrite } from '../utils/branchId';
+import { resolveBranchUuidForWrite, isRealBranchUuid } from '../utils/branchId';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -49,6 +49,8 @@ export interface CreateSaleInput {
   studioDesignName?: string;
   /** Payment date when paid > 0 (YYYY-MM-DD). */
   paymentDate?: string;
+  /** Point of sale — PS- invoice sequence (web parity). */
+  isPOS?: boolean;
 }
 
 const SALE_ATTACHMENTS_BUCKET = 'sale-attachments';
@@ -144,6 +146,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     deadline,
     studioDesignName,
     paymentDate,
+    isPOS,
   } = input;
 
   if (!companyId || !branchId || !userId) {
@@ -172,14 +175,20 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
   /** Web parity: new studio sale is customer order only — no payments, no GL/stock until finalize (Generate Bill). */
   const paid = isStudio ? 0 : paidNonStudio;
   const due = isStudio ? totalNum : dueNonStudio;
+  /** Web parity: defer paid_amount on header when payment posts via record_payment_with_accounting. */
+  const paymentToRecord = !isStudio && paid > 0 ? paid : 0;
+  const headerPaid = paymentToRecord > 0 ? 0 : paid;
+  const headerDue = paymentToRecord > 0 ? totalNum : due;
+  const headerPaymentStatus =
+    paymentToRecord > 0 ? 'unpaid' : due > 0 ? (paid > 0 ? 'partial' : 'unpaid') : 'paid';
 
   const defaultDay = localNowDateString();
   const invoiceFromInput =
     invoiceDate != null && String(invoiceDate).trim() !== '' ? String(invoiceDate).trim().slice(0, 10) : null;
 
-  let saleId: string;
-  /** Invoice / order ref shown after save (SL-… for regular, STD-… for studio). */
-  let docNo: string;
+  let saleId = '';
+  /** Invoice / order ref shown after save (SL-… for regular, STD-… for studio, PS-… for POS). */
+  let docNo = '';
 
   if (isStudio) {
     /**
@@ -288,31 +297,85 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
 
     salePayload.type = 'invoice';
     salePayload.status = 'final';
-    salePayload.payment_status = due > 0 ? (paid > 0 ? 'partial' : 'unpaid') : 'paid';
+    salePayload.payment_status = headerPaymentStatus;
     salePayload.payment_method = paymentMethod || 'Cash';
-    salePayload.paid_amount = paid;
-    salePayload.due_amount = due;
+    salePayload.paid_amount = headerPaid;
+    salePayload.due_amount = headerDue;
 
-    const { data: hdrRaw, error: hdrErr } = await supabase.rpc('create_sale_document_header', {
-      p_company_id: companyId,
-      p_branch_id: effectiveBranchId,
-      p_is_studio: false,
-      p_sale: salePayload,
-      p_created_by: userId,
-    });
+    if (isPOS) {
+      let posInserted = false;
+      for (let posTry = 0; posTry < 12 && !posInserted; posTry++) {
+        docNo = await getNextDocumentNumber(companyId, effectiveBranchId, 'pos');
+        const { data: posIns, error: posErr } = await supabase
+          .from('sales')
+          .insert({
+            company_id: companyId,
+            branch_id: effectiveBranchId,
+            invoice_no: docNo,
+            invoice_date: invDate,
+            customer_id: customerId || null,
+            customer_name: customerName || 'Walk-in',
+            contact_number: contactNumber || null,
+            type: 'invoice',
+            status: 'final',
+            payment_status: headerPaymentStatus,
+            payment_method: paymentMethod || 'Cash',
+            subtotal: Number(subtotal) || 0,
+            discount_amount: Number(discountAmount) || 0,
+            tax_amount: Number(taxAmount) || 0,
+            expenses: Number(expenses) || 0,
+            total: totalNum,
+            paid_amount: headerPaid,
+            due_amount: headerDue,
+            notes: notes || null,
+            created_by: userId,
+          })
+          .select('id')
+          .single();
 
-    if (hdrErr) {
-      return { data: null, error: hdrErr.message };
+        if (!posErr && posIns?.id) {
+          saleId = (posIns as { id: string }).id;
+          posInserted = true;
+          break;
+        }
+        const dup =
+          posErr?.code === '23505' ||
+          String(posErr?.message || '').includes('duplicate key') ||
+          String(posErr?.message || '').includes('idx_sales_company_invoice_no');
+        if (!dup) {
+          return { data: null, error: posErr?.message ?? 'Failed to create POS sale.' };
+        }
+      }
+      if (!posInserted) {
+        return { data: null, error: 'Failed to allocate POS invoice number after retries.' };
+      }
+    } else {
+      const { data: hdrRaw, error: hdrErr } = await supabase.rpc('create_sale_document_header', {
+        p_company_id: companyId,
+        p_branch_id: effectiveBranchId,
+        p_is_studio: false,
+        p_sale: salePayload,
+        p_created_by: userId,
+      });
+
+      if (hdrErr) {
+        return { data: null, error: hdrErr.message };
+      }
+
+      const hdr = hdrRaw as { success?: boolean; sale_id?: string; document_no?: string; error?: string } | null;
+      if (!hdr?.success || !hdr.sale_id) {
+        return { data: null, error: hdr?.error ?? 'Failed to create sale.' };
+      }
+
+      saleId = hdr.sale_id;
+      docNo = String(hdr.document_no ?? '');
     }
-
-    const hdr = hdrRaw as { success?: boolean; sale_id?: string; document_no?: string; error?: string } | null;
-    if (!hdr?.success || !hdr.sale_id) {
-      return { data: null, error: hdr?.error ?? 'Failed to create sale.' };
-    }
-
-    saleId = hdr.sale_id;
-    docNo = String(hdr.document_no ?? '');
   }
+
+  if (!saleId) {
+    return { data: null, error: 'Failed to create sale document.' };
+  }
+
   const itemsWithSaleId = items.map((item) => {
     const row: Record<string, unknown> = {
       sale_id: saleId,
@@ -348,63 +411,69 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: `Failed to save items: ${itemsError.message}` };
   }
 
-  // Packing: inventory decrement via stock_movements (posted/final sales only — matches web).
+  // Stock OUT via RPC (RLS-safe for salesman; reads sales_items + packing_details server-side).
   // Studio orders stay non-final until Generate Bill / finalize; no stock OUT on create.
   if (!isStudio) {
-    const movementRows = items
-      .filter((item) => item.productId && item.quantity > 0)
-      .map((item) => {
-        const packing = item.packingDetails;
-        const boxOut = packing?.total_boxes != null ? Math.round(Number(packing.total_boxes)) : 0;
-        const pieceOut = packing?.total_pieces != null ? Math.round(Number(packing.total_pieces)) : 0;
-        return {
-          company_id: companyId,
-          branch_id: effectiveBranchId,
-          product_id: item.productId,
-          variation_id: item.variationId || null,
-          movement_type: 'sale' as const,
-          quantity: -item.quantity,
-          unit_cost: item.unitPrice || 0,
-          total_cost: -((item.unitPrice || 0) * item.quantity),
-          reference_type: 'sale' as const,
-          reference_id: saleId,
-          notes: `Sale ${docNo} - ${item.productName}`,
-          created_by: userId,
-          ...(boxOut !== 0 && { box_change: -boxOut }),
-          ...(pieceOut !== 0 && { piece_change: -pieceOut }),
-        };
+    const hasStockLines = items.some((item) => item.productId && item.quantity > 0);
+    if (hasStockLines) {
+      const { data: stockRaw, error: movErr } = await supabase.rpc('ensure_sale_stock_movements', {
+        p_sale_id: saleId,
       });
-    if (movementRows.length > 0) {
-      const { error: movErr } = await supabase.from('stock_movements').insert(movementRows);
       if (movErr) {
         await supabase.from('sales').delete().eq('id', saleId);
         return { data: null, error: `Inventory update failed: ${movErr.message}` };
       }
+      const stockResult = stockRaw as { success?: boolean; error?: string; movements_inserted?: number } | null;
+      if (stockResult?.success === false) {
+        await supabase.from('sales').delete().eq('id', saleId);
+        return {
+          data: null,
+          error: `Inventory update failed: ${stockResult.error ?? 'Unknown error'}`,
+        };
+      }
     }
   }
 
-  // Create payment record when paid > 0 (for payment history). Let DB trigger set reference_number to avoid duplicate key.
-  if (!isStudio && paid > 0) {
-    const payMethod = (paymentMethod || 'Cash').toLowerCase();
-    let enumMethod: 'cash' | 'bank' | 'card' | 'other' = 'cash';
-    if (payMethod.includes('bank') || payMethod.includes('transfer')) enumMethod = 'bank';
-    else if (payMethod.includes('credit') || payMethod.includes('card')) enumMethod = 'card';
-    const { error: payErr } = await supabase.from('payments').insert({
-      company_id: companyId,
-      branch_id: effectiveBranchId,
-      payment_type: 'received',
-      reference_type: 'sale',
-      reference_id: saleId,
-      amount: paid,
-      payment_method: enumMethod,
-      payment_date:
-        paymentDate != null && String(paymentDate).trim() !== ''
-          ? String(paymentDate).trim().slice(0, 10)
-          : localNowDateString(),
-      payment_account_id: paymentAccountId || null,
-      created_by: userId,
+  // Accounting: sale JE must exist before payment RPC (web POS order).
+  if (!isStudio) {
+    const { data: postData, error: postErr } = await supabase.rpc(
+      'record_sale_with_accounting',
+      { p_sale_id: saleId },
+    );
+    if (postErr) {
+      return { data: null, error: `Sale accounting failed: ${postErr.message}` };
+    }
+    if (postData && typeof postData === 'object' && (postData as { success?: boolean }).success === false) {
+      const msg = (postData as { error?: string }).error ?? 'Sale accounting failed.';
+      return { data: null, error: msg };
+    }
+  }
+
+  // Post payment via RPC (web parity — RLS-safe + GL journal). Header stays unpaid until RPC succeeds.
+  if (paymentToRecord > 0) {
+    if (!paymentAccountId) {
+      return { data: null, error: 'Payment account required for accounting.' };
+    }
+    const payDate =
+      paymentDate != null && String(paymentDate).trim() !== ''
+        ? String(paymentDate).trim().slice(0, 10)
+        : localNowDateString();
+    const { data: payData, error: payErr } = await recordSalePayment({
+      companyId,
+      branchId: effectiveBranchId,
+      saleId,
+      amount: paymentToRecord,
+      paymentMethod: paymentMethod || 'Cash',
+      paymentAccountId,
+      paymentDate: payDate,
+      userId,
     });
-    if (payErr) console.warn('[SALES API] Payment record insert failed:', payErr);
+    if (payErr) {
+      return { data: null, error: payErr };
+    }
+    if (!payData?.payment_id) {
+      return { data: null, error: 'Payment failed — no payment id returned.' };
+    }
   }
 
   // One unified studio production per sale (single pipeline; sale total is one bill).
@@ -429,23 +498,6 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     });
     if (prodErr) {
       console.warn('[SALES API] Studio production(s) insert failed (sale saved):', prodErr);
-    }
-  }
-
-  // Accounting: only for posted (final) regular sales. Studio document JE runs after Generate Bill / finalize (see studioFinalizeAfterInvoice).
-  if (!isStudio) {
-    try {
-      const { data: postData, error: postErr } = await supabase.rpc(
-        'record_sale_with_accounting',
-        { p_sale_id: saleId },
-      );
-      if (postErr) {
-        console.warn('[SALES API] record_sale_with_accounting failed:', postErr);
-      } else if (postData && typeof postData === 'object' && (postData as { success?: boolean }).success === false) {
-        console.warn('[SALES API] record_sale_with_accounting returned error:', postData);
-      }
-    } catch (err) {
-      console.warn('[SALES API] record_sale_with_accounting threw:', err);
     }
   }
 
@@ -850,6 +902,8 @@ export async function recordSalePayment(params: {
     ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${bankTraceId}`
     : baseNotes;
   const dateVal = paymentDate || localNowDateString();
+  const { data: authData } = await supabase.auth.getUser();
+  const createdBy = authData?.user?.id ?? userId ?? null;
   const { data, error } = await supabase.rpc('record_payment_with_accounting', {
     p_company_id: companyId,
     p_branch_id: branchResolved,
@@ -862,7 +916,7 @@ export async function recordSalePayment(params: {
     p_payment_account_id: paymentAccountId,
     p_reference_number: null,
     p_notes: composedNotes || null,
-    p_created_by: userId ?? null,
+    p_created_by: createdBy,
     p_worker_stage_id: null,
   });
   if (error) return { data: null, error: error.message };
@@ -902,9 +956,21 @@ export async function recordCustomerPayment(params: {
   if (!companyId || !referenceId || amount <= 0 || !accountId) {
     return { data: null, error: 'Company, reference (sale), amount and account are required.' };
   }
+  let branchForResolve = branchId;
+  if (!isRealBranchUuid(branchForResolve)) {
+    const { data: saleRow } = await supabase
+      .from('sales')
+      .select('branch_id')
+      .eq('id', referenceId)
+      .maybeSingle();
+    const saleBranch = (saleRow as { branch_id?: string | null } | null)?.branch_id;
+    if (isRealBranchUuid(saleBranch)) {
+      branchForResolve = saleBranch;
+    }
+  }
   let branchResolved: string;
   try {
-    branchResolved = await resolveBranchUuidForWrite(companyId, branchId, 'Branch required for payment.');
+    branchResolved = await resolveBranchUuidForWrite(companyId, branchForResolve, 'Branch required for payment.');
   } catch (e) {
     return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
   }
