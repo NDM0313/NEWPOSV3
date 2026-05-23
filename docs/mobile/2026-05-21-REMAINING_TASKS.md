@@ -1,6 +1,8 @@
 # ERP Mobile — Remaining tasks (office / APK)
 
 **Date:** 2026-05-21  
+**Status:** Superseded — see **[`2026-05-24-COMPLETED_TASKS.md`](2026-05-24-COMPLETED_TASKS.md)** for the latest completed work, build 9, and follow-ups.
+
 **For:** Tomorrow office — complete testing + **new APK** with today's code  
 **Prerequisite:** Pull latest `main` after GitHub push (barcode + Settings + branch UUID fixes)
 

@@ -4,7 +4,71 @@ Copy a new block for every build. Keep the newest entry at the top.
 
 ---
 
-## Latest build — 1.0.5 (build 8) — 2026-05-24
+## Next build — 1.0.5 (build 10) — recommended after auth fix
+
+After pulling `main` with `fix(mobile): recover stale Supabase refresh tokens`, rebuild so the native bundle includes the updated `dist`:
+
+```bash
+cd erp-mobile-app
+npm run cap:sync:android:prod && cd android && ./gradlew assembleRelease
+npm run cap:sync:ios:prod   # then Archive in Xcode
+```
+
+Changelog: silent recovery when iOS logs `refresh_token_not_found` on cold start (login / PIN screen instead of console error).
+
+---
+
+## Latest build — 1.0.5 (build 9) — 2026-05-24
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-24 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 9 |
+| **Git commit** | `dc71f969` |
+| **Android** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build9.apk` (~28 MB) |
+| **Gradle source** | `android/app/build/outputs/apk/release/app-release.apk` |
+| **iOS** | `cap:sync:ios:prod` + Archive/Export (Development signing) |
+| **IPA path (local)** | `releases/erp-mobile-1.0.5-build9.ipa` (~3.4 MB) |
+| **Built on** | Mac — `cap:sync:android:prod` + `./gradlew assembleRelease` |
+
+### Changelog (user-facing) — build 9
+
+- **Lead registration link:** company + branch in URL; WhatsApp / Email / Copy share from Contacts.
+- **Public leads:** list shows `Ref: …` from link until approved; **Pending lead** badge; admin **Approve** assigns `CUS-xxxx`.
+- **Products:** list thumb shows photo or “No photo”; tap opens preview.
+- **Invoice PDF:** centered company header (table layout for print).
+- **Counter PIN:** background-only re-lock; 7-day policy sync; email login hidden when counter slots exist.
+- Includes build 8: sale stock RPC, negative stock setting, native barcode scan.
+
+### Install notes — Android (build 9 release)
+
+1. **Uninstall** any previous ERP Mobile app (especially debug builds 7/8 — different signing key).
+2. Install: `erp-mobile-app/releases/erp-mobile-1.0.5-build9.apk`  
+   `adb install -r releases/erp-mobile-1.0.5-build9.apk`
+3. Release signing uses `android/app/release-key.jks` (generated on build machine if missing). Keep keystore backup for future updates.
+4. API base: `https://erp.dincouture.pk` (from `.env.production` at sync time).
+
+### Install notes — iOS (build 9)
+
+1. Install via Xcode **Devices**, Apple Configurator, or MDM: `releases/erp-mobile-1.0.5-build9.ipa` (Apple Development profile — device must be on your team).
+2. Or: `npx cap open ios` → scheme **NDM ERP** → Run on connected iPhone.
+3. Archive: `ios/build/App.xcarchive`. Ad Hoc / TestFlight needs **iOS Distribution** certificate in Xcode.
+
+### Mobile test checklist (build 9)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Contacts → link icon | Share link has `company` + `branch`; WhatsApp/Email work |
+| 2 | Public register → Contacts (web) | New lead shows `Ref:`; Approve → `CUS-xxxx` |
+| 3 | Products list | Thumb shows image or “No photo” |
+| 4 | Sales invoice PDF | Centered company block |
+| 5 | Counter PIN | No re-lock on in-app navigation; re-lock after background |
+
+---
+
+## Previous build — 1.0.5 (build 8) — 2026-05-24
 
 | Field | Value |
 |--------|--------|

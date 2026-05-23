@@ -3,6 +3,12 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { RealtimeClient } from '@supabase/realtime-js';
 import { clearSecure } from './secureStorage';
 import { syncCounterRefreshTokenForUserId } from './counterUserVault';
+import {
+  installNativeStaleTokenConsoleFilter,
+  isStaleRefreshTokenError,
+  recoverStaleAuthSession,
+  recoverStaleAuthSessionFromBootstrap,
+} from './authSessionRecovery';
 
 /** Vite defines `import.meta.env`; Node (e.g. tsx --test) does not — avoid crashing on import. */
 const env =
@@ -170,6 +176,10 @@ export const supabase = createClient(url, key, {
 
 attachDirectRealtimeInLocalDev(supabase);
 
+if (isNativeCapacitor) {
+  installNativeStaleTokenConsoleFilter();
+}
+
 let counterVaultSyncTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleCounterVaultTokenSync(session: { user: { id: string }; refresh_token?: string } | null): void {
   const uid = session?.user?.id;
@@ -192,7 +202,15 @@ if (hasConfig) {
       clearSecure().catch(() => {});
       window.dispatchEvent(new CustomEvent('erp-auth-signed-out'));
     }
+    if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
+      void supabase.auth.getSession().then(({ error }) => {
+        if (error && isStaleRefreshTokenError(error)) {
+          void recoverStaleAuthSession();
+        }
+      });
+    }
   });
+  void recoverStaleAuthSessionFromBootstrap();
 }
 
 if (env.DEV) {

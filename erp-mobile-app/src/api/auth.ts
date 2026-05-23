@@ -13,7 +13,12 @@ import {
 } from '../lib/secureStorage';
 import { normalizeAppRole, type AssignableAppRole } from '../config/functionalRoles';
 import { getOAuthRedirectTo } from '../lib/oauthRedirect';
-import { syncCounterRefreshTokenForUserId, syncCounterVaultDisplayMetadataForUserId } from '../lib/counterUserVault';
+import {
+  syncCounterRefreshTokenForUserId,
+  syncCounterVaultDisplayMetadataForUserId,
+  formatCounterPinAuthError,
+} from '../lib/counterUserVault';
+import { isStaleRefreshTokenError, recoverStaleAuthSession } from '../lib/authSessionRecovery';
 import { getUserAccessibleBranchIds } from './permissions';
 
 export { getOAuthRedirectTo } from '../lib/oauthRedirect';
@@ -50,6 +55,10 @@ export async function ensureAuthenticatedSession(maxWaitMs = 8000): Promise<{ ok
       error,
     } = await supabase.auth.getSession();
     if (error) {
+      if (isStaleRefreshTokenError(error)) {
+        await recoverStaleAuthSession();
+        return { ok: false, message: formatCounterPinAuthError(error.message) };
+      }
       return { ok: false, message: error.message };
     }
     if (session?.access_token) {
@@ -311,14 +320,22 @@ export async function syncCurrentSessionToCounterVault(): Promise<void> {
 }
 
 export async function getSession(): Promise<{ userId: string; email: string } | null> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error && isStaleRefreshTokenError(error)) {
+    await recoverStaleAuthSession();
+    return null;
+  }
   if (!session?.user) return null;
   return { userId: session.user.id, email: session.user.email || '' };
 }
 
 /** Returns session with refresh_token for storing in secure vault. */
 export async function getSessionWithRefresh(): Promise<{ userId: string; email: string; refreshToken: string } | null> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error && isStaleRefreshTokenError(error)) {
+    await recoverStaleAuthSession();
+    return null;
+  }
   if (!session?.user?.id || !session.refresh_token) return null;
   return {
     userId: session.user.id,
@@ -330,7 +347,13 @@ export async function getSessionWithRefresh(): Promise<{ userId: string; email: 
 /** Restore Supabase session from refresh token (e.g. after PIN unlock when session was lost). */
 export async function refreshSessionFromRefreshToken(refreshToken: string): Promise<{ ok: boolean; error?: string }> {
   const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    if (isStaleRefreshTokenError(error)) {
+      await recoverStaleAuthSession();
+      return { ok: false, error: formatCounterPinAuthError(error.message) };
+    }
+    return { ok: false, error: error.message };
+  }
   if (!data?.session) return { ok: false, error: 'No session returned.' };
   const rt = data.session.refresh_token;
   const uid = data.session.user?.id;
