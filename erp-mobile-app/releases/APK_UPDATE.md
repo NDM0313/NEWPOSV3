@@ -4,7 +4,49 @@ Copy a new block for every build. Keep the newest entry at the top.
 
 ---
 
-## Latest build — 1.0.5 (build 6) — 2026-05-23
+## Latest build — 1.0.5 (build 7) — 2026-05-23
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-23 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 7 |
+| **Git commit** | (see `git rev-parse --short HEAD` on build machine) |
+| **Android** | Debug (unsigned test) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build7-debug.apk` (~30 MB) |
+| **Gradle source** | `android/app/build/outputs/apk/debug/app-debug.apk` |
+| **Built from** | `main` after pull `83262ae` + migrations commit |
+
+### Changelog (user-facing) — build 7
+
+- **Barcode scan (Add Products):** native ML Kit camera on Android/iOS — Sales → Add Items → **Scan** (no browser `BarcodeDetector` error).
+- **Settings UX:** accordions — only **Account & branch** open by default; **Counter & lock screen** and **Printer & barcode** expand on tap.
+- **Branch "all" UUID fix:** payment / expense with **All Branches** no longer sends `uuid: "all"` to RPCs.
+- Includes build 6: My Activity, counter PIN session policy, Shipment & Cargo UI.
+
+### Install notes — Android (build 7 debug)
+
+1. **Uninstall** any previous ERP Mobile app (clears WebView cache and IndexedDB).
+2. Install: `erp-mobile-app/releases/erp-mobile-1.0.5-build7-debug.apk`  
+   `adb install -r releases/erp-mobile-1.0.5-build7-debug.apk`
+3. Debug builds use a different signing key than release build 5 — uninstall is required if install fails with signature conflict.
+4. Cold boot: splash ~2s, then login. API base: `https://erp.dincouture.pk`.
+5. Settings → **Printer & barcode** → method **Camera** for native scan.
+
+### Mobile test checklist (build 7)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Cold boot | Login within ~15s (not endless blue) |
+| 2 | All Branches payment | No `uuid: "all"` toast |
+| 3 | Settings | Accordions collapsed; Counter + Printer expand OK |
+| 4 | Sales → Add Items → Scan | Native camera; EAN adds product |
+| 5 | POS Scan | Regression OK |
+| 6 | Counter PIN | One email login if vault expired after VPS deploy |
+
+---
+
+## Previous build — 1.0.5 (build 6) — 2026-05-23
 
 | Field | Value |
 |--------|--------|
