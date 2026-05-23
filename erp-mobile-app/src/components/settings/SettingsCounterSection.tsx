@@ -6,9 +6,11 @@ import { getFunctionalRoleLabel } from '../../config/functionalRoles';
 import {
   COUNTER_SESSION_POLICY_OPTIONS,
   formatLastTokenSyncLabel,
+  getDevicePinMaxAgeMs,
   setCounterSessionPolicy,
   type CounterSessionPolicyId,
 } from '../../lib/counterSessionPolicy';
+import { setPinLockSettings } from '../../lib/pinLock';
 import { setSharedCounterModeEnabled } from '../../lib/sharedCounterMode';
 import type { EnrolledCounterProfile } from '../../lib/counterUserVault';
 
@@ -54,7 +56,8 @@ export function SettingsCounterSection({
       {companyId && branchOk && (
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3">
           <p className="text-xs text-[#9CA3AF] leading-relaxed">
-            Each staff signs in once on this tablet, then saves their own 4-digit PIN in Counter tablet PIN.
+            Each staff signs in once on this tablet (email/password), then uses their 4-digit PIN. Vault stays fresh for
+            the window below. PIN is asked again when you leave the app (home screen), not while navigating inside ERP.
           </p>
           <button
             type="button"
@@ -104,6 +107,7 @@ export function SettingsCounterSection({
               const id = e.target.value as CounterSessionPolicyId;
               setCounterSessionPolicy(id);
               setCounterSessionPolicyState(id);
+              setPinLockSettings({ timeoutMs: getDevicePinMaxAgeMs() });
             }}
             className="w-full px-3 py-2.5 bg-[#111827] border border-[#374151] rounded-lg text-white text-sm focus:outline-none focus:border-[#10B981]"
           >

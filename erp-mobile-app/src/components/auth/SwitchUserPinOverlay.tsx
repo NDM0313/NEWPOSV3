@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import * as authApi from '../../api/auth';
-import { getCounterUserForPin, formatCounterPinAuthError, COUNTER_WRONG_COMPANY_MESSAGE } from '../../lib/counterUserVault';
+import type { AuthProfile } from '../../api/auth';
+import { unlockWithCounterPin } from '../../lib/counterPinUnlock';
 
 interface SwitchUserPinOverlayProps {
   open: boolean;
   companyId: string | null;
   onClose: () => void;
-  onSessionReplaced: (profile: authApi.AuthProfile) => void | Promise<void>;
+  onSessionReplaced: (profile: AuthProfile) => void | Promise<void>;
 }
 
 export function SwitchUserPinOverlay({ open, companyId, onClose, onSessionReplaced }: SwitchUserPinOverlayProps) {
@@ -36,36 +36,13 @@ export function SwitchUserPinOverlay({ open, companyId, onClose, onSessionReplac
     setBusy(true);
     setError(null);
     try {
-      const payload = await getCounterUserForPin(pin);
-      if (!payload?.refreshToken) {
-        setError('Unknown PIN or could not unlock.');
+      const result = await unlockWithCounterPin(pin, { companyId });
+      if (!result.ok) {
+        setError(result.error);
         setBusy(false);
         return;
       }
-      const refreshed = await authApi.refreshSessionFromRefreshToken(payload.refreshToken);
-      if (!refreshed.ok) {
-        setError(formatCounterPinAuthError(refreshed.error));
-        setBusy(false);
-        return;
-      }
-      const session = await authApi.getSession();
-      if (!session) {
-        setError('No session after refresh.');
-        setBusy(false);
-        return;
-      }
-      const profile = await authApi.getProfile(session.userId);
-      if (!profile) {
-        setError('Could not load profile.');
-        setBusy(false);
-        return;
-      }
-      if (companyId && profile.companyId !== companyId) {
-        setError(COUNTER_WRONG_COMPANY_MESSAGE);
-        setBusy(false);
-        return;
-      }
-      await onSessionReplaced(profile);
+      await onSessionReplaced(result.profile);
       setPin('');
       onClose();
     } catch (e) {

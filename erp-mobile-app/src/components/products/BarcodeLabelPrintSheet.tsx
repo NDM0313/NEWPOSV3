@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Printer, Barcode, Loader2, Minus, Plus, AlertTriangle } from 'lucide-react';
+import { X, Printer, Barcode, Loader2, Minus, Plus, AlertTriangle, ArrowLeft } from 'lucide-react';
 import type { MobileBarcodeLabelSettings, MobilePrinterSettings } from '../../api/settings';
 import {
   printProductLabelsBatch,
@@ -68,6 +68,22 @@ export function BarcodeLabelPrintSheet({
   const [labelLayout, setLabelLayout] = useState<'thermal' | 'a4'>(labelSettings.labelLayout);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let backHandle: { remove: () => void } | undefined;
+    void import('@capacitor/app')
+      .then(({ App }) =>
+        App.addListener('backButton', () => {
+          onClose();
+        }),
+      )
+      .then((h) => {
+        backHandle = h;
+      })
+      .catch(() => {});
+    return () => backHandle?.remove();
+  }, [open, onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -143,15 +159,24 @@ export function BarcodeLabelPrintSheet({
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={busy}
-          className="p-2 rounded-lg text-[#9CA3AF] hover:bg-[#374151] hover:text-white shrink-0"
-          aria-label="Close"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg text-[#9CA3AF] hover:bg-[#374151] hover:text-white"
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg text-[#9CA3AF] hover:bg-[#374151] hover:text-white"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       <div className="px-4 py-3 border-b border-[#374151] bg-[#1F2937]/80 shrink-0 space-y-3">
@@ -294,7 +319,6 @@ export function BarcodeLabelPrintSheet({
         <button
           type="button"
           onClick={onClose}
-          disabled={busy}
           className="flex-1 py-3 rounded-lg border border-[#374151] text-[#9CA3AF] font-medium"
         >
           Cancel

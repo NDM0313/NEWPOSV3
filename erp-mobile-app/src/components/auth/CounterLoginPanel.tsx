@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Users } from 'lucide-react';
-import * as authApi from '../../api/auth';
 import {
-  getCounterUserForPin,
   listEnrolledCounterProfiles,
-  formatCounterPinAuthError,
-  COUNTER_WRONG_COMPANY_MESSAGE,
   type EnrolledCounterProfile,
 } from '../../lib/counterUserVault';
+import { unlockWithCounterPin } from '../../lib/counterPinUnlock';
 import { getCounterSyncStaleWarning } from '../../lib/counterSessionPolicy';
 import type { User } from '../../types';
 
@@ -51,34 +48,15 @@ export function CounterLoginPanel({ companyId, onLogin, onUseFullLogin }: Counte
     setBusy(true);
     setError(null);
     try {
-      const payload = await getCounterUserForPin(pin);
-      if (!payload?.refreshToken) {
-        setError('Wrong PIN. Try again.');
+      const result = await unlockWithCounterPin(pin, {
+        expectedUserId: selected.userId,
+        companyId,
+      });
+      if (!result.ok) {
+        setError(result.error);
         return;
       }
-      if (selected.userId && payload.userId && selected.userId !== payload.userId) {
-        setError('PIN does not match this user.');
-        return;
-      }
-      const refreshed = await authApi.refreshSessionFromRefreshToken(payload.refreshToken);
-      if (!refreshed.ok) {
-        setError(formatCounterPinAuthError(refreshed.error));
-        return;
-      }
-      const session = await authApi.getSession();
-      if (!session) {
-        setError('No session after sign-in.');
-        return;
-      }
-      const profile = await authApi.getProfile(session.userId);
-      if (!profile) {
-        setError('Profile not found.');
-        return;
-      }
-      if (companyId && profile.companyId !== companyId) {
-        setError(COUNTER_WRONG_COMPANY_MESSAGE);
-        return;
-      }
+      const profile = result.profile;
       const user: User = {
         id: profile.userId,
         name: profile.name,

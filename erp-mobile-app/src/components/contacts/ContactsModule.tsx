@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Users, Plus, Search, Phone, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, Plus, Search, Phone, Loader2, Link2 } from 'lucide-react';
 import type { User } from '../../types';
 import * as contactsApi from '../../api/contacts';
 import type { Contact, ContactRole } from '../../api/contacts';
 import { AddContactFlow, type AddContactFormData } from './AddContactFlow';
 import { EditContactFlow } from './EditContactFlow';
 import { ContactDetailView } from './ContactDetailView';
+import { LeadToolsSection } from './LeadToolsSection';
 import { PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
 import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
 import { useMainScrollRef } from '../../contexts/MainScrollContext';
+import { getCompanyName } from '../../api/reports';
 
 export type { Contact, ContactRole };
 
@@ -30,8 +32,18 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
   const [addError, setAddError] = useState('');
   const [updateError, setUpdateError] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showLeadTools, setShowLeadTools] = useState(false);
+  const [companyName, setCompanyName] = useState<string | null>(null);
   const { online, pendingCount } = useOfflineListMeta();
   const mainScrollRef = useMainScrollRef();
+
+  useEffect(() => {
+    if (!companyId) {
+      setCompanyName(null);
+      return;
+    }
+    void getCompanyName(companyId).then(setCompanyName);
+  }, [companyId]);
 
   const handleSwipeBack = useCallback(() => {
     if (view === 'add') setView('list');
@@ -190,9 +202,19 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
             </div>
             <h1 className="text-white font-semibold text-base">Contacts</h1>
           </div>
-          <button onClick={() => setView('add')} className="p-2 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg text-white">
-            <Plus size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowLeadTools(true)}
+              className="p-2 hover:bg-[#374151] rounded-lg text-[#93C5FD]"
+              aria-label="Share registration link"
+            >
+              <Link2 size={20} />
+            </button>
+            <button onClick={() => setView('add')} className="p-2 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg text-white">
+              <Plus size={20} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -294,6 +316,15 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
         )}
         </div>
       </PullToRefresh>
+      {showLeadTools ? (
+        <LeadToolsSection
+          user={user}
+          companyId={companyId}
+          branchId={branchId}
+          companyName={companyName}
+          onClose={() => setShowLeadTools(false)}
+        />
+      ) : null}
     </div>
     </SwipeBackShell>
   );

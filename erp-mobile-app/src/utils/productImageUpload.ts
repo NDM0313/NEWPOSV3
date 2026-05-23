@@ -25,9 +25,7 @@ export function normalizeProductImagePublicUrl(rawUrl: string, storagePath?: str
 export async function getProductImageDisplayUrl(rawUrl: string): Promise<string> {
   if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
   try {
-    const idx = rawUrl.indexOf(`/${BUCKET}/`);
-    if (idx === -1) return rawUrl;
-    const path = rawUrl.slice(idx + BUCKET.length + 2);
+    const path = extractProductImageStoragePath(rawUrl);
     if (!path) return rawUrl;
     const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600);
     if (error || !data?.signedUrl) return rawUrl;

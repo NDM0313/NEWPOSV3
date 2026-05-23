@@ -31,7 +31,7 @@ import { MainScrollContext } from './contexts/MainScrollContext';
 import { runSync, getUnsyncedCount } from './lib/syncEngine';
 import { clearAllPending } from './lib/offlineStore';
 import type { AuthProfile } from './api/auth';
-import { markUnlocked, clearUnlockMark, shouldRelock } from './lib/pinLock';
+import { markUnlocked, clearUnlockMark, shouldRelock, markBackgrounded } from './lib/pinLock';
 import { dispatchMobileInvalidated } from './lib/dataInvalidationBus';
 import { subscribeMobileRealtime } from './lib/realtimeSubscriptions';
 import { mobileRealtimeHealth } from './lib/supabase';
@@ -256,6 +256,7 @@ export default function App() {
       dispatchSessionSwitched({ userId: profile.userId, companyId: profile.companyId });
       setLastCounterCompanyId(profile.companyId);
       setIsCounterLocked(false);
+      markUnlocked();
       void authApi.syncCurrentSessionToCounterVault();
     },
     [applyProfileAfterCounterSwitch, reload]
@@ -334,26 +335,27 @@ export default function App() {
       setIsPinLocked(true);
     };
     const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        markBackgrounded();
+        return;
+      }
       if (document.visibilityState === 'visible') {
         void checkLock();
         void maintainCounterVaultTokens();
       }
     };
-    const onFocus = () => {
-      void checkLock();
-      void maintainCounterVaultTokens();
-    };
     document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('focus', onFocus);
 
     let appStateListener: { remove: () => void } | undefined;
     void import('@capacitor/app')
       .then(({ App }) =>
         App.addListener('appStateChange', ({ isActive }) => {
-          if (isActive) {
-            void checkLock();
-            void maintainCounterVaultTokens();
+          if (!isActive) {
+            markBackgrounded();
+            return;
           }
+          void checkLock();
+          void maintainCounterVaultTokens();
         }),
       )
       .then((handle) => {
@@ -364,7 +366,6 @@ export default function App() {
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('focus', onFocus);
       appStateListener?.remove();
     };
   }, [user?.id, companyId, isPinLocked, isCounterLocked]);

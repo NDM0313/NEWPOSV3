@@ -20,6 +20,7 @@ import { AddProductFlow, type AddProductFlowSavePayload } from './AddProductFlow
 import { ProductImage } from './ProductImage';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 import { BarcodeLabelPrintSheet } from './BarcodeLabelPrintSheet';
+import { ProductImagePreviewSheet } from './ProductImagePreviewSheet';
 import { linesFromProducts } from '../../lib/barcodeLabelLines';
 import type { LabelPrintLine } from '../../services/barcodeLabelPrint';
 import * as settingsApi from '../../api/settings';
@@ -86,8 +87,18 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
   );
   const [labelCompanyName, setLabelCompanyName] = useState('');
   const [labelBranchName, setLabelBranchName] = useState('');
+  const [imagePreviewProduct, setImagePreviewProduct] = useState<Product | null>(null);
   const { online, pendingCount } = useOfflineListMeta();
   const mainScrollRef = useMainScrollRef();
+
+  useEffect(() => {
+    if (view === 'add') setLabelSheetOpen(false);
+  }, [view]);
+
+  const handleModuleBack = useCallback(() => {
+    setLabelSheetOpen(false);
+    onBack();
+  }, [onBack]);
 
   const loadProducts = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -298,7 +309,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
       <div className="bg-gradient-to-br from-[#1E3A8A] via-[#1E40AF] to-[#3B82F6] sticky top-0 z-40 shadow-lg">
         <div className="flex items-center justify-between px-4 h-14">
           <div className="flex items-center gap-3">
-            <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg text-white transition-colors">
+            <button onClick={handleModuleBack} className="p-2 hover:bg-white/10 rounded-lg text-white transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="w-9 h-9 bg-white/20 backdrop-blur rounded-lg flex items-center justify-center">
@@ -448,9 +459,21 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                           />
                         </div>
                       )}
-                      <div className="w-14 h-14 rounded-lg bg-[#111827] border border-[#374151] overflow-hidden flex items-center justify-center flex-shrink-0">
-                        <ProductImage src={thumb} alt={p.name} />
-                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setImagePreviewProduct(p);
+                        }}
+                        className={`w-14 h-14 rounded-lg bg-[#111827] border overflow-hidden flex items-center justify-center flex-shrink-0 ${
+                          thumb
+                            ? 'border-[#374151] ring-1 ring-emerald-500/40'
+                            : 'border-[#374151] border-dashed'
+                        }`}
+                        aria-label={`View image for ${p.name}`}
+                      >
+                        <ProductImage src={thumb} alt={p.name} variant="thumb" />
+                      </button>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <h3 className="font-medium text-white text-sm leading-tight truncate">{p.name}</h3>
@@ -527,6 +550,17 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
           </button>
         </div>
       )}
+
+      <ProductImagePreviewSheet
+        open={!!imagePreviewProduct}
+        product={imagePreviewProduct}
+        companyId={companyId}
+        onClose={() => setImagePreviewProduct(null)}
+        onUpdated={(updated) => {
+          setProducts((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+          setImagePreviewProduct(updated);
+        }}
+      />
 
       <BarcodeLabelPrintSheet
         open={labelSheetOpen}

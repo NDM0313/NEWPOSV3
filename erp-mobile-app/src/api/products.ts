@@ -1,5 +1,12 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { isBrowserOffline, listCacheGet, listCacheGetMeta, listCacheKeys, listCacheSet } from '../lib/listCache';
+import {
+  isBrowserOffline,
+  listCacheGet,
+  listCacheGetMeta,
+  listCacheKeys,
+  listCacheRemove,
+  listCacheSet,
+} from '../lib/listCache';
 import { fetchProductStockByKey } from '../utils/productStockFetch';
 import { isRealBranchUuid } from '../utils/branchId';
 
@@ -408,6 +415,11 @@ export async function getProducts(
   });
   getProductsInFlight.set(cacheKey, run);
   return run;
+}
+
+/** Bust product list cache after image or catalog changes so other devices refresh. */
+export async function invalidateProductsListCache(companyId: string): Promise<void> {
+  await listCacheRemove(listCacheKeys.products(companyId));
 }
 
 export interface RentalProductVariation {

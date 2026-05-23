@@ -5,10 +5,15 @@ import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
 import { Copy, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import { useSupabase } from '@/app/context/SupabaseContext';
 
-const BASE_URL = typeof window !== 'undefined' ? `${window.location.origin}/register-contact` : 'https://erp.dincouture.pk/register-contact';
+const BASE_URL =
+  typeof window !== 'undefined'
+    ? `${window.location.origin}/register-contact`
+    : 'https://erp.dincouture.pk/register-contact';
 
 export const LeadTools = () => {
+  const { companyId, branchId } = useSupabase();
   const [type, setType] = useState<'customer' | 'supplier' | 'worker'>('customer');
   const [source, setSource] = useState('');
   const [ref, setRef] = useState('');
@@ -16,11 +21,12 @@ export const LeadTools = () => {
 
   const buildUrl = () => {
     const params = new URLSearchParams();
+    if (companyId) params.set('company', companyId);
+    if (branchId) params.set('branch', branchId);
     params.set('type', type);
     if (source.trim()) params.set('source', source.trim());
     if (ref.trim()) params.set('ref', ref.trim());
-    const qs = params.toString();
-    return qs ? `${BASE_URL}?${qs}` : BASE_URL;
+    return `${BASE_URL}?${params.toString()}`;
   };
 
   const url = buildUrl();
@@ -66,12 +72,15 @@ export const LeadTools = () => {
       <div>
         <h3 className="text-lg font-semibold text-white mb-1">Lead Capture QR Codes</h3>
         <p className="text-sm text-gray-400">
-          Generate QR codes and links for public contact registration. Share on social media, print on flyers, or add to your website.
+          Generate QR codes and links for public contact registration. The link includes your company
+          {branchId ? ' and branch' : ''} so leads register in the correct account.
         </p>
+        {!companyId && (
+          <p className="text-sm text-amber-400 mt-2">Select a company in the app before generating links.</p>
+        )}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        {/* Configuration */}
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 space-y-4">
           <Label className="text-white font-medium">Contact Type</Label>
           <div className="flex gap-4">
@@ -122,6 +131,7 @@ export const LeadTools = () => {
                 size="icon"
                 variant="outline"
                 onClick={handleCopy}
+                disabled={!companyId}
                 className="shrink-0 border-gray-700"
               >
                 {copied ? <Copy size={16} className="text-green-500" /> : <Copy size={16} />}
@@ -130,21 +140,15 @@ export const LeadTools = () => {
           </div>
         </div>
 
-        {/* QR Code */}
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 flex flex-col items-center justify-center">
           <div ref={qrRef} className="bg-white p-4 rounded-xl">
-            <QRCode
-              value={url}
-              size={200}
-              level="M"
-              fgColor="#111827"
-              bgColor="#ffffff"
-            />
+            <QRCode value={url} size={200} level="M" fgColor="#111827" bgColor="#ffffff" />
           </div>
           <Button
             variant="outline"
             className="mt-4 gap-2 border-gray-700"
             onClick={handleDownloadQR}
+            disabled={!companyId}
           >
             <Download size={16} />
             Download QR Code
@@ -154,7 +158,12 @@ export const LeadTools = () => {
 
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
         <p className="text-sm text-blue-300">
-          <strong>Tip:</strong> Use different source/ref values to track where leads come from. Example: <code className="bg-gray-800 px-1 rounded">?type=customer&source=instagram&ref=NDM01</code>
+          <strong>Tip:</strong> Links include <code className="bg-gray-800 px-1 rounded">company</code> and{' '}
+          <code className="bg-gray-800 px-1 rounded">branch</code> IDs so registrations stay in your tenant.
+          Example:{' '}
+          <code className="bg-gray-800 px-1 rounded">
+            ?company=…&branch=…&type=customer&source=instagram&ref=NDM01
+          </code>
         </p>
       </div>
     </div>

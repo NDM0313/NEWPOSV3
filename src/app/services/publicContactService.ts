@@ -16,6 +16,10 @@ export interface RegisterPublicContactInput {
   honeypot?: string;
   captcha_answer?: number;
   client_fingerprint?: string;
+  /** From registration link query param — scopes contact to this company. */
+  company_id?: string;
+  /** Optional branch from registration link. */
+  branch_id?: string;
 }
 
 export interface RegisterPublicContactResult {
@@ -42,6 +46,8 @@ export const publicContactService = {
       p_honeypot: input.honeypot || null,
       p_captcha_answer: input.captcha_answer ?? null,
       p_client_fingerprint: input.client_fingerprint || null,
+      p_company_id: input.company_id?.trim() || null,
+      p_branch_id: input.branch_id?.trim() || null,
     });
 
     if (error) {

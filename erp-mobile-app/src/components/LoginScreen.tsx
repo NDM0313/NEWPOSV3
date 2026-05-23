@@ -14,6 +14,7 @@ import {
   type CounterVaultPayload,
 } from '../lib/counterUserVault';
 import { maintainCounterVaultTokens } from '../lib/counterVaultMaintenance';
+import { listEnrolledCounterProfiles } from '../lib/counterUserVault';
 
 interface LoginScreenProps {
   onLogin: (user: User, companyId: string | null) => void;
@@ -47,6 +48,20 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
   const [pinLockedUntil, setPinLockedUntil] = useState(0);
   const [confirmCounterSync, setConfirmCounterSync] = useState(false);
   const [pendingCounterPayload, setPendingCounterPayload] = useState<{ pin: string; payload: CounterVaultPayload } | null>(null);
+  const [hasCounterSlots, setHasCounterSlots] = useState(false);
+  const [showEmailLogin, setShowEmailLogin] = useState(false);
+
+  useEffect(() => {
+    listEnrolledCounterProfiles(getLastCounterCompanyId())
+      .then((slots) => {
+        setHasCounterSlots(slots.length > 0);
+        if (slots.length === 0) setShowEmailLogin(true);
+      })
+      .catch(() => {
+        setHasCounterSlots(false);
+        setShowEmailLogin(true);
+      });
+  }, []);
 
   useEffect(() => {
     authApi.hasPinSet().then(setHasPinSet);
@@ -127,6 +142,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         return;
       }
       if (data) {
+        await authApi.syncCurrentSessionToCounterVault();
         const user: User = {
           id: data.userId,
           name: data.name,
@@ -555,8 +571,10 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
           onLogin={onLogin}
           onUseFullLogin={() => {
             setError('');
+            setShowEmailLogin(true);
           }}
         />
+        {showEmailLogin || !hasCounterSlots ? (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-[#6B7280] mb-2">Email</label>
@@ -594,7 +612,17 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
             Sign In
           </button>
         </form>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowEmailLogin(true)}
+            className="w-full text-sm text-[#9CA3AF] hover:text-white py-2"
+          >
+            Use email / password instead
+          </button>
+        )}
 
+        {(showEmailLogin || !hasCounterSlots) && (
         <div className="mt-4 space-y-2">
           <button
             type="button"
@@ -615,6 +643,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
             </button>
           ) : null}
         </div>
+        )}
 
       </div>
     </div>

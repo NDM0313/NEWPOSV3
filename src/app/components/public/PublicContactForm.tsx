@@ -15,6 +15,22 @@ const CONTACT_TYPE_LABELS: Record<ContactType, string> = {
   worker: 'Worker',
 };
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseScopedIds(search: string): { companyId: string | null; branchId: string | null; linkError: string | null } {
+  const params = new URLSearchParams(search);
+  const companyRaw = params.get('company')?.trim() || '';
+  const branchRaw = params.get('branch')?.trim() || '';
+  if (companyRaw && !UUID_RE.test(companyRaw)) {
+    return { companyId: null, branchId: null, linkError: 'This registration link is invalid (company id).' };
+  }
+  if (branchRaw && !UUID_RE.test(branchRaw)) {
+    return { companyId: companyRaw || null, branchId: null, linkError: 'This registration link is invalid (branch id).' };
+  }
+  return { companyId: companyRaw || null, branchId: branchRaw || null, linkError: null };
+}
+
 /** Simple fingerprint for rate limiting (screen + user agent hash) */
 function getClientFingerprint(): string {
   try {
@@ -58,6 +74,11 @@ export const PublicContactForm = () => {
     return new URLSearchParams(window.location.search).get('ref') || '';
   }, []);
 
+  const scopedIds = useMemo(() => {
+    if (typeof window === 'undefined') return { companyId: null as string | null, branchId: null as string | null, linkError: null as string | null };
+    return parseScopedIds(window.location.search);
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
@@ -71,6 +92,11 @@ export const PublicContactForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (scopedIds.linkError) {
+      setError(scopedIds.linkError);
+      return;
+    }
 
     const captchaNum = parseInt(captchaAnswer, 10);
     if (isNaN(captchaNum)) {
@@ -96,6 +122,8 @@ export const PublicContactForm = () => {
         honeypot: honeypot || undefined,
         captcha_answer: captchaNum,
         client_fingerprint: getClientFingerprint(),
+        company_id: scopedIds.companyId || undefined,
+        branch_id: scopedIds.branchId || undefined,
       });
 
       if (result.success) {
@@ -138,6 +166,12 @@ export const PublicContactForm = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {scopedIds.linkError && (
+            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm">
+              {scopedIds.linkError}
+            </div>
+          )}
+
           {/* Section 1: Contact Type */}
           <div>
             <Label className="text-white font-medium mb-3 block">Contact Type</Label>

@@ -70,7 +70,7 @@ export function InvoicePreviewPdf(props: InvoicePreviewProps) {
           ...(generatedBy ? [{ label: 'By', value: generatedBy }] : []),
         ]}
       />
-      <div style={{ padding: '12px 18px 0 18px' }}>
+      <div style={{ paddingTop: 8 }}>
         <div
           style={{
             display: 'grid',
@@ -81,6 +81,7 @@ export function InvoicePreviewPdf(props: InvoicePreviewProps) {
             padding: 10,
             background: '#F9FAFB',
             fontSize: 12,
+            width: '100%',
           }}
         >
           <div>
@@ -96,7 +97,7 @@ export function InvoicePreviewPdf(props: InvoicePreviewProps) {
         </div>
       </div>
 
-      <div style={{ padding: '12px 18px' }}>
+      <div style={{ paddingTop: 12 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
             <tr style={{ background: '#F3F4F6' }}>

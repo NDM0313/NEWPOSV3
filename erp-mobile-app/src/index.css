@@ -120,16 +120,25 @@ input[type="number"] {
 
 /* ----- PDF / Print preview ----- */
 /* The captured document is rendered inside an A4-sized white container so the preview and the PDF look identical. */
+.pdf-print-root {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
 .pdf-document {
   background: #ffffff;
   color: #000000;
   width: 210mm;
+  max-width: 100%;
   min-height: 297mm;
-  padding: 14mm 14mm;
+  margin: 0 auto;
+  padding: 14mm;
   box-sizing: border-box;
   font-family: 'Helvetica', 'Arial', sans-serif;
   font-size: 11px;
   line-height: 1.4;
+  text-align: left;
 }
 .pdf-document * {
   color: inherit;
