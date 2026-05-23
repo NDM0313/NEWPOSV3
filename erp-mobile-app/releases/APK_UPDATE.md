@@ -11,7 +11,7 @@ Copy a new block for every build. Keep the newest entry at the top.
 | **Date** | 2026-05-23 |
 | **versionName** | 1.0.5 |
 | **versionCode** | 7 |
-| **Git commit** | (see `git rev-parse --short HEAD` on build machine) |
+| **Git commit** | `17a753e` |
 | **Android** | Debug (unsigned test) |
 | **APK path (local)** | `releases/erp-mobile-1.0.5-build7-debug.apk` (~30 MB) |
 | **Gradle source** | `android/app/build/outputs/apk/debug/app-debug.apk` |
