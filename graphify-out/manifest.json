@@ -1124,8 +1124,8 @@
     "hash": "c27e82588eee7f65a6aaef4f3d84b34e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\vite.config.d.ts": {
-    "mtime": 1779381268.1911848,
-    "hash": "5ccf14b6a75fb3647217179a87676852"
+    "mtime": 1779519191.152918,
+    "hash": "d4480528e4d3734ff355c9fad861c19a"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\vite.config.js": {
     "mtime": 1779382293.849,
@@ -1144,7 +1144,7 @@
     "hash": "1d0b5da1e09162cc2147d437f592f38f"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\capacitor.settings.gradle": {
-    "mtime": 1779382519.0798638,
+    "mtime": 1779519557.3344276,
     "hash": "6a256914c9029acc96947ad4eab72076"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\gradlew": {
@@ -1160,11 +1160,11 @@
     "hash": "32293aeff620cc10298866858c22ddc9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\build.gradle": {
-    "mtime": 1779381063.451239,
-    "hash": "e33939679525be93eaa3fd1f24dffff4"
+    "mtime": 1779519305.0984643,
+    "hash": "27205cee0a0b7a7282c512f8f0170711"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\capacitor.build.gradle": {
-    "mtime": 1779382519.080854,
+    "mtime": 1779519557.3364275,
     "hash": "931d0195d312f8382fd2fa1ab8562ad1"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\androidTest\\java\\com\\getcapacitor\\myapp\\ExampleInstrumentedTest.java": {
@@ -1172,20 +1172,20 @@
     "hash": "c777a4127ae7213f7da22c4105bdfeab"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\cordova.js": {
-    "mtime": 1779382519.0657482,
+    "mtime": 1779519557.3244276,
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\cordova_plugins.js": {
-    "mtime": 1779382519.0677822,
+    "mtime": 1779519557.3254268,
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\sw.js": {
     "mtime": 1772475375.9854503,
     "hash": "e08de7a4509669543a382e61d5153f3f"
   },
-  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\assets\\index-Cc9H_W23.js": {
-    "mtime": 1779382511.6895616,
-    "hash": "07e4fce837f2ced4d055e93f0836bb82"
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\assets\\index-BNRyg3yi.js": {
+    "mtime": 1779519551.6933024,
+    "hash": "e9e3dcb97f4b5121b45303a270a52940"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\java\\com\\dincouture\\erp\\DebugSslWebViewClient.java": {
     "mtime": 1779205308.4966328,
@@ -1204,11 +1204,11 @@
     "hash": "3f8a2768101e4de10f606ea4516fd339"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\capacitor-cordova-android-plugins\\build.gradle": {
-    "mtime": 1779382519.0868585,
+    "mtime": 1779519557.3414278,
     "hash": "2af61653d70c95d20802c8b5c433ba90"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\capacitor-cordova-android-plugins\\cordova.variables.gradle": {
-    "mtime": 1779382519.088914,
+    "mtime": 1779519557.3434243,
     "hash": "d2372a0ae9aa60abb8d03e7f06bf9194"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\capacitor-cordova-android-plugins-stub\\build.gradle": {
@@ -1256,8 +1256,8 @@
     "hash": "6e35f46a3cb2fc5d4710606e4db165ec"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\ios\\App\\CapApp-SPM\\Package.swift": {
-    "mtime": 1778925348.9192443,
-    "hash": "0c1f8d912696fa14f2912540962adace"
+    "mtime": 1779519190.713767,
+    "hash": "9cdde95ee27a0194052e051e5980ed37"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\ios\\App\\CapApp-SPM\\Sources\\CapApp-SPM\\CapApp-SPM.swift": {
     "mtime": 1771659995.2858393,
@@ -1296,8 +1296,8 @@
     "hash": "4f220c5c8f745f5ec91b68429d67c0b9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\App.tsx": {
-    "mtime": 1779378045.974031,
-    "hash": "916e3b18c783240f61357c6164ecc4e0"
+    "mtime": 1779519190.7287676,
+    "hash": "9332ca3047abe530b3296820fb6b6d39"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\main.tsx": {
     "mtime": 1779378010.2836506,
@@ -1312,16 +1312,20 @@
     "hash": "ce68b13eab157a20fa53279cbfc99ca3"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\accounts.ts": {
-    "mtime": 1779191942.8220847,
-    "hash": "d5931f7ec3f08353a073dd7513517240"
+    "mtime": 1779519190.7427676,
+    "hash": "6c345763b9edc70ce90843e5a3430b21"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\activityLog.ts": {
+    "mtime": 1779519190.747766,
+    "hash": "ccca14188c1ce94172ecaa3384ddff51"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\attachmentSignedUrl.ts": {
     "mtime": 1779267297.562151,
     "hash": "692d6f77e4f79b4fb8b356dab3214028"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\auth.ts": {
-    "mtime": 1779372868.869259,
-    "hash": "c7c8ca927d95d9e7e034c721e9776880"
+    "mtime": 1779519190.7517662,
+    "hash": "5ab7f2093a87d1dfa620347ab7560044"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\branches.ts": {
     "mtime": 1779030531.6108565,
@@ -1355,6 +1359,10 @@
     "mtime": 1773310592.2720742,
     "hash": "4b2530f364d84d8a9e0c8f2ad8b87188"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\courierShipments.ts": {
+    "mtime": 1779519190.754767,
+    "hash": "7353cb4284e047b90a554b38e459d0a9"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\customerLedger.ts": {
     "mtime": 1774884077.3226216,
     "hash": "ea680ff075d01271a613f13e22b13325"
@@ -1368,16 +1376,20 @@
     "hash": "d8db39fe39cbd03944b162f985572406"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\expenses.ts": {
-    "mtime": 1779192325.129213,
-    "hash": "43cd45f2859252aea0a211c9a9077f02"
+    "mtime": 1779519190.757769,
+    "hash": "85ebe52288ecd22acba6c0e4d347fcda"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\financialDashboard.ts": {
     "mtime": 1774884329.9720223,
     "hash": "03411a06ec587629eb54f44c601f4048"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\inventory.ts": {
-    "mtime": 1779191338.5888102,
-    "hash": "890c1a943cca9bc8b5456d987e5e4505"
+    "mtime": 1779519190.761768,
+    "hash": "d5f07e128db247ee70b3c6961e22dd2e"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\myActivity.ts": {
+    "mtime": 1779519190.764767,
+    "hash": "f6059b4508a30eb865508493626e3d9d"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\packingList.ts": {
     "mtime": 1777038294.827502,
@@ -1392,12 +1404,16 @@
     "hash": "dadf00b8c217ad6c3d13af72e284fa43"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\permissions.test.ts": {
-    "mtime": 1778947467.372538,
-    "hash": "a177146f9cf3f2c15f1aff17ea63eb89"
+    "mtime": 1779519190.7677686,
+    "hash": "ca2cd87ab144ad4dabf16d814e2d9493"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\permissions.ts": {
-    "mtime": 1779198249.505257,
-    "hash": "0e8fe4452a91d1b060b4fafa3b68011f"
+    "mtime": 1779519190.7717662,
+    "hash": "2b8a7149171353ffb94a401659296db2"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\printingSettings.ts": {
+    "mtime": 1779519190.773765,
+    "hash": "b55770222896b6e65fdca887611c793d"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\productCategories.ts": {
     "mtime": 1771659995.2998369,
@@ -1408,20 +1424,20 @@
     "hash": "56e298a8f922bb466166a6ee6c8011c7"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\purchaseEditAccounting.ts": {
-    "mtime": 1779364653.910944,
+    "mtime": 1779518337.1560614,
     "hash": "53b481ac1633476f1739ca21ce06f610"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\purchases.ts": {
-    "mtime": 1779364653.9129457,
-    "hash": "c37d546482f79065016a7626138f0134"
+    "mtime": 1779519190.7787664,
+    "hash": "d55fe458d56a2be62b633e282c2b0857"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\rentalBookingAccounting.ts": {
     "mtime": 1778311731.5913773,
     "hash": "c5fb4ed116e2ac8f6540055b996554dc"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\rentals.ts": {
-    "mtime": 1778404266.0590792,
-    "hash": "24b0249a922bd441b6d6c3d874490d38"
+    "mtime": 1779519190.783769,
+    "hash": "e0425421a5d888e658e0c52cf2a1d3b9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\reports.ts": {
     "mtime": 1777703714.0862749,
@@ -1432,20 +1448,28 @@
     "hash": "6d59e71d859ec0ea082232ee9f283f4a"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\sales.ts": {
-    "mtime": 1779271778.8397255,
-    "hash": "b5ad2c43e439d9c976319ad416fa4cb9"
+    "mtime": 1779519190.7897677,
+    "hash": "ae865d2902d8a83062acef9447a4985e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\settings.ts": {
-    "mtime": 1779370168.1744955,
-    "hash": "4512bd658bc9dfc46fef6d1bc53da498"
+    "mtime": 1779519190.7937803,
+    "hash": "6c7c1494759d25aff20a783552559538"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\shipmentAccounting.ts": {
+    "mtime": 1779519190.7957785,
+    "hash": "20874da54385b2d6a9ad096af9fd8d53"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\shipments.ts": {
-    "mtime": 1773326794.9499252,
-    "hash": "257db6b3f84c7251ee45e0bdf26f806b"
+    "mtime": 1779519190.8017786,
+    "hash": "d496917c31fc1ebec57ea5c8e9501386"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\shipmentSync.ts": {
+    "mtime": 1779519190.7977784,
+    "hash": "a3d92d059e05a4d7069ffae34db9fb59"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\studio.ts": {
-    "mtime": 1777727935.8936858,
-    "hash": "4bdd153eafe2e6d39a26a8bae622d939"
+    "mtime": 1779519190.8093112,
+    "hash": "ab8f06a6f0a56ccd6c12719c049c55a4"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\studioFinalizeAfterInvoice.ts": {
     "mtime": 1777815379.1173842,
@@ -1460,16 +1484,16 @@
     "hash": "4e489a4ca321ce97af2644b05fb0f903"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\transactionDetail.ts": {
-    "mtime": 1779269248.144291,
-    "hash": "0d506f56954a5b411e9c730edae0083c"
+    "mtime": 1779519190.8133085,
+    "hash": "11483ebe6ae27d1235269b6c92f1ce13"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\transactionEdit.ts": {
     "mtime": 1777703713.1366954,
     "hash": "cc2ea3b171b2bdd2904f4a5973af88c1"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\transactions.ts": {
-    "mtime": 1779280300.6263227,
-    "hash": "dca92732db1727d9cf8c90a7de0517eb"
+    "mtime": 1779519190.81931,
+    "hash": "a1021a786d969a37984197dde6a7b5a9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\units.ts": {
     "mtime": 1771659995.306841,
@@ -1483,9 +1507,13 @@
     "mtime": 1776973933.5337708,
     "hash": "00721a8c651e006fedaebb4963f8660e"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\workerOperationalLedger.ts": {
+    "mtime": 1779519190.8203087,
+    "hash": "f6bc8cc18e1ec7f1326c39a79fca6ce4"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\api\\workerPartyGlLedger.ts": {
-    "mtime": 1777703713.1405132,
-    "hash": "9714129c84408c4104e2041732ea8e1c"
+    "mtime": 1779519190.829308,
+    "hash": "575451035dbc01fc82d8519f9d41df61"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\AccessDenied.tsx": {
     "mtime": 1772387608.817973,
@@ -1500,20 +1528,20 @@
     "hash": "1d141d852f7c265200d81188c3eb4bd5"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\BranchSelection.tsx": {
-    "mtime": 1772700448.0535512,
-    "hash": "993bee49d76780333055a9caa6f74b8c"
+    "mtime": 1779519190.832308,
+    "hash": "299a87665e47e4f7e4e515df2ebca27c"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\FeaturesShowcase.tsx": {
     "mtime": 1771495356.2542653,
     "hash": "83606dc55e0e30221ce09c66ce7719c3"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\HomeScreen.tsx": {
-    "mtime": 1779366570.9304392,
-    "hash": "14ed0b6ba3d5647681d77f314386b072"
+    "mtime": 1779519190.8353086,
+    "hash": "11017a8363566b9971f27377310d3c4b"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\LoginScreen.tsx": {
-    "mtime": 1779372923.154191,
-    "hash": "9614637a7fa6dc37d18694a47a1371ab"
+    "mtime": 1779519190.838308,
+    "hash": "9dbca9501677ee9f687de3ad75eaf92b"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\ModuleGrid.tsx": {
     "mtime": 1778926119.0742497,
@@ -1532,19 +1560,19 @@
     "hash": "ffb06bdd692e54a4b5a40d579cd20f86"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\AccountsDashboard.tsx": {
-    "mtime": 1778327974.3576875,
-    "hash": "b3df9208c7ea5f356ed8a88f3afb7f5b"
+    "mtime": 1779519190.8473094,
+    "hash": "af4df3ddaa11f4a080dbd632082fe66d"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\AccountsModule.tsx": {
-    "mtime": 1779269071.3347642,
-    "hash": "38afbec8a15286c4cc98a03678afafe9"
+    "mtime": 1779519190.8533077,
+    "hash": "ce77b63cf51ffef9c5fd68f01a510382"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\AccountTransferFlow.tsx": {
-    "mtime": 1772040574.2665076,
-    "hash": "f494866bd462162d7d5498e64a3a51ba"
+    "mtime": 1779519190.8423119,
+    "hash": "4c8ac5a80ae89fd482988d0436fcda70"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\AddAccountForm.tsx": {
-    "mtime": 1779364653.911945,
+    "mtime": 1779518337.1570573,
     "hash": "d32ab631e2bffba600f535723cefcf19"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\ChartOfAccountsView.tsx": {
@@ -1556,16 +1584,20 @@
     "hash": "9705661020c1d0e0186af5807e28c569"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\ExpenseEntryFlow.tsx": {
-    "mtime": 1776849128.0256631,
-    "hash": "ea38fd8a553b97955741222f853be8b2"
+    "mtime": 1779519190.855309,
+    "hash": "95c9357263c31385211cb4e3d21ccf3b"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\GeneralEntryFlow.tsx": {
-    "mtime": 1779364653.914944,
-    "hash": "259909c2fbd4728ec0440275422d9042"
+    "mtime": 1779519190.8593087,
+    "hash": "4da066be91694e359214a8979579afc8"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\JournalEntryDetailPanel.tsx": {
-    "mtime": 1778317453.4331362,
-    "hash": "12fc7b1cc8347beb17eaad7112e1b35f"
+    "mtime": 1779519190.8623085,
+    "hash": "a496f1525b773b4eddd690f0103cd47b"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\MyFinancialActivity.tsx": {
+    "mtime": 1779519190.8643086,
+    "hash": "78749c2af809a47192cf627a0ab830d1"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\SelectAccountTablet.tsx": {
     "mtime": 1779272016.501899,
@@ -1591,6 +1623,10 @@
     "mtime": 1776870834.1270978,
     "hash": "06f56052624910067da1fbc5f9e4bb17"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\CourierShipmentsReport.tsx": {
+    "mtime": 1779519190.8663092,
+    "hash": "f7e0fa0e7e2491d5e9aa42294c42ed42"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\DayBookReport.tsx": {
     "mtime": 1777703713.1616192,
     "hash": "d08f6afdc1dfe2a1ee5d3e328ac86679"
@@ -1604,8 +1640,8 @@
     "hash": "766cde0310e8a07ee5a59245869acda0"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\PartyLedgerReport.tsx": {
-    "mtime": 1777703713.1636014,
-    "hash": "612d78e713d4016e889191f34c7c9347"
+    "mtime": 1779519190.8703086,
+    "hash": "e0f7b14ae0124b7ee68c561529db600c"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\PurchaseReport.tsx": {
     "mtime": 1776927841.2884893,
@@ -1616,8 +1652,8 @@
     "hash": "0e9b62577ccefe02e527f6dba1d1c8f9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\ReportsHub.tsx": {
-    "mtime": 1779276838.4937537,
-    "hash": "6a5c45ebb568e03ffd304def765ed2f4"
+    "mtime": 1779519190.8733096,
+    "hash": "e286da350d3719be3c459e3bcefe1599"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\SalesReport.tsx": {
     "mtime": 1776927841.2945004,
@@ -1628,24 +1664,24 @@
     "hash": "a2f5585817d59b31f878b5b090e87269"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\TransactionDetailSheet.tsx": {
-    "mtime": 1779276793.8358607,
-    "hash": "4264c7c9469693962cdf7bda815b3566"
+    "mtime": 1779519190.8773067,
+    "hash": "44e948b573a1be1cd0db80f29a4dddc4"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\TransactionEditSheet.tsx": {
     "mtime": 1779187716.57775,
     "hash": "c2fb004864977cb42351c7c957aafddd"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\TransactionsTimeline.tsx": {
-    "mtime": 1779280321.138256,
-    "hash": "9a7b2e841a53d031fb09a75d40e22a00"
+    "mtime": 1779519190.8803074,
+    "hash": "7e7ce79c7c0d6eb4cc33436e059860b5"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\_shared\\AgingBuckets.tsx": {
     "mtime": 1776853422.9304245,
     "hash": "be7d6daa2fe12696ffdf98f15a7016cd"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\_shared\\DateRangeBar.tsx": {
-    "mtime": 1776854461.4160168,
-    "hash": "c537b3b22d476a836eb29d3ee4dcd2bb"
+    "mtime": 1779519190.8843107,
+    "hash": "0c6e2499e2d37448b996345318744def"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\_shared\\EditTransactionSheet.tsx": {
     "mtime": 1779187726.5762787,
@@ -1672,20 +1708,20 @@
     "hash": "016975d40259f3d8b3ece76c0e0828dc"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\accounts\\reports\\_shared\\TransactionDetailSheet.tsx": {
-    "mtime": 1779265461.007791,
-    "hash": "67c82e13817fc2aa1832254fbf5391c0"
+    "mtime": 1779519190.88631,
+    "hash": "e3a8c4a41d76de57cf7a41cc535a8136"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\auth\\CounterLoginPanel.tsx": {
-    "mtime": 1779374215.907629,
-    "hash": "d034ab889f8bafe47a04dc6aaec8da55"
+    "mtime": 1779519190.8903122,
+    "hash": "bef8fe4a3dcff5aaabe47993c47ac383"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\auth\\CreateBusinessWizardScreen.tsx": {
     "mtime": 1779263223.6640313,
     "hash": "f199de2a101a6851dbf5a61ff5a505ac"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\auth\\POSLockScreen.tsx": {
-    "mtime": 1779374214.0859363,
-    "hash": "032b25d5c9acc0d7ec4eba9f3c7a2e57"
+    "mtime": 1779519190.8933198,
+    "hash": "7b6c40025c4b022a1e245670228d581c"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\auth\\SwitchUserPinOverlay.tsx": {
     "mtime": 1779372923.305093,
@@ -1704,8 +1740,8 @@
     "hash": "8aeea97061aff58dd95f04575afc7945"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\common\\index.ts": {
-    "mtime": 1779188883.8088155,
-    "hash": "d2b71dfb3a1126bac56fd3b5fbaa357d"
+    "mtime": 1779519190.9023235,
+    "hash": "2a378a5d4419fcc20a601b430b67cfab"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\common\\LongPressCard.tsx": {
     "mtime": 1771659995.330842,
@@ -1719,77 +1755,89 @@
     "mtime": 1772004794.8173637,
     "hash": "2839d9c74bff54655531cde7bd236322"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\common\\OfflineBanner.tsx": {
+    "mtime": 1779519190.895325,
+    "hash": "46fd6f9a728a0dea058872b10249c259"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\common\\PullToRefresh.tsx": {
-    "mtime": 1779188883.5484667,
-    "hash": "a3f7573381b17f7788d52130991805da"
+    "mtime": 1779519190.8973253,
+    "hash": "83020761eecb5b8faec3e1465ee6137c"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\common\\SwipeBackShell.tsx": {
+    "mtime": 1779519190.899322,
+    "hash": "3d0932a94eb3e792fc7d5e371f4674cb"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\common\\TextInput.tsx": {
     "mtime": 1771659995.3338387,
     "hash": "6f7411c226eb0c5569c5a276b5bb1d24"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\contacts\\AddContactFlow.tsx": {
-    "mtime": 1779187432.6174815,
-    "hash": "21a7389107dd7d09ba4a87869b5a7ced"
+    "mtime": 1779519190.9063215,
+    "hash": "0bfcdfeec5896aedecf4a3f3a4763ad2"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\contacts\\ContactDetailView.tsx": {
     "mtime": 1771659995.3368418,
     "hash": "e601bc56aa88edfedf2d51d2f014cf4b"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\contacts\\ContactsModule.tsx": {
-    "mtime": 1779188915.0310655,
-    "hash": "54f301766c049b7bf46c93ff3266de9e"
+    "mtime": 1779519190.9088545,
+    "hash": "ae87b2888840dbfa156a108a963ed93b"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\contacts\\EditContactFlow.tsx": {
     "mtime": 1779187467.2286844,
     "hash": "f53515922e29aac85f3c5ba51d5dbafc"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\dashboard\\DashboardModule.tsx": {
-    "mtime": 1779364653.911945,
-    "hash": "1a1bd3a6d897ebf1e7623a8075105205"
+    "mtime": 1779519190.9178507,
+    "hash": "08ffb63d52662de524329948f1203787"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\dev\\ConnectionDebug.tsx": {
     "mtime": 1778311731.6083896,
     "hash": "43b7dfca01a0a02dbdecf1309a1548cb"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\expense\\ExpenseModule.tsx": {
-    "mtime": 1779372933.766425,
-    "hash": "c8582658c0156333c216bbfe235c4265"
+    "mtime": 1779519190.92185,
+    "hash": "a918b52212542660f81a334f579b78a1"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\inventory\\InventoryModule.tsx": {
     "mtime": 1776927841.2984874,
     "hash": "c8601107618fcfe595c801323bf58608"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\inventory\\ProductHistoryModal.tsx": {
-    "mtime": 1776927841.300498,
-    "hash": "b60cb0eb7352fa9755db30aa2ba33eed"
+    "mtime": 1779519190.9248495,
+    "hash": "629329ed71a87857eea829615221db35"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\inventory\\StockAdjustmentSheet.tsx": {
     "mtime": 1776927841.3024979,
     "hash": "244fdb1afe82c8b9533b1a95bfd1a118"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\packing\\PackingListModule.tsx": {
-    "mtime": 1777038457.7638357,
-    "hash": "9353d06da014bf5e9716d01652bb938b"
+    "mtime": 1779519190.9308517,
+    "hash": "8619c1e96d7045563ae1c4e2cd09745e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\pos\\POSModule.tsx": {
-    "mtime": 1779372933.3439379,
-    "hash": "3adf62eb487d479383b6c2610ca6eaa9"
+    "mtime": 1779519190.9328504,
+    "hash": "7975da486279e4419d24c7000a46a579"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\products\\AddProductFlow.tsx": {
-    "mtime": 1779364653.911945,
+    "mtime": 1779518337.1570573,
     "hash": "9265070fa972a2bdefe6e3b5135bfced"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\products\\BarcodeLabelPrintSheet.tsx": {
+    "mtime": 1779519190.9348495,
+    "hash": "68fde1e423d0f580f3c94d3fce74e76a"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\products\\PrintBarcodeLabelModal.tsx": {
-    "mtime": 1779370201.9238656,
-    "hash": "661b93ab321b3087084282a32bc9db33"
+    "mtime": 1779519190.9398499,
+    "hash": "ac160e1eb28dffadcc063a982a1de3bb"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\products\\ProductImage.tsx": {
     "mtime": 1779360146.550577,
     "hash": "70d5ca81acc980a3ca96a613a7297826"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\products\\ProductsModule.tsx": {
-    "mtime": 1779370381.520048,
-    "hash": "9d3419c3b192c32839627482c95e85a1"
+    "mtime": 1779519190.9418485,
+    "hash": "6fe41d691838b3a499f32436d1130ffe"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\products\\ProductWithVariations.ts": {
     "mtime": 1771659995.350839,
@@ -1800,27 +1848,27 @@
     "hash": "734d5e21484d2398b8ab50b6a4afc799"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\purchase\\CreatePurchaseFlow.tsx": {
-    "mtime": 1779269728.0333169,
-    "hash": "c4169fda8dff9bd80ca7088b8bbc0c84"
+    "mtime": 1779519190.9468524,
+    "hash": "c6e2c6b3918b14fc2212f4725b874475"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\purchase\\MobilePaySupplier.tsx": {
     "mtime": 1778321067.1013577,
     "hash": "da649e6d18631332bdf3e07f38132add"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\purchase\\PurchaseModule.tsx": {
-    "mtime": 1779263397.0081077,
-    "hash": "64170ff546ffc9e22d5e3f19ab1b8276"
+    "mtime": 1779519190.9508536,
+    "hash": "91701e512e62fb25e6ee87f73d6f969d"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\purchase\\SelectSupplier.tsx": {
-    "mtime": 1779271955.8024035,
-    "hash": "607f46e11eef6f673e51322e1ea1e381"
+    "mtime": 1779519190.9538531,
+    "hash": "a461c1d8a2e5f349681b9d60a3b70fd2"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\purchase\\SelectSupplierTablet.tsx": {
-    "mtime": 1779272006.2190018,
-    "hash": "2e1521cd6bac83b68be9caa281cb6d75"
+    "mtime": 1779519190.9578528,
+    "hash": "c402cb5c8884ab0ab41b0efa96e373ed"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\rental\\CreateRentalFlow.tsx": {
-    "mtime": 1779364653.9099407,
+    "mtime": 1779518337.153043,
     "hash": "fdbe3ead9db01d4fece0f245500c4a1e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\rental\\RentalAddPaymentModal.tsx": {
@@ -1828,16 +1876,16 @@
     "hash": "f531829a20727ff1da019585d5f23728"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\rental\\RentalModule.tsx": {
-    "mtime": 1776931535.948707,
-    "hash": "be2a8f40405945e4f8970368533d7347"
+    "mtime": 1779519190.9618483,
+    "hash": "caeb26a6b57f9cf99a27bf68cfbe1781"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\rental\\RentalPickupModal.tsx": {
-    "mtime": 1779187485.5971484,
-    "hash": "93d27bc4d7e026725b94863199651053"
+    "mtime": 1779519190.9638476,
+    "hash": "79766858cc7bb7bafa41475d4914a5eb"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\rental\\RentalReturnModal.tsx": {
-    "mtime": 1779187527.6473763,
-    "hash": "f77892d37bd1e1044e8b95161d4e542c"
+    "mtime": 1779519190.9668527,
+    "hash": "d6e43b3e26cb70a3f7c32c74a4972b0a"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\rental\\SelectRentalCustomerTablet.tsx": {
     "mtime": 1771659995.3638487,
@@ -1848,8 +1896,8 @@
     "hash": "d0977a83c27172885839ce961caa7565"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\sales\\AddProducts.tsx": {
-    "mtime": 1776869524.738495,
-    "hash": "b5e0ba1c6d2f654243e155f8dddac1d8"
+    "mtime": 1779519190.9708526,
+    "hash": "8c99d29cd02240afdcbc0b94b073040c"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\sales\\AttachmentPreviewModal.tsx": {
     "mtime": 1775287682.2164598,
@@ -1867,6 +1915,14 @@
     "mtime": 1779272130.6245592,
     "hash": "66a37218b1a3154ecd97127f144b6c41"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\sales\\SaleActivitySheet.tsx": {
+    "mtime": 1779519190.972855,
+    "hash": "ceba769add9dc96d67a6c3ea1a6812ba"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\sales\\SaleCargoSection.tsx": {
+    "mtime": 1779519190.974853,
+    "hash": "097b77c1cb45194ae894d387fd83cc20"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\sales\\SaleConfirmation.tsx": {
     "mtime": 1771659995.386382,
     "hash": "53d986353f1f7a8a22d3c00fdd82c59d"
@@ -1876,24 +1932,24 @@
     "hash": "b914d380da2ce6dea7c601b8daaefe59"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\sales\\SalesHome.tsx": {
-    "mtime": 1779276862.5375707,
-    "hash": "8cccb7cb64695f9819a5456617b8b3a0"
+    "mtime": 1779519190.980852,
+    "hash": "f10d1d8b68d529d59fff969a24d15286"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\sales\\SalesModule.tsx": {
-    "mtime": 1779370251.9406686,
-    "hash": "deb00b51440c1ee96e7362c559a3050c"
+    "mtime": 1779519190.9838493,
+    "hash": "81452fee729a18631f6498dbc3118cc4"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\sales\\SaleSummary.tsx": {
     "mtime": 1779269563.371962,
     "hash": "40c9ae635939b14e86bd39f980bfdae5"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\sales\\SelectCustomer.tsx": {
-    "mtime": 1779272130.7263486,
-    "hash": "6f74d821dee48e59ec833d8142576c30"
+    "mtime": 1779519190.9888532,
+    "hash": "fc47b0e9315785da4e4903fd6eea13dc"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\sales\\SelectCustomerTablet.tsx": {
-    "mtime": 1779271925.6263282,
-    "hash": "81cc769c1bc7603033c3cefad4166e47"
+    "mtime": 1779519190.9908555,
+    "hash": "a75a772a456932b8dffd3d46b2cb63eb"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\sales\\StudioDetailsStep.tsx": {
     "mtime": 1777703713.19056,
@@ -1923,9 +1979,21 @@
     "mtime": 1779187432.6174815,
     "hash": "9042ab2cff1e9c5d9f2ab271b3e8d00e"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\settings\\SettingsCounterSection.tsx": {
+    "mtime": 1779519190.9928627,
+    "hash": "c1356acff98f5bc6e228ab6711ad6816"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\settings\\SettingsModule.tsx": {
-    "mtime": 1779373011.4524786,
-    "hash": "206a9dd58090586eb571c85042f87fa5"
+    "mtime": 1779519190.9968662,
+    "hash": "dfadc67b74e510b0e3881de3fc483515"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\settings\\SettingsPrinterSection.tsx": {
+    "mtime": 1779519190.9988635,
+    "hash": "6f9cdd39da6f24d5ba038804593d88c8"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\settings\\settingsUi.tsx": {
+    "mtime": 1779519191.0008626,
+    "hash": "91d178012a77f592e104816af3736c7b"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\settings\\UserPermissionsScreen.tsx": {
     "mtime": 1779198376.915008,
@@ -1940,8 +2008,8 @@
     "hash": "512adcdc00d13c2dd91ea8ec157ff28a"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\shared\\DateTimePicker.tsx": {
-    "mtime": 1772040929.4924493,
-    "hash": "10da0758e479137d1233caa38bf95d40"
+    "mtime": 1779519191.0113845,
+    "hash": "30da7c7781605cf29bccb1f85972d7fa"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\shared\\InvoicePreviewPdf.tsx": {
     "mtime": 1776959741.918561,
@@ -1956,8 +2024,8 @@
     "hash": "351523afaa0b38deb9784cff3f961b96"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\shared\\MobilePaymentSheet.tsx": {
-    "mtime": 1779271830.1515372,
-    "hash": "445b588f0e5c70439d84750bd8efee9e"
+    "mtime": 1779519191.018386,
+    "hash": "f3825a537f2203611f58a8612b20819f"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\shared\\PdfPreviewModal.tsx": {
     "mtime": 1776870090.5095265,
@@ -1987,37 +2055,61 @@
     "mtime": 1776870296.6756055,
     "hash": "66a838f31dbe159b1e0b647c53aa6776"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\shipment\\ShipmentAccountingStrip.tsx": {
+    "mtime": 1779519191.0203843,
+    "hash": "079cdef9b8b870c18504f98bf5282a2a"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\shipment\\ShipmentModal.tsx": {
-    "mtime": 1779187485.5961285,
-    "hash": "3ae4f6ea03c43281b434aeafb7fffaef"
+    "mtime": 1779519191.0263827,
+    "hash": "2396457c08331d9377e7231b75cdbb05"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\shipment\\ShipmentStatusStepper.tsx": {
+    "mtime": 1779519191.0313852,
+    "hash": "3535c07c2fc0dd871ea4e7084ddfe19e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\studio\\StudioDashboard.tsx": {
-    "mtime": 1777708858.43545,
-    "hash": "ed996179832d209ecb2b5dd5ce5c2708"
+    "mtime": 1779519191.0363822,
+    "hash": "aaba0b6f16ae76f3d92b24ea64c1b01e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\studio\\StudioModule.tsx": {
-    "mtime": 1779368634.4992304,
-    "hash": "851f9af66136f71433173da0819e426b"
+    "mtime": 1779519191.0393841,
+    "hash": "acf45da91506871e06e9c590c7317566"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\studio\\StudioOrderDetail.tsx": {
-    "mtime": 1777886270.7643383,
-    "hash": "7962439f0d4968ce5e76160cac3f95ed"
+    "mtime": 1779519191.0433855,
+    "hash": "b7ca549a47488911c46eae7a8844c112"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\studio\\studioPricing.ts": {
     "mtime": 1777718170.0601478,
     "hash": "857b5cee9c5d5b92d9d6c45eb2692b15"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\studio\\StudioStageAssignment.tsx": {
-    "mtime": 1779364653.9129457,
-    "hash": "3cbd6f60008f0b2c8802c889dbf63987"
+    "mtime": 1779519191.0463836,
+    "hash": "e71bc5d14aa34b0c32c0490f83bac433"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\studio\\StudioStageSelection.tsx": {
-    "mtime": 1779187527.6483755,
-    "hash": "62aa89e9395f81e11eb1676f3f47d001"
+    "mtime": 1779519191.0483837,
+    "hash": "962a4792f956e473ab40c55a4073b3d3"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\studio\\StudioStageTimeline.tsx": {
+    "mtime": 1779519191.050386,
+    "hash": "99ce83741a1559ed850624a02e57073f"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\studio\\StudioUpdateStatusView.tsx": {
-    "mtime": 1777703713.2083297,
-    "hash": "392c23f2f5cb950d72a588b0a4b24226"
+    "mtime": 1779519191.053385,
+    "hash": "52ef2300a64a2c9f289bf41dd655db77"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\studio\\StudioWorkerDetail.tsx": {
+    "mtime": 1779519191.0553832,
+    "hash": "fe7bcf8c4c11ac35418abb6a7eac9250"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\studio\\StudioWorkerJobDetail.tsx": {
+    "mtime": 1779519191.0573878,
+    "hash": "54380739404f8d00a76516df6acfbf10"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\studio\\StudioWorkersList.tsx": {
+    "mtime": 1779519191.0603862,
+    "hash": "bcb72e0634d766aa85fdba5cd14d9889"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\components\\transactions\\PackingEntryModal.tsx": {
     "mtime": 1773325550.7879622,
@@ -2044,16 +2136,20 @@
     "hash": "b10f53a7c934276a2d2a142148fdb099"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\context\\PermissionContext.tsx": {
-    "mtime": 1779272131.0881364,
-    "hash": "ec3003ba6d164837970dd6c7f9f0a876"
+    "mtime": 1779519191.0653863,
+    "hash": "daa3a65b89fde1a58183c140c7d599c8"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\context\\SettingsContext.tsx": {
     "mtime": 1776869311.885015,
     "hash": "c41eec81d52860d784e98d52b490bbd1"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\contexts\\LoadingContext.tsx": {
-    "mtime": 1776974229.4680488,
-    "hash": "1cb4be9b8da8c32d40e073dc737b4fda"
+    "mtime": 1779519191.0673835,
+    "hash": "eb34c09067083e5a59339571a09cf377"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\contexts\\MainScrollContext.tsx": {
+    "mtime": 1779519191.0683813,
+    "hash": "b3c466fde8975a288a27d6d389a9dec8"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\features\\barcode\\BarcodeScanner.tsx": {
     "mtime": 1773305326.4391203,
@@ -2079,9 +2175,17 @@
     "mtime": 1775287682.2411163,
     "hash": "41883d006d031eccb098c6fe04ce06ce"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\hooks\\useEdgeSwipeBack.ts": {
+    "mtime": 1779519191.070381,
+    "hash": "813d6d479e1e96128d7a0ed67a89ca59"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\hooks\\useNetworkStatus.ts": {
     "mtime": 1779202505.9843252,
     "hash": "1169a10d5b79a99b50428bd8798834cc"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\hooks\\useOfflineListMeta.ts": {
+    "mtime": 1779519191.0723803,
+    "hash": "719ec9c6c6cb1877a69bf9b20eae9992"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\hooks\\useRecordCustomerPayment.ts": {
     "mtime": 1778421566.8940506,
@@ -2099,9 +2203,29 @@
     "mtime": 1779199508.6281247,
     "hash": "9e33f089390a8ceca13b619bcf796698"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\barcodeLabelLines.ts": {
+    "mtime": 1779519191.0733829,
+    "hash": "606990e7b903f483a963a2dc1a515bb7"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\branchResolution.ts": {
+    "mtime": 1779519191.075382,
+    "hash": "6f588e943c9ec419fd5455d3193a069e"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\cashFlowDirection.ts": {
+    "mtime": 1779519191.0783823,
+    "hash": "f817d3ae4dbc307d65aeb97b528e4bd1"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\counterSessionPolicy.ts": {
+    "mtime": 1779519191.0803828,
+    "hash": "71fabf95935a9c10b9fd15933c4d6842"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\counterUserVault.ts": {
-    "mtime": 1779374182.3960607,
-    "hash": "326752bc96fc45e6ba5a06fe5781502c"
+    "mtime": 1779519191.0843835,
+    "hash": "5cc7ae3ad2db4347d65a4f7c185f6835"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\counterVaultMaintenance.ts": {
+    "mtime": 1779519191.0863867,
+    "hash": "6c4d552ea7c3b255083823620379a421"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\dataInvalidationBus.ts": {
     "mtime": 1777703320.4685104,
@@ -2124,8 +2248,8 @@
     "hash": "39ff943a5b5a9f1a79ed92114bff09c5"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\listCache.ts": {
-    "mtime": 1779030531.6194355,
-    "hash": "0d4a36d59fe8648755e55e6fb8dc5ad8"
+    "mtime": 1779519191.0903862,
+    "hash": "deba70a633e07a92f8f13bd05de0f8c7"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\networkBridge.ts": {
     "mtime": 1779202466.4181535,
@@ -2143,9 +2267,21 @@
     "mtime": 1779208863.960805,
     "hash": "1d7c2375d9222eff666bfd678c2f7ee3"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\offlineData.ts": {
+    "mtime": 1779519191.0923822,
+    "hash": "b97f52744de0f43fe67d8b4c9c3a807f"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\offlinePendingList.ts": {
+    "mtime": 1779519191.0933933,
+    "hash": "63d6ab9dc29fd4f72beac077335962c8"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\offlineStore.ts": {
     "mtime": 1779202671.8260427,
     "hash": "6046386bbcd53e66d2518e7f965ccc35"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\offlineWrite.ts": {
+    "mtime": 1779519191.0943937,
+    "hash": "a0e1c303bb91cde22350d35bb55b0268"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\pinLock.ts": {
     "mtime": 1776927841.3330266,
@@ -2156,12 +2292,24 @@
     "hash": "581ae0db979274da4566047e9037e1a4"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\registerSyncHandlers.ts": {
-    "mtime": 1779271830.1535437,
-    "hash": "50c532a6ea09a81ad03c69f019d7d7d7"
+    "mtime": 1779519191.0973952,
+    "hash": "41a499d6d3c5ac3718e8d7f125023e70"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\resolveCreatorName.ts": {
+    "mtime": 1779519191.099396,
+    "hash": "e6aea1168c6bfb5104cc646704cce204"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\resolveDbUserId.ts": {
+    "mtime": 1779519191.103395,
+    "hash": "21b4eb70db42b9cd01437f2c56c7f253"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\saleTypeClassification.ts": {
+    "mtime": 1779519191.105393,
+    "hash": "d57047c7ddbe8ba6a342d6900d37ad8e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\secureStorage.ts": {
-    "mtime": 1779202273.2497044,
-    "hash": "a0070124f1d51b430eff5e1e6aeb9310"
+    "mtime": 1779519191.1079042,
+    "hash": "0875692026ee3e09c3684e4fb1f49ac8"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\sessionIsolation.ts": {
     "mtime": 1779200142.1823163,
@@ -2178,6 +2326,30 @@
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\sharePaymentReceipt.ts": {
     "mtime": 1776848779.1154804,
     "hash": "9ea916afaf32e91ea0ea74ca284b3ebc"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\shipmentStatus.ts": {
+    "mtime": 1779519191.1099176,
+    "hash": "f9ce846005a51656fed09805f78c4a4e"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\studioExtraStageNotes.ts": {
+    "mtime": 1779519191.1119199,
+    "hash": "300585c349b7aa34123da0ae5e765b2f"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\studioListCache.ts": {
+    "mtime": 1779519191.1139176,
+    "hash": "c5b1b77f127ab2ffb85ed29a8847faa9"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\studioOrderDisplay.ts": {
+    "mtime": 1779519191.1159186,
+    "hash": "0d58934ecc06997df2cf133be3bb9ba6"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\studioWorkflowDates.ts": {
+    "mtime": 1779519191.1199167,
+    "hash": "49bb9263375c6adcc144609878250bd6"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\studioWorkflowNotes.ts": {
+    "mtime": 1779519191.1219206,
+    "hash": "c67ece16cc177a8c0a217bd7e7971a16"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\lib\\supabase.ts": {
     "mtime": 1779286522.524086,
@@ -2196,8 +2368,8 @@
     "hash": "971e253dd7335d04c4d939d953630d6d"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\services\\barcodeLabelPrint.ts": {
-    "mtime": 1779370440.7287261,
-    "hash": "d5e1b2b6c4cb8892c5d7e874041bd536"
+    "mtime": 1779519191.1269193,
+    "hash": "2592ce42fae03877a547d827e922a34b"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\services\\printAfterTransaction.ts": {
     "mtime": 1779370178.244422,
@@ -2207,25 +2379,33 @@
     "mtime": 1779370175.6211548,
     "hash": "f843cfc3d763c1ac5fc4f80193bbc698"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\services\\saleThermalReceipt.ts": {
+    "mtime": 1779519191.128919,
+    "hash": "373ea87c85f73e10572bf6b2b22d80fb"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\services\\thermalPrint.ts": {
     "mtime": 1779370182.0824704,
     "hash": "0f1b63efe2883cdf4d251531c7796185"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\utils\\balancePrivacy.ts": {
-    "mtime": 1779276850.1660795,
-    "hash": "ee39eee8036e92d4f8bb0d686369dc45"
+    "mtime": 1779519191.141919,
+    "hash": "f2d0c3c3c46332d35e6f831a9a282e2c"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\utils\\branchId.ts": {
+    "mtime": 1779519191.145916,
+    "hash": "69416f456452c1c0df014900a54e6b20"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\utils\\erpDevTools.ts": {
     "mtime": 1778311731.631004,
     "hash": "8ffb883e8f0efe75dcb8f3805b7796f2"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\utils\\inputKeyboard.ts": {
-    "mtime": 1779364653.9099407,
+    "mtime": 1779518337.153043,
     "hash": "64762a782744b25b8b9ddeaef62abb51"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\utils\\localDate.ts": {
-    "mtime": 1778311731.6320024,
-    "hash": "afca8fedacce1be8ee6d2999e69069a2"
+    "mtime": 1779519191.147916,
+    "hash": "f5039703dc8f4748e45e8555ff1335cf"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\src\\utils\\numericValidation.ts": {
     "mtime": 1771659995.4247365,
@@ -4336,11 +4516,11 @@
     "hash": "bfb170a07d7d7ca13ccec3728fc03263"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\migrations\\20260521160000_drop_create_business_settings_created_at_overload.sql": {
-    "mtime": 1779369382.259334,
+    "mtime": 1779519282.3559957,
     "hash": "a4594cfbfabc3b5a984d28696affb527"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\migrations\\20260521170000_settings_mobile_printer_barcode_auth_user_id.sql": {
-    "mtime": 1779370122.5498283,
+    "mtime": 1779519282.358996,
     "hash": "fa9bf5531e08967576f9b723ff08f170"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\migrations\\20260522100000_record_rental_expense_devaluation_dr4200_cr5300.sql": {
@@ -4351,6 +4531,14 @@
     "mtime": 1778942358.4926262,
     "hash": "9ff57261b2b8b121272d08d608f1cebe"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\migrations\\20260522180000_studio_send_receive_optional_dates.sql": {
+    "mtime": 1779519191.165915,
+    "hash": "b3bbdc61469e6e275d8f62384997f037"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\migrations\\20260523120000_rpc_assign_ensure_worker_row.sql": {
+    "mtime": 1779519191.1679175,
+    "hash": "be1ea092229f64151953bd50e4de4cf9"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\migrations\\20260523130000_received_payment_rcv_numbering.sql": {
     "mtime": 1778943297.7724173,
     "hash": "50825daba3449358b508d01965b00d8b"
@@ -4358,6 +4546,18 @@
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\migrations\\20260523140000_sync_erp_sequence_customer_receipt_delegate.sql": {
     "mtime": 1778943372.0766058,
     "hash": "c6bf806657dd160d458366ac3c1aadb6"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\migrations\\20260524120000_studio_send_receive_notes.sql": {
+    "mtime": 1779519191.169917,
+    "hash": "8a0a8dd12b20a1499bf55ef2f283b302"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\migrations\\20260525120000_studio_productions_view_scope_rls.sql": {
+    "mtime": 1779519191.170918,
+    "hash": "a4f00c10f5701f6e2725482f8fa0e325"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\migrations\\20260526120000_courier_shipments_dates_and_shipment_journal.sql": {
+    "mtime": 1779519191.1739175,
+    "hash": "06d2a1fb9bc519edf137f08b9b0ed8d4"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\migrations\\accounting_ensure_default_accounts.sql": {
     "mtime": 1773755724.5963268,
@@ -5532,7 +5732,7 @@
     "hash": "3c2ea7c1053c138839295a705445bfde"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\scripts\\ensure-gradle-jdk17.mjs": {
-    "mtime": 1779371015.924246,
+    "mtime": 1779519282.3629923,
     "hash": "44a9c6b78fd11186db1e7833844f3dc3"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\scripts\\erp-health-report.js": {
@@ -6356,11 +6556,11 @@
     "hash": "346f3480443da688ca79933306883c01"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\vite-env.d.ts": {
-    "mtime": 1779364653.910944,
-    "hash": "5df1d54f830cdec47970d6ff17bf469c"
+    "mtime": 1779519187.4118443,
+    "hash": "f7d2b8ad79e970072e4a53bc8bb0761a"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\App.tsx": {
-    "mtime": 1779364653.9129457,
+    "mtime": 1779518337.1580598,
     "hash": "46456a1b407bde6f04168bafbaa7f790"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\TestLedger.tsx": {
@@ -6368,7 +6568,7 @@
     "hash": "4dfb0531f0d4347a0bc97c56fc2b8438"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\accounting\\AccountingDashboard.tsx": {
-    "mtime": 1779364653.911945,
+    "mtime": 1779518337.1570573,
     "hash": "1325ee3aaed03dd2e4fe619e9f04da89"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\accounting\\AccountingDashboardAccountRowMenu.tsx": {
@@ -6408,7 +6608,7 @@
     "hash": "4b26ce1b4aa9165d2ae4116f062ccb4b"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\accounting\\AddEntryV2.tsx": {
-    "mtime": 1779364653.910944,
+    "mtime": 1779518337.1560614,
     "hash": "55f9433b1ae18bab2ea281f0423bda60"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\accounting\\ArApReconciliationCenterPage.tsx": {
@@ -6516,7 +6716,7 @@
     "hash": "2208e834b95c37240a36763829625d99"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\admin\\AccountingIntegrityLabPage.tsx": {
-    "mtime": 1779364653.910944,
+    "mtime": 1779518337.1570573,
     "hash": "e2c8f40d5cae1a885d985fb9bd86a473"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\admin\\AccountingTestBenchPage.tsx": {
@@ -6524,7 +6724,7 @@
     "hash": "2ee7b5d88d225f119237622e0021a395"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\admin\\DeveloperIntegrityLabPage.tsx": {
-    "mtime": 1779364653.914944,
+    "mtime": 1779518337.159061,
     "hash": "6880a2c894acb74a1e051fb6687d34fd"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\admin\\PartyTieOutRepairPanel.tsx": {
@@ -6844,8 +7044,8 @@
     "hash": "2dff5873a9fe4d9468ac739ac88d5311"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\dashboard\\Dashboard.tsx": {
-    "mtime": 1779364653.913944,
-    "hash": "d6184da56c2d2b84d748a076edc6bdf8"
+    "mtime": 1779519187.389351,
+    "hash": "e4b34026c1570d190b471cee5ffd3f2c"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\dashboard\\DashboardRevenueChart.tsx": {
     "mtime": 1773144497.506663,
@@ -6964,7 +7164,7 @@
     "hash": "16ed9317edd22d15db76095adcc9ccc7"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\layout\\GlobalDrawer.tsx": {
-    "mtime": 1779364653.9129457,
+    "mtime": 1779518337.1580598,
     "hash": "4655ca177f0b6b61aa629b43c0994673"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\layout\\Layout.tsx": {
@@ -6976,7 +7176,7 @@
     "hash": "44e9945dba89ccbaf524bed6d2981753"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\layout\\Sidebar.tsx": {
-    "mtime": 1779364653.914944,
+    "mtime": 1779518337.159061,
     "hash": "a6492c8fcd2eaef5c5237726a3967b9a"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\layout\\TopHeader.tsx": {
@@ -7011,6 +7211,10 @@
     "mtime": 1773413123.1349852,
     "hash": "dd2d334d355836d5e79b3f129915a331"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\products\\BarcodeLabelPrintDialog.tsx": {
+    "mtime": 1779519191.175918,
+    "hash": "fad19c082d848a7d2dcd445ea3c26b2a"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\products\\EnhancedProductForm.tsx": {
     "mtime": 1776974088.105348,
     "hash": "8e522ee035f10e5437ab66ac4423b64d"
@@ -7028,8 +7232,8 @@
     "hash": "35e46a75cf44ac865ba9675d2ef279f7"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\products\\PrintBarcodeModal.tsx": {
-    "mtime": 1779370336.779417,
-    "hash": "634dbb77bd4500729cc12ece32d1798c"
+    "mtime": 1779519187.3933177,
+    "hash": "68ebf73582e18d3662976dd8e98a7662"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\products\\ProductDrawer.tsx": {
     "mtime": 1772959002.309395,
@@ -7044,12 +7248,12 @@
     "hash": "51ee076dbfecc9d6ba625961e98ab04b"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\products\\ProductList.tsx": {
-    "mtime": 1779370355.1235547,
-    "hash": "f9ce4a6948b88cf54d1311b02f02629e"
+    "mtime": 1779519187.3963163,
+    "hash": "c977f9a0aab753274f2a3984e2b1dd29"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\products\\ProductsPage.tsx": {
-    "mtime": 1777882206.8370204,
-    "hash": "230b0920030c84f65893c18eae7576f6"
+    "mtime": 1779519191.180915,
+    "hash": "7da80d5ad0a0413845f17b76db830a5a"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\products\\ProductStockHistoryDrawer.tsx": {
     "mtime": 1776494809.4255178,
@@ -7120,16 +7324,16 @@
     "hash": "b351f909872185e4613d14620b367619"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\purchases\\PurchasesPage.tsx": {
-    "mtime": 1779364653.910944,
-    "hash": "11a5ce413204b15c36ef491235c28b35"
+    "mtime": 1779519191.1859167,
+    "hash": "e0273ff0c1f1e7c769434f8b861beefe"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\purchases\\StandalonePurchaseReturnForm.tsx": {
     "mtime": 1776154058.6614542,
     "hash": "b2ca7164268b9216ca6124704ff55893"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\purchases\\ViewPurchaseDetailsDrawer.tsx": {
-    "mtime": 1778930062.780392,
-    "hash": "7b7c3439bc0746b7fc44a21977438d5d"
+    "mtime": 1779519191.1919165,
+    "hash": "a3819b650e8bda0fcfef8307c3dc7cc4"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\rentals\\NewRentalBooking.tsx": {
     "mtime": 1774690766.467265,
@@ -7196,7 +7400,7 @@
     "hash": "7299742ef68d2b082c85b3c26adbaccc"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\AccountLedgerReportPage.tsx": {
-    "mtime": 1779364653.9129457,
+    "mtime": 1779518337.1570573,
     "hash": "48af4a882e3b8a161ba32730da5922e5"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\BalanceSheetPage.tsx": {
@@ -7208,19 +7412,19 @@
     "hash": "7d8f388ae94a1b05e7458bd83fa23b01"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\CustomerProfitability.tsx": {
-    "mtime": 1779364653.913944,
+    "mtime": 1779518337.159061,
     "hash": "632a903a016098df0665adbe6eafa30c"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\DayBookReport.tsx": {
-    "mtime": 1779364653.914944,
+    "mtime": 1779518337.159061,
     "hash": "48cda01a4428f185632e5bed707e623c"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\InventoryValuationPage.tsx": {
-    "mtime": 1779364653.9099407,
+    "mtime": 1779518337.1560614,
     "hash": "4da440f2e0c2aef10b3f1bbafb8eade9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\ItemLifecycleReport.tsx": {
-    "mtime": 1779364653.910944,
+    "mtime": 1779518337.1560614,
     "hash": "b70ea2b017e1bd51c10300582e01cc30"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\ProductLedger.tsx": {
@@ -7228,7 +7432,7 @@
     "hash": "44f703f54883a54483851c56a0a2f36c"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\ProductSellReportPage.tsx": {
-    "mtime": 1779364653.913944,
+    "mtime": 1779518337.159061,
     "hash": "7b9d53879615839374f671e5e7fd1dba"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\ProfitLossPage.tsx": {
@@ -7236,7 +7440,7 @@
     "hash": "b60b8b3a2f97d4b5aa0e59b64d3e7cc8"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\ProfitLossStatement.tsx": {
-    "mtime": 1779364653.913944,
+    "mtime": 1779518337.1580598,
     "hash": "27d622cae3fd8f2c55e2df8bc3b13f72"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\ReportActions.tsx": {
@@ -7244,11 +7448,11 @@
     "hash": "8226f669f53f2370ee4ea393ae311dbf"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\ReportsDashboard.tsx": {
-    "mtime": 1779364653.9129457,
+    "mtime": 1779518337.1580598,
     "hash": "e6062c8cd27e3dd0f401713ba0e41dd3"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\ReportsDashboardEnhanced.tsx": {
-    "mtime": 1779364653.911945,
+    "mtime": 1779518337.1570573,
     "hash": "26c0a2b45862b04ac62ae997d79f4323"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\RoznamchaReport.tsx": {
@@ -7256,7 +7460,7 @@
     "hash": "3eed4b3eb249f10431a000322c2801b3"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\SalesProfitPage.tsx": {
-    "mtime": 1779364653.913944,
+    "mtime": 1779518337.159061,
     "hash": "6d06fec09ea6beb95551d047c30535d4"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\StatementScopeBanner.tsx": {
@@ -7264,15 +7468,15 @@
     "hash": "9d5de1dc5c3f83d5e25e189d19f88def"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\StockReportPage.tsx": {
-    "mtime": 1779364653.913944,
+    "mtime": 1779518337.159061,
     "hash": "d41f0d5c29cd8dfef37b8c9afaea87ba"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\reports\\TrialBalancePage.tsx": {
-    "mtime": 1779364653.911945,
+    "mtime": 1779518337.1570573,
     "hash": "0287434b72a7f39f8d4ea7e2cfcd9862"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\sales\\QuotationWorkflow.tsx": {
-    "mtime": 1779364653.9099407,
+    "mtime": 1779518337.155057,
     "hash": "1fc338c1678fc577de2ab3bd402a758a"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\sales\\ReturnPaymentAdjustment.tsx": {
@@ -7596,16 +7800,20 @@
     "hash": "ab394f51f9df68978314bfa1384097d4"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\studio\\StudioSaleDetailNew.tsx": {
-    "mtime": 1777800124.447344,
-    "hash": "4954fc74183d96f1f24b2ebbb04e988e"
+    "mtime": 1779519191.2039266,
+    "hash": "9733ba357194e852d2c6f0327ce7d58b"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\studio\\StudioSalesList.tsx": {
     "mtime": 1772959002.5084877,
     "hash": "3265a2007c742753bffb94d8d33f19c3"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\studio\\StudioSalesListNew.tsx": {
-    "mtime": 1777882206.852021,
-    "hash": "7690b1f8e4a71fe6ead9c5b0ef28f903"
+    "mtime": 1779519191.2084558,
+    "hash": "ea880880a1280a8c1edc0d7eeb07d82f"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\studio\\StudioStageTimeline.tsx": {
+    "mtime": 1779519191.2104528,
+    "hash": "ba4f2c4bef6f5e20863aa0f6f0eac858"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\studio\\StudioWorkflowPage.tsx": {
     "mtime": 1777796250.6843946,
@@ -7616,8 +7824,8 @@
     "hash": "6cd939f39712fccc4e35c87e919927e9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\studio\\WorkerDetailPage.tsx": {
-    "mtime": 1777794868.0084982,
-    "hash": "320bcfe23ec6bc2d2d624c124ffbbdda"
+    "mtime": 1779519191.214452,
+    "hash": "c62a8015b1b5a95a699dad2fdc45bfbf"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\studio\\WorkerLedger.tsx": {
     "mtime": 1772959002.515488,
@@ -7792,7 +8000,7 @@
     "hash": "ddd39c0c40df6caa06e1ba1daff6f895"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\ui\\card.tsx": {
-    "mtime": 1779364653.913944,
+    "mtime": 1779518337.1580598,
     "hash": "27f0bec90702dc034ac652f1f9b6aabc"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\ui\\carousel.tsx": {
@@ -7996,8 +8204,8 @@
     "hash": "d4a5320225f876429e66acaa6b0a19c9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\users\\AddUserModal.tsx": {
-    "mtime": 1779360229.8927624,
-    "hash": "d4d51e1415e52ae24253c47781cd4bce"
+    "mtime": 1779519187.4003162,
+    "hash": "38103fc9d6bc3db6c77a23551093a16f"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\components\\users\\RolesDashboard.tsx": {
     "mtime": 1772959002.6380153,
@@ -8060,8 +8268,8 @@
     "hash": "7e46f1e1945e9f5626e8bd11c8991fd7"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\context\\GlobalFilterContext.tsx": {
-    "mtime": 1779364653.911945,
-    "hash": "e401e0ec439f95f29b773d5dc3127e3b"
+    "mtime": 1779519191.2184522,
+    "hash": "88c42adcebad016d45b5741cc401dd1f"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\context\\ModuleContext.tsx": {
     "mtime": 1779360146.608139,
@@ -8076,23 +8284,23 @@
     "hash": "288e40d45b632e0a687b8b6e0913aa73"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\context\\PurchaseContext.tsx": {
-    "mtime": 1779364653.910944,
-    "hash": "256e7c084f47fc7810d2709ce755051e"
+    "mtime": 1779519191.2244518,
+    "hash": "daeaca87386870707120ad602c472811"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\context\\RentalContext.tsx": {
     "mtime": 1777882206.858027,
     "hash": "a2dc96c7bdf0bccaf0230b4dc3ab1f53"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\context\\SalesContext.tsx": {
-    "mtime": 1778928770.9679954,
-    "hash": "4d6f13bce9168eef8cdf4fb84bd7a505"
+    "mtime": 1779519191.2314525,
+    "hash": "44f19c5161810c08747e3138ce7e19ef"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\context\\SettingsContext.tsx": {
     "mtime": 1779198158.6066346,
     "hash": "cbc79e1278903f4773fbf25d7b9d95d3"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\context\\SupabaseContext.tsx": {
-    "mtime": 1779364653.911945,
+    "mtime": 1779518337.1570573,
     "hash": "0ae63f1a54146c4b62b71abb192cb18c"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\data\\defaultCoASeed.ts": {
@@ -8256,7 +8464,7 @@
     "hash": "a4edf1bca100ca6e39206f7a6e06a19e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\lib\\accountingInvalidate.ts": {
-    "mtime": 1779364653.913944,
+    "mtime": 1779518337.1580598,
     "hash": "6cfc30a849da8fff4042664d3f4a51f9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\lib\\accountProfessionalCategory.ts": {
@@ -8268,8 +8476,12 @@
     "hash": "8a362af1c69715b5dcb0f876da722ac8"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\lib\\authPasswordGrant.ts": {
-    "mtime": 1779364653.913944,
-    "hash": "6c06c006ae761c76e49e06808d652503"
+    "mtime": 1779519187.407844,
+    "hash": "5524279ad3c36f5480e2f1f5ba7adc9d"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\lib\\barcodeLabelLines.ts": {
+    "mtime": 1779519191.2344508,
+    "hash": "e4f338bd544f64e463a49c07649720ce"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\lib\\contactBalancesRefresh.ts": {
     "mtime": 1777541280.6444051,
@@ -8398,6 +8610,18 @@
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\lib\\safeBrowserStorage.ts": {
     "mtime": 1779360146.6241255,
     "hash": "d867f09007169843903027df342f2ffb"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\lib\\studioExtraStageNotes.ts": {
+    "mtime": 1779519191.2364514,
+    "hash": "0e380ee0552bcaf9aa911188fa965d09"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\lib\\studioOrderDisplay.ts": {
+    "mtime": 1779519191.2394521,
+    "hash": "415b631e5699d0ed46b1c98f1e8438b9"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\lib\\studioWorkflowNotes.ts": {
+    "mtime": 1779519191.2424517,
+    "hash": "0abddaaf049110979973d94a515d7791"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\lib\\supabaseSessionBridge.ts": {
     "mtime": 1779360146.6271248,
@@ -8552,8 +8776,8 @@
     "hash": "a30cf64daab016d4a51032e7fe517947"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\accountingService.ts": {
-    "mtime": 1778327976.0095522,
-    "hash": "4714cd4ae46f1a5480c43e88e89f42a8"
+    "mtime": 1779519191.2484498,
+    "hash": "db48024d6aaaaf10bd3a35994d242bd9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\accountService.ts": {
     "mtime": 1775570495.2696364,
@@ -8586,6 +8810,14 @@
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\backupService.ts": {
     "mtime": 1778395331.1725452,
     "hash": "1e1e9d771b3a9177a985e9381e2e0271"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\barcodeLabelPrint.ts": {
+    "mtime": 1779519191.25045,
+    "hash": "42b2819ffe3fc1ab473cb74867961f79"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\barcodeLabelSettingsService.ts": {
+    "mtime": 1779519191.253452,
+    "hash": "b8c8cea2b35bd0ff23d771234b33c762"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\bomService.ts": {
     "mtime": 1773305326.5291338,
@@ -8640,7 +8872,7 @@
     "hash": "5097c9106448880138f0cb0e3afe61d3"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\contactService.ts": {
-    "mtime": 1779364653.911945,
+    "mtime": 1779518337.1570573,
     "hash": "61906a9d82c42029d66e9ae1a40598ba"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\controlAccountBreakdownService.ts": {
@@ -8680,7 +8912,7 @@
     "hash": "b1273749c573d4a5c8456dad82e9f5ba"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\documentNumberService.ts": {
-    "mtime": 1779364653.9099407,
+    "mtime": 1779518337.153043,
     "hash": "12992149223f1f13592397b869f86182"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\documentPostingEngine.ts": {
@@ -8756,7 +8988,7 @@
     "hash": "98393a33c3ec8fe82014ad0aa0a49a09"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\integrityUnifiedService.ts": {
-    "mtime": 1779364653.910944,
+    "mtime": 1779518337.1570573,
     "hash": "dc62763170b7b0256ff91b56bd90cf9f"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\inventoryIntelligenceService.ts": {
@@ -8884,7 +9116,7 @@
     "hash": "b3982a8bd65b7dbef9f5a0976042a992"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\purchaseAccountingService.ts": {
-    "mtime": 1779364653.910944,
+    "mtime": 1779518337.1570573,
     "hash": "ef1b692b7fe1a4b88db5a8a0d11360a8"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\purchaseReturnService.ts": {
@@ -8892,7 +9124,7 @@
     "hash": "18ce94eade33df51047f6179d9fb048e"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\purchaseService.ts": {
-    "mtime": 1779364653.9129457,
+    "mtime": 1779518337.1580598,
     "hash": "9f1cb423548d59621e69a60ced0bc8b6"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\quotationService.ts": {
@@ -8932,7 +9164,7 @@
     "hash": "1a8f078bfc3a2fefdd3b8d79c74aefcb"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\saleService.ts": {
-    "mtime": 1779364653.910944,
+    "mtime": 1779518337.1570573,
     "hash": "d21901b6cc0ce66bfbc16cb053676d6d"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\settingsService.ts": {
@@ -8960,8 +9192,8 @@
     "hash": "63922dc86cfe52ee86e9cf27178f6e60"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\studioProductionService.ts": {
-    "mtime": 1777815349.4075239,
-    "hash": "b9ceca55658bda2860c7c0ee46acda08"
+    "mtime": 1779519191.273451,
+    "hash": "bd6eb15d7e543cc244e9b15bee6b0113"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\services\\studioProductionV2Service.ts": {
     "mtime": 1772959002.7532663,
@@ -9076,8 +9308,8 @@
     "hash": "fcf9048ca3007a4743c14c25f378497c"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\utils\\localDate.ts": {
-    "mtime": 1778311737.5880554,
-    "hash": "c4023339845881e4f8c06093487b1723"
+    "mtime": 1779519191.2774537,
+    "hash": "40dab09fe97adee4e77a6f8fbd03e161"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\utils\\logger.ts": {
     "mtime": 1772959002.7752678,
@@ -9140,7 +9372,7 @@
     "hash": "92a2f769637ef9fff3fb3f7ffa00ef41"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\wholesale\\BulkInvoiceWorkflow.tsx": {
-    "mtime": 1779364653.9099407,
+    "mtime": 1779518337.153043,
     "hash": "fbc9054f48a6d476f9c716cec04131aa"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\wholesale\\CourierShipmentWorkflow.tsx": {
@@ -9152,7 +9384,7 @@
     "hash": "cdb6a8d435e595d2c7de3cab06037915"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\wholesale\\PackingListWorkflow.tsx": {
-    "mtime": 1779364653.9099407,
+    "mtime": 1779518337.153043,
     "hash": "25b60dddab42c33036c657cfdf469084"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\app\\workflows\\businessTypeWorkflows.ts": {
@@ -9172,8 +9404,8 @@
     "hash": "9583665f93e2e375d6a0c28981a6ae0f"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\lib\\supabase.ts": {
-    "mtime": 1779360146.6591263,
-    "hash": "523b61040bead9805c61645391f16b09"
+    "mtime": 1779519191.2814517,
+    "hash": "38ddef50c7994e73ca93fbc9134744e4"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\src\\lib\\supabaseWithInterceptor.ts": {
     "mtime": 1775063148.027083,
@@ -11035,6 +11267,10 @@
     "mtime": 1779034707.333333,
     "hash": "48e505dbef7a19ca5c577e5c6dc11cf5"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\audit_log_latest.md": {
+    "mtime": 1779519190.6682234,
+    "hash": "c5f3c1b3e3fe3ed90883887a9d8ab2f2"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\BACKEND_LOGIC_AUDIT.md": {
     "mtime": 1771917867.549209,
     "hash": "2725f6085a5fd790497b2d720ba79de0"
@@ -11907,9 +12143,21 @@
     "mtime": 1773821612.5338645,
     "hash": "6f6e8729746a4076f5df185248d76902"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\phase7_branch_fallback_fix.md": {
+    "mtime": 1779519190.6802216,
+    "hash": "9b236ee5baafefe7afbb6b5d99d97d8e"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\phase7_branch_selection_fix.md": {
+    "mtime": 1779519190.683224,
+    "hash": "977e394761a342a9048bb9538ada9e42"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\phase7_studio_barcodes_images.plan.md": {
-    "mtime": 1779360146.5335772,
-    "hash": "f37181bcbbb7b14e5775a70739ccc451"
+    "mtime": 1779519190.6862254,
+    "hash": "f00ca7b193ff2d5be47d233edf186a55"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\phase7_telemetry_audit_log.md": {
+    "mtime": 1779519190.688225,
+    "hash": "6506dae62fd45ed5e0f4173cf92e79e9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\PHASE_2_TO_5_MASTER_AND_SEED_PLAN.md": {
     "mtime": 1770294859.1032076,
@@ -12915,6 +13163,10 @@
     "mtime": 1779099154.5050375,
     "hash": "d8038a98293c8e67b645e3b957683b34"
   },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\infra\\COUNTER_SESSION_VPS_AUDIT.md": {
+    "mtime": 1779519190.6712315,
+    "hash": "1c0150a8a228b3b6f18cc897654022ab"
+  },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\infra\\MOBILE_APK_LOCKED_PATTERN.md": {
     "mtime": 1779098450.0515563,
     "hash": "ed8d4e18df43a34797159f27719cc189"
@@ -12932,8 +13184,16 @@
     "hash": "0b341c7fd09cbc3621ce5895da9616c8"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\integrity\\PURCHASE_STABILITY_REMAINING_TASKS.md": {
-    "mtime": 1779364653.9099407,
+    "mtime": 1779518337.153043,
     "hash": "276803600e92f9f5419a82a4af861c42"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\mobile\\2026-05-21-REMAINING_TASKS.md": {
+    "mtime": 1779519190.6742268,
+    "hash": "4902abb93455e8a2f41bfe097ed854b6"
+  },
+  "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\mobile\\2026-05-21-TODAY_WORK_SUMMARY.md": {
+    "mtime": 1779519190.679222,
+    "hash": "b30dacbeaf35f41b1d90210d453fbf5a"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\docs\\modules\\Contacts.md": {
     "mtime": 1768488446.156,
@@ -13220,8 +13480,8 @@
     "hash": "39c8e99b7688a8cc1e6e3908f47a1a83"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\index.html": {
-    "mtime": 1779381056.949502,
-    "hash": "4e8235d92aad9d43f5e9069aa480e92d"
+    "mtime": 1779519190.7042363,
+    "hash": "7e92f41a75a10938ded5f47b7fb231ae"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\README.md": {
     "mtime": 1779030531.5853796,
@@ -13236,8 +13496,8 @@
     "hash": "cb7117a34fffb7ad098eaf5fac4a4218"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\android\\app\\src\\main\\assets\\public\\index.html": {
-    "mtime": 1779382511.6850166,
-    "hash": "8bf15739b9c37b3bffa3e14c11b08666"
+    "mtime": 1779519551.6913052,
+    "hash": "9f4cfb3a57f89ce782f700bb111054f9"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\docs\\MOBILE_APP_COMPLETED_TASKS.md": {
     "mtime": 1779383027.697407,
@@ -13252,8 +13512,8 @@
     "hash": "0dce3ff164b9390cde84f2acbe18f8f3"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\ios\\README_BUILD.md": {
-    "mtime": 1778924574.0786698,
-    "hash": "4a84e557938a1dc12f4b5e889c76980f"
+    "mtime": 1779519190.716767,
+    "hash": "be46f8ffc4236909de6683dfb8918dfa"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\ios\\App\\App\\public\\index.html": {
     "mtime": 1778924684.6281557,
@@ -13264,8 +13524,8 @@
     "hash": "a71f12282badb64fc6e40c04ddb78de8"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\releases\\APK_UPDATE.md": {
-    "mtime": 1779381604.354521,
-    "hash": "0c82fc39702039438292522d06ba2847"
+    "mtime": 1779519720.0883195,
+    "hash": "de94f1d7c2a9071fb8a570b3480d5269"
   },
   "C:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3\\erp-mobile-app\\releases\\GH_RELEASE_NOTES_mobile-v1.0.1-build2.md": {
     "mtime": 1779295006.5083716,
