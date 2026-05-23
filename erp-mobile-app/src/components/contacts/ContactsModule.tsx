@@ -2,7 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Users, Plus, Search, Phone, Loader2, Link2 } from 'lucide-react';
 import type { User } from '../../types';
 import * as contactsApi from '../../api/contacts';
-import type { Contact, ContactRole } from '../../api/contacts';
+import {
+  getContactDisplayRef,
+  isPendingPublicLead,
+  type Contact,
+  type ContactRole,
+} from '../../api/contacts';
 import { AddContactFlow, type AddContactFormData } from './AddContactFlow';
 import { EditContactFlow } from './EditContactFlow';
 import { ContactDetailView } from './ContactDetailView';
@@ -181,6 +186,10 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
         contact={selected}
         onBack={() => { setView('list'); setSelected(null); }}
         onEdit={() => setView('edit')}
+        onApproved={(updated) => {
+          setSelected(updated);
+          setContacts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+        }}
         user={user}
       />
       </SwipeBackShell>
@@ -290,6 +299,14 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="font-medium text-white mb-1">{contact.name}</h3>
+                  {getContactDisplayRef(contact) ? (
+                    <p className="text-xs text-[#6B7280] font-mono mb-0.5">{getContactDisplayRef(contact)}</p>
+                  ) : null}
+                  {isPendingPublicLead(contact) && (
+                    <span className="inline-block text-[10px] font-medium text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded mb-1">
+                      Pending lead
+                    </span>
+                  )}
                   <p className="text-sm text-[#9CA3AF] flex items-center gap-1">
                     <Phone className="w-4 h-4" />
                     {contact.phone}

@@ -87,6 +87,20 @@ interface Contact {
   is_system_generated?: boolean;
   system_type?: string;
   is_default?: boolean;
+  referralCode?: string | null;
+  leadSource?: string | null;
+  leadStatus?: string | null;
+  createdFrom?: string | null;
+}
+
+function isPendingPublicLead(contact: Contact): boolean {
+  return contact.createdFrom === 'public_form' && contact.leadStatus === 'New';
+}
+
+function getContactDisplayRef(contact: Contact): string {
+  if (contact.code && contact.code !== '—') return contact.code;
+  if (contact.referralCode?.trim()) return `Ref: ${contact.referralCode.trim()}`;
+  return '—';
 }
 
 const workerRoleLabels: Record<WorkerRole, string> = {
@@ -168,7 +182,7 @@ function contactPartyGlPayableSigned(
 
 export const ContactsPage = () => {
   const { openDrawer, setCurrentView, createdContactId, setCreatedContactId, openPartyLedger } = useNavigation();
-  const { companyId, branchId } = useSupabase();
+  const { companyId, branchId, userRole } = useSupabase();
   const [contacts, setContacts] = useState<Contact[]>([]);
   /** True until first contact list is ready to show (before / without balance RPC). */
   const [listLoading, setListLoading] = useState(false);
@@ -211,6 +225,9 @@ export const ContactsPage = () => {
   const [editContactOpen, setEditContactOpen] = useState(false);
   const [viewProfileOpen, setViewProfileOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [leadFilter, setLeadFilter] = useState<'all' | 'pending'>('all');
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [approvingLead, setApprovingLead] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
   /** Throttle accounting-domain invalidations (journal storms) so Contacts does not refetch on every JE reload. */
@@ -321,8 +338,40 @@ export const ContactsPage = () => {
       lastTransaction: supabaseContact.updated_at ? new Date(supabaseContact.updated_at).toISOString().split('T')[0] : undefined,
       is_system_generated: supabaseContact.is_system_generated || false,
       system_type: supabaseContact.system_type || undefined,
+      referralCode: (supabaseContact.referral_code as string) || null,
+      leadSource: (supabaseContact.lead_source as string) || null,
+      leadStatus: (supabaseContact.lead_status as string) || null,
+      createdFrom: (supabaseContact.created_from as string) || null,
     };
   }, []);
+
+  const canApproveLeads = ['admin', 'manager', 'accountant'].includes(String(userRole || '').toLowerCase());
+
+  const pendingLeadCount = useMemo(
+    () => contacts.filter(isPendingPublicLead).length,
+    [contacts]
+  );
+
+  const handleApproveLead = async () => {
+    if (!selectedContact?.uuid) return;
+    setApprovingLead(true);
+    try {
+      const result = await contactService.approvePublicLead(selectedContact.uuid);
+      if (result.success) {
+        toast.success(result.code ? `Lead approved — ${result.code}` : 'Lead approved');
+        setApproveDialogOpen(false);
+        setViewProfileOpen(false);
+        setSelectedContact(null);
+        await refreshContacts();
+      } else {
+        toast.error(result.error || 'Could not approve lead');
+      }
+    } catch (e: unknown) {
+      toast.error((e as { message?: string })?.message || 'Could not approve lead');
+    } finally {
+      setApprovingLead(false);
+    }
+  };
 
   /**
    * When branch names load after contacts, refresh labels only — never during list/balance fetch
@@ -748,6 +797,8 @@ export const ContactsPage = () => {
         const matchesSearch = 
           contact.name.toLowerCase().includes(search) ||
           contact.code.toLowerCase().includes(search) ||
+          (contact.referralCode?.toLowerCase().includes(search) ?? false) ||
+          (contact.leadSource?.toLowerCase().includes(search) ?? false) ||
           contact.email.toLowerCase().includes(search) ||
           contact.phone.toLowerCase().includes(search) ||
           contact.branch.toLowerCase().includes(search) ||
@@ -779,6 +830,8 @@ export const ContactsPage = () => {
       // Phone filter
       if (phoneFilter === 'has' && (contact.phone === '-' || !contact.phone)) return false;
       if (phoneFilter === 'no' && contact.phone !== '-' && contact.phone) return false;
+
+      if (leadFilter === 'pending' && !isPendingPublicLead(contact)) return false;
       
       return true;
     });
@@ -792,6 +845,7 @@ export const ContactsPage = () => {
     balanceFilter,
     branchFilter,
     phoneFilter,
+    leadFilter,
   ]);
 
   /** Split operational RPC totals by contact type — GL AR/AP controls are supplier/customer party; workers use WP. */
@@ -946,6 +1000,7 @@ export const ContactsPage = () => {
     setBalanceFilter('all');
     setBranchFilter('all');
     setPhoneFilter('all');
+    setLeadFilter('all');
   };
 
   const activeFilterCount = [
@@ -955,6 +1010,7 @@ export const ContactsPage = () => {
     balanceFilter !== 'all',
     branchFilter !== 'all',
     phoneFilter !== 'all',
+    leadFilter !== 'all',
   ].filter(Boolean).length;
 
   const toggleTypeFilter = (type: string) => {
@@ -985,7 +1041,7 @@ export const ContactsPage = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchTerm, typeFilter, workerRoleFilter, statusFilter, balanceFilter, branchFilter, phoneFilter]);
+  }, [activeTab, searchTerm, typeFilter, workerRoleFilter, statusFilter, balanceFilter, branchFilter, phoneFilter, leadFilter]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -1023,6 +1079,22 @@ export const ContactsPage = () => {
       {/* Sticky top section: header + summary + toolbar - prevents overlap with content */}
       <div className="shrink-0 sticky top-0 z-20 bg-[#0B0F19] flex flex-col">
       <BackgroundSyncBar active={contactsBackgroundRefreshing} label="Updating contacts and balances…" />
+      {canApproveLeads && pendingLeadCount > 0 && (
+        <div className="mx-6 mt-3 flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-amber-100">
+            <span className="font-semibold">{pendingLeadCount}</span> registration
+            {pendingLeadCount === 1 ? '' : 's'} waiting for approval (public link).
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            className="bg-amber-600 hover:bg-amber-500 text-white shrink-0"
+            onClick={() => setLeadFilter('pending')}
+          >
+            Review pending leads
+          </Button>
+        </div>
+      )}
       {/* Page Header */}
       <div className="px-6 py-3 border-b border-gray-800">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1085,6 +1157,20 @@ export const ContactsPage = () => {
               {tab.label} <span className="ml-1.5 opacity-75">({tab.count})</span>
             </button>
           ))}
+          {pendingLeadCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setLeadFilter(leadFilter === 'pending' ? 'all' : 'pending')}
+              className={cn(
+                'px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap',
+                leadFilter === 'pending'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-amber-500/15 text-amber-300 border border-amber-500/40 hover:bg-amber-500/25'
+              )}
+            >
+              Pending leads ({pendingLeadCount})
+            </button>
+          )}
         </div>
       </div>
 
@@ -1286,6 +1372,27 @@ export const ContactsPage = () => {
                             </div>
                           </div>
                         )}
+
+                        <div>
+                          <label className="text-xs text-gray-400 mb-2 block font-medium">Registration leads</label>
+                          <div className="space-y-2">
+                            {[
+                              { value: 'all', label: 'All contacts' },
+                              { value: 'pending', label: 'Pending public registration only' },
+                            ].map((opt) => (
+                              <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name="leadFilter"
+                                  checked={leadFilter === opt.value}
+                                  onChange={() => setLeadFilter(opt.value as 'all' | 'pending')}
+                                  className="w-4 h-4 bg-gray-950 border-gray-700"
+                                />
+                                <span className="text-sm text-gray-300">{opt.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
 
                         <div>
                           <label className="text-xs text-gray-400 mb-2 block font-medium">Status</label>
@@ -1863,8 +1970,13 @@ export const ContactsPage = () => {
                                 System
                               </Badge>
                             )}
+                            {isPendingPublicLead(contact) && (
+                              <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px] px-1.5 py-0 h-4">
+                                Pending lead
+                              </Badge>
+                            )}
                           </div>
-                          <div className="text-xs text-gray-500 font-mono leading-[1.3] mt-0.5">{contact.code}</div>
+                          <div className="text-xs text-gray-500 font-mono leading-[1.3] mt-0.5">{getContactDisplayRef(contact)}</div>
                         </div>
                       </div>
 
@@ -2032,6 +2144,21 @@ export const ContactsPage = () => {
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-52">
+                            {canApproveLeads && isPendingPublicLead(contact) && (
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedContact(contact);
+                                    setApproveDialogOpen(true);
+                                  }}
+                                  className="hover:bg-gray-800 cursor-pointer text-amber-300"
+                                >
+                                  <UserCheck size={14} className="mr-2" />
+                                  Approve lead
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator className="bg-gray-700" />
+                              </>
+                            )}
                             {/* Customer Actions (customer or both) */}
                             {(contact.type === 'customer' || contact.type === 'both') && (
                               <>
@@ -2413,7 +2540,45 @@ export const ContactsPage = () => {
             setSelectedContact(null);
           }}
           contact={selectedContact}
+          canApproveLead={canApproveLeads && isPendingPublicLead(selectedContact)}
+          onApproveLead={() => setApproveDialogOpen(true)}
         />
+      )}
+
+      {selectedContact && (
+        <AlertDialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+          <AlertDialogContent className="bg-gray-900 border-gray-700 text-white">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Approve registration lead</AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-400">
+                Assign an official contact reference (CUS/SUP/WRK) to {selectedContact.name}?
+                {selectedContact.referralCode ? (
+                  <span className="block mt-2 font-mono text-amber-200/90">
+                    Link referral: {selectedContact.referralCode}
+                  </span>
+                ) : null}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                disabled={approvingLead}
+                className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={approvingLead}
+                onClick={(e) => {
+                  e.preventDefault();
+                  void handleApproveLead();
+                }}
+                className="bg-amber-600 hover:bg-amber-500"
+              >
+                {approvingLead ? 'Approving…' : 'Approve'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
 
       {/* Delete Confirmation Dialog */}

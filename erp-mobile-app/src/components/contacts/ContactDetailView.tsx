@@ -1,15 +1,25 @@
-import { ArrowLeft, Phone, Mail, MapPin, DollarSign, Edit2, User as UserIcon, Clock, Briefcase } from 'lucide-react';
-import type { Contact, ContactRole } from '../../api/contacts';
+import { useState } from 'react';
+import { ArrowLeft, Phone, Mail, MapPin, DollarSign, Edit2, User as UserIcon, Clock, Briefcase, UserCheck, Loader2 } from 'lucide-react';
+import {
+  approvePublicLead,
+  getContactDisplayRef,
+  isPendingPublicLead,
+  type Contact,
+  type ContactRole,
+} from '../../api/contacts';
 import type { User } from '../../types';
 
 interface ContactDetailViewProps {
   contact: Contact;
   onBack: () => void;
   onEdit: (contact: Contact) => void;
+  onApproved?: (contact: Contact) => void;
   user: User;
 }
 
-export function ContactDetailView({ contact, onBack, onEdit, user }: ContactDetailViewProps) {
+export function ContactDetailView({ contact, onBack, onEdit, onApproved, user }: ContactDetailViewProps) {
+  const [approving, setApproving] = useState(false);
+  const [approveError, setApproveError] = useState('');
   const getRoleBadgeColor = (role: ContactRole) => {
     switch (role) {
       case 'customer':
@@ -31,6 +41,26 @@ export function ContactDetailView({ contact, onBack, onEdit, user }: ContactDeta
   };
 
   const canEdit = user.role === 'admin' || user.role === 'manager';
+  const canApprove =
+    (user.role === 'admin' || user.role === 'manager' || user.role === 'owner') &&
+    isPendingPublicLead(contact);
+  const displayRef = getContactDisplayRef(contact);
+
+  const handleApprove = async () => {
+    setApproveError('');
+    setApproving(true);
+    const result = await approvePublicLead(contact.id);
+    setApproving(false);
+    if (!result.success) {
+      setApproveError(result.error || 'Approval failed');
+      return;
+    }
+    onApproved?.({
+      ...contact,
+      code: result.code ?? contact.code,
+      leadStatus: 'Approved',
+    });
+  };
 
   return (
     <div className="min-h-screen pb-40 bg-[#111827]">
@@ -58,6 +88,9 @@ export function ContactDetailView({ contact, onBack, onEdit, user }: ContactDeta
             </div>
             <div className="flex-1">
               <h2 className="text-white text-xl font-bold mb-2">{contact.name}</h2>
+              {displayRef ? (
+                <p className="text-xs text-[#9CA3AF] font-mono mb-2">{displayRef}</p>
+              ) : null}
               <div className="flex flex-wrap gap-1.5">
                 {contact.roles.map((role) => (
                   <span key={role} className={`px-2.5 py-1 rounded-md text-xs font-semibold border ${getRoleBadgeColor(role)}`}>
@@ -74,6 +107,35 @@ export function ContactDetailView({ contact, onBack, onEdit, user }: ContactDeta
             </span>
           </div>
         </div>
+
+        {contact.createdFrom === 'public_form' && (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-6">
+            <h3 className="text-white font-semibold mb-3">Registration info</h3>
+            <div className="space-y-2 text-sm">
+              <p className="text-[#9CA3AF]">
+                Source: <span className="text-white">{contact.leadSource || '—'}</span>
+              </p>
+              <p className="text-[#9CA3AF] font-mono text-xs">
+                Referral: <span className="text-white">{contact.referralCode || '—'}</span>
+              </p>
+              <p className="text-[#9CA3AF]">
+                Status: <span className="text-white">{contact.leadStatus || '—'}</span>
+              </p>
+            </div>
+            {canApprove && (
+              <button
+                type="button"
+                disabled={approving}
+                onClick={() => void handleApprove()}
+                className="mt-4 w-full h-11 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium inline-flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {approving ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+                Approve lead
+              </button>
+            )}
+            {approveError ? <p className="text-xs text-red-400 mt-2">{approveError}</p> : null}
+          </div>
+        )}
 
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-6">
           <h3 className="text-white font-semibold mb-4 flex items-center gap-2">

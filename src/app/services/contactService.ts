@@ -515,6 +515,22 @@ export const contactService = {
     return null;
   },
 
+  /** Assign CUS/SUP/WRK code and mark public-form lead as Approved. */
+  async approvePublicLead(contactId: string): Promise<{ success: boolean; code?: string; error?: string }> {
+    const { data, error } = await supabase.rpc('approve_public_contact_lead', {
+      p_contact_id: contactId,
+    });
+    if (error) {
+      return { success: false, error: error.message || 'Approval failed' };
+    }
+    const result = data as { success?: boolean; code?: string; error?: string };
+    return {
+      success: !!result?.success,
+      code: result?.code,
+      error: result?.error,
+    };
+  },
+
   // Search contacts
   async searchContacts(companyId: string, query: string) {
     const { data, error } = await supabase

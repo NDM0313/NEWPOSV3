@@ -6,6 +6,7 @@ import {
   MapPin,
   CreditCard,
   X,
+  UserCheck,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { Badge } from '../ui/badge';
@@ -32,10 +33,28 @@ interface ViewContactProfileProps {
     address?: string;
     lastTransaction?: string;
     workerRole?: string;
+    referralCode?: string | null;
+    leadSource?: string | null;
+    leadStatus?: string | null;
+    createdFrom?: string | null;
   } | null;
+  canApproveLead?: boolean;
+  onApproveLead?: () => void;
 }
 
-export const ViewContactProfile: React.FC<ViewContactProfileProps> = ({ isOpen = true, onClose, contact }) => {
+function getDisplayRef(contact: NonNullable<ViewContactProfileProps['contact']>): string | null {
+  if (contact.code && contact.code !== '—') return contact.code;
+  if (contact.referralCode?.trim()) return `Ref: ${contact.referralCode.trim()}`;
+  return null;
+}
+
+export const ViewContactProfile: React.FC<ViewContactProfileProps> = ({
+  isOpen = true,
+  onClose,
+  contact,
+  canApproveLead,
+  onApproveLead,
+}) => {
   if (!isOpen) return null;
   if (!contact) return null;
 
@@ -47,6 +66,8 @@ export const ViewContactProfile: React.FC<ViewContactProfileProps> = ({ isOpen =
       .toUpperCase()
       .slice(0, 2) || '?';
   const typeLabel = (contact.type || 'contact').charAt(0).toUpperCase() + (contact.type || '').slice(1);
+  const displayRef = getDisplayRef(contact);
+  const isPublicLead = contact.createdFrom === 'public_form';
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -62,7 +83,6 @@ export const ViewContactProfile: React.FC<ViewContactProfileProps> = ({ isOpen =
         )}
 
         <div className="flex flex-col lg:flex-row gap-6 p-6 overflow-hidden flex-1 min-h-0">
-          {/* Left: identity */}
           <div className="w-full lg:w-1/4 bg-gray-900/50 border border-gray-800 rounded-xl p-6 flex flex-col items-center text-center h-fit lg:sticky lg:top-6 shrink-0">
             <Avatar className="h-32 w-32 mb-4 border-4 border-gray-800 shadow-xl">
               <AvatarFallback className="bg-blue-900 text-white text-2xl">{initials}</AvatarFallback>
@@ -70,12 +90,15 @@ export const ViewContactProfile: React.FC<ViewContactProfileProps> = ({ isOpen =
 
             <h2 className="text-2xl font-bold text-white mb-2">{contact.name}</h2>
 
-            <div className="flex flex-wrap gap-2 justify-center mb-6">
+            <div className="flex flex-wrap gap-2 justify-center mb-4">
               <Badge className="bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border-blue-500/20">{typeLabel}</Badge>
-              {contact.code && (
+              {displayRef && (
                 <Badge variant="outline" className="border-gray-700 text-gray-400 font-mono">
-                  {contact.code}
+                  {displayRef}
                 </Badge>
+              )}
+              {contact.leadStatus === 'New' && isPublicLead && (
+                <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40">Pending lead</Badge>
               )}
               {contact.status && (
                 <Badge variant="outline" className="border-gray-700 text-gray-400">
@@ -83,6 +106,33 @@ export const ViewContactProfile: React.FC<ViewContactProfileProps> = ({ isOpen =
                 </Badge>
               )}
             </div>
+
+            {isPublicLead && (
+              <div className="w-full mb-4 rounded-lg border border-gray-700 bg-gray-950/60 p-3 text-left text-sm space-y-1.5">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Registration info</p>
+                <p className="text-gray-300">
+                  <span className="text-gray-500">Source:</span> {contact.leadSource?.trim() || '—'}
+                </p>
+                <p className="text-gray-300 font-mono text-xs">
+                  <span className="text-gray-500 font-sans">Referral:</span>{' '}
+                  {contact.referralCode?.trim() || '—'}
+                </p>
+                <p className="text-gray-300">
+                  <span className="text-gray-500">Status:</span> {contact.leadStatus || '—'}
+                </p>
+              </div>
+            )}
+
+            {canApproveLead && onApproveLead && (
+              <Button
+                type="button"
+                className="w-full mb-4 bg-amber-600 hover:bg-amber-500 text-white"
+                onClick={onApproveLead}
+              >
+                <UserCheck size={16} className="mr-2" />
+                Approve lead
+              </Button>
+            )}
 
             <div className="w-full space-y-4 text-left mb-8">
               {contact.address && (
@@ -124,7 +174,6 @@ export const ViewContactProfile: React.FC<ViewContactProfileProps> = ({ isOpen =
             </div>
           </div>
 
-          {/* Right: summary + live tabs */}
           <div className="flex-1 flex flex-col gap-6 min-w-0 min-h-0 overflow-hidden">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
               <Card className="bg-red-950/20 border-red-900/30">

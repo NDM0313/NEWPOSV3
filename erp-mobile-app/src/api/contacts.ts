@@ -44,6 +44,32 @@ export interface Contact {
   status: 'active' | 'inactive';
   createdAt?: string;
   updatedAt?: string;
+  code?: string | null;
+  referralCode?: string | null;
+  leadSource?: string | null;
+  leadStatus?: string | null;
+  createdFrom?: string | null;
+}
+
+export function getContactDisplayRef(c: Pick<Contact, 'code' | 'referralCode'>): string {
+  if (c.code?.trim()) return c.code.trim();
+  if (c.referralCode?.trim()) return `Ref: ${c.referralCode.trim()}`;
+  return '';
+}
+
+export function isPendingPublicLead(c: Pick<Contact, 'createdFrom' | 'leadStatus'>): boolean {
+  return c.createdFrom === 'public_form' && c.leadStatus === 'New';
+}
+
+export async function approvePublicLead(
+  contactId: string
+): Promise<{ success: boolean; code?: string; error: string | null }> {
+  if (!isSupabaseConfigured) return { success: false, error: 'App not configured.' };
+  const { data, error } = await supabase.rpc('approve_public_contact_lead', { p_contact_id: contactId });
+  if (error) return { success: false, error: error.message };
+  const result = data as { success?: boolean; code?: string; error?: string };
+  if (!result?.success) return { success: false, error: result?.error || 'Approval failed' };
+  return { success: true, code: result.code, error: null };
 }
 
 function typeToRoles(t: string): ContactRole[] {
@@ -110,7 +136,7 @@ export async function getContacts(
   }
   let query = supabase
     .from('contacts')
-    .select('id, company_id, type, name, phone, email, city, address, opening_balance, credit_limit, worker_role, is_active, created_at, updated_at')
+    .select('id, company_id, type, name, phone, email, city, address, opening_balance, credit_limit, worker_role, is_active, created_at, updated_at, code, referral_code, lead_source, lead_status, created_from')
     .eq('company_id', company)
     .order('name');
   if (type === 'customer') query = query.in('type', ['customer', 'both']);
@@ -128,7 +154,16 @@ export async function getContacts(
   const listRole: ContactRole | undefined =
     type === 'customer' || type === 'supplier' || type === 'worker' ? type : undefined;
 
-  const list: Contact[] = (data || []).map((row: ContactRow & { worker_role?: string; created_at?: string; updated_at?: string }) => {
+  const list: Contact[] = (data || []).map((row: ContactRow & {
+    worker_role?: string;
+    created_at?: string;
+    updated_at?: string;
+    code?: string | null;
+    referral_code?: string | null;
+    lead_source?: string | null;
+    lead_status?: string | null;
+    created_from?: string | null;
+  }) => {
     const opening = Number(row.opening_balance ?? 0);
     let balance = opening;
 
@@ -166,6 +201,11 @@ export async function getContacts(
       status: row.is_active !== false ? 'active' : 'inactive',
       createdAt: row.created_at ?? undefined,
       updatedAt: row.updated_at ?? undefined,
+      code: row.code ?? null,
+      referralCode: row.referral_code ?? null,
+      leadSource: row.lead_source ?? null,
+      leadStatus: row.lead_status ?? null,
+      createdFrom: row.created_from ?? null,
     };
   });
   void listCacheSet(cacheKey, list);
