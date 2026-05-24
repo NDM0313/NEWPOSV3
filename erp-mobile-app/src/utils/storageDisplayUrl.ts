@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
+import { resolveSupabaseApiUrl } from '../lib/resolveSupabaseApiUrl';
 
 export const STORAGE_BUCKETS = [
   'product-images',
@@ -61,7 +62,7 @@ function isLocalDevHost(url: string): boolean {
 }
 
 function productionStorageBase(): string {
-  return String(env.VITE_SUPABASE_URL ?? '').trim().replace(/\/$/, '');
+  return resolveSupabaseApiUrl(String(env.VITE_SUPABASE_URL ?? ''));
 }
 
 /** Parse full URL, bucket/path ref, or legacy path-only (product-images). */

@@ -1,5 +1,5 @@
 /* Minimal service worker: cache app shell, API calls not cached. Works at / or /m/ */
-const CACHE = 'erp-mobile-v4'; // Incremented cache version — bust stale PWA bundles (direct Supabase URL)
+const CACHE = 'erp-mobile-v5'; // Incremented cache version — bust stale PWA bundles (direct Supabase URL)
 const BASE = self.location.pathname.replace(/\/sw\.js$/, '').replace(/\/?$/, '') || '';
 
 const APP_SHELL = [

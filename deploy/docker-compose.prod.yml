@@ -41,6 +41,7 @@ services:
       dockerfile: deploy/Dockerfile
       args:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_URL_MOBILE: ${VITE_SUPABASE_URL_MOBILE:-https://supabase.dincouture.pk}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
         VITE_DISABLE_REALTIME: ${VITE_DISABLE_REALTIME:-true}
         CACHEBUST: ${CACHEBUST:-0}

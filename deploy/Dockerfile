@@ -23,9 +23,9 @@ RUN npm ci
 # CACHEBUST forces fresh copy on every deploy (no stale mobile build)
 ARG CACHEBUST=
 COPY erp-mobile-app/ .
-ARG VITE_SUPABASE_URL=https://placeholder.supabase.co
+ARG VITE_SUPABASE_URL_MOBILE=https://supabase.dincouture.pk
 ARG VITE_SUPABASE_ANON_KEY=placeholder-key
-ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL_MOBILE
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 RUN npm run build:mobile:pwa
 

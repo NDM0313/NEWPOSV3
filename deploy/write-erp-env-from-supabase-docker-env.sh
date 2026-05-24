@@ -11,6 +11,7 @@ SUPABASE_ENV="${SUPABASE_ENV:-/root/supabase/docker/.env}"
 ERP_ENV="${ERP_ENV:-$ROOT/.env.production}"
 MOBILE_ENV="${MOBILE_ENV:-$ROOT/erp-mobile-app/.env.production}"
 ERP_ORIGIN="${ERP_ORIGIN:-https://erp.dincouture.pk}"
+SUPABASE_API_URL="${SUPABASE_API_URL:-https://supabase.dincouture.pk}"
 
 if [ ! -f "$SUPABASE_ENV" ]; then
   echo "[write-erp-env] ERROR: Supabase env not found: $SUPABASE_ENV"
@@ -46,21 +47,33 @@ if [ -f "$ERP_ENV" ] && grep -q '^VITE_DISABLE_REALTIME=' "$ERP_ENV" 2>/dev/null
 fi
 [ -z "$VITE_DISABLE_REALTIME" ] && VITE_DISABLE_REALTIME=true
 
-write_three() {
+write_env_file() {
   local target="$1"
+  local url="$2"
   {
-    echo "VITE_SUPABASE_URL=$ERP_ORIGIN"
+    echo "VITE_SUPABASE_URL=$url"
     echo "VITE_SUPABASE_ANON_KEY=$ANON"
     echo "VITE_DISABLE_REALTIME=$VITE_DISABLE_REALTIME"
   } > "${target}.tmp"
   mv "${target}.tmp" "$target"
 }
 
+write_erp_production() {
+  {
+    echo "VITE_SUPABASE_URL=$ERP_ORIGIN"
+    echo "VITE_SUPABASE_URL_MOBILE=$SUPABASE_API_URL"
+    echo "VITE_SUPABASE_ANON_KEY=$ANON"
+    echo "VITE_DISABLE_REALTIME=$VITE_DISABLE_REALTIME"
+  } > "${ERP_ENV}.tmp"
+  mv "${ERP_ENV}.tmp" "$ERP_ENV"
+}
+
 mkdir -p "$(dirname "$ERP_ENV")"
 mkdir -p "$(dirname "$MOBILE_ENV")"
-write_three "$ERP_ENV"
-write_three "$MOBILE_ENV"
+write_erp_production
+write_env_file "$MOBILE_ENV" "$SUPABASE_API_URL"
 
 anon_len=${#ANON}
 anon_tail="${ANON: -8}"
-echo "[write-erp-env] Wrote $ERP_ENV and $MOBILE_ENV (VITE_SUPABASE_URL=$ERP_ORIGIN, anon ${anon_len} chars, suffix …${anon_tail})"
+echo "[write-erp-env] Wrote $ERP_ENV (web VITE_SUPABASE_URL=$ERP_ORIGIN, mobile VITE_SUPABASE_URL_MOBILE=$SUPABASE_API_URL)"
+echo "[write-erp-env] Wrote $MOBILE_ENV (VITE_SUPABASE_URL=$SUPABASE_API_URL, anon ${anon_len} chars, suffix …${anon_tail})"

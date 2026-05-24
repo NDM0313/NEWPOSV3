@@ -11,6 +11,7 @@ import {
   recoverStaleAuthSession,
   recoverStaleAuthSessionFromBootstrap,
 } from './authSessionRecovery';
+import { resolveSupabaseApiUrl } from './resolveSupabaseApiUrl';
 
 /** Vite defines `import.meta.env`; Node (e.g. tsx --test) does not — avoid crashing on import. */
 const env =
@@ -18,8 +19,7 @@ const env =
     ? ((import.meta as { env: Record<string, string | boolean | undefined> }).env)
     : ({} as Record<string, string | boolean | undefined>);
 
-const supabaseUrl =
-  String(env.VITE_SUPABASE_URL ?? '').trim() || 'https://supabase.dincouture.pk';
+const supabaseUrl = resolveSupabaseApiUrl(String(env.VITE_SUPABASE_URL ?? ''));
 
 const isNativeCapacitor = Capacitor.isNativePlatform();
 
@@ -119,11 +119,7 @@ function attachDirectRealtimeInLocalDev(client: SupabaseClient): void {
   if (typeof window === 'undefined' || !env.DEV || isNativeCapacitor) return;
   if (!hasConfig || isDemoSupabaseAnonKey(supabaseAnonKey)) return;
 
-  const configured = String(env.VITE_SUPABASE_URL ?? '').trim().replace(/\/$/, '');
-  const directBase =
-    configured.startsWith('https://') && !configured.includes('localhost')
-      ? configured
-      : 'https://supabase.dincouture.pk';
+  const directBase = resolveSupabaseApiUrl(String(env.VITE_SUPABASE_URL ?? ''));
   const realtimeHref = `${directBase.replace(/^https/i, 'wss')}/realtime/v1`;
   try {
     client.realtime.disconnect();

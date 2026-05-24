@@ -28,14 +28,14 @@ function parse(text) {
 
 let merged = {
   VITE_TARGET: 'capacitor',
-  VITE_SUPABASE_URL: 'https://erp.dincouture.pk',
+  VITE_SUPABASE_URL: 'https://supabase.dincouture.pk',
   VITE_DISABLE_REALTIME: 'true',
 };
 
 for (const path of sources) {
   if (!existsSync(path)) continue;
   const p = parse(readFileSync(path, 'utf8'));
-  // Native APK always uses ERP origin (see docs/infra/MOBILE_APK_LOCKED_PATTERN.md).
+  // Native APK/PWA uses direct Supabase API (see resolveSupabaseApiUrl.ts).
   void p.VITE_SUPABASE_URL;
   if (p.VITE_SUPABASE_ANON_KEY) merged.VITE_SUPABASE_ANON_KEY = p.VITE_SUPABASE_ANON_KEY;
   if (p.VITE_DISABLE_REALTIME) merged.VITE_DISABLE_REALTIME = p.VITE_DISABLE_REALTIME;

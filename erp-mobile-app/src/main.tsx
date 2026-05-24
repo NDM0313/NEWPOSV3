@@ -40,7 +40,7 @@ if (Capacitor.isNativePlatform()) {
 if ('serviceWorker' in navigator && !Capacitor.isNativePlatform()) {
   window.addEventListener('load', () => {
     const base = import.meta.env.BASE_URL || '/';
-    navigator.serviceWorker.register(base + 'sw.js?v=4').catch(() => {});
+    navigator.serviceWorker.register(base + 'sw.js?v=5').catch(() => {});
   });
 }
 
