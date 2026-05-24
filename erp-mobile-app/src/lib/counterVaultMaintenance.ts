@@ -4,6 +4,7 @@
  */
 
 import * as authApi from '../api/auth';
+import { supabase } from './supabase';
 
 /** Background sync interval while a user is logged in. */
 export const COUNTER_VAULT_MAINTENANCE_INTERVAL_MS = 20 * 60 * 1000;
@@ -13,6 +14,7 @@ let maintenanceInFlight: Promise<void> | null = null;
 export async function maintainCounterVaultTokens(): Promise<void> {
   if (maintenanceInFlight) return maintenanceInFlight;
   maintenanceInFlight = (async () => {
+    await supabase.auth.stopAutoRefresh();
     try {
       await authApi.refreshPersistedSessionIfPossible();
       const session = await authApi.getSessionWithRefresh();
@@ -21,6 +23,7 @@ export async function maintainCounterVaultTokens(): Promise<void> {
     } catch {
       /* ignore */
     } finally {
+      await supabase.auth.startAutoRefresh();
       maintenanceInFlight = null;
     }
   })();

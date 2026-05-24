@@ -10,6 +10,7 @@ import {
   COUNTER_WRONG_COMPANY_MESSAGE,
 } from './counterUserVault';
 import { markUnlocked } from './pinLock';
+import { supabase } from './supabase';
 
 export type CounterPinUnlockResult =
   | { ok: true; profile: AuthProfile }
@@ -55,28 +56,33 @@ export async function unlockWithCounterPin(
     return profileFromLiveSession(liveSession.userId, options?.companyId);
   }
 
-  let refreshed = await authApi.refreshSessionFromRefreshToken(payload.refreshToken, {
-    allowGlobalRecovery: false,
-  });
-  if (!refreshed.ok) {
-    const retryPayload = await getCounterUserForPin(pin);
-    if (
-      retryPayload?.refreshToken &&
-      retryPayload.refreshToken !== payload.refreshToken
-    ) {
-      refreshed = await authApi.refreshSessionFromRefreshToken(retryPayload.refreshToken, {
-        allowGlobalRecovery: false,
-      });
+  await supabase.auth.stopAutoRefresh();
+  try {
+    let refreshed = await authApi.refreshSessionFromRefreshToken(payload.refreshToken, {
+      allowGlobalRecovery: false,
+    });
+    if (!refreshed.ok) {
+      const retryPayload = await getCounterUserForPin(pin);
+      if (
+        retryPayload?.refreshToken &&
+        retryPayload.refreshToken !== payload.refreshToken
+      ) {
+        refreshed = await authApi.refreshSessionFromRefreshToken(retryPayload.refreshToken, {
+          allowGlobalRecovery: false,
+        });
+      }
     }
-  }
 
-  if (!refreshed.ok) {
-    return { ok: false, error: formatCounterPinAuthError(refreshed.error) };
-  }
+    if (!refreshed.ok) {
+      return { ok: false, error: formatCounterPinAuthError(refreshed.error) };
+    }
 
-  const session = await authApi.getSession();
-  if (!session) {
-    return { ok: false, error: 'No session after sign-in.' };
+    const session = await authApi.getSession();
+    if (!session) {
+      return { ok: false, error: 'No session after sign-in.' };
+    }
+    return profileFromLiveSession(session.userId, options?.companyId);
+  } finally {
+    await supabase.auth.startAutoRefresh();
   }
-  return profileFromLiveSession(session.userId, options?.companyId);
 }

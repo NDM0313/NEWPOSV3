@@ -41,17 +41,16 @@ const isViteDevLan =
  * Native Android/iOS: NEVER substitute window.location.origin (often http://localhost or
  * capacitor://localhost) — that targets the device, not the VPS.
  * @see docs/infra/MOBILE_APK_LOCKED_PATTERN.md
+ *
+ * PWA on erp.dincouture.pk: use VITE_SUPABASE_URL (direct supabase.dincouture.pk) — not
+ * same-origin erp nginx /storage proxy (Traefik/nginx upload bottleneck on VPS).
  */
 if (isNativeCapacitor) {
   supabaseUrl = String(env.VITE_SUPABASE_URL ?? '').trim();
+} else if (isViteDevLocal || isViteDevLan) {
+  supabaseUrl = origin;
 } else {
-  if (isViteDevLocal || isViteDevLan) {
-    supabaseUrl = origin;
-  }
-  // Browser / PWA on erp host: same-origin so ERP nginx proxies /auth|/rest|/storage|/realtime.
-  if (origin.includes('erp.dincouture.pk')) {
-    supabaseUrl = origin;
-  }
+  supabaseUrl = String(env.VITE_SUPABASE_URL ?? '').trim();
 }
 const supabaseAnonKey = String(env.VITE_SUPABASE_ANON_KEY ?? '').trim();
 
