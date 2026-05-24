@@ -47,6 +47,7 @@ import {
   maintainCounterVaultTokens,
   COUNTER_VAULT_MAINTENANCE_INTERVAL_MS,
 } from './lib/counterVaultMaintenance';
+import { pauseAuthAutoRefresh, resumeAuthAutoRefresh } from './lib/authAutoRefreshGate';
 
 const LAST_AUTOSYNC_KEY = 'erp_mobile_last_autosync_at';
 const BOOT_AUTH_TIMEOUT_MS = 10_000;
@@ -259,6 +260,7 @@ export default function App() {
       setIsCounterLocked(false);
       setIsPinLocked(false);
       markUnlocked();
+      resumeAuthAutoRefresh();
       void authApi.syncCurrentSessionToCounterVault();
     },
     [applyProfileAfterCounterSwitch, reload]
@@ -274,7 +276,10 @@ export default function App() {
     if (counterBootLockCheckedRef.current) return;
     void safeShouldActivateCounterLockScreen(companyId)
       .then((lock) => {
-        if (lock) setIsCounterLocked(true);
+        if (lock) {
+          pauseAuthAutoRefresh('counter-boot-lock');
+          setIsCounterLocked(true);
+        }
       })
       .catch(() => {
         /* vault read failed — stay unlocked */
@@ -289,7 +294,10 @@ export default function App() {
       if (!companyId) return;
       void safeShouldActivateCounterLockScreen(companyId)
         .then((lock) => {
-          if (lock) setIsCounterLocked(true);
+          if (lock) {
+            pauseAuthAutoRefresh('counter-lock-requested');
+            setIsCounterLocked(true);
+          }
         })
         .catch(() => {});
     };
@@ -343,7 +351,7 @@ export default function App() {
       }
       if (document.visibilityState === 'visible') {
         void checkLock();
-        void maintainCounterVaultTokens();
+        if (!isCounterLocked) void maintainCounterVaultTokens();
       }
     };
     document.addEventListener('visibilitychange', onVisibility);
@@ -357,7 +365,7 @@ export default function App() {
             return;
           }
           void checkLock();
-          void maintainCounterVaultTokens();
+          if (!isCounterLocked) void maintainCounterVaultTokens();
         }),
       )
       .then((handle) => {
@@ -373,7 +381,7 @@ export default function App() {
   }, [user?.id, companyId, isPinLocked, isCounterLocked]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || isCounterLocked) return;
     void maintainCounterVaultTokens();
     const id = window.setInterval(() => {
       void maintainCounterVaultTokens();
@@ -628,6 +636,7 @@ export default function App() {
   }, []);
 
   const handleLogin = async (u: User, cid: string | null) => {
+    resumeAuthAutoRefresh();
     skipCounterBootLockAfterInteractiveLoginRef.current = true;
     permissionReloadFreshRef.current = true;
     if (previousAuthUserIdRef.current !== null && previousAuthUserIdRef.current !== u.id) {
@@ -724,6 +733,7 @@ export default function App() {
   };
 
   const handleLogoutFull = async () => {
+    resumeAuthAutoRefresh();
     await authApi.signOutGlobal();
     try { localStorage.removeItem(BRANCH_STORAGE_KEY); } catch { /* ignore */ }
     clearUnlockMark();
@@ -743,6 +753,7 @@ export default function App() {
     try {
       if (companyId && (await safeShouldActivateCounterLockScreen(companyId))) {
         await authApi.signOutLocal();
+        pauseAuthAutoRefresh('counter-handoff');
         setIsCounterLocked(true);
         return;
       }

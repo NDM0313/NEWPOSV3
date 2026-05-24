@@ -343,7 +343,13 @@ export async function refreshPersistedSessionIfPossible(): Promise<boolean> {
         supabase.auth.refreshSession({ refresh_token: session.refresh_token }),
       ));
     }
-    if (error || !data?.session) return false;
+    if (error) {
+      if (isStaleRefreshTokenError(error)) {
+        await recoverStaleAuthSession({ allowGlobalRecovery: false });
+      }
+      return false;
+    }
+    if (!data?.session) return false;
     return true;
   } catch {
     return false;
@@ -353,9 +359,9 @@ export async function refreshPersistedSessionIfPossible(): Promise<boolean> {
 export async function getSession(): Promise<{ userId: string; email: string } | null> {
   const { data: { session }, error } = await supabase.auth.getSession();
   if (error) {
-    if (isStaleRefreshTokenError(error) || noteRefreshFailure()) {
-      await recoverStaleAuthSession();
-    }
+    const stale = isStaleRefreshTokenError(error);
+    const tripped = stale || noteRefreshFailure(error);
+    if (tripped) await recoverStaleAuthSession();
     return null;
   }
   if (!session?.user) return null;
@@ -370,7 +376,7 @@ export async function getSessionWithRefresh(options?: {
   const { data: { session }, error } = await supabase.auth.getSession();
   if (error) {
     const stale = isStaleRefreshTokenError(error);
-    const tripped = stale || noteRefreshFailure();
+    const tripped = stale || noteRefreshFailure(error);
     if (tripped && options?.allowGlobalRecovery !== false) {
       await recoverStaleAuthSession();
     }
@@ -400,7 +406,7 @@ export async function refreshSessionFromRefreshToken(
   }
   if (error) {
     const stale = isStaleRefreshTokenError(error);
-    const tripped = stale || noteRefreshFailure();
+    const tripped = stale || noteRefreshFailure(error);
     if (tripped && options?.allowGlobalRecovery !== false) {
       await recoverStaleAuthSession();
     }

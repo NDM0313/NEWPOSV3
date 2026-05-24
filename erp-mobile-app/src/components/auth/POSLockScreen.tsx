@@ -5,7 +5,6 @@ import { listEnrolledCounterProfiles, COUNTER_STALE_REFRESH_TOKEN_HINT, type Enr
 import { unlockWithCounterPin } from '../../lib/counterPinUnlock';
 import { getFunctionalRoleLabel } from '../../config/functionalRoles';
 import { getCounterSyncStaleWarning } from '../../lib/counterSessionPolicy';
-import { maintainCounterVaultTokens } from '../../lib/counterVaultMaintenance';
 
 interface POSLockScreenProps {
   companyId: string | null;
@@ -55,10 +54,6 @@ export function POSLockScreen({
       .catch(() => setProfiles([]))
       .finally(() => setLoadingProfiles(false));
   }, [companyId]);
-
-  useEffect(() => {
-    void maintainCounterVaultTokens();
-  }, []);
 
   const append = (d: string) => {
     setError(null);

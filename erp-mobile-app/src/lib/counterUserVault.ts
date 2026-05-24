@@ -408,6 +408,8 @@ export function formatCounterPinAuthError(message: string | undefined): string {
   if (
     m.includes('refresh token not found') ||
     m.includes('invalid refresh token') ||
+    m.includes('invalid_grant') ||
+    m.includes('bad request') ||
     m.includes('already used') ||
     m.includes('revoked')
   ) {

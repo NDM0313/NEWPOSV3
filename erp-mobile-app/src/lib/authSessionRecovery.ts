@@ -48,12 +48,12 @@ export function isStaleRefreshTokenError(err: unknown): boolean {
 }
 
 /**
- * Circuit breaker — returns true after 3 refresh failures within 5s so callers can force
- * recovery even if the server starts returning a brand-new error shape we don't recognise.
+ * Circuit breaker — stale refresh errors trip immediately; unknown shapes trip after 3 failures / 5s.
  */
 let consecutiveRefreshFailures = 0;
 let lastRefreshFailureAt = 0;
-export function noteRefreshFailure(): boolean {
+export function noteRefreshFailure(err?: unknown): boolean {
+  if (err && isStaleRefreshTokenError(err)) return true;
   const now = Date.now();
   if (now - lastRefreshFailureAt > 5000) consecutiveRefreshFailures = 0;
   consecutiveRefreshFailures += 1;
@@ -96,6 +96,11 @@ export async function recoverStaleAuthSessionFromBootstrap(): Promise<void> {
   if (error && isStaleRefreshTokenError(error)) {
     await recoverStaleAuthSession();
   }
+}
+
+/** PWA/web: stale refresh recovery is wired in supabase.ts onAuthStateChange (see noteRefreshFailure). */
+export function installStaleTokenRecoveryForWeb(): void {
+  /* no-op — handler lives in supabase.ts to avoid duplicate listeners */
 }
 
 /** Capacitor forwards console.error as ⚡️ [error] — suppress known stale-token noise on native. */

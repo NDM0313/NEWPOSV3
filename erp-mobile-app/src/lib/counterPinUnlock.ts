@@ -10,7 +10,7 @@ import {
   COUNTER_WRONG_COMPANY_MESSAGE,
 } from './counterUserVault';
 import { markUnlocked } from './pinLock';
-import { supabase } from './supabase';
+import { pauseAuthAutoRefresh, resumeAuthAutoRefresh } from './authAutoRefreshGate';
 
 export type CounterPinUnlockResult =
   | { ok: true; profile: AuthProfile }
@@ -56,7 +56,7 @@ export async function unlockWithCounterPin(
     return profileFromLiveSession(liveSession.userId, options?.companyId);
   }
 
-  await supabase.auth.stopAutoRefresh();
+  pauseAuthAutoRefresh('counter-pin-unlock');
   try {
     await authApi.signOutLocal();
     let refreshed = await authApi.refreshSessionFromRefreshToken(payload.refreshToken, {
@@ -84,6 +84,6 @@ export async function unlockWithCounterPin(
     }
     return profileFromLiveSession(session.userId, options?.companyId);
   } finally {
-    await supabase.auth.startAutoRefresh();
+    resumeAuthAutoRefresh();
   }
 }

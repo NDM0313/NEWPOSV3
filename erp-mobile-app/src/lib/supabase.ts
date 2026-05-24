@@ -6,12 +6,14 @@ import { syncCounterRefreshTokenForUserId } from './counterUserVault';
 import { maintainCounterVaultTokens } from './counterVaultMaintenance';
 import {
   installNativeStaleTokenConsoleFilter,
+  installStaleTokenRecoveryForWeb,
   isStaleRefreshTokenError,
   noteRefreshFailure,
   recoverStaleAuthSession,
   recoverStaleAuthSessionFromBootstrap,
 } from './authSessionRecovery';
 import { resolveSupabaseApiUrl } from './resolveSupabaseApiUrl';
+import { isAuthAutoRefreshPaused } from './authAutoRefreshGate';
 
 /** Vite defines `import.meta.env`; Node (e.g. tsx --test) does not — avoid crashing on import. */
 const env =
@@ -19,15 +21,17 @@ const env =
     ? ((import.meta as { env: Record<string, string | boolean | undefined> }).env)
     : ({} as Record<string, string | boolean | undefined>);
 
-const supabaseUrl = resolveSupabaseApiUrl(String(env.VITE_SUPABASE_URL ?? ''));
-
 const isNativeCapacitor = Capacitor.isNativePlatform();
 
+const supabaseUrl = resolveSupabaseApiUrl(String(env.VITE_SUPABASE_URL ?? ''), {
+  isNativeCapacitor,
+  isDev: Boolean(env.DEV),
+});
+
 /**
- * Always use VITE_SUPABASE_URL (or fallback supabase.dincouture.pk) — never window.location.origin.
- * PWA on erp.dincouture.pk must not route through nginx/Traefik /storage proxy (upload 404/timeout).
- * Local dev: set VITE_SUPABASE_URL=http://localhost:5174 in .env.local for Vite proxy.
- * @see docs/infra/MOBILE_APK_LOCKED_PATTERN.md
+ * Production PWA/native: direct supabase.dincouture.pk (never erp nginx /storage proxy).
+ * Vite dev browser: auto same-origin (localhost/LAN) → Vite proxy → Kong (no CORS).
+ * @see resolveSupabaseApiUrl.ts
  */
 const supabaseAnonKey = String(env.VITE_SUPABASE_ANON_KEY ?? '').trim();
 
@@ -119,7 +123,10 @@ function attachDirectRealtimeInLocalDev(client: SupabaseClient): void {
   if (typeof window === 'undefined' || !env.DEV || isNativeCapacitor) return;
   if (!hasConfig || isDemoSupabaseAnonKey(supabaseAnonKey)) return;
 
-  const directBase = resolveSupabaseApiUrl(String(env.VITE_SUPABASE_URL ?? ''));
+  const directBase = resolveSupabaseApiUrl(String(env.VITE_SUPABASE_URL ?? ''), {
+    isNativeCapacitor: false,
+    isDev: false,
+  });
   const realtimeHref = `${directBase.replace(/^https/i, 'wss')}/realtime/v1`;
   try {
     client.realtime.disconnect();
@@ -152,6 +159,8 @@ attachDirectRealtimeInLocalDev(supabase);
 
 if (isNativeCapacitor) {
   installNativeStaleTokenConsoleFilter();
+} else {
+  installStaleTokenRecoveryForWeb();
 }
 
 let counterVaultSyncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -180,7 +189,7 @@ if (hasConfig) {
       void supabase.auth.getSession().then(({ error }) => {
         if (error) {
           const stale = isStaleRefreshTokenError(error);
-          const tripped = stale || noteRefreshFailure();
+          const tripped = stale || noteRefreshFailure(error);
           if (tripped) void recoverStaleAuthSession();
         }
       });
@@ -191,7 +200,7 @@ if (hasConfig) {
 
 if (hasConfig && typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
+    if (document.visibilityState === 'visible' && !isAuthAutoRefreshPaused()) {
       void maintainCounterVaultTokens();
     }
   });

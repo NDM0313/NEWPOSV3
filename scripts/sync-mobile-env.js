@@ -37,12 +37,9 @@ if (!url || !key) {
   process.exit(0);
 }
 
-// erp.dincouture.pk proxy returns 308/"auth" → "Unexpected token '/', \"/auth\" is not valid JSON"
-// Use supabase.dincouture.pk directly for auth (works reliably)
-if (url.includes('erp.dincouture.pk')) {
-  url = url.replace(/https?:\/\/erp\.dincouture\.pk\/?/i, 'https://supabase.dincouture.pk');
-  console.log('[sync-mobile-env] Replaced erp.dincouture.pk with supabase.dincouture.pk (auth proxy returns invalid JSON)');
-}
+// Local dev: Vite proxies /auth, /rest, /storage from same-origin (avoids CORS to Kong).
+url = 'http://localhost:5174';
+console.log('[sync-mobile-env] Using http://localhost:5174 for mobile dev (Vite proxy → same backend as web)');
 
 const out = `# Auto-synced from project root – same backend as Web ERP (run: npm run sync:mobile-env)
 VITE_SUPABASE_URL=${url}
