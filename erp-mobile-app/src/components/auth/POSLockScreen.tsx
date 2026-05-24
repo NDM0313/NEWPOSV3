@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Lock, LogOut } from 'lucide-react';
 import type { AuthProfile } from '../../api/auth';
-import { listEnrolledCounterProfiles, type EnrolledCounterProfile } from '../../lib/counterUserVault';
+import { listEnrolledCounterProfiles, COUNTER_STALE_REFRESH_TOKEN_HINT, type EnrolledCounterProfile } from '../../lib/counterUserVault';
 import { unlockWithCounterPin } from '../../lib/counterPinUnlock';
 import { getFunctionalRoleLabel } from '../../config/functionalRoles';
 import { getCounterSyncStaleWarning } from '../../lib/counterSessionPolicy';
+import { maintainCounterVaultTokens } from '../../lib/counterVaultMaintenance';
 
 interface POSLockScreenProps {
   companyId: string | null;
@@ -55,6 +56,10 @@ export function POSLockScreen({
       .finally(() => setLoadingProfiles(false));
   }, [companyId]);
 
+  useEffect(() => {
+    void maintainCounterVaultTokens();
+  }, []);
+
   const append = (d: string) => {
     setError(null);
     if (pin.length >= 4) return;
@@ -74,6 +79,7 @@ export function POSLockScreen({
     setBusy(true);
     setError(null);
     try {
+      await maintainCounterVaultTokens();
       const result = await unlockWithCounterPin(pin, {
         expectedUserId: selected.userId,
         companyId,
@@ -220,7 +226,20 @@ export function POSLockScreen({
           </>
         )}
 
-        {error ? <p className="text-sm text-red-400 mt-6 text-center">{error}</p> : null}
+        {error ? (
+          <div className="mt-6 text-center space-y-3 max-w-sm">
+            <p className="text-sm text-red-400">{error}</p>
+            {selected && error === COUNTER_STALE_REFRESH_TOKEN_HINT ? (
+              <button
+                type="button"
+                onClick={onUseFullLogin}
+                className="text-sm text-[#3B82F6] hover:text-white underline"
+              >
+                Sign in with email for {selected.displayName}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="p-6 border-t border-[#374151] flex flex-col items-center gap-2">

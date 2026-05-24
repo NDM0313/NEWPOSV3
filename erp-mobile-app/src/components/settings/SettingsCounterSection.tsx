@@ -57,7 +57,7 @@ export function SettingsCounterSection({
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 space-y-3">
           <p className="text-xs text-[#9CA3AF] leading-relaxed">
             Each staff signs in once on this tablet (email/password), then uses their 4-digit PIN. Vault stays fresh for
-            the window below. PIN is asked again when you leave the app (home screen), not while navigating inside ERP.
+            the window below. PIN is asked again only after that window — not every time you switch apps briefly.
           </p>
           <button
             type="button"

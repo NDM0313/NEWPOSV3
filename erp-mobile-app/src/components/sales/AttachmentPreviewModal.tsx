@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Download, FileText, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { getSignedUrlForAttachment } from '../../api/attachmentSignedUrl';
 
 const SWIPE_THRESHOLD_PX = 80;
@@ -15,6 +16,7 @@ export interface AttachmentPreviewModalProps {
   onClose: () => void;
 }
 
+const isNative = Capacitor.isNativePlatform();
 const isImageType = (name: string) => /\.(png|jpe?g|gif|webp)$/i.test(name);
 const isPdfType = (name: string) => /\.pdf$/i.test(name);
 
@@ -219,14 +221,16 @@ export function AttachmentPreviewModal({
             <FileText className="w-12 h-12 text-white/50" />
             <p className="text-sm">Could not load preview</p>
             <p className="text-xs text-white/70 truncate w-full">{fileName}</p>
-            <a
-              href={fileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm text-[#3B82F6] underline"
-            >
-              Open in new tab
-            </a>
+            {!isNative && fileUrl ? (
+              <a
+                href={fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-[#3B82F6] underline"
+              >
+                Open in new tab
+              </a>
+            ) : null}
           </div>
         )}
 

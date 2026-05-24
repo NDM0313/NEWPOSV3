@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { getSupabaseStorageDashboardUrl } from './paymentAttachmentUrl';
+import { getSupabaseStorageDashboardUrl, storageRefForPersistence } from './paymentAttachmentUrl';
 import { toast } from 'sonner';
 
 export type AttachmentResult = { url: string; name: string };
@@ -145,8 +145,7 @@ export async function uploadPurchaseAttachments(
           break;
         }
       } else {
-        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-        results.push({ url: urlData?.publicUrl || path, name: file.name });
+        results.push({ url: storageRefForPersistence(bucket, path), name: file.name });
         console.log(`[UPLOAD PURCHASE ATTACHMENTS] ✅ Uploaded: ${file.name}`);
       }
     } catch (err: any) {
@@ -214,8 +213,7 @@ export async function uploadSaleAttachments(
           break;
         }
       } else {
-        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-        results.push({ url: urlData?.publicUrl || path, name: file.name });
+        results.push({ url: storageRefForPersistence(bucket, path), name: file.name });
         console.log(`[UPLOAD SALE ATTACHMENTS] ✅ Uploaded: ${file.name}`);
       }
     } catch (err: any) {
@@ -281,8 +279,7 @@ export async function uploadJournalEntryAttachments(
           break;
         }
       } else {
-        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-        results.push({ url: urlData?.publicUrl || path, name: file.name });
+        results.push({ url: storageRefForPersistence(bucket, path), name: file.name });
       }
     } catch (err: any) {
       anyUploadFailed = true;
@@ -346,8 +343,7 @@ export async function uploadUnifiedStylePaymentAttachments(
           break;
         }
       } else {
-        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-        results.push({ url: urlData?.publicUrl || path, name: file.name });
+        results.push({ url: storageRefForPersistence(bucket, path), name: file.name });
       }
     } catch (err: unknown) {
       anyUploadFailed = true;

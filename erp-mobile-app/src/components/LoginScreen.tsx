@@ -566,15 +566,17 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
       </div>
 
       <div className="w-full max-w-sm">
-        <CounterLoginPanel
-          companyId={getLastCounterCompanyId()}
-          onLogin={onLogin}
-          onUseFullLogin={() => {
-            setError('');
-            setShowEmailLogin(true);
-          }}
-        />
-        {showEmailLogin || !hasCounterSlots ? (
+        {!pinUnlockUser ? (
+          <CounterLoginPanel
+            companyId={getLastCounterCompanyId()}
+            onLogin={onLogin}
+            onUseFullLogin={() => {
+              setError('');
+              setShowEmailLogin(true);
+            }}
+          />
+        ) : null}
+        {!pinUnlockUser && (showEmailLogin || !hasCounterSlots) ? (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-[#6B7280] mb-2">Email</label>

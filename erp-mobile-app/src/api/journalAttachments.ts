@@ -2,6 +2,7 @@
  * Journal entry attachments — same bucket/path as web uploadTransactionAttachments.
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 
 const BUCKET = 'payment-attachments';
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -32,8 +33,7 @@ export async function uploadJournalEntryAttachments(
       contentType: file.type || 'application/octet-stream',
     });
     if (!error) {
-      const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
-      results.push({ url: urlData?.publicUrl || path, name: file.name });
+      results.push({ url: storageRefForPersistence(BUCKET, path), name: file.name });
     }
   }
   return results;

@@ -6,6 +6,7 @@ import {
 } from '../../lib/counterUserVault';
 import { unlockWithCounterPin } from '../../lib/counterPinUnlock';
 import { getCounterSyncStaleWarning } from '../../lib/counterSessionPolicy';
+import { maintainCounterVaultTokens } from '../../lib/counterVaultMaintenance';
 import type { User } from '../../types';
 
 interface CounterLoginPanelProps {
@@ -21,12 +22,25 @@ export function CounterLoginPanel({ companyId, onLogin, onUseFullLogin }: Counte
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [vaultRefreshing, setVaultRefreshing] = useState(true);
 
   useEffect(() => {
-    listEnrolledCounterProfiles(companyId)
-      .then(setSlots)
-      .catch(() => setSlots([]))
-      .finally(() => setLoadingSlots(false));
+    let cancelled = false;
+    void maintainCounterVaultTokens().finally(() => {
+      if (cancelled) return;
+      listEnrolledCounterProfiles(companyId)
+        .then(setSlots)
+        .catch(() => setSlots([]))
+        .finally(() => {
+          if (!cancelled) {
+            setLoadingSlots(false);
+            setVaultRefreshing(false);
+          }
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [companyId]);
 
   const append = (d: string) => {
@@ -74,10 +88,11 @@ export function CounterLoginPanel({ companyId, onLogin, onUseFullLogin }: Counte
     }
   };
 
-  if (loadingSlots) {
+  if (loadingSlots || vaultRefreshing) {
     return (
-      <div className="flex justify-center py-8">
+      <div className="flex flex-col items-center justify-center py-8 gap-2">
         <Loader2 className="w-8 h-8 text-[#3B82F6] animate-spin" />
+        <p className="text-xs text-[#6B7280]">Refreshing tablet session…</p>
       </div>
     );
   }

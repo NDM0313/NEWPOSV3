@@ -43,7 +43,6 @@ import {
   requestCounterLockScreen,
   setLastCounterCompanyId,
 } from './lib/sharedCounterMode';
-import { countCounterUsers } from './lib/counterUserVault';
 import {
   maintainCounterVaultTokens,
   COUNTER_VAULT_MAINTENANCE_INTERVAL_MS,
@@ -243,6 +242,8 @@ export default function App() {
 
   const handleCounterSessionReplaced = useCallback(
     async (profile: AuthProfile) => {
+      skipCounterBootLockAfterInteractiveLoginRef.current = true;
+      counterBootLockCheckedRef.current = true;
       await applyProfileAfterCounterSwitch(profile);
       (['sales', 'purchases', 'accounting', 'contacts'] as const).forEach((domain) => {
         dispatchMobileInvalidated({
@@ -256,6 +257,7 @@ export default function App() {
       dispatchSessionSwitched({ userId: profile.userId, companyId: profile.companyId });
       setLastCounterCompanyId(profile.companyId);
       setIsCounterLocked(false);
+      setIsPinLocked(false);
       markUnlocked();
       void authApi.syncCurrentSessionToCounterVault();
     },
@@ -550,8 +552,11 @@ export default function App() {
         setCompanyId(profile.companyId);
         setLastCounterCompanyId(profile.companyId);
         if (pinSet) {
-          setCurrentScreen('login');
-          return;
+          const cid = profile.companyId || '';
+          const counterLock = cid ? await safeShouldActivateCounterLockScreen(cid) : false;
+          if (!counterLock) {
+            setIsPinLocked(true);
+          }
         }
         try {
           const cid = profile.companyId || '';
@@ -736,7 +741,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      if (companyId && (await countCounterUsers(companyId)) > 0) {
+      if (companyId && (await safeShouldActivateCounterLockScreen(companyId))) {
         setIsCounterLocked(true);
         return;
       }
@@ -812,13 +817,11 @@ export default function App() {
     );
   }
 
-  if (currentScreen === 'login') {
+  if (currentScreen === 'login' && !user) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
         <LoginScreen
           onLogin={handleLogin}
-          pinUnlockUser={user}
-          pinUnlockCompanyId={companyId}
           onCreateBusiness={() => setShowCreateBusiness(true)}
         />
       </div>

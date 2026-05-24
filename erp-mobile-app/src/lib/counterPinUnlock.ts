@@ -16,6 +16,20 @@ export type CounterPinUnlockResult =
   | { ok: true; profile: AuthProfile }
   | { ok: false; error: string };
 
+async function profileFromLiveSession(
+  userId: string,
+  companyId?: string | null,
+): Promise<CounterPinUnlockResult> {
+  await authApi.syncCurrentSessionToCounterVault();
+  const profile = await authApi.getProfile(userId);
+  if (!profile) return { ok: false, error: 'Profile not found.' };
+  if (companyId && profile.companyId !== companyId) {
+    return { ok: false, error: COUNTER_WRONG_COMPANY_MESSAGE };
+  }
+  markUnlocked();
+  return { ok: true, profile };
+}
+
 export async function unlockWithCounterPin(
   pin: string,
   options?: { expectedUserId?: string | null; companyId?: string | null },
@@ -32,18 +46,33 @@ export async function unlockWithCounterPin(
     return { ok: false, error: 'PIN does not match this user.' };
   }
 
-  let refreshed = await authApi.refreshSessionFromRefreshToken(payload.refreshToken);
+  const liveSession = await authApi.getSessionWithRefresh({ allowGlobalRecovery: false });
+  if (
+    liveSession?.userId &&
+    payload.userId &&
+    liveSession.userId === payload.userId &&
+    (!options?.expectedUserId || options.expectedUserId === liveSession.userId)
+  ) {
+    return profileFromLiveSession(liveSession.userId, options?.companyId);
+  }
+
+  let refreshed = await authApi.refreshSessionFromRefreshToken(payload.refreshToken, {
+    allowGlobalRecovery: false,
+  });
   if (!refreshed.ok) {
     await maintainCounterVaultTokens();
     const retryPayload = await getCounterUserForPin(pin);
     if (retryPayload?.refreshToken) {
-      refreshed = await authApi.refreshSessionFromRefreshToken(retryPayload.refreshToken);
+      refreshed = await authApi.refreshSessionFromRefreshToken(retryPayload.refreshToken, {
+        allowGlobalRecovery: false,
+      });
     }
     if (!refreshed.ok) {
-      const sess = await authApi.getSessionWithRefresh();
+      const sess = await authApi.getSessionWithRefresh({ allowGlobalRecovery: false });
       if (sess?.userId && payload.userId && sess.userId === payload.userId) {
-        await authApi.syncCurrentSessionToCounterVault();
-        refreshed = await authApi.refreshSessionFromRefreshToken(sess.refreshToken);
+        refreshed = await authApi.refreshSessionFromRefreshToken(sess.refreshToken, {
+          allowGlobalRecovery: false,
+        });
       }
     }
   }
@@ -56,15 +85,5 @@ export async function unlockWithCounterPin(
   if (!session) {
     return { ok: false, error: 'No session after sign-in.' };
   }
-  const profile = await authApi.getProfile(session.userId);
-  if (!profile) {
-    return { ok: false, error: 'Profile not found.' };
-  }
-  if (options?.companyId && profile.companyId !== options.companyId) {
-    return { ok: false, error: COUNTER_WRONG_COMPANY_MESSAGE };
-  }
-
-  await authApi.syncCurrentSessionToCounterVault();
-  markUnlocked();
-  return { ok: true, profile };
+  return profileFromLiveSession(session.userId, options?.companyId);
 }

@@ -37,10 +37,14 @@ export function ProductImage({
       let cancelled = false;
       setLoading(true);
       getProductImageDisplayUrl(src).then((url) => {
-        if (!cancelled) {
+        if (cancelled) return;
+        if (!url) {
+          setLoadFailed(true);
+          setDisplayUrl(null);
+        } else {
           setDisplayUrl(url);
-          setLoading(false);
         }
+        setLoading(false);
       });
       return () => {
         cancelled = true;

@@ -5,6 +5,7 @@ import { getNextDocumentNumber } from './documentNumber';
 import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 import { localNowDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite, isRealBranchUuid } from '../utils/branchId';
+import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -91,8 +92,7 @@ export async function uploadSaleAttachments(
           : error.message,
       };
     }
-    const { data: urlData } = supabase.storage.from(SALE_ATTACHMENTS_BUCKET).getPublicUrl(path);
-    uploaded.push({ url: urlData?.publicUrl || path, name: file.name });
+    uploaded.push({ url: storageRefForPersistence(SALE_ATTACHMENTS_BUCKET, path), name: file.name });
   }
 
   return { data: uploaded, error: null };

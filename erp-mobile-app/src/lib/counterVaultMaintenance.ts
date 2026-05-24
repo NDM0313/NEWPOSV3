@@ -14,6 +14,7 @@ export async function maintainCounterVaultTokens(): Promise<void> {
   if (maintenanceInFlight) return maintenanceInFlight;
   maintenanceInFlight = (async () => {
     try {
+      await authApi.refreshPersistedSessionIfPossible();
       const session = await authApi.getSessionWithRefresh();
       if (!session?.refreshToken) return;
       await authApi.syncCurrentSessionToCounterVault();

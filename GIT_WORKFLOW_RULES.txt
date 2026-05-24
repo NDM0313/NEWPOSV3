@@ -59,6 +59,10 @@ On new machine:
 git checkout main
 git pull origin main
 
+
+Set-Location "c:\Users\ndm31\dev\Corusr\NEW POSV3\erp-mobile-app"
+npm run android:apk:release:win
+
 ==================================================
 4️⃣ DEPLOYMENT RULE
 ==================================================

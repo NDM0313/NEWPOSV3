@@ -3,9 +3,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { RealtimeClient } from '@supabase/realtime-js';
 import { clearSecure } from './secureStorage';
 import { syncCounterRefreshTokenForUserId } from './counterUserVault';
+import { maintainCounterVaultTokens } from './counterVaultMaintenance';
 import {
   installNativeStaleTokenConsoleFilter,
   isStaleRefreshTokenError,
+  noteRefreshFailure,
   recoverStaleAuthSession,
   recoverStaleAuthSessionFromBootstrap,
 } from './authSessionRecovery';
@@ -204,13 +206,23 @@ if (hasConfig) {
     }
     if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
       void supabase.auth.getSession().then(({ error }) => {
-        if (error && isStaleRefreshTokenError(error)) {
-          void recoverStaleAuthSession();
+        if (error) {
+          const stale = isStaleRefreshTokenError(error);
+          const tripped = stale || noteRefreshFailure();
+          if (tripped) void recoverStaleAuthSession();
         }
       });
     }
   });
   void recoverStaleAuthSessionFromBootstrap();
+}
+
+if (hasConfig && typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      void maintainCounterVaultTokens();
+    }
+  });
 }
 
 if (env.DEV) {

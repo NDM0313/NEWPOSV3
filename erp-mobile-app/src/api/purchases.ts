@@ -3,6 +3,7 @@ import { listCacheKeys } from '../lib/listCache';
 import { readThroughCache } from '../lib/offlineData';
 import { localNowDateString, toLocalDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite } from '../utils/branchId';
+import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 
 export type PurchaseStatus = 'draft' | 'ordered' | 'received' | 'final';
 
@@ -75,8 +76,7 @@ export async function uploadPurchaseAttachments(
           : error.message,
       };
     }
-    const { data: urlData } = supabase.storage.from(PURCHASE_ATTACHMENTS_BUCKET).getPublicUrl(path);
-    uploaded.push({ url: urlData?.publicUrl || path, name: file.name });
+    uploaded.push({ url: storageRefForPersistence(PURCHASE_ATTACHMENTS_BUCKET, path), name: file.name });
   }
 
   return { data: uploaded, error: null };

@@ -1,6 +1,6 @@
 /**
  * PIN lock-on-resume helpers.
- * Re-prompts after the app was backgrounded (home / other app), not on in-app focus changes.
+ * Re-prompts when the counter session policy window elapses — not on every background return.
  */
 
 import { getDevicePinMaxAgeMs } from './counterSessionPolicy';
@@ -90,34 +90,14 @@ function getLastUnlock(): number {
   }
 }
 
-function getLastBackground(): number {
-  try {
-    const raw = sessionStorage.getItem(LAST_BACKGROUND_KEY);
-    if (!raw) return 0;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function wasBackgroundedSinceUnlock(): boolean {
-  const bg = getLastBackground();
-  const unlock = getLastUnlock();
-  if (bg === 0) return false;
-  if (unlock === 0) return true;
-  return bg > unlock;
-}
-
 /**
- * Returns true when PIN should be shown again: after true background resume,
- * or when in-app session exceeded the counter session policy window.
+ * Returns true when PIN should be shown again — only after the counter session policy window
+ * (7d / 24h / unlimited) since last unlock, not on every app switch.
  */
 export function shouldRelock(): boolean {
   const s = getPinLockSettings();
   if (!s.enabled) return false;
   const last = getLastUnlock();
   if (last === 0) return true;
-  if (wasBackgroundedSinceUnlock()) return true;
   return Date.now() - last > s.timeoutMs;
 }

@@ -17,6 +17,7 @@ import type { ProductVariationRow } from '../../api/products';
 import { BarcodeCameraModal } from './BarcodeCameraModal';
 import { MobileActionBar } from '../shared/MobileActionBar';
 import { useBarcodeScanner } from '../../features/barcode';
+import { ProductImage } from '../products/ProductImage';
 
 interface AddProductsProps {
   companyId: string | null;
@@ -503,19 +504,7 @@ export function AddProducts({
                 className={`bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#3B82F6] transition-all text-left ${blocked ? 'opacity-60 cursor-not-allowed' : ''}`}
               >
                 <div className="w-full h-20 bg-[#111827] rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-                  {item.imageUrl ? (
-                    <img
-                      src={item.imageUrl}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <Package className="w-8 h-8 text-[#6B7280]" />
-                  )}
+                  <ProductImage src={item.imageUrl} alt={item.name} variant="thumb" />
                 </div>
                 <h3 className="font-medium text-sm text-[#F9FAFB] line-clamp-1 mb-1">{item.name}</h3>
                 <p className="text-xs text-[#9CA3AF] mb-1">{item.unit}</p>

@@ -4,21 +4,134 @@ Copy a new block for every build. Keep the newest entry at the top.
 
 ---
 
-## Next build — 1.0.5 (build 10) — recommended after auth fix
+## Latest build — 1.0.5 (build 12) — 2026-05-21
 
-After pulling `main` with `fix(mobile): recover stale Supabase refresh tokens`, rebuild so the native bundle includes the updated `dist`:
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-21 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 12 |
+| **Git commit** | `eeb32fa` (local changes on top) |
+| **Android** | Debug (unsigned test) — **production web build** (`cap:sync:android:prod`) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build12-debug.apk` |
+| **Gradle source** | `android/app/build/outputs/apk/debug/app-debug.apk` |
 
-```bash
-cd erp-mobile-app
-npm run cap:sync:android:prod && cd android && ./gradlew assembleRelease
-npm run cap:sync:ios:prod   # then Archive in Xcode
-```
+### Changelog (user-facing) — build 12
 
-Changelog: silent recovery when iOS logs `refresh_token_not_found` on cold start (login / PIN screen instead of console error).
+- **Counter PIN session:** fast-path when same user still logged in; vault sync on POS lock submit + app resume; fresh token on counter PIN enrollment.
+- **Attachments (sale/purchase/payment):** no more `localhost:5174` URLs on mobile — unified storage signing + VPS backfill to `bucket/path` refs.
+- **Product images:** same unified storage URL module; production APK uses `https://erp.dincouture.pk`.
+- **PDF Share/Download/Print:** native share uses `Share.files` + cache FileProvider URI (WhatsApp/Drive attach works).
+
+### VPS migrations applied (build 12)
+
+- `20260530120000_backfill_attachment_urls_to_path.sql`
+
+### Install notes — Android (build 12 debug)
+
+1. **Uninstall** previous ERP Mobile app.
+2. Install: `erp-mobile-app/releases/erp-mobile-1.0.5-build12-debug.apk`  
+   `adb install -r releases/erp-mobile-1.0.5-build12-debug.apk`
+3. If counter PIN shows session expired for a user: tap **Sign in with email for {name}** once, then PIN works again.
+4. Sale attachments uploaded from web dev should preview on APK after VPS backfill.
+
+### Mobile test checklist (build 12)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Counter PIN | Re-lock same user — no session expired |
+| 2 | Sale attachments | Preview opens (not localhost WebView error) |
+| 3 | Product images | Thumbnails on APK |
+| 4 | Invoice PDF Share | Share sheet attaches PDF file |
+| 5 | Counter enroll | New counter PIN works immediately |
 
 ---
 
-## Latest build — 1.0.5 (build 9) — 2026-05-24
+## Previous build — 1.0.5 (build 11) — 2026-05-21
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-21 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 11 |
+| **Git commit** | `eeb32fa` (local changes on top) |
+| **Android** | Debug (unsigned test) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build11-debug.apk` |
+| **Gradle source** | `android/app/build/outputs/apk/debug/app-debug.apk` |
+
+### Changelog (user-facing) — build 11
+
+- **Double PIN fixed:** POS lock screen is the only counter gate — no second user picker after unlock.
+- **Counter session:** stale vault refresh no longer signs you out globally on PIN failure; vault maintenance runs on POS lock screen.
+- **Product images (APK):** native signed URLs always use production host; RPC fallback + DB backfill for full URLs → path-only.
+- **Invoice PDF (APK):** Share / PDF / Print use native Capacitor Share + Filesystem (system share sheet).
+
+### VPS migrations applied (build 11)
+
+- `20260529120000_get_product_image_signed_url_rpc.sql`
+- `20260529120001_backfill_product_image_urls_full_to_path.sql`
+
+### Install notes — Android (build 11 debug)
+
+1. **Uninstall** any previous ERP Mobile app (clears WebView cache).
+2. Install: `erp-mobile-app/releases/erp-mobile-1.0.5-build11-debug.apk`  
+   `adb install -r releases/erp-mobile-1.0.5-build11-debug.apk`
+3. Counter unlock: tap name → 4-digit PIN → straight into app (no second login screen).
+4. PDF preview: Share opens Android share sheet with PDF attached.
+
+### Mobile test checklist (build 11)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Counter PIN | POS lock only — single PIN unlock into home/sales |
+| 2 | Counter login | No "session expired" loop after POS unlock |
+| 3 | Sales → Add Products | Product photos load on APK |
+| 4 | Invoice PDF | Share / PDF / Print open native share or save |
+| 5 | Soft logout | POS lock again with single PIN |
+
+---
+
+## Previous build — 1.0.5 (build 10) — 2026-05-24
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-24 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 10 |
+| **Git commit** | `eeb32fa` |
+| **Android** | Debug (unsigned test) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build10-debug.apk` |
+| **Gradle source** | `android/app/build/outputs/apk/debug/app-debug.apk` |
+
+### Changelog (user-facing) — build 10
+
+- **Counter PIN session:** re-lock follows Settings window (7d / unlimited) — switching apps briefly no longer forces PIN every time.
+- **Counter vault:** refreshes persisted Supabase session on counter login screen before PIN entry (reduces false "session expired").
+- **Set Quick PIN:** timeout aligned with counter session policy (no short 30s override).
+- **Product images (Android/iOS):** signed URLs on Sales Add Products + Inventory; path-only storage; VPS backfill for localhost dev URLs.
+- **Sale posting:** salesman Confirm Payment uses `ensure_sale_stock_movements` RPC (no 403 on stock).
+
+### Install notes — Android (build 10 debug)
+
+1. **Uninstall** any previous ERP Mobile app (clears WebView cache).
+2. Install: `erp-mobile-app/releases/erp-mobile-1.0.5-build10-debug.apk`  
+   `adb install -r releases/erp-mobile-1.0.5-build10-debug.apk`
+3. If counter PIN shows "session expired" after VPS deploy: one email login on that tablet, then PIN works again.
+4. Settings → **PIN session freshness** → 7 days or Unlimited for longest counter session.
+
+### Mobile test checklist (build 10)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Counter PIN | Switch apps and return within 7d — no immediate re-lock |
+| 2 | Counter login | Nadeem PIN works without "session expired" (after one email login if vault was stale) |
+| 3 | Sales → Add Products | Product photos show on APK (not "No photo" for web-uploaded items) |
+| 4 | Salesman Confirm Payment | Sale saves; no 403 |
+| 5 | Product upload | Photo upload works on Android/iOS |
+
+---
+
+## Previous build — 1.0.5 (build 9) — 2026-05-24
 
 | Field | Value |
 |--------|--------|

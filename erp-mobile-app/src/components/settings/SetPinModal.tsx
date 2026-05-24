@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { X, Lock, Loader2 } from 'lucide-react';
-import { CustomSelect } from '../common';
 import * as authApi from '../../api/auth';
 import type { User } from '../../types';
 import { getPinLockSettings, setPinLockSettings } from '../../lib/pinLock';
+import {
+  COUNTER_SESSION_POLICY_OPTIONS,
+  getCounterSessionPolicy,
+  getDevicePinMaxAgeMs,
+} from '../../lib/counterSessionPolicy';
 
 interface SetPinModalProps {
   onClose: () => void;
@@ -13,13 +17,10 @@ interface SetPinModalProps {
   branchId: string | null;
 }
 
-const TIMEOUT_OPTIONS: { label: string; ms: number }[] = [
-  { label: 'Immediately', ms: 0 },
-  { label: '30 seconds', ms: 30_000 },
-  { label: '1 minute', ms: 60_000 },
-  { label: '5 minutes', ms: 5 * 60_000 },
-  { label: '15 minutes', ms: 15 * 60_000 },
-];
+function policyLabel(): string {
+  const id = getCounterSessionPolicy();
+  return COUNTER_SESSION_POLICY_OPTIONS.find((o) => o.id === id)?.label ?? '7 days (recommended)';
+}
 
 export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: SetPinModalProps) {
   const [pin, setPin] = useState('');
@@ -28,7 +29,6 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
   const [loading, setLoading] = useState(false);
   const initialLockSettings = getPinLockSettings();
   const [requireOnResume, setRequireOnResume] = useState(initialLockSettings.enabled);
-  const [timeoutMs, setTimeoutMs] = useState(initialLockSettings.timeoutMs);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +55,7 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
         branchId,
         email: user.email,
       });
-      setPinLockSettings({ enabled: requireOnResume, timeoutMs: Math.max(0, timeoutMs) });
+      setPinLockSettings({ enabled: requireOnResume, timeoutMs: getDevicePinMaxAgeMs() });
       onSuccess();
       onClose();
     } catch (e) {
@@ -117,16 +117,9 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
               />
             </label>
             <p className="text-xs text-[#6B7280] -mt-1 mb-2">
-              App will ask for PIN after being inactive for the selected time.
+              Re-lock timing follows <strong className="text-[#9CA3AF]">PIN session freshness</strong> in Settings
+              Counter ({policyLabel()}). Switching apps briefly will not ask PIN again until that window passes.
             </p>
-            <CustomSelect
-              label="Re-lock after"
-              value={String(timeoutMs)}
-              onChange={(v) => setTimeoutMs(Number(v))}
-              options={TIMEOUT_OPTIONS.map((o) => ({ value: String(o.ms), label: o.label }))}
-              disabled={!requireOnResume}
-              zIndexClass="z-[100]"
-            />
           </div>
 
           <button

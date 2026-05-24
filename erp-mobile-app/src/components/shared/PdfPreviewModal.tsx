@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Download, Share2, Printer, Loader2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { downloadPDF, sharePDF } from '../../utils/pdfGenerator';
+import { downloadPDF, sharePDF, printPDF } from '../../utils/pdfGenerator';
 
 interface PdfPreviewModalProps {
   open: boolean;
@@ -31,6 +31,7 @@ export function PdfPreviewModal({
 }: PdfPreviewModalProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [busy, setBusy] = useState<false | 'share' | 'download' | 'print'>(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -46,21 +47,32 @@ export function PdfPreviewModal({
   const captureToPdfBlob = async (): Promise<Blob> => {
     const el = contentRef.current;
     if (!el) throw new Error('Preview element missing');
+    // useCORS:true + allowTaint:false: any image without CORS headers fails fast instead of
+    // silently corrupting the canvas (which is what produced "wrong PNG signature" in jsPDF).
     const canvas = await html2canvas(el, {
       scale: 2,
       useCORS: true,
+      allowTaint: false,
+      imageTimeout: 15000,
       backgroundColor: '#ffffff',
       logging: false,
     });
-    const imgData = canvas.toDataURL('image/png');
+    if (!canvas.width || !canvas.height) {
+      throw new Error('Captured canvas is empty — check that all images loaded.');
+    }
+    // JPEG avoids jsPDF's PNG decode path entirely; smaller PDF, immune to "wrong PNG signature".
+    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    if (!imgData.startsWith('data:image/jpeg;base64,')) {
+      throw new Error('Could not encode preview as JPEG — try again.');
+    }
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const ratio = canvas.width / canvas.height;
     const targetW = pageW;
-    let targetH = targetW / ratio;
+    const targetH = targetW / ratio;
     if (targetH <= pageH) {
-      pdf.addImage(imgData, 'PNG', 0, 0, targetW, targetH);
+      pdf.addImage(imgData, 'JPEG', 0, 0, targetW, targetH);
     } else {
       // Multi-page slice
       const pxPerMm = canvas.width / pageW;
@@ -69,6 +81,7 @@ export function PdfPreviewModal({
       let pageIndex = 0;
       while (offsetY < canvas.height) {
         const sliceHeight = Math.min(pageHeightPx, canvas.height - offsetY);
+        if (sliceHeight <= 0) break;
         const sliceCanvas = document.createElement('canvas');
         sliceCanvas.width = canvas.width;
         sliceCanvas.height = sliceHeight;
@@ -77,9 +90,14 @@ export function PdfPreviewModal({
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
         ctx.drawImage(canvas, 0, offsetY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
-        const sliceData = sliceCanvas.toDataURL('image/png');
+        const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+        if (!sliceData.startsWith('data:image/jpeg;base64,')) {
+          offsetY += sliceHeight;
+          pageIndex += 1;
+          continue;
+        }
         if (pageIndex > 0) pdf.addPage();
-        pdf.addImage(sliceData, 'PNG', 0, 0, pageW, sliceHeight / pxPerMm);
+        pdf.addImage(sliceData, 'JPEG', 0, 0, pageW, sliceHeight / pxPerMm);
         offsetY += sliceHeight;
         pageIndex += 1;
       }
@@ -90,14 +108,19 @@ export function PdfPreviewModal({
   const handleShare = async () => {
     if (busy) return;
     setBusy('share');
+    setToast(null);
     try {
       const blob = await captureToPdfBlob();
       const ok = await sharePDF(blob, filename, title);
       if (!ok && whatsAppFallbackText) {
         window.open(`https://wa.me/?text=${encodeURIComponent(whatsAppFallbackText)}`, '_blank', 'noopener,noreferrer');
       }
+      if (!ok && !whatsAppFallbackText) {
+        setToast('Could not share PDF — try again');
+      }
     } catch (err) {
       console.error('[PdfPreview] share failed', err);
+      setToast('Could not share PDF — try again');
     } finally {
       setBusy(false);
     }
@@ -106,20 +129,33 @@ export function PdfPreviewModal({
   const handleDownload = async () => {
     if (busy) return;
     setBusy('download');
+    setToast(null);
     try {
       const blob = await captureToPdfBlob();
-      downloadPDF(blob, filename);
+      const ok = await downloadPDF(blob, filename);
+      if (!ok) setToast('Could not save PDF — try again');
     } catch (err) {
       console.error('[PdfPreview] download failed', err);
+      setToast('Could not save PDF — try again');
     } finally {
       setBusy(false);
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (busy) return;
-    // Browser handles print from screen using @media print CSS; content marked .pdf-print-root is the only thing shown.
-    window.print();
+    setBusy('print');
+    setToast(null);
+    try {
+      const blob = await captureToPdfBlob();
+      const ok = await printPDF(blob, filename);
+      if (!ok) setToast('Could not open print — try Share instead');
+    } catch (err) {
+      console.error('[PdfPreview] print failed', err);
+      setToast('Could not open print — try Share instead');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return createPortal(
@@ -168,14 +204,19 @@ export function PdfPreviewModal({
           PDF
         </button>
         <button
-          onClick={handlePrint}
+          onClick={() => void handlePrint()}
           disabled={!!busy}
           className="h-11 rounded-lg bg-[#6B7280] hover:bg-[#4B5563] text-white font-medium flex items-center justify-center gap-2 disabled:opacity-60"
         >
-          <Printer className="w-4 h-4" />
+          {busy === 'print' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
           Print
         </button>
       </div>
+      {toast ? (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[101] px-4 py-2 rounded-lg bg-[#EF4444] text-white text-sm shadow-lg no-print">
+          {toast}
+        </div>
+      ) : null}
     </div>,
     document.body
   );

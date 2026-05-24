@@ -1,5 +1,42 @@
 // PDF Generator for Reports - uses jsPDF (dynamic import)
 
+import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+
+const isNative = Capacitor.isNativePlatform();
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== 'string') {
+        reject(new Error('Failed to read PDF blob'));
+        return;
+      }
+      resolve(result.split(',')[1] || '');
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read PDF blob'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function writePdfToCache(blob: Blob, filename: string): Promise<string> {
+  const base64 = await blobToBase64(blob);
+  const safeName = filename.replace(/[^\w.-]+/g, '_') || 'document.pdf';
+  await Filesystem.writeFile({
+    path: safeName,
+    data: base64,
+    directory: Directory.Cache,
+    recursive: true,
+  });
+  const { uri } = await Filesystem.getUri({
+    path: safeName,
+    directory: Directory.Cache,
+  });
+  return uri;
+}
 export interface ReportData {
   companyName: string;
   reportTitle: string;
@@ -115,16 +152,43 @@ export async function generateReportPDF(data: ReportData): Promise<Blob> {
   return doc.output('blob');
 }
 
-export function downloadPDF(blob: Blob, filename: string) {
+export async function downloadPDF(blob: Blob, filename: string): Promise<boolean> {
+  if (isNative) {
+    try {
+      const uri = await writePdfToCache(blob, filename);
+      await Share.share({
+        title: filename,
+        files: [uri],
+        dialogTitle: 'Save PDF',
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+  return true;
 }
 
-export function printPDF(blob: Blob) {
+export async function printPDF(blob: Blob, filename = 'document.pdf'): Promise<boolean> {
+  if (isNative) {
+    try {
+      const uri = await writePdfToCache(blob, filename);
+      await Share.share({
+        title: filename,
+        files: [uri],
+        dialogTitle: 'Print or share PDF',
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
   const url = URL.createObjectURL(blob);
   const iframe = document.createElement('iframe');
   iframe.style.display = 'none';
@@ -137,20 +201,35 @@ export function printPDF(blob: Blob) {
       URL.revokeObjectURL(url);
     }, 1000);
   };
+  return true;
 }
 
 export async function sharePDF(blob: Blob, filename: string, title: string): Promise<boolean> {
+  if (isNative) {
+    try {
+      const uri = await writePdfToCache(blob, filename);
+      await Share.share({
+        title,
+        text: `Sharing ${title}`,
+        files: [uri],
+        dialogTitle: 'Share PDF',
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
   const file = new File([blob], filename, { type: 'application/pdf' });
   if (navigator.share && navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ title, text: `Sharing ${title}`, files: [file] });
       return true;
     } catch {
-      downloadPDF(blob, filename);
+      await downloadPDF(blob, filename);
       return false;
     }
   }
-  downloadPDF(blob, filename);
+  await downloadPDF(blob, filename);
   return false;
 }
 

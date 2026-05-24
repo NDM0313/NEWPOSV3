@@ -942,6 +942,7 @@ export function SettingsModule({
                         publicUsersId: user.profileId,
                         role: user.role,
                       });
+                      await authApi.syncCurrentSessionToCounterVault();
                       void countCounterUsers(companyId).then((n) => {
                         setCounterSlotCount(n);
                         if (hadNoSlots && n > 0) {

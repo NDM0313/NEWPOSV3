@@ -18,6 +18,7 @@ import { getProductByBarcodeOrSku, type Product } from '../../api/products';
 import { ProductHistoryModal } from './ProductHistoryModal';
 import { StockAdjustmentSheet } from './StockAdjustmentSheet';
 import { useBarcodeScanner } from '../../features/barcode/useBarcodeScanner';
+import { ProductImage } from '../products/ProductImage';
 
 interface InventoryModuleProps {
   onBack: () => void;
@@ -281,17 +282,9 @@ export function InventoryModule({ onBack, user, companyId, branch }: InventoryMo
                   onClick={() => setSelected(item)}
                   className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-3 flex gap-3 hover:border-[#3B82F6] transition"
                 >
-                  {item.imageUrl ? (
-                    <img
-                      src={item.imageUrl}
-                      alt={item.name}
-                      className="w-16 h-16 rounded-lg object-cover flex-shrink-0 bg-[#111827]"
-                    />
-                  ) : (
-                    <div className="w-16 h-16 rounded-lg bg-[#111827] flex items-center justify-center flex-shrink-0">
-                      <Package className="w-6 h-6 text-[#6B7280]" />
-                    </div>
-                  )}
+                  <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-[#111827]">
+                    <ProductImage src={item.imageUrl} alt={item.name} variant="thumb" />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
