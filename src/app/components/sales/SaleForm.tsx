@@ -101,7 +101,8 @@ import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import { SaleItemsSection } from './SaleItemsSection';
 import { PaymentAttachments, PaymentAttachment } from '../payments/PaymentAttachments';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
-import { uploadSaleAttachments } from '@/app/utils/uploadTransactionAttachments';
+import { uploadSaleAttachments, MAX_FILE_SIZE_BYTES as ATTACHMENT_MAX_BYTES } from '@/app/utils/uploadTransactionAttachments';
+import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSettings } from '@/app/context/SettingsContext';
@@ -343,6 +344,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // Payment Attachments State
     const [paymentAttachments, setPaymentAttachments] = useState<PaymentAttachment[]>([]);
     const [saleAttachmentFiles, setSaleAttachmentFiles] = useState<File[]>([]);
+    const [isProcessingSaleAttachments, setIsProcessingSaleAttachments] = useState(false);
     const saleAttachmentInputRef = useRef<HTMLInputElement>(null);
     const [savedSaleAttachments, setSavedSaleAttachments] = useState<{ url: string; name: string }[]>([]);
 
@@ -3146,13 +3148,23 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     multiple
                                     className="hidden"
                                     onChange={(e) => {
-                                        const files = e.target.files;
-                                        if (files?.length) {
-                                            const valid = Array.from(files).filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf');
-                                            setSaleAttachmentFiles((prev) => [...prev, ...valid]);
-                                            if (valid.length < (files.length || 0)) toast.error('Only images and PDF allowed.');
-                                        }
-                                        e.target.value = '';
+                                        void (async () => {
+                                            const files = e.target.files;
+                                            if (!files?.length) return;
+                                            setIsProcessingSaleAttachments(true);
+                                            try {
+                                                const valid = Array.from(files).filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf');
+                                                if (valid.length < (files.length || 0)) toast.error('Only images and PDF allowed.');
+                                                const { files: processed, compressionMessages, skippedMessages } =
+                                                    await prepareAttachmentFilesForUpload(valid, ATTACHMENT_MAX_BYTES);
+                                                skippedMessages.forEach((msg) => toast.error(msg));
+                                                compressionMessages.forEach((msg) => toast.success(msg));
+                                                if (processed.length) setSaleAttachmentFiles((prev) => [...prev, ...processed]);
+                                            } finally {
+                                                setIsProcessingSaleAttachments(false);
+                                                e.target.value = '';
+                                            }
+                                        })();
                                     }}
                                 />
                                 <label className="block cursor-pointer">
@@ -3164,15 +3176,25 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                         onDrop={(e) => {
                                             e.preventDefault();
                                             e.currentTarget.classList.remove('border-blue-500/50', 'bg-gray-800/30');
-                                            const files = e.dataTransfer.files;
-                                            if (files?.length) {
-                                                const valid = Array.from(files).filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf');
-                                                setSaleAttachmentFiles((prev) => [...prev, ...valid]);
-                                            }
+                                            void (async () => {
+                                                const files = e.dataTransfer.files;
+                                                if (!files?.length) return;
+                                                setIsProcessingSaleAttachments(true);
+                                                try {
+                                                    const valid = Array.from(files).filter((f) => f.type.startsWith('image/') || f.type === 'application/pdf');
+                                                    const { files: processed, compressionMessages, skippedMessages } =
+                                                        await prepareAttachmentFilesForUpload(valid, ATTACHMENT_MAX_BYTES);
+                                                    skippedMessages.forEach((msg) => toast.error(msg));
+                                                    compressionMessages.forEach((msg) => toast.success(msg));
+                                                    if (processed.length) setSaleAttachmentFiles((prev) => [...prev, ...processed]);
+                                                } finally {
+                                                    setIsProcessingSaleAttachments(false);
+                                                }
+                                            })();
                                         }}
                                     >
                                         <Upload className="mx-auto mb-1 text-gray-500" size={20} />
-                                        <p className="text-xs text-gray-400">Click or drop files (images, PDF)</p>
+                                        <p className="text-xs text-gray-400">{isProcessingSaleAttachments ? 'Compressing…' : 'Click or drop files (images, PDF)'}</p>
                                         <p className="text-[10px] text-gray-500 mt-0.5">Saved with sale when you save</p>
                                     </div>
                                 </label>

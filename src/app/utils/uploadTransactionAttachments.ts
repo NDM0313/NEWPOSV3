@@ -10,7 +10,7 @@ const STORAGE_RLS_TOAST_MESSAGE =
 /** Max file size for storage uploads (20MB). Keep under typical Supabase/server limits. */
 export const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
 const MAX_FILE_SIZE_MB = 20;
-const UPLOAD_TIMEOUT_MS = 45_000;
+const UPLOAD_TIMEOUT_MS = 60_000;
 
 async function withUploadTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([

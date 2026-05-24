@@ -19,6 +19,9 @@ import { useSettings } from '../../context/SettingsContext';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { localNowDateString } from '../../utils/localDate';
 import { formatStockLabel, getTotalProductStock, stockLabelClassName } from '../../utils/productStockGate';
+import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
+
+const MAX_PURCHASE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 interface PurchaseItem {
   id: string;
@@ -88,6 +91,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   const [selectedProduct, setSelectedProduct] = useState<ProductForPurchase | null>(null);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [isProcessingAttachments, setIsProcessingAttachments] = useState(false);
   const [attachmentError, setAttachmentError] = useState('');
   const [poDate, setPoDate] = useState(() => localNowDateString());
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
@@ -660,18 +664,41 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
               accept="image/*,.pdf"
               className="hidden"
               onChange={(e) => {
-                const picked = Array.from(e.target.files || []);
-                setAttachmentError('');
-                setAttachments((prev) => [...prev, ...picked].slice(0, 5));
+                void (async () => {
+                  const picked = Array.from(e.target.files || []);
+                  if (!picked.length) return;
+                  setAttachmentError('');
+                  setIsProcessingAttachments(true);
+                  try {
+                    const { files: processed, compressionMessages, skippedMessages } =
+                      await prepareAttachmentFilesForUpload(picked, MAX_PURCHASE_ATTACHMENT_BYTES);
+                    if (skippedMessages.length) setAttachmentError(skippedMessages.join(' '));
+                    else if (compressionMessages.length) setAttachmentError(compressionMessages.join(' · '));
+                    setAttachments((prev) => [...prev, ...processed].slice(0, 5));
+                  } finally {
+                    setIsProcessingAttachments(false);
+                    if (attachmentInputRef.current) attachmentInputRef.current.value = '';
+                  }
+                })();
               }}
             />
             <button
               type="button"
+              disabled={isProcessingAttachments}
               onClick={() => attachmentInputRef.current?.click()}
-              className="w-full border-2 border-dashed border-[#374151] rounded-lg p-3 flex items-center justify-center gap-2 text-[#9CA3AF] hover:bg-[#374151]/30"
+              className="w-full border-2 border-dashed border-[#374151] rounded-lg p-3 flex items-center justify-center gap-2 text-[#9CA3AF] hover:bg-[#374151]/30 disabled:opacity-60"
             >
-              <Upload className="w-4 h-4" />
-              Add files (max 5)
+              {isProcessingAttachments ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Compressing…
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  Add files (max 5)
+                </>
+              )}
             </button>
             {attachments.length > 0 && (
               <div className="mt-2 space-y-1">

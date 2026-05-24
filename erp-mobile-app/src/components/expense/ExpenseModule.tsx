@@ -16,6 +16,9 @@ import { addPending } from '../../lib/offlineStore';
 import { localNowDateString } from '../../utils/localDate';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountPickerSubtitle } from '../../utils/balancePrivacy';
+import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
+
+const MAX_EXPENSE_RECEIPT_BYTES = 5 * 1024 * 1024;
 
 interface ExpenseModuleProps {
   onBack: () => void;
@@ -100,6 +103,8 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
   const [mainCategoryId, setMainCategoryId] = useState('');
   const [subCategoryId, setSubCategoryId] = useState('');
   const [addReceiptFile, setAddReceiptFile] = useState<File | null>(null);
+  const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
+  const [receiptNotice, setReceiptNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [branchesList, setBranchesList] = useState<Branch[]>([]);
   const [addBranchId, setAddBranchId] = useState('');
@@ -543,16 +548,50 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
                 type="file"
                 accept="image/*,.pdf"
                 className="hidden"
-                onChange={(e) => setAddReceiptFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  void (async () => {
+                    const raw = e.target.files?.[0];
+                    if (!raw) return;
+                    setIsProcessingReceipt(true);
+                    setReceiptNotice(null);
+                    try {
+                      const { files, compressionMessages, skippedMessages } =
+                        await prepareAttachmentFilesForUpload([raw], MAX_EXPENSE_RECEIPT_BYTES);
+                      if (skippedMessages.length) {
+                        setReceiptNotice(skippedMessages[0] ?? null);
+                        setAddReceiptFile(null);
+                      } else {
+                        setAddReceiptFile(files[0] ?? null);
+                        if (compressionMessages.length) setReceiptNotice(compressionMessages[0] ?? null);
+                      }
+                    } finally {
+                      setIsProcessingReceipt(false);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }
+                  })();
+                }}
               />
               <button
                 type="button"
+                disabled={isProcessingReceipt}
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full border-2 border-dashed border-[#374151] rounded-lg p-4 flex flex-col items-center justify-center text-center hover:bg-[#374151]/30 transition-colors text-[#9CA3AF]"
+                className="w-full border-2 border-dashed border-[#374151] rounded-lg p-4 flex flex-col items-center justify-center text-center hover:bg-[#374151]/30 transition-colors text-[#9CA3AF] disabled:opacity-60"
               >
-                <Upload className="w-8 h-8 mb-2" />
-                <span className="text-sm">{addReceiptFile ? addReceiptFile.name : 'Tap to upload receipt (PNG, JPG, PDF up to 5MB)'}</span>
+                {isProcessingReceipt ? (
+                  <>
+                    <Loader2 className="w-8 h-8 mb-2 animate-spin" />
+                    <span className="text-sm">Compressing…</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-8 h-8 mb-2" />
+                    <span className="text-sm">{addReceiptFile ? addReceiptFile.name : 'Tap to upload receipt (PNG, JPG, PDF up to 5MB)'}</span>
+                  </>
+                )}
               </button>
+              {receiptNotice && (
+                <p className="mt-2 text-xs text-[#9CA3AF]">{receiptNotice}</p>
+              )}
               {addReceiptFile && (
                 <button
                   type="button"

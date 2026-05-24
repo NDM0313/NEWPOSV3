@@ -17,6 +17,7 @@ import {
 import { getPaymentAccounts } from '../../api/accounts';
 import { getBranches } from '../../api/branches';
 import { MAX_FILE_SIZE_BYTES, ACCEPT_TYPES } from '../../api/paymentAttachments';
+import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 import { TransactionSuccessModal, type TransactionSuccessData } from './TransactionSuccessModal';
 import {
   buildPaymentReferenceLabels,
@@ -242,6 +243,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   const [reference, setReference] = useState('');
   const [showOptional, setShowOptional] = useState(false);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   const [accounts, setAccounts] = useState<
     Array<{ id: string; name: string; type: string; balance: number }>
   >([]);
@@ -330,17 +332,22 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
     if (outstandingAmount && outstandingAmount > 0) setAmount(outstandingAmount);
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files?.length) return;
-    const next: File[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      if (f.size <= MAX_FILE_SIZE_BYTES) next.push(f);
-      else setToast({ message: `${f.name} exceeds 10MB. Skipped.`, type: 'error' });
+    setIsProcessingFiles(true);
+    try {
+      const { files: processed, compressionMessages, skippedMessages } =
+        await prepareAttachmentFilesForUpload(Array.from(files), MAX_FILE_SIZE_BYTES);
+      skippedMessages.forEach((msg) => setToast({ message: msg, type: 'error' }));
+      compressionMessages.forEach((msg) => setToast({ message: msg, type: 'success' }));
+      if (processed.length > 0) {
+        setAttachmentFiles((prev) => [...prev, ...processed]);
+      }
+    } finally {
+      setIsProcessingFiles(false);
+      e.target.value = '';
     }
-    setAttachmentFiles((prev) => [...prev, ...next]);
-    e.target.value = '';
   };
 
   const removeAttachment = (index: number) => {
@@ -736,16 +743,27 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                   accept={ACCEPT_TYPES}
                   multiple
                   className="hidden"
-                  onChange={handleFileSelect}
+                  disabled={isProcessingFiles}
+                  onChange={(e) => void handleFileSelect(e)}
                 />
                 <button
                   type="button"
+                  disabled={isProcessingFiles}
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full border border-dashed border-[#374151] rounded-lg p-4 text-center text-[#6B7280] text-sm hover:border-[#4B5563] hover:bg-[#374151]/30 transition-colors flex flex-col items-center gap-2"
+                  className="w-full border border-dashed border-[#374151] rounded-lg p-4 text-center text-[#6B7280] text-sm hover:border-[#4B5563] hover:bg-[#374151]/30 transition-colors flex flex-col items-center gap-2 disabled:opacity-60"
                 >
-                  <Upload className="w-5 h-5 text-[#9CA3AF]" />
-                  <span>Click to upload or drag and drop</span>
-                  <span className="text-xs">PDF, PNG, JPG up to 10MB</span>
+                  {isProcessingFiles ? (
+                    <>
+                      <Loader2 className="w-5 h-5 text-[#9CA3AF] animate-spin" />
+                      <span>Compressing…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5 text-[#9CA3AF]" />
+                      <span>Click to upload or drag and drop</span>
+                      <span className="text-xs">PDF, PNG, JPG up to 10MB</span>
+                    </>
+                  )}
                 </button>
                 {attachmentFiles.length > 0 && (
                   <ul className="mt-2 space-y-1">

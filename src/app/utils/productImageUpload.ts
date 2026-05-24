@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { compressImageIfNeeded } from '@/app/utils/imageCompression';
 
 const BUCKET = 'product-images';
 
@@ -59,7 +60,8 @@ export async function uploadProductImages(
   }
   const urls: string[] = [];
   for (let i = 0; i < files.length; i++) {
-    const file = files[i];
+    const raw = files[i];
+    const file = await compressImageIfNeeded(raw);
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `${companyId}/${productId}/${crypto.randomUUID()}.${ext}`;
     const { error } = await supabase.storage.from(BUCKET).upload(path, file, {

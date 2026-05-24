@@ -5,6 +5,7 @@ import {
   getStoragePublicUrl,
   storageRefForPersistence,
 } from './storageDisplayUrl';
+import { compressImageIfNeeded } from './imageCompression';
 
 const BUCKET = 'product-images';
 
@@ -34,7 +35,8 @@ export async function uploadProductImages(
   if (!auth?.user) throw new Error('You must be logged in to upload product images.');
 
   const urls: string[] = [];
-  for (const file of files) {
+  for (const raw of files) {
+    const file = await compressImageIfNeeded(raw);
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const uuid =
       typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'

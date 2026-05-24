@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, FileText, Upload, X, Calendar } from 'lucide-react';
+import { ArrowLeft, FileText, Upload, X, Calendar, Loader2 } from 'lucide-react';
 import type { SaleData } from './SalesModule';
 import { localNowDateString } from '../../utils/localDate';
 import type { Branch } from '../../api/branches';
 import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
+import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
+
+const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 interface SaleSummaryProps {
   onBack: () => void;
@@ -37,6 +40,8 @@ export function SaleSummary({
   );
   const [notes, setNotes] = useState(saleData.notes || '');
   const [attachments, setAttachments] = useState<File[]>(saleData.attachmentFiles ?? []);
+  const [isProcessingAttachments, setIsProcessingAttachments] = useState(false);
+  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -54,6 +59,21 @@ export function SaleSummary({
   const syncAttachments = (files: File[]) => {
     setAttachments(files);
     onUpdate({ attachmentFiles: files });
+  };
+
+  const handleAttachmentPick = async (picked: File[]) => {
+    if (!picked.length) return;
+    setIsProcessingAttachments(true);
+    setAttachmentNotice(null);
+    try {
+      const { files: processed, compressionMessages, skippedMessages } =
+        await prepareAttachmentFilesForUpload(picked, MAX_SALE_ATTACHMENT_BYTES);
+      const notice = [...skippedMessages, ...compressionMessages].join(' · ');
+      if (notice) setAttachmentNotice(notice);
+      syncAttachments([...attachments, ...processed].slice(0, 5));
+    } finally {
+      setIsProcessingAttachments(false);
+    }
   };
 
   const applyDiscount = () => {
@@ -189,19 +209,31 @@ export function SaleSummary({
             accept="image/*,.pdf"
             className="hidden"
             onChange={(e) => {
-              const picked = Array.from(e.target.files || []);
-              syncAttachments([...attachments, ...picked].slice(0, 5));
+              void handleAttachmentPick(Array.from(e.target.files || []));
               if (attachmentInputRef.current) attachmentInputRef.current.value = '';
             }}
           />
           <button
             type="button"
+            disabled={isProcessingAttachments}
             onClick={() => attachmentInputRef.current?.click()}
-            className="w-full border-2 border-dashed border-[#374151] rounded-lg p-3 flex items-center justify-center gap-2 text-[#9CA3AF] hover:bg-[#374151]/30 hover:border-[#3B82F6]/50"
+            className="w-full border-2 border-dashed border-[#374151] rounded-lg p-3 flex items-center justify-center gap-2 text-[#9CA3AF] hover:bg-[#374151]/30 hover:border-[#3B82F6]/50 disabled:opacity-60"
           >
-            <Upload className="w-4 h-4" />
-            Add files (max 5)
+            {isProcessingAttachments ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Compressing…
+              </>
+            ) : (
+              <>
+                <Upload className="w-4 h-4" />
+                Add files (max 5)
+              </>
+            )}
           </button>
+          {attachmentNotice && (
+            <p className="mt-2 text-xs text-[#9CA3AF]">{attachmentNotice}</p>
+          )}
           {attachments.length > 0 && (
             <div className="mt-2 space-y-1">
               {attachments.map((file, index) => (

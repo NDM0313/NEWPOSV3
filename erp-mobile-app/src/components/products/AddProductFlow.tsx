@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Camera, Image as ImageIcon, Package, Plus, RefreshCcw, Save, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Camera, Image as ImageIcon, Package, Plus, RefreshCcw, Save, Trash2, X, Loader2 } from 'lucide-react';
 import type { Product } from '../../api/products';
 import * as productCategoriesApi from '../../api/productCategories';
 import * as brandsApi from '../../api/brands';
@@ -10,6 +10,7 @@ import * as variationLibrary from '../../api/variationLibrary';
 import type { AttributeWithValues } from '../../api/variationLibrary';
 import { CustomSelect } from '../common';
 import { ProductImage } from './ProductImage';
+import { compressImageIfNeeded, formatBytes } from '../../utils/imageCompression';
 
 export interface AddProductFlowSavePayload {
   id?: string;
@@ -86,6 +87,8 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
   // Image upload state (mobile parity with web EnhancedProductForm)
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [isProcessingImages, setIsProcessingImages] = useState(false);
+  const [imagePickNotice, setImagePickNotice] = useState<string | null>(null);
   const [existingImageUrls, setExistingImageUrls] = useState<string[]>(
     Array.isArray((editProduct as { imageUrls?: string[] } | undefined)?.imageUrls)
       ? ((editProduct as { imageUrls?: string[] }).imageUrls as string[])
@@ -422,15 +425,32 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
     }
   };
 
-  const handleImagePick = (files: FileList | null) => {
+  const handleImagePick = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const arr = Array.from(files).filter((f) => f.type.startsWith('image/'));
     if (arr.length === 0) return;
-    setImageFiles((prev) => [...prev, ...arr].slice(0, 8));
-    arr.forEach((f) => {
-      const url = URL.createObjectURL(f);
-      setImagePreviews((prev) => [...prev, url].slice(0, 8));
-    });
+    setIsProcessingImages(true);
+    setImagePickNotice(null);
+    try {
+      const processed: File[] = [];
+      const notices: string[] = [];
+      for (const raw of arr) {
+        const before = raw.size;
+        const file = await compressImageIfNeeded(raw);
+        processed.push(file);
+        if (file.size < before * 0.95) {
+          notices.push(`${raw.name}: compressed ${formatBytes(before)} → ${formatBytes(file.size)}`);
+        }
+      }
+      if (notices.length) setImagePickNotice(notices.join(' · '));
+      setImageFiles((prev) => [...prev, ...processed].slice(0, 8));
+      processed.forEach((f) => {
+        const url = URL.createObjectURL(f);
+        setImagePreviews((prev) => [...prev, url].slice(0, 8));
+      });
+    } finally {
+      setIsProcessingImages(false);
+    }
   };
   const removePickedImage = (idx: number) => {
     setImageFiles((prev) => prev.filter((_, i) => i !== idx));
@@ -986,20 +1006,24 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
             <h3 className="text-sm font-semibold text-white">Product Images</h3>
             <button
               type="button"
+              disabled={isProcessingImages}
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-white text-xs font-medium"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-white text-xs font-medium disabled:opacity-60"
             >
-              <Camera size={14} /> Add
+              {isProcessingImages ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
+              {isProcessingImages ? 'Compressing…' : 'Add'}
             </button>
           </div>
+          {imagePickNotice && <p className="text-xs text-[#9CA3AF] mb-2">{imagePickNotice}</p>}
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
             multiple
             className="hidden"
+            disabled={isProcessingImages}
             onChange={(e) => {
-              handleImagePick(e.target.files);
+              void handleImagePick(e.target.files);
               if (e.target) e.target.value = '';
             }}
           />

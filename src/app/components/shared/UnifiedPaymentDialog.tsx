@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { getAttachmentOpenUrl, getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
 import { showStorageRlsToast, MAX_FILE_SIZE_BYTES, showFileTooLargeToast } from '@/app/utils/uploadTransactionAttachments';
+import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
 import { dispatchAccountingEditCommitted } from '@/app/lib/unifiedTransactionEdit';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
@@ -186,6 +187,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   
   // New files to upload
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [isProcessingAttachments, setIsProcessingAttachments] = useState(false);
   // Existing attachments (when editing) – from DB, so they show and are re-sent on save
   const [existingAttachments, setExistingAttachments] = useState<{ url: string; name: string }[]>([]);
   const prevOpenRef = React.useRef(false);
@@ -443,10 +445,20 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
   ]);
 
   // Handle file upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    setAttachments(prev => [...prev, ...files]);
-    e.target.value = '';
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const incoming = Array.from(e.target.files || []);
+    if (!incoming.length) return;
+    setIsProcessingAttachments(true);
+    try {
+      const { files, compressionMessages, skippedMessages } =
+        await prepareAttachmentFilesForUpload(incoming, MAX_FILE_SIZE_BYTES);
+      skippedMessages.forEach((msg) => toast.error(msg));
+      compressionMessages.forEach((msg) => toast.success(msg));
+      if (files.length > 0) setAttachments((prev) => [...prev, ...files]);
+    } finally {
+      setIsProcessingAttachments(false);
+      e.target.value = '';
+    }
   };
 
   // Remove attachment
@@ -1732,18 +1744,25 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   )}
                   
                   {/* Upload Area */}
-                  <label className="block cursor-pointer">
+                  <label className={`block ${isProcessingAttachments ? 'cursor-wait opacity-70' : 'cursor-pointer'}`}>
                     <div className="border-2 border-dashed border-gray-700 rounded-lg p-4 hover:border-blue-500 hover:bg-gray-900/50 transition-all text-center">
                       <Upload className="mx-auto mb-2 text-gray-500" size={24} />
                       <p className="text-xs text-gray-400 mb-0.5">
-                        <span className="text-blue-400 font-medium">Click to upload</span> or drag and drop
+                        {isProcessingAttachments ? (
+                          <span className="text-blue-400 font-medium">Compressing…</span>
+                        ) : (
+                          <>
+                            <span className="text-blue-400 font-medium">Click to upload</span> or drag and drop
+                          </>
+                        )}
                       </p>
                       <p className="text-xs text-gray-600">PDF, PNG, JPG up to 10MB</p>
                     </div>
                     <input
                       type="file"
                       multiple
-                      onChange={handleFileUpload}
+                      disabled={isProcessingAttachments}
+                      onChange={(e) => void handleFileUpload(e)}
                       className="hidden"
                       accept=".pdf,.png,.jpg,.jpeg"
                     />

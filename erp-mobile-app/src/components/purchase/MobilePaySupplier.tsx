@@ -51,6 +51,7 @@ export function MobilePaySupplier({
       notes: payload.notes || undefined,
     });
 
+    let attachmentWarning: string | null = null;
     if (data?.payment_id && payload.attachments.length > 0) {
       try {
         const uploaded = await uploadPaymentAttachments(
@@ -62,8 +63,12 @@ export function MobilePaySupplier({
         if (uploaded.length > 0) {
           await updatePaymentAttachments(data.payment_id, uploaded);
         }
-      } catch (_e) {
-        // non-fatal
+        if (uploaded.length < payload.attachments.length) {
+          attachmentWarning =
+            'Payment saved. Some attachments did not upload — try again from the payment.';
+        }
+      } catch {
+        attachmentWarning = 'Payment saved. Attachment upload failed (offline or slow).';
       }
     }
 
@@ -73,6 +78,7 @@ export function MobilePaySupplier({
       paymentId: data?.payment_id ?? null,
       referenceNumber: data?.reference_number ?? null,
       partyAccountName: supplierName ? `Payable — ${supplierName}` : null,
+      attachmentWarning,
     };
   };
 

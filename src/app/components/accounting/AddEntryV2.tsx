@@ -57,7 +57,9 @@ import { toast } from 'sonner';
 import {
   uploadJournalEntryAttachments,
   uploadUnifiedStylePaymentAttachments,
+  MAX_FILE_SIZE_BYTES as ATTACHMENT_MAX_BYTES,
 } from '@/app/utils/uploadTransactionAttachments';
+import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
 
 export type AddEntryV2Type =
   | 'pure_journal'
@@ -156,6 +158,7 @@ export function AddEntryV2({
   const [toAccountId, setToAccountId] = useState('');
   /** Optional files — stored on `payments` (receipt/pay flows) or `journal_entries` (pure journal / transfer). Same bucket/layout as UnifiedPaymentDialog. */
   const [entryAttachmentFiles, setEntryAttachmentFiles] = useState<File[]>([]);
+  const [isProcessingEntryAttachments, setIsProcessingEntryAttachments] = useState(false);
 
   const showEntryAttachments = useMemo(
     () =>
@@ -1424,7 +1427,7 @@ export function AddEntryV2({
                                 <p className="text-xs text-gray-400 mb-0.5">
                                   <span className="text-blue-400 font-medium">Click to upload</span> or drag and drop
                                 </p>
-                                <p className="text-xs text-gray-600">PDF, PNG, JPG up to 10MB</p>
+                                <p className="text-xs text-gray-600">{isProcessingEntryAttachments ? 'Compressing…' : 'PDF, PNG, JPG up to 10MB'}</p>
                               </div>
                               <input
                                 type="file"
@@ -1432,10 +1435,21 @@ export function AddEntryV2({
                                 className="hidden"
                                 accept=".pdf,.png,.jpg,.jpeg"
                                 onChange={(e) => {
-                                  const list = e.target.files;
-                                  if (!list?.length) return;
-                                  setEntryAttachmentFiles((prev) => [...prev, ...Array.from(list)]);
-                                  e.target.value = '';
+                                  void (async () => {
+                                    const list = e.target.files;
+                                    if (!list?.length) return;
+                                    setIsProcessingEntryAttachments(true);
+                                    try {
+                                      const { files, compressionMessages, skippedMessages } =
+                                        await prepareAttachmentFilesForUpload(Array.from(list), ATTACHMENT_MAX_BYTES);
+                                      skippedMessages.forEach((msg) => toast.error(msg));
+                                      compressionMessages.forEach((msg) => toast.success(msg));
+                                      if (files.length) setEntryAttachmentFiles((prev) => [...prev, ...files]);
+                                    } finally {
+                                      setIsProcessingEntryAttachments(false);
+                                      e.target.value = '';
+                                    }
+                                  })();
                                 }}
                               />
                             </label>
