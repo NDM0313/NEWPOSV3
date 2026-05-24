@@ -614,15 +614,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
             Sign In
           </button>
         </form>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setShowEmailLogin(true)}
-            className="w-full text-sm text-[#9CA3AF] hover:text-white py-2"
-          >
-            Use email / password instead
-          </button>
-        )}
+        ) : null}
 
         {(showEmailLogin || !hasCounterSlots) && (
         <div className="mt-4 space-y-2">

@@ -92,12 +92,17 @@ export function UnifiedPaymentSheet({
         referenceNumber: payload.reference?.trim() ? payload.reference.trim() : null,
         createdBy: userId ?? null,
       });
+      let attachmentWarning: string | null = null;
       if (success && paymentId && payload.attachments.length > 0) {
         try {
           const uploaded = await uploadPaymentAttachments(companyId, referenceId, paymentId, payload.attachments);
           if (uploaded.length > 0) await updatePaymentAttachments(paymentId, uploaded);
+          if (uploaded.length < payload.attachments.length) {
+            attachmentWarning =
+              'Payment saved. Some attachments did not upload — try again from the payment.';
+          }
         } catch {
-          // non-fatal
+          attachmentWarning = 'Payment saved. Attachment upload failed (offline or slow).';
         }
       }
       return {
@@ -106,6 +111,7 @@ export function UnifiedPaymentSheet({
         paymentId: paymentId ?? null,
         referenceNumber: referenceNumber ?? null,
         partyAccountName: partyName ? `Receivable — ${partyName}` : null,
+        attachmentWarning,
       };
     }
 

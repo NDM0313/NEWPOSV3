@@ -6,6 +6,7 @@ import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 import { localNowDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite, isRealBranchUuid } from '../utils/branchId';
 import { storageRefForPersistence } from '../utils/storageDisplayUrl';
+import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -78,21 +79,29 @@ export async function uploadSaleAttachments(
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const path = `${prefix}_${i}_${safeName}`;
 
-    const { error } = await supabase.storage.from(SALE_ATTACHMENTS_BUCKET).upload(path, file, {
-      upsert: true,
-      contentType: file.type || 'application/octet-stream',
-    });
-    if (error) {
-      const msg = String(error.message || '').toLowerCase();
-      const bucketMissing = msg.includes('bucket') && (msg.includes('not found') || msg.includes('does not exist'));
-      return {
-        data: uploaded,
-        error: bucketMissing
-          ? 'Storage bucket "sale-attachments" not found. Create it in Supabase Storage first.'
-          : error.message,
-      };
+    try {
+      const { error } = await withUploadTimeout(
+        supabase.storage.from(SALE_ATTACHMENTS_BUCKET).upload(path, file, {
+          upsert: true,
+          contentType: file.type || 'application/octet-stream',
+        }),
+        UPLOAD_TIMEOUT_MS,
+        `Upload ${file.name}`,
+      );
+      if (error) {
+        const msg = String(error.message || '').toLowerCase();
+        const bucketMissing = msg.includes('bucket') && (msg.includes('not found') || msg.includes('does not exist'));
+        return {
+          data: uploaded,
+          error: bucketMissing
+            ? 'Storage bucket "sale-attachments" not found. Create it in Supabase Storage first.'
+            : error.message,
+        };
+      }
+      uploaded.push({ url: storageRefForPersistence(SALE_ATTACHMENTS_BUCKET, path), name: file.name });
+    } catch (err) {
+      console.warn('[uploadSaleAttachments]', (err as Error)?.message ?? err);
     }
-    uploaded.push({ url: storageRefForPersistence(SALE_ATTACHMENTS_BUCKET, path), name: file.name });
   }
 
   return { data: uploaded, error: null };

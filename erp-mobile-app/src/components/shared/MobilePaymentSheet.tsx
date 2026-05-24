@@ -65,6 +65,8 @@ export interface MobilePaymentSheetSubmitResult {
   referenceNumber?: string | null;
   /** Optional AR/AP child account name for the success receipt. */
   partyAccountName?: string | null;
+  /** Non-blocking warning when payment saved but attachments failed or partially uploaded. */
+  attachmentWarning?: string | null;
 }
 
 export interface MobilePaymentSheetProps {
@@ -404,6 +406,10 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
             ? `Receivable — ${partyName}`
             : partyName
           : null);
+
+      if (result.attachmentWarning) {
+        setToast({ message: result.attachmentWarning, type: 'error' });
+      }
 
       setSuccess({
         type: 'payment',

@@ -3,6 +3,7 @@
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { storageRefForPersistence } from '../utils/storageDisplayUrl';
+import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
 
 const BUCKET = 'payment-attachments';
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -28,12 +29,20 @@ export async function uploadJournalEntryAttachments(
     if (file.size > MAX_FILE_SIZE_BYTES) continue;
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const path = `${prefix}_${i}_${safeName}`;
-    const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-      upsert: true,
-      contentType: file.type || 'application/octet-stream',
-    });
-    if (!error) {
-      results.push({ url: storageRefForPersistence(BUCKET, path), name: file.name });
+    try {
+      const { error } = await withUploadTimeout(
+        supabase.storage.from(BUCKET).upload(path, file, {
+          upsert: true,
+          contentType: file.type || 'application/octet-stream',
+        }),
+        UPLOAD_TIMEOUT_MS,
+        `Upload ${file.name}`,
+      );
+      if (!error) {
+        results.push({ url: storageRefForPersistence(BUCKET, path), name: file.name });
+      }
+    } catch (err) {
+      console.warn('[uploadJournalEntryAttachments]', (err as Error)?.message ?? err);
     }
   }
   return results;

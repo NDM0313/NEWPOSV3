@@ -10,6 +10,16 @@ const STORAGE_RLS_TOAST_MESSAGE =
 /** Max file size for storage uploads (20MB). Keep under typical Supabase/server limits. */
 export const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
 const MAX_FILE_SIZE_MB = 20;
+const UPLOAD_TIMEOUT_MS = 45_000;
+
+async function withUploadTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label}: timed out after ${ms / 1000}s`)), ms),
+    ),
+  ]);
+}
 
 function isStorageRlsError(error: { message?: string } | null): boolean {
   const msg = String(error?.message || '').toLowerCase();
@@ -123,10 +133,14 @@ export async function uploadPurchaseAttachments(
     const path = `${prefix}_${i}_${safeName}`;
     
     try {
-      const { error } = await supabase.storage.from(bucket).upload(path, file, {
-        upsert: true,
-        contentType: file.type || 'application/octet-stream',
-      });
+      const { error } = await withUploadTimeout(
+        supabase.storage.from(bucket).upload(path, file, {
+          upsert: true,
+          contentType: file.type || 'application/octet-stream',
+        }),
+        UPLOAD_TIMEOUT_MS,
+        `Upload ${file.name}`,
+      );
       
       if (error) {
         anyUploadFailed = true;
@@ -151,6 +165,10 @@ export async function uploadPurchaseAttachments(
     } catch (err: any) {
       anyUploadFailed = true;
       console.error(`[UPLOAD PURCHASE ATTACHMENTS] Exception uploading ${file.name}:`, err);
+      if (String(err?.message ?? '').includes('timed out after')) {
+        console.warn(`[UPLOAD PURCHASE ATTACHMENTS] Timed out: ${file.name}`);
+        continue;
+      }
       if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
       else if (isStorageRlsError(err)) showStorageRlsToast();
     }
@@ -191,10 +209,14 @@ export async function uploadSaleAttachments(
     const path = `${prefix}_${i}_${safeName}`;
     
     try {
-      const { error } = await supabase.storage.from(bucket).upload(path, file, {
-        upsert: true,
-        contentType: file.type || 'application/octet-stream',
-      });
+      const { error } = await withUploadTimeout(
+        supabase.storage.from(bucket).upload(path, file, {
+          upsert: true,
+          contentType: file.type || 'application/octet-stream',
+        }),
+        UPLOAD_TIMEOUT_MS,
+        `Upload ${file.name}`,
+      );
       
       if (error) {
         anyUploadFailed = true;
@@ -219,6 +241,10 @@ export async function uploadSaleAttachments(
     } catch (err: any) {
       anyUploadFailed = true;
       console.error(`[UPLOAD SALE ATTACHMENTS] Exception uploading ${file.name}:`, err);
+      if (String(err?.message ?? '').includes('timed out after')) {
+        console.warn(`[UPLOAD SALE ATTACHMENTS] Timed out: ${file.name}`);
+        continue;
+      }
       if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
       else if (isStorageRlsError(err)) showStorageRlsToast();
     }
@@ -258,10 +284,14 @@ export async function uploadJournalEntryAttachments(
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const path = `${prefix}_${i}_${safeName}`;
     try {
-      const { error } = await supabase.storage.from(bucket).upload(path, file, {
-        upsert: true,
-        contentType: file.type || 'application/octet-stream',
-      });
+      const { error } = await withUploadTimeout(
+        supabase.storage.from(bucket).upload(path, file, {
+          upsert: true,
+          contentType: file.type || 'application/octet-stream',
+        }),
+        UPLOAD_TIMEOUT_MS,
+        `Upload ${file.name}`,
+      );
       if (error) {
         anyUploadFailed = true;
         console.error(`[UPLOAD JOURNAL ATTACHMENTS] Failed to upload ${file.name}:`, error);
@@ -284,6 +314,10 @@ export async function uploadJournalEntryAttachments(
     } catch (err: any) {
       anyUploadFailed = true;
       console.error(`[UPLOAD JOURNAL ATTACHMENTS] Exception uploading ${file.name}:`, err);
+      if (String(err?.message ?? '').includes('timed out after')) {
+        console.warn(`[UPLOAD JOURNAL ATTACHMENTS] Timed out: ${file.name}`);
+        continue;
+      }
       if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
       else if (isStorageRlsError(err)) showStorageRlsToast();
     }
@@ -322,10 +356,14 @@ export async function uploadUnifiedStylePaymentAttachments(
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const path = `${prefix}_${i}_${safeName}`;
     try {
-      const { error } = await supabase.storage.from(bucket).upload(path, file, {
-        upsert: true,
-        contentType: file.type || 'application/octet-stream',
-      });
+      const { error } = await withUploadTimeout(
+        supabase.storage.from(bucket).upload(path, file, {
+          upsert: true,
+          contentType: file.type || 'application/octet-stream',
+        }),
+        UPLOAD_TIMEOUT_MS,
+        `Upload ${file.name}`,
+      );
       if (error) {
         anyUploadFailed = true;
         console.error(`[UPLOAD MANUAL PAYMENT ATTACHMENTS] Failed to upload ${file.name}:`, error);
@@ -348,6 +386,10 @@ export async function uploadUnifiedStylePaymentAttachments(
     } catch (err: unknown) {
       anyUploadFailed = true;
       console.error(`[UPLOAD MANUAL PAYMENT ATTACHMENTS] Exception uploading ${file.name}:`, err);
+      if (String((err as { message?: string })?.message ?? '').includes('timed out after')) {
+        console.warn(`[UPLOAD MANUAL PAYMENT ATTACHMENTS] Timed out: ${file.name}`);
+        continue;
+      }
       if (isFileTooLargeException(err)) showFileTooLargeToast(file.name);
       else if (isStorageRlsError(err as { message?: string })) showStorageRlsToast();
     }
