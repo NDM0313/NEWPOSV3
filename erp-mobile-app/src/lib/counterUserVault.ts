@@ -402,6 +402,9 @@ export const COUNTER_STALE_REFRESH_TOKEN_HINT =
 export function formatCounterPinAuthError(message: string | undefined): string {
   if (!message) return COUNTER_STALE_REFRESH_TOKEN_HINT;
   const m = message.toLowerCase();
+  if (m.includes('aborted') || m.includes('abort')) {
+    return 'Sign-in was interrupted. Tap Unlock again.';
+  }
   if (
     m.includes('refresh token not found') ||
     m.includes('invalid refresh token') ||

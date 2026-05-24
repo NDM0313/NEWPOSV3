@@ -83,7 +83,7 @@ function canvasToJpegBlob(
             return el;
           })();
 
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | null;
     if (!ctx) {
       resolve(null);
       return;

@@ -5,6 +5,7 @@ import { localNowDateString, toLocalDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite } from '../utils/branchId';
 import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
+import { classifyStorageUploadError } from '../utils/storageUploadErrors';
 
 export type PurchaseStatus = 'draft' | 'ordered' | 'received' | 'final';
 
@@ -73,18 +74,22 @@ export async function uploadPurchaseAttachments(
         `Upload ${file.name}`,
       );
       if (error) {
-        const msg = String(error.message || '').toLowerCase();
-        const bucketMissing = msg.includes('bucket') && (msg.includes('not found') || msg.includes('does not exist'));
+        const classified = classifyStorageUploadError(error, file.name);
+        const bucketMissing = classified.kind === 'bucket';
         return {
           data: uploaded,
           error: bucketMissing
             ? 'Storage bucket "purchase-attachments" not found. Create it in Supabase Storage first.'
-            : error.message,
+            : classified.userMessage,
         };
       }
       uploaded.push({ url: storageRefForPersistence(PURCHASE_ATTACHMENTS_BUCKET, path), name: file.name });
     } catch (err) {
       console.warn('[uploadPurchaseAttachments]', (err as Error)?.message ?? err);
+      return {
+        data: uploaded,
+        error: classifyStorageUploadError(err, file.name).userMessage,
+      };
     }
   }
 

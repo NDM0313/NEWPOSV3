@@ -9,7 +9,6 @@ import {
   formatCounterPinAuthError,
   COUNTER_WRONG_COMPANY_MESSAGE,
 } from './counterUserVault';
-import { maintainCounterVaultTokens } from './counterVaultMaintenance';
 import { markUnlocked } from './pinLock';
 
 export type CounterPinUnlockResult =
@@ -46,7 +45,7 @@ export async function unlockWithCounterPin(
     return { ok: false, error: 'PIN does not match this user.' };
   }
 
-  const liveSession = await authApi.getSessionWithRefresh({ allowGlobalRecovery: false });
+  const liveSession = await authApi.getSession();
   if (
     liveSession?.userId &&
     payload.userId &&
@@ -60,20 +59,14 @@ export async function unlockWithCounterPin(
     allowGlobalRecovery: false,
   });
   if (!refreshed.ok) {
-    await maintainCounterVaultTokens();
     const retryPayload = await getCounterUserForPin(pin);
-    if (retryPayload?.refreshToken) {
+    if (
+      retryPayload?.refreshToken &&
+      retryPayload.refreshToken !== payload.refreshToken
+    ) {
       refreshed = await authApi.refreshSessionFromRefreshToken(retryPayload.refreshToken, {
         allowGlobalRecovery: false,
       });
-    }
-    if (!refreshed.ok) {
-      const sess = await authApi.getSessionWithRefresh({ allowGlobalRecovery: false });
-      if (sess?.userId && payload.userId && sess.userId === payload.userId) {
-        refreshed = await authApi.refreshSessionFromRefreshToken(sess.refreshToken, {
-          allowGlobalRecovery: false,
-        });
-      }
     }
   }
 

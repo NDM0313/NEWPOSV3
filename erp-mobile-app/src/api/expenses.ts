@@ -3,6 +3,7 @@ import { listCacheKeys } from '../lib/listCache';
 import { readThroughCache } from '../lib/offlineData';
 import { localNowDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite } from '../utils/branchId';
+import { classifyStorageUploadError } from '../utils/storageUploadErrors';
 
 /** DB / RPC expect cash | bank | card | other — wallet accounts must map to other. */
 function normalizeExpensePaymentMethodForDb(raw: string | undefined): string {
@@ -258,14 +259,14 @@ export async function uploadExpenseReceipt(
     contentType: file.type || 'application/octet-stream',
   });
   if (error) {
-    const msg = String(error.message || '').toLowerCase();
-    const bucketMissing = msg.includes('bucket') && (msg.includes('not found') || msg.includes('does not exist'));
-    return {
-      url: null,
-      error: bucketMissing
-        ? `Storage bucket "expense-receipts" not found. Create it in Supabase Dashboard → Storage, then run migration 51_expense_receipts_storage.sql. You can save the expense without the attachment.`
-        : error.message,
-    };
+    const classified = classifyStorageUploadError(error, file.name);
+    if (classified.kind === 'bucket') {
+      return {
+        url: null,
+        error: `Storage bucket "expense-receipts" not found. Create it in Supabase Dashboard → Storage, then run migration 51_expense_receipts_storage.sql. You can save the expense without the attachment.`,
+      };
+    }
+    return { url: null, error: classified.userMessage };
   }
   const { data: urlData } = supabase.storage.from(EXPENSE_RECEIPT_BUCKET).getPublicUrl(path);
   return { url: urlData?.publicUrl ?? path, error: null };

@@ -112,7 +112,11 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
     const desc = transferData.notes?.trim() || `Transfer from ${transferData.fromAccountName} to ${transferData.toAccountName}`;
     let attachments: { url: string; name: string }[] | undefined;
     if (attachmentFiles.length > 0) {
-      attachments = await uploadJournalEntryAttachments(companyId, attachmentFiles);
+      const { results, failures } = await uploadJournalEntryAttachments(companyId, attachmentFiles);
+      attachments = results.length > 0 ? results : undefined;
+      if (failures.length > 0 && results.length < attachmentFiles.length) {
+        setError(failures[0]?.userMessage ?? 'Some attachments did not upload.');
+      }
     }
     const payload = {
       companyId,

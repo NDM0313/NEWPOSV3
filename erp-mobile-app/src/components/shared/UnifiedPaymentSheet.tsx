@@ -1,5 +1,6 @@
 import { useRecordCustomerPayment } from '../../hooks/useRecordCustomerPayment';
 import { uploadPaymentAttachments, updatePaymentAttachments } from '../../api/paymentAttachments';
+import { attachmentUploadWarningMessage } from '../../utils/storageUploadErrors';
 import { addRentalPayment } from '../../api/rentals';
 import { recordSupplierPayment } from '../../api/accounts';
 import {
@@ -95,14 +96,23 @@ export function UnifiedPaymentSheet({
       let attachmentWarning: string | null = null;
       if (success && paymentId && payload.attachments.length > 0) {
         try {
-          const uploaded = await uploadPaymentAttachments(companyId, referenceId, paymentId, payload.attachments);
-          if (uploaded.length > 0) await updatePaymentAttachments(paymentId, uploaded);
-          if (uploaded.length < payload.attachments.length) {
-            attachmentWarning =
-              'Payment saved. Some attachments did not upload — try again from the payment.';
+          const { results, failures } = await uploadPaymentAttachments(
+            companyId,
+            referenceId,
+            paymentId,
+            payload.attachments,
+          );
+          if (results.length > 0) {
+            const upd = await updatePaymentAttachments(paymentId, results);
+            if (upd.error) {
+              attachmentWarning = `Payment saved. Attachments uploaded but could not be linked: ${upd.error}`;
+            }
           }
-        } catch {
-          attachmentWarning = 'Payment saved. Attachment upload failed (offline or slow).';
+          attachmentWarning =
+            attachmentUploadWarningMessage(results.length, payload.attachments.length, failures)
+            ?? attachmentWarning;
+        } catch (err) {
+          attachmentWarning = `Payment saved. Attachment upload failed: ${(err as Error)?.message ?? 'unknown error'}.`;
         }
       }
       return {

@@ -24,6 +24,7 @@ import {
   recoverStaleAuthSession,
   resetRefreshFailureCount,
 } from '../lib/authSessionRecovery';
+import { isAuthAbortError, withAuthRefreshMutex } from '../lib/authRefreshMutex';
 import { getUserAccessibleBranchIds } from './permissions';
 
 export { getOAuthRedirectTo } from '../lib/oauthRedirect';
@@ -329,7 +330,14 @@ export async function refreshPersistedSessionIfPossible(): Promise<boolean> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.refresh_token) return false;
-    const { data, error } = await supabase.auth.refreshSession({ refresh_token: session.refresh_token });
+    let { data, error } = await withAuthRefreshMutex(() =>
+      supabase.auth.refreshSession({ refresh_token: session.refresh_token }),
+    );
+    if (error && isAuthAbortError(error)) {
+      ({ data, error } = await withAuthRefreshMutex(() =>
+        supabase.auth.refreshSession({ refresh_token: session.refresh_token }),
+      ));
+    }
     if (error || !data?.session) return false;
     return true;
   } catch {
@@ -377,7 +385,14 @@ export async function refreshSessionFromRefreshToken(
   refreshToken: string,
   options?: { allowGlobalRecovery?: boolean },
 ): Promise<{ ok: boolean; error?: string }> {
-  const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+  let { data, error } = await withAuthRefreshMutex(() =>
+    supabase.auth.refreshSession({ refresh_token: refreshToken }),
+  );
+  if (error && isAuthAbortError(error)) {
+    ({ data, error } = await withAuthRefreshMutex(() =>
+      supabase.auth.refreshSession({ refresh_token: refreshToken }),
+    ));
+  }
   if (error) {
     const stale = isStaleRefreshTokenError(error);
     const tripped = stale || noteRefreshFailure();
@@ -387,7 +402,7 @@ export async function refreshSessionFromRefreshToken(
     if (stale || tripped) {
       return { ok: false, error: formatCounterPinAuthError(error.message) };
     }
-    return { ok: false, error: error.message };
+    return { ok: false, error: formatCounterPinAuthError(error.message) };
   }
   resetRefreshFailureCount();
   if (!data?.session) return { ok: false, error: 'No session returned.' };

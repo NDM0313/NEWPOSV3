@@ -1,5 +1,6 @@
 import { recordSupplierPayment } from '../../api/accounts';
 import { uploadPaymentAttachments, updatePaymentAttachments } from '../../api/paymentAttachments';
+import { attachmentUploadWarningMessage } from '../../utils/storageUploadErrors';
 import {
   MobilePaymentSheet,
   type MobilePaymentSheetSubmitPayload,
@@ -54,21 +55,23 @@ export function MobilePaySupplier({
     let attachmentWarning: string | null = null;
     if (data?.payment_id && payload.attachments.length > 0) {
       try {
-        const uploaded = await uploadPaymentAttachments(
+        const { results, failures } = await uploadPaymentAttachments(
           companyId,
           purchaseId,
           data.payment_id,
           payload.attachments,
         );
-        if (uploaded.length > 0) {
-          await updatePaymentAttachments(data.payment_id, uploaded);
+        if (results.length > 0) {
+          const upd = await updatePaymentAttachments(data.payment_id, results);
+          if (upd.error) {
+            attachmentWarning = `Payment saved. Attachments uploaded but could not be linked: ${upd.error}`;
+          }
         }
-        if (uploaded.length < payload.attachments.length) {
-          attachmentWarning =
-            'Payment saved. Some attachments did not upload — try again from the payment.';
-        }
-      } catch {
-        attachmentWarning = 'Payment saved. Attachment upload failed (offline or slow).';
+        attachmentWarning =
+          attachmentUploadWarningMessage(results.length, payload.attachments.length, failures)
+          ?? attachmentWarning;
+      } catch (err) {
+        attachmentWarning = `Payment saved. Attachment upload failed: ${(err as Error)?.message ?? 'unknown error'}.`;
       }
     }
 

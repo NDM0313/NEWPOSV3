@@ -79,7 +79,6 @@ export function POSLockScreen({
     setBusy(true);
     setError(null);
     try {
-      await maintainCounterVaultTokens();
       const result = await unlockWithCounterPin(pin, {
         expectedUserId: selected.userId,
         companyId,
