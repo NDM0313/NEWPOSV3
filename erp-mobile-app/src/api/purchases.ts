@@ -5,6 +5,7 @@ import { localNowDateString, toLocalDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite } from '../utils/branchId';
 import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
+import { storageUploadBody } from '../utils/storageUploadBody';
 import { classifyStorageUploadError } from '../utils/storageUploadErrors';
 
 export type PurchaseStatus = 'draft' | 'ordered' | 'received' | 'final';
@@ -65,10 +66,11 @@ export async function uploadPurchaseAttachments(
     const path = `${prefix}_${i}_${safeName}`;
 
     try {
+      const { body, contentType } = await storageUploadBody(file);
       const { error } = await withUploadTimeout(
-        supabase.storage.from(PURCHASE_ATTACHMENTS_BUCKET).upload(path, file, {
+        supabase.storage.from(PURCHASE_ATTACHMENTS_BUCKET).upload(path, body, {
           upsert: true,
-          contentType: file.type || 'application/octet-stream',
+          contentType,
         }),
         UPLOAD_TIMEOUT_MS,
         `Upload ${file.name}`,

@@ -6,6 +6,7 @@ import {
   storageRefForPersistence,
 } from './storageDisplayUrl';
 import { compressImageIfNeeded } from './imageCompression';
+import { storageUploadBody } from './storageUploadBody';
 
 const BUCKET = 'product-images';
 
@@ -43,8 +44,9 @@ export async function uploadProductImages(
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const path = `${companyId}/${productId}/${uuid}.${ext}`;
-    const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-      contentType: file.type || 'image/jpeg',
+    const { body, contentType } = await storageUploadBody(file);
+    const { error } = await supabase.storage.from(BUCKET).upload(path, body, {
+      contentType: contentType || 'image/jpeg',
       upsert: false,
     });
     if (error) {

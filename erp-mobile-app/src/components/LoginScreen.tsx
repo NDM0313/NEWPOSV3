@@ -320,7 +320,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         setError(`Too many attempts. Try again after ${new Date(result.lockedUntil).toLocaleTimeString()}.`);
       } else if (!result.success && 'expired' in result && result.expired) {
         setError(result.message || 'Session expired. Please sign in again.');
-        await authApi.signOut();
+        await authApi.signOutForTabletHandoff(_pinUnlockCompanyId ?? getLastCounterCompanyId());
         setHasPinSet(false);
       } else {
         const msg = !result.success && 'message' in result ? result.message : 'Wrong PIN';
@@ -332,7 +332,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
   };
 
   const handleUseEmailInstead = async () => {
-    await authApi.signOut();
+    await authApi.signOutGlobal();
     await authApi.clearPin();
     window.location.reload();
   };

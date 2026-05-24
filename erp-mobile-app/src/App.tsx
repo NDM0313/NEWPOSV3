@@ -742,6 +742,7 @@ export default function App() {
   const handleLogout = async () => {
     try {
       if (companyId && (await safeShouldActivateCounterLockScreen(companyId))) {
+        await authApi.signOutLocal();
         setIsCounterLocked(true);
         return;
       }

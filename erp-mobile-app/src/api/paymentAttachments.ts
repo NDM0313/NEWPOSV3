@@ -5,6 +5,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
+import { storageUploadBody } from '../utils/storageUploadBody';
 import {
   classifyStorageUploadError,
   isStorageSizeError,
@@ -51,10 +52,11 @@ export async function uploadPaymentAttachments(
     const path = `${prefix}_${i}_${safeName}`;
 
     try {
+      const { body, contentType } = await storageUploadBody(file);
       const { error } = await withUploadTimeout(
-        supabase.storage.from(BUCKET).upload(path, file, {
+        supabase.storage.from(BUCKET).upload(path, body, {
           upsert: true,
-          contentType: file.type || 'application/octet-stream',
+          contentType,
         }),
         UPLOAD_TIMEOUT_MS,
         `Upload ${file.name}`,

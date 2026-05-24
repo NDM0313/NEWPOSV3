@@ -58,6 +58,7 @@ export async function unlockWithCounterPin(
 
   await supabase.auth.stopAutoRefresh();
   try {
+    await authApi.signOutLocal();
     let refreshed = await authApi.refreshSessionFromRefreshToken(payload.refreshToken, {
       allowGlobalRecovery: false,
     });

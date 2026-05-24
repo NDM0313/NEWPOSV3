@@ -7,6 +7,7 @@ import { localNowDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite, isRealBranchUuid } from '../utils/branchId';
 import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
+import { storageUploadBody } from '../utils/storageUploadBody';
 import { classifyStorageUploadError } from '../utils/storageUploadErrors';
 
 export interface CreateSaleInput {
@@ -81,10 +82,11 @@ export async function uploadSaleAttachments(
     const path = `${prefix}_${i}_${safeName}`;
 
     try {
+      const { body, contentType } = await storageUploadBody(file);
       const { error } = await withUploadTimeout(
-        supabase.storage.from(SALE_ATTACHMENTS_BUCKET).upload(path, file, {
+        supabase.storage.from(SALE_ATTACHMENTS_BUCKET).upload(path, body, {
           upsert: true,
-          contentType: file.type || 'application/octet-stream',
+          contentType,
         }),
         UPLOAD_TIMEOUT_MS,
         `Upload ${file.name}`,

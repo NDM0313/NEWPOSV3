@@ -4,6 +4,7 @@ import { readThroughCache } from '../lib/offlineData';
 import { localNowDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite } from '../utils/branchId';
 import { classifyStorageUploadError } from '../utils/storageUploadErrors';
+import { storageUploadBody } from '../utils/storageUploadBody';
 
 /** DB / RPC expect cash | bank | card | other — wallet accounts must map to other. */
 function normalizeExpensePaymentMethodForDb(raw: string | undefined): string {
@@ -254,9 +255,10 @@ export async function uploadExpenseReceipt(
   if (file.size > MAX_RECEIPT_BYTES) return { url: null, error: 'File too large. Max 5MB.' };
   const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
   const path = `${companyId}/receipts/${Date.now()}_${safeName}`;
-  const { error } = await supabase.storage.from(EXPENSE_RECEIPT_BUCKET).upload(path, file, {
+  const { body, contentType } = await storageUploadBody(file);
+  const { error } = await supabase.storage.from(EXPENSE_RECEIPT_BUCKET).upload(path, body, {
     upsert: true,
-    contentType: file.type || 'application/octet-stream',
+    contentType,
   });
   if (error) {
     const classified = classifyStorageUploadError(error, file.name);

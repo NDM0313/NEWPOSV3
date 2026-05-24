@@ -397,7 +397,7 @@ export function SettingsModule({
   const handleRemovePin = async () => {
     if (!window.confirm('Remove PIN? You will need to sign in with email/password next time.')) return;
     await authApi.clearPin();
-    await authApi.signOut();
+    await authApi.signOutForTabletHandoff(companyId);
     setHasPin(false);
     onLogout();
   };

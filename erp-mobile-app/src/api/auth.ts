@@ -289,15 +289,20 @@ export async function signIn(email: string, password: string): Promise<{ data: A
   return { data: profile, error: null };
 }
 
-/** Revoke refresh tokens on the server and clear the device PIN vault. */
+/** Clear local session + device PIN vault. Never revokes server refresh tokens (counter vault safe). */
 export async function signOutGlobal(): Promise<void> {
-  await supabase.auth.signOut({ scope: 'global' });
+  await supabase.auth.signOut({ scope: 'local' });
   await clearSecure();
 }
 
 /** Clear the client session only (does not revoke server refresh tokens). */
 export async function signOutLocal(): Promise<void> {
   await supabase.auth.signOut({ scope: 'local' });
+}
+
+/** Counter tablet handoff — always local sign-out so vault refresh tokens stay valid on server. */
+export async function signOutForTabletHandoff(_companyId?: string | null): Promise<void> {
+  await signOutLocal();
 }
 
 /** @deprecated Prefer `signOutGlobal` or `signOutLocal` for clarity. */

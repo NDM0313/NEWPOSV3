@@ -18,40 +18,17 @@ const env =
     ? ((import.meta as { env: Record<string, string | boolean | undefined> }).env)
     : ({} as Record<string, string | boolean | undefined>);
 
-let supabaseUrl = String(env.VITE_SUPABASE_URL ?? '').trim();
-const origin = typeof window !== 'undefined' ? window.location.origin : '';
+const supabaseUrl =
+  String(env.VITE_SUPABASE_URL ?? '').trim() || 'https://supabase.dincouture.pk';
 
 const isNativeCapacitor = Capacitor.isNativePlatform();
 
 /**
- * Local Vite dev (localhost / LAN IP): Kong CORS only allows erp.dincouture.pk, so direct
- * calls to supabase.dincouture.pk fail. Use same-origin URL — vite.config.ts proxies
- * /auth/v1, /rest/v1, etc. to https://supabase.dincouture.pk.
- */
-const isViteDevLocal =
-  Boolean(env.DEV) &&
-  origin &&
-  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
-const isViteDevLan =
-  Boolean(env.DEV) &&
-  origin &&
-  /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(origin);
-
-/**
- * Native Android/iOS: NEVER substitute window.location.origin (often http://localhost or
- * capacitor://localhost) — that targets the device, not the VPS.
+ * Always use VITE_SUPABASE_URL (or fallback supabase.dincouture.pk) — never window.location.origin.
+ * PWA on erp.dincouture.pk must not route through nginx/Traefik /storage proxy (upload 404/timeout).
+ * Local dev: set VITE_SUPABASE_URL=http://localhost:5174 in .env.local for Vite proxy.
  * @see docs/infra/MOBILE_APK_LOCKED_PATTERN.md
- *
- * PWA on erp.dincouture.pk: use VITE_SUPABASE_URL (direct supabase.dincouture.pk) — not
- * same-origin erp nginx /storage proxy (Traefik/nginx upload bottleneck on VPS).
  */
-if (isNativeCapacitor) {
-  supabaseUrl = String(env.VITE_SUPABASE_URL ?? '').trim();
-} else if (isViteDevLocal || isViteDevLan) {
-  supabaseUrl = origin;
-} else {
-  supabaseUrl = String(env.VITE_SUPABASE_URL ?? '').trim();
-}
 const supabaseAnonKey = String(env.VITE_SUPABASE_ANON_KEY ?? '').trim();
 
 const hasConfig = Boolean(supabaseUrl && supabaseAnonKey && !supabaseUrl.startsWith('http://placeholder'));
@@ -136,18 +113,18 @@ export const mobileRealtimeHealth = {
 } as const;
 
 /**
- * REST/Auth stay same-origin in dev (Vite proxy). Realtime WebSockets through that proxy are
- * fragile; use a direct wss:// URL to VITE_SUPABASE_HOST when in dev on localhost/LAN.
+ * In dev, REST may use Vite proxy (localhost URL) while Realtime needs direct wss to VPS.
  */
 function attachDirectRealtimeInLocalDev(client: SupabaseClient): void {
   if (typeof window === 'undefined' || !env.DEV || isNativeCapacitor) return;
-  if (!isViteDevLocal && !isViteDevLan) return;
   if (!hasConfig || isDemoSupabaseAnonKey(supabaseAnonKey)) return;
 
   const configured = String(env.VITE_SUPABASE_URL ?? '').trim().replace(/\/$/, '');
-  if (!configured.startsWith('https://') || configured.includes('localhost')) return;
-
-  const realtimeHref = `${configured.replace(/^https/i, 'wss')}/realtime/v1`;
+  const directBase =
+    configured.startsWith('https://') && !configured.includes('localhost')
+      ? configured
+      : 'https://supabase.dincouture.pk';
+  const realtimeHref = `${directBase.replace(/^https/i, 'wss')}/realtime/v1`;
   try {
     client.realtime.disconnect();
   } catch {
