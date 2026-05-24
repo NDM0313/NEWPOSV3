@@ -13,7 +13,7 @@ supabase.dincouture.pk {
     handle @options {
         header Access-Control-Allow-Origin "https://erp.dincouture.pk"
         header Access-Control-Allow-Methods "GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS"
-        header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, apikey, prefer, x-client-info, x-supabase-api-version"
+        header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, apikey, prefer, x-client-info, x-supabase-api-version, x-supabase-client-info, accept-profile, content-profile"
         header Access-Control-Allow-Credentials "true"
         header Access-Control-Max-Age "86400"
         respond 204
@@ -37,7 +37,7 @@ location / {
     if ($request_method = 'OPTIONS') {
         add_header Access-Control-Allow-Origin "https://erp.dincouture.pk";
         add_header Access-Control-Allow-Methods "GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS";
-        add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, apikey, prefer, x-client-info, x-supabase-api-version";
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, apikey, prefer, x-client-info, x-supabase-api-version, x-supabase-client-info, accept-profile, content-profile";
         add_header Access-Control-Allow-Credentials "true";
         add_header Access-Control-Max-Age 86400;
         add_header Content-Length 0;
@@ -64,10 +64,10 @@ Add middleware that sets CORS headers for `supabase.dincouture.pk` and use it on
 From your machine (or VPS):
 
 ```bash
-curl -sI -X OPTIONS "https://supabase.dincouture.pk/auth/v1/token" \
+curl -sI -X OPTIONS "https://supabase.dincouture.pk/rest/v1/users" \
   -H "Origin: https://erp.dincouture.pk" \
-  -H "Access-Control-Request-Method: POST" \
-  -H "Access-Control-Request-Headers: Authorization, Content-Type, apikey"
+  -H "Access-Control-Request-Method: GET" \
+  -H "Access-Control-Request-Headers: accept-profile,authorization,apikey"
 ```
 
 You should see `Access-Control-Allow-Origin: https://erp.dincouture.pk` in the response headers.

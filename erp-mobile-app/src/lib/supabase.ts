@@ -1,6 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { RealtimeClient } from '@supabase/realtime-js';
+import { createClient } from '@supabase/supabase-js';
 import { clearSecure } from './secureStorage';
 import { syncCounterRefreshTokenForUserId } from './counterUserVault';
 import { maintainCounterVaultTokens } from './counterVaultMaintenance';
@@ -10,7 +9,9 @@ import {
   isStaleRefreshTokenError,
   noteRefreshFailure,
   recoverStaleAuthSession,
+  recoverStaleAuthSessionAfterInitCheck,
   recoverStaleAuthSessionFromBootstrap,
+  recoverStaleAuthSessionIfNeeded,
 } from './authSessionRecovery';
 import { resolveSupabaseApiUrl } from './resolveSupabaseApiUrl';
 import { isAuthAutoRefreshPaused } from './authAutoRefreshGate';
@@ -30,7 +31,7 @@ const supabaseUrl = resolveSupabaseApiUrl(String(env.VITE_SUPABASE_URL ?? ''), {
 
 /**
  * Production PWA/native: direct supabase.dincouture.pk (never erp nginx /storage proxy).
- * Vite dev browser: auto same-origin (localhost/LAN) → Vite proxy → Kong (no CORS).
+ * Vite dev browser: same-origin localhost → Vite proxy → Kong (auth, REST, storage, Realtime WS).
  * @see resolveSupabaseApiUrl.ts
  */
 const supabaseAnonKey = String(env.VITE_SUPABASE_ANON_KEY ?? '').trim();
@@ -81,19 +82,14 @@ export const erpMobileCanUseRealtime =
 
 let mobileRealtimeRuntimeDisabled = false;
 let mobileRealtimeFailureCount = 0;
-const MOBILE_REALTIME_MAX_FAILURES = 3;
-
-export function noteMobileRealtimeConnectionFailure(): void {
-  if (!env.DEV) return;
-  mobileRealtimeFailureCount += 1;
-  if (mobileRealtimeFailureCount >= MOBILE_REALTIME_MAX_FAILURES) {
-    mobileRealtimeRuntimeDisabled = true;
-    console.warn('[ERP Mobile] Realtime disabled for this session after repeated WebSocket failures');
-  }
-}
+let lastMobileRealtimeFailureAt = 0;
+let mobileRealtimeTeardownDone = false;
+const MOBILE_REALTIME_MAX_FAILURES = env.DEV ? 5 : 3;
+const MOBILE_REALTIME_FAILURE_DEBOUNCE_MS = 3000;
 
 export function resetMobileRealtimeFailureCount(): void {
   mobileRealtimeFailureCount = 0;
+  lastMobileRealtimeFailureAt = 0;
 }
 
 export function mobileCanSubscribeRealtime(): boolean {
@@ -116,37 +112,6 @@ export const mobileRealtimeHealth = {
           : 'ok',
 } as const;
 
-/**
- * In dev, REST may use Vite proxy (localhost URL) while Realtime needs direct wss to VPS.
- */
-function attachDirectRealtimeInLocalDev(client: SupabaseClient): void {
-  if (typeof window === 'undefined' || !env.DEV || isNativeCapacitor) return;
-  if (!hasConfig || isDemoSupabaseAnonKey(supabaseAnonKey)) return;
-
-  const directBase = resolveSupabaseApiUrl(String(env.VITE_SUPABASE_URL ?? ''), {
-    isNativeCapacitor: false,
-    isDev: false,
-  });
-  const realtimeHref = `${directBase.replace(/^https/i, 'wss')}/realtime/v1`;
-  try {
-    client.realtime.disconnect();
-  } catch {
-    /* ignore */
-  }
-  const rc = new RealtimeClient(realtimeHref, {
-    params: { apikey: supabaseAnonKey },
-    accessToken: async () => {
-      const { data } = await client.auth.getSession();
-      return data.session?.access_token ?? supabaseAnonKey;
-    },
-  });
-  (client as unknown as { realtime: RealtimeClient }).realtime = rc;
-  void client.auth.getSession().then(({ data }) => {
-    const t = data.session?.access_token ?? supabaseAnonKey;
-    void rc.setAuth(t);
-  });
-}
-
 export const supabase = createClient(url, key, {
   auth: {
     persistSession: true,
@@ -155,7 +120,22 @@ export const supabase = createClient(url, key, {
   },
 });
 
-attachDirectRealtimeInLocalDev(supabase);
+export function noteMobileRealtimeConnectionFailure(): void {
+  if (!env.DEV || mobileRealtimeRuntimeDisabled) return;
+  const now = Date.now();
+  if (now - lastMobileRealtimeFailureAt < MOBILE_REALTIME_FAILURE_DEBOUNCE_MS) return;
+  lastMobileRealtimeFailureAt = now;
+  mobileRealtimeFailureCount += 1;
+  if (mobileRealtimeFailureCount >= MOBILE_REALTIME_MAX_FAILURES) {
+    mobileRealtimeRuntimeDisabled = true;
+    console.warn('[ERP Mobile] Realtime disabled for this session after repeated WebSocket failures');
+    if (!mobileRealtimeTeardownDone) {
+      mobileRealtimeTeardownDone = true;
+      void supabase.removeAllChannels().catch(() => {});
+      console.info('[ERP Mobile] Realtime unavailable in dev — using 45s polling fallback');
+    }
+  }
+}
 
 if (isNativeCapacitor) {
   installNativeStaleTokenConsoleFilter();
@@ -185,12 +165,16 @@ if (hasConfig) {
       clearSecure().catch(() => {});
       window.dispatchEvent(new CustomEvent('erp-auth-signed-out'));
     }
-    if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
+    if (event === 'INITIAL_SESSION') {
+      void recoverStaleAuthSessionAfterInitCheck();
+    } else if (event === 'TOKEN_REFRESHED') {
       void supabase.auth.getSession().then(({ error }) => {
         if (error) {
           const stale = isStaleRefreshTokenError(error);
           const tripped = stale || noteRefreshFailure(error);
-          if (tripped) void recoverStaleAuthSession();
+          if (tripped) {
+            void (stale ? recoverStaleAuthSessionIfNeeded(error) : recoverStaleAuthSession());
+          }
         }
       });
     }
@@ -206,6 +190,6 @@ if (hasConfig && typeof document !== 'undefined') {
   });
 }
 
-if (env.DEV) {
+if (env.DEV && typeof window !== 'undefined') {
   console.info('[ERP Mobile] Realtime health:', mobileRealtimeHealth);
 }

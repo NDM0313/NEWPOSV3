@@ -9,6 +9,7 @@ import sys
 import re
 
 REPLACEMENT = r'''  ## Storage routes: the storage server manages its own auth
+  ## Upstream host is compose service name `storage` — container must be running (see fix-kong-storage-upstream.sh)
   - name: storage-v1
     _comment: 'Storage: /storage/v1/* -> http://storage:5000/*'
     url: http://storage:5000/

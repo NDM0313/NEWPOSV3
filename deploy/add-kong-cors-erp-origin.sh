@@ -24,6 +24,21 @@ REQUIRED_ORIGINS = [
     "ionic://localhost",
     "http://localhost",
     "https://localhost",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+]
+
+REQUIRED_CORS_HEADERS = [
+    "Authorization",
+    "Content-Type",
+    "Accept",
+    "apikey",
+    "prefer",
+    "x-client-info",
+    "x-supabase-api-version",
+    "x-supabase-client-info",
+    "accept-profile",
+    "content-profile",
 ]
 
 
@@ -47,16 +62,11 @@ def cors_block_multi():
             "      - DELETE",
             "      - OPTIONS",
             "      headers:",
-            "      - Authorization",
-            "      - Content-Type",
-            "      - Accept",
-            "      - apikey",
-            "      - prefer",
-            "      - x-client-info",
-            "      - x-supabase-api-version",
-            "      preflight_continue: false",
         ]
     )
+    for h in REQUIRED_CORS_HEADERS:
+        lines.append("      - %s" % h)
+    lines.append("      preflight_continue: false")
     return lines
 
 
@@ -89,6 +99,54 @@ def merge_origins_blocks(lines):
                 if o not in have:
                     dash_lines.append('%s- "%s"' % (indent, o))
                     have.add(o)
+            res.extend(dash_lines)
+            continue
+        res.append(line)
+        i += 1
+    return res
+
+
+def merge_headers_in_cors_blocks(lines):
+    """Add REQUIRED_CORS_HEADERS only under cors plugin config headers: lists."""
+    res = []
+    i = 0
+    n = len(lines)
+    in_cors = False
+    cors_indent = 0
+    while i < n:
+        line = lines[i]
+        m_cors = re.match(r"^(\s*)-\s+name:\s+cors\s*$", line)
+        if m_cors:
+            in_cors = True
+            cors_indent = len(m_cors.group(1))
+            res.append(line)
+            i += 1
+            continue
+        if in_cors and re.match(r"^(\s*)-\s+name:\s+\S", line):
+            mi = re.match(r"^(\s*)-\s+name:", line)
+            if mi and len(mi.group(1)) <= cors_indent:
+                in_cors = False
+        if in_cors and re.match(r"^\s*headers:\s*$", line):
+            res.append(line)
+            i += 1
+            indent = "      "
+            have = set()
+            dash_lines = []
+            while i < n:
+                m = re.match(r"^(\s+)-\s*(\S+)\s*$", lines[i])
+                if m:
+                    indent = m.group(1)
+                    have.add(m.group(2))
+                    dash_lines.append(lines[i])
+                    i += 1
+                elif not lines[i].strip():
+                    res.append(lines[i])
+                    i += 1
+                else:
+                    break
+            for h in REQUIRED_CORS_HEADERS:
+                if h not in have:
+                    dash_lines.append("%s- %s" % (indent, h))
             res.extend(dash_lines)
             continue
         res.append(line)
@@ -135,13 +193,8 @@ while i < len(lines):
                         out.append("      - DELETE")
                         out.append("      - OPTIONS")
                         out.append("      headers:")
-                        out.append("      - Authorization")
-                        out.append("      - Content-Type")
-                        out.append("      - Accept")
-                        out.append("      - apikey")
-                        out.append("      - prefer")
-                        out.append("      - x-client-info")
-                        out.append("      - x-supabase-api-version")
+                        for h in REQUIRED_CORS_HEADERS:
+                            out.append("      - %s" % h)
                         out.append("      preflight_continue: false")
                         k += 1
                         while k < block_end:
@@ -157,12 +210,12 @@ while i < len(lines):
                 i = block_end - 1
     i += 1
 
-merged = merge_origins_blocks(out)
+merged = merge_headers_in_cors_blocks(merge_origins_blocks(out))
 new_content = "\n".join(merged)
 if new_content != content:
     with open(path, "w") as f:
         f.write(new_content)
-    print("[kong-cors] Patched kong.yml (erp + mobile origins + methods/preflight where missing)")
+    print("[kong-cors] Patched kong.yml (origins + PostgREST CORS headers + preflight where missing)")
 else:
     print("[kong-cors] No change.")
 PY

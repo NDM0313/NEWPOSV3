@@ -182,6 +182,8 @@ fi
 
 # --- Storage JWT fix (Studio "Failed to retrieve buckets") before .env so Kong gets new keys ---
 [ -f deploy/fix-supabase-storage-jwt.sh ] && bash deploy/fix-supabase-storage-jwt.sh || true
+# Ensure storage-api container is running (Kong DNS for storage:5000 fails when stopped → 503)
+[ -f deploy/fix-kong-storage-upstream.sh ] && bash deploy/fix-kong-storage-upstream.sh || true
 
 # --- ERP Vite env: canonical ANON from /root/supabase/docker/.env (see docs/infra/AUTH_PRODUCTION_LOCKED.md) ---
 # Order: GoTrue/Kong URLs + redirects → Kong CORS → write .env.production (never read anon from running Kong — avoids race/drift).

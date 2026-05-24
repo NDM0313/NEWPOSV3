@@ -454,7 +454,7 @@ export default function App() {
   }, [online, user?.id, setStatus]);
 
   useEffect(() => {
-    if (!companyId) return;
+    if (!companyId || !user?.id) return;
     const cleanup = subscribeMobileRealtime({
       companyId,
       branchId: selectedBranch?.id ?? null,
@@ -472,7 +472,7 @@ export default function App() {
     return () => {
       if (cleanup) cleanup();
     };
-  }, [companyId, selectedBranch?.id]);
+  }, [companyId, selectedBranch?.id, user?.id]);
 
   useEffect(() => {
     if (!companyId || mobileRealtimeHealth.canUseRealtime) return;

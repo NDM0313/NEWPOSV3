@@ -23,6 +23,12 @@ const env =
 
 const isNativeCapacitor = Capacitor.isNativePlatform();
 const isDevBuild = Boolean(env.DEV);
+const isDevBrowser =
+  isDevBuild && typeof window !== 'undefined' && !isNativeCapacitor;
+
+let devStorageProxyHintLogged = false;
+/** Set on first 503 in dev browser — skip parallel sign storms until page reload. */
+let devStorageUpstreamUnavailable = false;
 
 /**
  * Module-level cache so the same `bucket/path` is signed at most once per TTL window —
@@ -31,6 +37,8 @@ const isDevBuild = Boolean(env.DEV);
  */
 type SignedUrlCacheEntry = { url: string | null; expiresAt: number };
 const signedUrlCache = new Map<string, SignedUrlCacheEntry>();
+/** In-flight sign requests — parallel ProductImage mounts share one promise per path. */
+const signedUrlInflight = new Map<string, Promise<string | null>>();
 const SIGNED_URL_NEGATIVE_TTL_MS = 5 * 60 * 1000;
 const SIGNED_URL_POSITIVE_TTL_MS = 50 * 60 * 1000;
 
@@ -55,6 +63,23 @@ function isNotFoundError(err: unknown): boolean {
   if (status === 404) return true;
   const msg = String((err as { message?: string }).message ?? '').toLowerCase();
   return /not.*found|object.*not.*exist/i.test(msg);
+}
+
+function isUpstreamUnavailableError(err: unknown): boolean {
+  if (!err) return false;
+  const status = (err as { status?: number; statusCode?: number }).status
+    ?? (err as { statusCode?: number }).statusCode;
+  if (status === 502 || status === 503) return true;
+  const msg = String((err as { message?: string }).message ?? '').toLowerCase();
+  return /service unavailable|name resolution failed|bad gateway/i.test(msg);
+}
+
+function logDevStorageProxyHintOnce(): void {
+  if (!isDevBrowser || devStorageProxyHintLogged) return;
+  devStorageProxyHintLogged = true;
+  console.warn(
+    '[StorageUrl] Storage sign failed via dev proxy — check VPS storage-api / Kong (docker logs supabase-storage)',
+  );
 }
 
 function isLocalDevHost(url: string): boolean {
@@ -116,14 +141,20 @@ function normalizePublicUrl(ref: StorageRef): string {
   return pub.publicUrl || storageRefForPersistence(ref.bucket, ref.path);
 }
 
-async function tryProductImageRpc(path: string, expiresSeconds: number): Promise<string | null> {
+async function tryProductImageRpc(
+  path: string,
+  expiresSeconds: number,
+  cacheKey?: string,
+): Promise<string | null> {
   try {
     const { data, error } = await supabase.rpc('get_product_image_signed_url', {
       p_path: path,
       p_expires_seconds: expiresSeconds,
     });
     if (error || !data?.ok) {
-      if (isDevBuild) console.warn('[StorageUrl] product RPC failed', error?.message ?? data?.error);
+      if (isDevBuild && !devStorageProxyHintLogged) {
+        console.warn('[StorageUrl] product RPC failed', error?.message ?? data?.error);
+      }
       return null;
     }
     if (typeof data.signed_url === 'string' && data.signed_url) {
@@ -140,9 +171,19 @@ async function tryProductImageRpc(path: string, expiresSeconds: number): Promise
           ? rewriteSignedUrlForNative(signed.signedUrl, 'product-images', path)
           : signed.signedUrl;
       }
+      if (isUpstreamUnavailableError(signErr)) {
+        logDevStorageProxyHintOnce();
+        if (cacheKey) writeCache(cacheKey, null, SIGNED_URL_NEGATIVE_TTL_MS);
+        return null;
+      }
     }
   } catch (e) {
-    if (isDevBuild) console.warn('[StorageUrl] product RPC exception', e);
+    if (isUpstreamUnavailableError(e)) {
+      logDevStorageProxyHintOnce();
+      if (cacheKey) writeCache(cacheKey, null, SIGNED_URL_NEGATIVE_TTL_MS);
+      return null;
+    }
+    if (isDevBuild && !devStorageProxyHintLogged) console.warn('[StorageUrl] product RPC exception', e);
   }
   return null;
 }
@@ -165,8 +206,26 @@ export async function getStorageDisplayUrl(rawUrl: string): Promise<string | nul
   const cached = readCache(cacheKey);
   if (cached) return cached.url;
 
+  if (isDevBrowser && devStorageUpstreamUnavailable) {
+    return null;
+  }
+
+  const inflight = signedUrlInflight.get(cacheKey);
+  if (inflight) return inflight;
+
+  const task = resolveStorageDisplayUrlNow(ref, cacheKey);
+  signedUrlInflight.set(cacheKey, task);
+  try {
+    return await task;
+  } finally {
+    signedUrlInflight.delete(cacheKey);
+  }
+}
+
+async function resolveStorageDisplayUrlNow(ref: StorageRef, cacheKey: string): Promise<string | null> {
   const expiresSeconds = 3600;
   let notFound = false;
+  let upstreamUnavailable = false;
 
   try {
     const { data, error } = await supabase.storage.from(ref.bucket).createSignedUrl(ref.path, expiresSeconds);
@@ -182,19 +241,27 @@ export async function getStorageDisplayUrl(rawUrl: string): Promise<string | nul
       return signed;
     }
     if (isNotFoundError(error)) notFound = true;
-    if (isDevBuild) console.warn('[StorageUrl] sign failed', ref.bucket, error?.message ?? 'no signedUrl');
+    if (isUpstreamUnavailableError(error)) upstreamUnavailable = true;
+    if (isDevBuild && !upstreamUnavailable) {
+      console.warn('[StorageUrl] sign failed', ref.bucket, error?.message ?? 'no signedUrl');
+    }
   } catch (e) {
     if (isNotFoundError(e)) notFound = true;
-    if (isDevBuild) console.warn('[StorageUrl] sign exception', ref.bucket, e);
+    if (isUpstreamUnavailableError(e)) upstreamUnavailable = true;
+    if (isDevBuild && !upstreamUnavailable) console.warn('[StorageUrl] sign exception', ref.bucket, e);
   }
 
-  if (notFound) {
+  if (notFound || upstreamUnavailable) {
+    if (upstreamUnavailable) {
+      if (isDevBrowser) devStorageUpstreamUnavailable = true;
+      logDevStorageProxyHintOnce();
+    }
     writeCache(cacheKey, null, SIGNED_URL_NEGATIVE_TTL_MS);
     return null;
   }
 
   if (ref.bucket === 'product-images') {
-    const rpcUrl = await tryProductImageRpc(ref.path, expiresSeconds);
+    const rpcUrl = await tryProductImageRpc(ref.path, expiresSeconds, cacheKey);
     if (rpcUrl) {
       writeCache(cacheKey, rpcUrl, SIGNED_URL_POSITIVE_TTL_MS);
       return rpcUrl;

@@ -28,6 +28,9 @@ export function resolveSupabaseApiUrl(
   const trimmed = String(raw ?? '').trim().replace(/\/$/, '');
   if (!trimmed) return DIRECT;
   if (/erp\.dincouture\.pk/i.test(trimmed)) return DIRECT;
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(trimmed)) return trimmed;
+  // Dev .env often sets localhost for Vite proxy; only keep localhost when isDev proxy mode is active.
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(trimmed)) {
+    return isDev ? trimmed : DIRECT;
+  }
   return trimmed;
 }

@@ -89,13 +89,40 @@ export async function recoverStaleAuthSession(options?: { allowGlobalRecovery?: 
   return recoveryInFlight;
 }
 
+const isDevBrowser =
+  typeof import.meta !== 'undefined' &&
+  Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV);
+
+export function logStaleLocalSessionClearedHint(): void {
+  if (isDevBrowser) {
+    console.info('[ERP Mobile] Stale local session cleared — sign in again.');
+  }
+}
+
+/** Clear local auth when GoTrue rejects the refresh token; returns true when recovery ran. */
+export async function recoverStaleAuthSessionIfNeeded(error: unknown): Promise<boolean> {
+  if (!error || !isStaleRefreshTokenError(error)) return false;
+  await recoverStaleAuthSession();
+  logStaleLocalSessionClearedHint();
+  return true;
+}
+
+/** Bootstrap + init: detect stale refresh token even when a cached access token still loads. */
+export async function recoverStaleAuthSessionAfterInitCheck(): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  const { data, error } = await supabase.auth.getSession();
+  if (await recoverStaleAuthSessionIfNeeded(error)) return;
+  if (!data.session) return;
+  const expiresAt = data.session.expires_at ?? 0;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (expiresAt > nowSec + 60) return;
+  const { error: refreshError } = await supabase.auth.refreshSession();
+  await recoverStaleAuthSessionIfNeeded(refreshError);
+}
+
 /** Run once at client init before App auth bootstrap. */
 export async function recoverStaleAuthSessionFromBootstrap(): Promise<void> {
-  if (!isSupabaseConfigured) return;
-  const { error } = await supabase.auth.getSession();
-  if (error && isStaleRefreshTokenError(error)) {
-    await recoverStaleAuthSession();
-  }
+  await recoverStaleAuthSessionAfterInitCheck();
 }
 
 /** PWA/web: stale refresh recovery is wired in supabase.ts onAuthStateChange (see noteRefreshFailure). */

@@ -71,6 +71,21 @@ export function isBucketNotFoundError(err: unknown): boolean {
   return msg.includes('bucket') && (msg.includes('not found') || msg.includes('does not exist'));
 }
 
+export function isStorageUpstreamUnavailableError(err: unknown): boolean {
+  const msg = messageFrom(err).toLowerCase();
+  if (typeof err === 'object' && err !== null) {
+    const status =
+      (err as { status?: number; statusCode?: number }).status
+      ?? (err as { statusCode?: number }).statusCode;
+    if (status === 502 || status === 503) return true;
+  }
+  return (
+    msg.includes('service unavailable') ||
+    msg.includes('name resolution failed') ||
+    msg.includes('bad gateway')
+  );
+}
+
 export function classifyStorageUploadError(
   err: unknown,
   fileName = 'file',
@@ -104,6 +119,13 @@ export function classifyStorageUploadError(
     return {
       kind: 'bucket',
       userMessage: 'Storage bucket missing on server. Contact admin to run deploy.',
+    };
+  }
+  if (isStorageUpstreamUnavailableError(err)) {
+    return {
+      kind: 'unknown',
+      userMessage:
+        'Storage server unavailable (503). On VPS run: bash deploy/fix-kong-storage-upstream.sh',
     };
   }
   const raw = messageFrom(err);

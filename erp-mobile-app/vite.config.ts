@@ -4,22 +4,58 @@ import path from 'path';
 
 /** Kong may reject WS/API when forwarded Origin is localhost; set on the Node→Kong leg only. */
 const supabaseProxyOrigin = process.env.VITE_SUPABASE_PROXY_ORIGIN || 'https://erp.dincouture.pk';
+const supabaseProxyHost = 'supabase.dincouture.pk';
 
 type ProxyWithEvents = {
   on: (event: string, fn: (...args: unknown[]) => void) => void;
 };
 
+type ProxyReqLike = {
+  setHeader: (n: string, v: string) => void;
+  path?: string;
+};
+
+function apikeyFromProxyPath(path: string | undefined): string | null {
+  if (!path) return null;
+  const q = path.indexOf('?');
+  if (q === -1) return null;
+  return new URLSearchParams(path.slice(q + 1)).get('apikey');
+}
+
+let wsProxyLogOnce = false;
+
 function attachSupabaseProxyOrigin(proxy: ProxyWithEvents) {
-  const setOrigin = (proxyReq: { setHeader: (n: string, v: string) => void }) => {
+  const setCommonHeaders = (proxyReq: ProxyReqLike) => {
     proxyReq.setHeader('Origin', supabaseProxyOrigin);
+    proxyReq.setHeader('Host', supabaseProxyHost);
   };
   proxy.on('proxyReq', (...args: unknown[]) => {
-    const proxyReq = args[0] as { setHeader: (n: string, v: string) => void };
-    setOrigin(proxyReq);
+    const proxyReq = args[0] as ProxyReqLike;
+    setCommonHeaders(proxyReq);
   });
-  proxy.on('proxyReqWs', (...args: unknown[]) => {
-    const proxyReq = args[0] as { setHeader: (n: string, v: string) => void };
-    setOrigin(proxyReq);
+  proxy.on('proxyReqWs', (...reqArgs: unknown[]) => {
+    const proxyReq = reqArgs[0] as ProxyReqLike;
+    const req = reqArgs[3] as { url?: string } | undefined;
+    setCommonHeaders(proxyReq);
+    const apikey = apikeyFromProxyPath(req?.url ?? proxyReq.path);
+    if (apikey) {
+      proxyReq.setHeader('apikey', apikey);
+    }
+    if (!wsProxyLogOnce) {
+      wsProxyLogOnce = true;
+      console.info('[Vite] Realtime WS proxy → Kong (Origin + Host + apikey header)');
+    }
+  });
+  proxy.on('error', (...args: unknown[]) => {
+    const err = args[0] as { message?: string };
+    console.warn('[Vite] Supabase proxy error:', err?.message ?? err);
+  });
+  proxy.on('open', () => {
+    if (!wsProxyLogOnce) return;
+    console.info('[Vite] Realtime WS proxy connected');
+  });
+  proxy.on('close', () => {
+    console.info('[Vite] Realtime WS proxy closed');
   });
 }
 

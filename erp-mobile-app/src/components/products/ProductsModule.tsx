@@ -459,11 +459,19 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                           />
                         </div>
                       )}
-                      <button
-                        type="button"
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={(e) => {
                           e.stopPropagation();
                           setImagePreviewProduct(p);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setImagePreviewProduct(p);
+                          }
                         }}
                         className={`w-14 h-14 rounded-lg bg-[#111827] border overflow-hidden flex items-center justify-center flex-shrink-0 ${
                           thumb
@@ -473,7 +481,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                         aria-label={`View image for ${p.name}`}
                       >
                         <ProductImage src={thumb} alt={p.name} variant="thumb" />
-                      </button>
+                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <h3 className="font-medium text-white text-sm leading-tight truncate">{p.name}</h3>
