@@ -41,7 +41,7 @@ export const DEFAULT_COA_SEED_JSON = {
     },
     income: {
       '4050_Revenue_group': {
-        children: ['4100_SalesRevenue_or_legacy_4000', '4110_ShippingIncome', '4200_RentalIncome'],
+        children: ['4100_SalesRevenue_or_legacy_4000', '4110_ShippingIncome', '4120_ExtraServiceIncome', '4200_RentalIncome'],
       },
     },
     expenses: {

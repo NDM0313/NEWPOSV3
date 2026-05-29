@@ -772,7 +772,18 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   // Modal double-entry truth must come from posted journal_entry_lines for the selected JE, not merged payment transforms.
   // Do not use getEffectiveJournalLinesForPayment as the primary grid — only as optional auxiliary context below.
   const journalLines = rawJournalLines;
-  const payment = Array.isArray(transaction?.payment) 
+  const journalTotals = useMemo(() => {
+    const debit = journalLines.reduce((sum: number, line: any) => sum + (Number(line.debit) || 0), 0);
+    const credit = journalLines.reduce((sum: number, line: any) => sum + (Number(line.credit) || 0), 0);
+    const diff = Math.round((debit - credit) * 100) / 100;
+    return {
+      debit: Math.round(debit * 100) / 100,
+      credit: Math.round(credit * 100) / 100,
+      diff,
+      imbalanced: Math.abs(diff) > 0.01,
+    };
+  }, [journalLines]);
+  const payment = Array.isArray(transaction?.payment)
     ? transaction.payment[0] 
     : transaction?.payment;
   const paymentNotesDisplay = (() => {
@@ -1184,6 +1195,45 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             {/* SECTION C: JOURNAL ENTRIES (MOST IMPORTANT) */}
             <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
               <h3 className="text-sm font-semibold text-gray-300 mb-3">Journal Entries (Double Entry)</h3>
+              {journalTotals.imbalanced && (
+                <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+                  <p className="font-medium text-red-300">Out of balance</p>
+                  <p className="mt-1 text-xs text-red-200/90">
+                    Debit Rs {journalTotals.debit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                    ≠ Credit Rs {journalTotals.credit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                    (difference Rs {Math.abs(journalTotals.diff).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                  </p>
+                  {String(transaction?.reference_type || '').toLowerCase() === 'sale' &&
+                    transaction?.reference_id &&
+                    !transaction?.payment_id && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 border-red-500/40 text-red-200 hover:bg-red-500/20"
+                        onClick={async () => {
+                          try {
+                            const { rebuildSaleDocumentAccounting } = await import('@/app/services/documentPostingEngine');
+                            const saleId = String(transaction.reference_id);
+                            const newJeId = await rebuildSaleDocumentAccounting(saleId);
+                            if (newJeId) {
+                              toast.success('Sale document journal rebuilt from current invoice.');
+                              await loadTransaction();
+                              dispatchAccountingEditCommitted();
+                              accounting.refreshEntries?.();
+                            } else {
+                              toast.error('Rebuild failed — check sale is final with a positive total.');
+                            }
+                          } catch (e: unknown) {
+                            toast.error(e instanceof Error ? e.message : 'Rebuild failed');
+                          }
+                        }}
+                      >
+                        Rebuild from sale
+                      </Button>
+                    )}
+                </div>
+              )}
               {journalLines.length > 0 ? (
                 <p className="text-xs text-gray-400 mb-2">
                   Posted lines for this journal entry (journal_entry_lines). Same basis as GL.

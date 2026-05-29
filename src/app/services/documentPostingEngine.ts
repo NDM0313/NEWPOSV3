@@ -10,6 +10,7 @@
 import { supabase } from '@/lib/supabase';
 import { canPostAccountingForPurchaseStatus, canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { saleAccountingService, listActiveCanonicalSaleDocumentJournalEntryIds } from './saleAccountingService';
+import { findUnbalancedJournalEntries } from './accountingIntegrityLabService';
 import {
   createPurchaseJournalEntry,
   listActiveCanonicalPurchaseDocumentJournalEntryIds,
@@ -19,6 +20,8 @@ import {
 // Expose for console repair: window.__postSaleAccounting('sale-uuid')
 if (typeof window !== 'undefined') {
   (window as any).__postSaleAccounting = (saleId: string) => postSaleDocumentAccounting(saleId);
+  (window as any).__repairUnbalancedSaleJournals = (companyId: string) =>
+    repairUnbalancedSaleDocumentJournals(companyId);
 }
 
 /** Post canonical sale document JE (idempotent). Loads sale row from DB. */
@@ -63,6 +66,52 @@ export async function rebuildSaleDocumentAccounting(saleId: string): Promise<str
       .in('id', ids);
   }
   return postSaleDocumentAccounting(saleId);
+}
+
+/**
+ * Repair canonical sale document JEs that are out of balance (Dr != Cr).
+ * Voids + reposts from current sale row — payments untouched.
+ */
+export async function repairUnbalancedSaleDocumentJournals(companyId: string): Promise<{
+  scanned: number;
+  repaired: number;
+  failed: { saleId: string; error: string }[];
+}> {
+  const failed: { saleId: string; error: string }[] = [];
+  if (!companyId) return { scanned: 0, repaired: 0, failed };
+
+  const unbalanced = await findUnbalancedJournalEntries(companyId);
+  const saleJeRows = unbalanced.filter(
+    (u) => String(u.reference_type || '').toLowerCase() === 'sale' && u.reference_id
+  );
+  if (saleJeRows.length === 0) return { scanned: 0, repaired: 0, failed };
+
+  const jeIds = saleJeRows.map((u) => u.journal_entry_id);
+  const { data: jeMeta } = await supabase
+    .from('journal_entries')
+    .select('id, reference_id, payment_id')
+    .in('id', jeIds);
+
+  const saleIds = [
+    ...new Set(
+      (jeMeta || [])
+        .filter((j) => !j.payment_id && j.reference_id)
+        .map((j) => j.reference_id as string)
+    ),
+  ];
+
+  let repaired = 0;
+  for (const saleId of saleIds) {
+    try {
+      const newJeId = await rebuildSaleDocumentAccounting(saleId);
+      if (newJeId) repaired++;
+      else failed.push({ saleId, error: 'Rebuild returned no journal (check sale status/total).' });
+    } catch (e: unknown) {
+      failed.push({ saleId, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  return { scanned: saleIds.length, repaired, failed };
 }
 
 /** Reverse canonical sale document (adds sale_reversal JE; does not void original). */

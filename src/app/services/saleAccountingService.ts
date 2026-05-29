@@ -1,14 +1,17 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 /**
  * Sale Accounting Service (Phase 4: one contract)
  *
  * Source lock: journal_entries + journal_entry_lines + accounts only.
- * COA: 1100 AR, 4000 Sales Revenue, 4010 Studio Service Revenue, 4110 Shipping Income, 5200 Discount Allowed, 5300 Extra Expense,
+ * COA: 1100 AR, 4000 Sales Revenue, 4010 Studio Service Revenue, 4110 Shipping Income, 4120 Extra Service Income,
+ * 5200 Discount Allowed, 5300 Extra Expense (shop tailor payout — not customer invoice extra),
  * 5010 COGS–Inventory (physical goods COGS), 5000 Cost of Production (studio stage labor / worker accruals only), 1200 Inventory, 2000 AP.
  * Payment isolation: document JEs never touch payment_id; payment has its own flow.
  *
- * Sale create: Dr AR (total), Dr Discount (if any), Cr Sales Revenue (product), Cr Shipping Income (4110, if shipmentCharges), COGS/Inventory.
+ * Sale create: Dr AR (total+shipping), Dr Discount (if any), Cr Sales Revenue (product), Cr Extra Service Income (4120, if extra charges),
+ * Cr Shipping Income (4110, if shipmentCharges), COGS/Inventory.
  * Sale edit: delta JEs only (revenue, discount, shipping, extra); no blanket reversal; payment untouched unless payment changed.
- * Sale cancel: reversal JE matching create (Sales Revenue, Shipping Income, Discount, AR, COGS/Inventory).
+ * Sale cancel: reversal JE matching create (Sales Revenue, Extra Service Income, Shipping Income, Discount, AR, COGS/Inventory).
  */
 
 import { supabase } from '@/lib/supabase';
@@ -360,6 +363,62 @@ async function ensureShippingIncomeAccount(companyId: string): Promise<{ id: str
   return null;
 }
 
+/** Customer extra service income (stitching, etc.) — code 4120; separate from shop payout 5300. */
+async function ensureExtraServiceIncomeAccount(companyId: string): Promise<{ id: string } | null> {
+  const existing = await accountHelperService.getAccountByCode('4120', companyId);
+  if (existing?.id) return existing;
+  const parent = await accountHelperService.getAccountByCode('4050', companyId);
+  try {
+    const { data, error } = await supabase
+      .from('accounts')
+      .insert({
+        company_id: companyId,
+        code: '4120',
+        name: 'Extra Service Income',
+        type: 'revenue',
+        balance: 0,
+        is_active: true,
+        ...(parent?.id ? { parent_id: parent.id } : {}),
+      })
+      .select('id')
+      .single();
+    if (!error && data?.id) return data;
+  } catch (e) {
+    console.warn('[saleAccountingService] Could not auto-create Extra Service Income account (4120):', e);
+  }
+  return null;
+}
+
+/** Load customer extra service amount from sale_charges (non-discount/shipping) or sales.extra_expenses. */
+export async function loadSaleExtraServiceIncomeAmount(saleId: string): Promise<number> {
+  if (!saleId) return 0;
+  try {
+    const { data: charges } = await supabase
+      .from('sale_charges')
+      .select('charge_type, amount')
+      .eq('sale_id', saleId);
+    const fromCharges = (charges || []).reduce((sum, row) => {
+      const t = String((row as { charge_type?: string }).charge_type ?? '').toLowerCase();
+      if (t === 'discount' || t === 'shipping') return sum;
+      return sum + (Number((row as { amount?: number }).amount) || 0);
+    }, 0);
+    if (fromCharges > 0) return Math.round(fromCharges * 100) / 100;
+
+    const { data: sale } = await supabase.from('sales').select('extra_expenses').eq('id', saleId).maybeSingle();
+    const fromColumn = Number((sale as { extra_expenses?: number } | null)?.extra_expenses ?? 0) || 0;
+    return Math.round(fromColumn * 100) / 100;
+  } catch (e) {
+    console.warn('[saleAccountingService] loadSaleExtraServiceIncomeAmount failed:', e);
+    return 0;
+  }
+}
+
+/** Exported for sale_charges ledger_account_id when persisting extra charge rows. */
+export async function resolveExtraServiceIncomeAccountId(companyId: string): Promise<string | null> {
+  const acct = await ensureExtraServiceIncomeAccount(companyId);
+  return acct?.id ?? null;
+}
+
 /** Physical inventory COGS (5010). Studio/worker stage costs stay on 5000 — see studioProductionService. */
 async function ensureCOGSAccount(companyId: string): Promise<{ id: string } | null> {
   const existing = await accountHelperService.getAccountByCode('5010', companyId);
@@ -424,7 +483,7 @@ async function ensureInventoryAccount(companyId: string): Promise<{ id: string }
  * Calculate COGS for a sale using weighted average cost from stock_movements.
  * Falls back to product.cost_price only when no purchase/opening movements exist.
  */
-async function getSaleCogs(saleId: string): Promise<number> {
+export async function getSaleCogs(saleId: string): Promise<number> {
   // Get sale items with product_id and quantity (is_studio_product lines excluded — labor in stage JEs)
   let items: {
     product_id?: string;
@@ -479,11 +538,99 @@ async function getSaleCogs(saleId: string): Promise<number> {
   return Math.round(total * 100) / 100;
 }
 
+/** Sum debits/credits for a JE; used after in-place sale document edits. */
+export async function assertJournalEntryBalanced(
+  journalEntryId: string
+): Promise<{ balanced: boolean; debit: number; credit: number; diff: number }> {
+  if (!journalEntryId) return { balanced: true, debit: 0, credit: 0, diff: 0 };
+  const { data: lines } = await supabase
+    .from('journal_entry_lines')
+    .select('debit, credit')
+    .eq('journal_entry_id', journalEntryId);
+  const debit = Math.round((lines || []).reduce((s, l) => s + (Number(l.debit) || 0), 0) * 100) / 100;
+  const credit = Math.round((lines || []).reduce((s, l) => s + (Number(l.credit) || 0), 0) * 100) / 100;
+  const diff = Math.round((debit - credit) * 100) / 100;
+  return { balanced: Math.abs(diff) <= 0.02, debit, credit, diff };
+}
+
+/**
+ * Keep COGS (5010) debit and Inventory (1200) credit in sync on an existing sale document JE.
+ * Always sets both to the same amount (including 0) — prevents orphaned inventory credits.
+ */
+export async function syncSaleDocumentJeCogsInventoryPair(params: {
+  journalEntryId: string;
+  saleId: string;
+  companyId: string;
+  invoiceNo?: string;
+}): Promise<number> {
+  const { journalEntryId, saleId, companyId, invoiceNo } = params;
+  const totalCogs = await getSaleCogs(saleId);
+  const cogsAccount = await ensureCOGSAccount(companyId);
+  const invAccount = await ensureInventoryAccount(companyId);
+  if (!cogsAccount?.id || !invAccount?.id) return totalCogs;
+
+  const desc = invoiceNo || saleId.slice(0, 8);
+  const legacyCogs = await accountHelperService.getAccountByCode('5000', companyId);
+  const primaryCogsId = cogsAccount.id;
+  const invId = invAccount.id;
+
+  const { data: existingLines } = await supabase
+    .from('journal_entry_lines')
+    .select('id, account_id, debit, credit')
+    .eq('journal_entry_id', journalEntryId);
+
+  const cogsLine = (existingLines || []).find((l) => l.account_id === primaryCogsId);
+  if (totalCogs > 0) {
+    if (cogsLine?.id) {
+      await supabase.from('journal_entry_lines').update({ debit: totalCogs, credit: 0 }).eq('id', cogsLine.id);
+    } else {
+      await supabase.from('journal_entry_lines').insert({
+        journal_entry_id: journalEntryId,
+        account_id: primaryCogsId,
+        debit: totalCogs,
+        credit: 0,
+        description: `COGS – ${desc}`,
+      });
+    }
+  } else if (cogsLine?.id) {
+    await supabase.from('journal_entry_lines').update({ debit: 0, credit: 0 }).eq('id', cogsLine.id);
+  }
+
+  if (legacyCogs?.id && legacyCogs.id !== primaryCogsId) {
+    const legacyLine = (existingLines || []).find(
+      (l) => l.account_id === legacyCogs.id && (Number(l.debit) || 0) > 0
+    );
+    if (legacyLine?.id) {
+      await supabase.from('journal_entry_lines').update({ debit: 0, credit: 0 }).eq('id', legacyLine.id);
+    }
+  }
+
+  const invLine = (existingLines || []).find((l) => l.account_id === invId);
+  if (totalCogs > 0) {
+    if (invLine?.id) {
+      await supabase.from('journal_entry_lines').update({ debit: 0, credit: totalCogs }).eq('id', invLine.id);
+    } else {
+      await supabase.from('journal_entry_lines').insert({
+        journal_entry_id: journalEntryId,
+        account_id: invId,
+        debit: 0,
+        credit: totalCogs,
+        description: `Inventory – sale ${desc}`,
+      });
+    }
+  } else if (invLine?.id) {
+    await supabase.from('journal_entry_lines').update({ debit: 0, credit: 0 }).eq('id', invLine.id);
+  }
+
+  return totalCogs;
+}
+
 export const saleAccountingService = {
   /**
    * Create journal entry when sale is finalized (Phase 4: one contract).
    *
-   * Dr AR (1100) = total + shipping (full customer receivable). Cr: Sales Revenue (4000), Shipping Income (4110), Dr Discount (5200) if any.
+   * Dr AR (1100) = total + shipping (full customer receivable). Cr: Sales Revenue (4000), Extra Service Income (4120),
+   * Shipping Income (4110), Dr Discount (5200) if any.
    * COGS: Dr COGS - Inventory (5010), Cr Inventory (1200).
    * Safe to call multiple times — duplicate is detected and skipped.
    */
@@ -531,7 +678,7 @@ export const saleAccountingService = {
     }
 
     const entryNo = `JE-SALE-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const entryDate = new Date().toISOString().split('T')[0];
+    const entryDate = localNowDateString();
 
     const entry: JournalEntry = {
       id: '',
@@ -581,8 +728,10 @@ export const saleAccountingService = {
     }
 
     const revenueCredit = Math.round((grossTotal - shippingAmount) * 100) / 100;
-    if (revenueCredit > 0) {
-      const split = await computeProductRevenueCreditSplit(saleId, revenueCredit);
+    const extraAmount = await loadSaleExtraServiceIncomeAmount(saleId);
+    const merchandisePool = Math.round((revenueCredit - extraAmount) * 100) / 100;
+    if (merchandisePool > 0) {
+      const split = await computeProductRevenueCreditSplit(saleId, merchandisePool);
       const studioRevAccount = await ensureStudioServiceRevenueAccount(companyId);
       if (split.studioServiceCredit > 0 && studioRevAccount?.id) {
         if (split.merchandiseCredit > 0) {
@@ -618,8 +767,30 @@ export const saleAccountingService = {
           journal_entry_id: '',
           account_id: revenueAccount.id,
           debit: 0,
-          credit: revenueCredit,
+          credit: merchandisePool,
           description: `Sales Revenue – ${invoiceNo}`,
+        });
+      }
+    }
+    if (extraAmount > 0) {
+      const extraServiceAccount = await ensureExtraServiceIncomeAccount(companyId);
+      if (extraServiceAccount?.id) {
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: extraServiceAccount.id,
+          debit: 0,
+          credit: extraAmount,
+          description: `Extra Service Income – ${invoiceNo}`,
+        });
+      } else {
+        lines.push({
+          id: '',
+          journal_entry_id: '',
+          account_id: revenueAccount.id,
+          debit: 0,
+          credit: extraAmount,
+          description: `Extra Service Income (fallback Revenue) – ${invoiceNo}`,
         });
       }
     }
@@ -741,7 +912,7 @@ export const saleAccountingService = {
       company_id: companyId,
       branch_id: (branchId && branchId !== 'all') ? branchId : undefined,
       entry_no: `JE-EXP-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-      entry_date: new Date().toISOString().split('T')[0],
+      entry_date: localNowDateString(),
       description: notes ?? `Extra Expense – ${invoiceNo}`,
       reference_type: 'sale_extra_expense',
       reference_id: saleId,
@@ -812,7 +983,7 @@ export const saleAccountingService = {
     }
 
     const entryNo = `JE-SALE-REV-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const entryDate = new Date().toISOString().split('T')[0];
+    const entryDate = localNowDateString();
 
     const entry: JournalEntry = {
       id: '',
@@ -828,14 +999,14 @@ export const saleAccountingService = {
 
     const hasDiscount = discountAmount > 0;
     const grossTotal = hasDiscount ? total + discountAmount : total;
+    const extraAmount = await loadSaleExtraServiceIncomeAmount(saleId);
     // Shipping is NON-REFUNDABLE: shipping stays charged to customer even on cancel.
-    // Cancel reversal only reverses product revenue + discount, NOT shipping.
-    // Shipping JE (Dr AR, Cr Shipping Income) remains active on AR.
-    const revenueReversal = Math.round(grossTotal * 100) / 100;
+    // Cancel reversal only reverses product revenue + discount + extra service, NOT shipping.
+    const merchandiseReversal = Math.round((grossTotal - extraAmount) * 100) / 100;
 
     const lines: JournalEntryLine[] = [];
-    if (revenueReversal > 0) {
-      const split = await computeProductRevenueCreditSplit(saleId, revenueReversal);
+    if (merchandiseReversal > 0) {
+      const split = await computeProductRevenueCreditSplit(saleId, merchandiseReversal);
       const studioRevAccount = await ensureStudioServiceRevenueAccount(companyId);
       if (split.studioServiceCredit > 0 && studioRevAccount?.id) {
         if (split.merchandiseCredit > 0) {
@@ -870,11 +1041,23 @@ export const saleAccountingService = {
           id: '',
           journal_entry_id: '',
           account_id: revenueAccount.id,
-          debit: revenueReversal,
+          debit: merchandiseReversal,
           credit: 0,
           description: `Reversal Sales Revenue – ${invoiceNo}`,
         });
       }
+    }
+    if (extraAmount > 0) {
+      const extraServiceAccount = await ensureExtraServiceIncomeAccount(companyId);
+      const extraAcctId = extraServiceAccount?.id ?? revenueAccount.id;
+      lines.push({
+        id: '',
+        journal_entry_id: '',
+        account_id: extraAcctId,
+        debit: extraAmount,
+        credit: 0,
+        description: `Reversal Extra Service Income – ${invoiceNo}`,
+      });
     }
     // Shipping Income is NOT reversed — shipping is non-refundable (courier already paid).
     if (hasDiscount) {
@@ -945,14 +1128,28 @@ export const saleAccountingService = {
     subtotal?: number;
     discount_amount?: number;
     expenses?: number;
+    extra_expenses?: number;
     shipment_charges?: number;
     charges?: { charge_type?: string; amount?: number }[];
   }): { total: number; subtotal: number; discount: number; extraExpense: number; shippingCharges: number } {
     const total = Number(sale?.total ?? sale?.total_amount ?? 0) || 0;
     const charges = Array.isArray(sale?.charges) ? sale.charges : [];
     const discount = Number(sale?.discount_amount ?? 0) || sumCharges(charges, 'discount');
-    const shippingCharges = Number(sale?.shipment_charges ?? sale?.expenses ?? 0) || sumCharges(charges, 'shipping');
-    const extraExpense = Number(sale?.expenses ?? 0) || sumCharges(charges, (t) => t !== 'discount' && t !== 'shipping');
+    const shippingFromColumn = Number(sale?.shipment_charges ?? 0) || 0;
+    const shippingCharges =
+      shippingFromColumn > 0
+        ? shippingFromColumn
+        : sumCharges(charges, 'shipping');
+    const extraFromColumn = Number(sale?.extra_expenses ?? 0) || 0;
+    const extraFromCharges = sumCharges(charges, (t) => t !== 'discount' && t !== 'shipping');
+    const extraExpense =
+      extraFromCharges > 0
+        ? extraFromCharges
+        : extraFromColumn > 0
+          ? extraFromColumn
+          : shippingFromColumn > 0
+            ? 0
+            : Number(sale?.expenses ?? 0) || 0;
     const subtotal = Number(sale?.subtotal ?? 0) || total + discount; // gross before discount
     return { total, subtotal, discount, extraExpense, shippingCharges };
   },
@@ -1034,20 +1231,22 @@ export const saleAccountingService = {
       }
     }
 
-    // 3) Extra charges on invoice (stitching, etc.) delta
+    // 3) Extra charges on invoice (stitching, etc.) delta — Cr Extra Service Income (4120), not Sales Revenue
     const deltaExtra = Math.round((newSnapshot.extraExpense - oldSnapshot.extraExpense) * 100) / 100;
     if (deltaExtra !== 0) {
       const abs = Math.abs(deltaExtra);
+      const extraIncomeAccount = await ensureExtraServiceIncomeAccount(companyId);
+      const creditAccountId = extraIncomeAccount?.id ?? revenueAccount.id;
       const desc = `Sale edit ${invoiceNo}: Extra charges Rs ${fmt(oldSnapshot.extraExpense)} → Rs ${fmt(newSnapshot.extraExpense)} (${dfmt(deltaExtra)}) – ${customerName}`;
       if (deltaExtra > 0) {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
           { accountId: arAccount.id, debit: abs, credit: 0, description: `AR extra ${dfmt(deltaExtra)} – ${invoiceNo}` },
-          { accountId: revenueAccount.id, debit: 0, credit: abs, description: `Revenue extra ${dfmt(deltaExtra)} – ${invoiceNo}` },
+          { accountId: creditAccountId, debit: 0, credit: abs, description: `Extra service income ${dfmt(deltaExtra)} – ${invoiceNo}` },
         ]);
         adjustmentCount++;
       } else {
         await postAdjustmentJE(companyId, branchIdSafe, saleId, entryDate, createdBy, desc, [
-          { accountId: revenueAccount.id, debit: abs, credit: 0, description: `Revenue extra reversal ${dfmt(deltaExtra)} – ${invoiceNo}` },
+          { accountId: creditAccountId, debit: abs, credit: 0, description: `Extra service income reversal ${dfmt(deltaExtra)} – ${invoiceNo}` },
           { accountId: arAccount.id, debit: 0, credit: abs, description: `AR extra reversal ${dfmt(deltaExtra)} – ${invoiceNo}` },
         ]);
         adjustmentCount++;
@@ -1138,7 +1337,7 @@ export const saleAccountingService = {
 
     const branchIdSafe = branchId && branchId !== 'all' ? branchId : undefined;
     const entryNo = `JE-RTN-INV-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-    const entryDate = new Date().toISOString().split('T')[0];
+    const entryDate = localNowDateString();
 
     const entry: JournalEntry = {
       id: '',
@@ -1320,7 +1519,7 @@ export async function ensureSalePaymentJournalIfMissing(paymentId: string): Prom
   const { data: auth } = await supabase.auth.getUser();
   const uid = auth?.user?.id ?? null;
 
-  const entryDate = p.payment_date ? String(p.payment_date).slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const entryDate = p.payment_date ? String(p.payment_date).slice(0, 10) : localNowDateString();
   const entryNo = `JE-PAY-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
   const amt = Math.round((Number(p.amount) || 0) * 100) / 100;
   if (amt <= 0) return null;
@@ -1453,7 +1652,7 @@ export async function ensureOnAccountCustomerJournalIfMissing(
 
   const { data: auth } = await supabase.auth.getUser();
   const uid = auth?.user?.id ?? null;
-  const entryDate = p.payment_date ? String(p.payment_date).slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const entryDate = p.payment_date ? String(p.payment_date).slice(0, 10) : localNowDateString();
   const entryNo = `JE-OA-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
   const amt = Math.round((Number(p.amount) || 0) * 100) / 100;
   if (amt <= 0) return null;

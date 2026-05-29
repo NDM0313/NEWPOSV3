@@ -26,8 +26,16 @@ import {
   canPostAccountingForSaleStatus,
   canPostStockForSaleStatus,
 } from '@/app/lib/postingStatusGate';
-import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
-import { localNowDateString } from '@/app/utils/localDate';
+import { getSaleDisplayNumber, isPreFinalSaleDocumentNo } from '@/app/lib/documentDisplayNumbers';
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import {
+  parseCustomizationDetails,
+  deriveBaseUnitPriceFromStored,
+  resolveSaleLineUnitPrice,
+  buildCustomizationDetailsForPersist,
+  hasBespokeContent,
+} from '@/app/types/bespoke';
+import { insertSaleItemsOrdered } from '@/app/services/saleService';
 import { assertDomainEditSafetyTestMode, classifySalesEdit } from '@/app/lib/accountingEditClassification';
 import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
 import {
@@ -51,6 +59,41 @@ function branchIdFromSaleHeader(
   if (isValidBranchId(fromSale)) return fromSale;
   if (isValidBranchId(contextBranchId ?? null)) return contextBranchId as string;
   return null;
+}
+
+type SaleChargeRow = { charge_type?: string; chargeType?: string; amount?: number };
+
+function sumSaleChargeRows(
+  charges: SaleChargeRow[] | undefined,
+  predicate: (type: string) => boolean,
+): number {
+  if (!Array.isArray(charges)) return 0;
+  return charges.reduce((sum, c) => {
+    const type = String(c.charge_type ?? c.chargeType ?? '').toLowerCase();
+    if (!predicate(type)) return sum;
+    return sum + (Number(c.amount) || 0);
+  }, 0);
+}
+
+/** Extra income on invoice (stitching etc.) — not shipping. */
+function extraExpenseAmountFromSaleRow(supabaseSale: Record<string, unknown>): number {
+  const charges = (supabaseSale.charges ?? supabaseSale.sale_charges) as SaleChargeRow[] | undefined;
+  const fromCharges = sumSaleChargeRows(charges, (t) => t !== 'discount' && t !== 'shipping');
+  if (fromCharges > 0) return fromCharges;
+  if (supabaseSale.extra_expenses != null && Number(supabaseSale.extra_expenses) > 0) {
+    return Number(supabaseSale.extra_expenses);
+  }
+  const shipment = Number(supabaseSale.shipment_charges ?? supabaseSale.shipping_charges ?? 0) || 0;
+  const legacyExpenses = Number(supabaseSale.expenses ?? 0) || 0;
+  if (legacyExpenses > 0 && shipment <= 0) return legacyExpenses;
+  return 0;
+}
+
+function shippingChargeAmountFromSaleRow(supabaseSale: Record<string, unknown>): number {
+  const charges = (supabaseSale.charges ?? supabaseSale.sale_charges) as SaleChargeRow[] | undefined;
+  const fromCharges = sumSaleChargeRows(charges, (t) => t === 'shipping');
+  if (fromCharges > 0) return fromCharges;
+  return Number(supabaseSale.shipment_charges ?? supabaseSale.shipping_charges ?? 0) || 0;
 }
 
 // ============================================
@@ -83,6 +126,8 @@ export interface SaleItem {
   sku: string;
   quantity: number;
   price: number;
+  /** Retail base before customization_charges (derived on load). */
+  baseUnitPrice?: number;
   discount: number;
   tax: number;
   total: number;
@@ -91,6 +136,9 @@ export interface SaleItem {
   unit?: string;
   /** Packing from backend (sales_items.packing_*) - for display/reports */
   packingDetails?: { packing_type?: string; packing_quantity?: number; packing_unit?: string; [k: string]: unknown };
+  customizationDetails?: Record<string, unknown>;
+  /** Fabric child line linked to parent generic SKU row. */
+  bespokeParentItemId?: string | null;
   /** True for the auto-generated studio product line; false/undefined for material items (fabric, lace, etc.). */
   isStudioProduct?: boolean;
 }
@@ -361,16 +409,32 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
         : (item.packing_quantity != null && item.packing_quantity !== '')
           ? { total_boxes: 0, total_pieces: 0, total_meters: Number(item.packing_quantity) || 0, boxes: [] as any[] }
           : undefined;
+      const customizationDetails = (() => {
+        const raw = item.customization_details;
+        if (raw == null) return undefined;
+        if (typeof raw === 'string') {
+          try { return parseCustomizationDetails(JSON.parse(raw)); } catch { return undefined; }
+        }
+        return parseCustomizationDetails(raw);
+      })();
+      const storedUnitPrice = Number(item.unit_price) || 0;
+      const baseUnitPrice = deriveBaseUnitPriceFromStored(storedUnitPrice, customizationDetails);
+      const effectiveUnitPrice = resolveSaleLineUnitPrice({
+        price: storedUnitPrice,
+        baseUnitPrice,
+        customizationDetails,
+      });
       return {
         id: item.id || '',
         productId: item.product_id || '',
         productName: item.product_name || '',
         sku: item.sku || item.product?.sku || 'N/A',
         quantity: item.quantity || 0,
-        price: item.unit_price || 0,
+        price: effectiveUnitPrice,
+        baseUnitPrice,
         discount: item.discount_amount || 0,
         tax: item.tax_amount || 0,
-        total: item.total || 0,
+        total: item.total || effectiveUnitPrice * (item.quantity || 0),
         variationId: item.variation_id || undefined,
         unit: item.unit || undefined,
         size: item.variation?.size || item.size || undefined,
@@ -378,15 +442,17 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
         packingDetails: packingDetails ?? undefined,
         thaans: packingDetails?.total_boxes ?? item.packing_details?.thaans,
         meters: packingDetails?.total_meters ?? item.packing_quantity ?? undefined,
+        customizationDetails,
         isStudioProduct: item.is_studio_product === true,
+        bespokeParentItemId: item.bespoke_parent_item_id ?? null,
       };
     }),
       itemsCount: supabaseSale.items?.length || 0,
       subtotal: supabaseSale.subtotal || 0,
       discount: supabaseSale.discount_amount || 0,
       tax: supabaseSale.tax_amount || 0,
-    expenses: supabaseSale.expenses || supabaseSale.shipment_charges || supabaseSale.shipping_charges || 0,
-    shippingCharges: supabaseSale.shipment_charges ?? supabaseSale.expenses ?? supabaseSale.shipping_charges ?? 0, // Issue 02: prefer trigger-synced shipment_charges
+    expenses: extraExpenseAmountFromSaleRow(supabaseSale),
+    shippingCharges: shippingChargeAmountFromSaleRow(supabaseSale),
     otherCharges: supabaseSale.other_charges || 0, // Extra charges if any
       total: supabaseSale.total || 0,
       studioCharges: supabaseSale.studio_charges != null ? Number(supabaseSale.studio_charges) : undefined,
@@ -404,8 +470,8 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
       attachments: supabaseSale.attachments || null,
       // Line-level charges (sale_charges) for drawer/views to show actual data
       charges: Array.isArray(supabaseSale.charges) ? supabaseSale.charges : (Array.isArray(supabaseSale.sale_charges) ? supabaseSale.sale_charges : []),
-      createdAt: supabaseSale.created_at || new Date().toISOString(),
-      updatedAt: supabaseSale.updated_at || new Date().toISOString(),
+      createdAt: supabaseSale.created_at || getCurrentLocalTimestamp(),
+      updatedAt: supabaseSale.updated_at || getCurrentLocalTimestamp(),
     is_studio: !!supabaseSale.is_studio,
     createdBy: (supabaseSale.created_by?.full_name ?? supabaseSale.created_by_user?.full_name) || undefined,
     source: (supabaseSale as any).source ?? undefined,
@@ -660,6 +726,14 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         discount_amount: saleData.discount || 0,
         tax_amount: saleData.tax || 0,
         expenses: saleData.expenses || 0, // Database has 'expenses' not 'shipping_charges'
+        extra_expenses: (() => {
+          const list = (saleData as { extraExpenses?: { amount?: number }[] }).extraExpenses;
+          if (Array.isArray(list)) {
+            return list.reduce((s, e) => s + (Number(e?.amount) || 0), 0);
+          }
+          const ship = Number((saleData as { shippingCharges?: number }).shippingCharges ?? 0) || 0;
+          return Math.max(0, (saleData.expenses || 0) - ship);
+        })(),
         total: saleData.total,
         paid_amount: saleData.paid || 0,
         due_amount: saleData.due || 0,
@@ -677,14 +751,21 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       };
 
       const supabaseItems: SupabaseSaleItem[] = saleData.items.map(item => {
-        const unitPrice = Number((item as any).unitPrice ?? item.price ?? 0);
-        const lineTotal = Number((item as any).total ?? (unitPrice * item.quantity) ?? 0);
+        const customizationDetails = buildCustomizationDetailsForPersist((item as any).customizationDetails);
+        const unitPrice = resolveSaleLineUnitPrice({
+          price: item.price,
+          unitPrice: (item as any).unitPrice,
+          baseUnitPrice: (item as any).baseUnitPrice,
+          customizationDetails: customizationDetails ?? undefined,
+        });
+        const qty = Number(item.quantity) || 0;
+        const lineTotal = Number((item as any).total ?? unitPrice * qty) || 0;
         return {
         product_id: item.productId,
         variation_id: item.variationId || undefined,
         product_name: item.productName,
         sku: (item as any).sku || 'N/A', // Required in DB
-        quantity: item.quantity,
+        quantity: qty,
         unit: (item as any).unit && String((item as any).unit).trim() ? (item as any).unit : ((item as any).packingDetails?.unit || 'pcs'),
         unit_price: unitPrice, // POS sends unitPrice; SaleForm sends price – ensure never null for DB NOT NULL
         discount_amount: (item as any).discount || 0,
@@ -695,6 +776,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         packing_quantity: (item as any).packingDetails?.total_meters || (item as any).meters || null,
         packing_unit: (item as any).packingDetails?.unit || 'meters',
         packing_details: (item as any).packingDetails || null,
+        customization_details: customizationDetails,
+        parent_line_index: (item as any).parentLineIndex ?? (item as any).parent_line_index,
+        bespoke_parent_item_id: (item as any).bespokeParentItemId ?? (item as any).bespoke_parent_item_id,
       };
       });
 
@@ -753,11 +837,22 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const createExtraExpenses = (saleData as any).extraExpenses;
       const createShippingCharges = Number((saleData as any).shippingCharges ?? 0);
       if (result?.id) {
-        const charges: { charge_type: string; amount: number }[] = [];
+        const charges: { charge_type: string; amount: number; ledger_account_id?: string | null }[] = [];
+        let extraLedgerAccountId: string | null = null;
+        if (Array.isArray(createExtraExpenses) && createExtraExpenses.some((e: { amount?: number }) => Number(e?.amount ?? 0) > 0)) {
+          const { resolveExtraServiceIncomeAccountId } = await import('@/app/services/saleAccountingService');
+          extraLedgerAccountId = await resolveExtraServiceIncomeAccountId(companyId);
+        }
         if (Array.isArray(createExtraExpenses)) {
           createExtraExpenses.forEach((e: { type?: string; amount?: number }) => {
             const amt = Number(e?.amount ?? 0);
-            if (amt > 0) charges.push({ charge_type: (e?.type ?? 'other') as string, amount: amt });
+            if (amt > 0) {
+              charges.push({
+                charge_type: (e?.type ?? 'other') as string,
+                amount: amt,
+                ledger_account_id: extraLedgerAccountId,
+              });
+            }
           });
         }
         if (createShippingCharges > 0) charges.push({ charge_type: 'shipping', amount: createShippingCharges });
@@ -1241,8 +1336,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         typeof (updates as any).invoiceNo === 'string' &&
         String((updates as any).invoiceNo).trim() !== ''
       ) {
-        // Same-row final: assign invoice_no from numbering engine — never infer from prefix
-        supabaseUpdates.invoice_no = String((updates as any).invoiceNo).trim();
+        const invNo = String((updates as any).invoiceNo).trim();
+        // Pre-final numbers (SOR/SO/SDR/SQT) must not be written as invoice_no — SL allocator runs on finalize
+        if (!isPreFinalSaleDocumentNo(invNo)) {
+          supabaseUpdates.invoice_no = invNo;
+        }
       }
       if ((updates as any).draftNo !== undefined) supabaseUpdates.draft_no = (updates as any).draftNo;
       if ((updates as any).quotationNo !== undefined) supabaseUpdates.quotation_no = (updates as any).quotationNo;
@@ -1255,7 +1353,18 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (updates.subtotal !== undefined) supabaseUpdates.subtotal = updates.subtotal;
       if (updates.discount !== undefined) supabaseUpdates.discount_amount = updates.discount;
       if (updates.tax !== undefined) supabaseUpdates.tax_amount = updates.tax;
-      if (updates.expenses !== undefined) supabaseUpdates.expenses = updates.expenses;
+      if (updates.expenses !== undefined) {
+        supabaseUpdates.expenses = updates.expenses;
+        supabaseUpdates.extra_expenses = updates.expenses;
+      }
+      const extraExpensesForColumn = (updates as { extraExpenses?: { amount?: number }[] }).extraExpenses;
+      if (Array.isArray(extraExpensesForColumn)) {
+        const extraSum = extraExpensesForColumn.reduce((s, e) => s + (Number(e?.amount) || 0), 0);
+        supabaseUpdates.extra_expenses = extraSum;
+        if (updates.expenses === undefined) {
+          supabaseUpdates.expenses = extraSum;
+        }
+      }
       // CRITICAL FIX: DO NOT directly update paid_amount in sale
       // paid_amount should ONLY be updated by database trigger from payments table
       // If updates.paid is provided, we'll handle it by creating/updating payment record below
@@ -1293,7 +1402,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const sale = getSaleById(id);
       pushAccountingEditTrace({
         traceId,
-        ts: new Date().toISOString(),
+        ts: getCurrentLocalTimestamp(),
         module: 'sales',
         entityType: 'sale',
         entityId: id,
@@ -1340,7 +1449,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         assertDomainEditSafetyTestMode(salesClassification, 'sales updateSale');
         pushAccountingEditTrace({
           traceId,
-          ts: new Date().toISOString(),
+          ts: getCurrentLocalTimestamp(),
           module: 'sales',
           entityType: 'sale',
           entityId: id,
@@ -1535,15 +1644,71 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           price: item.price || item.unitPrice
         })));
         
-        const saleItems = (updates as any).items.map((item: any, index: number) => {
-          const unitPrice = Number(item.unitPrice ?? item.price ?? 0);
-          const lineTotal = Number(item.total ?? (unitPrice * item.quantity) ?? 0);
+        const { supabase } = await import('@/lib/supabase');
+        const { data: existingItemRows } = await supabase
+          .from('sales_items')
+          .select('product_id, variation_id, customization_details')
+          .eq('sale_id', id);
+        const existingCustomByKey = new Map<string, Record<string, unknown>>();
+        const existingRows = existingItemRows ?? [];
+        for (const row of existingRows) {
+          const pid = String((row as { product_id?: string }).product_id ?? '');
+          const vid = String((row as { variation_id?: string }).variation_id ?? '');
+          const parsed = parseCustomizationDetails((row as { customization_details?: unknown }).customization_details);
+          if (pid && parsed && hasBespokeContent(parsed)) {
+            const payload = parsed as Record<string, unknown>;
+            existingCustomByKey.set(`${pid}:${vid}`, payload);
+            if (vid) {
+              existingCustomByKey.set(`${pid}:`, payload);
+              existingCustomByKey.set(`${pid}:null`, payload);
+            }
+          }
+        }
+
+        const payloadItems = (updates as any).items as any[];
+        const saleItems = payloadItems.map((item: any, index: number) => {
+          const rawCustomization =
+            item.customizationDetails ?? item.customization_details;
+          let customizationDetails = buildCustomizationDetailsForPersist(rawCustomization);
+          if (!customizationDetails) {
+            const productId = String(item.productId ?? '');
+            const variationId = item.variationId != null ? String(item.variationId) : '';
+            const preserveKeys = [
+              `${productId}:${variationId}`,
+              `${productId}:`,
+              `${productId}:null`,
+            ];
+            let preserved: Record<string, unknown> | undefined;
+            for (const key of preserveKeys) {
+              preserved = existingCustomByKey.get(key);
+              if (preserved) break;
+            }
+            if (!preserved && payloadItems.length === 1 && existingRows.length === 1) {
+              const parsed = parseCustomizationDetails(
+                (existingRows[0] as { customization_details?: unknown }).customization_details,
+              );
+              if (parsed && hasBespokeContent(parsed)) {
+                preserved = parsed as Record<string, unknown>;
+              }
+            }
+            if (preserved) {
+              customizationDetails = buildCustomizationDetailsForPersist(preserved) ?? (preserved as any);
+            }
+          }
+          const unitPrice = resolveSaleLineUnitPrice({
+            price: item.price,
+            unitPrice: item.unitPrice,
+            baseUnitPrice: item.baseUnitPrice,
+            customizationDetails: customizationDetails ?? undefined,
+          });
+          const qty = Number(item.quantity) || 0;
+          const lineTotal = Number(item.total ?? unitPrice * qty) || 0;
           const saleItem = {
           product_id: item.productId,
           variation_id: item.variationId || undefined,
           product_name: item.productName,
           sku: item.sku || 'N/A',
-          quantity: item.quantity,
+          quantity: qty,
           unit: item.unit || 'pcs',
           unit_price: unitPrice,
           discount_amount: item.discount || 0,
@@ -1553,12 +1718,14 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           packing_quantity: item.packingDetails?.total_meters || item.meters || null,
           packing_unit: item.packingDetails?.unit || 'meters',
           packing_details: item.packingDetails || null,
+          customization_details: customizationDetails,
         };
         console.log(`[SALES CONTEXT] ✅ Converted item ${index}:`, {
           product_id: saleItem.product_id,
           product_name: saleItem.product_name,
           quantity: saleItem.quantity,
-          unit_price: saleItem.unit_price
+          unit_price: saleItem.unit_price,
+          has_customization: customizationDetails != null,
         });
         return saleItem;
         });
@@ -1566,7 +1733,6 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         console.log('[SALES CONTEXT] ✅ Final saleItems array length:', saleItems.length);
         
         // Delete existing items and insert new ones
-        const { supabase } = await import('@/lib/supabase');
         const { error: deleteError } = await supabase.from('sales_items').delete().eq('sale_id', id);
         if (deleteError) {
           console.error('[SALES CONTEXT] ❌ Error deleting old items:', deleteError);
@@ -1575,14 +1741,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         console.log('[SALES CONTEXT] ✅ Deleted old sale_items');
         
         if (saleItems.length > 0) {
-          const itemsWithSaleId = saleItems.map((item: any) => ({ ...item, sale_id: id }));
-          console.log('[SALES CONTEXT] 🔄 Inserting', itemsWithSaleId.length, 'new sale_items');
-          const { error: insertError } = await supabase.from('sales_items').insert(itemsWithSaleId);
-          if (insertError) {
-            console.error('[SALES CONTEXT] ❌ Error inserting new items:', insertError);
-            throw insertError;
-          }
-          console.log('[SALES CONTEXT] ✅ Successfully inserted', itemsWithSaleId.length, 'sale_items');
+          console.log('[SALES CONTEXT] 🔄 Inserting', saleItems.length, 'new sale_items (ordered)');
+          await insertSaleItemsOrdered(id, saleItems as import('@/app/services/saleService').SaleItem[]);
+          console.log('[SALES CONTEXT] ✅ Successfully inserted', saleItems.length, 'sale_items');
         } else {
           console.log('[SALES CONTEXT] ⚠️ No items to insert (saleItems.length = 0)');
         }
@@ -1763,7 +1924,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           let currentItems: { product_id: string; variation_id?: string; quantity: number; unit_price?: number; product_name?: string }[] = [];
           const { data: itemsFromSalesItems, error: itemsErr } = await sb
             .from('sales_items')
-            .select('product_id, variation_id, quantity, unit_price, product_name')
+            .select('product_id, variation_id, quantity, unit_price, product_name, customization_details')
             .eq('sale_id', id);
           if (!itemsErr && itemsFromSalesItems?.length) {
             currentItems = itemsFromSalesItems;
@@ -1843,20 +2004,79 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Line-level charges: extraExpenses + standalone shipping + discount (replace sale_charges on edit)
-      const extraExpensesList = (updates as any).extraExpenses;
-      const updateShippingCharges = Number((updates as any).shippingCharges ?? 0);
-      const hasCharges = Array.isArray(extraExpensesList) || updateShippingCharges > 0;
-      if (hasCharges) {
+      // Bespoke loose-fabric stock OUT on first finalize (idempotent; runs even when item deltas posted main lines)
+      if (wasNotFinal && isNowFinal && effectiveCompanyId) {
+        try {
+          const { postBespokeFabricStockOnFinalize } = await import('@/app/services/bespokeFabricStockService');
+          const { supabase: sbFabric } = await import('@/lib/supabase');
+          const { data: { user: authUserFabric } } = await sbFabric.auth.getUser();
+          const fabricCreatedBy = authUserFabric?.id ?? (user as any)?.auth_user_id ?? user?.id;
+          const saleForFabric = await saleService.getSaleById(id);
+          const fabricInvoiceNo =
+            getSaleDisplayNumber(saleForFabric as any) ||
+            String((saleForFabric as any)?.invoice_no ?? (saleForFabric as any)?.invoiceNo ?? id);
+          let fabricBranchId = (saleForFabric as any)?.branch_id ?? branchId ?? null;
+          if (!isValidBranchId(fabricBranchId) && effectiveCompanyId) {
+            const branches = await branchService.getAllBranches(effectiveCompanyId);
+            fabricBranchId = branches?.length ? branches[0].id : null;
+          }
+          if (fabricBranchId === 'all') fabricBranchId = null;
+          const { data: childFabricLines } = await sbFabric
+            .from('sales_items')
+            .select('id')
+            .eq('sale_id', id)
+            .not('bespoke_parent_item_id', 'is', null)
+            .limit(1);
+          const hasInjectedFabricLines = (childFabricLines?.length ?? 0) > 0;
+          const fabricPosted = hasInjectedFabricLines
+            ? 0
+            : await postBespokeFabricStockOnFinalize({
+                saleId: id,
+                companyId: effectiveCompanyId,
+                branchId: fabricBranchId,
+                invoiceNo: fabricInvoiceNo,
+                createdBy: fabricCreatedBy ?? undefined,
+              });
+          if (fabricPosted > 0) {
+            console.log('[SALES CONTEXT] ✅ Bespoke fabric stock OUT:', fabricPosted, 'material(s) for sale', id);
+            window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: id } }));
+          }
+        } catch (fabricStockErr: any) {
+          console.error('[SALES CONTEXT] Bespoke fabric stock error:', fabricStockErr);
+          toast.warning('Sale finalized but some bespoke fabric stock movements failed.');
+        }
+      }
+
+      // Line-level charges: only replace when form explicitly saves or non-empty payload (never wipe on empty [] by mistake)
+      const extraExpensesList = (updates as { extraExpenses?: { type?: string; amount?: number }[] }).extraExpenses;
+      const updateShippingCharges = Number((updates as { shippingCharges?: number }).shippingCharges ?? 0);
+      const replaceSaleChargesFlag = (updates as { replaceSaleCharges?: boolean }).replaceSaleCharges === true;
+      const hasExtraLines =
+        Array.isArray(extraExpensesList) &&
+        extraExpensesList.some((e) => Number(e?.amount ?? 0) > 0);
+      const shouldReplaceCharges =
+        replaceSaleChargesFlag || hasExtraLines || updateShippingCharges > 0;
+      if (shouldReplaceCharges) {
         const charges: { charge_type: string; amount: number; ledger_account_id?: string | null }[] = [];
+        let extraLedgerAccountId: string | null = null;
+        if (hasExtraLines && companyId) {
+          const { resolveExtraServiceIncomeAccountId } = await import('@/app/services/saleAccountingService');
+          extraLedgerAccountId = await resolveExtraServiceIncomeAccountId(companyId);
+        }
         if (Array.isArray(extraExpensesList)) {
-          extraExpensesList.forEach((e: { type?: string; amount?: number }) => {
+          extraExpensesList.forEach((e) => {
             const amt = Number(e?.amount ?? 0);
-            if (amt > 0) charges.push({ charge_type: (e?.type ?? 'other') as string, amount: amt });
+            if (amt > 0) {
+              charges.push({
+                charge_type: (e?.type ?? 'other') as string,
+                amount: amt,
+                ledger_account_id: extraLedgerAccountId,
+              });
+            }
           });
         }
         if (updateShippingCharges > 0) charges.push({ charge_type: 'shipping', amount: updateShippingCharges });
-        const discountAmt = Number((updates as any).discount ?? updates.discount_amount ?? 0);
+        const discountAmt = Number((updates as { discount?: number }).discount ?? (updates as { discount_amount?: number }).discount_amount ?? 0);
         if (discountAmt > 0) charges.push({ charge_type: 'discount', amount: discountAmt });
         await saleService.replaceSaleCharges(id, charges, user?.id ?? undefined);
       }
@@ -1918,7 +2138,8 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             const newGross = newSnapshot.subtotal || (newTotal + newSnapshot.discount);
             const newDiscount = newSnapshot.discount;
             const newShipping = newSnapshot.shippingCharges || 0;
-            const newRevenue = newGross - newShipping;
+            const newExtra = newSnapshot.extraExpense || 0;
+            const newRevenue = newGross - newShipping - newExtra;
 
             // Resolve AR sub-ledger for customer
             const customerId = (updatedSale as any).customer_id;
@@ -1937,19 +2158,21 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               const { data } = await sbEdit.from('accounts').select('id').eq('code', code).eq('company_id', companyId).eq('is_active', true).maybeSingle();
               return data?.id as string | null;
             };
-            const { computeProductRevenueCreditSplit } = await import('@/app/services/saleAccountingService');
+            const { computeProductRevenueCreditSplit, syncSaleDocumentJeCogsInventoryPair, assertJournalEntryBalanced } =
+              await import('@/app/services/saleAccountingService');
             const revenueSplit = await computeProductRevenueCreditSplit(id, Math.max(0, newRevenue));
-            const merchandiseRevenueId = (await getAccId('4000')) || (await getAccId('4100'));
+            const merchandiseRevenueIds = new Set(
+              [(await getAccId('4000')), (await getAccId('4100'))].filter(Boolean) as string[]
+            );
             const studioRevenueId = await getAccId('4010');
             const discountId = await getAccId('5200');
             const shippingIncomeId = await getAccId('4110');
-            const cogs5010 = await getAccId('5010');
-            const cogs5000 = await getAccId('5000');
-            const inventoryId = await getAccId('1200');
+            const extraServiceIncomeId = await getAccId('4120');
             const ar1100Id = await getAccId('1100');
 
-            // Fetch current JE lines
             const { data: jeLines } = await sbEdit.from('journal_entry_lines').select('id, account_id, debit, credit').eq('journal_entry_id', jeId);
+
+            let merchandiseCreditAssigned = false;
 
             // Update each line based on its account
             for (const line of (jeLines || []) as any[]) {
@@ -1959,50 +2182,34 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               let didMatch = false;
 
               if (accId === arAccountId || (ar1100Id && accId === ar1100Id)) {
-                // AR line = net total (what customer owes)
-                newDebit = newTotal;
+                newDebit = Math.round((newTotal + newShipping) * 100) / 100;
                 newCredit = 0;
                 didMatch = true;
-              } else if (merchandiseRevenueId && accId === merchandiseRevenueId) {
+              } else if (merchandiseRevenueIds.has(accId)) {
                 newDebit = 0;
-                newCredit = revenueSplit.merchandiseCredit;
+                if (!merchandiseCreditAssigned) {
+                  newCredit = revenueSplit.merchandiseCredit;
+                  merchandiseCreditAssigned = true;
+                } else {
+                  newCredit = 0;
+                }
                 didMatch = true;
               } else if (studioRevenueId && accId === studioRevenueId) {
                 newDebit = 0;
                 newCredit = revenueSplit.studioServiceCredit;
                 didMatch = true;
-              } else if (discountId && accId === discountId && newDiscount > 0) {
-                newDebit = newDiscount;
+              } else if (discountId && accId === discountId) {
+                newDebit = newDiscount > 0 ? newDiscount : 0;
                 newCredit = 0;
                 didMatch = true;
               } else if (shippingIncomeId && accId === shippingIncomeId) {
                 newDebit = 0;
                 newCredit = newShipping;
                 didMatch = true;
-              } else if (
-                ((cogs5010 && accId === cogs5010) || (cogs5000 && accId === cogs5000)) &&
-                line.debit > 0
-              ) {
-                // COGS — recalculate from weighted avg cost (5010 merchandise COGS; 5000 legacy studio production)
-                const { data: saleItems } = await sbEdit.from('sales_items').select('product_id, quantity').eq('sale_id', id);
-                let totalCogs = 0;
-                for (const si of (saleItems || []) as any[]) {
-                  const qty = Number(si.quantity) || 0;
-                  const { data: movements } = await sbEdit.from('stock_movements').select('quantity, unit_cost, total_cost').eq('product_id', si.product_id).eq('company_id', companyId).in('movement_type', ['purchase', 'opening_stock']);
-                  let costSum = 0,
-                    costQty = 0;
-                  for (const m of (movements || []) as any[]) {
-                    costQty += Math.abs(Number(m.quantity) || 0);
-                    costSum += Math.abs(Number(m.total_cost) || Math.abs(Number(m.quantity) || 0) * (Number(m.unit_cost) || 0));
-                  }
-                  const avgCost = costQty > 0 ? costSum / costQty : 0;
-                  totalCogs += qty * avgCost;
-                }
-                newDebit = Math.round(totalCogs * 100) / 100;
-                newCredit = 0;
+              } else if (extraServiceIncomeId && accId === extraServiceIncomeId) {
+                newDebit = 0;
+                newCredit = newExtra;
                 didMatch = true;
-              } else if (inventoryId && accId === inventoryId && line.credit > 0) {
-                continue;
               } else {
                 continue;
               }
@@ -2012,20 +2219,12 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               }
             }
 
-            const cogsIds = [cogs5010, cogs5000].filter(Boolean) as string[];
-            if (cogsIds.length > 0 && inventoryId) {
-              const { data: cogsRows } = await sbEdit
-                .from('journal_entry_lines')
-                .select('debit')
-                .eq('journal_entry_id', jeId)
-                .in('account_id', cogsIds)
-                .gt('debit', 0)
-                .limit(1);
-              const cogsDebit = cogsRows?.[0] ? Number((cogsRows[0] as { debit?: number }).debit) : 0;
-              if (cogsDebit > 0) {
-                await sbEdit.from('journal_entry_lines').update({ credit: cogsDebit }).eq('journal_entry_id', jeId).eq('account_id', inventoryId);
-              }
-            }
+            await syncSaleDocumentJeCogsInventoryPair({
+              journalEntryId: jeId,
+              saleId: id,
+              companyId,
+              invoiceNo,
+            });
 
             // Handle discount line: add if new, remove if zero
             if (newDiscount > 0 && discountId) {
@@ -2035,13 +2234,39 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               }
             }
 
+            // Handle extra service income line: add if new extra > 0 and line missing
+            if (newExtra > 0 && extraServiceIncomeId) {
+              const { data: extraLine } = await sbEdit.from('journal_entry_lines').select('id').eq('journal_entry_id', jeId).eq('account_id', extraServiceIncomeId).maybeSingle();
+              if (!extraLine) {
+                await sbEdit.from('journal_entry_lines').insert({
+                  journal_entry_id: jeId,
+                  account_id: extraServiceIncomeId,
+                  debit: 0,
+                  credit: newExtra,
+                  description: `Extra Service Income – ${invoiceNo}`,
+                });
+              }
+            }
+
             // Log edit in JE description
             const ts = new Date().toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
             const oldTotal = oldAccountingSnapshot.total;
             const editLog = `[Edited ${ts}: Total Rs ${oldTotal.toLocaleString()} → Rs ${newTotal.toLocaleString()}]`;
             await sbEdit.from('journal_entries').update({ description: `${docJe.description || ''} ${editLog}`.slice(0, 500) }).eq('id', jeId);
 
-            console.log('[SALES CONTEXT] PF-14 v2: In-place updated sale document JE', jeId, 'for', invoiceNo);
+            const balanceCheck = await assertJournalEntryBalanced(jeId);
+            if (!balanceCheck.balanced) {
+              console.warn(
+                '[SALES CONTEXT] PF-14 v2: JE out of balance after in-place edit (diff',
+                balanceCheck.diff,
+                ') — rebuilding sale document accounting for',
+                invoiceNo
+              );
+              const { rebuildSaleDocumentAccounting } = await import('@/app/services/documentPostingEngine');
+              await rebuildSaleDocumentAccounting(id);
+            } else {
+              console.log('[SALES CONTEXT] PF-14 v2: In-place updated sale document JE', jeId, 'for', invoiceNo);
+            }
             dispatchSaleLifecycleInvalidated({
               companyId,
               branchId: branchId ?? null,
@@ -2282,7 +2507,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         // Fallback: Update local state
       setSales(prev => prev.map(sale => 
         sale.id === id 
-          ? { ...sale, ...updates, updatedAt: new Date().toISOString() }
+          ? { ...sale, ...updates, updatedAt: getCurrentLocalTimestamp() }
           : sale
       ));
       }
@@ -2393,7 +2618,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       window.dispatchEvent(new CustomEvent('saleUpdated', { detail: { saleId: id } }));
       pushAccountingEditTrace({
         traceId,
-        ts: new Date().toISOString(),
+        ts: getCurrentLocalTimestamp(),
         module: 'sales',
         entityType: 'sale',
         entityId: id,
@@ -2405,7 +2630,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       console.error('[SALES CONTEXT] Error updating sale:', error);
       pushAccountingEditTrace({
         traceId,
-        ts: new Date().toISOString(),
+        ts: getCurrentLocalTimestamp(),
         module: 'sales',
         entityType: 'sale',
         entityId: id,
@@ -2591,6 +2816,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         shippingStatus: q.shippingStatus as ShippingStatus,
         notes: q.notes,
         extraExpenses,
+        replaceSaleCharges: true,
         shippingCharges: shippingFromCharges || q.shippingCharges || 0,
         partialPayments: [],
         is_studio: false,
