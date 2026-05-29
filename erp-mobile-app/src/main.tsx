@@ -8,6 +8,7 @@ import { BootErrorBoundary } from './components/BootErrorBoundary';
 import { registerAllSyncHandlers } from './lib/registerSyncHandlers';
 import { initOAuthDeepLinkHandler } from './lib/oauthCallback';
 import { PermissionProvider } from './context/PermissionContext';
+import { CounterWorkerProvider } from './context/CounterWorkerContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { LoadingProvider } from './contexts/LoadingContext';
 
@@ -79,9 +80,11 @@ if (!rootEl) {
         <SplashGate>
           <LoadingProvider>
             <PermissionProvider>
-              <SettingsProvider>
-                <App />
-              </SettingsProvider>
+              <CounterWorkerProvider>
+                <SettingsProvider>
+                  <App />
+                </SettingsProvider>
+              </CounterWorkerProvider>
             </PermissionProvider>
           </LoadingProvider>
         </SplashGate>
