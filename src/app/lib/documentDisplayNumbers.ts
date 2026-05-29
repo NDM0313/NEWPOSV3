@@ -41,3 +41,17 @@ export function getPurchaseDisplayNumber(row: {
   if (st === 'ordered') return String(row.order_no ?? row.po_no ?? '').trim();
   return String(row.po_no ?? row.draft_no ?? '').trim();
 }
+
+/** True when document number is a pre-final lifecycle stage (not SL/INV/POS). */
+export function isPreFinalSaleDocumentNo(no: string | null | undefined): boolean {
+  const n = String(no ?? '').trim().toUpperCase();
+  if (!n) return false;
+  return (
+    n.startsWith('DRAFT-') ||
+    n.startsWith('SDR-') ||
+    n.startsWith('QT-') ||
+    n.startsWith('SQT-') ||
+    n.startsWith('SO-') ||
+    n.startsWith('SOR-')
+  );
+}
