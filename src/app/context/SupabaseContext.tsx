@@ -66,6 +66,11 @@ function isStorageOrSecurityError(err: any): boolean {
   );
 }
 
+function isProductionErpHost(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location.hostname.includes('erp.dincouture.pk');
+}
+
 interface SupabaseContextType {
   user: User | null;
   session: Session | null;
@@ -696,12 +701,21 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     syncSessionToBridge(data.session);
-    const { error: setSessionError } = await supabase.auth.setSession({
-      access_token: data.session.access_token,
-      refresh_token: data.session.refresh_token,
-    });
     setSession(data.session);
     setUser(data.user);
+    let setSessionError: import('@supabase/supabase-js').AuthError | null = null;
+    try {
+      const result = await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+      setSessionError = result.error;
+    } catch (e: unknown) {
+      if (!isStorageOrSecurityError(e)) throw e;
+      if (import.meta.env?.DEV) {
+        console.warn('[AUTH] setSession after REST grant threw storage/security error — using bridge session');
+      }
+    }
     if (setSessionError && import.meta.env?.DEV) {
       console.warn('[AUTH] setSession after REST grant:', setSessionError.message);
     }
@@ -715,7 +729,7 @@ export const SupabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const signIn = async (email: string, password: string) => {
     if (import.meta.env?.DEV) console.log('[AUTH] Attempting sign in:', { email });
 
-    if (authStorageIsEphemeral()) {
+    if (authStorageIsEphemeral() || isProductionErpHost()) {
       return applyRestSignIn(email, password);
     }
 

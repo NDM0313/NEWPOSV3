@@ -1,13 +1,50 @@
 import React, { useState } from 'react';
-import { useSupabase } from '@/app/context/SupabaseContext';
+import { useSupabase, STORAGE_BLOCKED_MESSAGE } from '@/app/context/SupabaseContext';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Lock, Mail, AlertCircle, Building2, User } from 'lucide-react';
 import { CreateBusinessWizard } from './CreateBusinessWizard';
 
+function isStorageSecurityMessage(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const o = err as { name?: string; message?: string };
+  const msg = String(o.message ?? '').toLowerCase();
+  const name = String(o.name ?? '').toLowerCase();
+  return (
+    name === 'securityerror' ||
+    msg.includes('securityerror') ||
+    msg.includes('request was denied') ||
+    msg.includes('access is denied')
+  );
+}
+
+function formatSignInError(signInError: { message?: string; name?: string; status?: number }): string {
+  const message = signInError.message ?? 'Sign in failed';
+  if (isStorageSecurityMessage(signInError)) return STORAGE_BLOCKED_MESSAGE;
+  if (message.includes('Invalid login credentials')) {
+    return 'Invalid email or password. Please check your credentials.';
+  }
+  if (message.includes('Email not confirmed')) {
+    return 'Please confirm your email address first.';
+  }
+  if (message.includes('User not found')) {
+    return 'User does not exist. Please create a business first.';
+  }
+  if (
+    message.includes('Failed to fetch') ||
+    (signInError.name && signInError.name.includes('AuthRetryableFetchError'))
+  ) {
+    return 'Network error: Cannot reach the server. On VPS run: git pull && bash deploy/deploy.sh (uses https://supabase.dincouture.pk).';
+  }
+  if (signInError.status === 401) {
+    return 'Authentication configuration error. Contact administrator or retry after deploy.';
+  }
+  return message;
+}
+
 export const LoginPage: React.FC = () => {
   const { signIn } = useSupabase();
-  
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -15,39 +52,42 @@ export const LoginPage: React.FC = () => {
   const [showCreateBusiness, setShowCreateBusiness] = useState(false);
   const [createBusinessSuccess, setCreateBusinessSuccess] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const runSignIn = async (signInEmail: string, signInPassword: string): Promise<boolean> => {
     setLoading(true);
     setError('');
-
-    const { data, error: signInError } = await signIn(email, password);
-
-    if (signInError) {
-      let errorMessage = signInError.message;
-      if (signInError.message.includes('Invalid login credentials')) {
-        errorMessage = 'Invalid email or password. Please check your credentials.';
-      } else if (signInError.message.includes('Email not confirmed')) {
-        errorMessage = 'Please confirm your email address first.';
-      } else if (signInError.message.includes('User not found')) {
-        errorMessage = 'User does not exist. Please create a business first.';
-      } else if (signInError.message.includes('Failed to fetch') || (signInError.name && signInError.name.includes('AuthRetryableFetchError'))) {
-        errorMessage = 'Network error: Cannot reach the server. On VPS run: git pull && bash deploy/deploy.sh (uses https://supabase.dincouture.pk).';
+    try {
+      const { data, error: signInError } = await signIn(signInEmail, signInPassword);
+      if (signInError) {
+        setError(formatSignInError(signInError));
+        return false;
       }
-      setError(errorMessage);
-      setLoading(false);
-    } else if (data?.user) {
+      if (!data?.user) {
+        setError('Sign in did not return a user. Please try again.');
+        return false;
+      }
+      return true;
+    } catch (e: unknown) {
+      if (isStorageSecurityMessage(e)) {
+        setError(STORAGE_BLOCKED_MESSAGE);
+      } else {
+        setError(e instanceof Error ? e.message : 'Sign in failed unexpectedly.');
+      }
+      return false;
+    } finally {
       setLoading(false);
     }
   };
 
-  const handleCreateBusinessSuccess = async (email: string, password: string) => {
-    setCreateBusinessSuccess(true);
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runSignIn(email, password);
+  };
+
+  const handleCreateBusinessSuccess = async (createdEmail: string, createdPassword: string) => {
     setShowCreateBusiness(false);
     setError('');
-    
-    // Auto-login after business creation
-    const { error: signInError } = await signIn(email, password);
-    if (!signInError) {
+    const ok = await runSignIn(createdEmail, createdPassword);
+    if (ok) {
       setCreateBusinessSuccess(true);
     } else {
       setError('Business created but login failed. Please login manually.');
@@ -56,75 +96,34 @@ export const LoginPage: React.FC = () => {
   };
 
   const handleMainLogin = async () => {
-    setLoading(true);
-    setError('');
     const mainEmail = 'ndm313@yahoo.com';
     const mainPassword = '123456';
     setEmail(mainEmail);
     setPassword(mainPassword);
-    const { data, error: signInError } = await signIn(mainEmail, mainPassword);
-    if (signInError) {
-      setError(signInError.message);
-      setLoading(false);
-    } else if (data?.user) {
-      setLoading(false);
-    }
+    await runSignIn(mainEmail, mainPassword);
   };
 
   const handleAdminLogin = async () => {
-    setLoading(true);
-    setError('');
     const adminEmail = 'admin@dincouture.pk';
     const adminPassword = 'AdminDincouture2026';
     setEmail(adminEmail);
     setPassword(adminPassword);
-    const { data, error: signInError } = await signIn(adminEmail, adminPassword);
-    if (signInError) {
-      setError(signInError.message);
-      setLoading(false);
-    } else if (data?.user) {
-      setLoading(false);
-    }
+    await runSignIn(adminEmail, adminPassword);
   };
 
   const handleDemoLogin = async () => {
-    setLoading(true);
-    setError('');
-    
-    // Demo credentials (from demo company)
     const demoEmail = 'demo@dincollection.com';
     const demoPassword = 'demo123';
-    
-    // Auto-fill form fields (for visual feedback)
     setEmail(demoEmail);
     setPassword(demoPassword);
-    
-    // Attempt login
-    const { data, error: signInError } = await signIn(demoEmail, demoPassword);
-    
-    if (signInError) {
-      let errorMessage = signInError.message;
-      if (signInError.message.includes('Invalid login credentials')) {
-        errorMessage = 'Demo account not found. Please contact administrator to set up demo account.';
-      } else if (signInError.message.includes('Email not confirmed')) {
-        errorMessage = 'Demo account email not confirmed. Please contact administrator.';
-      } else if (signInError.message.includes('User not found')) {
-        errorMessage = 'Demo account does not exist. Please contact administrator.';
-      } else if (signInError.message.includes('Failed to fetch') || (signInError.name && signInError.name.includes('AuthRetryableFetchError'))) {
-        errorMessage = 'Network error: Cannot reach the server. On VPS run: git pull && bash deploy/deploy.sh (uses https://supabase.dincouture.pk).';
-      }
-      setError(errorMessage);
-      setLoading(false);
-    } else if (data?.user) {
-      setLoading(false);
-    }
+    await runSignIn(demoEmail, demoPassword);
   };
 
   // Show create business wizard
   if (showCreateBusiness) {
     return (
       <CreateBusinessWizard
-        onSuccess={(email, password) => handleCreateBusinessSuccess(email, password)}
+        onSuccess={(createdEmail, createdPassword) => handleCreateBusinessSuccess(createdEmail, createdPassword)}
         onCancel={() => {
           setShowCreateBusiness(false);
           setError('');

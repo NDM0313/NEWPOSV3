@@ -241,6 +241,11 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const [paymentTraceOpen, setPaymentTraceOpen] = useState(false);
   const [paymentTrace, setPaymentTrace] = useState<PaymentDeepTrace | null>(null);
   const [paymentTraceLoading, setPaymentTraceLoading] = useState(false);
+  const [editingAccounts, setEditingAccounts] = useState(false);
+  const [accountsList, setAccountsList] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [editLineChanges, setEditLineChanges] = useState<Record<string, string>>({});
+  const [editAmountChanges, setEditAmountChanges] = useState<Record<string, { debit: number; credit: number }>>({});
+  const [accountSearch, setAccountSearch] = useState<Record<string, string>>({});
 
   const loadPaymentTrace = useCallback(async () => {
     if (!companyId || !transaction?.id) return;
@@ -556,6 +561,23 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     })();
   }, [autoLaunchUnifiedEdit, isOpen, loading, transaction, runUnifiedEdit, onAutoLaunchUnifiedEditConsumed]);
 
+  const journalLines = useMemo(() => {
+    if (!transaction?.lines) return [];
+    return Array.isArray(transaction.lines) ? transaction.lines : [transaction.lines];
+  }, [transaction?.lines]);
+
+  const journalTotals = useMemo(() => {
+    const debit = journalLines.reduce((sum: number, line: any) => sum + (Number(line.debit) || 0), 0);
+    const credit = journalLines.reduce((sum: number, line: any) => sum + (Number(line.credit) || 0), 0);
+    const diff = Math.round((debit - credit) * 100) / 100;
+    return {
+      debit: Math.round(debit * 100) / 100,
+      credit: Math.round(credit * 100) / 100,
+      diff,
+      imbalanced: Math.abs(diff) > 0.01,
+    };
+  }, [journalLines]);
+
   const loadTransaction = async () => {
     if (!referenceNumber || !companyId) return;
 
@@ -674,13 +696,6 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
-  // Edit: swap debit/credit accounts on a JE (for wrong account selection fix)
-  const [editingAccounts, setEditingAccounts] = useState(false);
-  const [accountsList, setAccountsList] = useState<{ id: string; code: string; name: string }[]>([]);
-  const [editLineChanges, setEditLineChanges] = useState<Record<string, string>>({});
-  const [editAmountChanges, setEditAmountChanges] = useState<Record<string, { debit: number; credit: number }>>({});
-  const [accountSearch, setAccountSearch] = useState<Record<string, string>>({});
-
   const handleLoadAccountsForEdit = async () => {
     if (!companyId) return;
     const { supabase } = await import('@/lib/supabase');
@@ -704,7 +719,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
       // Apply account changes
       for (const [lineId, newAccountId] of Object.entries(editLineChanges)) {
-        const oldAcct = rawJournalLines.find((l: any) => l.id === lineId);
+        const oldAcct = journalLines.find((l: any) => l.id === lineId);
         const oldName = oldAcct?.account?.name || 'Unknown';
         const newName = accountsList.find(a => a.id === newAccountId)?.name || 'Unknown';
         editLog.push(`Account: ${oldName} → ${newName}`);
@@ -717,7 +732,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
       // Apply amount changes
       for (const [lineId, amounts] of Object.entries(editAmountChanges)) {
-        const oldLine = rawJournalLines.find((l: any) => l.id === lineId);
+        const oldLine = journalLines.find((l: any) => l.id === lineId);
         const oldDr = Number(oldLine?.debit) || 0;
         const oldCr = Number(oldLine?.credit) || 0;
         if (amounts.debit !== oldDr) editLog.push(`Debit: Rs ${oldDr.toLocaleString()} → Rs ${amounts.debit.toLocaleString()}`);
@@ -764,25 +779,6 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     );
   }
 
-  const rawJournalLines = Array.isArray(transaction?.lines)
-    ? transaction.lines
-    : transaction?.lines
-      ? [transaction.lines]
-      : [];
-  // Modal double-entry truth must come from posted journal_entry_lines for the selected JE, not merged payment transforms.
-  // Do not use getEffectiveJournalLinesForPayment as the primary grid — only as optional auxiliary context below.
-  const journalLines = rawJournalLines;
-  const journalTotals = useMemo(() => {
-    const debit = journalLines.reduce((sum: number, line: any) => sum + (Number(line.debit) || 0), 0);
-    const credit = journalLines.reduce((sum: number, line: any) => sum + (Number(line.credit) || 0), 0);
-    const diff = Math.round((debit - credit) * 100) / 100;
-    return {
-      debit: Math.round(debit * 100) / 100,
-      credit: Math.round(credit * 100) / 100,
-      diff,
-      imbalanced: Math.abs(diff) > 0.01,
-    };
-  }, [journalLines]);
   const payment = Array.isArray(transaction?.payment)
     ? transaction.payment[0] 
     : transaction?.payment;

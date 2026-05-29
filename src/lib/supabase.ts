@@ -261,6 +261,11 @@ function supabaseFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Re
   return fetch(input, { ...init, headers });
 }
 
+/** Bypass navigator.locks — SecurityError when cookies/storage blocked in strict browsers. */
+async function authLockNoOp<T>(_name: string, _acquireTimeout: number, fn: () => Promise<T>): Promise<T> {
+  return await fn();
+}
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: { fetch: supabaseFetch },
   auth: {
@@ -268,6 +273,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     detectSessionInUrl: true,
     storage: safeStorage(),
+    lock: authLockNoOp,
   },
 });
 
