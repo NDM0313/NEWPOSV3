@@ -1,3 +1,4 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 import { supabase } from '@/lib/supabase';
 import { getDocumentConversionSchemaFlags } from '@/app/lib/documentConversionSchema';
 import { SALE_BUSINESS_ONLY_STATUSES } from '@/app/lib/documentStatusConstants';
@@ -71,6 +72,8 @@ export interface Sale {
   discount_amount: number;
   tax_amount: number;
   expenses: number; // Changed from shipping_charges to match DB
+  /** Stitching / extra service charges on invoice (customer income). */
+  extra_expenses?: number;
   total: number;
   paid_amount: number;
   due_amount: number;
@@ -113,13 +116,43 @@ export interface SaleItem {
   packing_quantity?: number;
   packing_unit?: string;
   packing_details?: any; // JSONB
+  customization_details?: Record<string, unknown> | null;
   notes?: string;
+  bespoke_parent_item_id?: string | null;
+  /** 0-based index in same payload pointing to parent line (insert order). */
+  parent_line_index?: number;
 }
 
 /** Options for createSale. allowNegativeStock: when true, skip stock check (caller already validated). */
 export type CreateSaleOptions = {
   allowNegativeStock?: boolean;
 };
+
+/** Insert lines in order; resolve parent_line_index → bespoke_parent_item_id. */
+export async function insertSaleItemsOrdered(
+  saleId: string,
+  items: SaleItem[],
+): Promise<void> {
+  const insertedIds: (string | null)[] = [];
+  for (const item of items) {
+    const row: Record<string, unknown> = { ...item, sale_id: saleId };
+    delete row.discount_percentage;
+    delete row.tax_percentage;
+    const parentIdx = item.parent_line_index;
+    delete row.parent_line_index;
+    if (parentIdx != null && parentIdx >= 0 && parentIdx < insertedIds.length) {
+      row.bespoke_parent_item_id = insertedIds[parentIdx];
+    } else if (item.bespoke_parent_item_id) {
+      row.bespoke_parent_item_id = item.bespoke_parent_item_id;
+    }
+    let res = await supabase.from('sales_items').insert(row).select('id').single();
+    if (res.error?.code === '42P01') {
+      res = await supabase.from('sale_items').insert(row).select('id').single();
+    }
+    if (res.error) throw res.error;
+    insertedIds.push(res.data?.id ?? null);
+  }
+}
 
 function saleRowNeedsFinalInvoiceAllocation(row: Record<string, unknown>): boolean {
   const inv = String(row.invoice_no ?? '').trim();
@@ -357,30 +390,13 @@ export const saleService = {
       }
     }
 
-    // Insert items: only send columns that exist in DB (no discount_percentage / tax_percentage)
-    const sanitizeItem = (item: SaleItem) => {
-      const row: Record<string, unknown> = { ...item, sale_id: saleData.id };
-      delete row.discount_percentage;
-      delete row.tax_percentage;
-      return row;
-    };
-    const itemsWithSaleId = items.map(sanitizeItem);
-
-    // CRITICAL FIX: Use sales_items table (created via migration)
-    // Try sales_items first, fallback to sale_items for backward compatibility
-    let itemsError: any = null;
-    const { error: salesItemsError } = await supabase
-      .from('sales_items')
-      .insert(itemsWithSaleId);
-    
-    if (salesItemsError) {
-      itemsError = salesItemsError;
-    }
-
-    if (itemsError) {
-      // ROLLBACK: Delete sale if items insert fails
+    try {
+      await insertSaleItemsOrdered(saleData.id, items);
+    } catch (itemsErr: unknown) {
       await supabase.from('sales').delete().eq('id', saleData.id);
-      throw new Error(`Failed to create sale items: ${itemsError.message}. Sale rolled back.`);
+      throw new Error(
+        `Failed to create sale items: ${itemsErr instanceof Error ? itemsErr.message : String(itemsErr)}. Sale rolled back.`,
+      );
     }
 
     void auditLogService.logSaleAction(sale.company_id, saleData.id, 'created', {
@@ -1032,7 +1048,7 @@ export const saleService = {
     if ('notes' in updates) (sanitized as any).notes = updates.notes ?? null;
     if ('deadline' in updates) (sanitized as any).deadline = updates.deadline ?? null;
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('sales')
       .update(sanitized)
       .eq('id', id)
@@ -1053,13 +1069,30 @@ export const saleService = {
       }
     }
 
-    // Accounting: if sale just became final for the first time, create journal entry
+    // Accounting: if sale just became final for the first time, allocate SL/STD/PS and post GL
     const prevStatus = (existingSale as any)?.status;
     const newStatus = updates.status ?? (data as any)?.status;
     if (canPostAccountingForSaleStatus(newStatus) && !canPostAccountingForSaleStatus(prevStatus)) {
+      try {
+        data = (await ensureFinalSaleInvoiceNoAllocated(id, data as Record<string, unknown>)) as typeof data;
+      } catch (allocErr: unknown) {
+        const msg = allocErr instanceof Error ? allocErr.message : String(allocErr);
+        await supabase.from('sales').update({ status: prevStatus ?? 'order' }).eq('id', id);
+        throw new Error(msg);
+      }
       postSaleDocumentAccounting(id).catch((err: any) =>
         console.warn('[saleService] updateSale document posting engine failed (non-critical):', err?.message)
       );
+    } else if (
+      canPostAccountingForSaleStatus(newStatus) &&
+      canPostAccountingForSaleStatus(prevStatus) &&
+      saleRowNeedsFinalInvoiceAllocation(data as Record<string, unknown>)
+    ) {
+      try {
+        data = (await ensureFinalSaleInvoiceNoAllocated(id, data as Record<string, unknown>)) as typeof data;
+      } catch (allocErr: unknown) {
+        console.warn('[saleService] updateSale invoice repair failed (non-critical):', allocErr);
+      }
     }
 
     return data;
@@ -1301,7 +1334,7 @@ export const saleService = {
     }
 
     const callerRef = referenceNumber && String(referenceNumber).trim() ? String(referenceNumber).trim() : null;
-    const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
+    const paymentDateValue = paymentDate || localNowDateString();
 
     const { data: { user: authUser } } = await supabase.auth.getUser();
     const authUserId = authUser?.id ?? null;
@@ -1406,7 +1439,7 @@ export const saleService = {
     if (!accountId || !companyId || !branchId) {
       throw new Error('Account, company and branch are required for on-account payment.');
     }
-    const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
+    const paymentDateValue = paymentDate || localNowDateString();
     const { data: { user: authUser } } = await supabase.auth.getUser();
     const authUserId = authUser?.id ?? null;
 
@@ -1670,7 +1703,7 @@ export const saleService = {
               oldAmount, newAmount,
               paymentAccountId: oldAccountId || paymentAccountId || '',
               invoiceNoOrRef: invoiceNo,
-              entryDate: (updates.paymentDate || paymentDate || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
+              entryDate: (updates.paymentDate || paymentDate || localNowDateString()).toString().slice(0, 10),
               createdBy: (user as any)?.id ?? null, receivableAccountId,
             });
           }
@@ -1736,7 +1769,7 @@ export const saleService = {
             await postPaymentAccountAdjustment({
               context: 'sale', companyId, branchId, paymentId, referenceId: saleId,
               oldAccountId, newAccountId, amount: newAmount, invoiceNoOrRef: invoiceNo,
-              entryDate: (updates.paymentDate || paymentDate || (data as any)?.payment_date || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
+              entryDate: (updates.paymentDate || paymentDate || (data as any)?.payment_date || localNowDateString()).toString().slice(0, 10),
               createdBy: (user as any)?.id ?? null,
             });
           }
