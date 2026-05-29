@@ -1,15 +1,16 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { initInputKeyboard } from './utils/inputKeyboard';
 import type { Screen, User, Branch, BottomNavTab } from './types';
 import * as authApi from './api/auth';
 import { getBranches } from './api/branches';
-import { canPickAllCompanyBranches, getUserAccessibleBranchIds, invalidateBranchAccessSessionCache } from './api/permissions';
+import { canPickAllCompanyBranches, getUserAccessibleBranchIds, getUserAssignedBranchIds, invalidateBranchAccessSessionCache } from './api/permissions';
 import { listCacheKeys, listCacheRemove } from './lib/listCache';
 import {
   resolveBranchForSingleEffectiveId,
   resolveEffectiveBranchIds,
 } from './lib/branchResolution';
 import { usePermissions } from './context/PermissionContext';
+import { useCounterWorker, useEffectiveWorkerProfile } from './context/CounterWorkerContext';
 import { useSettings } from './context/SettingsContext';
 import { FEATURE_MOBILE_PERMISSION_V2 } from './config/featureFlags';
 import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from './utils/permissionModules';
@@ -29,25 +30,18 @@ import { SyncStatusBar } from './components/SyncStatusBar';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { MainScrollContext } from './contexts/MainScrollContext';
 import { runSync, getUnsyncedCount } from './lib/syncEngine';
-import { clearAllPending } from './lib/offlineStore';
-import type { AuthProfile } from './api/auth';
 import { markUnlocked, clearUnlockMark, shouldRelock, markBackgrounded } from './lib/pinLock';
 import { dispatchMobileInvalidated } from './lib/dataInvalidationBus';
 import { subscribeMobileRealtime } from './lib/realtimeSubscriptions';
 import { mobileRealtimeHealth } from './lib/supabase';
 import { resetLocalDataPlaneForNewCompany } from './lib/sessionIsolation';
-import { dispatchSessionSwitched } from './lib/sessionSwitchBus';
 import { POSLockScreen } from './components/auth/POSLockScreen';
 import {
   safeShouldActivateCounterLockScreen,
   requestCounterLockScreen,
   setLastCounterCompanyId,
 } from './lib/sharedCounterMode';
-import {
-  maintainCounterVaultTokens,
-  COUNTER_VAULT_MAINTENANCE_INTERVAL_MS,
-} from './lib/counterVaultMaintenance';
-import { pauseAuthAutoRefresh, resumeAuthAutoRefresh } from './lib/authAutoRefreshGate';
+import { withBootTimeout } from './lib/bootTimeout';
 
 const LAST_AUTOSYNC_KEY = 'erp_mobile_last_autosync_at';
 const BOOT_AUTH_TIMEOUT_MS = 10_000;
@@ -65,15 +59,6 @@ const ExpenseModule = lazy(() => import('./components/expense/ExpenseModule').th
 const InventoryModule = lazy(() => import('./components/inventory/InventoryModule').then((m) => ({ default: m.InventoryModule })));
 const DashboardModule = lazy(() => import('./components/dashboard/DashboardModule').then((m) => ({ default: m.DashboardModule })));
 const PackingListModule = lazy(() => import('./components/packing/PackingListModule').then((m) => ({ default: m.PackingListModule })));
-
-function withBootTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      setTimeout(() => reject(new Error('Auth bootstrap timeout')), ms);
-    }),
-  ]);
-}
 
 function ModuleLoadingFallback() {
   return (
@@ -109,6 +94,13 @@ export default function App() {
   const responsive = useResponsive();
   const { online, status, setStatus } = useNetworkStatus();
   const { hasPermission, hasBranchAccess, isModuleEnabled, reload, isPermissionLoaded, canUseFullAccounting, branchIds, isAdminOrOwner } = usePermissions();
+  const {
+    activeCounterWorkerProfile,
+    isCounterLocked,
+    temporaryLock,
+    requestCounterLock,
+    resetCounterState,
+  } = useCounterWorker();
   const { reload: reloadSettings } = useSettings();
   const [authLoading, setAuthLoading] = useState(true);
   const [isBranchResolving, setIsBranchResolving] = useState(true);
@@ -122,7 +114,6 @@ export default function App() {
   const [salesInitialDocumentBranchId, setSalesInitialDocumentBranchId] = useState<string | null>(null);
   const [studioFocusSaleId, setStudioFocusSaleId] = useState<string | null>(null);
   const [isPinLocked, setIsPinLocked] = useState(false);
-  const [isCounterLocked, setIsCounterLocked] = useState(false);
   const counterBootLockCheckedRef = useRef(false);
   /** When true, skip cold-boot POS lock once — user just came through `handleLogin` (already authenticated). */
   const skipCounterBootLockAfterInteractiveLoginRef = useRef(false);
@@ -133,138 +124,7 @@ export default function App() {
   const previousAuthUserIdRef = useRef<string | null>(null);
   const onlineWasOfflineRef = useRef(false);
   const mainScrollRef = useRef<HTMLDivElement>(null);
-
-  const applyProfileAfterCounterSwitch = useCallback(
-    async (profile: AuthProfile) => {
-      const prevCompany = companyId;
-      const cid = profile.companyId || '';
-      if (prevCompany !== null && profile.companyId !== prevCompany) {
-        try {
-          await clearAllPending();
-        } catch {
-          /* ignore */
-        }
-        try {
-          localStorage.removeItem(BRANCH_STORAGE_KEY);
-        } catch {
-          /* ignore */
-        }
-        setSelectedBranch(null);
-      }
-
-      const u: User = {
-        id: profile.userId,
-        name: profile.name,
-        email: profile.email,
-        role: profile.role,
-        profileId: profile.profileId,
-        branchId: profile.branchId ?? undefined,
-        branchLocked: profile.branchLocked,
-      };
-      setUser(u);
-      setCompanyId(profile.companyId);
-      setLastCounterCompanyId(profile.companyId);
-      setDocumentEditIntent(null);
-      previousAuthUserIdRef.current = profile.userId;
-      markUnlocked();
-      setIsPinLocked(false);
-      setIsBranchResolving(true);
-
-      if (cid && (profile.profileId || profile.userId)) {
-        try {
-          await listCacheRemove(listCacheKeys.branches(cid));
-          invalidateBranchAccessSessionCache();
-          const [branchesRes, userBranchIds] = await Promise.all([
-            getBranches(cid),
-            getUserAccessibleBranchIds(profile.userId, profile.profileId, cid, { fresh: true }),
-          ]);
-          const companyBranches = branchesRes.data || [];
-          const unrestricted = canPickAllCompanyBranches(profile.role);
-          const effectiveBranchIds = resolveEffectiveBranchIds(
-            companyBranches,
-            userBranchIds,
-            unrestricted
-          );
-          if (companyBranches.length === 1) {
-            setSelectedBranch(companyBranches[0]);
-            try {
-              localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(companyBranches[0]));
-            } catch {
-              /* ignore */
-            }
-            setCurrentScreen('home');
-            setActiveBottomTab('home');
-            setIsBranchResolving(false);
-            return;
-          }
-          if (!unrestricted && effectiveBranchIds.length === 1) {
-            const assigned = resolveBranchForSingleEffectiveId(companyBranches, effectiveBranchIds);
-            if (assigned) {
-              setSelectedBranch(assigned);
-              try {
-                localStorage.setItem(BRANCH_STORAGE_KEY, JSON.stringify(assigned));
-              } catch {
-                /* ignore */
-              }
-              setCurrentScreen('home');
-              setActiveBottomTab('home');
-              setIsBranchResolving(false);
-              return;
-            }
-          }
-          const saved = localStorage.getItem(BRANCH_STORAGE_KEY);
-          const branch = saved ? (JSON.parse(saved) as Branch) : null;
-          const mayRestoreSavedBranch =
-            branch?.id &&
-            branch?.name &&
-            (unrestricted || effectiveBranchIds.includes(branch.id));
-          if (mayRestoreSavedBranch) {
-            setSelectedBranch(branch);
-            setCurrentScreen('home');
-            setActiveBottomTab('home');
-            setIsBranchResolving(false);
-            return;
-          }
-          setCurrentScreen('branch-selection');
-          setIsBranchResolving(false);
-          return;
-        } catch {
-          setCurrentScreen('branch-selection');
-          setIsBranchResolving(false);
-          return;
-        }
-      }
-
-      setCurrentScreen('branch-selection');
-      setIsBranchResolving(false);
-    },
-    [companyId]
-  );
-
-  const handleCounterSessionReplaced = useCallback(
-    async (profile: AuthProfile) => {
-      skipCounterBootLockAfterInteractiveLoginRef.current = true;
-      counterBootLockCheckedRef.current = true;
-      await applyProfileAfterCounterSwitch(profile);
-      (['sales', 'purchases', 'accounting', 'contacts'] as const).forEach((domain) => {
-        dispatchMobileInvalidated({
-          domain,
-          companyId: profile.companyId,
-          branchId: profile.branchId ?? null,
-          reason: 'counter-session-switch',
-        });
-      });
-      reload(profile.userId, profile.role, profile.profileId, profile.companyId ?? undefined);
-      dispatchSessionSwitched({ userId: profile.userId, companyId: profile.companyId });
-      setLastCounterCompanyId(profile.companyId);
-      setIsCounterLocked(false);
-      setIsPinLocked(false);
-      markUnlocked();
-      resumeAuthAutoRefresh();
-      void authApi.syncCurrentSessionToCounterVault();
-    },
-    [applyProfileAfterCounterSwitch, reload]
-  );
+  const effectiveProfile = useEffectiveWorkerProfile(user);
 
   useEffect(() => {
     if (authLoading || !user?.id || !companyId) return;
@@ -277,8 +137,7 @@ export default function App() {
     void safeShouldActivateCounterLockScreen(companyId)
       .then((lock) => {
         if (lock) {
-          pauseAuthAutoRefresh('counter-boot-lock');
-          setIsCounterLocked(true);
+          requestCounterLock();
         }
       })
       .catch(() => {
@@ -287,7 +146,7 @@ export default function App() {
       .finally(() => {
         counterBootLockCheckedRef.current = true;
       });
-  }, [authLoading, user?.id, companyId]);
+  }, [authLoading, user?.id, companyId, requestCounterLock]);
 
   useEffect(() => {
     const onLockRequested = () => {
@@ -295,15 +154,14 @@ export default function App() {
       void safeShouldActivateCounterLockScreen(companyId)
         .then((lock) => {
           if (lock) {
-            pauseAuthAutoRefresh('counter-lock-requested');
-            setIsCounterLocked(true);
+            requestCounterLock();
           }
         })
         .catch(() => {});
     };
     window.addEventListener('erp-mobile:counter-lock-requested', onLockRequested);
     return () => window.removeEventListener('erp-mobile:counter-lock-requested', onLockRequested);
-  }, [companyId]);
+  }, [companyId, requestCounterLock]);
 
   useEffect(() => {
     const cleanup = initInputKeyboard();
@@ -318,13 +176,13 @@ export default function App() {
       setIsBranchResolving(false);
       setCurrentScreen('login');
       setIsPinLocked(false);
-      setIsCounterLocked(false);
+      resetCounterState();
       counterBootLockCheckedRef.current = false;
       clearUnlockMark();
     };
     window.addEventListener('erp-auth-signed-out', onSignedOut);
     return () => window.removeEventListener('erp-auth-signed-out', onSignedOut);
-  }, []);
+  }, [resetCounterState]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -337,7 +195,7 @@ export default function App() {
       const useCounter = await safeShouldActivateCounterLockScreen(companyId);
       if (cancelled) return;
       if (useCounter) {
-        setIsCounterLocked(true);
+        requestCounterLock();
         return;
       }
       const pinSet = await authApi.hasPinSet();
@@ -351,7 +209,6 @@ export default function App() {
       }
       if (document.visibilityState === 'visible') {
         void checkLock();
-        if (!isCounterLocked) void maintainCounterVaultTokens();
       }
     };
     document.addEventListener('visibilitychange', onVisibility);
@@ -365,7 +222,6 @@ export default function App() {
             return;
           }
           void checkLock();
-          if (!isCounterLocked) void maintainCounterVaultTokens();
         }),
       )
       .then((handle) => {
@@ -378,16 +234,7 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVisibility);
       appStateListener?.remove();
     };
-  }, [user?.id, companyId, isPinLocked, isCounterLocked]);
-
-  useEffect(() => {
-    if (!user?.id || isCounterLocked) return;
-    void maintainCounterVaultTokens();
-    const id = window.setInterval(() => {
-      void maintainCounterVaultTokens();
-    }, COUNTER_VAULT_MAINTENANCE_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, [user?.id]);
+  }, [user?.id, companyId, isPinLocked, isCounterLocked, requestCounterLock]);
 
   useEffect(() => {
     if (!user) return;
@@ -499,10 +346,11 @@ export default function App() {
 
   useEffect(() => {
     if (!user?.id || !user?.role) return;
+    if (activeCounterWorkerProfile?.userId) return;
     const fresh = permissionReloadFreshRef.current;
     permissionReloadFreshRef.current = false;
     void reload(user.id, user.role, user.profileId, companyId ?? undefined, fresh ? { fresh: true } : undefined);
-  }, [user?.id, user?.role, user?.profileId, companyId, reload]);
+  }, [user?.id, user?.role, user?.profileId, companyId, reload, activeCounterWorkerProfile?.userId]);
 
   /** Keep branchLocked in sync with live permission branchIds (e.g. admin added a second branch). */
   useEffect(() => {
@@ -573,12 +421,16 @@ export default function App() {
             await listCacheRemove(listCacheKeys.branches(cid));
             invalidateBranchAccessSessionCache();
           }
+          const unrestricted = canPickAllCompanyBranches(profile.role);
           const [branchesRes, userBranchIds] = await Promise.all([
             cid ? getBranches(cid) : { data: [] as Branch[], error: null },
-            getUserAccessibleBranchIds(profile.userId, profileId, cid, cid ? { fresh: true } : undefined),
+            cid
+              ? unrestricted
+                ? getUserAccessibleBranchIds(profile.userId, profileId, cid, { fresh: true })
+                : getUserAssignedBranchIds(profile.userId, profileId ?? profile.userId).then((r) => r.branchIds)
+              : Promise.resolve([] as string[]),
           ]);
           const companyBranches = branchesRes.data || [];
-          const unrestricted = canPickAllCompanyBranches(profile.role);
           const effectiveBranchIds = resolveEffectiveBranchIds(
             companyBranches,
             userBranchIds,
@@ -624,6 +476,9 @@ export default function App() {
         }
       } catch (e) {
         console.warn('[ERP Mobile] auth bootstrap failed:', e);
+        if (!cancelled) {
+          setCurrentScreen('login');
+        }
       } finally {
         if (!cancelled) {
           setAuthLoading(false);
@@ -636,8 +491,8 @@ export default function App() {
   }, []);
 
   const handleLogin = async (u: User, cid: string | null) => {
-    resumeAuthAutoRefresh();
-    skipCounterBootLockAfterInteractiveLoginRef.current = true;
+    const needsCounterLock = cid ? await safeShouldActivateCounterLockScreen(cid) : false;
+    skipCounterBootLockAfterInteractiveLoginRef.current = !needsCounterLock;
     permissionReloadFreshRef.current = true;
     if (previousAuthUserIdRef.current !== null && previousAuthUserIdRef.current !== u.id) {
       await resetLocalDataPlaneForNewCompany();
@@ -655,12 +510,14 @@ export default function App() {
     }
     if (cid && (u.profileId || u.id)) {
       try {
+        const unrestricted = canPickAllCompanyBranches(u.role);
         const [branchesRes, userBranchIds] = await Promise.all([
           getBranches(cid),
-          getUserAccessibleBranchIds(u.id, u.profileId, cid, { fresh: true }),
+          unrestricted
+            ? getUserAccessibleBranchIds(u.id, u.profileId, cid, { fresh: true })
+            : getUserAssignedBranchIds(u.id, u.profileId ?? u.id).then((r) => r.branchIds),
         ]);
         const companyBranches = branchesRes.data || [];
-        const unrestricted = canPickAllCompanyBranches(u.role);
         const effectiveBranchIds = resolveEffectiveBranchIds(
           companyBranches,
           userBranchIds,
@@ -672,7 +529,6 @@ export default function App() {
           setCurrentScreen('home');
           setActiveBottomTab('home');
           setIsBranchResolving(false);
-          void authApi.syncCurrentSessionToCounterVault();
           return;
         }
         if (!unrestricted && effectiveBranchIds.length === 1) {
@@ -683,7 +539,6 @@ export default function App() {
             setCurrentScreen('home');
             setActiveBottomTab('home');
             setIsBranchResolving(false);
-            void authApi.syncCurrentSessionToCounterVault();
             return;
           }
         }
@@ -691,7 +546,6 @@ export default function App() {
     }
     setCurrentScreen('branch-selection');
     setIsBranchResolving(false);
-    void authApi.syncCurrentSessionToCounterVault();
   };
 
   const handleBranchSelect = (b: Branch) => {
@@ -700,7 +554,6 @@ export default function App() {
     setCurrentScreen('home');
     setActiveBottomTab('home');
     setIsBranchResolving(false);
-    void authApi.syncCurrentSessionToCounterVault();
   };
 
   const navigateToModule = (screen: Screen, options?: { studioSale?: boolean; documentBranchId?: string }) => {
@@ -733,7 +586,6 @@ export default function App() {
   };
 
   const handleLogoutFull = async () => {
-    resumeAuthAutoRefresh();
     await authApi.signOutGlobal();
     try { localStorage.removeItem(BRANCH_STORAGE_KEY); } catch { /* ignore */ }
     clearUnlockMark();
@@ -742,7 +594,7 @@ export default function App() {
     setSelectedBranch(null);
     setIsBranchResolving(false);
     setIsPinLocked(false);
-    setIsCounterLocked(false);
+    resetCounterState();
     counterBootLockCheckedRef.current = false;
     setShowCreateBusiness(false);
     previousAuthUserIdRef.current = null;
@@ -752,9 +604,7 @@ export default function App() {
   const handleLogout = async () => {
     try {
       if (companyId && (await safeShouldActivateCounterLockScreen(companyId))) {
-        await authApi.signOutLocal();
-        pauseAuthAutoRefresh('counter-handoff');
-        setIsCounterLocked(true);
+        temporaryLock();
         return;
       }
     } catch (e) {
@@ -780,14 +630,17 @@ export default function App() {
     if (!isModuleEnabled(screen)) return false;
     if (!FEATURE_MOBILE_PERMISSION_V2) return true;
     if (screenSkipsModuleViewPermission(screen)) {
-      if (branchId && branchId !== 'all' && branchId !== 'default' && !hasBranchAccess(branchId)) return false;
       return true;
     }
+    if (!isPermissionLoaded) return false;
     const module = getPermissionModuleForScreen(screen);
     if (!module) return screen === 'login' || screen === 'branch-selection';
     if (!hasPermission(`${module}.view`)) return false;
-    if (branchId && branchId !== 'all' && branchId !== 'default' && !hasBranchAccess(branchId)) return false;
-    return true;
+    if (!branchId || branchId === 'all' || branchId === 'default') return true;
+    if (hasBranchAccess(branchId)) return true;
+    // Shared counter tablet: admin-selected branch may differ from worker assignments; modules scope data client-side.
+    if (!isAdminOrOwner && branchIds.length > 0) return true;
+    return false;
   };
 
   // Only show BottomNav on home so modules (Sales, Purchase, Expense, Settings, etc.) are full screen
@@ -809,7 +662,7 @@ export default function App() {
     return (
       <POSLockScreen
         companyId={companyId}
-        onSessionReplaced={handleCounterSessionReplaced}
+        showPermanentSignOut={isAdminOrOwner}
         onUseFullLogin={() => void handleLogoutFull()}
       />
     );
@@ -914,7 +767,6 @@ export default function App() {
               user={user}
               companyId={companyId}
               branchId={selectedBranch?.id ?? null}
-              onCounterSessionReplaced={handleCounterSessionReplaced}
               onRequestCounterLock={handleRequestCounterLock}
             />
       )}
@@ -923,10 +775,8 @@ export default function App() {
           ? <AccessDenied onBack={navigateHome} />
           : <ContactsModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
       )}
-      {currentScreen === 'settings' && user && selectedBranch && (
-        !canAccessScreen('settings', selectedBranch?.id)
-          ? <AccessDenied onBack={navigateHome} />
-          : <SettingsModule
+      {currentScreen === 'settings' && user && (
+          <SettingsModule
               onBack={navigateHome}
               user={user}
               branch={selectedBranch}
@@ -1016,7 +866,6 @@ export default function App() {
               user={user}
               companyId={companyId}
               branch={selectedBranch}
-              onCounterSessionReplaced={handleCounterSessionReplaced}
               onRequestCounterLock={handleRequestCounterLock}
             />
       )}
@@ -1093,6 +942,7 @@ export default function App() {
           <TabletSidebar
             user={user}
             branch={selectedBranch}
+            companyId={companyId}
             currentScreen={currentScreen}
             onNavigate={navigateToModule}
             onLogout={handleLogout}
@@ -1126,7 +976,7 @@ export default function App() {
         <ModuleGrid
           onClose={() => setShowModuleGrid(false)}
           onModuleSelect={navigateToModule}
-          userRole={user.role}
+          userRole={(effectiveProfile?.role ?? user.role) as User['role']}
         />
       )}
     </div>

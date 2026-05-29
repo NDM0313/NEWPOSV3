@@ -1,7 +1,9 @@
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import type { User as SupabaseAuthUser } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, authStorageIsEphemeral } from '../lib/supabase';
+import { loginWithPasswordGrant } from '../lib/authPasswordGrant';
+import { withBootTimeout } from '../lib/bootTimeout';
 import {
   hasSecurePayload,
   saveSecurePayload,
@@ -14,11 +16,6 @@ import {
 import { normalizeAppRole, type AssignableAppRole } from '../config/functionalRoles';
 import { getOAuthRedirectTo } from '../lib/oauthRedirect';
 import {
-  syncCounterRefreshTokenForUserId,
-  syncCounterVaultDisplayMetadataForUserId,
-  formatCounterPinAuthError,
-} from '../lib/counterUserVault';
-import {
   isStaleRefreshTokenError,
   noteRefreshFailure,
   recoverStaleAuthSession,
@@ -30,6 +27,64 @@ import { getUserAccessibleBranchIds } from './permissions';
 export { getOAuthRedirectTo } from '../lib/oauthRedirect';
 
 const SESSION_POLL_MS = 200;
+const GET_SESSION_TIMEOUT_MS = 8000;
+
+function isProductionMobileHost(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location.hostname.includes('erp.dincouture.pk');
+}
+
+function isStorageOrSecurityError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = String(
+    typeof err === 'object' && err !== null && 'message' in err
+      ? (err as { message?: string }).message
+      : err,
+  ).toLowerCase();
+  const name = String(
+    typeof err === 'object' && err !== null && 'name' in err ? (err as { name?: string }).name : '',
+  ).toLowerCase();
+  return (
+    name === 'securityerror' ||
+    msg.includes('securityerror') ||
+    msg.includes('request was denied') ||
+    msg.includes('access is denied')
+  );
+}
+
+function formatSignInErrorMessage(msg: string): string {
+  if (msg.includes('Invalid login credentials')) return 'Invalid email or password.';
+  if (/invalid authentication credentials/i.test(msg)) {
+    return 'API key mismatch: copy VITE_SUPABASE_ANON_KEY from .env.production (VPS ANON_KEY) into erp-mobile-app/.env, restart npm run dev.';
+  }
+  if (msg.includes('Email not confirmed')) return 'Please confirm your email first.';
+  if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(msg)) {
+    return 'Cannot reach the server. Check network or contact admin.';
+  }
+  if (isStorageOrSecurityError({ message: msg })) {
+    return 'Browser blocked site storage. Allow cookies/storage for this site or use a normal (non-private) window.';
+  }
+  return msg;
+}
+
+function formatAuthRefreshError(message: string | undefined): string {
+  if (!message) return 'Session expired. Sign in with email/password.';
+  const m = message.toLowerCase();
+  if (m.includes('aborted') || m.includes('abort')) {
+    return 'Sign-in was interrupted. Try again.';
+  }
+  if (
+    m.includes('refresh token not found') ||
+    m.includes('invalid refresh token') ||
+    m.includes('invalid_grant') ||
+    m.includes('bad request') ||
+    m.includes('already used') ||
+    m.includes('revoked')
+  ) {
+    return 'Session expired. Sign in with email/password.';
+  }
+  return message;
+}
 
 type UsersNameRow = { full_name?: string | null; email?: string | null };
 
@@ -63,7 +118,7 @@ export async function ensureAuthenticatedSession(maxWaitMs = 8000): Promise<{ ok
     if (error) {
       if (isStaleRefreshTokenError(error)) {
         await recoverStaleAuthSession();
-        return { ok: false, message: formatCounterPinAuthError(error.message) };
+        return { ok: false, message: formatAuthRefreshError(error.message) };
       }
       return { ok: false, message: error.message };
     }
@@ -219,32 +274,10 @@ export interface AuthProfile {
   branchLocked: boolean;
 }
 
-export async function signIn(email: string, password: string): Promise<{ data: AuthProfile | null; error: { message: string } | null }> {
-  if (!isSupabaseConfigured) {
-    return {
-      data: null,
-      error: {
-        message: 'App not configured. In erp-mobile-app/.env set VITE_SUPABASE_ANON_KEY (copy from main project .env.production or .env.local). Then restart: npm run dev.',
-      },
-    };
-  }
-  const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-  if (signInError) {
-    let msg = signInError.message;
-    if (msg.includes('Invalid login credentials')) msg = 'Invalid email or password.';
-    else if (/invalid authentication credentials/i.test(msg)) {
-      msg =
-        'API key mismatch: copy VITE_SUPABASE_ANON_KEY from .env.production (VPS ANON_KEY) into erp-mobile-app/.env, restart npm run dev.';
-    } else if (msg.includes('Email not confirmed')) msg = 'Please confirm your email first.';
-    else if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(msg)) {
-      msg = 'Cannot reach the server. Check network or contact admin.';
-    }
-    return { data: null, error: { message: msg } };
-  }
-  const user = authData.user;
-  if (!user?.id) return { data: null, error: { message: 'Login failed.' } };
-
-  // users table: match by id (legacy) OR auth_user_id (links to auth.users.id)
+async function profileFromAuthUser(
+  user: SupabaseAuthUser,
+  email: string,
+): Promise<{ data: AuthProfile | null; error: { message: string } | null }> {
   const { data: row, error: profileError } = await supabase
     .from('users')
     .select('id, company_id, role, full_name, email')
@@ -262,7 +295,6 @@ export async function signIn(email: string, password: string): Promise<{ data: A
   const normalized = normalizeAppRole(row.role);
   const finalRole: UserRole =
     normalized === 'owner' ? 'owner' : (normalized as AssignableAppRole);
-  // branch_id not on users; branch lock would come from user_branches (future)
   const branchId: string | null = null;
   const branchLocked = false;
 
@@ -277,16 +309,68 @@ export async function signIn(email: string, password: string): Promise<{ data: A
     branchLocked,
   };
 
-  const rt = authData.session?.refresh_token;
-  if (rt && user.id) {
-    try {
-      await syncCounterRefreshTokenForUserId(user.id, rt);
-    } catch {
-      /* ignore */
-    }
+  return { data: profile, error: null };
+}
+
+async function applyRestSignIn(
+  email: string,
+  password: string,
+): Promise<{ data: AuthProfile | null; error: { message: string } | null }> {
+  const { data, error } = await loginWithPasswordGrant(email, password);
+  if (error || !data?.session) {
+    const msg = error?.message ? formatSignInErrorMessage(error.message) : 'Login failed.';
+    return { data: null, error: { message: msg } };
+  }
+  try {
+    await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+  } catch (e: unknown) {
+    if (!isStorageOrSecurityError(e)) throw e;
+  }
+  return profileFromAuthUser(data.user, email);
+}
+
+export async function signIn(email: string, password: string): Promise<{ data: AuthProfile | null; error: { message: string } | null }> {
+  if (!isSupabaseConfigured) {
+    return {
+      data: null,
+      error: {
+        message: 'App not configured. In erp-mobile-app/.env set VITE_SUPABASE_ANON_KEY (copy from main project .env.production or .env.local). Then restart: npm run dev.',
+      },
+    };
   }
 
-  return { data: profile, error: null };
+  if (authStorageIsEphemeral() || isProductionMobileHost()) {
+    return applyRestSignIn(email, password);
+  }
+
+  let authData: { user: SupabaseAuthUser | null } | null = null;
+  let signInError: { message: string } | null = null;
+  try {
+    const result = await supabase.auth.signInWithPassword({ email, password });
+    authData = result.data;
+    if (result.error) signInError = { message: result.error.message };
+  } catch (e: unknown) {
+    if (isStorageOrSecurityError(e)) {
+      return applyRestSignIn(email, password);
+    }
+    throw e;
+  }
+
+  if (signInError && isStorageOrSecurityError(signInError)) {
+    return applyRestSignIn(email, password);
+  }
+
+  if (signInError) {
+    return { data: null, error: { message: formatSignInErrorMessage(signInError.message) } };
+  }
+
+  const user = authData?.user;
+  if (!user?.id) return { data: null, error: { message: 'Login failed.' } };
+
+  return profileFromAuthUser(user, email);
 }
 
 /** Clear local session + device PIN vault. Never revokes server refresh tokens (counter vault safe). */
@@ -300,7 +384,7 @@ export async function signOutLocal(): Promise<void> {
   await supabase.auth.signOut({ scope: 'local' });
 }
 
-/** Counter tablet handoff — always local sign-out so vault refresh tokens stay valid on server. */
+/** Counter tablet handoff — local sign-out only (legacy name). */
 export async function signOutForTabletHandoff(_companyId?: string | null): Promise<void> {
   await signOutLocal();
 }
@@ -308,26 +392,6 @@ export async function signOutForTabletHandoff(_companyId?: string | null): Promi
 /** @deprecated Prefer `signOutGlobal` or `signOutLocal` for clarity. */
 export async function signOut(): Promise<void> {
   await signOutGlobal();
-}
-
-/** After any successful login or refresh, push the current refresh token into counter vault rows for this user. */
-export async function syncCurrentSessionToCounterVault(): Promise<void> {
-  const s = await getSessionWithRefresh();
-  if (!s) return;
-  try {
-    await syncCounterRefreshTokenForUserId(s.userId, s.refreshToken);
-    const prof = await getProfile(s.userId);
-    if (prof?.name) {
-      await syncCounterVaultDisplayMetadataForUserId(s.userId, {
-        displayName: prof.name,
-        email: prof.email,
-        role: prof.role,
-        companyId: prof.companyId,
-      });
-    }
-  } catch {
-    /* ignore */
-  }
 }
 
 /** Refresh persisted Supabase session (if any). */
@@ -367,6 +431,17 @@ export async function getSession(): Promise<{ userId: string; email: string } | 
   if (!session?.user) return null;
   resetRefreshFailureCount();
   return { userId: session.user.id, email: session.user.email || '' };
+}
+
+/** getSession with timeout — avoids infinite spinner when GoTrue locks hang. */
+export async function getSessionWithTimeout(
+  timeoutMs = GET_SESSION_TIMEOUT_MS,
+): Promise<{ userId: string; email: string } | null> {
+  try {
+    return await withBootTimeout(getSession(), timeoutMs, 'Session read timeout');
+  } catch {
+    return null;
+  }
 }
 
 /** Returns session with refresh_token for storing in secure vault. */
@@ -411,21 +486,12 @@ export async function refreshSessionFromRefreshToken(
       await recoverStaleAuthSession();
     }
     if (stale || tripped) {
-      return { ok: false, error: formatCounterPinAuthError(error.message) };
+      return { ok: false, error: formatAuthRefreshError(error.message) };
     }
-    return { ok: false, error: formatCounterPinAuthError(error.message) };
+    return { ok: false, error: formatAuthRefreshError(error.message) };
   }
   resetRefreshFailureCount();
   if (!data?.session) return { ok: false, error: 'No session returned.' };
-  const rt = data.session.refresh_token;
-  const uid = data.session.user?.id;
-  if (rt && uid) {
-    try {
-      await syncCounterRefreshTokenForUserId(uid, rt);
-    } catch {
-      /* ignore */
-    }
-  }
   return { ok: true };
 }
 

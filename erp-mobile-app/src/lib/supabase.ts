@@ -1,8 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { createClient } from '@supabase/supabase-js';
 import { clearSecure } from './secureStorage';
-import { syncCounterRefreshTokenForUserId } from './counterUserVault';
-import { maintainCounterVaultTokens } from './counterVaultMaintenance';
 import {
   installNativeStaleTokenConsoleFilter,
   installStaleTokenRecoveryForWeb,
@@ -14,7 +12,6 @@ import {
   recoverStaleAuthSessionIfNeeded,
 } from './authSessionRecovery';
 import { resolveSupabaseApiUrl } from './resolveSupabaseApiUrl';
-import { isAuthAutoRefreshPaused } from './authAutoRefreshGate';
 
 /** Vite defines `import.meta.env`; Node (e.g. tsx --test) does not — avoid crashing on import. */
 const env =
@@ -112,11 +109,90 @@ export const mobileRealtimeHealth = {
           : 'ok',
 } as const;
 
+// ============================================
+// SAFE STORAGE (avoids SecurityError when localStorage is denied)
+// ============================================
+
+const memoryStore: Record<string, string> = {};
+let authStorageKind: 'localStorage' | 'sessionStorage' | 'memory' = 'memory';
+
+function probeStorage(storage: Storage): boolean {
+  try {
+    const probe = '__sb_probe__';
+    storage.setItem(probe, '1');
+    storage.removeItem(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function memoryFallback(): Storage {
+  authStorageKind = 'memory';
+  return {
+    getItem: (key: string) => {
+      try { return memoryStore[key] ?? null; } catch { return null; }
+    },
+    setItem: (key: string, value: string) => {
+      try { memoryStore[key] = value; } catch { /* no-op */ }
+    },
+    removeItem: (key: string) => {
+      try { delete memoryStore[key]; } catch { /* no-op */ }
+    },
+    key: (i: number) => {
+      try { return Object.keys(memoryStore)[i] ?? null; } catch { return null; }
+    },
+    get length() {
+      try { return Object.keys(memoryStore).length; } catch { return 0; }
+    },
+    clear: () => {
+      try { for (const k of Object.keys(memoryStore)) delete memoryStore[k]; } catch { /* no-op */ }
+    },
+  };
+}
+
+function safeStorage(): Storage {
+  if (typeof window === 'undefined') return memoryFallback();
+  try {
+    if (probeStorage(localStorage)) {
+      authStorageKind = 'localStorage';
+      return localStorage;
+    }
+  } catch { /* ignore */ }
+  try {
+    if (probeStorage(sessionStorage)) {
+      authStorageKind = 'sessionStorage';
+      return sessionStorage;
+    }
+  } catch { /* ignore */ }
+  return memoryFallback();
+}
+
+/** True when auth session is only in RAM (lost on full navigation unless sessionStorage works). */
+export function authStorageIsEphemeral(): boolean {
+  return authStorageKind === 'memory';
+}
+
+export function getResolvedSupabaseUrl(): string {
+  return url;
+}
+
+export function getResolvedAnonKey(): string {
+  return key;
+}
+
+/** Bypass navigator.locks — SecurityError when cookies/storage blocked in strict browsers. */
+async function authLockNoOp<T>(_name: string, _acquireTimeout: number, fn: () => Promise<T>): Promise<T> {
+  return await fn();
+}
+
 export const supabase = createClient(url, key, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+    storage: safeStorage(),
+    lock: authLockNoOp,
   },
 });
 
@@ -143,24 +219,9 @@ if (isNativeCapacitor) {
   installStaleTokenRecoveryForWeb();
 }
 
-let counterVaultSyncTimer: ReturnType<typeof setTimeout> | null = null;
-function scheduleCounterVaultTokenSync(session: { user: { id: string }; refresh_token?: string } | null): void {
-  const uid = session?.user?.id;
-  const rt = session?.refresh_token;
-  if (!uid || !rt) return;
-  if (counterVaultSyncTimer) clearTimeout(counterVaultSyncTimer);
-  counterVaultSyncTimer = setTimeout(() => {
-    counterVaultSyncTimer = null;
-    void syncCounterRefreshTokenForUserId(uid, rt).catch(() => {});
-  }, 400);
-}
-
 /** Auto-fix: when session is lost (refresh failed, CORS, etc.), clear PIN vault and notify app */
 if (hasConfig) {
   supabase.auth.onAuthStateChange((event, session) => {
-    if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
-      if (session) scheduleCounterVaultTokenSync(session);
-    }
     if (event === 'SIGNED_OUT' && !session) {
       clearSecure().catch(() => {});
       window.dispatchEvent(new CustomEvent('erp-auth-signed-out'));
@@ -180,14 +241,6 @@ if (hasConfig) {
     }
   });
   void recoverStaleAuthSessionFromBootstrap();
-}
-
-if (hasConfig && typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && !isAuthAutoRefreshPaused()) {
-      void maintainCounterVaultTokens();
-    }
-  });
 }
 
 if (env.DEV && typeof window !== 'undefined') {

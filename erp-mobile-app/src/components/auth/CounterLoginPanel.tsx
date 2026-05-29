@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Users } from 'lucide-react';
+import { subscribeCounterRegistryUpdated } from '../../lib/counterPinFromDevicePin';
 import {
-  listEnrolledCounterProfiles,
-  type EnrolledCounterProfile,
-} from '../../lib/counterUserVault';
-import { unlockWithCounterPin } from '../../lib/counterPinUnlock';
-import { getCounterSyncStaleWarning } from '../../lib/counterSessionPolicy';
-import { maintainCounterVaultTokens } from '../../lib/counterVaultMaintenance';
+  listEnrolledWorkers,
+  type EnrolledCounterWorker,
+} from '../../lib/counterWorkerRegistry';
+import { useCounterWorker } from '../../context/CounterWorkerContext';
+import * as authApi from '../../api/auth';
 import type { User } from '../../types';
 
 interface CounterLoginPanelProps {
@@ -16,62 +16,84 @@ interface CounterLoginPanelProps {
 }
 
 export function CounterLoginPanel({ companyId, onLogin, onUseFullLogin }: CounterLoginPanelProps) {
-  const [slots, setSlots] = useState<EnrolledCounterProfile[]>([]);
+  const { selectWorker } = useCounterWorker();
+  const [hasSession, setHasSession] = useState<boolean | null>(null);
+  const [slots, setSlots] = useState<EnrolledCounterWorker[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(true);
-  const [selected, setSelected] = useState<EnrolledCounterProfile | null>(null);
+  const [selected, setSelected] = useState<EnrolledCounterWorker | null>(null);
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [vaultRefreshing, setVaultRefreshing] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    void maintainCounterVaultTokens().finally(() => {
-      if (cancelled) return;
-      listEnrolledCounterProfiles(companyId)
-        .then(setSlots)
-        .catch(() => setSlots([]))
+
+    const loadSlots = () => {
+      listEnrolledWorkers(companyId)
+        .then((rows) => {
+          if (!cancelled) setSlots(rows);
+        })
+        .catch(() => {
+          if (!cancelled) setSlots([]);
+        })
         .finally(() => {
-          if (!cancelled) {
-            setLoadingSlots(false);
-            setVaultRefreshing(false);
-          }
+          if (!cancelled) setLoadingSlots(false);
         });
+    };
+
+    void authApi.getSessionWithTimeout().then((session) => {
+      if (cancelled) return;
+      if (!session) {
+        setHasSession(false);
+        setLoadingSlots(false);
+        return;
+      }
+      setHasSession(true);
+      loadSlots();
     });
+
+    const unsubRegistry = subscribeCounterRegistryUpdated(() => {
+      if (cancelled) return;
+      loadSlots();
+    });
+
     return () => {
       cancelled = true;
+      unsubRegistry();
     };
   }, [companyId]);
 
-  const append = (d: string) => {
-    setError(null);
-    if (pin.length >= 4) return;
-    setPin((p) => (p + d).slice(0, 4));
-  };
+  if (hasSession === false) return null;
 
-  const backspace = () => {
-    setError(null);
-    setPin((p) => p.slice(0, -1));
-  };
-
-  const submit = async () => {
-    if (!selected || pin.length !== 4) {
-      setError('Select your name and enter 4-digit PIN.');
+  const submit = async (pinValue?: string) => {
+    const attempt = pinValue ?? pin;
+    if (!selected || attempt.length !== 4) {
+      if (!pinValue) setError('Select your name and enter 4-digit PIN.');
       return;
     }
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await unlockWithCounterPin(pin, {
-        expectedUserId: selected.userId,
-        companyId,
-      });
+      const result = await selectWorker(attempt, selected.userId, companyId);
       if (!result.ok) {
         setError(result.error);
+        setPin('');
         return;
       }
-      const profile = result.profile;
-      const user: User = {
+      const session = await authApi.getSession();
+      if (!session) {
+        setError('Session lost. Sign in with email/password.');
+        setPin('');
+        return;
+      }
+      const profile = await authApi.getProfile(session.userId);
+      if (!profile) {
+        setError('Profile not found.');
+        setPin('');
+        return;
+      }
+      const sessionUser: User = {
         id: profile.userId,
         name: profile.name,
         email: profile.email,
@@ -80,19 +102,36 @@ export function CounterLoginPanel({ companyId, onLogin, onUseFullLogin }: Counte
         branchId: profile.branchId ?? undefined,
         branchLocked: profile.branchLocked,
       };
-      onLogin(user, profile.companyId);
+      onLogin(sessionUser, profile.companyId);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sign-in failed.');
+      setPin('');
     } finally {
       setBusy(false);
     }
   };
 
-  if (loadingSlots || vaultRefreshing) {
+  const append = (d: string) => {
+    setError(null);
+    if (busy || pin.length >= 4) return;
+    const next = (pin + d).slice(0, 4);
+    setPin(next);
+    if (next.length === 4 && selected) {
+      void submit(next);
+    }
+  };
+
+  const backspace = () => {
+    if (busy) return;
+    setError(null);
+    setPin((p) => p.slice(0, -1));
+  };
+
+  if (loadingSlots || hasSession === null) {
     return (
       <div className="flex flex-col items-center justify-center py-8 gap-2">
         <Loader2 className="w-8 h-8 text-[#3B82F6] animate-spin" />
-        <p className="text-xs text-[#6B7280]">Refreshing tablet session…</p>
+        <p className="text-xs text-[#6B7280]">Loading counter users…</p>
       </div>
     );
   }
@@ -138,11 +177,6 @@ export function CounterLoginPanel({ companyId, onLogin, onUseFullLogin }: Counte
             ← Choose another user
           </button>
           <p className="text-sm text-white font-medium mb-2">{selected.displayName}</p>
-          {getCounterSyncStaleWarning(selected.lastTokenSyncAt) ? (
-            <p className="text-xs text-amber-200/90 text-center mb-3 px-2">
-              {getCounterSyncStaleWarning(selected.lastTokenSyncAt)}
-            </p>
-          ) : null}
           <div className="flex justify-center gap-2 mb-4">
             {[0, 1, 2, 3].map((i) => (
               <div
@@ -169,15 +203,12 @@ export function CounterLoginPanel({ companyId, onLogin, onUseFullLogin }: Counte
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            disabled={busy || pin.length !== 4}
-            onClick={() => void submit()}
-            className="w-full h-12 rounded-xl bg-[#3B82F6] text-white font-medium flex items-center justify-center gap-2 disabled:opacity-50 mb-3"
-          >
-            {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-            Sign in
-          </button>
+          {busy ? (
+            <div className="flex items-center justify-center gap-2 text-sm text-[#9CA3AF] mb-3">
+              <Loader2 className="w-5 h-5 animate-spin text-[#3B82F6]" />
+              Signing in…
+            </div>
+          ) : null}
         </>
       )}
 
