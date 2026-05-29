@@ -8,13 +8,13 @@ import { OAUTH_COMPLETE_EVENT, type OauthCompleteDetail } from '../lib/oauthCall
 import { CounterLoginPanel } from './auth/CounterLoginPanel';
 import { getLastCounterCompanyId } from '../lib/sharedCounterMode';
 import {
-  formatCounterPinAuthError,
-  getCounterVaultUserIdForPin,
-  saveCounterUserForPin,
-  type CounterVaultPayload,
-} from '../lib/counterUserVault';
-import { maintainCounterVaultTokens } from '../lib/counterVaultMaintenance';
-import { listEnrolledCounterProfiles } from '../lib/counterUserVault';
+  finalizeCounterWorkerEnrollment,
+  resolveCounterEnrollBranchId,
+  shouldOfferCounterPinSync,
+  subscribeCounterRegistryUpdated,
+} from '../lib/counterPinFromDevicePin';
+import { getWorkerUserIdForPin, listEnrolledWorkers } from '../lib/counterWorkerRegistry';
+import { fullDeviceReset } from '../lib/fullDeviceReset';
 
 interface LoginScreenProps {
   onLogin: (user: User, companyId: string | null) => void;
@@ -47,12 +47,12 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
   const [hasPinSet, setHasPinSet] = useState(false);
   const [pinLockedUntil, setPinLockedUntil] = useState(0);
   const [confirmCounterSync, setConfirmCounterSync] = useState(false);
-  const [pendingCounterPayload, setPendingCounterPayload] = useState<{ pin: string; payload: CounterVaultPayload } | null>(null);
+  const [pendingCounterPin, setPendingCounterPin] = useState<string | null>(null);
   const [hasCounterSlots, setHasCounterSlots] = useState(false);
   const [showEmailLogin, setShowEmailLogin] = useState(false);
 
-  useEffect(() => {
-    listEnrolledCounterProfiles(getLastCounterCompanyId())
+  const refreshCounterSlots = () => {
+    listEnrolledWorkers(getLastCounterCompanyId())
       .then((slots) => {
         setHasCounterSlots(slots.length > 0);
         if (slots.length === 0) setShowEmailLogin(true);
@@ -61,18 +61,17 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         setHasCounterSlots(false);
         setShowEmailLogin(true);
       });
+  };
+
+  useEffect(() => {
+    refreshCounterSlots();
+    return subscribeCounterRegistryUpdated(refreshCounterSlots);
   }, []);
 
   useEffect(() => {
     authApi.hasPinSet().then(setHasPinSet);
     authApi.getPinLockedUntil().then(setPinLockedUntil);
   }, []);
-
-  /** Refresh counter vault if Supabase still has a persisted session on the login screen. */
-  useEffect(() => {
-    if (pinUnlockUser) return;
-    void maintainCounterVaultTokens();
-  }, [pinUnlockUser]);
 
   useEffect(() => {
     const onOauthComplete = (ev: Event) => {
@@ -142,7 +141,6 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         return;
       }
       if (data) {
-        await authApi.syncCurrentSessionToCounterVault();
         const user: User = {
           id: data.userId,
           name: data.name,
@@ -184,7 +182,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
     setSetPinValue('');
     setSetPinConfirm('');
     setConfirmCounterSync(false);
-    setPendingCounterPayload(null);
+    setPendingCounterPin(null);
   };
 
   const handleSetPinSubmit = async () => {
@@ -208,34 +206,23 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         email: userForSetPin.email,
       });
 
-      // 4-digit + free slot → ask user to also save Counter tablet PIN.
-      // branchId may be null (admin/owner with no user_branches row); vault payload accepts null.
-      if (/^\d{4}$/.test(setPinValue) && companyIdForSetPin) {
+      if (userForSetPin && companyIdForSetPin) {
         try {
           const prof = await authApi.getProfile(sessionWithRefresh.userId);
           const branchId = prof?.branchId ?? branchIdForSetPin ?? null;
-          const existingUid = await getCounterVaultUserIdForPin(setPinValue);
-          if (existingUid && existingUid !== sessionWithRefresh.userId) {
-            console.warn(
-              '[LoginScreen] Counter tablet PIN slot already taken by another user; skipping confirm.',
-            );
-          } else {
-            setPendingCounterPayload({
-              pin: setPinValue,
-              payload: {
-                refreshToken: sessionWithRefresh.refreshToken,
-                userId: sessionWithRefresh.userId,
-                companyId: companyIdForSetPin,
-                branchId,
-                email: sessionWithRefresh.email || userForSetPin.email,
-                savedAt: Date.now(),
-                displayName: prof?.name?.trim() || userForSetPin.name,
-                publicUsersId: userForSetPin.profileId,
-                role: userForSetPin.role,
-              },
-            });
-            setConfirmCounterSync(true);
-            return; // wait for Yes/No before finishing login
+          if (
+            shouldOfferCounterPinSync(setPinValue, userForSetPin.role, companyIdForSetPin, branchId)
+          ) {
+            const existingUid = await getWorkerUserIdForPin(setPinValue);
+            if (existingUid && existingUid !== sessionWithRefresh.userId) {
+              console.warn(
+                '[LoginScreen] Counter tablet PIN slot already taken by another user; skipping confirm.',
+              );
+            } else {
+              setPendingCounterPin(setPinValue);
+              setConfirmCounterSync(true);
+              return;
+            }
           }
         } catch (counterErr) {
           console.warn('[LoginScreen] Counter tablet PIN check error:', counterErr);
@@ -251,14 +238,30 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
   };
 
   const handleConfirmCounterYes = async () => {
-    if (!pendingCounterPayload) {
+    if (!pendingCounterPin || !userForSetPin || !companyIdForSetPin) {
       finishLogin();
       return;
     }
     setLoading(true);
     try {
-      await saveCounterUserForPin(pendingCounterPayload.pin, pendingCounterPayload.payload);
-      void authApi.syncCurrentSessionToCounterVault();
+      const prof = await authApi.getProfile(userForSetPin.id);
+      const branchId = resolveCounterEnrollBranchId(
+        userForSetPin.role,
+        prof?.branchId ?? branchIdForSetPin ?? null,
+      );
+      await finalizeCounterWorkerEnrollment(
+        pendingCounterPin,
+        {
+          userId: userForSetPin.id,
+          displayName: prof?.name?.trim() || userForSetPin.name,
+          email: userForSetPin.email,
+          role: userForSetPin.role,
+          profileId: userForSetPin.profileId,
+          companyId: companyIdForSetPin,
+          branchId,
+        },
+        companyIdForSetPin,
+      );
     } catch (e) {
       console.warn('[LoginScreen] Counter tablet PIN save failed:', e);
     } finally {
@@ -291,7 +294,7 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         if (!session) {
           const refreshed = await authApi.refreshSessionFromRefreshToken(payload.refreshToken);
           if (!refreshed.ok) {
-            setError(formatCounterPinAuthError(refreshed.error));
+            setError('Session expired. Sign in with email/password.');
             return;
           }
         }
@@ -335,6 +338,24 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
     await authApi.signOutGlobal();
     await authApi.clearPin();
     window.location.reload();
+  };
+
+  const handleFullReset = async () => {
+    if (
+      !window.confirm(
+        'Clear all cached data on this device?\n\nPIN, counter slots, offline queue, and login session will be removed. You will need to sign in again.',
+      )
+    ) {
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await fullDeviceReset();
+    } catch {
+      setError('Could not reset app data. Use browser Settings → Clear site data for this URL.');
+      setLoading(false);
+    }
   };
 
   const handleGoogleSignIn = async () => {
@@ -429,8 +450,8 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
               shared lock screen (POS). With 5–6 digits, add Counter tablet PIN later in Settings.
             </p>
             <p className="text-xs text-[#6B7280] mt-1">
-              Shared counter PIN needs an assigned branch. If you do not have one yet, set Counter tablet PIN in
-              Settings after choosing a branch.
+              Owner/admin: 4 digits also enrolls you on the POS lock screen (branch optional). Staff need an assigned
+              branch for counter PIN.
             </p>
             <p className="text-xs text-[#6B7280] mt-1">Change or remove in Settings after login.</p>
           </div>
@@ -546,6 +567,14 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
               >
                 Use full login instead
               </button>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => void handleFullReset()}
+                className="mt-3 w-full text-xs text-[#6B7280] hover:text-amber-200"
+              >
+                Reset app data (clear cache)
+              </button>
             </>
           )}
         </div>
@@ -639,6 +668,14 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
         </div>
         )}
 
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => void handleFullReset()}
+          className="mt-6 w-full text-xs text-[#6B7280] hover:text-amber-200 transition-colors"
+        >
+          Reset app data (clear cache and reload)
+        </button>
       </div>
     </div>
   );

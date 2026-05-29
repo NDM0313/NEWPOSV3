@@ -1,55 +1,61 @@
 import { useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import type { AuthProfile } from '../../api/auth';
-import { unlockWithCounterPin } from '../../lib/counterPinUnlock';
+import { useCounterWorker } from '../../context/CounterWorkerContext';
 
 interface SwitchUserPinOverlayProps {
   open: boolean;
   companyId: string | null;
   onClose: () => void;
-  onSessionReplaced: (profile: AuthProfile) => void | Promise<void>;
 }
 
-export function SwitchUserPinOverlay({ open, companyId, onClose, onSessionReplaced }: SwitchUserPinOverlayProps) {
+export function SwitchUserPinOverlay({ open, companyId, onClose }: SwitchUserPinOverlayProps) {
+  const { selectWorker } = useCounterWorker();
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!open) return null;
 
-  const append = (d: string) => {
-    setError(null);
-    if (pin.length >= 4) return;
-    setPin((p) => (p + d).slice(0, 4));
-  };
-
-  const backspace = () => {
-    setError(null);
-    setPin((p) => p.slice(0, -1));
-  };
-
-  const submit = async () => {
-    if (pin.length !== 4) {
-      setError('Enter 4 digits.');
+  const submit = async (pinValue?: string) => {
+    const attempt = pinValue ?? pin;
+    if (attempt.length !== 4) {
+      if (!pinValue) setError('Enter 4 digits.');
       return;
     }
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await unlockWithCounterPin(pin, { companyId });
+      const result = await selectWorker(attempt, null, companyId);
       if (!result.ok) {
         setError(result.error);
-        setBusy(false);
+        setPin('');
         return;
       }
-      await onSessionReplaced(result.profile);
       setPin('');
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Switch failed.');
+      setPin('');
     } finally {
       setBusy(false);
     }
+  };
+
+  const append = (d: string) => {
+    setError(null);
+    if (busy || pin.length >= 4) return;
+    const next = (pin + d).slice(0, 4);
+    setPin(next);
+    if (next.length === 4) {
+      void submit(next);
+    }
+  };
+
+  const backspace = () => {
+    if (busy) return;
+    setError(null);
+    setPin((p) => p.slice(0, -1));
   };
 
   return (
@@ -66,7 +72,7 @@ export function SwitchUserPinOverlay({ open, companyId, onClose, onSessionReplac
             <X className="w-5 h-5" />
           </button>
         </div>
-        <p className="text-xs text-[#9CA3AF] mb-4">Enter the 4-digit counter PIN saved for this device.</p>
+        <p className="text-xs text-[#9CA3AF] mb-4">Enter the 4-digit counter PIN for this device.</p>
         <div className="flex justify-center gap-2 mb-4">
           {[0, 1, 2, 3].map((i) => (
             <div
@@ -94,15 +100,12 @@ export function SwitchUserPinOverlay({ open, companyId, onClose, onSessionReplac
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          disabled={busy || pin.length !== 4}
-          onClick={() => void submit()}
-          className="w-full h-12 rounded-xl bg-[#3B82F6] text-white font-medium flex items-center justify-center gap-2 disabled:opacity-50"
-        >
-          {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-          {busy ? 'Switching…' : 'Switch'}
-        </button>
+        {busy ? (
+          <div className="flex items-center justify-center gap-2 text-sm text-[#9CA3AF]">
+            <Loader2 className="w-5 h-5 animate-spin text-[#3B82F6]" />
+            Switching…
+          </div>
+        ) : null}
       </div>
     </div>
   );

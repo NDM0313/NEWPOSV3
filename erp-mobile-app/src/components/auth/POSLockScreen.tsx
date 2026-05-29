@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Lock, LogOut } from 'lucide-react';
-import type { AuthProfile } from '../../api/auth';
-import { listEnrolledCounterProfiles, COUNTER_STALE_REFRESH_TOKEN_HINT, type EnrolledCounterProfile } from '../../lib/counterUserVault';
-import { unlockWithCounterPin } from '../../lib/counterPinUnlock';
+import { subscribeCounterRegistryUpdated } from '../../lib/counterPinFromDevicePin';
+import {
+  listEnrolledWorkers,
+  type EnrolledCounterWorker,
+} from '../../lib/counterWorkerRegistry';
+import { useCounterWorker } from '../../context/CounterWorkerContext';
 import { getFunctionalRoleLabel } from '../../config/functionalRoles';
-import { getCounterSyncStaleWarning } from '../../lib/counterSessionPolicy';
 
 interface POSLockScreenProps {
   companyId: string | null;
-  onSessionReplaced: (profile: AuthProfile) => void | Promise<void>;
+  showPermanentSignOut: boolean;
   /** Full sign-out (email/password login). */
   onUseFullLogin: () => void;
   title?: string;
@@ -37,59 +39,83 @@ function avatarColor(seed: string): string {
 
 export function POSLockScreen({
   companyId,
-  onSessionReplaced,
+  showPermanentSignOut,
   onUseFullLogin,
   title = 'Who is using this counter?',
 }: POSLockScreenProps) {
-  const [profiles, setProfiles] = useState<EnrolledCounterProfile[]>([]);
+  const { selectWorker } = useCounterWorker();
+  const [profiles, setProfiles] = useState<EnrolledCounterWorker[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(true);
-  const [selected, setSelected] = useState<EnrolledCounterProfile | null>(null);
+  const [selected, setSelected] = useState<EnrolledCounterWorker | null>(null);
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listEnrolledCounterProfiles(companyId)
-      .then(setProfiles)
-      .catch(() => setProfiles([]))
-      .finally(() => setLoadingProfiles(false));
+    let cancelled = false;
+
+    const loadProfiles = () => {
+      listEnrolledWorkers(companyId)
+        .then((rows) => {
+          if (!cancelled) setProfiles(rows);
+        })
+        .catch(() => {
+          if (!cancelled) setProfiles([]);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingProfiles(false);
+        });
+    };
+
+    loadProfiles();
+    const unsubRegistry = subscribeCounterRegistryUpdated(loadProfiles);
+
+    return () => {
+      cancelled = true;
+      unsubRegistry();
+    };
   }, [companyId]);
 
-  const append = (d: string) => {
-    setError(null);
-    if (pin.length >= 4) return;
-    setPin((p) => (p + d).slice(0, 4));
-  };
-
-  const backspace = () => {
-    setError(null);
-    setPin((p) => p.slice(0, -1));
-  };
-
-  const submit = async () => {
-    if (!selected || pin.length !== 4) {
-      setError('Select your name and enter your 4-digit PIN.');
+  const submit = async (pinValue?: string) => {
+    const attempt = pinValue ?? pin;
+    if (!selected || attempt.length !== 4) {
+      if (!pinValue) setError('Select your name and enter your 4-digit PIN.');
       return;
     }
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await unlockWithCounterPin(pin, {
-        expectedUserId: selected.userId,
-        companyId,
-      });
+      const result = await selectWorker(attempt, selected.userId, companyId);
       if (!result.ok) {
         setError(result.error);
+        setPin('');
         return;
       }
-      await onSessionReplaced(result.profile);
       setPin('');
       setSelected(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unlock failed.');
+      setPin('');
     } finally {
       setBusy(false);
     }
+  };
+
+  const append = (d: string) => {
+    setError(null);
+    if (busy || pin.length >= 4) return;
+    const next = (pin + d).slice(0, 4);
+    setPin(next);
+    if (next.length === 4 && selected) {
+      void submit(next);
+    }
+  };
+
+  const backspace = () => {
+    if (busy) return;
+    setError(null);
+    setPin((p) => p.slice(0, -1));
   };
 
   return (
@@ -114,13 +140,15 @@ export function POSLockScreen({
             <p className="text-xs text-[#6B7280]">
               Ask an admin to enroll counter PINs in Settings, or sign in with email.
             </p>
-            <button
-              type="button"
-              onClick={onUseFullLogin}
-              className="text-sm text-[#3B82F6] hover:text-white underline"
-            >
-              Use email / password
-            </button>
+            {showPermanentSignOut ? (
+              <button
+                type="button"
+                onClick={onUseFullLogin}
+                className="text-sm text-[#3B82F6] hover:text-white underline"
+              >
+                Use email / password
+              </button>
+            ) : null}
           </div>
         ) : !selected ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full">
@@ -137,7 +165,7 @@ export function POSLockScreen({
               >
                 <div
                   className={`w-14 h-14 rounded-full flex items-center justify-center text-lg font-semibold text-white ${avatarColor(
-                    profile.pinHash
+                    profile.pinHash,
                   )}`}
                 >
                   {initials(profile.displayName)}
@@ -167,7 +195,7 @@ export function POSLockScreen({
             <div className="flex flex-col items-center mb-6">
               <div
                 className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-semibold text-white mb-2 ${avatarColor(
-                  selected.pinHash
+                  selected.pinHash,
                 )}`}
               >
                 {initials(selected.displayName)}
@@ -177,11 +205,6 @@ export function POSLockScreen({
                 <p className="text-xs text-[#6B7280] mt-0.5">{selected.email}</p>
               ) : null}
             </div>
-            {getCounterSyncStaleWarning(selected.lastTokenSyncAt) ? (
-              <p className="text-xs text-amber-200/90 text-center mb-4 px-2 max-w-sm">
-                {getCounterSyncStaleWarning(selected.lastTokenSyncAt)}
-              </p>
-            ) : null}
             <div className="flex justify-center gap-2 mb-6">
               {[0, 1, 2, 3].map((i) => (
                 <div
@@ -208,44 +231,34 @@ export function POSLockScreen({
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              disabled={busy || pin.length !== 4}
-              onClick={() => void submit()}
-              className="w-full max-w-xs h-12 rounded-xl bg-[#3B82F6] text-white font-medium flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-              {busy ? 'Unlocking…' : 'Unlock'}
-            </button>
+            {busy ? (
+              <div className="flex items-center justify-center gap-2 text-sm text-[#9CA3AF] mt-2">
+                <Loader2 className="w-5 h-5 animate-spin text-[#3B82F6]" />
+                Unlocking…
+              </div>
+            ) : null}
           </>
         )}
 
         {error ? (
           <div className="mt-6 text-center space-y-3 max-w-sm">
             <p className="text-sm text-red-400">{error}</p>
-            {selected && error === COUNTER_STALE_REFRESH_TOKEN_HINT ? (
-              <button
-                type="button"
-                onClick={onUseFullLogin}
-                className="text-sm text-[#3B82F6] hover:text-white underline"
-              >
-                Sign in with email for {selected.displayName}
-              </button>
-            ) : null}
           </div>
         ) : null}
       </div>
 
-      <div className="p-6 border-t border-[#374151] flex flex-col items-center gap-2">
-        <button
-          type="button"
-          onClick={onUseFullLogin}
-          className="inline-flex items-center gap-2 text-sm text-[#9CA3AF] hover:text-white"
-        >
-          <LogOut className="w-4 h-4" />
-          Sign out completely (email / password)
-        </button>
-      </div>
+      {showPermanentSignOut ? (
+        <div className="p-6 border-t border-[#374151] flex flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={onUseFullLogin}
+            className="inline-flex items-center gap-2 text-sm text-[#9CA3AF] hover:text-white"
+          >
+            <LogOut className="w-4 h-4" />
+            Sign out completely (email / password)
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

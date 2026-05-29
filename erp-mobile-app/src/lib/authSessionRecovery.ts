@@ -74,12 +74,6 @@ export async function recoverStaleAuthSession(options?: { allowGlobalRecovery?: 
   recoveryInFlight = (async () => {
     try {
       await supabase.auth.signOut({ scope: 'local' });
-      try {
-        const { maintainCounterVaultTokens } = await import('./counterVaultMaintenance');
-        await maintainCounterVaultTokens();
-      } catch {
-        /* ignore */
-      }
     } catch {
       /* ignore */
     } finally {

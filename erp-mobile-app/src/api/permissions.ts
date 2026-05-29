@@ -127,6 +127,17 @@ async function fetchUserBranchesDualId(
   };
 }
 
+/** Direct user_branches lookup — no company-wide branch merge (for restricted users / workers). */
+export async function getUserAssignedBranchIds(
+  authUserId: string | null | undefined,
+  profileId?: string | null,
+): Promise<UserAccessibleBranchesResult> {
+  if (!isSupabaseConfigured) {
+    return { branchIds: [], branchCount: 0, effectiveBranchId: null, requiresBranchSelection: false };
+  }
+  return fetchUserBranchesDualId(authUserId, profileId);
+}
+
 /**
  * Canonical branch access (mirrors Web SupabaseContext).
  * Merges get_effective_user_branch RPC with direct user_branches query (auth + profile ids).
