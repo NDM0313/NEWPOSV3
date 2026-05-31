@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { acceptAllowsCamera } from '../../lib/mediaPick';
+import { Capacitor } from '@capacitor/core';
+import { acceptAllowsCamera, capturePhotoWithNativeCamera } from '../../lib/mediaPick';
 import { MediaSourceActionSheet } from './MediaSourceActionSheet';
 
 export interface MediaSourcePickerProps {
@@ -15,8 +16,8 @@ export interface MediaSourcePickerProps {
 }
 
 /**
- * Camera vs gallery sheet. Camera uses file input with capture=environment (works in Capacitor WebView + mobile browsers).
- * Gallery uses standard file input (PDF, multi-select).
+ * Camera vs gallery sheet. Native APK uses @capacitor/camera for Take photo;
+ * browser/PWA uses file input with capture=environment. Gallery uses standard file input.
  */
 export function MediaSourcePicker({
   accept,
@@ -24,15 +25,16 @@ export function MediaSourcePicker({
   allowCamera,
   disabled = false,
   onFiles,
-  onError: _onError,
+  onError,
   sheetTitle,
   children,
 }: MediaSourcePickerProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const galleryRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
+  const cameraWebRef = useRef<HTMLInputElement>(null);
 
   const showCamera = allowCamera ?? acceptAllowsCamera(accept);
+  const useNativeCamera = Capacitor.isNativePlatform();
 
   const emitFiles = useCallback(
     (list: File[]) => {
@@ -54,7 +56,18 @@ export function MediaSourcePicker({
 
   const openCamera = () => {
     if (disabled) return;
-    cameraRef.current?.click();
+    void (async () => {
+      try {
+        if (useNativeCamera) {
+          const file = await capturePhotoWithNativeCamera();
+          if (file) emitFiles([file]);
+          return;
+        }
+        cameraWebRef.current?.click();
+      } catch (err) {
+        onError?.(err instanceof Error ? err.message : 'Could not open camera.');
+      }
+    })();
   };
 
   const openPicker = () => {
@@ -86,9 +99,9 @@ export function MediaSourcePicker({
         disabled={disabled}
         onChange={handleInputChange}
       />
-      {showCamera && (
+      {showCamera && !useNativeCamera && (
         <input
-          ref={cameraRef}
+          ref={cameraWebRef}
           type="file"
           accept="image/*"
           capture="environment"
