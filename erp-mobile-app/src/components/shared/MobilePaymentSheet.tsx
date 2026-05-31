@@ -18,6 +18,7 @@ import { getPaymentAccounts } from '../../api/accounts';
 import { getBranches } from '../../api/branches';
 import { MAX_FILE_SIZE_BYTES, ACCEPT_TYPES } from '../../api/paymentAttachments';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
+import { MediaSourcePicker } from './MediaSourcePicker';
 import { TransactionSuccessModal, type TransactionSuccessData } from './TransactionSuccessModal';
 import {
   buildPaymentReferenceLabels,
@@ -253,7 +254,6 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   const [branchName, setBranchName] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   const submittingRef = useRef(false);
@@ -333,24 +333,6 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
 
   const handlePayFull = () => {
     if (outstandingAmount && outstandingAmount > 0) setAmount(outstandingAmount);
-  };
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files?.length) return;
-    setIsProcessingFiles(true);
-    try {
-      const { files: processed, compressionMessages, skippedMessages } =
-        await prepareAttachmentFilesForUpload(Array.from(files), MAX_FILE_SIZE_BYTES);
-      skippedMessages.forEach((msg) => setToast({ message: msg, type: 'error' }));
-      compressionMessages.forEach((msg) => setToast({ message: msg, type: 'success' }));
-      if (processed.length > 0) {
-        setAttachmentFiles((prev) => [...prev, ...processed]);
-      }
-    } finally {
-      setIsProcessingFiles(false);
-      e.target.value = '';
-    }
   };
 
   const removeAttachment = (index: number) => {
@@ -740,19 +722,34 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
               </div>
               <div>
                 <label className="block text-xs font-medium text-[#9CA3AF] mb-1">Attachments (Optional)</label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
+                <MediaSourcePicker
                   accept={ACCEPT_TYPES}
                   multiple
-                  className="hidden"
                   disabled={isProcessingFiles}
-                  onChange={(e) => void handleFileSelect(e)}
-                />
+                  sheetTitle="Add attachment"
+                  onFiles={(picked) => {
+                    void (async () => {
+                      if (!picked.length) return;
+                      setIsProcessingFiles(true);
+                      try {
+                        const { files: processed, compressionMessages, skippedMessages } =
+                          await prepareAttachmentFilesForUpload(picked, MAX_FILE_SIZE_BYTES);
+                        skippedMessages.forEach((msg) => setToast({ message: msg, type: 'error' }));
+                        compressionMessages.forEach((msg) => setToast({ message: msg, type: 'success' }));
+                        if (processed.length > 0) {
+                          setAttachmentFiles((prev) => [...prev, ...processed]);
+                        }
+                      } finally {
+                        setIsProcessingFiles(false);
+                      }
+                    })();
+                  }}
+                >
+                  {(open) => (
                 <button
                   type="button"
                   disabled={isProcessingFiles}
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={open}
                   className="w-full border border-dashed border-[#374151] rounded-lg p-4 text-center text-[#6B7280] text-sm hover:border-[#4B5563] hover:bg-[#374151]/30 transition-colors flex flex-col items-center gap-2 disabled:opacity-60"
                 >
                   {isProcessingFiles ? (
@@ -763,11 +760,13 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
                   ) : (
                     <>
                       <Upload className="w-5 h-5 text-[#9CA3AF]" />
-                      <span>Click to upload or drag and drop</span>
+                      <span>Camera or upload</span>
                       <span className="text-xs">PDF, PNG, JPG up to 10MB</span>
                     </>
                   )}
                 </button>
+                  )}
+                </MediaSourcePicker>
                 {attachmentFiles.length > 0 && (
                   <ul className="mt-2 space-y-1">
                     {attachmentFiles.map((file, idx) => (

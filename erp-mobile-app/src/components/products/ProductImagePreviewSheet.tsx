@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Upload, Loader2 } from 'lucide-react';
 import { ProductImage } from './ProductImage';
 import type { Product } from '../../api/products';
 import { uploadProductImages } from '../../utils/productImageUpload';
 import * as productsApi from '../../api/products';
+import { MediaSourcePicker } from '../shared/MediaSourcePicker';
 
 interface ProductImagePreviewSheetProps {
   open: boolean;
@@ -21,7 +22,6 @@ export function ProductImagePreviewSheet({
   onClose,
   onUpdated,
 }: ProductImagePreviewSheetProps) {
-  const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,27 +77,26 @@ export function ProductImagePreviewSheet({
         >
           Close
         </button>
+        <MediaSourcePicker
+          accept="image/*"
+          disabled={busy || !companyId}
+          sheetTitle="Add product picture"
+          onFiles={(picked) => void handlePick(picked[0])}
+          onError={(msg) => setError(msg)}
+        >
+          {(open) => (
         <button
           type="button"
           disabled={busy || !companyId}
-          onClick={() => fileRef.current?.click()}
+          onClick={open}
           className="flex-1 py-3 rounded-lg bg-[#3B82F6] text-white font-medium inline-flex items-center justify-center gap-2 disabled:opacity-50"
         >
           {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
           {hasImage ? 'Update image' : 'Add image'}
         </button>
+          )}
+        </MediaSourcePicker>
       </div>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          e.target.value = '';
-          void handlePick(f);
-        }}
-      />
     </div>
   );
 

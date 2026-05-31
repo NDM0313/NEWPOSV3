@@ -20,6 +20,7 @@ import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
 import { localNowDateString, getCurrentLocalTimestamp } from '../../utils/localDate';
 import { formatStockLabel, getTotalProductStock, stockLabelClassName } from '../../utils/productStockGate';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
+import { MediaSourcePicker } from '../shared/MediaSourcePicker';
 
 const MAX_PURCHASE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
@@ -94,7 +95,6 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   const [isProcessingAttachments, setIsProcessingAttachments] = useState(false);
   const [attachmentError, setAttachmentError] = useState('');
   const [poDate, setPoDate] = useState(() => localNowDateString());
-  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const lastItemRef = useRef<HTMLDivElement | null>(null);
   const { runSingleFlight, isRunning: isSubmitRunning } = useSingleFlightAction();
 
@@ -657,15 +657,13 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
         <div className="px-4 pb-3">
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Attachments (optional)</label>
-            <input
-              ref={attachmentInputRef}
-              type="file"
-              multiple
+            <MediaSourcePicker
               accept="image/*,.pdf"
-              className="hidden"
-              onChange={(e) => {
+              multiple
+              disabled={isProcessingAttachments}
+              sheetTitle="Add attachment"
+              onFiles={(picked) => {
                 void (async () => {
-                  const picked = Array.from(e.target.files || []);
                   if (!picked.length) return;
                   setAttachmentError('');
                   setIsProcessingAttachments(true);
@@ -677,15 +675,15 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
                     setAttachments((prev) => [...prev, ...processed].slice(0, 5));
                   } finally {
                     setIsProcessingAttachments(false);
-                    if (attachmentInputRef.current) attachmentInputRef.current.value = '';
                   }
                 })();
               }}
-            />
+            >
+              {(open) => (
             <button
               type="button"
               disabled={isProcessingAttachments}
-              onClick={() => attachmentInputRef.current?.click()}
+              onClick={open}
               className="w-full border-2 border-dashed border-[#374151] rounded-lg p-3 flex items-center justify-center gap-2 text-[#9CA3AF] hover:bg-[#374151]/30 disabled:opacity-60"
             >
               {isProcessingAttachments ? (
@@ -696,10 +694,12 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
               ) : (
                 <>
                   <Upload className="w-4 h-4" />
-                  Add files (max 5)
+                  Camera or upload (max 5)
                 </>
               )}
             </button>
+              )}
+            </MediaSourcePicker>
             {attachments.length > 0 && (
               <div className="mt-2 space-y-1">
                 {attachments.map((file, index) => (

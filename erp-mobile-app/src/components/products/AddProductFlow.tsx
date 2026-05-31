@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, Camera, Image as ImageIcon, Package, Plus, RefreshCcw, Save, Trash2, X, Loader2 } from 'lucide-react';
 import type { Product } from '../../api/products';
 import * as productCategoriesApi from '../../api/productCategories';
@@ -11,6 +11,7 @@ import type { AttributeWithValues } from '../../api/variationLibrary';
 import { CustomSelect } from '../common';
 import { ProductImage } from './ProductImage';
 import { compressImageIfNeeded, formatBytes } from '../../utils/imageCompression';
+import { MediaSourcePicker } from '../shared/MediaSourcePicker';
 
 export interface AddProductFlowSavePayload {
   id?: string;
@@ -94,8 +95,6 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
       ? ((editProduct as { imageUrls?: string[] }).imageUrls as string[])
       : [],
   );
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
   // Combo product state
   const [isCombo, setIsCombo] = useState<boolean>(
     Boolean((editProduct as { isCombo?: boolean } | undefined)?.isCombo),
@@ -425,9 +424,9 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
     }
   };
 
-  const handleImagePick = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const arr = Array.from(files).filter((f) => f.type.startsWith('image/'));
+  const handleImagePick = async (files: FileList | File[] | null) => {
+    if (!files || (Array.isArray(files) ? files.length === 0 : files.length === 0)) return;
+    const arr = Array.from(files as FileList | File[]).filter((f) => f.type.startsWith('image/'));
     if (arr.length === 0) return;
     setIsProcessingImages(true);
     setImagePickNotice(null);
@@ -1001,13 +1000,22 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
         )}
 
         {/* Images */}
+        <MediaSourcePicker
+          accept="image/*"
+          multiple
+          disabled={isProcessingImages}
+          sheetTitle="Add product picture"
+          onFiles={(picked) => void handleImagePick(picked)}
+          onError={(msg) => setImagePickNotice(msg)}
+        >
+          {(open) => (
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-white">Product Images</h3>
             <button
               type="button"
               disabled={isProcessingImages}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={open}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-white text-xs font-medium disabled:opacity-60"
             >
               {isProcessingImages ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
@@ -1015,22 +1023,10 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
             </button>
           </div>
           {imagePickNotice && <p className="text-xs text-[#9CA3AF] mb-2">{imagePickNotice}</p>}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            disabled={isProcessingImages}
-            onChange={(e) => {
-              void handleImagePick(e.target.files);
-              if (e.target) e.target.value = '';
-            }}
-          />
           {existingImageUrls.length === 0 && imagePreviews.length === 0 ? (
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={open}
               className="w-full h-28 rounded-lg border-2 border-dashed border-[#374151] bg-[#111827] flex flex-col items-center justify-center gap-1 text-[#6B7280] hover:border-[#3B82F6] hover:text-[#3B82F6]"
             >
               <ImageIcon size={24} />
@@ -1065,6 +1061,8 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
             </div>
           )}
         </div>
+          )}
+        </MediaSourcePicker>
 
         {/* Combo Product */}
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">

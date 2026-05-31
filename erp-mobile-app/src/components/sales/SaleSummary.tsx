@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, FileText, Upload, X, Calendar, Loader2 } from 'lucide-react';
 import type { SaleData } from './SalesModule';
@@ -6,6 +6,7 @@ import { localNowDateString } from '../../utils/localDate';
 import type { Branch } from '../../api/branches';
 import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
+import { MediaSourcePicker } from '../shared/MediaSourcePicker';
 
 const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
@@ -42,8 +43,6 @@ export function SaleSummary({
   const [attachments, setAttachments] = useState<File[]>(saleData.attachmentFiles ?? []);
   const [isProcessingAttachments, setIsProcessingAttachments] = useState(false);
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
-  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
-
   useEffect(() => {
     setDiscountValue(saleData.discount ? String(saleData.discount) : '');
   }, [saleData.discount]);
@@ -202,21 +201,18 @@ export function SaleSummary({
 
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Attachments (optional)</label>
-          <input
-            ref={attachmentInputRef}
-            type="file"
-            multiple
+          <MediaSourcePicker
             accept="image/*,.pdf"
-            className="hidden"
-            onChange={(e) => {
-              void handleAttachmentPick(Array.from(e.target.files || []));
-              if (attachmentInputRef.current) attachmentInputRef.current.value = '';
-            }}
-          />
+            multiple
+            disabled={isProcessingAttachments}
+            sheetTitle="Add attachment"
+            onFiles={(picked) => void handleAttachmentPick(picked)}
+          >
+            {(open) => (
           <button
             type="button"
             disabled={isProcessingAttachments}
-            onClick={() => attachmentInputRef.current?.click()}
+            onClick={open}
             className="w-full border-2 border-dashed border-[#374151] rounded-lg p-3 flex items-center justify-center gap-2 text-[#9CA3AF] hover:bg-[#374151]/30 hover:border-[#3B82F6]/50 disabled:opacity-60"
           >
             {isProcessingAttachments ? (
@@ -227,10 +223,12 @@ export function SaleSummary({
             ) : (
               <>
                 <Upload className="w-4 h-4" />
-                Add files (max 5)
+                Camera or upload (max 5)
               </>
             )}
           </button>
+            )}
+          </MediaSourcePicker>
           {attachmentNotice && (
             <p className="mt-2 text-xs text-[#9CA3AF]">{attachmentNotice}</p>
           )}

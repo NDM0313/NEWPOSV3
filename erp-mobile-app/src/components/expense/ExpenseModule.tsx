@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ArrowLeft, Plus, Calendar, DollarSign, Search, Loader2, Upload, X, Users } from 'lucide-react';
 import { TextInput, NumericInput, ActionBar, CustomSelect, CustomSearchableSheet, PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
 import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
@@ -23,6 +23,7 @@ import { sortByDocumentDateTimeDesc } from '../../utils/chronologicalSort';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountPickerSubtitle } from '../../utils/balancePrivacy';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
+import { MediaSourcePicker } from '../shared/MediaSourcePicker';
 import { useDocumentBranchGate } from '../../hooks/useDocumentBranchGate';
 import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
 import { DocumentBranchGateModal } from '../shared/DocumentBranchGateModal';
@@ -137,7 +138,6 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const [addReceiptFile, setAddReceiptFile] = useState<File | null>(null);
   const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
   const [receiptNotice, setReceiptNotice] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [documentBranchId, setDocumentBranchId] = useState<string | null>(null);
   const [paidToUserId, setPaidToUserId] = useState('');
   const [salaryUsers, setSalaryUsers] = useState<SalaryUserRow[]>([]);
@@ -659,14 +659,13 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
             {/* Attachment (receipt/bill) */}
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
               <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Attachment (receipt/bill)</label>
-              <input
-                ref={fileInputRef}
-                type="file"
+              <MediaSourcePicker
                 accept="image/*,.pdf"
-                className="hidden"
-                onChange={(e) => {
+                disabled={isProcessingReceipt}
+                sheetTitle="Add receipt"
+                onFiles={(picked) => {
                   void (async () => {
-                    const raw = e.target.files?.[0];
+                    const raw = picked[0];
                     if (!raw) return;
                     setIsProcessingReceipt(true);
                     setReceiptNotice(null);
@@ -682,15 +681,15 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                       }
                     } finally {
                       setIsProcessingReceipt(false);
-                      if (fileInputRef.current) fileInputRef.current.value = '';
                     }
                   })();
                 }}
-              />
+              >
+                {(open) => (
               <button
                 type="button"
                 disabled={isProcessingReceipt}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={open}
                 className="w-full border-2 border-dashed border-[#374151] rounded-lg p-4 flex flex-col items-center justify-center text-center hover:bg-[#374151]/30 transition-colors text-[#9CA3AF] disabled:opacity-60"
               >
                 {isProcessingReceipt ? (
@@ -701,17 +700,19 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                 ) : (
                   <>
                     <Upload className="w-8 h-8 mb-2" />
-                    <span className="text-sm">{addReceiptFile ? addReceiptFile.name : 'Tap to upload receipt (PNG, JPG, PDF up to 5MB)'}</span>
+                    <span className="text-sm">{addReceiptFile ? addReceiptFile.name : 'Camera or upload receipt (PNG, JPG, PDF up to 5MB)'}</span>
                   </>
                 )}
               </button>
+                )}
+              </MediaSourcePicker>
               {receiptNotice && (
                 <p className="mt-2 text-xs text-[#9CA3AF]">{receiptNotice}</p>
               )}
               {addReceiptFile && (
                 <button
                   type="button"
-                  onClick={() => { setAddReceiptFile(null); fileInputRef.current && (fileInputRef.current.value = ''); }}
+                  onClick={() => setAddReceiptFile(null)}
                   className="mt-2 flex items-center gap-2 text-sm text-[#EF4444]"
                 >
                   <X className="w-4 h-4" /> Remove file
