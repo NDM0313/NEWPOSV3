@@ -13,6 +13,7 @@ import { PdfPreviewModal } from '../shared/PdfPreviewModal';
 import { ReportBrandHeader } from '../shared/ReportBrandHeader';
 import { usePdfPreview } from '../shared/usePdfPreview';
 import type { StockMovementEntry, StockMovementType } from '../../api/inventory';
+import { sortByDocumentDateTimeDesc } from '../../utils/chronologicalSort';
 import { normalizeMovementType } from '../../api/inventory';
 
 interface ProductHistoryModalProps {
@@ -147,7 +148,7 @@ export function ProductHistoryModal({
   ];
 
   const sortedDesc = useMemo(
-    () => [...filtered].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
+    () => sortByDocumentDateTimeDesc(filtered, (e) => ({ eventTimestamp: e.createdAt })),
     [filtered]
   );
 

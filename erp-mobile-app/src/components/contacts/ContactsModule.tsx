@@ -3,6 +3,7 @@ import { ArrowLeft, Users, Plus, Search, Phone, Loader2, Link2 } from 'lucide-re
 import type { User } from '../../types';
 import * as contactsApi from '../../api/contacts';
 import {
+  getContactDisplayPhone,
   getContactDisplayRef,
   isPendingPublicLead,
   type Contact,
@@ -92,7 +93,10 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
   }, [loadContacts]);
 
   const filtered = contacts.filter((c) => {
-    const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search);
+    const displayPhone = getContactDisplayPhone(c);
+    const matchSearch =
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      displayPhone.includes(search);
     const matchRole = filterRole === 'all' || c.roles.includes(filterRole);
     return matchSearch && matchRole;
   });
@@ -110,6 +114,7 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
     const { data: created, error } = await contactsApi.createContact(companyId, {
       name: data.name,
       phone: data.phone,
+      mobile: data.mobile,
       email: data.email || undefined,
       city: data.city || undefined,
       address: data.address || undefined,
@@ -133,6 +138,7 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
     const { data, error } = await contactsApi.updateContact(selected.id, {
       name: updates.name ?? selected.name,
       phone: updates.phone ?? selected.phone,
+      mobile: updates.mobile ?? selected.mobile,
       email: updates.email ?? selected.email,
       city: updates.city ?? selected.city,
       address: updates.address ?? selected.address,
@@ -307,10 +313,12 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
                       Pending lead
                     </span>
                   )}
-                  <p className="text-sm text-[#9CA3AF] flex items-center gap-1">
-                    <Phone className="w-4 h-4" />
-                    {contact.phone}
-                  </p>
+                  {getContactDisplayPhone(contact) ? (
+                    <p className="text-sm text-[#9CA3AF] flex items-center gap-1">
+                      <Phone className="w-4 h-4 shrink-0" />
+                      {getContactDisplayPhone(contact)}
+                    </p>
+                  ) : null}
                   <div className="flex flex-wrap gap-1 mt-2">
                     {contact.roles.map((r) => (
                       <span key={r} className="px-2 py-0.5 rounded text-xs bg-[#374151] text-[#9CA3AF] capitalize">

@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { listCacheKeys } from '../lib/listCache';
+import { invalidateSalesListCache, listCacheKeys } from '../lib/listCache';
+import { dispatchMobileInvalidated } from '../lib/dataInvalidationBus';
 import { readThroughCache } from '../lib/offlineData';
 import { getNextDocumentNumber } from './documentNumber';
 import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
@@ -28,6 +29,10 @@ export interface CreateSaleInput {
     total: number;
     /** Packing: { total_boxes, total_pieces } for sale_items.packing_details + stock_movements */
     packingDetails?: { total_boxes?: number; total_pieces?: number };
+    /** Bespoke parent line metadata (measurements, notes — not fabric/charges). */
+    customizationDetails?: Record<string, unknown> | null;
+    bespokeParentItemId?: string | null;
+    parentLineIndex?: number | null;
   }[];
   subtotal: number;
   discountAmount: number;
@@ -517,6 +522,13 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     }
   }
 
+  await invalidateSalesListCache(companyId);
+  dispatchMobileInvalidated({
+    domain: 'sales',
+    companyId,
+    reason: 'sale-created',
+  });
+
   return {
     data: { id: saleId, invoiceNo: docNo },
     error: null,
@@ -526,27 +538,47 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
 /** Get all sales – matches web saleService.getAllSales (company + optional branch filter) */
 export async function getAllSales(
   companyId: string,
-  branchId?: string | null
+  branchId?: string | null,
+  options?: { accessibleBranchIds?: string[] },
 ): Promise<{ data: Array<Record<string, unknown>>; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   if (!companyId) return { data: [], error: 'Company ID required.' };
 
   const branchKey =
-    branchId && branchId !== 'all' && branchId !== 'default' ? branchId : 'all';
+    branchId && branchId !== 'all' && branchId !== 'default'
+      ? branchId
+      : options?.accessibleBranchIds?.length
+        ? `acc:${[...options.accessibleBranchIds].sort().join(',')}`
+        : 'all';
   const cacheKey = listCacheKeys.sales(companyId, branchKey, 'all');
 
   const onlineFetch = async (): Promise<{
     data: Array<Record<string, unknown>>;
     error: string | null;
-  }> => fetchAllSalesOnline(companyId, branchId);
+  }> => fetchAllSalesOnline(companyId, branchId, options?.accessibleBranchIds);
 
   const cached = await readThroughCache(cacheKey, onlineFetch, []);
   return { data: cached.data, error: cached.error };
 }
 
+function applySalesBranchFilter<T extends { eq: (col: string, val: string) => T; in: (col: string, vals: string[]) => T }>(
+  query: T,
+  branchId?: string | null,
+  accessibleBranchIds?: string[],
+): T {
+  if (branchId && branchId !== 'all' && branchId !== 'default') {
+    return query.eq('branch_id', branchId);
+  }
+  if (accessibleBranchIds?.length) {
+    return query.in('branch_id', accessibleBranchIds);
+  }
+  return query;
+}
+
 async function fetchAllSalesOnline(
   companyId: string,
   branchId?: string | null,
+  accessibleBranchIds?: string[],
 ): Promise<{ data: Array<Record<string, unknown>>; error: string | null }> {
   let query = supabase
     .from('sales')
@@ -557,11 +589,10 @@ async function fetchAllSalesOnline(
       items:sales_items(*, product:products(*), variation:product_variations(*))
     `)
     .eq('company_id', companyId)
-    .order('invoice_date', { ascending: false });
+    .order('invoice_date', { ascending: false })
+    .order('created_at', { ascending: false });
 
-  if (branchId && branchId !== 'all' && branchId !== 'default') {
-    query = query.eq('branch_id', branchId);
-  }
+  query = applySalesBranchFilter(query, branchId, accessibleBranchIds);
 
   const { data, error } = await query;
 
@@ -576,8 +607,9 @@ async function fetchAllSalesOnline(
           items:sale_items(*, product:products(*), variation:product_variations(*))
         `)
         .eq('company_id', companyId)
-        .order('invoice_date', { ascending: false });
-      const retry = branchId && branchId !== 'all' && branchId !== 'default' ? retryQuery.eq('branch_id', branchId) : retryQuery;
+        .order('invoice_date', { ascending: false })
+        .order('created_at', { ascending: false });
+      const retry = applySalesBranchFilter(retryQuery, branchId, accessibleBranchIds);
       const { data: retryData, error: retryError } = await retry;
       if (retryError) return { data: [], error: retryError.message };
       const retryList = (retryData || []) as Array<Record<string, unknown>>;
@@ -919,7 +951,7 @@ export async function recordSalePayment(params: {
     : baseNotes;
   const dateVal = paymentDate || localNowDateString();
   const { data: authData } = await supabase.auth.getUser();
-  const createdBy = authData?.user?.id ?? userId ?? null;
+  const createdBy = userId ?? authData?.user?.id ?? null;
   const { data, error } = await supabase.rpc('record_payment_with_accounting', {
     p_company_id: companyId,
     p_branch_id: branchResolved,
@@ -1233,6 +1265,9 @@ export async function updateSaleWithItems(params: {
     discountAmount?: number;
     taxAmount?: number;
     total: number;
+    customizationDetails?: Record<string, unknown> | null;
+    bespokeParentItemId?: string | null;
+    parentLineIndex?: number | null;
   }>;
   discountAmount: number;
   taxAmount: number;
@@ -1256,6 +1291,9 @@ export async function updateSaleWithItems(params: {
     discount_amount: i.discountAmount ?? 0,
     tax_amount: i.taxAmount ?? 0,
     total: i.total,
+    customization_details: i.customizationDetails ?? null,
+    bespoke_parent_item_id: i.bespokeParentItemId ?? null,
+    parent_line_index: i.parentLineIndex ?? null,
   }));
   const { data, error } = await supabase.rpc('update_sale_with_items', {
     p_sale_id: params.saleId,

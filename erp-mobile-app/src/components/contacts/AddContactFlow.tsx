@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, User, Phone, Mail, MapPin, DollarSign, Briefcase } from 'lucide-react';
+import { ArrowLeft, User, Phone, Smartphone, Mail, MapPin, DollarSign, Briefcase } from 'lucide-react';
 import { CustomSelect } from '../common';
 import type { ContactRole } from '../../api/contacts';
 
@@ -7,6 +7,7 @@ export interface AddContactFormData {
   name: string;
   roles: ContactRole[];
   phone: string;
+  mobile: string;
   email: string;
   address: string;
   city: string;
@@ -39,6 +40,7 @@ export function AddContactFlow({
     name: '',
     roles: defaultRoles.length ? [...defaultRoles] : [],
     phone: '',
+    mobile: '',
     email: '',
     address: '',
     city: '',
@@ -63,7 +65,9 @@ export function AddContactFlow({
     const newErrors: Record<string, string> = {};
     if (!formData.name.trim()) newErrors.name = 'Name is required';
     if (formData.roles.length === 0) newErrors.roles = 'Select at least one role';
-    if (!formData.phone.trim()) newErrors.phone = 'Phone number is required';
+    if (!formData.phone.trim() && !formData.mobile.trim()) {
+      newErrors.contactPhone = 'Enter phone or mobile number';
+    }
     if (formData.roles.includes('worker') && !formData.workerType) newErrors.workerType = 'Worker type is required';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -111,18 +115,37 @@ export function AddContactFlow({
             {errors.name && <p className="text-[#EF4444] text-xs mt-1">{errors.name}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Phone Number *</label>
+            <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Phone Number (Optional)</label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={18} />
               <input
                 type="tel"
                 value={formData.phone}
-                onChange={(e) => { setFormData({ ...formData, phone: e.target.value }); setErrors({ ...errors, phone: '' }); }}
-                placeholder="+92 300 1234567"
-                className={`w-full h-12 bg-[#1F2937] border rounded-lg pl-10 pr-4 text-white placeholder:text-[#6B7280] focus:outline-none ${errors.phone ? 'border-[#EF4444]' : 'border-[#374151] focus:border-[#8B5CF6]'}`}
+                onChange={(e) => {
+                  setFormData({ ...formData, phone: e.target.value });
+                  setErrors({ ...errors, contactPhone: '' });
+                }}
+                placeholder="+92 21 1234567"
+                className={`w-full h-12 bg-[#1F2937] border rounded-lg pl-10 pr-4 text-white placeholder:text-[#6B7280] focus:outline-none ${errors.contactPhone ? 'border-[#EF4444]' : 'border-[#374151] focus:border-[#8B5CF6]'}`}
               />
             </div>
-            {errors.phone && <p className="text-[#EF4444] text-xs mt-1">{errors.phone}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Mobile Number (Optional)</label>
+            <div className="relative">
+              <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={18} />
+              <input
+                type="tel"
+                value={formData.mobile}
+                onChange={(e) => {
+                  setFormData({ ...formData, mobile: e.target.value });
+                  setErrors({ ...errors, contactPhone: '' });
+                }}
+                placeholder="+92 300 1234567"
+                className={`w-full h-12 bg-[#1F2937] border rounded-lg pl-10 pr-4 text-white placeholder:text-[#6B7280] focus:outline-none ${errors.contactPhone ? 'border-[#EF4444]' : 'border-[#374151] focus:border-[#8B5CF6]'}`}
+              />
+            </div>
+            {errors.contactPhone && <p className="text-[#EF4444] text-xs mt-1">{errors.contactPhone}</p>}
           </div>
           <div>
             <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Email (Optional)</label>

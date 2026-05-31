@@ -1,4 +1,6 @@
+import { getContactWhatsAppPhone } from './contacts';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { localNowDateString } from '../utils/localDate';
 import {
   linkRentalPaymentJournalEntry,
   postRentalAdvanceJournalMobile,
@@ -27,6 +29,7 @@ export interface RentalListItem {
   id: string;
   no: string;
   customer: string;
+  customerPhone?: string;
   pickup: string;
   return: string;
   status: string; // UI: draft | booked | rented | returned | overdue | cancelled
@@ -389,7 +392,7 @@ export async function getRentals(companyId: string, branchId?: string | null): P
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   let q = supabase
     .from('rentals')
-    .select('id, booking_no, document_number, customer_name, pickup_date, return_date, status, total_amount, paid_amount, due_amount')
+    .select('id, booking_no, document_number, customer_name, customer_id, pickup_date, return_date, status, total_amount, paid_amount, due_amount, customer:contacts(phone, mobile)')
     .eq('company_id', companyId)
     .order('booking_date', { ascending: false })
     .limit(500);
@@ -397,17 +400,22 @@ export async function getRentals(companyId: string, branchId?: string | null): P
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   return {
-    data: (data || []).map((r: Record<string, unknown>) => ({
-      id: String(r.id ?? ''),
-      no: String(r.booking_no || r.document_number || `RNT-${String(r.id ?? '').slice(0, 8)}`),
-      customer: String(r.customer_name ?? '—'),
-      pickup: r.pickup_date ? new Date(r.pickup_date as string).toISOString().slice(0, 10) : '—',
-      return: r.return_date ? new Date(r.return_date as string).toISOString().slice(0, 10) : '—',
-      status: mapRentalStatus(String(r.status ?? '')),
-      total: Number(r.total_amount) || 0,
-      paid: Number(r.paid_amount) || 0,
-      due: Number(r.due_amount) || 0,
-    })),
+    data: (data || []).map((r: Record<string, unknown>) => {
+      const customer = r.customer as { phone?: string | null; mobile?: string | null } | null;
+      const customerPhone = customer ? getContactWhatsAppPhone(customer) : '';
+      return {
+        id: String(r.id ?? ''),
+        no: String(r.booking_no || r.document_number || `RNT-${String(r.id ?? '').slice(0, 8)}`),
+        customer: String(r.customer_name ?? '—'),
+        customerPhone: customerPhone || undefined,
+        pickup: r.pickup_date ? new Date(r.pickup_date as string).toISOString().slice(0, 10) : '—',
+        return: r.return_date ? new Date(r.return_date as string).toISOString().slice(0, 10) : '—',
+        status: mapRentalStatus(String(r.status ?? '')),
+        total: Number(r.total_amount) || 0,
+        paid: Number(r.paid_amount) || 0,
+        due: Number(r.due_amount) || 0,
+      };
+    }),
     error: null,
   };
 }
@@ -416,7 +424,7 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const { data: rental, error: rErr } = await supabase
     .from('rentals')
-    .select('*, branch:branches(id, name, code), customer:contacts(id, name, phone)')
+    .select('*, branch:branches(id, name, code), customer:contacts(id, name, phone, mobile)')
     .eq('id', rentalId)
     .single();
   if (rErr || !rental) return { data: null, error: rErr?.message ?? 'Rental not found.' };
@@ -437,7 +445,7 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
 
   const r = rental as Record<string, unknown>;
   const branch = r.branch as { name?: string; code?: string } | null;
-  const customer = r.customer as { phone?: string } | null;
+  const customer = r.customer as { phone?: string | null; mobile?: string | null } | null;
   const itemList = (items || []) as Array<Record<string, unknown>>;
   const paymentList = (payments || []) as Array<Record<string, unknown>>;
 
@@ -447,7 +455,7 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       bookingNo: String(r.booking_no || r.document_number || ''),
       customerId: r.customer_id ? String(r.customer_id) : null,
       customerName: String(r.customer_name ?? ''),
-      customerPhone: customer?.phone,
+      customerPhone: customer ? getContactWhatsAppPhone(customer) : undefined,
       branchId: String(r.branch_id ?? ''),
       branchName: branch ? [branch.code, branch.name].filter(Boolean).join(' | ') : undefined,
       status: mapRentalStatus(String(r.status ?? '')),
@@ -657,7 +665,7 @@ export async function addRentalPayment(
   }
 
   const normalizedMethod = normalizePaymentMethod(params.method);
-  const paymentDate = params.paymentDate ?? new Date().toISOString().split('T')[0];
+  const paymentDate = params.paymentDate ?? localNowDateString();
   const rawBranchId = params.branchId ?? (r.branch_id as string | null) ?? null;
   let paymentId: string | null = null;
   let referenceNumber: string | null = null;

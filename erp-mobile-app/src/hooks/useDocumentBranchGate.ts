@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Branch } from '../api/branches';
 import { dispatchMobileInvalidated } from '../lib/dataInvalidationBus';
 import { useWriteBranchSelection } from './useWriteBranchSelection';
@@ -59,9 +59,11 @@ export function useDocumentBranchGate({
   invalidateDomains = ['contacts', 'sales'],
 }: UseDocumentBranchGateOptions) {
   const pendingCallbackRef = useRef<((branchId: string) => void) | null>(null);
+  const pendingTitleRef = useRef('Select branch');
   const [modalOpen, setModalOpen] = useState(false);
   const [modalBranches, setModalBranches] = useState<Branch[]>([]);
   const [modalTitle, setModalTitle] = useState('Select branch');
+  const [gateError, setGateError] = useState<string | null>(null);
 
   const { accessibleBranches, loading, error: loadError } = useWriteBranchSelection({
     companyId,
@@ -71,10 +73,42 @@ export function useDocumentBranchGate({
     profileId,
   });
 
+  const applyResolution = useCallback(
+    (onReady: (branchId: string) => void, title: string) => {
+      if (!companyId) return;
+      const resolution = resolveWriteBranchFromList(globalBranchId, accessibleBranches, undefined);
+      if (resolution.status === 'resolved') {
+        setGateError(null);
+        invalidateForBranch(companyId, resolution.branchId, invalidateDomains);
+        prefetchBranchData(companyId, resolution.branchId);
+        onReady(resolution.branchId);
+        return;
+      }
+      if (resolution.status === 'error') {
+        setGateError(resolution.message);
+        return;
+      }
+      setGateError(null);
+      pendingCallbackRef.current = onReady;
+      setModalTitle(title);
+      setModalBranches(resolution.branches);
+      setModalOpen(true);
+    },
+    [companyId, globalBranchId, accessibleBranches, invalidateDomains],
+  );
+
+  useEffect(() => {
+    if (loading || !pendingCallbackRef.current) return;
+    const cb = pendingCallbackRef.current;
+    pendingCallbackRef.current = null;
+    applyResolution(cb, pendingTitleRef.current);
+  }, [loading, accessibleBranches, applyResolution]);
+
   const confirmBranch = useCallback(
     (branchId: string) => {
       if (!companyId) return;
       setModalOpen(false);
+      setGateError(null);
       invalidateForBranch(companyId, branchId, invalidateDomains);
       prefetchBranchData(companyId, branchId);
       const cb = pendingCallbackRef.current;
@@ -87,24 +121,20 @@ export function useDocumentBranchGate({
   const runWithBranch = useCallback(
     (onReady: (branchId: string) => void, options?: { title?: string }) => {
       if (!companyId) return;
-      const resolution = resolveWriteBranchFromList(globalBranchId, accessibleBranches, undefined, {
-        forcePickWhenMultiple: true,
-      });
-      if (resolution.status === 'resolved') {
-        invalidateForBranch(companyId, resolution.branchId, invalidateDomains);
-        prefetchBranchData(companyId, resolution.branchId);
-        onReady(resolution.branchId);
+      const title = options?.title ?? 'Select branch';
+      pendingTitleRef.current = title;
+      setGateError(null);
+      if (loading) {
+        pendingCallbackRef.current = onReady;
         return;
       }
-      if (resolution.status === 'error') {
+      if (loadError) {
+        setGateError(loadError);
         return;
       }
-      pendingCallbackRef.current = onReady;
-      setModalTitle(options?.title ?? 'Select branch');
-      setModalBranches(resolution.branches);
-      setModalOpen(true);
+      applyResolution(onReady, title);
     },
-    [companyId, globalBranchId, accessibleBranches, invalidateDomains],
+    [companyId, loading, loadError, applyResolution],
   );
 
   const cancelModal = useCallback(() => {
@@ -115,7 +145,7 @@ export function useDocumentBranchGate({
   return {
     runWithBranch,
     loading,
-    loadError,
+    loadError: loadError ?? gateError,
     modalProps: {
       open: modalOpen,
       title: modalTitle,

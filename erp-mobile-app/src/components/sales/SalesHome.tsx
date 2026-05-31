@@ -33,6 +33,15 @@ function saleDocumentDisplayNo(row: Record<string, unknown>): string {
   return inv || ord || '';
 }
 
+function saleWhatsAppPhone(sale: { raw: Record<string, unknown> }): string {
+  const cust = sale.raw.customer as { phone?: string; mobile?: string } | null;
+  if (cust) {
+    const p = contactsApi.getContactWhatsAppPhone(cust);
+    if (p) return p;
+  }
+  return String(sale.raw.contact_phone || sale.raw.contact_number || '').trim();
+}
+
 function saleLedgerSkipHint(reason: SaleLedgerSyncSkipReason | undefined): string {
   if (!reason || reason === 'snap_unchanged' || reason === 'not_configured') return '';
   const map: Record<SaleLedgerSyncSkipReason, string> = {
@@ -69,8 +78,24 @@ import {
   saleListTypeLabel,
   type SaleListTypeFilter,
 } from '../../lib/saleTypeClassification';
-import { formatRelativeListDateTime } from '../../utils/localDate';
+import { formatDocumentListDateTime, getCurrentLocalTimestamp } from '../../utils/localDate';
+import { sortByDocumentDateTimeDesc } from '../../utils/chronologicalSort';
+import { openWhatsAppShare } from '../../lib/phoneWhatsApp';
 import { resolvePaymentBranchId } from '../../utils/writeBranchResolution';
+import {
+  useEffectiveWorkerId,
+  useEffectiveWorkerProfileId,
+  useEffectiveWorkerRole,
+} from '../../context/CounterWorkerContext';
+import {
+  rowBelongsToCounterWorker,
+  resolveCounterListBranchScope,
+  shouldIsolateCounterWorkerData,
+} from '../../lib/counterDataIsolation';
+import {
+  rowInListBranchScope,
+  type ListBranchScope,
+} from '../../lib/listBranchScope';
 
 const SALE_LIST_FETCH_CAP = 100;
 const SALE_LIST_DISPLAY_CAP = 50;
@@ -99,8 +124,10 @@ type SaleRecord = {
 function mapEnrichedRowToSaleRecord(s: Record<string, unknown>): SaleRecord {
   const cust = s.customer as { name?: string } | null;
   const createdByUser = (s.created_by ?? s.created_by_user) as { full_name?: string } | null;
-  const d = (s.invoice_date as string) || (s.created_at as string) || '';
-  const dateStr = formatRelativeListDateTime(d);
+  const dateStr = formatDocumentListDateTime({
+    documentDate: s.invoice_date as string,
+    eventTimestamp: s.created_at as string,
+  });
   const totalAmount = Number(s.total_amount ?? s.total ?? 0);
   const totalReceived = Number(s.total_received ?? 0);
   const balanceDue = Number(s.balance_due ?? 0);
@@ -131,6 +158,7 @@ interface SalesHomeProps {
   branchId: string | null;
   userId?: string | null;
   userProfileId?: string | null;
+  sessionRole?: string | null;
   initialEditSaleId?: string | null;
   onConsumedInitialEditSaleId?: () => void;
 }
@@ -142,10 +170,24 @@ export function SalesHome({
   branchId,
   userId,
   userProfileId,
+  sessionRole,
   initialEditSaleId,
   onConsumedInitialEditSaleId,
 }: SalesHomeProps) {
-  const { canViewBalances } = usePermissions();
+  const effectiveUserId = useEffectiveWorkerId(userId ?? '');
+  const effectiveProfileId = useEffectiveWorkerProfileId() ?? userProfileId ?? null;
+  const effectiveRole = useEffectiveWorkerRole(sessionRole ?? 'admin');
+  const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
+  const { canViewBalances, branchIds, isAdminOrOwner } = usePermissions();
+
+  const listBranchScope = useMemo(
+    (): ListBranchScope =>
+      resolveCounterListBranchScope(branchId, branchIds, isAdminOrOwner, isolateWorkerData),
+    [branchId, branchIds, isAdminOrOwner, isolateWorkerData],
+  );
+
+  const useScopedStats =
+    isolateWorkerData || listBranchScope.mode === 'accessible';
   const [recentSales, setRecentSales] = useState<SaleRecord[]>([]);
   const [stats, setStats] = useState<{ today: number; week: number; month: number }>({ today: 0, week: 0, month: 0 });
   const [loading, setLoading] = useState(true);
@@ -187,20 +229,23 @@ export function SalesHome({
   const refetchSales = useCallback(
     async (opts?: { silent?: boolean }): Promise<SaleRecord[]> => {
       if (!companyId) return [];
-      const effectiveBranchId = branchId && branchId !== 'all' ? branchId : null;
+      const scope = listBranchScope;
+      const apiBranchId = scope.mode === 'single' ? scope.branchId : null;
+      const accessibleBranchIds = scope.mode === 'accessible' ? scope.branchIds : undefined;
+      const summaryBranchId = apiBranchId;
       if (!opts?.silent) setLoading(true);
       const [salesRes, todayRes, weekRes, monthRes, pendingRows] = await Promise.all([
-        salesApi.getAllSales(companyId, effectiveBranchId),
-        online
-          ? reportsApi.getSalesSummary(companyId, effectiveBranchId, 1)
+        salesApi.getAllSales(companyId, apiBranchId, { accessibleBranchIds }),
+        online && !useScopedStats
+          ? reportsApi.getSalesSummary(companyId, summaryBranchId, 1)
           : Promise.resolve({ data: null, error: null }),
-        online
-          ? reportsApi.getSalesSummary(companyId, effectiveBranchId, 7)
+        online && !useScopedStats
+          ? reportsApi.getSalesSummary(companyId, summaryBranchId, 7)
           : Promise.resolve({ data: null, error: null }),
-        online
-          ? reportsApi.getSalesSummary(companyId, effectiveBranchId, 30)
+        online && !useScopedStats
+          ? reportsApi.getSalesSummary(companyId, summaryBranchId, 30)
           : Promise.resolve({ data: null, error: null }),
-        getPendingSaleRows(companyId, effectiveBranchId),
+        getPendingSaleRows(companyId, apiBranchId, accessibleBranchIds),
       ]);
       if (!opts?.silent) setLoading(false);
       const merged = mergeSalesWithPending(salesRes.data || [], pendingRows);
@@ -213,7 +258,7 @@ export function SalesHome({
       } else {
         setRecentSales([]);
       }
-      if (online) {
+      if (online && !useScopedStats) {
         setStats({
           today: todayRes.data?.totalSales ?? 0,
           week: weekRes.data?.totalSales ?? 0,
@@ -222,7 +267,7 @@ export function SalesHome({
       }
       return list;
     },
-    [companyId, branchId, online],
+    [companyId, listBranchScope, online, useScopedStats],
   );
 
   useEffect(() => {
@@ -244,17 +289,61 @@ export function SalesHome({
     setAttachmentPreviewStart(startIndex);
   };
 
+  const scopedRecentSales = useMemo(() => {
+    let rows = recentSales.filter((sale) => rowInListBranchScope(sale.raw, listBranchScope));
+    if (isolateWorkerData) {
+      rows = rows.filter((sale) =>
+        rowBelongsToCounterWorker(sale.raw, effectiveUserId, effectiveProfileId),
+      );
+    }
+    return rows;
+  }, [
+    recentSales,
+    listBranchScope,
+    isolateWorkerData,
+    effectiveUserId,
+    effectiveProfileId,
+  ]);
+
+  const displayStats = useMemo(() => {
+    if (!useScopedStats) return stats;
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const weekAgo = new Date(todayStart);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const monthAgo = new Date(todayStart);
+    monthAgo.setDate(monthAgo.getDate() - 30);
+    let today = 0;
+    let week = 0;
+    let month = 0;
+    for (const sale of scopedRecentSales) {
+      const rawDate = (sale.raw.invoice_date as string) || (sale.raw.created_at as string) || '';
+      const d = new Date(rawDate);
+      if (Number.isNaN(d.getTime())) continue;
+      const amt = sale.amount;
+      if (d >= todayStart) today += amt;
+      if (d >= weekAgo) week += amt;
+      if (d >= monthAgo) month += amt;
+    }
+    return { today, week, month };
+  }, [stats, scopedRecentSales, useScopedStats]);
+
   const filteredSales = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const byType = recentSales.filter((sale) => matchesSaleListTypeFilter(sale.raw, saleTypeFilter));
+    const byType = scopedRecentSales.filter((sale) => matchesSaleListTypeFilter(sale.raw, saleTypeFilter));
     const searched = q
       ? byType.filter(
           (sale) =>
             sale.id.toLowerCase().includes(q) || sale.customer.toLowerCase().includes(q)
         )
       : byType;
-    return searched.slice(0, SALE_LIST_DISPLAY_CAP);
-  }, [recentSales, saleTypeFilter, searchQuery]);
+    const sorted = sortByDocumentDateTimeDesc(searched, (sale) => ({
+      documentDate: (sale.raw.invoice_date as string) || null,
+      eventTimestamp: (sale.raw.created_at as string) || null,
+    }));
+    return sorted.slice(0, SALE_LIST_DISPLAY_CAP);
+  }, [scopedRecentSales, saleTypeFilter, searchQuery]);
 
   const saleTypeBadge = (sale: SaleRecord) => {
     if (isStudioSaleRow(sale.raw)) {
@@ -456,12 +545,12 @@ export function SalesHome({
       setPreviewSale(sale);
       await pdfPreview.openPreview();
       if (kind === 'Thermal' || kind === 'A4') {
-        salesApi.logPrint(saleIdRaw(sale), kind, userId).catch(() => {});
+        salesApi.logPrint(saleIdRaw(sale), kind, effectiveUserId).catch(() => {});
       } else {
-        salesApi.logShare(saleIdRaw(sale), 'pdf', userId).catch(() => {});
+        salesApi.logShare(saleIdRaw(sale), 'pdf', effectiveUserId).catch(() => {});
       }
     },
-    [pdfPreview, userId],
+    [pdfPreview, effectiveUserId],
   );
 
   const handlePrintA4 = (sale: SaleRecord) => {
@@ -495,7 +584,7 @@ export function SalesHome({
         bluetoothDeviceAddress: settings.bluetoothDeviceAddress,
       });
       if (res.ok) {
-        salesApi.logPrint(saleIdRaw(sale), 'Thermal', userId).catch(() => {});
+        salesApi.logPrint(saleIdRaw(sale), 'Thermal', effectiveUserId).catch(() => {});
         setActionSuccess('Sent to thermal printer.');
       } else {
         setActionError(res.hint || 'Thermal print failed. Pair a printer in Settings or use Print A4.');
@@ -523,18 +612,9 @@ export function SalesHome({
       `Total: Rs. ${total.toLocaleString()}`,
       `Balance Due: Rs. ${due.toLocaleString()}`,
     ].join('\n');
-    const rawPhone = String(
-      ((sale.raw.customer as { phone?: string } | null)?.phone as string) ||
-      (sale.raw.contact_number as string) ||
-      (sale.raw.contact_phone as string) ||
-      '',
-    );
-    const cleanPhone = rawPhone.replace(/[^\d+]/g, '').replace(/^0/, '92');
-    salesApi.logShare(saleIdRaw(sale), 'whatsapp', userId).catch(() => {});
-    const waUrl = cleanPhone
-      ? `https://wa.me/${encodeURIComponent(cleanPhone)}?text=${encodeURIComponent(text)}`
-      : `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    const rawPhone = saleWhatsAppPhone(sale);
+    salesApi.logShare(saleIdRaw(sale), 'whatsapp', effectiveUserId).catch(() => {});
+    openWhatsAppShare(rawPhone || undefined, text);
   };
 
   const closeEditSaleModal = () => {
@@ -680,7 +760,7 @@ export function SalesHome({
           extra_expenses: extra,
           total: totalHdr,
           due_amount: dueHdr,
-          updated_at: new Date().toISOString(),
+          updated_at: getCurrentLocalTimestamp(),
         };
         if (editDate) updates.invoice_date = editDate;
         const { error } = await supabase.from('sales').update(updates).eq('id', raw.id as string);
@@ -730,7 +810,7 @@ export function SalesHome({
       const oldAcctSnap = saleAccountingSnapshotFromRow(raw);
       const rpcErr = await salesApi.updateSaleWithItems({
         saleId: String(raw.id),
-        userId: userId ?? null,
+        userId: effectiveUserId ?? null,
         customerId: editCustomerId,
         items: lines.map((r) => ({
           productId: r.productId,
@@ -888,7 +968,7 @@ export function SalesHome({
     setActionError(null);
     try {
       const { error } = await salesApi.cancelSale(cancelConfirmSale.raw.id as string, {
-        userId: userId ?? null,
+        userId: effectiveUserId ?? null,
       });
       if (error) {
         setActionError(error);
@@ -1101,14 +1181,14 @@ export function SalesHome({
             </div>
           </div>
 
-          {companyId && branchId && userId && (
+          {companyId && branchId && effectiveUserId && (
             <SaleCargoSection
               saleId={selectedSale.raw.id as string}
               saleLabel={selectedSale.id}
               companyId={companyId}
               branchId={branchId}
-              authUserId={userId}
-              dbUserId={userProfileId}
+              authUserId={effectiveUserId}
+              dbUserId={effectiveProfileId ?? userProfileId}
             />
           )}
 
@@ -1307,15 +1387,15 @@ export function SalesHome({
         <div className="grid grid-cols-3 gap-2 mb-4">
           <div className="bg-white/10 backdrop-blur-sm rounded-xl px-2 py-2 border border-white/10">
             <p className="text-[10px] text-white/70 uppercase tracking-wide">Today</p>
-            <p className="text-sm font-bold text-white truncate">Rs. {stats.today.toLocaleString()}</p>
+            <p className="text-sm font-bold text-white truncate">Rs. {displayStats.today.toLocaleString()}</p>
           </div>
           <div className="bg-white/10 backdrop-blur-sm rounded-xl px-2 py-2 border border-white/10">
             <p className="text-[10px] text-white/70 uppercase tracking-wide">Week</p>
-            <p className="text-sm font-bold text-white truncate">Rs. {stats.week.toLocaleString()}</p>
+            <p className="text-sm font-bold text-white truncate">Rs. {displayStats.week.toLocaleString()}</p>
           </div>
           <div className="bg-white/10 backdrop-blur-sm rounded-xl px-2 py-2 border border-white/10">
             <p className="text-[10px] text-white/70 uppercase tracking-wide">Month</p>
-            <p className="text-sm font-bold text-white truncate">Rs. {stats.month.toLocaleString()}</p>
+            <p className="text-sm font-bold text-white truncate">Rs. {displayStats.month.toLocaleString()}</p>
           </div>
         </div>
 
@@ -1526,11 +1606,12 @@ export function SalesHome({
         onSuccess={handleReceivePaymentSuccess}
         companyId={companyId}
         branchId={resolvePaymentBranchId(branchId, addPaymentSale.raw.branch_id as string)}
-        userId={userId ?? undefined}
+        userId={effectiveUserId ?? undefined}
         referenceId={addPaymentSale.raw.id as string}
         referenceNo={addPaymentSale.id}
         customerName={addPaymentSale.customer}
         customerId={(addPaymentSale.raw.customer_id as string) ?? (addPaymentSale.raw.customer as { id?: string } | null)?.id ?? null}
+        customerPhone={saleWhatsAppPhone(addPaymentSale) || null}
         totalAmount={addPaymentSale.grand_total ?? addPaymentSale.amount}
         alreadyPaid={addPaymentSale.total_received}
         outstandingAmount={addPaymentSale.balance_due}
@@ -1584,7 +1665,7 @@ export function SalesHome({
           saleNo={returnSale.id}
           customerId={((returnSale.raw.customer as { id?: string } | null)?.id as string) || (returnSale.raw.customer_id as string) || null}
           customerName={returnSale.customer}
-          userId={userId ?? null}
+          userId={effectiveUserId ?? null}
           onClose={() => setReturnSale(null)}
           onSuccess={({ returnNo }) => {
             setReturnSale(null);
@@ -1599,6 +1680,7 @@ export function SalesHome({
           onClose={() => { pdfPreview.close(); setPreviewSale(null); }}
           title={`Invoice ${previewSale.id}`}
           filename={`invoice-${previewSale.id}.pdf`}
+          sharePhone={saleWhatsAppPhone(previewSale) || null}
           whatsAppFallbackText={`Invoice: ${previewSale.id}\nCustomer: ${previewSale.customer}\nTotal: Rs. ${(previewSale.grand_total ?? previewSale.amount).toLocaleString()}`}
         >
           <InvoicePreviewPdf

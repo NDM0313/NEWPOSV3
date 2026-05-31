@@ -20,8 +20,9 @@ import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/
 import { getEffectivePrinterSettings } from '../../api/settings';
 import { maybeAutoPrintAfterTransaction, manualPrintReceipt } from '../../services/printAfterTransaction';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
-import { localNowDateString, formatLocalDateYYYYMMDD } from '../../utils/localDate';
+import { localNowDateString, formatLocalDateYYYYMMDD, getCurrentLocalTimestamp } from '../../utils/localDate';
 import { useSettings } from '../../context/SettingsContext';
+import { useEffectiveWorkerId, useEffectiveWorkerRole, useEffectiveWorkerProfileId } from '../../context/CounterWorkerContext';
 
 function localDatePlusDays(days: number): string {
   const d = new Date();
@@ -103,6 +104,9 @@ export function SalesModule({
 }: SalesModuleProps) {
   const responsive = useResponsive();
   const { reload: reloadSettings } = useSettings();
+  const effectiveUserId = useEffectiveWorkerId(user.id);
+  const effectiveRole = useEffectiveWorkerRole(user.role);
+  const effectiveProfileId = useEffectiveWorkerProfileId() ?? user.profileId ?? null;
 
   useEffect(() => {
     if (companyId) void reloadSettings(companyId);
@@ -139,9 +143,9 @@ export function SalesModule({
   const { runWithBranch, modalProps: branchGateModalProps } = useDocumentBranchGate({
     companyId,
     globalBranchId: branchId,
-    userRole: user.role,
-    authUserId: user.id,
-    profileId: user.profileId,
+    userRole: effectiveRole,
+    authUserId: effectiveUserId,
+    profileId: effectiveProfileId,
     invalidateDomains: ['contacts', 'sales', 'inventory'],
   });
 
@@ -158,9 +162,9 @@ export function SalesModule({
     companyId,
     globalBranchId: branchId,
     documentBranchId,
-    userRole: user.role,
-    authUserId: user.id,
-    profileId: user.profileId,
+    userRole: effectiveRole,
+    authUserId: effectiveUserId,
+    profileId: effectiveProfileId,
   });
 
   useEffect(() => {
@@ -194,6 +198,8 @@ export function SalesModule({
   const startNewSaleFlow = useCallback(
     (options?: { saleType?: 'regular' | 'studio' }) => {
       const saleType = options?.saleType ?? 'regular';
+      setDocumentBranchId(null);
+      setPickedBranchId('');
       runWithBranch(
         (pickedId) => {
           setDocumentBranchId(pickedId);
@@ -307,7 +313,7 @@ export function SalesModule({
       paymentAccountId: result.accountId ?? undefined,
       notes: saleData.saleType === 'studio' ? (saleData.productionNotes || saleData.notes || undefined) : (saleData.notes || undefined),
       isStudio: saleData.saleType === 'studio',
-      userId: user.id,
+      userId: effectiveUserId,
       invoiceDate: saleData.saleDate || localNowDateString(),
       paymentDate: result.paymentDate || localNowDateString(),
       ...(saleData.saleType === 'studio' && {
@@ -364,7 +370,7 @@ export function SalesModule({
       transactionNo: data?.invoiceNo ?? null,
       amount: saleData.total,
       partyName: saleData.customer?.name ?? 'Walk-in',
-      date: new Date().toISOString(),
+      date: getCurrentLocalTimestamp(),
       branch: branchName ?? undefined,
       entityId: data?.id ?? null,
     });
@@ -375,7 +381,7 @@ export function SalesModule({
         transactionNo: data?.invoiceNo ?? null,
         partyName: saleData.customer?.name ?? 'Walk-in',
         amount: saleData.total,
-        date: new Date().toISOString(),
+        date: getCurrentLocalTimestamp(),
         branch: branchName ?? undefined,
       },
       { mirrorFromCompany: user.role === 'admin' || user.role === 'owner' }
@@ -482,6 +488,7 @@ export function SalesModule({
           branchId={branchId}
           userId={user?.id ?? null}
           userProfileId={user?.profileId ?? null}
+          sessionRole={user?.role ?? null}
           initialEditSaleId={initialEditSaleId}
           onConsumedInitialEditSaleId={onConsumedInitialEditSaleId}
         />
@@ -561,7 +568,7 @@ export function SalesModule({
               saving={saving || isPaymentSubmitRunning}
               saveError={saveError}
               hasCustomer={!!saleData.customer?.id}
-              viewerRole={user.role}
+              viewerRole={effectiveRole}
             />
             )
       )}

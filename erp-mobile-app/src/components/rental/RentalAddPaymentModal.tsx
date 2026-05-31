@@ -8,6 +8,7 @@ export interface RentalAddPaymentModalProps {
   bookingNo?: string | null;
   customerName?: string | null;
   customerId?: string | null;
+  customerPhone?: string | null;
   totalAmount?: number;
   paidAmount?: number;
   dueAmount: number;
@@ -33,6 +34,7 @@ export function RentalAddPaymentModal(props: RentalAddPaymentModalProps) {
       userId={props.userId}
       partyName={props.customerName ?? null}
       partyId={props.customerId ?? null}
+      partyPhone={props.customerPhone}
       totalAmount={props.totalAmount ?? null}
       alreadyPaid={props.paidAmount ?? null}
       outstandingAmount={props.dueAmount}

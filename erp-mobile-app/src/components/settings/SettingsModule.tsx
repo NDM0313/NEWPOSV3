@@ -27,6 +27,7 @@ import * as settingsApi from '../../api/settings';
 import { runSync } from '../../lib/syncEngine';
 import { getUnsyncedCount, clearAllPending } from '../../lib/offlineStore';
 import { ChangePinModal } from './ChangePinModal';
+import { ChangeCounterPinModal } from './ChangeCounterPinModal';
 import { SetPinModal } from './SetPinModal';
 import { ConnectionDebug } from '../dev/ConnectionDebug';
 import { UserPermissionsScreen } from './UserPermissionsScreen';
@@ -39,18 +40,20 @@ import { DeveloperToolsSection } from './DeveloperToolsSection';
 import { ModuleTogglesSection } from './ModuleTogglesSection';
 import { SettingsCollapsible, SettingsRow } from './settingsUi';
 import { SettingsCounterSection } from './SettingsCounterSection';
+import { CounterPinEnrollModal } from './CounterPinEnrollModal';
 import { SettingsPrinterSection } from './SettingsPrinterSection';
 import {
-  countCounterUsers,
-  getCounterVaultUserIdForPin,
-  listEnrolledCounterProfiles,
-  saveCounterUserForPin,
-  type EnrolledCounterProfile,
-} from '../../lib/counterUserVault';
+  countWorkers,
+  findEnrolledWorkerByIdentity,
+  listEnrolledWorkers,
+  removeCounterWorker,
+  type EnrolledCounterWorker,
+} from '../../lib/counterWorkerRegistry';
+import { subscribeCounterRegistryUpdated } from '../../lib/counterPinFromDevicePin';
+import { useEffectiveWorkerProfile, useEffectiveWorkerId, useEffectiveWorkerProfileId } from '../../context/CounterWorkerContext';
 import { getCounterSessionPolicy, type CounterSessionPolicyId } from '../../lib/counterSessionPolicy';
 import {
   isSharedCounterModeEnabled,
-  setSharedCounterModeEnabled,
   subscribeSharedCounterMode,
 } from '../../lib/sharedCounterMode';
 import {
@@ -90,6 +93,7 @@ export function SettingsModule({
 }: SettingsModuleProps) {
   const [hasPin, setHasPin] = useState(false);
   const [showChangePin, setShowChangePin] = useState(false);
+  const [showChangeCounterPin, setShowChangeCounterPin] = useState(false);
   const [showSetPin, setShowSetPin] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
@@ -121,22 +125,13 @@ export function SettingsModule({
   const [showAddUser, setShowAddUser] = useState(false);
   const [defaultDressDevaluation, setDefaultDressDevaluation] = useState<number>(5000);
   const [showCounterPinEnroll, setShowCounterPinEnroll] = useState(false);
-  const [counterPinA, setCounterPinA] = useState('');
-  const [counterPinB, setCounterPinB] = useState('');
-  const [counterPinBusy, setCounterPinBusy] = useState(false);
-  const [counterPinMsg, setCounterPinMsg] = useState<string | null>(null);
   const [counterSlotCount, setCounterSlotCount] = useState(0);
-  const [lockScreenProfiles, setLockScreenProfiles] = useState<EnrolledCounterProfile[]>([]);
+  const [lockScreenProfiles, setLockScreenProfiles] = useState<EnrolledCounterWorker[]>([]);
   const [lockProfilesLoading, setLockProfilesLoading] = useState(false);
   const [sharedCounterMode, setSharedCounterMode] = useState(() => isSharedCounterModeEnabled());
   const [counterSessionPolicy, setCounterSessionPolicyState] = useState<CounterSessionPolicyId>(() =>
     getCounterSessionPolicy()
   );
-  /**
-   * After saving counter PIN: if device quick PIN is not set yet, ask user to also set the same PIN
-   * as device quick PIN. State holds the PIN value while the confirm step is active.
-   */
-  const [askDevicePinSync, setAskDevicePinSync] = useState<{ pin: string } | null>(null);
   const [showCreateBranch, setShowCreateBranch] = useState(false);
   const [newBranchName, setNewBranchName] = useState('');
   const [newBranchCode, setNewBranchCode] = useState('');
@@ -144,7 +139,14 @@ export function SettingsModule({
   const [createBranchMsg, setCreateBranchMsg] = useState<string | null>(null);
   const [rlsBranches, setRlsBranches] = useState<Branch[]>([]);
   const [branchAccessLoading, setBranchAccessLoading] = useState(true);
+  const [myCounterEnrollment, setMyCounterEnrollment] = useState<EnrolledCounterWorker | null>(null);
 
+  const effectiveUserId = useEffectiveWorkerId(user.id);
+  const effectiveProfileId = useEffectiveWorkerProfileId() ?? user.profileId ?? null;
+  const profile = useEffectiveWorkerProfile(user);
+  const displayName = profile?.displayName ?? user.name;
+  const displayRole = profile?.role ?? user.role;
+  const displayEmail = profile?.email ?? user.email;
   const { hasPermission, isAdminOrOwner, branchIds, isPermissionLoaded } = usePermissions();
   const mergedBranchIds = useMemo(
     () => [...new Set([...branchIds, ...rlsBranches.map((b) => b.id)])],
@@ -183,15 +185,32 @@ export function SettingsModule({
   }, [companyId, isPermissionLoaded]);
 
   useEffect(() => {
-    if (!companyId) {
+    if (!companyId || isAdminOrOwner) {
+      setMyCounterEnrollment(null);
+      return;
+    }
+    let cancelled = false;
+    const loadMyEnrollment = () => {
+      void findEnrolledWorkerByIdentity(effectiveUserId, effectiveProfileId, companyId).then((entry) => {
+        if (!cancelled) setMyCounterEnrollment(entry);
+      });
+    };
+    loadMyEnrollment();
+    const unsub = subscribeCounterRegistryUpdated(loadMyEnrollment);
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, [companyId, isAdminOrOwner, effectiveUserId, effectiveProfileId]);
+
+  useEffect(() => {
+    if (!companyId || !isAdminOrOwner) {
       setCounterSlotCount(0);
       setLockScreenProfiles([]);
       return;
     }
     setLockProfilesLoading(true);
-    void authApi
-      .syncCurrentSessionToCounterVault()
-      .then(() => Promise.all([listEnrolledCounterProfiles(companyId), countCounterUsers(companyId)]))
+    void Promise.all([listEnrolledWorkers(companyId), countWorkers(companyId)])
       .then(([profiles, count]) => {
         setLockScreenProfiles(profiles);
         setCounterSlotCount(count);
@@ -201,7 +220,7 @@ export function SettingsModule({
         setCounterSlotCount(0);
       })
       .finally(() => setLockProfilesLoading(false));
-  }, [companyId, showCounterPinEnroll]);
+  }, [companyId, isAdminOrOwner, showCounterPinEnroll]);
 
   useEffect(() => subscribeSharedCounterMode(() => setSharedCounterMode(isSharedCounterModeEnabled())), []);
 
@@ -443,15 +462,15 @@ export function SettingsModule({
       <div className="p-4 space-y-3">
         <SettingsCollapsible
           title="Account & branch"
-          subtitle={`${user.name} · ${branch?.name ?? 'No branch'}`}
+          subtitle={`${displayName} · ${branch?.name ?? 'No branch'}`}
           defaultOpen
         >
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <p className="text-xs text-[#9CA3AF] mb-1">Logged in as</p>
-            <p className="font-medium text-white">{user.name}</p>
-            <p className="text-sm text-[#6B7280]">{user.email}</p>
+            <p className="font-medium text-white">{displayName}</p>
+            <p className="text-sm text-[#6B7280]">{displayEmail}</p>
             <span className="inline-block mt-2 px-2 py-0.5 bg-[#6B7280]/20 text-[#9CA3AF] text-xs rounded-full capitalize">
-              {user.role}
+              {displayRole}
             </span>
           </div>
           {branchAccessLoading && !isAdminOrOwner ? (
@@ -569,59 +588,76 @@ export function SettingsModule({
           </SettingsCollapsible>
         ) : null}
 
-        <SettingsCollapsible title="Security" subtitle={hasPin ? 'PIN enabled' : 'No quick PIN'}>
-          {hasPin && (
-            <>
+        {isAdminOrOwner ? (
+          <SettingsCollapsible title="Security" subtitle={hasPin ? 'PIN enabled' : 'No quick PIN'}>
+            {hasPin && (
+              <>
+                <SettingsRow
+                  icon={KeyRound}
+                  iconColor="bg-[#3B82F6]/20"
+                  title="Change PIN"
+                  subtitle="Update your 4–6 digit PIN"
+                  onClick={() => setShowChangePin(true)}
+                />
+                <SettingsRow
+                  icon={Lock}
+                  iconColor="bg-amber-500/20"
+                  title="Remove PIN"
+                  subtitle="Sign in with email/password"
+                  onClick={handleRemovePin}
+                />
+              </>
+            )}
+            {!hasPin && (
               <SettingsRow
-                icon={KeyRound}
+                icon={Shield}
                 iconColor="bg-[#3B82F6]/20"
-                title="Change PIN"
-                subtitle="Update your 4–6 digit PIN"
-                onClick={() => setShowChangePin(true)}
+                title="Set Quick PIN"
+                subtitle="4–6 digits for faster unlock"
+                onClick={() => setShowSetPin(true)}
               />
-              <SettingsRow
-                icon={Lock}
-                iconColor="bg-amber-500/20"
-                title="Remove PIN"
-                subtitle="Sign in with email/password"
-                onClick={handleRemovePin}
-              />
-            </>
-          )}
-          {!hasPin && (
+            )}
+          </SettingsCollapsible>
+        ) : myCounterEnrollment ? (
+          <SettingsCollapsible title="Security" subtitle="Counter PIN">
             <SettingsRow
-              icon={Shield}
-              iconColor="bg-[#3B82F6]/20"
-              title="Set Quick PIN"
-              subtitle="4–6 digits for faster unlock"
-              onClick={() => setShowSetPin(true)}
+              icon={KeyRound}
+              iconColor="bg-emerald-500/20"
+              title="Change counter PIN"
+              subtitle="POS lock screen ka apna 4-digit PIN"
+              onClick={() => setShowChangeCounterPin(true)}
             />
-          )}
-        </SettingsCollapsible>
+          </SettingsCollapsible>
+        ) : null}
 
-        <SettingsCollapsible
-          title="Counter & lock screen"
-          subtitle={`${counterSlotCount} enrolled`}
-          badge={sharedCounterMode ? 'On' : undefined}
-        >
-          <SettingsCounterSection
-            companyId={companyId}
-            branch={branch}
-            counterSlotCount={counterSlotCount}
-            lockScreenProfiles={lockScreenProfiles}
-            lockProfilesLoading={lockProfilesLoading}
-            sharedCounterMode={sharedCounterMode}
-            setSharedCounterMode={setSharedCounterMode}
-            counterSessionPolicy={counterSessionPolicy}
-            setCounterSessionPolicyState={setCounterSessionPolicyState}
-            onOpenCounterPinEnroll={() => {
-              setCounterPinMsg(null);
-              setCounterPinA('');
-              setCounterPinB('');
-              setShowCounterPinEnroll(true);
-            }}
-          />
-        </SettingsCollapsible>
+        {isAdminOrOwner && companyId ? (
+          <SettingsCollapsible
+            title="Counter & lock screen"
+            subtitle={`${counterSlotCount} enrolled`}
+            badge={sharedCounterMode ? 'On' : undefined}
+          >
+            <SettingsCounterSection
+              companyId={companyId}
+              counterSlotCount={counterSlotCount}
+              lockScreenProfiles={lockScreenProfiles}
+              lockProfilesLoading={lockProfilesLoading}
+              sharedCounterMode={sharedCounterMode}
+              setSharedCounterMode={setSharedCounterMode}
+              counterSessionPolicy={counterSessionPolicy}
+              setCounterSessionPolicyState={setCounterSessionPolicyState}
+              onOpenCounterPinEnroll={() => setShowCounterPinEnroll(true)}
+              onRemoveWorker={async (userId) => {
+                await removeCounterWorker(userId, companyId);
+                const [profiles, count] = await Promise.all([
+                  listEnrolledWorkers(companyId),
+                  countWorkers(companyId),
+                ]);
+                setLockScreenProfiles(profiles);
+                setCounterSlotCount(count);
+              }}
+            />
+          </SettingsCollapsible>
+        ) : null}
 
         <SettingsCollapsible title="Printer & barcode" subtitle={printerConfig.mode === 'thermal' ? 'Thermal' : 'A4'}>
           <SettingsPrinterSection
@@ -769,7 +805,7 @@ export function SettingsModule({
           />
         </SettingsCollapsible>
 
-        {hasPin && (
+        {isAdminOrOwner && hasPin && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <div className="flex items-center gap-3">
               <Database className="w-5 h-5 text-[#9CA3AF]" />
@@ -790,191 +826,25 @@ export function SettingsModule({
         </button>
       </div>
 
-      {showCounterPinEnroll && branch?.id && branch.id !== 'all' && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
-          {askDevicePinSync ? (
-            <div className="w-full max-w-md rounded-2xl bg-[#1F2937] border border-[#374151] p-5 shadow-xl">
-              <h3 className="text-lg font-semibold text-white mb-1">Device quick PIN bhi same set karein?</h3>
-              <p className="text-xs text-[#9CA3AF] mb-4 leading-relaxed">
-                Counter PIN save ho gayi. Aap is tablet par device unlock ke liye bhi same 4-digit PIN istemaal kar
-                sakte hain. (Aap baad mein Settings se Change/Remove PIN se badal bhi sakte hain.)
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={counterPinBusy}
-                  onClick={() => {
-                    setAskDevicePinSync(null);
-                    setShowCounterPinEnroll(false);
-                    setCounterPinA('');
-                    setCounterPinB('');
-                  }}
-                  className="flex-1 h-11 rounded-xl bg-[#374151] text-white font-medium disabled:opacity-50"
-                >
-                  No, skip
-                </button>
-                <button
-                  type="button"
-                  disabled={counterPinBusy}
-                  onClick={() => {
-                    void (async () => {
-                      setCounterPinMsg(null);
-                      setCounterPinBusy(true);
-                      try {
-                        const session = await authApi.getSessionWithRefresh();
-                        if (!session?.refreshToken) {
-                          setCounterPinMsg('No refresh token in session. Sign in again with email/password.');
-                          return;
-                        }
-                        await authApi.setPinWithPayload(askDevicePinSync.pin, {
-                          refreshToken: session.refreshToken,
-                          userId: session.userId,
-                          companyId,
-                          branchId: branch.id,
-                          email: session.email,
-                        });
-                        setHasPin(true);
-                        setSyncResult('Device quick PIN saved (same as counter PIN).');
-                        setAskDevicePinSync(null);
-                        setShowCounterPinEnroll(false);
-                        setCounterPinA('');
-                        setCounterPinB('');
-                      } catch (e) {
-                        setCounterPinMsg(e instanceof Error ? e.message : 'Failed to set device PIN.');
-                      } finally {
-                        setCounterPinBusy(false);
-                      }
-                    })();
-                  }}
-                  className="flex-1 h-11 rounded-xl bg-emerald-600 text-white font-medium disabled:opacity-50"
-                >
-                  {counterPinBusy ? 'Saving…' : 'Yes, set'}
-                </button>
-              </div>
-              {counterPinMsg ? <p className="text-sm text-red-400 mt-3">{counterPinMsg}</p> : null}
-            </div>
-          ) : (
-          <div className="w-full max-w-md rounded-2xl bg-[#1F2937] border border-[#374151] p-5 shadow-xl">
-            <h3 className="text-lg font-semibold text-white mb-1">Counter tablet PIN</h3>
-            <p className="text-xs text-[#9CA3AF] mb-4">
-              Saves this device session for the signed-in user under a separate 4-digit PIN (POS / Expense “Switch user”).
-              Each person on this tablet must choose a <span className="text-[#D1D5DB] font-medium">different</span> PIN —
-              duplicate codes replace the other user’s slot. Increases token theft risk if the device is lost — use only
-              on trusted counter tablets.
-            </p>
-            {counterPinMsg ? <p className="text-sm text-red-400 mb-3">{counterPinMsg}</p> : null}
-            <label className="block text-xs text-[#9CA3AF] mb-1">4-digit PIN</label>
-            <input
-              value={counterPinA}
-              onChange={(e) => setCounterPinA(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              className="w-full mb-3 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white"
-              inputMode="numeric"
-              maxLength={4}
-              autoComplete="off"
-              placeholder="••••"
-            />
-            <label className="block text-xs text-[#9CA3AF] mb-1">Confirm PIN</label>
-            <input
-              value={counterPinB}
-              onChange={(e) => setCounterPinB(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              className="w-full mb-4 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white"
-              inputMode="numeric"
-              maxLength={4}
-              autoComplete="off"
-              placeholder="••••"
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setShowCounterPinEnroll(false)}
-                className="flex-1 h-11 rounded-xl bg-[#374151] text-white font-medium"
-                disabled={counterPinBusy}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={counterPinBusy}
-                onClick={() => {
-                  void (async () => {
-                    setCounterPinMsg(null);
-                    if (!/^\d{4}$/.test(counterPinA) || !/^\d{4}$/.test(counterPinB)) {
-                      setCounterPinMsg('PIN must be exactly 4 digits.');
-                      return;
-                    }
-                    if (counterPinA !== counterPinB) {
-                      setCounterPinMsg('PINs do not match.');
-                      return;
-                    }
-                    setCounterPinBusy(true);
-                    const hadNoSlots = counterSlotCount === 0;
-                    try {
-                      if (!companyId) {
-                        setCounterPinMsg('No company selected.');
-                        return;
-                      }
-                      const session = await authApi.getSessionWithRefresh();
-                      if (!session?.refreshToken) {
-                        setCounterPinMsg('No refresh token in session. Sign in again with email/password.');
-                        return;
-                      }
-                      const profileForVault = await authApi.getProfile(session.userId);
-                      const displayNameForVault =
-                        profileForVault?.name?.trim() ||
-                        user.name?.trim() ||
-                        session.email.split('@')[0] ||
-                        'User';
-                      const existingUid = await getCounterVaultUserIdForPin(counterPinA);
-                      if (existingUid && existingUid !== session.userId) {
-                        setCounterPinMsg(
-                          'This 4-digit PIN is already used on this tablet by another login. Pick a different PIN for each person.',
-                        );
-                        return;
-                      }
-                      await saveCounterUserForPin(counterPinA, {
-                        refreshToken: session.refreshToken,
-                        userId: session.userId,
-                        companyId,
-                        branchId: branch.id,
-                        email: session.email,
-                        savedAt: Date.now(),
-                        displayName: displayNameForVault,
-                        publicUsersId: user.profileId,
-                        role: user.role,
-                      });
-                      await authApi.syncCurrentSessionToCounterVault();
-                      void countCounterUsers(companyId).then((n) => {
-                        setCounterSlotCount(n);
-                        if (hadNoSlots && n > 0) {
-                          setSharedCounterModeEnabled(true);
-                          setSharedCounterMode(true);
-                        }
-                      });
-                      setSyncResult('Counter PIN saved for this user.');
-                      // If device quick PIN is not set yet, ask user to sync the same PIN as device PIN.
-                      if (!hasPin) {
-                        setAskDevicePinSync({ pin: counterPinA });
-                      } else {
-                        setShowCounterPinEnroll(false);
-                        setCounterPinA('');
-                        setCounterPinB('');
-                      }
-                    } catch (e) {
-                      setCounterPinMsg(e instanceof Error ? e.message : 'Save failed.');
-                    } finally {
-                      setCounterPinBusy(false);
-                    }
-                  })();
-                }}
-                className="flex-1 h-11 rounded-xl bg-emerald-600 text-white font-medium disabled:opacity-50"
-              >
-                {counterPinBusy ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          </div>
-          )}
-        </div>
-      )}
+      {showCounterPinEnroll && companyId && isAdminOrOwner ? (
+        <CounterPinEnrollModal
+          open={showCounterPinEnroll}
+          companyId={companyId}
+          companyBranches={rlsBranches}
+          enrolledWorkers={lockScreenProfiles}
+          onClose={() => setShowCounterPinEnroll(false)}
+          onEnrolled={async () => {
+            const [profiles, count] = await Promise.all([
+              listEnrolledWorkers(companyId),
+              countWorkers(companyId),
+            ]);
+            setLockScreenProfiles(profiles);
+            setCounterSlotCount(count);
+            setSharedCounterMode(isSharedCounterModeEnabled());
+          }}
+          onSyncResult={(msg) => setSyncResult(msg)}
+        />
+      ) : null}
       {showCreateBranch && companyId && isAdminOrOwner && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-2xl bg-[#1F2937] border border-[#374151] p-5 shadow-xl">
@@ -1049,19 +919,31 @@ export function SettingsModule({
           </div>
         </div>
       )}
-      {showChangePin && (
+      {showChangePin && isAdminOrOwner && (
         <ChangePinModal
           onClose={() => setShowChangePin(false)}
           onSuccess={() => setHasPin(true)}
         />
       )}
-      {showSetPin && (
+      {showSetPin && isAdminOrOwner && (
         <SetPinModal
           onClose={() => setShowSetPin(false)}
           onSuccess={() => setHasPin(true)}
           user={user}
           companyId={companyId}
           branchId={branch?.id ?? null}
+        />
+      )}
+      {showChangeCounterPin && myCounterEnrollment && !isAdminOrOwner && (
+        <ChangeCounterPinModal
+          enrollment={myCounterEnrollment}
+          onClose={() => setShowChangeCounterPin(false)}
+          onSuccess={() => {
+            void findEnrolledWorkerByIdentity(effectiveUserId, effectiveProfileId, companyId).then(
+              setMyCounterEnrollment,
+            );
+            setSyncResult('Counter PIN updated.');
+          }}
         />
       )}
     </div>

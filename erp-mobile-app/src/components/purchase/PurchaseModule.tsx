@@ -39,6 +39,9 @@ import {
   MOBILE_DATA_INVALIDATED_EVENT,
   type MobileInvalidationDetail,
 } from '../../lib/dataInvalidationBus';
+import { openWhatsAppShare } from '../../lib/phoneWhatsApp';
+import { getCurrentLocalTimestamp } from '../../utils/localDate';
+import { sortByDocumentDateTimeDesc } from '../../utils/chronologicalSort';
 import { CreatePurchaseFlow } from './CreatePurchaseFlow';
 import { MobilePaySupplier } from './MobilePaySupplier';
 import { DocumentBranchGateModal } from '../shared/DocumentBranchGateModal';
@@ -65,6 +68,15 @@ import { getCompanyName } from '../../api/reports';
 import type { LabelPrintLine } from '../../services/barcodeLabelPrint';
 import { AttachmentsSection } from '../shared/AttachmentsSection';
 import { normalizeAttachments } from '../../lib/normalizeAttachments';
+import { useEffectiveWorkerId, useEffectiveWorkerProfileId, useEffectiveWorkerRole } from '../../context/CounterWorkerContext';
+import {
+  rowBelongsToCounterWorker,
+  shouldIsolateCounterWorkerData,
+  resolveCounterListBranchScope,
+} from '../../lib/counterDataIsolation';
+import { rowInListBranchScope } from '../../lib/listBranchScope';
+import { usePermissions } from '../../context/PermissionContext';
+import { invalidatePurchasesListCache } from '../../lib/listCache';
 
 interface PurchaseModuleProps {
   onBack: () => void;
@@ -151,6 +163,32 @@ export function PurchaseModule({
   );
   const [labelCompanyName, setLabelCompanyName] = useState<string>('');
   const [labelBranchName, setLabelBranchName] = useState<string>('');
+
+  const effectiveUserId = useEffectiveWorkerId(user.id);
+  const effectiveRole = useEffectiveWorkerRole(user.role);
+  const effectiveProfileId = useEffectiveWorkerProfileId() ?? user.profileId ?? null;
+  const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
+  const { branchIds, isAdminOrOwner } = usePermissions();
+
+  const listBranchScope = useMemo(
+    () => resolveCounterListBranchScope(branchId, branchIds, isAdminOrOwner, isolateWorkerData),
+    [branchId, branchIds, isAdminOrOwner, isolateWorkerData],
+  );
+
+  const dispatchPurchaseListInvalidation = useCallback(
+    (reason: string) => {
+      if (!companyId) return;
+      const scopedBranchId = branchId && branchId !== 'all' ? branchId : null;
+      void invalidatePurchasesListCache(companyId);
+      dispatchMobileInvalidated({
+        domain: 'purchases',
+        companyId,
+        branchId: scopedBranchId,
+        reason,
+      });
+    },
+    [branchId, companyId],
+  );
 
   const dispatchPurchaseEditInvalidation = useCallback(() => {
     if (!companyId) return;
@@ -277,12 +315,12 @@ export function PurchaseModule({
       setPaymentHistory([]);
     }
   }, [selectedOrder, loadPaymentHistory]);
-  const { runWithBranch, modalProps: branchGateModalProps, loading: branchGateLoading } = useDocumentBranchGate({
+  const { runWithBranch, modalProps: branchGateModalProps, loading: branchGateLoading, loadError: branchGateError } = useDocumentBranchGate({
     companyId,
     globalBranchId: branchId,
-    userRole: user.role,
-    authUserId: user.id,
-    profileId: user.profileId,
+    userRole: effectiveRole,
+    authUserId: effectiveUserId,
+    profileId: effectiveProfileId,
     invalidateDomains: ['contacts', 'purchases', 'inventory'],
   });
 
@@ -297,15 +335,18 @@ export function PurchaseModule({
         return;
       }
       if (!opts?.silent) setLoading(true);
+      const scope = listBranchScope;
+      const apiBranchId = scope.mode === 'single' ? scope.branchId : null;
+      const accessibleBranchIds = scope.mode === 'accessible' ? scope.branchIds : undefined;
       const [{ data, error }, pending] = await Promise.all([
-        purchasesApi.getPurchases(companyId, effectiveBranchId ?? null),
-        getPendingPurchaseRows(companyId, effectiveBranchId ?? null),
+        purchasesApi.getPurchases(companyId, apiBranchId, { accessibleBranchIds }),
+        getPendingPurchaseRows(companyId, apiBranchId, accessibleBranchIds),
       ]);
       if (!opts?.silent) setLoading(false);
       const merged = mergePurchasesWithPending(error ? [] : data, pending);
       setOrders(merged);
     },
-    [companyId, effectiveBranchId],
+    [companyId, listBranchScope],
   );
 
   const handleSwipeBack = useCallback(() => {
@@ -327,7 +368,7 @@ export function PurchaseModule({
       return;
     }
     loadOrders();
-  }, [companyId, effectiveBranchId, loadOrders]);
+  }, [companyId, listBranchScope, loadOrders]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -430,14 +471,36 @@ export function PurchaseModule({
     }
   };
 
-  const filteredOrders = orders.filter(
-    (order) =>
-      order.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.poNo.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const scopedOrders = useMemo(() => {
+    let rows = orders.filter((order) =>
+      rowInListBranchScope({ branch_id: order.branchId }, listBranchScope),
+    );
+    if (isolateWorkerData) {
+      rows = rows.filter((order) =>
+        rowBelongsToCounterWorker(
+          { created_by: order.created_by, created_by_id: order.created_by },
+          effectiveUserId,
+          effectiveProfileId,
+        ),
+      );
+    }
+    return sortByDocumentDateTimeDesc(rows, (order) => ({
+      documentDate: order.date,
+      eventTimestamp: order.created_at ?? null,
+    }));
+  }, [orders, listBranchScope, isolateWorkerData, effectiveUserId, effectiveProfileId]);
 
-  const pendingCount = orders.filter((o) => o.status !== 'received' && o.status !== 'final').length;
-  const receivedCount = orders.filter((o) => o.status === 'received' || o.status === 'final').length;
+  const displayedOrders = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return scopedOrders;
+    return scopedOrders.filter(
+      (order) =>
+        order.vendor.toLowerCase().includes(q) || order.poNo.toLowerCase().includes(q),
+    );
+  }, [scopedOrders, searchQuery]);
+
+  const pendingCount = scopedOrders.filter((o) => o.status !== 'received' && o.status !== 'final').length;
+  const receivedCount = scopedOrders.filter((o) => o.status === 'received' || o.status === 'final').length;
 
   const handleShareWhatsApp = (order: purchasesApi.PurchaseListItem) => {
     setMenuOrder(null);
@@ -447,11 +510,9 @@ export function PurchaseModule({
       `Total: Rs. ${order.total.toLocaleString()}`,
       `Due: Rs. ${order.dueAmount.toLocaleString()}`,
     ].join('\n');
-    const cleanPhone = String(order.vendorPhone || '').replace(/[^\d+]/g, '').replace(/^0/, '92');
-    const waUrl = cleanPhone
-      ? `https://wa.me/${encodeURIComponent(cleanPhone)}?text=${encodeURIComponent(text)}`
-      : `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    const rawPhone =
+      order.vendorPhone && order.vendorPhone !== '—' ? order.vendorPhone : '';
+    openWhatsAppShare(rawPhone || undefined, text);
   };
 
   const openPurchasePreview = useCallback(async (order: purchasesApi.PurchaseListItem) => {
@@ -721,7 +782,7 @@ export function PurchaseModule({
           shipping_cost: shipping,
           total,
           due_amount: due,
-          updated_at: new Date().toISOString(),
+          updated_at: getCurrentLocalTimestamp(),
         };
         if (editDate) updates.po_date = editDate;
         const { error } = await supabase.from('purchases').update(updates).eq('id', editOrder.id);
@@ -754,8 +815,7 @@ export function PurchaseModule({
           setEditOrder(null);
           setEditLineItems([]);
           if (companyId) {
-            const { data } = await purchasesApi.getPurchases(companyId, effectiveBranchId ?? null);
-            if (data) setOrders(data);
+            void loadOrders({ silent: true });
           }
           dispatchPurchaseEditInvalidation();
         }
@@ -764,7 +824,7 @@ export function PurchaseModule({
 
       const rpcRes = await purchasesApi.updatePurchaseWithItems({
         purchaseId: editOrder.id,
-        userId: user.id,
+        userId: effectiveUserId,
         supplierId: editSupplierId,
         items: lines.map((r) => ({
           productId: r.productId,
@@ -814,8 +874,7 @@ export function PurchaseModule({
       setEditOrder(null);
       setEditLineItems([]);
       if (companyId) {
-        const { data } = await purchasesApi.getPurchases(companyId, effectiveBranchId ?? null);
-        if (data) setOrders(data);
+        void loadOrders({ silent: true });
       }
       dispatchPurchaseEditInvalidation();
     } finally {
@@ -861,7 +920,7 @@ export function PurchaseModule({
             action: 'cancel',
             companyId,
             purchaseId: cancelOrder.id,
-            userId: user?.id ?? null,
+            userId: effectiveUserId ?? null,
           },
           companyId,
           syncBranch,
@@ -875,7 +934,7 @@ export function PurchaseModule({
     }
 
     const { error } = await purchasesApi.cancelPurchase(companyId, cancelOrder.id, {
-      userId: user?.id ?? null,
+      userId: effectiveUserId ?? null,
     });
     setCancelling(false);
     if (error) {
@@ -947,14 +1006,13 @@ export function PurchaseModule({
       <CreatePurchaseFlow
         companyId={companyId}
         branchId={createBranchId}
-        userId={user.id}
+        userId={effectiveUserId}
         onBack={() => { setView('list'); setCreateBranchId(null); }}
         onDone={(createdPurchaseId) => {
           setView('list');
           setCreateBranchId(null);
-          purchasesApi.getPurchases(companyId, effectiveBranchId ?? null).then(({ data }) => {
-            if (data?.length) setOrders(data);
-          });
+          dispatchPurchaseListInvalidation('purchase_created');
+          void loadOrders({ silent: true });
           if (createdPurchaseId) setPostCreateLabelPurchaseId(createdPurchaseId);
         }}
       />
@@ -1134,9 +1192,7 @@ export function PurchaseModule({
               }
               const { data } = await purchasesApi.getPurchaseById(companyId!, selectedOrder.id);
               if (data) setSelectedOrder(data);
-              purchasesApi.getPurchases(companyId!, effectiveBranchId ?? null).then(({ data: list }) => {
-                if (list?.length) setOrders(list);
-              });
+              void loadOrders({ silent: true });
             }}
             loading={markAsFinalLoading}
             error={markAsFinalError}
@@ -1162,6 +1218,11 @@ export function PurchaseModule({
     <SwipeBackShell onBack={handleSwipeBack}>
     <div className="min-h-screen pb-24 bg-[#111827]">
       <OfflineBanner online={online} pendingCount={syncPendingCount} />
+      {branchGateError ? (
+        <div className="mx-4 mt-2 p-3 bg-[#EF4444]/20 border border-[#EF4444] rounded-lg text-[#FCA5A5] text-sm">
+          {branchGateError}
+        </div>
+      ) : null}
       <div className="bg-gradient-to-br from-[#10B981] to-[#059669] p-4 sticky top-0 z-10">
         <div className="flex items-center gap-3 mb-4">
           <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
@@ -1208,7 +1269,7 @@ export function PurchaseModule({
           <div className="p-4 grid grid-cols-3 gap-3">
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-3 text-center">
               <p className="text-xs text-[#9CA3AF] mb-1">Total</p>
-              <p className="text-xl font-bold text-[#3B82F6]">{orders.length}</p>
+              <p className="text-xl font-bold text-[#3B82F6]">{scopedOrders.length}</p>
             </div>
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-3 text-center">
               <p className="text-xs text-[#9CA3AF] mb-1">Pending</p>
@@ -1221,7 +1282,7 @@ export function PurchaseModule({
           </div>
 
           <div className="p-4 space-y-3">
-            {filteredOrders.map((order) => {
+            {displayedOrders.map((order) => {
               const canAddPayment = (order.status === 'final' || order.status === 'received') && order.dueAmount > 0 && (order.branchId || effectiveBranchId);
               return (
               <div key={order.id} className="relative bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden hover:border-[#10B981]/50 transition-all min-w-0">
@@ -1320,7 +1381,7 @@ export function PurchaseModule({
               );
             })}
 
-            {filteredOrders.length === 0 && (
+            {displayedOrders.length === 0 && (
               <div className="text-center py-12">
                 <ShoppingBag className="w-16 h-16 mx-auto mb-4 text-[#374151]" />
                 <p className="text-[#9CA3AF]">No purchase orders found</p>
@@ -1337,9 +1398,7 @@ export function PurchaseModule({
           onSuccess={() => {
             const paidPurchaseId = addPaymentOrder.id;
             setAddPaymentOrder(null);
-            purchasesApi.getPurchases(companyId, effectiveBranchId ?? null).then(({ data }) => {
-              if (data?.length) setOrders(data);
-            });
+            void loadOrders({ silent: true });
             if (selectedOrder?.id === paidPurchaseId) {
               purchasesApi.getPurchaseById(companyId, paidPurchaseId).then(({ data }) => {
                 if (data) setSelectedOrder(data);
@@ -1348,10 +1407,15 @@ export function PurchaseModule({
           }}
           companyId={companyId}
           branchId={addPaymentOrder.branchId || effectiveBranchId!}
-          userId={user.id}
+          userId={effectiveUserId}
           purchaseId={addPaymentOrder.id}
           poNo={addPaymentOrder.poNo}
           supplierName={addPaymentOrder.vendor}
+          supplierPhone={
+            addPaymentOrder.vendorPhone && addPaymentOrder.vendorPhone !== '—'
+              ? addPaymentOrder.vendorPhone
+              : null
+          }
           totalAmount={addPaymentOrder.total}
           paidAmount={addPaymentOrder.paidAmount}
           dueAmount={addPaymentOrder.dueAmount}
@@ -1402,6 +1466,11 @@ export function PurchaseModule({
           onClose={() => { pdfPreview.close(); setPreviewOrder(null); setPreviewItems([]); }}
           title={`PO ${previewOrder.poNo}`}
           filename={`purchase-${previewOrder.poNo}.pdf`}
+          sharePhone={
+            previewOrder.vendorPhone && previewOrder.vendorPhone !== '—'
+              ? previewOrder.vendorPhone
+              : null
+          }
           whatsAppFallbackText={`PO: ${previewOrder.poNo}\nSupplier: ${previewOrder.vendor}\nTotal: Rs. ${previewOrder.total.toLocaleString()}`}
         >
           {previewLoading ? (

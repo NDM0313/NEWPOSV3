@@ -317,6 +317,7 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
           userId={userId}
           bookingNo={rental.bookingNo}
           customerName={rental.customerName}
+          customerPhone={rental.customerPhone ?? null}
           totalAmount={rental.totalAmount}
           paidAmount={rental.paidAmount}
           dueAmount={rental.dueAmount}

@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { ArrowLeft, Phone, Mail, MapPin, DollarSign, Edit2, User as UserIcon, Clock, Briefcase, UserCheck, Loader2 } from 'lucide-react';
 import {
   approvePublicLead,
+  getContactDisplayPhone,
   getContactDisplayRef,
+  getContactPhoneLabel,
   isPendingPublicLead,
   type Contact,
   type ContactRole,
@@ -143,15 +145,17 @@ export function ContactDetailView({ contact, onBack, onEdit, onApproved, user }:
             Contact Information
           </h3>
           <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-[#111827] rounded-lg flex items-center justify-center flex-shrink-0">
-                <Phone size={18} className="text-[#6B7280]" />
+            {getContactDisplayPhone(contact) ? (
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#111827] rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Phone size={18} className="text-[#6B7280]" />
+                </div>
+                <div>
+                  <p className="text-xs text-[#9CA3AF]">{getContactPhoneLabel(contact)}</p>
+                  <p className="text-white font-medium">{getContactDisplayPhone(contact)}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-[#9CA3AF]">Phone</p>
-                <p className="text-white font-medium">{contact.phone}</p>
-              </div>
-            </div>
+            ) : null}
             {contact.email && (
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-[#111827] rounded-lg flex items-center justify-center flex-shrink-0">

@@ -16,6 +16,7 @@ export interface MobilePaySupplierProps {
   purchaseId: string;
   poNo: string;
   supplierName: string;
+  supplierPhone?: string | null;
   totalAmount: number;
   paidAmount: number;
   dueAmount: number;
@@ -31,6 +32,7 @@ export function MobilePaySupplier({
   purchaseId,
   poNo,
   supplierName,
+  supplierPhone,
   totalAmount,
   paidAmount,
   dueAmount,
@@ -92,6 +94,7 @@ export function MobilePaySupplier({
       branchId={branchId}
       userId={userId}
       partyName={supplierName}
+      partyPhone={supplierPhone}
       referenceNo={poNo}
       totalAmount={totalAmount}
       alreadyPaid={paidAmount}

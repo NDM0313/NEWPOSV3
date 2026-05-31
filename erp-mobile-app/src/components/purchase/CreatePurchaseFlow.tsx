@@ -17,7 +17,7 @@ import { MobileActionBar } from '../shared/MobileActionBar';
 import { createPortal } from 'react-dom';
 import { useSettings } from '../../context/SettingsContext';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
-import { localNowDateString } from '../../utils/localDate';
+import { localNowDateString, getCurrentLocalTimestamp } from '../../utils/localDate';
 import { formatStockLabel, getTotalProductStock, stockLabelClassName } from '../../utils/productStockGate';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 
@@ -289,7 +289,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
             transactionNo: 'Pending sync',
             amount: total,
             partyName: vendor.name,
-            date: new Date().toISOString(),
+            date: getCurrentLocalTimestamp(),
             branch: branchName ?? undefined,
             entityId: null,
           });
@@ -315,7 +315,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
         transactionNo: createResult?.poNo ?? null,
         amount: total,
         partyName: vendor.name,
-        date: new Date().toISOString(),
+        date: getCurrentLocalTimestamp(),
         branch: branchName ?? undefined,
         entityId: createResult?.id ?? null,
       });

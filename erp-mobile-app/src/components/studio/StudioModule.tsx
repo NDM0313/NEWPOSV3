@@ -25,12 +25,24 @@ import { enrichRowsWithCreatorNames } from '../../lib/resolveCreatorName';
 import { toLocalDateString } from '../../utils/localDate';
 import { parseExtraStageDisplayName, extraStageUserNotes } from '../../lib/studioExtraStageNotes';
 import { NumericInput, CustomSelect, PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
-import { loadStudioSnapshot } from '../../lib/studioListCache';
+import { loadStudioSnapshot, studioScopeCacheKey } from '../../lib/studioListCache';
 import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
 import { useMainScrollRef } from '../../contexts/MainScrollContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { useDocumentBranchGate } from '../../hooks/useDocumentBranchGate';
 import { DocumentBranchGateModal } from '../shared/DocumentBranchGateModal';
+import {
+  useEffectiveWorkerId,
+  useEffectiveWorkerProfileId,
+  useEffectiveWorkerRole,
+} from '../../context/CounterWorkerContext';
+import {
+  rowBelongsToCounterWorker,
+  resolveCounterListBranchScope,
+  shouldIsolateCounterWorkerData,
+  type ListBranchScope,
+} from '../../lib/counterDataIsolation';
+import { rowInListBranchScope } from '../../lib/listBranchScope';
 
 interface StudioModuleProps {
   onBack: () => void;
@@ -84,10 +96,35 @@ function resolveSaleCreatorId(sale: unknown): string | undefined {
 function filterStudioOrdersForScope(
   orders: StudioOrder[],
   scopeOwnOnly: boolean,
-  userId: string,
+  effectiveUserId: string,
+  effectiveProfileId?: string | null,
 ): StudioOrder[] {
   if (!scopeOwnOnly) return orders;
-  return orders.filter((o) => o.createdByUserId === userId);
+  return orders.filter((o) =>
+    rowBelongsToCounterWorker(
+      { created_by: o.createdByUserId },
+      effectiveUserId,
+      effectiveProfileId,
+    ),
+  );
+}
+
+function productionInListScope(
+  prod: studioApi.StudioProductionRow,
+  listBranchScope: ListBranchScope,
+  isolateWorkerData: boolean,
+  effectiveUserId: string,
+  effectiveProfileId: string | null,
+): boolean {
+  if (!rowInListBranchScope({ branch_id: prod.branch_id }, listBranchScope)) return false;
+  if (isolateWorkerData) {
+    return rowBelongsToCounterWorker(
+      { created_by: resolveSaleCreatorId(prod.sale) },
+      effectiveUserId,
+      effectiveProfileId,
+    );
+  }
+  return true;
 }
 
 function mergeAggregatedStatus(parts: StudioOrder['status'][]): StudioOrder['status'] {
@@ -340,13 +377,23 @@ export function StudioModule({
   onFocusHandled,
 }: StudioModuleProps) {
   const { withLoading } = useLoading();
-  const { shouldScopeStudioToOwnOnly } = usePermissions();
+  const effectiveUserId = useEffectiveWorkerId(user.id);
+  const effectiveProfileId = useEffectiveWorkerProfileId() ?? user.profileId ?? null;
+  const effectiveRole = useEffectiveWorkerRole(user.role);
+  const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
+  const { shouldScopeStudioToOwnOnly, branchIds, isAdminOrOwner } = usePermissions();
+  const listBranchScope = useMemo(
+    (): ListBranchScope =>
+      resolveCounterListBranchScope(branch?.id, branchIds, isAdminOrOwner, isolateWorkerData),
+    [branch?.id, branchIds, isAdminOrOwner, isolateWorkerData],
+  );
+  const studioBranchCacheKey = useMemo(() => studioScopeCacheKey(listBranchScope), [listBranchScope]);
   const { runWithBranch, modalProps: branchGateModalProps } = useDocumentBranchGate({
     companyId,
     globalBranchId: branch?.id ?? null,
-    userRole: user.role,
-    authUserId: user.id,
-    profileId: user.profileId,
+    userRole: effectiveRole,
+    authUserId: effectiveUserId,
+    profileId: effectiveProfileId,
     invalidateDomains: ['contacts', 'sales', 'inventory'],
   });
   const [view, setView] = useState<View>('dashboard');
@@ -389,8 +436,17 @@ export function StudioModule({
   const refreshMergedOrder = useCallback(
     async (saleId: string): Promise<StudioOrder | null> => {
       if (!companyId) return null;
-      const { data: prods } = await studioApi.getStudioProductions(companyId, branch?.id ?? null);
-      const group = (prods || []).filter((p) => p.sale_id === saleId);
+      const scope = listBranchScope;
+      const apiBranchId = scope.mode === 'single' ? scope.branchId : null;
+      const accessibleBranchIds = scope.mode === 'accessible' ? scope.branchIds : undefined;
+      const { data: prods } = await studioApi.getStudioProductions(companyId, apiBranchId, {
+        accessibleBranchIds,
+      });
+      const group = (prods || []).filter(
+        (p) =>
+          p.sale_id === saleId &&
+          productionInListScope(p, scope, isolateWorkerData, effectiveUserId, effectiveProfileId),
+      );
       if (group.length === 0) return null;
       const stagesByProdId = new Map<string, studioApi.StudioStageRow[]>();
       await Promise.all(
@@ -405,10 +461,26 @@ export function StudioModule({
         if (cid) creatorBySaleId.set(p.sale_id, cid);
       }
       const order = mergeProductionsToOrder(group, stagesByProdId, creatorBySaleId);
-      if (shouldScopeStudioToOwnOnly && order.createdByUserId !== user.id) return null;
+      if (
+        shouldScopeStudioToOwnOnly &&
+        !rowBelongsToCounterWorker(
+          { created_by: order.createdByUserId },
+          effectiveUserId,
+          effectiveProfileId,
+        )
+      ) {
+        return null;
+      }
       return order;
     },
-    [companyId, branch?.id, shouldScopeStudioToOwnOnly, user.id],
+    [
+      companyId,
+      listBranchScope,
+      isolateWorkerData,
+      effectiveUserId,
+      effectiveProfileId,
+      shouldScopeStudioToOwnOnly,
+    ],
   );
 
   const loadOrders = useCallback(
@@ -419,11 +491,15 @@ export function StudioModule({
       }
       if (!opts?.silent) setLoading(true);
       setError(null);
-      const snapshot = await loadStudioSnapshot(companyId, branch?.id ?? null, async () => {
+      const scope = listBranchScope;
+      const apiBranchId = scope.mode === 'single' ? scope.branchId : null;
+      const accessibleBranchIds = scope.mode === 'accessible' ? scope.branchIds : undefined;
+      const snapshot = await loadStudioSnapshot(companyId, studioBranchCacheKey, async () => {
         await studioApi.ensureStudioProductionsForCompany(companyId);
         const { data: prods, error: prodErr } = await studioApi.getStudioProductions(
           companyId,
-          branch?.id ?? null,
+          apiBranchId,
+          { accessibleBranchIds },
         );
         if (prodErr) {
           return {
@@ -431,7 +507,9 @@ export function StudioModule({
             error: prodErr,
           };
         }
-        const list = prods || [];
+        const list = (prods || []).filter((p) =>
+          productionInListScope(p, scope, isolateWorkerData, effectiveUserId, effectiveProfileId),
+        );
         const stagesByProductionId: Record<string, studioApi.StudioStageRow[]> = {};
         await Promise.all(
           list.map(async (p) => {
@@ -476,10 +554,25 @@ export function StudioModule({
         ordersList.push(mergeProductionsToOrder(group, stagesByProdId, creatorBySaleId));
       }
       ordersList.sort((a, b) => (saleFirstIndex.get(a.saleId) ?? 0) - (saleFirstIndex.get(b.saleId) ?? 0));
-      setOrders(filterStudioOrdersForScope(ordersList, shouldScopeStudioToOwnOnly, user.id));
+      setOrders(
+        filterStudioOrdersForScope(
+          ordersList,
+          shouldScopeStudioToOwnOnly,
+          effectiveUserId,
+          effectiveProfileId,
+        ),
+      );
       setLoading(false);
     },
-    [companyId, branch?.id, shouldScopeStudioToOwnOnly, user.id],
+    [
+      companyId,
+      listBranchScope,
+      studioBranchCacheKey,
+      isolateWorkerData,
+      effectiveUserId,
+      effectiveProfileId,
+      shouldScopeStudioToOwnOnly,
+    ],
   );
 
   useEffect(() => {

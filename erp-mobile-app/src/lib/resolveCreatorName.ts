@@ -45,6 +45,7 @@ export async function enrichRowsWithCreatorNames(
   for (const row of rows) {
     const uid = row[createdByField];
     if (uid && typeof uid === 'string') {
+      row.created_by_id = uid;
       const name = nameById.get(uid) ?? null;
       row.created_by_name = name;
       row.created_by = { full_name: name };

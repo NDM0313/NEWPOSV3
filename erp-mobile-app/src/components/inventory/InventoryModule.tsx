@@ -19,6 +19,12 @@ import { ProductHistoryModal } from './ProductHistoryModal';
 import { StockAdjustmentSheet } from './StockAdjustmentSheet';
 import { useBarcodeScanner } from '../../features/barcode/useBarcodeScanner';
 import { ProductImage } from '../products/ProductImage';
+import { usePermissions } from '../../context/PermissionContext';
+import { useEffectiveWorkerRole } from '../../context/CounterWorkerContext';
+import {
+  resolveCounterListBranchScope,
+  shouldIsolateCounterWorkerData,
+} from '../../lib/counterDataIsolation';
 
 interface InventoryModuleProps {
   onBack: () => void;
@@ -50,6 +56,20 @@ function productToInventoryItem(p: Product): inventoryApi.InventoryItem {
 }
 
 export function InventoryModule({ onBack, user, companyId, branch }: InventoryModuleProps) {
+  const effectiveRole = useEffectiveWorkerRole(user.role);
+  const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
+  const { branchIds, isAdminOrOwner } = usePermissions();
+  const listBranchScope = useMemo(
+    () => resolveCounterListBranchScope(branch?.id, branchIds, isAdminOrOwner, isolateWorkerData),
+    [branch?.id, branchIds, isAdminOrOwner, isolateWorkerData],
+  );
+  const accessibleBranchIds =
+    listBranchScope.mode === 'accessible' ? listBranchScope.branchIds : undefined;
+  const inventoryFetchOptions = useMemo(
+    () => (accessibleBranchIds?.length ? { accessibleBranchIds } : undefined),
+    [accessibleBranchIds],
+  );
+
   const [list, setList] = useState<inventoryApi.InventoryItem[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [search, setSearch] = useState('');
@@ -61,10 +81,10 @@ export function InventoryModule({ onBack, user, companyId, branch }: InventoryMo
 
   const reloadList = useCallback(() => {
     if (!companyId) return;
-    inventoryApi.getInventory(companyId, branch?.id ?? null).then(({ data, error }) => {
+    inventoryApi.getInventory(companyId, branch?.id ?? null, inventoryFetchOptions).then(({ data, error }) => {
       if (!error && data) setList(data);
     });
-  }, [companyId, branch?.id]);
+  }, [companyId, branch?.id, inventoryFetchOptions]);
 
   useEffect(() => {
     if (!companyId) {
@@ -73,7 +93,7 @@ export function InventoryModule({ onBack, user, companyId, branch }: InventoryMo
     }
     let c = false;
     setLoading(true);
-    inventoryApi.getInventory(companyId, branch?.id ?? null).then(({ data, error }) => {
+    inventoryApi.getInventory(companyId, branch?.id ?? null, inventoryFetchOptions).then(({ data, error }) => {
       if (c) return;
       setLoading(false);
       if (!error && data) setList(data);
@@ -81,7 +101,7 @@ export function InventoryModule({ onBack, user, companyId, branch }: InventoryMo
     return () => {
       c = true;
     };
-  }, [companyId, branch?.id]);
+  }, [companyId, branch?.id, inventoryFetchOptions]);
 
   useEffect(() => {
     void barcode.checkStatus();

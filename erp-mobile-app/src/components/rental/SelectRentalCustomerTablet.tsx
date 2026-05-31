@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Search, Plus, Phone, X, Star } from 'lucide-react';
 import * as contactsApi from '../../api/contacts';
+import { getContactDisplayPhone } from '../../api/contacts';
+import { usePermissions } from '../../context/PermissionContext';
+import { getPartyBalanceLabel } from '../../utils/balancePrivacy';
 
 export interface RentalCustomer {
   id: string;
@@ -16,6 +19,7 @@ interface SelectRentalCustomerTabletProps {
 }
 
 export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: SelectRentalCustomerTabletProps) {
+  const { canViewBalances } = usePermissions();
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<RentalCustomer[]>([]);
   const [loading, setLoading] = useState(!!companyId);
@@ -35,7 +39,7 @@ export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: Sele
           : (data || []).map((c) => ({
               id: c.id,
               name: c.name,
-              phone: c.phone || '',
+              phone: getContactDisplayPhone(c) || '—',
               balance: c.balance || 0,
             }))
       );
@@ -46,7 +50,7 @@ export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: Sele
   const filteredCustomers = customers.filter(
     (c) =>
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.phone.includes(searchQuery)
+      (c.phone !== '—' && c.phone.includes(searchQuery))
   );
   const recentCustomers = customers.slice(0, 2);
 
@@ -66,7 +70,7 @@ export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: Sele
       const customer: RentalCustomer = {
         id: data.id,
         name: data.name,
-        phone: data.phone || '',
+        phone: getContactDisplayPhone(data) || '—',
         balance: 0,
       };
       setCustomers([customer, ...customers]);
@@ -124,7 +128,7 @@ export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: Sele
                     <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">RECENT CUSTOMERS</h2>
                     <div className="space-y-2">
                       {recentCustomers.map((c) => (
-                        <CustomerCard key={c.id} customer={c} onSelect={onSelect} isRecent />
+                        <CustomerCard key={c.id} customer={c} onSelect={onSelect} isRecent canViewBalances={canViewBalances} />
                       ))}
                     </div>
                   </div>
@@ -135,7 +139,7 @@ export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: Sele
                   </h2>
                   <div className="space-y-2">
                     {filteredCustomers.map((c) => (
-                      <CustomerCard key={c.id} customer={c} onSelect={onSelect} />
+                      <CustomerCard key={c.id} customer={c} onSelect={onSelect} canViewBalances={canViewBalances} />
                     ))}
                   </div>
                   {filteredCustomers.length === 0 && (
@@ -245,11 +249,14 @@ function CustomerCard({
   customer,
   onSelect,
   isRecent,
+  canViewBalances,
 }: {
   customer: RentalCustomer;
   onSelect: (c: RentalCustomer) => void;
   isRecent?: boolean;
+  canViewBalances: boolean;
 }) {
+  const balanceLabel = getPartyBalanceLabel(customer.balance, canViewBalances);
   return (
     <button
       onClick={() => onSelect(customer)}
@@ -274,16 +281,13 @@ function CustomerCard({
             <span>{customer.phone}</span>
           </div>
         </div>
-        {customer.balance !== 0 && (
+        {balanceLabel ? (
           <div className="text-right flex-shrink-0">
             <p className={`text-xs font-medium ${customer.balance > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
-              {customer.balance > 0 ? 'Due' : 'Credit'}
-            </p>
-            <p className={`text-sm font-semibold ${customer.balance > 0 ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
-              Rs. {Math.abs(customer.balance).toLocaleString()}
+              {balanceLabel}
             </p>
           </div>
-        )}
+        ) : null}
       </div>
     </button>
   );

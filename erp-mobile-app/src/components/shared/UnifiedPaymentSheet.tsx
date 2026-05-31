@@ -43,6 +43,8 @@ export interface UnifiedPaymentSheetProps {
   partyName: string | null;
   /** Customer / supplier / worker id — needed for accounting posting. */
   partyId?: string | null;
+  /** Party phone/mobile for WhatsApp on payment receipt preview. */
+  partyPhone?: string | null;
 
   totalAmount?: number | null;
   alreadyPaid?: number | null;
@@ -66,6 +68,7 @@ export function UnifiedPaymentSheet({
   userId,
   partyName,
   partyId,
+  partyPhone,
   totalAmount,
   alreadyPaid,
   outstandingAmount,
@@ -188,6 +191,7 @@ export function UnifiedPaymentSheet({
       branchId={branchId}
       userId={userId}
       partyName={partyName}
+      partyPhone={partyPhone}
       referenceNo={referenceNo ?? null}
       totalAmount={totalAmount ?? null}
       alreadyPaid={alreadyPaid ?? null}

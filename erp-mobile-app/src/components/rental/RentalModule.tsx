@@ -5,6 +5,7 @@ import * as rentalsApi from '../../api/rentals';
 import type { RentalListItem } from '../../api/rentals';
 import { CreateRentalFlow } from './CreateRentalFlow';
 import { ViewRentalDetails } from './ViewRentalDetails';
+import { openWhatsAppShare } from '../../lib/phoneWhatsApp';
 import { formatDate } from '../accounts/reports/_shared/format';
 import { localNowDateString } from '../../utils/localDate';
 
@@ -156,7 +157,7 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
       `Total: Rs. ${r.total.toLocaleString()}`,
       `Due: Rs. ${r.due.toLocaleString()}`,
     ].join('\n');
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    openWhatsAppShare(r.customerPhone, text);
   };
 
   const renderRentalCard = (r: RentalListItem, extra?: React.ReactNode) => {

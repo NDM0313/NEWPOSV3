@@ -271,6 +271,7 @@ export function TransactionDetailSheet({ paymentId, companyId, onClose, onViewLe
           title={detail.direction === 'received' ? 'Payment Receipt' : 'Payment Voucher'}
           filename={`Receipt_${refLabels.primary || (detail.referenceNumber ?? detail.entryNo ?? detail.id)}.pdf`}
           onClose={preview.close}
+          sharePhone={detail.partyPhone}
           whatsAppFallbackText={`${detail.direction === 'received' ? 'Received' : 'Paid'} Rs. ${detail.amount.toLocaleString('en-PK')} — ${detail.partyName ?? detail.partyAccountName ?? ''}`}
         >
           <ReceiptPreviewPdf

@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { fetchInBatches } from '../lib/chunkInQuery';
 
 export interface InventoryItem {
   id: string;
@@ -16,7 +17,8 @@ export interface InventoryItem {
 /** Stock from stock_movements (no current_stock column dependency). Optional branch = branch-scoped qty. */
 export async function getInventory(
   companyId: string,
-  branchId?: string | null
+  branchId?: string | null,
+  options?: { accessibleBranchIds?: string[] },
 ): Promise<{ data: InventoryItem[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
 
@@ -31,15 +33,26 @@ export async function getInventory(
   if (!products?.length) return { data: [], error: null };
 
   const productIds = products.map((p: { id: string }) => p.id);
-  let movQ = supabase
-    .from('stock_movements')
-    .select('product_id, variation_id, quantity')
-    .eq('company_id', companyId)
-    .in('product_id', productIds);
-  if (branchId && branchId !== 'all' && branchId !== 'default') {
-    movQ = movQ.eq('branch_id', branchId);
+  let movements: { product_id: string; variation_id: string | null; quantity: number }[] = [];
+  try {
+    movements = await fetchInBatches(productIds, async (chunk) => {
+      let movQ = supabase
+        .from('stock_movements')
+        .select('product_id, variation_id, quantity')
+        .eq('company_id', companyId)
+        .in('product_id', chunk);
+      if (branchId && branchId !== 'all' && branchId !== 'default') {
+        movQ = movQ.eq('branch_id', branchId);
+      } else if (options?.accessibleBranchIds?.length) {
+        movQ = movQ.in('branch_id', options.accessibleBranchIds);
+      }
+      const { data, error } = await movQ;
+      if (error) throw error;
+      return (data || []) as { product_id: string; variation_id: string | null; quantity: number }[];
+    });
+  } catch (e: unknown) {
+    console.warn('[getInventory] stock_movements:', e instanceof Error ? e.message : String(e));
   }
-  const { data: movements } = await movQ;
 
   function stockMapFromMovements(
     rows: { product_id: string; variation_id: string | null; quantity: number }[]
@@ -52,20 +65,27 @@ export async function getInventory(
     return map;
   }
 
-  const stockByKey = stockMapFromMovements(
-    (movements || []) as { product_id: string; variation_id: string | null; quantity: number }[]
-  );
+  const stockByKey = stockMapFromMovements(movements);
 
   const withVariations = products.filter((r: { has_variations?: boolean }) => r.has_variations);
   const varProductIds = withVariations.map((r: { id: string }) => r.id);
   let varMap: Record<string, { id: string }[]> = {};
   if (varProductIds.length > 0) {
-    const { data: varData } = await supabase
-      .from('product_variations')
-      .select('id, product_id')
-      .in('product_id', varProductIds)
-      .eq('is_active', true);
-    for (const v of varData || []) {
+    let varData: { product_id: string; id: string }[] = [];
+    try {
+      varData = await fetchInBatches(varProductIds, async (chunk) => {
+        const { data, error } = await supabase
+          .from('product_variations')
+          .select('id, product_id')
+          .in('product_id', chunk)
+          .eq('is_active', true);
+        if (error) throw error;
+        return (data || []) as { product_id: string; id: string }[];
+      });
+    } catch (e: unknown) {
+      console.warn('[getInventory] product_variations:', e instanceof Error ? e.message : String(e));
+    }
+    for (const v of varData) {
       const pv = v as { product_id: string; id: string };
       if (!varMap[pv.product_id]) varMap[pv.product_id] = [];
       varMap[pv.product_id].push({ id: pv.id });

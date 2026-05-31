@@ -1,5 +1,7 @@
 // PDF Generator for Reports - uses jsPDF (dynamic import)
 
+import { sharePdfToWhatsAppContact } from '../lib/erpWhatsApp';
+import { openWhatsAppShare, toWhatsAppWaMeDigits } from '../lib/phoneWhatsApp';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -204,13 +206,19 @@ export async function printPDF(blob: Blob, filename = 'document.pdf'): Promise<b
   return true;
 }
 
-export async function sharePDF(blob: Blob, filename: string, title: string): Promise<boolean> {
+export async function sharePDF(
+  blob: Blob,
+  filename: string,
+  title: string,
+  shareText?: string,
+): Promise<boolean> {
+  const caption = shareText?.trim() || `Sharing ${title}`;
   if (isNative) {
     try {
       const uri = await writePdfToCache(blob, filename);
       await Share.share({
         title,
-        text: `Sharing ${title}`,
+        text: caption,
         files: [uri],
         dialogTitle: 'Share PDF',
       });
@@ -222,7 +230,7 @@ export async function sharePDF(blob: Blob, filename: string, title: string): Pro
   const file = new File([blob], filename, { type: 'application/pdf' });
   if (navigator.share && navigator.canShare?.({ files: [file] })) {
     try {
-      await navigator.share({ title, text: `Sharing ${title}`, files: [file] });
+      await navigator.share({ title, text: caption, files: [file] });
       return true;
     } catch {
       await downloadPDF(blob, filename);
@@ -231,6 +239,46 @@ export async function sharePDF(blob: Blob, filename: string, title: string): Pro
   }
   await downloadPDF(blob, filename);
   return false;
+}
+
+export type SharePdfWithWhatsAppResult = 'shared' | 'whatsapp_fallback' | 'failed';
+
+/**
+ * PDF share: Android + sharePhone → WhatsApp intent with jid (direct chat).
+ * Otherwise generic share sheet; then wa.me text-only fallback.
+ * iOS/browser cannot attach PDF to a fixed number via public APIs.
+ */
+export async function sharePdfWithWhatsAppFallback(
+  blob: Blob,
+  filename: string,
+  title: string,
+  opts?: { sharePhone?: string | null; whatsAppText?: string },
+): Promise<SharePdfWithWhatsAppResult> {
+  const shareText = opts?.whatsAppText?.trim() || title;
+  const waDigits = opts?.sharePhone ? toWhatsAppWaMeDigits(opts.sharePhone) : '';
+
+  if (isNative && waDigits) {
+    try {
+      const uri = await writePdfToCache(blob, filename);
+      const targeted = await sharePdfToWhatsAppContact({
+        uri,
+        phone: waDigits,
+        text: shareText,
+      });
+      if (targeted) return 'shared';
+    } catch {
+      // fall through to generic share
+    }
+  }
+
+  const ok = await sharePDF(blob, filename, title, shareText);
+  if (ok) return 'shared';
+  const waText = opts?.whatsAppText?.trim();
+  if (waText || opts?.sharePhone) {
+    openWhatsAppShare(opts?.sharePhone ?? undefined, waText || title);
+    return 'whatsapp_fallback';
+  }
+  return 'failed';
 }
 
 // ---------------------------------------------------------------------------
@@ -629,9 +677,5 @@ export async function shareReportBlob(
   title: string,
   whatsAppText?: string,
 ): Promise<void> {
-  const ok = await sharePDF(blob, filename, title);
-  if (!ok && whatsAppText) {
-    const url = `https://wa.me/?text=${encodeURIComponent(whatsAppText)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
+  await sharePdfWithWhatsAppFallback(blob, filename, title, { whatsAppText });
 }

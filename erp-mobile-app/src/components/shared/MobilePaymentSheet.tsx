@@ -28,7 +28,7 @@ import { ReceiptPreviewPdf } from './ReceiptPreviewPdf';
 import { usePdfPreview } from './usePdfPreview';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
-import { localNowDateString } from '../../utils/localDate';
+import { localNowDateString, getCurrentLocalTimestamp } from '../../utils/localDate';
 import { isBranchSentinel } from '../../utils/branchId';
 
 function blurActiveInput(): void {
@@ -77,6 +77,8 @@ export interface MobilePaymentSheetProps {
   userId?: string | null;
   /** Customer / supplier / worker / expense category / rental customer name. */
   partyName?: string | null;
+  /** Party mobile/phone for WhatsApp share on receipt preview. */
+  partyPhone?: string | null;
   /** Reference number for display (sale/invoice/PO/booking). */
   referenceNo?: string | null;
   /** For receive/pay flows — gross total of the underlying document. */
@@ -210,6 +212,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
     branchId,
     userId,
     partyName,
+    partyPhone,
     referenceNo,
     totalAmount,
     alreadyPaid,
@@ -426,7 +429,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         referenceFull: refLabels.full || (result.referenceNumber ?? null),
         amount,
         partyName: partyName ?? null,
-        date: new Date().toISOString(),
+        date: getCurrentLocalTimestamp(),
         branch: branchName ?? undefined,
         entityId: result.paymentId ?? null,
         fromAccountName: acct?.name ?? '',
@@ -856,6 +859,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
             preview.close();
             closeSuccess();
           }}
+          sharePhone={partyPhone}
           whatsAppFallbackText={`${shareHeading(mode)} · Rs. ${(success.amount ?? 0).toLocaleString('en-PK')} — ${success.partyName ?? ''}`}
         >
           <ReceiptPreviewPdf
@@ -863,7 +867,7 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
             heading={shareHeading(mode)}
             partyName={success.partyName ?? 'Party'}
             amount={success.amount ?? 0}
-            dateTime={success.date ?? new Date().toISOString()}
+            dateTime={success.date ?? getCurrentLocalTimestamp()}
             fromAccountName={
               mode === 'receive' || mode === 'rental' ? success.toAccountName : success.fromAccountName
             }

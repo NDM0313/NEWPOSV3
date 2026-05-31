@@ -46,6 +46,13 @@ export function shouldAcceptMobileInvalidation(
     if (!allowed.includes(detail.domain)) return false;
   }
   if (opts.companyId && detail.companyId && opts.companyId !== detail.companyId) return false;
-  if (opts.branchId && opts.branchId !== 'all' && detail.branchId && opts.branchId !== detail.branchId) return false;
+  if (
+    opts.branchId &&
+    opts.branchId !== 'all' &&
+    detail.branchId &&
+    opts.branchId !== detail.branchId
+  ) {
+    return false;
+  }
   return true;
 }

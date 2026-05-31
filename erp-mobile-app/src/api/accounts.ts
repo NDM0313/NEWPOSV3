@@ -13,6 +13,7 @@ function appendPayReferenceAllocationHint(message: string): string {
 import { getNextDocumentNumber } from './documentNumber';
 import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
 import { resolveBranchUuidForWrite, safeRpcBranchId } from '../utils/branchId';
+import { getCurrentLocalTimestamp, toLocalDateString } from '../utils/localDate';
 
 export interface AccountRow {
   id: string;
@@ -294,7 +295,7 @@ export async function getJournalEntries(
       id: String(e.id ?? ''),
       entry_no: String(e.entry_no ?? ''),
       payment_reference_number: paymentId ? paymentRefNoById.get(paymentId) ?? null : null,
-      entry_date: e.entry_date ? new Date(e.entry_date as string).toISOString().slice(0, 10) : '',
+      entry_date: e.entry_date ? toLocalDateString(e.entry_date as string) : '',
       description: String(e.description ?? ''),
       reference_type: String(e.reference_type ?? ''),
       reference_id: e.reference_id != null && e.reference_id !== '' ? String(e.reference_id) : null,
@@ -363,7 +364,7 @@ export async function getJournalEntryById(
     data: {
       id: String(e.id ?? ''),
       entry_no: String(e.entry_no ?? ''),
-      entry_date: e.entry_date ? new Date(e.entry_date as string).toISOString().slice(0, 10) : '',
+      entry_date: e.entry_date ? toLocalDateString(e.entry_date as string) : '',
       description: String(e.description ?? ''),
       reference_type: String(e.reference_type ?? ''),
       reference_id: e.reference_id != null && e.reference_id !== '' ? String(e.reference_id) : null,
@@ -425,7 +426,7 @@ export async function getAccountLedger(
   let openingAdded = false;
   for (const line of rows) {
     const je = Array.isArray(line.journal_entry) ? line.journal_entry[0] : line.journal_entry;
-    const entryDate = je?.entry_date ? new Date(je.entry_date as string).toISOString().slice(0, 10) : '';
+    const entryDate = je?.entry_date ? toLocalDateString(je.entry_date as string) : '';
     if (dateFrom && entryDate < dateFrom) {
       runningBalance += Number(line.debit ?? 0) - Number(line.credit ?? 0);
       continue;
@@ -615,7 +616,7 @@ export async function updateJournalEntryInPlace(
     .update({
       entry_date: payload.entryDate,
       description: payload.description,
-      updated_at: new Date().toISOString(),
+      updated_at: getCurrentLocalTimestamp(),
     })
     .eq('id', payload.journalEntryId)
     .eq('company_id', payload.companyId);
@@ -646,7 +647,7 @@ export async function updateJournalEntryInPlace(
         amount,
         expense_date: payload.entryDate,
         description: payload.description,
-        updated_at: new Date().toISOString(),
+        updated_at: getCurrentLocalTimestamp(),
       })
       .eq('id', je.reference_id as string)
       .eq('company_id', payload.companyId);
@@ -728,7 +729,7 @@ export async function getPurchasesBySupplier(companyId: string, supplierId: stri
     data: (data || []).map((r: Record<string, unknown>) => ({
       id: String(r.id ?? ''),
       po_no: String(r.po_no ?? ''),
-      po_date: r.po_date ? new Date(r.po_date as string).toISOString().slice(0, 10) : '',
+      po_date: r.po_date ? toLocalDateString(r.po_date as string) : '',
       due_amount: Number(r.due_amount) || 0,
       total: Number(r.total) || 0,
     })),

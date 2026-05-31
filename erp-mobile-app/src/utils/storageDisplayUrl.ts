@@ -7,6 +7,7 @@ export const STORAGE_BUCKETS = [
   'sale-attachments',
   'purchase-attachments',
   'payment-attachments',
+  'expense-receipts',
 ] as const;
 
 export type StorageBucket = (typeof STORAGE_BUCKETS)[number];

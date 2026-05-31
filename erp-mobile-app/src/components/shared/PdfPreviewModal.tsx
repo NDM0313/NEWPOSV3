@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Download, Share2, Printer, Loader2 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { downloadPDF, sharePDF, printPDF } from '../../utils/pdfGenerator';
+import { downloadPDF, printPDF, sharePdfWithWhatsAppFallback } from '../../utils/pdfGenerator';
 
 interface PdfPreviewModalProps {
   open: boolean;
@@ -12,8 +12,10 @@ interface PdfPreviewModalProps {
   filename: string;
   /** Rendered into an A4-sized white container. Use plain HTML/inline styles; tailwind dark classes are fine but printed output is B&W. */
   children: ReactNode;
-  /** Optional WhatsApp deeplink text used as fallback when navigator.share is unavailable. */
+  /** Caption for native share + WhatsApp text fallback when PDF share is unavailable. */
   whatsAppFallbackText?: string;
+  /** Customer/supplier mobile or phone — dashes stripped when opening WhatsApp. */
+  sharePhone?: string | null;
 }
 
 /**
@@ -28,6 +30,7 @@ export function PdfPreviewModal({
   filename,
   children,
   whatsAppFallbackText,
+  sharePhone,
 }: PdfPreviewModalProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [busy, setBusy] = useState<false | 'share' | 'download' | 'print'>(false);
@@ -111,12 +114,12 @@ export function PdfPreviewModal({
     setToast(null);
     try {
       const blob = await captureToPdfBlob();
-      const ok = await sharePDF(blob, filename, title);
-      if (!ok && whatsAppFallbackText) {
-        window.open(`https://wa.me/?text=${encodeURIComponent(whatsAppFallbackText)}`, '_blank', 'noopener,noreferrer');
-      }
-      if (!ok && !whatsAppFallbackText) {
-        setToast('Could not share PDF — try again');
+      const result = await sharePdfWithWhatsAppFallback(blob, filename, title, {
+        sharePhone,
+        whatsAppText: whatsAppFallbackText ?? title,
+      });
+      if (result === 'failed') {
+        setToast('Could not share PDF — try Download');
       }
     } catch (err) {
       console.error('[PdfPreview] share failed', err);
@@ -188,7 +191,7 @@ export function PdfPreviewModal({
 
       <div className="bg-[#1F2937] border-t border-[#374151] p-3 grid grid-cols-3 gap-2 no-print pb-[calc(0.75rem+env(safe-area-inset-bottom,0))]">
         <button
-          onClick={handleShare}
+          onClick={() => void handleShare()}
           disabled={!!busy}
           className="h-11 rounded-lg bg-[#10B981] hover:bg-[#059669] text-white font-medium flex items-center justify-center gap-2 disabled:opacity-60"
         >

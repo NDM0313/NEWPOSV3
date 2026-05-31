@@ -19,6 +19,7 @@ export interface ContactRow {
   type: string;
   name: string;
   phone?: string | null;
+  mobile?: string | null;
   email?: string | null;
   city?: string | null;
   address?: string | null;
@@ -34,6 +35,7 @@ export interface Contact {
   name: string;
   roles: ContactRole[];
   phone: string;
+  mobile?: string;
   email?: string;
   address?: string;
   city?: string;
@@ -49,6 +51,26 @@ export interface Contact {
   leadSource?: string | null;
   leadStatus?: string | null;
   createdFrom?: string | null;
+}
+
+/** Primary phone for list/detail; falls back to mobile when phone is empty (matches web Contacts). */
+export function getContactDisplayPhone(c: { phone?: string | null; mobile?: string | null }): string {
+  const p = (c.phone ?? '').trim();
+  if (p) return p;
+  return (c.mobile ?? '').trim();
+}
+
+export function getContactPhoneLabel(c: { phone?: string | null; mobile?: string | null }): string {
+  if ((c.phone ?? '').trim()) return 'Phone';
+  if ((c.mobile ?? '').trim()) return 'Mobile';
+  return 'Phone';
+}
+
+/** Prefer mobile for WhatsApp share; falls back to phone. */
+export function getContactWhatsAppPhone(c: { phone?: string | null; mobile?: string | null }): string {
+  const m = (c.mobile ?? '').trim();
+  if (m) return m;
+  return (c.phone ?? '').trim();
 }
 
 export function getContactDisplayRef(c: Pick<Contact, 'code' | 'referralCode'>): string {
@@ -136,7 +158,7 @@ export async function getContacts(
   }
   let query = supabase
     .from('contacts')
-    .select('id, company_id, type, name, phone, email, city, address, opening_balance, credit_limit, worker_role, is_active, created_at, updated_at, code, referral_code, lead_source, lead_status, created_from')
+    .select('id, company_id, type, name, phone, mobile, email, city, address, opening_balance, credit_limit, worker_role, is_active, created_at, updated_at, code, referral_code, lead_source, lead_status, created_from')
     .eq('company_id', company)
     .order('name');
   if (type === 'customer') query = query.in('type', ['customer', 'both']);
@@ -191,7 +213,8 @@ export async function getContacts(
       id: row.id,
       name: row.name,
       roles: typeToRoles(row.type || 'customer'),
-      phone: row.phone || '',
+      phone: (row.phone ?? '').trim(),
+      mobile: (row.mobile ?? '').trim() || undefined,
       email: row.email ?? undefined,
       address: row.address ?? undefined,
       city: row.city ?? undefined,
@@ -214,7 +237,8 @@ export async function getContacts(
 
 export interface CreateContactInput {
   name: string;
-  phone: string;
+  phone?: string;
+  mobile?: string;
   email?: string;
   city?: string;
   address?: string;
@@ -235,7 +259,8 @@ export async function createContact(
     company_id: companyId,
     type,
     name: c.name.trim(),
-    phone: c.phone.trim(),
+    phone: c.phone?.trim() || null,
+    mobile: c.mobile?.trim() || null,
     email: c.email?.trim() || null,
     city: c.city?.trim() || null,
     address: c.address?.trim() || null,
@@ -252,7 +277,8 @@ export async function createContact(
       id: row.id,
       name: row.name,
       roles: typeToRoles(row.type || 'customer'),
-      phone: row.phone || '',
+      phone: (row.phone ?? '').trim(),
+      mobile: (row.mobile ?? '').trim() || undefined,
       email: row.email ?? undefined,
       city: row.city ?? undefined,
       address: row.address ?? undefined,
@@ -265,7 +291,8 @@ export async function createContact(
 
 export interface UpdateContactInput {
   name: string;
-  phone: string;
+  phone?: string;
+  mobile?: string;
   email?: string;
   city?: string;
   address?: string;
@@ -286,7 +313,8 @@ export async function updateContact(
   const payload: Record<string, unknown> = {
     type,
     name: c.name.trim(),
-    phone: c.phone.trim(),
+    phone: c.phone?.trim() || null,
+    mobile: c.mobile?.trim() || null,
     email: c.email?.trim() || null,
     city: c.city?.trim() || null,
     address: c.address?.trim() || null,
@@ -309,7 +337,8 @@ export async function updateContact(
       id: r.id,
       name: r.name,
       roles: typeToRoles(r.type || 'customer'),
-      phone: r.phone || '',
+      phone: (r.phone ?? '').trim(),
+      mobile: (r.mobile ?? '').trim() || undefined,
       email: r.email ?? undefined,
       city: r.city ?? undefined,
       address: r.address ?? undefined,

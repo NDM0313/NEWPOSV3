@@ -1,7 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { listCacheKeys } from '../lib/listCache';
 import { readThroughCache } from '../lib/offlineData';
-import { localNowDateString, toLocalDateString } from '../utils/localDate';
+import { formatDocumentListDateTime, localNowDateString, toLocalDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite } from '../utils/branchId';
 import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
@@ -328,7 +328,9 @@ export interface PurchaseListItem {
   date: string;
   /** Friendly date e.g. "Today, 12:30 pm" */
   dateDisplay?: string;
+  created_at?: string;
   itemCount: number;
+  created_by?: string | null;
   created_by_name?: string;
   branchId?: string | null;
 }
@@ -343,7 +345,10 @@ async function enrichPurchasesWithCreatorNames(rows: Record<string, unknown>[]):
   });
   rows.forEach((r) => {
     const uid = r.created_by as string;
-    if (uid) (r as Record<string, unknown>).created_by_name = nameById.get(uid) || null;
+    if (uid && typeof uid === 'string') {
+      (r as Record<string, unknown>).created_by_id = uid;
+      (r as Record<string, unknown>).created_by_name = nameById.get(uid) || null;
+    }
   });
 }
 
@@ -376,19 +381,29 @@ async function enrichPurchasesPaidFromPayments(companyId: string, rows: Record<s
 
 export async function getPurchases(
   companyId: string,
-  branchId?: string | null
+  branchId?: string | null,
+  options?: { accessibleBranchIds?: string[] },
 ): Promise<{ data: PurchaseListItem[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const branchKey =
-    branchId && branchId !== 'all' && branchId !== 'default' ? branchId : 'all';
+    branchId && branchId !== 'all' && branchId !== 'default'
+      ? branchId
+      : options?.accessibleBranchIds?.length
+        ? `acc:${[...options.accessibleBranchIds].sort().join(',')}`
+        : 'all';
   const cacheKey = listCacheKeys.purchases(companyId, branchKey, 'list');
-  const cached = await readThroughCache(cacheKey, () => fetchPurchasesOnline(companyId, branchId), []);
+  const cached = await readThroughCache(
+    cacheKey,
+    () => fetchPurchasesOnline(companyId, branchId, options?.accessibleBranchIds),
+    [],
+  );
   return { data: cached.data, error: cached.error };
 }
 
 async function fetchPurchasesOnline(
   companyId: string,
   branchId?: string | null,
+  accessibleBranchIds?: string[],
 ): Promise<{ data: PurchaseListItem[]; error: string | null }> {
   let query = supabase
     .from('purchases')
@@ -396,9 +411,12 @@ async function fetchPurchasesOnline(
     .eq('company_id', companyId)
     // Keep cancelled POs visible with a "Cancelled" badge (web parity). Filtering removed.
     .order('po_date', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(50);
   if (branchId && branchId !== 'all' && branchId !== 'default') {
     query = query.eq('branch_id', branchId);
+  } else if (accessibleBranchIds?.length) {
+    query = query.in('branch_id', accessibleBranchIds);
   }
   const { data, error } = await query;
   if (error) return { data: [], error: error.message };
@@ -423,13 +441,10 @@ async function fetchPurchasesOnline(
   const list = rows.map((r) => {
     const poDate = r.po_date as string | undefined;
     const dateStr = poDate ? toLocalDateString(poDate) : '—';
-    const dateObj = poDate ? new Date(poDate) : new Date();
-    const isToday = dateObj.toDateString() === new Date().toDateString();
-    const isYesterday = dateObj.toDateString() === new Date(Date.now() - 864e5).toDateString();
-    let dateDisplay = dateObj.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
-    if (isToday) dateDisplay = `Today, ${dateDisplay}`;
-    else if (isYesterday) dateDisplay = `Yesterday, ${dateDisplay}`;
-    else dateDisplay = dateObj.toLocaleDateString('en-PK', { day: 'numeric', month: 'short' });
+    const dateDisplay = formatDocumentListDateTime({
+      documentDate: poDate,
+      eventTimestamp: r.created_at as string,
+    });
     return {
       id: r.id as string,
       poNo: (r.po_no as string) || `PUR-${(r.id as string).slice(0, 8)}`,
@@ -444,7 +459,9 @@ async function fetchPurchasesOnline(
       paymentStatus: String(r.payment_status || 'unpaid'),
       date: dateStr,
       dateDisplay,
+      created_at: (r.created_at as string) || undefined,
       itemCount: itemCountMap[r.id as string] || 0,
+      created_by: (r.created_by as string) ?? null,
       created_by_name: (r.created_by_name as string) || undefined,
       branchId: (r.branch_id as string) ?? null,
     };

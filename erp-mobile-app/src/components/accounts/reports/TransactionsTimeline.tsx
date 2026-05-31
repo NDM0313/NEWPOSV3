@@ -15,6 +15,7 @@ import {
   type TransactionRow,
   type GetTransactionsFilters,
 } from '../../../api/transactions';
+import { compareTransactionRowDesc } from '../../../utils/chronologicalSort';
 import { getMyExpenseJournalEntries } from '../../../api/myActivity';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
 import { EditTransactionSheet } from './_shared/EditTransactionSheet';
@@ -130,28 +131,8 @@ function displayReference(tx: TransactionRow): string {
   return ref;
 }
 
-function transactionEffectiveMs(tx: TransactionRow): number {
-  const c = String(tx.createdAt || '').trim();
-  if (c) {
-    const ms = Date.parse(c);
-    if (!Number.isNaN(ms)) return ms;
-  }
-  const p = String(tx.paymentDate || '').slice(0, 10);
-  if (p) {
-    const ms = Date.parse(`${p}T00:00:00.000Z`);
-    if (!Number.isNaN(ms)) return ms;
-  }
-  return 0;
-}
-
 function compareTransactionsWithinDay(a: TransactionRow, b: TransactionRow): number {
-  const ta = transactionEffectiveMs(a);
-  const tb = transactionEffectiveMs(b);
-  if (tb !== ta) return tb - ta;
-  const pa = String(a.paymentDate || '').slice(0, 10);
-  const pb = String(b.paymentDate || '').slice(0, 10);
-  if (pa !== pb) return pb.localeCompare(pa);
-  return String(b.id).localeCompare(String(a.id));
+  return compareTransactionRowDesc(a, b);
 }
 
 function groupByDate(rows: TransactionRow[]): Array<{ key: string; label: string; items: TransactionRow[] }> {
@@ -291,6 +272,7 @@ export function TransactionsTimeline({
           .map(expenseToTransactionRow);
         merged = [...merged, ...expenseRows];
       }
+      merged.sort(compareTransactionRowDesc);
       setRows(merged);
     } finally {
       setLoading(false);

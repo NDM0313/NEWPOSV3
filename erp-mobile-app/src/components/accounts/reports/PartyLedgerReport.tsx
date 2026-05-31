@@ -6,7 +6,7 @@ import {
   getSupplierApGlLedgerLinesForContact,
   getCustomerArGlLedgerLinesForContact,
 } from '../../../api/partyGlLedger';
-import { getContacts, type ContactRole } from '../../../api/contacts';
+import { getContacts, getContactWhatsAppPhone, type ContactRole } from '../../../api/contacts';
 import { getWorkersWithPayable } from '../../../api/accounts';
 import { getWorkerPartyGlLedgerLines } from '../../../api/workerPartyGlLedger';
 import { getWorkerOperationalLedgerLines } from '../../../api/workerOperationalLedger';
@@ -40,6 +40,7 @@ interface LocalParty {
   name: string;
   meta?: string;
   balance: number;
+  sharePhone?: string;
 }
 
 const KIND_LABELS: Record<PartyLedgerKind, { title: string; plural: string; gradient: 'indigo' | 'rose' | 'emerald' | 'amber' }> = {
@@ -104,6 +105,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
                 name: w.name,
                 meta: w.type || w.phone || undefined,
                 balance,
+                sharePhone: (w.phone ?? '').trim() || undefined,
               };
             }),
           );
@@ -122,6 +124,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
               name: c.name,
               meta: [c.phone, c.email].filter(Boolean).join(' · ') || undefined,
               balance: Number(c.balance || 0),
+              sharePhone: getContactWhatsAppPhone(c) || undefined,
             })),
           );
         }
@@ -459,6 +462,7 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
           title={cfg.title}
           filename={`${cfg.title.replace(/\s+/g, '_')}_${selected.name.replace(/\s+/g, '_')}_${range.from || 'all'}_${range.to || 'now'}.pdf`}
           onClose={preview.close}
+          sharePhone={selected.sharePhone}
           whatsAppFallbackText={`${cfg.title} — ${selected.name} · ${dateRangeLabel(range.from, range.to)}`}
         >
           <LedgerPreviewPdf

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Lock, Loader2 } from 'lucide-react';
+import { X, Lock, Loader2, KeyRound } from 'lucide-react';
 import * as authApi from '../../api/auth';
 import type { User } from '../../types';
 import { getPinLockSettings, setPinLockSettings } from '../../lib/pinLock';
@@ -8,6 +8,12 @@ import {
   getCounterSessionPolicy,
   getDevicePinMaxAgeMs,
 } from '../../lib/counterSessionPolicy';
+import {
+  finalizeCounterWorkerEnrollment,
+  resolveCounterEnrollBranchId,
+  shouldOfferCounterPinSync,
+} from '../../lib/counterPinFromDevicePin';
+import { getWorkerUserIdForPin } from '../../lib/counterWorkerRegistry';
 
 interface SetPinModalProps {
   onClose: () => void;
@@ -29,6 +35,13 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
   const [loading, setLoading] = useState(false);
   const initialLockSettings = getPinLockSettings();
   const [requireOnResume, setRequireOnResume] = useState(initialLockSettings.enabled);
+  const [confirmCounterEnroll, setConfirmCounterEnroll] = useState(false);
+  const [savedDevicePin, setSavedDevicePin] = useState<string | null>(null);
+
+  const finishSuccess = () => {
+    onSuccess();
+    onClose();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,14 +69,90 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
         email: user.email,
       });
       setPinLockSettings({ enabled: requireOnResume, timeoutMs: getDevicePinMaxAgeMs() });
-      onSuccess();
-      onClose();
+
+      if (shouldOfferCounterPinSync(pin, user.role, companyId, branchId)) {
+        try {
+          const existingUid = await getWorkerUserIdForPin(pin);
+          if (existingUid && existingUid !== user.id) {
+            finishSuccess();
+            return;
+          }
+          setSavedDevicePin(pin);
+          setConfirmCounterEnroll(true);
+          return;
+        } catch {
+          /* skip counter prompt */
+        }
+      }
+      finishSuccess();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save PIN.');
     } finally {
       setLoading(false);
     }
   };
+
+  const handleCounterEnrollYes = async () => {
+    if (!savedDevicePin || !companyId) {
+      finishSuccess();
+      return;
+    }
+    setLoading(true);
+    try {
+      await finalizeCounterWorkerEnrollment(
+        savedDevicePin,
+        {
+          userId: user.id,
+          displayName: user.name?.trim() || user.email?.split('@')[0] || 'User',
+          email: user.email,
+          role: user.role,
+          profileId: user.profileId,
+          companyId,
+          branchId: resolveCounterEnrollBranchId(user.role, branchId),
+        },
+        companyId,
+      );
+    } catch (e) {
+      console.warn('[SetPinModal] Counter worker enroll failed:', e);
+    } finally {
+      setLoading(false);
+      finishSuccess();
+    }
+  };
+
+  if (confirmCounterEnroll && savedDevicePin) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div className="w-full max-w-sm bg-[#1F2937] border border-[#374151] rounded-xl shadow-xl p-5">
+          <div className="mb-4 text-center">
+            <KeyRound className="w-10 h-10 mx-auto mb-2 text-emerald-400" />
+            <h2 className="font-semibold text-white">Counter tablet PIN bhi save karein?</h2>
+            <p className="text-sm text-[#9CA3AF] mt-2">
+              POS lock screen par isi 4-digit PIN se aapka naam khule ga. Device quick PIN already save ho chuki hai.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void handleCounterEnrollYes()}
+              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-70 text-white font-medium rounded-lg"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Yes, save counter PIN'}
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={finishSuccess}
+              className="w-full py-2 text-sm text-[#9CA3AF] hover:text-white"
+            >
+              No, sirf device PIN
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -81,6 +170,9 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <p className="text-sm text-[#9CA3AF]">
             Enter a 4–6 digit PIN for faster unlock. You can change or remove it later in Settings.
+          </p>
+          <p className="text-xs text-[#6B7280]">
+            Exactly 4 digits enables optional counter tablet PIN on the shared lock screen.
           </p>
           <input
             type="password"

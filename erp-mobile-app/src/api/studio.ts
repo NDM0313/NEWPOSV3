@@ -49,6 +49,7 @@ export interface StudioSaleRow {
 export interface StudioProductionRow {
   id: string;
   sale_id: string;
+  branch_id?: string | null;
   production_no: string;
   production_date: string;
   status: 'draft' | 'in_progress' | 'completed' | 'cancelled';
@@ -67,7 +68,22 @@ export interface StudioProductionRow {
     invoice_date: string;
     deadline?: string | null;
     status?: string | null;
+    created_by?: string | null;
   };
+}
+
+function applyStudioBranchFilter<T extends { eq: (col: string, val: string) => T; in: (col: string, vals: string[]) => T }>(
+  query: T,
+  branchId?: string | null,
+  accessibleBranchIds?: string[],
+): T {
+  if (branchId && branchId !== 'all' && branchId !== 'default') {
+    return query.eq('branch_id', branchId);
+  }
+  if (accessibleBranchIds?.length) {
+    return query.in('branch_id', accessibleBranchIds);
+  }
+  return query;
 }
 
 const BILL_LOCKED_MSG =
@@ -207,16 +223,20 @@ export function workerMatchesStage(workerType: string | null | undefined, stage:
   return STAGE_WORKER_TYPES[stage].map((s) => s.toLowerCase()).includes(wt);
 }
 
-export async function getStudioSales(companyId: string, branchId?: string | null) {
+export async function getStudioSales(
+  companyId: string,
+  branchId?: string | null,
+  options?: { accessibleBranchIds?: string[] },
+) {
   if (!isSupabaseConfigured) return { data: [] as StudioSaleRow[], error: 'App not configured.' };
   let q = supabase
     .from('sales')
-    .select('id, invoice_no, invoice_date, customer_name, total, paid_amount, due_amount, payment_status')
+    .select('id, invoice_no, invoice_date, customer_name, total, paid_amount, due_amount, payment_status, branch_id, created_by')
     .eq('company_id', companyId)
     .eq('is_studio', true)
     .order('invoice_date', { ascending: false })
     .limit(50);
-  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
+  q = applyStudioBranchFilter(q, branchId, options?.accessibleBranchIds);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   return {
@@ -339,19 +359,20 @@ export async function ensureStudioProductionsForCompany(companyId: string): Prom
 /** Fetch studio productions with sale + product, for company/branch */
 export async function getStudioProductions(
   companyId: string,
-  branchId?: string | null
+  branchId?: string | null,
+  options?: { accessibleBranchIds?: string[] },
 ): Promise<{ data: StudioProductionRow[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   try {
     let q = supabase
       .from('studio_productions')
       .select(
-        'id, sale_id, production_no, production_date, status, product_id, design_name, generated_invoice_item_id, product:products!product_id(id, name, sku), sale:sales(id, invoice_no, customer_name, total, invoice_date, deadline, status, created_by)',
+        'id, sale_id, branch_id, production_no, production_date, status, product_id, design_name, generated_invoice_item_id, product:products!product_id(id, name, sku), sale:sales(id, invoice_no, customer_name, total, invoice_date, deadline, status, created_by)',
       )
       .eq('company_id', companyId)
       .order('created_at', { ascending: false })
       .limit(100);
-    if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
+    q = applyStudioBranchFilter(q, branchId, options?.accessibleBranchIds);
     const { data, error } = await q;
     if (error) return { data: [], error: formatStudioSchemaError(error.message) };
     return { data: (data || []) as unknown as StudioProductionRow[], error: null };

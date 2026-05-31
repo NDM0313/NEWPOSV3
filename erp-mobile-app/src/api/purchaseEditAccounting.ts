@@ -4,6 +4,7 @@
  */
 
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getCurrentLocalTimestamp } from '../utils/localDate';
 
 export type PurchaseAcctSnapshot = {
   total: number;
@@ -232,7 +233,7 @@ export async function syncPurchaseDocumentJournalInPlaceMobile(params: {
       .update({
         total_debit: totalDebit,
         total_credit: totalCredit,
-        updated_at: new Date().toISOString(),
+        updated_at: getCurrentLocalTimestamp(),
       })
       .eq('id', jeId);
     if (totalsErr) return { updated: false, error: totalsErr.message };
@@ -242,7 +243,7 @@ export async function syncPurchaseDocumentJournalInPlaceMobile(params: {
     const baseDesc = (purJe.description || '').replace(/\s*\[Edited[^\]]*\]/g, '').trim();
     await supabase
       .from('journal_entries')
-      .update({ description: `${baseDesc} ${editLog}`.slice(0, 500), updated_at: new Date().toISOString() })
+      .update({ description: `${baseDesc} ${editLog}`.slice(0, 500), updated_at: getCurrentLocalTimestamp() })
       .eq('id', jeId);
 
     return { updated: true, error: null };

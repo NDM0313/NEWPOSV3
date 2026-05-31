@@ -1,5 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, Loader2, Plus, Minus, Search, ChevronDown, FileText } from 'lucide-react';
+import { CustomerPickerList } from '../shared/CustomerPickerList';
+import { AddContactFlow, type AddContactFormData } from '../contacts/AddContactFlow';
+import { getContactDisplayPhone } from '../../api/contacts';
+import { usePermissions } from '../../context/PermissionContext';
 import { useResponsive } from '../../hooks/useResponsive';
 import * as contactsApi from '../../api/contacts';
 import { SelectRentalCustomerTablet, type RentalCustomer } from './SelectRentalCustomerTablet';
@@ -12,6 +16,10 @@ import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/
 import { CustomSelect, CustomSearchableSheet } from '../common';
 import { localNowDateString, formatLocalDateTimeDisplay } from '../../utils/localDate';
 import type { User } from '../../types';
+import { useEffectiveWorkerId, useEffectiveWorkerProfileId, useEffectiveWorkerRole } from '../../context/CounterWorkerContext';
+import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
+import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
+import { isRealBranchUuid } from '../../utils/branchId';
 
 interface CreateRentalFlowProps {
   companyId: string | null;
@@ -37,12 +45,34 @@ const SECURITY_DOC_TYPES = ['CNIC', 'Passport', 'Driver License', 'Other'] as co
 
 export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack, onSuccess }: CreateRentalFlowProps) {
   const responsive = useResponsive();
+  const effectiveUserId = useEffectiveWorkerId(userId ?? '');
+  const effectiveProfileId = useEffectiveWorkerProfileId();
+  const effectiveRole = useEffectiveWorkerRole(userRole ?? 'admin');
+  const {
+    effectiveBranchId: writeBranchId,
+    needsPicker,
+    pickerBranches,
+    pickedBranchId,
+    setPickedBranchId,
+  } = useWriteBranchSelection({
+    companyId,
+    globalBranchId: branchId,
+    userRole: effectiveRole,
+    authUserId: effectiveUserId,
+    profileId: effectiveProfileId,
+  });
+  const { canViewBalances } = usePermissions();
   const [step, setStep] = useState<Step>('customer');
-  const [customers, setCustomers] = useState<{ id: string; name: string; phone: string }[]>([]);
+  const [customers, setCustomers] = useState<RentalCustomer[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerPickView, setCustomerPickView] = useState<'pick' | 'addContact'>('pick');
+  const [addCustomerError, setAddCustomerError] = useState('');
+  const [addCustomerSaving, setAddCustomerSaving] = useState(false);
   const [products, setProducts] = useState<productsApi.RentalProduct[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [variationPickerProduct, setVariationPickerProduct] = useState<productsApi.RentalProduct | null>(null);
-  const [selectedCustomer, setSelectedCustomer] = useState<{ id: string; name: string; phone: string } | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<RentalCustomer | null>(null);
   const [selectedItems, setSelectedItems] = useState<SelectedRentalItem[]>([]);
   const [lineRateMap, setLineRateMap] = useState<Record<string, string>>({});
   const [pickupDate, setPickupDate] = useState('');
@@ -60,14 +90,9 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
   /** Local calendar "today" for date pickers (not UTC). */
   const today = localNowDateString();
-
-  const needsBranchSelection = !branchId || branchId === 'all';
-  const effectiveBranchId = needsBranchSelection ? selectedBranchId : branchId;
 
   const filteredProducts = useMemo(() => {
     if (!productSearch.trim()) return products;
@@ -76,26 +101,60 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   }, [products, productSearch]);
 
   useEffect(() => {
-    if (!companyId || !needsBranchSelection) return;
-    let c = false;
-    branchesApi.getBranches(companyId).then(({ data }) => {
-      if (c) return;
-      const list = (data || []).map((b) => ({ id: b.id, name: b.name }));
-      setBranches(list);
-      if (list.length === 1) setSelectedBranchId(list[0].id);
-    });
-    return () => { c = true; };
-  }, [companyId, needsBranchSelection]);
-
-  useEffect(() => {
     if (!companyId) return;
     let c = false;
-    contactsApi.getContacts(companyId, 'customer').then(({ data }) => {
+    setCustomersLoading(true);
+    contactsApi.getContacts(companyId, 'customer', branchId ?? undefined).then(({ data }) => {
       if (c) return;
-      setCustomers((data || []).map((x) => ({ id: x.id, name: x.name, phone: x.phone || '—' })));
+      setCustomersLoading(false);
+      setCustomers(
+        (data || []).map((x) => ({
+          id: x.id,
+          name: x.name,
+          phone: getContactDisplayPhone(x) || '—',
+          balance: x.balance,
+        }))
+      );
     });
     return () => { c = true; };
-  }, [companyId]);
+  }, [companyId, branchId]);
+
+  const handleAddRentalCustomer = async (data: AddContactFormData) => {
+    if (!companyId) return;
+    setAddCustomerError('');
+    setAddCustomerSaving(true);
+    try {
+      const { data: created, error } = await contactsApi.createContact(companyId, {
+        name: data.name.trim(),
+        phone: data.phone.trim(),
+        mobile: data.mobile.trim(),
+        email: data.email?.trim() || undefined,
+        city: data.city?.trim() || undefined,
+        address: data.address?.trim() || undefined,
+        roles: data.roles.length ? data.roles : ['customer'],
+        openingBalance: data.balance,
+        creditLimit: data.creditLimit || undefined,
+      });
+      if (error) {
+        setAddCustomerError(error);
+        return;
+      }
+      if (created) {
+        const customer: RentalCustomer = {
+          id: created.id,
+          name: created.name,
+          phone: getContactDisplayPhone(created) || '—',
+          balance: created.balance,
+        };
+        setCustomers((prev) => [customer, ...prev]);
+        setCustomerPickView('pick');
+        setSelectedCustomer(customer);
+        setStep('products');
+      }
+    } finally {
+      setAddCustomerSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!companyId || step !== 'products') return;
@@ -210,7 +269,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const commissionBasePreview = Math.max(0, customerRentTotal - extraExpense);
 
   const handleSave = async () => {
-    if (!companyId || !effectiveBranchId || effectiveBranchId === 'all') {
+    if (!companyId || !writeBranchId || !isRealBranchUuid(writeBranchId)) {
       setError('Select a specific branch.');
       return;
     }
@@ -256,7 +315,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
     const { data: createResult, error: err } = await rentalsApi.createBooking({
       companyId,
-      branchId: effectiveBranchId,
+      branchId: writeBranchId,
       userId,
       customerId: selectedCustomer.id,
       customerName: selectedCustomer.name,
@@ -282,10 +341,10 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       setError(err);
       return;
     }
-    let branchName: string | null = branches.find((b) => b.id === effectiveBranchId)?.name ?? null;
+    let branchName: string | null = pickerBranches.find((b) => b.id === writeBranchId)?.name ?? null;
     if (!branchName && companyId) {
       const { data: branchList } = await branchesApi.getBranches(companyId);
-      branchName = branchList?.find((b) => b.id === effectiveBranchId)?.name ?? null;
+      branchName = branchList?.find((b) => b.id === writeBranchId)?.name ?? null;
     }
     setConfirmationData({
       type: 'rental',
@@ -336,44 +395,81 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           companyId={companyId}
           onBack={onBack}
           onSelect={(c: RentalCustomer) => {
-            setSelectedCustomer({ id: c.id, name: c.name, phone: c.phone });
+            setSelectedCustomer(c);
             setStep('products');
           }}
         />
       );
     }
+    if (customerPickView === 'addContact') {
+      return (
+        <>
+          <AddContactFlow
+            onBack={() => { setCustomerPickView('pick'); setAddCustomerError(''); }}
+            onSubmit={handleAddRentalCustomer}
+            error={addCustomerError}
+            defaultRoles={['customer']}
+            lockRoles
+            title="Add New Customer"
+          />
+          {addCustomerSaving && (
+            <div className="fixed inset-0 z-[90] bg-black/50 flex items-center justify-center">
+              <Loader2 className="w-10 h-10 text-white animate-spin" />
+            </div>
+          )}
+        </>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg text-white">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-lg font-semibold text-white">New Booking</h1>
-              <p className="text-xs text-white/80">Select customer</p>
+        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-10">
+          <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] px-4 pt-4 pb-3">
+            <div className="flex items-center gap-3">
+              <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg text-white">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-lg font-semibold text-white">New Booking</h1>
+                <p className="text-xs text-white/80">Select customer</p>
+              </div>
+            </div>
+          </div>
+          <div className="px-4 py-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
+              <input
+                type="text"
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                placeholder="Search customer..."
+                className="w-full h-11 bg-[#111827] border border-[#374151] rounded-lg pl-11 pr-4 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#8B5CF6]"
+              />
             </div>
           </div>
         </div>
-        <div className="p-4 space-y-2">
-          {customers.length === 0 ? (
-            <p className="text-[#9CA3AF] text-center py-8">No customers. Add customers in Contacts.</p>
-          ) : (
-            customers.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => {
-                  setSelectedCustomer(c);
-                  setStep('products');
-                }}
-                className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-4 text-left hover:border-[#8B5CF6]"
-              >
-                <p className="font-medium text-white">{c.name}</p>
-                <p className="text-sm text-[#9CA3AF]">{c.phone}</p>
-              </button>
-            ))
-          )}
+        <div className="p-4 pb-24">
+          <CustomerPickerList
+            customers={customers}
+            loading={customersLoading}
+            searchQuery={customerSearch}
+            onSelect={(c) => {
+              setSelectedCustomer(c);
+              setStep('products');
+            }}
+            canViewBalances={canViewBalances}
+            accent="purple"
+            emptyMessage={customers.length === 0 && !customersLoading ? 'No customers. Add a customer below.' : 'No customers found'}
+          />
         </div>
+        <button
+          type="button"
+          onClick={() => setCustomerPickView('addContact')}
+          className="mx-4 mb-6 w-[calc(100%-2rem)] py-4 border-2 border-dashed border-[#374151] rounded-xl text-[#9CA3AF] hover:border-[#8B5CF6] hover:text-[#8B5CF6] flex items-center justify-center gap-2"
+        >
+          <Plus className="w-5 h-5" />
+          Add New Customer
+        </button>
       </div>
     );
   }
@@ -1056,17 +1152,13 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       </div>
       <div className="p-4 space-y-4">
         {error && <div className="p-3 bg-[#EF4444]/20 border border-[#EF4444] rounded-xl text-[#FCA5A5] text-sm">{error}</div>}
-        {needsBranchSelection && (
+        {needsPicker && pickerBranches.length > 1 && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-            <CustomSelect
-              label="Branch *"
-              value={selectedBranchId ?? ''}
-              onChange={(v) => setSelectedBranchId(v || null)}
-              options={[
-                { value: '', label: 'Select a specific branch' },
-                ...branches.map((b) => ({ value: b.id, label: b.name })),
-              ]}
-              className={!selectedBranchId ? '[&_button]:border-[#EF4444]' : ''}
+            <WriteBranchPickerField
+              branches={pickerBranches}
+              value={pickedBranchId}
+              onChange={setPickedBranchId}
+              helperText="Rental booking will be recorded under the selected branch."
               zIndexClass="z-[100]"
             />
           </div>
@@ -1135,7 +1227,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       <div className="fixed left-0 right-0 bg-[#1F2937] border-t border-[#374151] p-4 safe-area-bottom fixed-bottom-above-nav z-40">
         <button
           onClick={handleSave}
-          disabled={saving || (needsBranchSelection && !effectiveBranchId) || (paidAmount > 0 && !advancePaymentAccountId)}
+          disabled={saving || !writeBranchId || (paidAmount > 0 && !advancePaymentAccountId)}
           className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 rounded-lg font-medium text-white flex items-center justify-center gap-2"
         >
           {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : null}

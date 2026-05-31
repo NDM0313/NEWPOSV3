@@ -144,12 +144,15 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       if (companyId && useFresh) {
         await listCacheRemove(listCacheKeys.branches(companyId));
       }
-      const branchResult = await permissionsApi.getUserAccessibleBranches(
-        userId,
-        profileId ?? branchUserId,
-        companyId,
-        companyId && useFresh ? { fresh: true } : undefined,
-      );
+      const isAdminOrOwner = isAdminOrOwnerAppRole(appRole);
+      const branchResult = isAdminOrOwner
+        ? await permissionsApi.getUserAccessibleBranches(
+            userId,
+            profileId ?? branchUserId,
+            companyId,
+            companyId && useFresh ? { fresh: true } : undefined,
+          )
+        : await permissionsApi.getUserAssignedBranchIds(userId, profileId ?? branchUserId);
       const [perms, moduleRes] = await Promise.all([
         permissionsApi.getRolePermissions(appRole),
         companyId ? getModuleConfigs(companyId) : Promise.resolve({ data: null, error: new Error('No company') }),
@@ -161,7 +164,6 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
           branchIds = [companyBranches![0].id];
         }
       }
-      const isAdminOrOwner = isAdminOrOwnerAppRole(appRole);
       const isOwner = (appRole || '').toLowerCase() === 'owner';
       const canViewBalances = canViewFinancialBalances(appRole);
       const moduleConfigStatus = resolveModuleConfigStatus(companyId, moduleRes);

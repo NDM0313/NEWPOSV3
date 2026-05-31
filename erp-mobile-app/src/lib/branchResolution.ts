@@ -15,19 +15,13 @@ export function pickCompanyDefaultBranch(branches: Branch[]): Branch | null {
  * Multi-branch companies: empty until admin assigns (no Main Branch guess).
  */
 export function resolveEffectiveBranchIds(
-  branches: Branch[],
+  _branches: Branch[],
   rawUserBranchIds: string[],
   unrestricted: boolean
 ): string[] {
   if (unrestricted) return rawUserBranchIds;
-  if (rawUserBranchIds.length > 0) {
-    if (branches.length > 1 && rawUserBranchIds.length < branches.length) {
-      return branches.map((b) => b.id);
-    }
-    return rawUserBranchIds;
-  }
-  if (branches.length === 1) return [branches[0].id];
-  if (branches.length > 1) return branches.map((b) => b.id);
+  if (rawUserBranchIds.length > 0) return rawUserBranchIds;
+  if (_branches.length === 1) return [_branches[0].id];
   return [];
 }
 

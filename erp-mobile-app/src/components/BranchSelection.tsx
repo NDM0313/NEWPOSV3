@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { MapPin, ChevronRight, Loader2, LayoutGrid, PlusCircle } from 'lucide-react';
 import type { User, Branch } from '../types';
 import { getBranches, createBranch } from '../api/branches';
-import { canPickAllCompanyBranches, getUserAccessibleBranchIds } from '../api/permissions';
+import { canPickAllCompanyBranches, getUserAccessibleBranchIds, getUserAssignedBranchIds } from '../api/permissions';
 import { resolveEffectiveBranchIds } from '../lib/branchResolution';
+import { useEffectiveWorkerProfile } from '../context/CounterWorkerContext';
 
 interface BranchSelectionProps {
   user: User;
@@ -24,13 +25,22 @@ function withMissingBranchStubs(branches: Branch[], ids: string[]): Branch[] {
 }
 
 export function BranchSelection({ user, companyId, profileId, onBranchSelect }: BranchSelectionProps) {
+  const profile = useEffectiveWorkerProfile(user);
+  const displayName = profile?.displayName ?? user.name;
+  const workerActive = profile?.isWorkerActive ?? false;
+  /** JWT session role controls branch picker; worker overlay scopes data modules only. */
+  const unrestricted = canPickAllCompanyBranches(user.role);
+  const authId = !unrestricted && workerActive ? profile!.userId : user.id;
+  const profId =
+    !unrestricted && workerActive
+      ? (profile!.profileId ?? profile!.userId)
+      : (profileId ?? user.profileId ?? user.id);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [userBranchIds, setUserBranchIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [error, setError] = useState<string | null>(null);
   const [addingBranch, setAddingBranch] = useState(false);
   const [addBranchError, setAddBranchError] = useState<string | null>(null);
-  const unrestricted = canPickAllCompanyBranches(user.role);
   const effectiveBranchIds = resolveEffectiveBranchIds(branches, userBranchIds, unrestricted);
 
   const refreshBranches = () => {
@@ -57,7 +67,9 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
     setError(null);
     Promise.all([
       getBranches(companyId),
-      getUserAccessibleBranchIds(user.id, profileId, companyId),
+      unrestricted
+        ? getUserAccessibleBranchIds(user.id, user.profileId ?? profileId, companyId)
+        : getUserAssignedBranchIds(authId, profId).then((r) => r.branchIds),
     ]).then(([branchesRes, ubIds]) => {
       if (cancelled) return;
       setLoading(false);
@@ -67,7 +79,7 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
       setUserBranchIds(ubIds);
     });
     return () => { cancelled = true; };
-  }, [companyId, profileId, user.id]);
+  }, [companyId, authId, profId, unrestricted, user.id, user.profileId, profileId]);
 
   const handleAddMainBranch = async () => {
     if (!companyId) return;
@@ -105,6 +117,9 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
   const noCompanyBranches =
     !unrestricted && !loading && !error && branches.length === 0;
 
+  const showEmptyBranchList =
+    !loading && !error && list.length === 0 && !(unrestricted && branches.length === 0);
+
   // Auto-select when user's branch is locked and only that branch is in list
   useEffect(() => {
     if (user.branchLocked && user.branchId && effectiveBranchIds.length <= 1 && list.length === 1 && list[0].id === user.branchId) {
@@ -123,7 +138,7 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
   return (
     <div className="min-h-screen p-4">
       <div className="pt-8 pb-6 text-center">
-        <h1 className="text-xl font-semibold mb-2 text-white">Welcome, {user.name}</h1>
+        <h1 className="text-xl font-semibold mb-2 text-white">Welcome, {displayName}</h1>
         <p className="text-sm text-[#9CA3AF]">
           {user.branchLocked && effectiveBranchIds.length <= 1
             ? 'Your branch is set by admin.'
@@ -193,6 +208,18 @@ export function BranchSelection({ user, companyId, profileId, onBranchSelect }: 
               </button>
             ))}
           </div>
+          )}
+          {showEmptyBranchList && (
+            <div className="max-w-md mx-auto">
+              <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-6 text-center">
+                <p className="text-white font-medium mb-1">No branch available</p>
+                <p className="text-sm text-[#9CA3AF]">
+                  {unrestricted
+                    ? 'Could not load company branches. Check your connection and try again.'
+                    : 'No branch is assigned to your account. Ask your administrator to assign a branch in Settings.'}
+                </p>
+              </div>
+            </div>
           )}
         </>
       )}

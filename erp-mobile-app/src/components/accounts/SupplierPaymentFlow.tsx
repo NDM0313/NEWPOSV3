@@ -62,6 +62,7 @@ export function SupplierPaymentFlow({ onBack, onComplete, user, companyId, branc
         userId={user.id}
         partyName={selectedSupplier.name}
         partyId={selectedSupplier.id}
+        partyPhone={selectedSupplier.phone || null}
         totalAmount={selectedSupplier.totalPayable}
         outstandingAmount={selectedSupplier.totalPayable}
         onClose={() => setSelectedSupplier(null)}

@@ -1,11 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import type { User } from '../../types';
 import { createExpense } from '../../api/expenses';
-import { getBranches } from '../../api/branches';
-import type { Branch } from '../../api/branches';
-import { isBranchSentinel, isRealBranchUuid } from '../../utils/branchId';
-import { CustomSelect } from '../common/CustomSelect';
+import { isRealBranchUuid } from '../../utils/branchId';
+import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
+import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 import {
   MobilePaymentSheet,
   type MobilePaymentSheetSubmitPayload,
@@ -35,31 +34,29 @@ export function ExpenseEntryFlow({ onBack, onComplete, user, companyId, branchId
   const [category, setCategory] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [showSheet, setShowSheet] = useState(false);
-  const [branchesList, setBranchesList] = useState<Branch[]>([]);
-  const [pickedBranchId, setPickedBranchId] = useState('');
 
-  const needsBranchPicker = isBranchSentinel(branchId);
-
-  useEffect(() => {
-    if (!companyId || !needsBranchPicker) return;
-    getBranches(companyId).then(({ data }) => {
-      const list = data || [];
-      setBranchesList(list);
-      if (list.length && !pickedBranchId) setPickedBranchId(list[0].id);
-    });
-  }, [companyId, needsBranchPicker]);
-
-  const effectiveBranchId =
-    isRealBranchUuid(branchId) ? branchId : needsBranchPicker ? pickedBranchId : branchId ?? '';
+  const {
+    effectiveBranchId: writeBranchId,
+    needsPicker,
+    pickerBranches,
+    pickedBranchId,
+    setPickedBranchId,
+  } = useWriteBranchSelection({
+    companyId,
+    globalBranchId: branchId,
+    userRole: user.role,
+    authUserId: user.id,
+    profileId: user.profileId ?? null,
+  });
 
   const handleSubmit = async (payload: MobilePaymentSheetSubmitPayload): Promise<MobilePaymentSheetSubmitResult> => {
-    if (!companyId || !effectiveBranchId || isBranchSentinel(effectiveBranchId)) {
+    if (!companyId || !writeBranchId || !isRealBranchUuid(writeBranchId)) {
       return { success: false, error: 'Select a branch to record this expense.' };
     }
     const methodForApi = payload.method === 'wallet' ? 'other' : payload.method;
     const { data, error } = await createExpense({
       companyId,
-      branchId: effectiveBranchId,
+      branchId: writeBranchId,
       category,
       description: description.trim() || category,
       amount: payload.amount,
@@ -77,17 +74,14 @@ export function ExpenseEntryFlow({ onBack, onComplete, user, companyId, branchId
     };
   };
 
-  const canContinue =
-    category &&
-    description.trim() &&
-    (!needsBranchPicker || (pickedBranchId && isRealBranchUuid(pickedBranchId)));
+  const canContinue = category && description.trim() && writeBranchId && isRealBranchUuid(writeBranchId);
 
-  if (showSheet && companyId && effectiveBranchId && isRealBranchUuid(effectiveBranchId)) {
+  if (showSheet && companyId && writeBranchId && isRealBranchUuid(writeBranchId)) {
     return (
       <MobilePaymentSheet
         mode="expense"
         companyId={companyId}
-        branchId={effectiveBranchId}
+        branchId={writeBranchId}
         userId={user.id}
         partyName={category}
         referenceNo={description.slice(0, 40)}
@@ -116,21 +110,14 @@ export function ExpenseEntryFlow({ onBack, onComplete, user, companyId, branchId
       </div>
 
       <div className="p-4 space-y-4">
-        {needsBranchPicker && branchesList.length > 0 && (
-          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-            <CustomSelect
-              label="Branch *"
-              value={pickedBranchId}
-              onChange={setPickedBranchId}
-              options={[
-                { value: '', label: 'Select branch for this expense' },
-                ...branchesList.map((b) => ({ value: b.id, label: b.name })),
-              ]}
-              placeholder="Select branch"
-              zIndexClass="z-[90]"
-            />
-            <p className="text-xs text-[#9CA3AF] mt-2">Expense will be recorded under the selected branch.</p>
-          </div>
+        {needsPicker && pickerBranches.length > 1 && (
+          <WriteBranchPickerField
+            branches={pickerBranches}
+            value={pickedBranchId}
+            onChange={setPickedBranchId}
+            helperText="Expense will be recorded under the selected branch."
+            zIndexClass="z-[90]"
+          />
         )}
         <div>
           <h3 className="text-sm font-semibold text-white mb-3">Expense Category *</h3>

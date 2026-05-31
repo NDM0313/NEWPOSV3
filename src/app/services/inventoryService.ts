@@ -21,16 +21,11 @@ import {
   variationPurchaseFromApiRow,
   variationRetailFromApiRow,
 } from '@/app/utils/variationFieldMap';
+import { isPostgrestMissingColumnError } from '@/app/utils/postgrestSchemaError';
+import { fetchInBatches } from '@/app/lib/chunkInQuery';
 
 // Dedupe negative-stock warnings per product so console isn't flooded when multiple forms call getInventoryOverview
 const negativeStockWarnedIds = new Set<string>();
-
-function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  if (error.code === '42703') return true;
-  const m = (error.message || '').toLowerCase();
-  return (m.includes('column') && m.includes('does not exist')) || m.includes('pgrst');
-}
 
 /** Variation select layers ordered by likelihood — actual minimal schema first, richer schemas as fallback. */
 const PRODUCT_VARIATIONS_OVERVIEW_SELECT_LAYERS = [
@@ -105,6 +100,34 @@ function applyMovementRowsToStockMaps(movRows: any[], maps: OverviewStockMaps): 
 const MOVEMENT_STOCK_SELECT =
   'product_id, variation_id, quantity, box_change, piece_change, unit_cost, movement_type';
 
+const MOVEMENT_STOCK_SELECT_FALLBACK =
+  'product_id, variation_id, quantity, box_change, piece_change';
+
+async function fetchStockMovementsBatched(
+  companyId: string,
+  ids: string[],
+  branchId: string | null | undefined,
+  select: string
+): Promise<{ rows: any[]; error: { code?: string; message?: string } | null }> {
+  if (!ids.length) return { rows: [], error: null };
+  try {
+    const rows = await fetchInBatches(ids, async (chunk) => {
+      let q = supabase
+        .from('stock_movements')
+        .select(select)
+        .eq('company_id', companyId)
+        .in('product_id', chunk);
+      if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return data || [];
+    });
+    return { rows, error: null };
+  } catch (err: any) {
+    return { rows: [], error: err };
+  }
+}
+
 /** Fast path: inventory_balance for simple products; targeted movements for variation products. */
 async function fetchOverviewStockMaps(
   companyId: string,
@@ -112,23 +135,35 @@ async function fetchOverviewStockMaps(
   simpleProductIds: string[],
   varProductIds: string[],
   branchId?: string | null
-): Promise<{ maps: OverviewStockMaps; movRows: any[] | null; movementsError: { code?: string; message?: string } | null }> {
+): Promise<{
+  maps: OverviewStockMaps;
+  movRows: any[] | null;
+  movementsError: { code?: string; message?: string } | null;
+  balanceHasData: boolean;
+}> {
   const maps = emptyOverviewStockMaps();
   let balanceHasData = false;
 
   if (simpleProductIds.length > 0) {
-    let balanceQuery = supabase
-      .from('inventory_balance')
-      .select('product_id, qty, boxes, pieces')
-      .eq('company_id', companyId)
-      .in('product_id', simpleProductIds);
-    if (branchId && branchId !== 'all') {
-      balanceQuery = balanceQuery.eq('branch_id', branchId);
-    }
-    const { data: balances, error: balanceError } = await balanceQuery;
-    if (!balanceError && balances?.length) {
+    const balances = await fetchInBatches(
+      simpleProductIds,
+      async (chunk) => {
+        let balanceQuery = supabase
+          .from('inventory_balance')
+          .select('product_id, qty, boxes, pieces')
+          .eq('company_id', companyId)
+          .in('product_id', chunk);
+        if (branchId && branchId !== 'all') {
+          balanceQuery = balanceQuery.eq('branch_id', branchId);
+        }
+        const { data, error } = await balanceQuery;
+        if (error) throw error;
+        return (data || []) as { product_id: string; qty: number; boxes?: number; pieces?: number }[];
+      }
+    );
+    if (balances.length) {
       balanceHasData = true;
-      for (const row of balances as { product_id: string; qty: number; boxes?: number; pieces?: number }[]) {
+      for (const row of balances) {
         maps.productStockMap[row.product_id] = Number(row.qty) || 0;
         maps.productBoxMap[row.product_id] = Number(row.boxes) || 0;
         maps.productPieceMap[row.product_id] = Number(row.pieces) || 0;
@@ -139,55 +174,59 @@ async function fetchOverviewStockMaps(
   if (balanceHasData) {
     let movRows: any[] = [];
     if (varProductIds.length > 0) {
-      let varQuery = supabase
-        .from('stock_movements')
-        .select(MOVEMENT_STOCK_SELECT)
-        .eq('company_id', companyId)
-        .in('product_id', varProductIds);
-      if (branchId && branchId !== 'all') varQuery = varQuery.eq('branch_id', branchId);
-      const { data, error } = await varQuery;
-      if (error && !isMissingColumnError(error)) {
-        return { maps, movRows: null, movementsError: error };
+      let pack = await fetchStockMovementsBatched(
+        companyId,
+        varProductIds,
+        branchId,
+        MOVEMENT_STOCK_SELECT
+      );
+      if (pack.error && !isPostgrestMissingColumnError(pack.error)) {
+        return { maps, movRows: null, movementsError: pack.error, balanceHasData };
       }
-      movRows = data || [];
-      if (error && isMissingColumnError(error)) {
-        let fb = supabase
-          .from('stock_movements')
-          .select('product_id, variation_id, quantity, box_change, piece_change')
-          .eq('company_id', companyId)
-          .in('product_id', varProductIds);
-        if (branchId && branchId !== 'all') fb = fb.eq('branch_id', branchId);
-        const { data: m2 } = await fb;
-        movRows = m2 || [];
+      movRows = pack.rows;
+      if (pack.error && isPostgrestMissingColumnError(pack.error)) {
+        pack = await fetchStockMovementsBatched(
+          companyId,
+          varProductIds,
+          branchId,
+          MOVEMENT_STOCK_SELECT_FALLBACK
+        );
+        if (pack.error && !isPostgrestMissingColumnError(pack.error)) {
+          return { maps, movRows: null, movementsError: pack.error, balanceHasData };
+        }
+        movRows = pack.rows;
       }
       applyMovementRowsToStockMaps(movRows, maps);
     }
-    return { maps, movRows, movementsError: null };
+    return { maps, movRows, movementsError: null, balanceHasData };
   }
 
-  let stockQuery = supabase
-    .from('stock_movements')
-    .select(MOVEMENT_STOCK_SELECT)
-    .eq('company_id', companyId)
-    .in('product_id', productIds);
-  if (branchId && branchId !== 'all') stockQuery = stockQuery.eq('branch_id', branchId);
-  const { data: movements, error: movementsError } = await stockQuery;
-  let movRows = movements;
-  if (movementsError && isMissingColumnError(movementsError)) {
-    let qFallback = supabase
-      .from('stock_movements')
-      .select('product_id, variation_id, quantity, box_change, piece_change')
-      .eq('company_id', companyId)
-      .in('product_id', productIds);
-    if (branchId && branchId !== 'all') qFallback = qFallback.eq('branch_id', branchId);
-    const { data: m2, error: e2 } = await qFallback;
-    if (!e2) movRows = m2;
-    else return { maps, movRows: null, movementsError: e2 };
+  let pack = await fetchStockMovementsBatched(
+    companyId,
+    productIds,
+    branchId,
+    MOVEMENT_STOCK_SELECT
+  );
+  let movRows = pack.rows;
+  let movementsError = pack.error;
+  if (movementsError && isPostgrestMissingColumnError(movementsError)) {
+    pack = await fetchStockMovementsBatched(
+      companyId,
+      productIds,
+      branchId,
+      MOVEMENT_STOCK_SELECT_FALLBACK
+    );
+    if (!pack.error) {
+      movRows = pack.rows;
+      movementsError = null;
+    } else {
+      return { maps, movRows: null, movementsError: pack.error, balanceHasData };
+    }
   } else if (movementsError) {
-    return { maps, movRows: null, movementsError };
+    return { maps, movRows: null, movementsError, balanceHasData };
   }
   applyMovementRowsToStockMaps(movRows || [], maps);
-  return { maps, movRows: movRows || [], movementsError: movementsError ?? null };
+  return { maps, movRows: movRows || [], movementsError: movementsError ?? null, balanceHasData };
 }
 
 /** Branch-scoped stock maps for POS and pickers. */
@@ -348,21 +387,29 @@ export const inventoryService = {
 
     const fetchVariationsForOverview = async () => {
       for (const sel of PRODUCT_VARIATIONS_OVERVIEW_SELECT_LAYERS) {
-        const { data, error } = await supabase
-          .from('product_variations')
-          .select(sel)
-          .in('product_id', productIds)
-          .eq('is_active', true);
-        if (!error) return { data: data || [], error: null as Error | null };
-        if (!isMissingColumnError(error)) {
-          console.warn('[INVENTORY SERVICE] product_variations fetch failed:', error.message);
-          return { data: [], error };
+        try {
+          const data = await fetchInBatches(productIds, async (chunk) => {
+            const { data: rows, error } = await supabase
+              .from('product_variations')
+              .select(sel)
+              .in('product_id', chunk)
+              .eq('is_active', true);
+            if (error) throw error;
+            return rows || [];
+          });
+          return { data, error: null as Error | null };
+        } catch (error: any) {
+          if (!isPostgrestMissingColumnError(error)) {
+            console.warn('[INVENTORY SERVICE] product_variations fetch failed:', error.message);
+            return { data: [], error };
+          }
         }
       }
       return { data: [], error: null };
     };
 
-    console.time('inventoryOverview:parallel');
+    const parallelTimerLabel = `inventoryOverview:parallel:${companyId}:${branchId ?? 'all'}:${Date.now()}`;
+    if (import.meta.env?.DEV) console.time(parallelTimerLabel);
     const [
       stockPack,
       variationsPack,
@@ -375,10 +422,19 @@ export const inventoryService = {
         ? supabase.from('units').select('id, short_code').in('id', unitIds)
         : Promise.resolve({ data: [] }),
       comboProductIds.length > 0
-        ? supabase.from('product_combos').select('id, combo_product_id').in('combo_product_id', comboProductIds).eq('company_id', companyId).eq('is_active', true)
+        ? fetchInBatches(comboProductIds, async (chunk) => {
+            const { data, error } = await supabase
+              .from('product_combos')
+              .select('id, combo_product_id')
+              .in('combo_product_id', chunk)
+              .eq('company_id', companyId)
+              .eq('is_active', true);
+            if (error) throw error;
+            return data || [];
+          }).then((data) => ({ data }))
         : Promise.resolve({ data: [] }),
     ]);
-    console.timeEnd('inventoryOverview:parallel');
+    if (import.meta.env?.DEV) console.timeEnd(parallelTimerLabel);
 
     const {
       maps: {
@@ -393,6 +449,7 @@ export const inventoryService = {
       },
       movRows,
       movementsError,
+      balanceHasData,
     } = stockPack;
 
     const variations = variationsPack.data;
@@ -430,10 +487,16 @@ export const inventoryService = {
       });
     }
 
-    if (movementsError && !isMissingColumnError(movementsError)) {
+    if (movementsError && !isPostgrestMissingColumnError(movementsError)) {
       console.error('[INVENTORY SERVICE] ❌ Error fetching stock movements:', movementsError);
-    } else if (!movRows?.length && !Object.keys(productStockMap).length && !Object.keys(variationStockMap).length) {
-      console.warn('[INVENTORY SERVICE] ⚠️ No movements found or movements is null');
+    } else if (
+      balanceHasData &&
+      !movRows?.length &&
+      (Object.keys(productStockMap).length > 0 || Object.keys(variationStockMap).length > 0)
+    ) {
+      console.warn(
+        '[INVENTORY SERVICE] inventory_balance has rows but no stock_movements — stale snapshot after reset?',
+      );
     }
 
     // Step 5: Build rows with calculated stock (RULE 3: variation-level tracking, parent = SUM of variations)
@@ -957,8 +1020,9 @@ export const inventoryService = {
     productId: string,
     quantity: number,
     unitCost: number = 0,
-    variationId?: string | null
-  ): Promise<{ error: any }> {
+    variationId?: string | null,
+    opts?: { deferGlSync?: boolean }
+  ): Promise<{ error: any; movementId?: string }> {
     const totalCost = quantity * unitCost;
     const { data, error } = await supabase
       .from('stock_movements')
@@ -978,11 +1042,15 @@ export const inventoryService = {
       .select('id')
       .single();
     if (!error && data?.id) {
-      try {
-        await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(data.id as string);
-      } catch (jeErr) {
-        console.warn('[INVENTORY] Opening stock saved but GL sync failed:', jeErr);
+      const movementId = data.id as string;
+      if (!opts?.deferGlSync) {
+        try {
+          await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(movementId);
+        } catch (jeErr) {
+          console.warn('[INVENTORY] Opening stock saved but GL sync failed:', jeErr);
+        }
       }
+      return { error: null, movementId };
     }
     return { error };
   },

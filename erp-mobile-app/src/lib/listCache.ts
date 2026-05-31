@@ -116,3 +116,37 @@ export async function listCacheRemove(key: string): Promise<void> {
     /* ignore */
   }
 }
+
+/** Remove all list cache keys with the given prefix (e.g. `sl:companyId:`). */
+export async function listCacheRemoveByPrefix(prefix: string): Promise<void> {
+  if (!prefix) return;
+  try {
+    const database = await openDb();
+    const keys = await new Promise<string[]>((resolve, reject) => {
+      const tx = database.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).getAllKeys();
+      req.onsuccess = () => resolve((req.result as string[]).filter((k) => String(k).startsWith(prefix)));
+      req.onerror = () => reject(req.error);
+    });
+    if (keys.length === 0) return;
+    await new Promise<void>((resolve, reject) => {
+      const tx = database.transaction(STORE, 'readwrite');
+      const store = tx.objectStore(STORE);
+      for (const key of keys) store.delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function invalidateSalesListCache(companyId: string): Promise<void> {
+  if (!companyId?.trim()) return;
+  await listCacheRemoveByPrefix(`sl:${companyId.trim()}:`);
+}
+
+export async function invalidatePurchasesListCache(companyId: string): Promise<void> {
+  if (!companyId?.trim()) return;
+  await listCacheRemoveByPrefix(`pu:${companyId.trim()}:`);
+}

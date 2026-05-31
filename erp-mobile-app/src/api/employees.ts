@@ -169,6 +169,11 @@ export async function updateUserRole(
   return { error: error ? error.message : null };
 }
 
+/** Map public users.id (or auth id) to Supabase auth user id for counter registry. */
+export async function resolveAuthUserIdForEmployee(publicOrAuthUserId: string): Promise<string | null> {
+  return resolveAuthUserId(publicOrAuthUserId);
+}
+
 async function resolveAuthUserId(publicOrAuthUserId: string): Promise<string | null> {
   if (!isSupabaseConfigured) return null;
   const { data } = await supabase
@@ -189,6 +194,73 @@ export async function getUserBranches(
   const authId = await resolveAuthUserId(userId);
   const branchIds = await getUserAccessibleBranchIds(authId, userId);
   return { data: branchIds, error: null };
+}
+
+/** Employee ka locked default branch — sirf user_branches se (Admin session company-branch merge nahi). */
+export async function getEmployeeEffectiveBranch(
+  publicUserId: string,
+  _companyId: string,
+): Promise<{
+  branchId: string | null;
+  requiresBranchSelection: boolean;
+  error: string | null;
+}> {
+  if (!isSupabaseConfigured) {
+    return { branchId: null, requiresBranchSelection: false, error: 'App not configured.' };
+  }
+  const authId = await resolveAuthUserId(publicUserId);
+  if (!authId) {
+    return { branchId: null, requiresBranchSelection: false, error: 'User not found.' };
+  }
+
+  const lookupIds = [...new Set([authId, publicUserId].filter(Boolean))];
+  let query = supabase.from('user_branches').select('branch_id, is_default');
+  if (lookupIds.length > 1) {
+    query = query.or(`user_id.eq.${lookupIds[0]},user_id.eq.${lookupIds[1]}`);
+  } else {
+    query = query.eq('user_id', lookupIds[0]);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    return { branchId: null, requiresBranchSelection: false, error: error.message };
+  }
+  if (!data?.length) {
+    return {
+      branchId: null,
+      requiresBranchSelection: false,
+      error: 'Is employee ko koi branch assign nahi — Employee Management → Edit se branch set karein.',
+    };
+  }
+
+  const branchIds = [...new Set(data.map((r: { branch_id: string }) => r.branch_id).filter(Boolean))];
+  const explicitDefault = data.find((r: { is_default?: boolean | null }) => r.is_default === true) as
+    | { branch_id?: string }
+    | undefined;
+
+  if (branchIds.length > 1 && !explicitDefault) {
+    return {
+      branchId: null,
+      requiresBranchSelection: true,
+      error: 'Employee Management se default branch assign karein (multiple branches, no default).',
+    };
+  }
+
+  const effectiveBranchId = explicitDefault?.branch_id ?? branchIds[0] ?? null;
+
+  if (!effectiveBranchId) {
+    return {
+      branchId: null,
+      requiresBranchSelection: false,
+      error: 'Branch resolve nahi ho saki.',
+    };
+  }
+
+  return {
+    branchId: effectiveBranchId,
+    requiresBranchSelection: false,
+    error: null,
+  };
 }
 
 export async function updateUserBranches(

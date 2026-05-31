@@ -1,22 +1,32 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ArrowLeft, Plus, Calendar, DollarSign, Search, Loader2, Upload, X, Users } from 'lucide-react';
 import { TextInput, NumericInput, ActionBar, CustomSelect, CustomSearchableSheet, PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
 import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
 import { useMainScrollRef } from '../../contexts/MainScrollContext';
 import type { User, Branch } from '../../types';
-import type { AuthProfile } from '../../api/auth';
 import { SwitchUserPinOverlay } from '../auth/SwitchUserPinOverlay';
 import { isSharedCounterModeEnabled } from '../../lib/sharedCounterMode';
+import { useEffectiveWorkerId, useEffectiveWorkerProfileId, useEffectiveWorkerRole } from '../../context/CounterWorkerContext';
+import {
+  rowBelongsToCounterWorker,
+  resolveCounterListBranchScope,
+  shouldIsolateCounterWorkerData,
+} from '../../lib/counterDataIsolation';
+import { rowInListBranchScope } from '../../lib/listBranchScope';
 import * as expensesApi from '../../api/expenses';
 import * as authApi from '../../api/auth';
 import * as accountsApi from '../../api/accounts';
-import * as branchesApi from '../../api/branches';
 import { getUsersForSalary, type SalaryUserRow } from '../../api/users';
 import { addPending } from '../../lib/offlineStore';
-import { localNowDateString } from '../../utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateString } from '../../utils/localDate';
+import { sortByDocumentDateTimeDesc } from '../../utils/chronologicalSort';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountPickerSubtitle } from '../../utils/balancePrivacy';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
+import { useDocumentBranchGate } from '../../hooks/useDocumentBranchGate';
+import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
+import { DocumentBranchGateModal } from '../shared/DocumentBranchGateModal';
+import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 
 const MAX_EXPENSE_RECEIPT_BYTES = 5 * 1024 * 1024;
 
@@ -25,7 +35,6 @@ interface ExpenseModuleProps {
   user: User;
   companyId: string | null;
   branch: Branch | null;
-  onCounterSessionReplaced?: (profile: AuthProfile) => void | Promise<void>;
   onRequestCounterLock?: () => void;
 }
 
@@ -84,9 +93,32 @@ function getCategoryIcon(cat: string): string {
   return CATEGORIES.find((c) => c.value === cat)?.icon ?? '📊';
 }
 
-export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessionReplaced, onRequestCounterLock }: ExpenseModuleProps) {
-  const { canViewBalances } = usePermissions();
-  const [list, setList] = useState<{ id: string; expense_no: string; date: string; category: string; description: string; amount: number }[]>([]);
+export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounterLock }: ExpenseModuleProps) {
+  const effectiveUserId = useEffectiveWorkerId(user.id);
+  const effectiveProfileId = useEffectiveWorkerProfileId() ?? user.profileId ?? null;
+  const effectiveRole = useEffectiveWorkerRole(user.role);
+  const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
+  const { canViewBalances, branchIds, isAdminOrOwner } = usePermissions();
+
+  const listBranchScope = useMemo(
+    () => resolveCounterListBranchScope(branch?.id, branchIds, isAdminOrOwner, isolateWorkerData),
+    [branch?.id, branchIds, isAdminOrOwner, isolateWorkerData],
+  );
+
+  const [list, setList] = useState<
+    {
+      id: string;
+      expense_no: string;
+      date: string;
+      created_at?: string;
+      category: string;
+      description: string;
+      amount: number;
+      branch_id?: string | null;
+      created_by?: string | null;
+      paid_to_user_id?: string | null;
+    }[]
+  >([]);
   const [loading, setLoading] = useState(!!companyId);
   const [showAdd, setShowAdd] = useState(false);
   const [addCategory, setAddCategory] = useState(CATEGORY_OPTIONS[0]);
@@ -106,8 +138,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
   const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
   const [receiptNotice, setReceiptNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [branchesList, setBranchesList] = useState<Branch[]>([]);
-  const [addBranchId, setAddBranchId] = useState('');
+  const [documentBranchId, setDocumentBranchId] = useState<string | null>(null);
   const [paidToUserId, setPaidToUserId] = useState('');
   const [salaryUsers, setSalaryUsers] = useState<SalaryUserRow[]>([]);
   const [salaryUsersLoading, setSalaryUsersLoading] = useState(false);
@@ -116,6 +147,60 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
   const [addExpenseDate, setAddExpenseDate] = useState(localNowDateString);
   const { online, pendingCount } = useOfflineListMeta();
   const mainScrollRef = useMainScrollRef();
+
+  const { runWithBranch, modalProps: branchGateModalProps, loading: branchGateLoading, loadError: branchGateError } =
+    useDocumentBranchGate({
+      companyId,
+      globalBranchId: branch?.id ?? null,
+      userRole: effectiveRole,
+      authUserId: effectiveUserId,
+      profileId: effectiveProfileId,
+      invalidateDomains: ['contacts', 'sales'],
+    });
+
+  const {
+    effectiveBranchId: writeBranchId,
+    needsPicker: needsWriteBranchPicker,
+    pickerBranches,
+    pickedBranchId,
+    setPickedBranchId,
+  } = useWriteBranchSelection({
+    companyId,
+    globalBranchId: branch?.id ?? null,
+    documentBranchId,
+    userRole: effectiveRole,
+    authUserId: effectiveUserId,
+    profileId: effectiveProfileId,
+  });
+
+  const resetAddForm = useCallback(() => {
+    setShowAdd(false);
+    setDocumentBranchId(null);
+    setAddDesc('');
+    setAddAmount('');
+    setAddAccountId('');
+    setMainCategoryId('');
+    setSubCategoryId('');
+    setPaidToUserId('');
+    setAddReceiptFile(null);
+    setAddExpenseDate(localNowDateString());
+  }, []);
+
+  const handleOpenAdd = () => {
+    if (!companyId || branchGateLoading) return;
+    if (branch?.id === 'all') {
+      runWithBranch(
+        (pickedId) => {
+          setDocumentBranchId(pickedId);
+          setShowAdd(true);
+        },
+        { title: 'Select branch for expense' },
+      );
+      return;
+    }
+    setDocumentBranchId(null);
+    setShowAdd(true);
+  };
 
   useEffect(() => {
     if (showAdd) setAddExpenseDate(localNowDateString());
@@ -128,22 +213,44 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
         return;
       }
       if (!opts?.silent) setLoading(true);
-      const { data, error } = await expensesApi.getExpenses(companyId, branch?.id);
+      const scope = listBranchScope;
+      const apiBranchId = scope.mode === 'single' ? scope.branchId : null;
+      const accessibleBranchIds = scope.mode === 'accessible' ? scope.branchIds : undefined;
+      const { data, error } = await expensesApi.getExpenses(companyId, apiBranchId, {
+        accessibleBranchIds,
+      });
       setLoading(false);
       if (!error && data) {
         setList(
-          data.map((r: { id: string; expense_no?: string; expense_date: string; category: string; description?: string; amount: number }) => ({
-            id: r.id,
-            expense_no: r.expense_no || '—',
-            date: r.expense_date,
-            category: r.category,
-            description: r.description || '',
-            amount: r.amount,
-          }))
+          data.map(
+            (r: {
+              id: string;
+              expense_no?: string;
+              expense_date: string;
+              created_at?: string;
+              category: string;
+              description?: string;
+              amount: number;
+              branch_id?: string | null;
+              created_by?: string | null;
+              paid_to_user_id?: string | null;
+            }) => ({
+              id: r.id,
+              expense_no: r.expense_no || '—',
+              date: r.expense_date,
+              created_at: r.created_at,
+              category: r.category,
+              description: r.description || '',
+              amount: r.amount,
+              branch_id: r.branch_id ?? null,
+              created_by: r.created_by ?? null,
+              paid_to_user_id: r.paid_to_user_id ?? null,
+            }),
+          ),
         );
       }
     },
-    [companyId, branch?.id, user.id]
+    [companyId, listBranchScope, user.id]
   );
 
   useEffect(() => {
@@ -160,16 +267,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
     if (!showAdd || !companyId) return;
     accountsApi.getPaymentAccounts(companyId).then(({ data }) => setPaymentAccounts(data || []));
     expensesApi.getExpenseCategoryTree(companyId).then(({ data }) => setCategoryTree(data || []));
-    if (branch?.id === 'all') {
-      branchesApi.getBranches(companyId).then(({ data }) => {
-        setBranchesList(data || []);
-        if (data?.length && !addBranchId) setAddBranchId(data[0].id);
-      });
-    } else {
-      setBranchesList([]);
-      setAddBranchId('');
-    }
-  }, [showAdd, companyId, branch?.id]);
+  }, [showAdd, companyId]);
 
   const selectedMain = categoryTree.find((m) => m.id === mainCategoryId);
   const subOptions = selectedMain?.children ?? [];
@@ -223,13 +321,11 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
         ? 'wallet'
         : 'cash'
     : 'cash';
-  const effectiveBranchId = branch?.id && branch.id !== 'all' ? branch.id : addBranchId;
-
   const handleAdd = async () => {
     const amt = parseFloat(addAmount);
-    if (!companyId || !effectiveBranchId || isNaN(amt) || amt <= 0) {
+    if (!companyId || !writeBranchId || isNaN(amt) || amt <= 0) {
       setAddError(
-        branch?.id === 'all' && !addBranchId
+        needsWriteBranchPicker && !writeBranchId
           ? 'Select a branch for this expense.'
           : 'Enter a valid amount greater than zero.'
       );
@@ -260,21 +356,25 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
       setAddError('Session expired.');
       return;
     }
+    const expenseUserId = effectiveUserId;
     setSaving(true);
     setAddError(null);
     let receiptUrl: string | null = null;
     if (addReceiptFile && navigator.onLine) {
       const up = await expensesApi.uploadExpenseReceipt(companyId, addReceiptFile);
       if (up.error) {
-        const isBucketMissing = up.error.toLowerCase().includes('bucket') && up.error.toLowerCase().includes('not found');
-        if (isBucketMissing) {
+        if (up.kind === 'bucket') {
           receiptUrl = null;
-          setAddError('Receipt could not be uploaded (storage bucket missing). Saving expense without attachment.');
+          setAddError(up.error);
         } else {
           setSaving(false);
           setAddError(up.error);
           return;
         }
+      } else if (!up.url) {
+        setSaving(false);
+        setAddError('Receipt could not be uploaded. Remove the file or try again.');
+        return;
       } else {
         receiptUrl = up.url;
       }
@@ -285,35 +385,36 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
       try {
         await addPending('expense', {
           companyId,
-          branchId: effectiveBranchId,
+          branchId: writeBranchId,
           category: effectiveCategorySlug,
           description: descriptionFinal,
           amount: amt,
           paymentMethod,
-          userId: session.userId,
+          userId: expenseUserId,
           expenseDate: addExpenseDate,
           paymentAccountId: addAccountId || undefined,
           receiptUrl: receiptUrl || undefined,
           paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
           payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : undefined,
-        }, companyId, effectiveBranchId);
+        }, companyId, writeBranchId);
         const displayCategory = selectedSub?.name ?? selectedMain?.name ?? addCategory;
         const tempId = `offline-${Date.now()}`;
         setList((prev) => [
-          { id: tempId, expense_no: 'Pending sync', date: addExpenseDate, category: displayCategory, description: descriptionFinal, amount: amt },
+          {
+            id: tempId,
+            expense_no: 'Pending sync',
+            date: addExpenseDate,
+            created_at: getCurrentLocalTimestamp(),
+            category: displayCategory,
+            description: descriptionFinal,
+            amount: amt,
+            branch_id: writeBranchId,
+            created_by: expenseUserId,
+          },
           ...prev,
         ]);
         setAddError(null);
-        setShowAdd(false);
-        setAddDesc('');
-        setAddAmount('');
-        setAddAccountId('');
-        setMainCategoryId('');
-        setSubCategoryId('');
-        setPaidToUserId('');
-        setAddReceiptFile(null);
-        setAddBranchId('');
-        setAddExpenseDate(localNowDateString());
+        resetAddForm();
       } catch (e) {
         setAddError(e instanceof Error ? e.message : 'Failed to save offline.');
       }
@@ -323,12 +424,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
 
     const { data, error } = await expensesApi.createExpense({
       companyId,
-      branchId: effectiveBranchId,
+      branchId: writeBranchId,
       category: effectiveCategorySlug,
       description: descriptionFinal,
       amount: amt,
       paymentMethod,
-      userId: session.userId,
+      userId: expenseUserId,
       expenseDate: addExpenseDate,
       paymentAccountId: addAccountId || undefined,
       receiptUrl: receiptUrl || undefined,
@@ -342,40 +443,63 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
     }
     const displayCategory = selectedSub?.name ?? selectedMain?.name ?? addCategory;
     setList((prev) => [
-      { id: data!.id, expense_no: data!.expense_no || '—', date: addExpenseDate, category: displayCategory, description: descriptionFinal, amount: amt },
+      {
+        id: data!.id,
+        expense_no: data!.expense_no || '—',
+        date: addExpenseDate,
+        created_at: getCurrentLocalTimestamp(),
+        category: displayCategory,
+        description: descriptionFinal,
+        amount: amt,
+        branch_id: writeBranchId,
+        created_by: expenseUserId,
+      },
       ...prev,
     ]);
     setAddError(null);
-    setShowAdd(false);
-    setAddDesc('');
-    setAddAmount('');
-    setAddAccountId('');
-    setMainCategoryId('');
-    setSubCategoryId('');
-    setPaidToUserId('');
-    setAddReceiptFile(null);
-    setAddBranchId('');
-    setAddExpenseDate(localNowDateString());
+    resetAddForm();
   };
 
-  const filtered = list.filter((e) => {
-    const matchCat = filterCategory === 'all' || e.category === filterCategory;
-    const matchSearch =
-      e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.expense_no.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchCat && matchSearch;
-  });
+  const scopedList = useMemo(() => {
+    let rows = list.filter((e) =>
+      rowInListBranchScope({ branch_id: e.branch_id }, listBranchScope),
+    );
+    if (isolateWorkerData) {
+      rows = rows.filter((e) =>
+        rowBelongsToCounterWorker(
+          { created_by: e.created_by, paid_to_user_id: e.paid_to_user_id },
+          effectiveUserId,
+          effectiveProfileId,
+        ),
+      );
+    }
+    return rows;
+  }, [list, listBranchScope, isolateWorkerData, effectiveUserId, effectiveProfileId]);
 
-  const grouped = filtered.reduce(
-    (acc, e) => {
+  const filtered = useMemo(() => {
+    const rows = scopedList.filter((e) => {
+      const matchCat = filterCategory === 'all' || e.category === filterCategory;
+      const matchSearch =
+        e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        e.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        e.expense_no.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchCat && matchSearch;
+    });
+    return sortByDocumentDateTimeDesc(rows, (e) => ({
+      documentDate: e.date,
+      eventTimestamp: e.created_at ?? null,
+    }));
+  }, [scopedList, filterCategory, searchQuery]);
+
+  const grouped = useMemo(() => {
+    const acc = {} as Record<DateGroup, typeof list>;
+    for (const e of filtered) {
       const g = getDateGroup(e.date);
       if (!acc[g]) acc[g] = [];
       acc[g].push(e);
-      return acc;
-    },
-    {} as Record<DateGroup, typeof list>
-  );
+    }
+    return acc;
+  }, [filtered]);
 
   const totalAmount = filtered.reduce((s, e) => s + e.amount, 0);
   const todayAmount = (grouped.today || []).reduce((s, e) => s + e.amount, 0);
@@ -383,11 +507,11 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
 
   if (showAdd) {
     return (
-      <SwipeBackShell onBack={() => setShowAdd(false)}>
+      <SwipeBackShell onBack={resetAddForm}>
       <div className="min-h-screen bg-[#111827] pb-32">
         <div className="bg-gradient-to-br from-[#EF4444] to-[#DC2626] p-4 sticky top-0 z-10">
           <div className="flex items-center gap-3">
-            <button onClick={() => setShowAdd(false)} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
+            <button onClick={resetAddForm} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
@@ -401,22 +525,14 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
             <div className="mb-4 p-3 bg-[#EF4444]/10 border border-[#EF4444]/50 rounded-xl text-[#EF4444] text-sm">{addError}</div>
           )}
           <div className="space-y-4">
-            {/* Branch (when "All Branches" is selected) */}
-            {branch?.id === 'all' && branchesList.length > 0 && (
-              <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-                <CustomSelect
-                  label="Branch *"
-                  value={addBranchId}
-                  onChange={setAddBranchId}
-                  options={[
-                    { value: '', label: 'Select branch for this expense' },
-                    ...branchesList.map((b) => ({ value: b.id, label: b.name })),
-                  ]}
-                  placeholder="Select branch"
-                  zIndexClass="z-[90]"
-                />
-                <p className="text-xs text-[#9CA3AF] mt-2">Expense will be recorded under the selected branch.</p>
-              </div>
+            {needsWriteBranchPicker && pickerBranches.length > 1 && (
+              <WriteBranchPickerField
+                branches={pickerBranches}
+                value={pickedBranchId}
+                onChange={setPickedBranchId}
+                helperText="Expense will be recorded under the selected branch."
+                zIndexClass="z-[90]"
+              />
             )}
 
             {/* Account (Cash/Bank) */}
@@ -620,15 +736,20 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
   }
 
   return (
+    <>
     <SwipeBackShell onBack={onBack}>
     <div className="min-h-screen bg-[#111827] pb-24">
       <OfflineBanner online={online} pendingCount={pendingCount} />
-      {onCounterSessionReplaced && !isSharedCounterModeEnabled() ? (
+      {branchGateError ? (
+        <div className="mx-4 mt-2 p-3 bg-[#EF4444]/20 border border-[#EF4444] rounded-lg text-[#FCA5A5] text-sm">
+          {branchGateError}
+        </div>
+      ) : null}
+      { !isSharedCounterModeEnabled() ? (
         <SwitchUserPinOverlay
           open={showSwitchUser}
           companyId={companyId}
           onClose={() => setShowSwitchUser(false)}
-          onSessionReplaced={onCounterSessionReplaced}
         />
       ) : null}
       <div className="bg-gradient-to-br from-[#EF4444] to-[#DC2626] p-4 sticky top-0 z-10">
@@ -643,11 +764,11 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {onCounterSessionReplaced ? (
+            {onRequestCounterLock ? (
               <button
                 type="button"
                 onClick={() => {
-                  if (isSharedCounterModeEnabled() && onRequestCounterLock) {
+                  if (isSharedCounterModeEnabled()) {
                     onRequestCounterLock();
                   } else {
                     setShowSwitchUser(true);
@@ -770,12 +891,18 @@ export function ExpenseModule({ onBack, user, companyId, branch, onCounterSessio
       </PullToRefresh>
 
       <button
-        onClick={() => setShowAdd(true)}
-        className="fixed bottom-20 right-4 w-14 h-14 bg-gradient-to-br from-[#EF4444] to-[#DC2626] rounded-full shadow-lg flex items-center justify-center z-20 hover:scale-110 transition-transform"
+        onClick={handleOpenAdd}
+        disabled={!companyId || branchGateLoading}
+        className="fixed bottom-20 right-4 w-14 h-14 bg-gradient-to-br from-[#EF4444] to-[#DC2626] rounded-full shadow-lg flex items-center justify-center z-20 hover:scale-110 transition-transform disabled:opacity-50"
       >
         <Plus className="w-6 h-6 text-white" strokeWidth={3} />
       </button>
     </div>
     </SwipeBackShell>
+    <DocumentBranchGateModal
+      {...branchGateModalProps}
+      accentClass="text-[#EF4444] hover:border-[#EF4444]"
+    />
+  </>
   );
 }

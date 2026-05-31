@@ -18,10 +18,33 @@ export interface UploadWithFailuresResult<T> {
 function messageFrom(err: unknown): string {
   if (!err) return '';
   if (typeof err === 'string') return err;
-  if (typeof err === 'object' && err !== null && 'message' in err) {
-    return String((err as { message?: string }).message ?? '');
+  if (typeof err === 'object' && err !== null) {
+    const rec = err as { message?: string; error?: string };
+    const parts = [rec.message, rec.error].filter(Boolean).map(String);
+    if (parts.length) return parts.join(' ');
   }
   return String(err);
+}
+
+export function storageErrorStatus(err: unknown): number | null {
+  if (typeof err !== 'object' || err === null) return null;
+  const rec = err as { status?: number; statusCode?: number };
+  return rec.status ?? rec.statusCode ?? null;
+}
+
+const BUCKET_MISSING_PHRASES = [
+  'bucket not found',
+  'invalid bucket',
+  'no such bucket',
+  'does not exist',
+  'invalidbucket',
+  'bucket_id',
+];
+
+function messageSuggestsMissingBucket(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  if (!lower) return false;
+  return BUCKET_MISSING_PHRASES.some((p) => lower.includes(p));
 }
 
 export function isStorageRlsError(err: unknown): boolean {
@@ -31,13 +54,9 @@ export function isStorageRlsError(err: unknown): boolean {
 
 export function isStorageAuthError(err: unknown): boolean {
   const msg = messageFrom(err).toLowerCase();
-  if (typeof err === 'object' && err !== null) {
-    const status =
-      (err as { status?: number; statusCode?: number }).status
-      ?? (err as { statusCode?: number }).statusCode;
-    if (status === 401 || status === 403) {
-      return !isStorageRlsError(err);
-    }
+  const status = storageErrorStatus(err);
+  if (status === 401 || status === 403) {
+    return !isStorageRlsError(err);
   }
   return (
     msg.includes('jwt') ||
@@ -63,22 +82,26 @@ export function isStorageSizeError(err: unknown): boolean {
 }
 
 export function isBucketNotFoundError(err: unknown): boolean {
-  const msg = messageFrom(err).toLowerCase();
-  if (typeof err === 'object' && err !== null) {
-    const statusCode = (err as { statusCode?: number }).statusCode;
-    if (statusCode === 400 && msg.includes('bucket')) return true;
+  const msg = messageFrom(err);
+  const lower = msg.toLowerCase();
+  const status = storageErrorStatus(err);
+
+  if (messageSuggestsMissingBucket(lower)) return true;
+
+  if (status === 400) {
+    if (lower.includes('bucket')) return true;
+    if (!lower || lower === 'bad request' || lower.includes('invalid request')) return true;
   }
-  return msg.includes('bucket') && (msg.includes('not found') || msg.includes('does not exist'));
+
+  if (status === 404 && lower.includes('bucket')) return true;
+
+  return lower.includes('bucket') && (lower.includes('not found') || lower.includes('does not exist'));
 }
 
 export function isStorageUpstreamUnavailableError(err: unknown): boolean {
   const msg = messageFrom(err).toLowerCase();
-  if (typeof err === 'object' && err !== null) {
-    const status =
-      (err as { status?: number; statusCode?: number }).status
-      ?? (err as { statusCode?: number }).statusCode;
-    if (status === 502 || status === 503) return true;
-  }
+  const status = storageErrorStatus(err);
+  if (status === 502 || status === 503) return true;
   return (
     msg.includes('service unavailable') ||
     msg.includes('name resolution failed') ||
@@ -118,7 +141,8 @@ export function classifyStorageUploadError(
   if (isBucketNotFoundError(err)) {
     return {
       kind: 'bucket',
-      userMessage: 'Storage bucket missing on server. Contact admin to run deploy.',
+      userMessage:
+        'Storage bucket "expense-receipts" missing on server. Ask admin to run deploy on VPS (apply-fixes-now.sh). You can save without the attachment.',
     };
   }
   if (isStorageUpstreamUnavailableError(err)) {

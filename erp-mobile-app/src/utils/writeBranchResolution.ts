@@ -12,7 +12,6 @@ export function resolveWriteBranchFromList(
   globalBranchId: string | null | undefined,
   accessibleBranches: Branch[],
   documentBranchId?: string | null,
-  options?: { forcePickWhenMultiple?: boolean },
 ): WriteBranchResolution {
   if (isRealBranchUuid(documentBranchId)) {
     return { status: 'resolved', branchId: documentBranchId.trim() };
@@ -29,20 +28,17 @@ export function resolveWriteBranchFromList(
     return { status: 'resolved', branchId: accessibleBranches[0].id };
   }
 
-  if (options?.forcePickWhenMultiple) {
-    const globalInList = isRealBranchUuid(globalBranchId)
-      ? accessibleBranches.find((b) => b.id === globalBranchId.trim())
-      : undefined;
-    const suggested = globalInList ?? pickCompanyDefaultBranch(accessibleBranches);
+  if (isRealBranchUuid(globalBranchId)) {
+    return { status: 'resolved', branchId: globalBranchId.trim() };
+  }
+
+  if (isBranchSentinel(globalBranchId) || globalBranchId == null || globalBranchId === '') {
+    const suggested = pickCompanyDefaultBranch(accessibleBranches);
     return {
       status: 'pick',
       branches: accessibleBranches,
       suggestedId: suggested?.id ?? accessibleBranches[0]?.id ?? null,
     };
-  }
-
-  if (isRealBranchUuid(globalBranchId)) {
-    return { status: 'resolved', branchId: globalBranchId.trim() };
   }
 
   const suggested = pickCompanyDefaultBranch(accessibleBranches);
@@ -84,6 +80,11 @@ export function pickEffectiveWriteBranchId(
   if (isRealBranchUuid(globalBranchId)) return globalBranchId.trim();
   if (isRealBranchUuid(pickedBranchId)) return pickedBranchId.trim();
   return null;
+}
+
+/** Show inline branch picker only when user must choose among multiple writable branches. */
+export function shouldShowWriteBranchPicker(resolution: WriteBranchResolution): boolean {
+  return resolution.status === 'pick' && resolution.branches.length > 1;
 }
 
 export { isBranchSentinel, isRealBranchUuid };

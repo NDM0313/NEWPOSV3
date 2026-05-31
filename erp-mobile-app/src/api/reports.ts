@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getCompanyLogoDisplayUrl } from '../lib/companyLogoDisplay';
 import { getAllSales } from './sales';
 import { normalizeCompanyId } from './contactBalancesUtils';
 import { fetchContactBalancesSummary } from './contactBalancesRpc';
@@ -42,6 +43,8 @@ export async function getCompanyBrand(companyId: string | null): Promise<Company
     .maybeSingle();
   if (!data) return fallback;
   const row = data as Record<string, unknown>;
+  const rawLogo = (row.logo_url as string) ?? null;
+  const logoUrl = rawLogo ? await getCompanyLogoDisplayUrl(rawLogo) : null;
   return {
     name: (row.name as string) || 'Company',
     address: (row.address as string) ?? null,
@@ -49,7 +52,7 @@ export async function getCompanyBrand(companyId: string | null): Promise<Company
     email: (row.email as string) ?? null,
     website: (row.website as string) ?? null,
     taxNumber: (row.tax_number as string) ?? null,
-    logoUrl: (row.logo_url as string) ?? null,
+    logoUrl,
     city: (row.city as string) ?? null,
     country: (row.country as string) ?? null,
   };

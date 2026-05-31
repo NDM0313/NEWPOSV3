@@ -5,10 +5,11 @@ import type { AddContactFormData } from '../contacts/AddContactFlow';
 import { AddContactFlow } from '../contacts/AddContactFlow';
 import { SwipeBackShell } from '../common';
 import * as contactsApi from '../../api/contacts';
+import { getContactDisplayPhone } from '../../api/contacts';
 import { usePermissions } from '../../context/PermissionContext';
 
 function contactToCustomer(c: contactsApi.Contact): Customer {
-  return { id: c.id, name: c.name, phone: c.phone || '—', balance: c.balance };
+  return { id: c.id, name: c.name, phone: getContactDisplayPhone(c) || '—', balance: c.balance };
 }
 
 interface SelectCustomerTabletProps {
@@ -66,6 +67,7 @@ export function SelectCustomerTablet({ companyId, branchId, onBack, onSelect, in
       const { data: created, error } = await contactsApi.createContact(companyId, {
         name: data.name.trim(),
         phone: data.phone.trim(),
+        mobile: data.mobile.trim(),
         email: data.email?.trim() || undefined,
         address: data.address?.trim() || undefined,
         city: data.city?.trim() || undefined,

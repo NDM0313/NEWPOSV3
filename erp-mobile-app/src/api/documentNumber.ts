@@ -1,13 +1,9 @@
 /**
- * Central document number generation – PER-COMPANY GLOBAL sequence.
+ * Central document number generation — ERP Numbering Engine (Settings parity with web).
  *
- * Uses the web ERP's `get_next_document_number_global` RPC which stores
- * counters in `document_sequences_global (company_id, document_type)`.
- * Numbers never regress and are shared across mobile, web, and POS.
- *
- * On the very first call for a (company, type) pair we also run
- * `_bootstrap_company_doc_sequence` so that if web documents already exist
- * we pick up from MAX(existing) instead of starting from 1.
+ * Uses `generate_document_number` RPC → `erp_document_sequences`.
+ * Respects Settings → Numbering Rules: prefix, padding, year reset,
+ * branch_based counter, and include_branch_code (e.g. CR-SL-0001).
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
@@ -27,22 +23,22 @@ export type DocumentType =
   | 'worker'
   | 'job';
 
-/** Short code used as `document_sequences_global.document_type`. */
-const SHORT_CODE: Record<DocumentType, string> = {
-  sale: 'SL',
-  purchase: 'PUR',
-  expense: 'EXP',
-  rental: 'RNT',
-  studio: 'STD',
-  journal: 'JE',
-  payment: 'PAY',
-  receipt: 'RCP',
-  product: 'PRD',
-  pos: 'PS',
-  customer: 'CUS',
-  supplier: 'SUP',
-  worker: 'WRK',
-  job: 'JOB',
+/** Maps mobile document types to generate_document_number p_document_type. */
+const ERP_DOC_TYPE: Record<DocumentType, string> = {
+  sale: 'sale',
+  purchase: 'purchase',
+  expense: 'expense',
+  rental: 'rental',
+  studio: 'studio',
+  journal: 'journal',
+  payment: 'payment',
+  receipt: 'customer_receipt',
+  product: 'product',
+  pos: 'pos',
+  customer: 'customer',
+  supplier: 'supplier',
+  worker: 'worker',
+  job: 'job',
 };
 
 const FALLBACK_PREFIX: Record<DocumentType, string> = {
@@ -62,53 +58,30 @@ const FALLBACK_PREFIX: Record<DocumentType, string> = {
   job: 'JOB-',
 };
 
-const bootstrapped = new Set<string>();
-
-async function ensureBootstrap(companyId: string, shortCode: string): Promise<void> {
-  const key = `${companyId}:${shortCode}`;
-  if (bootstrapped.has(key)) return;
-  try {
-    await supabase.rpc('_bootstrap_company_doc_sequence', {
-      p_company_id: companyId,
-      p_type: shortCode,
-    });
-  } catch (err) {
-    // Non-fatal: if bootstrap RPC is missing the global RPC will still start
-    // from 1, which is acceptable for fresh companies.
-    console.warn('[DOCUMENT NUMBER] bootstrap skipped:', err);
-  }
-  bootstrapped.add(key);
-}
-
 /**
- * Get next document number from the per-company global sequence.
- *
- * NOTE: `branchId` is ignored (kept in the signature for backward compatibility
- * with earlier mobile callers). Numbers are per-company, not per-branch.
- * `includeYear` is not honored by `get_next_document_number_global`; if year
- * prefixing is needed it should be added to the RPC.
+ * Get next document number from the ERP numbering engine (same as web Settings).
  */
 export async function getNextDocumentNumber(
   companyId: string,
-  _branchId: string | null,
+  branchId: string | null,
   documentType: DocumentType,
-  _includeYear?: boolean
+  includeYear?: boolean
 ): Promise<string> {
-  const shortCode = SHORT_CODE[documentType];
+  const erpType = ERP_DOC_TYPE[documentType];
   if (!isSupabaseConfigured) {
     return `${FALLBACK_PREFIX[documentType]}${String(Date.now()).slice(-4)}`;
   }
 
-  await ensureBootstrap(companyId, shortCode);
-
-  const { data, error } = await supabase.rpc('get_next_document_number_global', {
+  const { data, error } = await supabase.rpc('generate_document_number', {
     p_company_id: companyId,
-    p_type: shortCode,
+    p_branch_id: branchId,
+    p_document_type: erpType,
+    p_include_year: includeYear ?? false,
   });
 
   if (error) {
     console.error(
-      `[DOCUMENT NUMBER] get_next_document_number_global failed (${documentType}/${shortCode}):`,
+      `[DOCUMENT NUMBER] generate_document_number failed (${documentType}/${erpType}):`,
       error,
     );
     return `${FALLBACK_PREFIX[documentType]}${String(Date.now()).slice(-4)}`;

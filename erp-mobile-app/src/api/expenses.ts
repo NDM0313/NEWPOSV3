@@ -3,8 +3,14 @@ import { listCacheKeys } from '../lib/listCache';
 import { readThroughCache } from '../lib/offlineData';
 import { localNowDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite } from '../utils/branchId';
-import { classifyStorageUploadError } from '../utils/storageUploadErrors';
+import {
+  classifyStorageUploadError,
+  type StorageUploadErrorKind,
+  storageErrorStatus,
+} from '../utils/storageUploadErrors';
 import { storageUploadBody } from '../utils/storageUploadBody';
+import { storageRefForPersistence } from '../utils/storageDisplayUrl';
+import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
 
 /** DB / RPC expect cash | bank | card | other — wallet accounts must map to other. */
 function normalizeExpensePaymentMethodForDb(raw: string | undefined): string {
@@ -32,6 +38,8 @@ export interface ExpenseRow {
   amount: number;
   payment_method: string;
   status: string;
+  created_by?: string | null;
+  paid_to_user_id?: string | null;
 }
 
 /** Expense category from DB (optional table); supports parent/child. */
@@ -52,27 +60,44 @@ export interface ExpenseCategoryTreeItem extends ExpenseCategoryRow {
   isMain: boolean;
 }
 
-export async function getExpenses(companyId: string, branchId?: string | null) {
+export async function getExpenses(
+  companyId: string,
+  branchId?: string | null,
+  options?: { accessibleBranchIds?: string[] },
+) {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const branchKey =
-    branchId && branchId !== 'all' && branchId !== 'default' ? branchId : 'all';
+    branchId && branchId !== 'all' && branchId !== 'default'
+      ? branchId
+      : options?.accessibleBranchIds?.length
+        ? `acc:${[...options.accessibleBranchIds].sort().join(',')}`
+        : 'all';
   const cacheKey = listCacheKeys.expenses(companyId, branchKey);
   const cached = await readThroughCache(
     cacheKey,
-    async () => fetchExpensesOnline(companyId, branchId),
+    async () => fetchExpensesOnline(companyId, branchId, options?.accessibleBranchIds),
     [],
   );
   return { data: cached.data, error: cached.error };
 }
 
-async function fetchExpensesOnline(companyId: string, branchId?: string | null) {
+async function fetchExpensesOnline(
+  companyId: string,
+  branchId?: string | null,
+  accessibleBranchIds?: string[],
+) {
   let q = supabase
     .from('expenses')
-    .select('id, expense_no, expense_date, category, description, amount, payment_method, status')
+    .select('id, expense_no, expense_date, category, description, amount, payment_method, status, created_by, paid_to_user_id, branch_id, created_at')
     .eq('company_id', companyId)
     .order('expense_date', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(50);
-  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
+  if (branchId && branchId !== 'all' && branchId !== 'default') {
+    q = q.eq('branch_id', branchId);
+  } else if (accessibleBranchIds?.length) {
+    q = q.in('branch_id', accessibleBranchIds);
+  }
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   return { data: data || [], error: null };
@@ -246,30 +271,103 @@ export async function createExpense(input: {
 const EXPENSE_RECEIPT_BUCKET = 'expense-receipts';
 const MAX_RECEIPT_BYTES = 5 * 1024 * 1024; // 5MB
 
+let expenseReceiptBucketPreflight: Promise<boolean> | null = null;
+
+function isDevBuild(): boolean {
+  return Boolean(
+    typeof import.meta !== 'undefined' &&
+      (import.meta as { env?: { DEV?: boolean } }).env?.DEV,
+  );
+}
+
+function resolveReceiptContentType(file: File, fromBody: string): string {
+  if (fromBody?.trim()) return fromBody.trim();
+  const name = (file.name || '').toLowerCase();
+  if (/\.(jpe?g)$/.test(name)) return 'image/jpeg';
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.webp')) return 'image/webp';
+  if (name.endsWith('.pdf')) return 'application/pdf';
+  return 'application/octet-stream';
+}
+
+async function ensureExpenseReceiptBucketExists(): Promise<{ ok: true } | { ok: false; error: string; kind: StorageUploadErrorKind }> {
+  if (!expenseReceiptBucketPreflight) {
+    expenseReceiptBucketPreflight = (async () => {
+      const { data, error } = await supabase.storage.listBuckets();
+      if (error) {
+        if (isDevBuild()) {
+          console.warn('[uploadExpenseReceipt] listBuckets failed', {
+            status: storageErrorStatus(error),
+            message: error.message,
+          });
+        }
+        return true;
+      }
+      return (data ?? []).some((b) => b.name === EXPENSE_RECEIPT_BUCKET);
+    })();
+  }
+  const exists = await expenseReceiptBucketPreflight;
+  if (exists) return { ok: true };
+  const classified = classifyStorageUploadError(
+    { statusCode: 400, message: 'Bucket not found', error: 'Bucket not found' },
+    'receipt',
+  );
+  return { ok: false, error: classified.userMessage, kind: classified.kind };
+}
+
+export interface ExpenseReceiptUploadResult {
+  url: string | null;
+  error: string | null;
+  kind?: StorageUploadErrorKind;
+}
+
 /** Upload one receipt/bill file to storage; returns public URL or null on failure. */
 export async function uploadExpenseReceipt(
   companyId: string,
-  file: File
-): Promise<{ url: string | null; error: string | null }> {
+  file: File | null | undefined,
+): Promise<ExpenseReceiptUploadResult> {
+  if (!file) return { url: null, error: null };
+  if (file.size === 0) {
+    return { url: null, error: 'Receipt file is empty. Try again or save without attachment.' };
+  }
   if (!isSupabaseConfigured) return { url: null, error: 'App not configured.' };
   if (file.size > MAX_RECEIPT_BYTES) return { url: null, error: 'File too large. Max 5MB.' };
-  const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-  const path = `${companyId}/receipts/${Date.now()}_${safeName}`;
-  const { body, contentType } = await storageUploadBody(file);
-  const { error } = await supabase.storage.from(EXPENSE_RECEIPT_BUCKET).upload(path, body, {
-    upsert: true,
-    contentType,
-  });
-  if (error) {
-    const classified = classifyStorageUploadError(error, file.name);
-    if (classified.kind === 'bucket') {
-      return {
-        url: null,
-        error: `Storage bucket "expense-receipts" not found. Create it in Supabase Dashboard → Storage, then run migration 51_expense_receipts_storage.sql. You can save the expense without the attachment.`,
-      };
-    }
-    return { url: null, error: classified.userMessage };
+
+  const bucketCheck = await ensureExpenseReceiptBucketExists();
+  if (!bucketCheck.ok) {
+    return { url: null, error: bucketCheck.error, kind: bucketCheck.kind };
   }
-  const { data: urlData } = supabase.storage.from(EXPENSE_RECEIPT_BUCKET).getPublicUrl(path);
-  return { url: urlData?.publicUrl ?? path, error: null };
+
+  const safeName = (file.name || 'receipt').replace(/[^a-zA-Z0-9.-]/g, '_');
+  const path = `${companyId}/receipts/${Date.now()}_${safeName}`;
+  try {
+    const { body, contentType: rawType } = await storageUploadBody(file);
+    const contentType = resolveReceiptContentType(file, rawType);
+    const { error } = await withUploadTimeout(
+      supabase.storage.from(EXPENSE_RECEIPT_BUCKET).upload(path, body, {
+        upsert: true,
+        contentType,
+      }),
+      UPLOAD_TIMEOUT_MS,
+      `Upload ${file.name || 'receipt'}`,
+    );
+    if (error) {
+      if (isDevBuild()) {
+        console.warn('[uploadExpenseReceipt]', {
+          status: storageErrorStatus(error),
+          message: error.message,
+          error,
+        });
+      }
+      const classified = classifyStorageUploadError(error, file.name || 'receipt');
+      return { url: null, error: classified.userMessage, kind: classified.kind };
+    }
+    return { url: storageRefForPersistence(EXPENSE_RECEIPT_BUCKET, path), error: null };
+  } catch (err) {
+    if (isDevBuild()) {
+      console.warn('[uploadExpenseReceipt]', err);
+    }
+    const classified = classifyStorageUploadError(err, file.name || 'receipt');
+    return { url: null, error: classified.userMessage, kind: classified.kind };
+  }
 }

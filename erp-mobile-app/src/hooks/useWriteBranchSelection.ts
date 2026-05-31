@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getBranches, type Branch } from '../api/branches';
-import { getUserAccessibleBranchIds, canPickAllCompanyBranches } from '../api/permissions';
+import { getUserAccessibleBranchIds, getUserAssignedBranchIds, canPickAllCompanyBranches } from '../api/permissions';
 import {
   filterAccessibleBranches,
+  isBranchSentinel,
   pickEffectiveWriteBranchId,
   resolveWriteBranchFromList,
+  shouldShowWriteBranchPicker,
 } from '../utils/writeBranchResolution';
 
 export interface UseWriteBranchSelectionOptions {
@@ -50,7 +52,9 @@ export function useWriteBranchSelection({
     Promise.all([
       getBranches(companyId),
       authUserId || profileId
-        ? getUserAccessibleBranchIds(authUserId, profileId, companyId)
+        ? unrestricted
+          ? getUserAccessibleBranchIds(authUserId, profileId, companyId)
+          : getUserAssignedBranchIds(authUserId ?? '', profileId ?? authUserId ?? '').then((r) => r.branchIds)
         : Promise.resolve([] as string[]),
     ]).then(([branchRes, ubIds]) => {
       if (cancelled) return;
@@ -67,7 +71,7 @@ export function useWriteBranchSelection({
     return () => {
       cancelled = true;
     };
-  }, [companyId, authUserId, profileId]);
+  }, [companyId, authUserId, profileId, unrestricted]);
 
   const accessibleBranches = useMemo(
     () => filterAccessibleBranches(branches, userBranchIds, unrestricted),
@@ -80,18 +84,23 @@ export function useWriteBranchSelection({
   );
 
   useEffect(() => {
+    if (isBranchSentinel(globalBranchId)) {
+      setPickedBranchId('');
+    }
+  }, [globalBranchId]);
+
+  useEffect(() => {
     if (resolution.status === 'pick' && resolution.suggestedId && !pickedBranchId) {
       setPickedBranchId(resolution.suggestedId);
     }
   }, [resolution, pickedBranchId]);
 
-  const needsPicker = resolution.status === 'pick';
+  const needsPicker = shouldShowWriteBranchPicker(resolution);
 
-  const effectiveBranchId = pickEffectiveWriteBranchId(
-    globalBranchId,
-    pickedBranchId,
-    documentBranchId,
-  );
+  const effectiveBranchId =
+    resolution.status === 'resolved'
+      ? resolution.branchId
+      : pickEffectiveWriteBranchId(globalBranchId, pickedBranchId, documentBranchId);
 
   const error =
     loadError ??

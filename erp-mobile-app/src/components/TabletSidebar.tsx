@@ -6,10 +6,14 @@ import type { User, Branch, Screen } from '../types';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
 import { usePermissions } from '../context/PermissionContext';
 import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from '../utils/permissionModules';
+import { useEffectiveWorkerProfile } from '../context/CounterWorkerContext';
+import { getBranches } from '../api/branches';
+import { useEffect, useState } from 'react';
 
 interface TabletSidebarProps {
   user: User;
   branch: Branch;
+  companyId: string | null;
   currentScreen: Screen;
   onNavigate: (screen: Screen) => void;
   onLogout: () => void;
@@ -23,8 +27,42 @@ interface ModuleItem {
   enabled: boolean;
 }
 
-export function TabletSidebar({ user, branch, currentScreen, onNavigate, onLogout }: TabletSidebarProps) {
+export function TabletSidebar({ user, branch, companyId, currentScreen, onNavigate, onLogout }: TabletSidebarProps) {
   const { hasPermission, isPermissionLoaded, isModuleEnabled } = usePermissions();
+  const profile = useEffectiveWorkerProfile(user);
+  const displayName = profile?.displayName ?? user.name;
+  const effectiveRole = profile?.role ?? user.role;
+  const workerBranchId = profile?.branchId ?? null;
+  const [workerBranchName, setWorkerBranchName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!workerBranchId || workerBranchId === branch.id) {
+      setWorkerBranchName(null);
+      return;
+    }
+    if (workerBranchId === 'all') {
+      setWorkerBranchName('All Branches');
+      return;
+    }
+    if (!companyId) {
+      setWorkerBranchName(null);
+      return;
+    }
+    let cancelled = false;
+    void getBranches(companyId).then(({ data }) => {
+      if (cancelled) return;
+      const found = (data ?? []).find((b) => b.id === workerBranchId);
+      setWorkerBranchName(found?.name ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [workerBranchId, branch.id, companyId]);
+
+  const displayBranchName =
+    workerBranchId && workerBranchId !== branch.id
+      ? workerBranchName ?? branch.name
+      : branch.name;
 
   if (FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded) {
     return (
@@ -75,10 +113,10 @@ export function TabletSidebar({ user, branch, currentScreen, onNavigate, onLogou
           </div>
         </div>
         <div className="bg-[#111827] rounded-lg p-3">
-          <p className="text-sm font-medium text-white">{user.name}</p>
-          <p className="text-xs text-[#9CA3AF]">{branch.name}</p>
+          <p className="text-sm font-medium text-white">{displayName}</p>
+          <p className="text-xs text-[#9CA3AF]">{displayBranchName}</p>
           <span className="inline-block mt-2 px-2 py-0.5 bg-[#8B5CF6]/20 text-[#8B5CF6] text-xs rounded-full font-medium">
-            {user.role.toUpperCase()}
+            {effectiveRole.toUpperCase()}
           </span>
         </div>
       </div>

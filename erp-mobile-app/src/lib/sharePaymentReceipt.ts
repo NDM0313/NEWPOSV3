@@ -3,6 +3,9 @@
  * Falls back to opening whatsapp:// or a mailto: link when Web Share API is unavailable.
  */
 
+import { buildWhatsAppUrl } from './phoneWhatsApp';
+import { toLocalISOString } from '../utils/localDate';
+
 export interface PaymentReceiptInput {
   /** e.g. "Payment Received", "Payment Made", "Rental Payment" */
   heading: string;
@@ -12,6 +15,8 @@ export interface PaymentReceiptInput {
   currency?: string;
   /** Customer / supplier / worker name. */
   partyName?: string | null;
+  /** Party mobile/phone for WhatsApp deeplink fallback. */
+  partyPhone?: string | null;
   /** Cash / bank / wallet account the money came from / went to. */
   fromAccountName?: string | null;
   /** AR / AP child account name ("Receivable — ABC"). */
@@ -49,7 +54,7 @@ function formatDateTime(d: string | Date | null | undefined): string {
       hour12: true,
     });
   } catch {
-    return date.toISOString();
+    return toLocalISOString(date);
   }
 }
 
@@ -107,9 +112,9 @@ export async function sharePaymentReceipt(input: PaymentReceiptInput): Promise<S
   }
 
   try {
-    const url = `whatsapp://send?text=${encodeURIComponent(text)}`;
+    const url = buildWhatsAppUrl(input.partyPhone ?? undefined, text);
     if (typeof window !== 'undefined') {
-      window.location.href = url;
+      window.open(url, '_blank', 'noopener,noreferrer');
       return 'whatsapp';
     }
   } catch {}

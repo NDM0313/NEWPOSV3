@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, CreditCard, Plus, Minus, Trash2, Search, User as UserIcon, Loader2, CheckCircle2, X, Users, Package, Calendar } from 'lucide-react';
 import { ProductImage } from '../products/ProductImage';
 import type { User } from '../../types';
-import type { AuthProfile } from '../../api/auth';
 import { SwitchUserPinOverlay } from '../auth/SwitchUserPinOverlay';
 import { isSharedCounterModeEnabled } from '../../lib/sharedCounterMode';
+import { useEffectiveWorkerId, useEffectiveWorkerProfileId, useEffectiveWorkerRole } from '../../context/CounterWorkerContext';
 import * as productsApi from '../../api/products';
 import * as salesApi from '../../api/sales';
 import { addPending } from '../../lib/offlineStore';
@@ -29,7 +29,6 @@ interface POSModuleProps {
   user: User;
   companyId: string | null;
   branchId: string | null;
-  onCounterSessionReplaced?: (profile: AuthProfile) => void | Promise<void>;
   onRequestCounterLock?: () => void;
 }
 
@@ -57,7 +56,10 @@ interface CartItem {
   variationName?: string;
 }
 
-export function POSModule({ onBack, user, companyId, branchId, onCounterSessionReplaced, onRequestCounterLock }: POSModuleProps) {
+export function POSModule({ onBack, user, companyId, branchId, onRequestCounterLock }: POSModuleProps) {
+  const effectiveUserId = useEffectiveWorkerId(user.id);
+  const effectiveRole = useEffectiveWorkerRole(user.role);
+  const effectiveProfileId = useEffectiveWorkerProfileId() ?? user.profileId ?? null;
   const [products, setProducts] = useState<POSProduct[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -98,9 +100,9 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
   } = useWriteBranchSelection({
     companyId,
     globalBranchId: branchId,
-    userRole: user.role,
-    authUserId: user.id,
-    profileId: user.profileId,
+    userRole: effectiveRole,
+    authUserId: effectiveUserId,
+    profileId: effectiveProfileId,
   });
 
   useEffect(() => {
@@ -110,7 +112,7 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
     setShowCart(false);
     setShowPaymentStep(false);
     setInvoiceDate(localNowDateString());
-  }, [user.id]);
+  }, [effectiveUserId]);
 
   useEffect(() => {
     if (!scanMessage) return;
@@ -361,7 +363,7 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
       dueAmount: result.dueAmount ?? total - paid,
       paymentAccountId: result.accountId ?? null,
       isStudio: false,
-      userId: user.id,
+      userId: effectiveUserId,
       invoiceDate,
       paymentDate: result.paymentDate || invoiceDate,
       isPOS: true,
@@ -403,12 +405,11 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
 
   return (
     <div className="min-h-screen bg-[#111827] pb-28">
-      {onCounterSessionReplaced ? (
+      { !isSharedCounterModeEnabled() ? (
         <SwitchUserPinOverlay
           open={showSwitchUser}
           companyId={companyId}
           onClose={() => setShowSwitchUser(false)}
-          onSessionReplaced={onCounterSessionReplaced}
         />
       ) : null}
       <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
@@ -422,11 +423,11 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
             </div>
             <h1 className="text-white font-semibold text-base">Point of Sale</h1>
           </div>
-          {onCounterSessionReplaced ? (
+          {onRequestCounterLock ? (
             <button
               type="button"
               onClick={() => {
-                if (isSharedCounterModeEnabled() && onRequestCounterLock) {
+                if (isSharedCounterModeEnabled()) {
                   onRequestCounterLock();
                 } else {
                   setShowSwitchUser(true);
@@ -687,7 +688,7 @@ export function POSModule({ onBack, user, companyId, branchId, onCounterSessionR
               onComplete={handlePaymentComplete}
               saving={checkoutLoading}
               saveError={checkoutError}
-              viewerRole={user.role}
+              viewerRole={effectiveRole}
             />
           </div>
         </div>

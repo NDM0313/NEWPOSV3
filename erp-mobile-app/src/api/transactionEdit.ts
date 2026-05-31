@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getCurrentLocalTimestamp } from '../utils/localDate';
 
 /**
  * Update an existing transaction in place.
@@ -108,7 +109,7 @@ export async function updateTransaction(
       amount: updates.amount,
       notes: updates.notes || null,
       reference_number: updates.reference || null,
-      updated_at: new Date().toISOString(),
+      updated_at: getCurrentLocalTimestamp(),
     };
     if (updates.paymentAccountId) {
       patch.payment_account_id = updates.paymentAccountId;

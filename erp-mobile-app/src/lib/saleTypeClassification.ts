@@ -7,11 +7,6 @@ function saleDocNo(row: Record<string, unknown>): string {
   return inv || ord || '';
 }
 
-function customerName(row: Record<string, unknown>): string {
-  const cust = row.customer as { name?: string } | null;
-  return String(cust?.name ?? row.customer_name ?? '').trim();
-}
-
 /** Studio: STD-/ST- prefix, is_studio, or studio_charges > 0 */
 export function isStudioSaleRow(row: Record<string, unknown>): boolean {
   const inv = saleDocNo(row);
@@ -21,13 +16,9 @@ export function isStudioSaleRow(row: Record<string, unknown>): boolean {
   return false;
 }
 
-/** POS: POS- prefix, or walk-in + final status */
+/** POS: POS terminal checkout only (invoice prefix POS-) */
 export function isLikelyPosSaleRow(row: Record<string, unknown>): boolean {
-  const inv = saleDocNo(row);
-  if (inv.startsWith('POS-')) return true;
-  const walkIn = customerName(row).toLowerCase().includes('walk-in');
-  const final = String(row.status ?? '').toLowerCase() === 'final';
-  return !!(walkIn && final);
+  return saleDocNo(row).startsWith('POS-');
 }
 
 export function matchesSaleListTypeFilter(

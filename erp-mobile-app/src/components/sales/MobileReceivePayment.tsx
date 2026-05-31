@@ -11,6 +11,7 @@ export interface MobileReceivePaymentProps {
   referenceNo: string;
   customerName: string;
   customerId: string | null;
+  customerPhone?: string | null;
   totalAmount: number;
   alreadyPaid: number;
   outstandingAmount: number;
@@ -32,6 +33,7 @@ export function MobileReceivePayment(props: MobileReceivePaymentProps) {
       userId={props.userId}
       partyName={props.customerName}
       partyId={props.customerId}
+      partyPhone={props.customerPhone}
       totalAmount={props.totalAmount}
       alreadyPaid={props.alreadyPaid}
       outstandingAmount={props.outstandingAmount}

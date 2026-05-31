@@ -8,6 +8,7 @@ import {
   listCacheSet,
 } from '../lib/listCache';
 import { fetchProductStockByKey } from '../utils/productStockFetch';
+import { fetchInBatches } from '../lib/chunkInQuery';
 import { isRealBranchUuid } from '../utils/branchId';
 
 import { getNextDocumentNumber } from './documentNumber';
@@ -333,12 +334,21 @@ async function getProductsInner(
   );
 
   if (varProductIds.length > 0) {
-    const { data: varData } = await supabase
-      .from('product_variations')
-      .select('id, product_id, sku, attributes, price')
-      .in('product_id', varProductIds)
-      .eq('is_active', true);
-    for (const v of varData || []) {
+    let varData: { product_id: string; id: string; sku: string; attributes: Record<string, string>; price: number }[] = [];
+    try {
+      varData = await fetchInBatches(varProductIds, async (chunk) => {
+        const { data, error } = await supabase
+          .from('product_variations')
+          .select('id, product_id, sku, attributes, price')
+          .in('product_id', chunk)
+          .eq('is_active', true);
+        if (error) throw error;
+        return (data || []) as typeof varData;
+      });
+    } catch (e: unknown) {
+      console.warn('[getProducts] product_variations:', e instanceof Error ? e.message : String(e));
+    }
+    for (const v of varData) {
       const pv = v as { product_id: string } & { id: string; sku: string; attributes: Record<string, string>; price: number };
       if (!varMap[pv.product_id]) varMap[pv.product_id] = [];
       const varStock = stockByKey[`${pv.product_id}_${pv.id}`] ?? 0;
@@ -468,12 +478,21 @@ export async function getRentalProducts(companyId: string): Promise<{ data: Rent
     .filter(Boolean);
   const varsByProduct: Record<string, RentalProductVariation[]> = {};
   if (varProductIds.length > 0) {
-    const { data: varData } = await supabase
-      .from('product_variations')
-      .select('id, product_id, sku, attributes')
-      .in('product_id', varProductIds)
-      .eq('is_active', true);
-    for (const v of (varData || []) as Array<Record<string, unknown>>) {
+    let varData: Array<Record<string, unknown>> = [];
+    try {
+      varData = await fetchInBatches(varProductIds, async (chunk) => {
+        const { data, error } = await supabase
+          .from('product_variations')
+          .select('id, product_id, sku, attributes')
+          .in('product_id', chunk)
+          .eq('is_active', true);
+        if (error) throw error;
+        return (data || []) as Array<Record<string, unknown>>;
+      });
+    } catch (e: unknown) {
+      console.warn('[getRentalProducts] product_variations:', e instanceof Error ? e.message : String(e));
+    }
+    for (const v of varData) {
       const pid = String(v.product_id ?? '');
       if (!pid) continue;
       const attrs = (v.attributes as Record<string, string> | null) ?? {};

@@ -3,7 +3,7 @@
  * Preference only; does not change server contracts.
  */
 
-import { countCounterUsers } from './counterUserVault';
+import { countWorkers } from './counterWorkerRegistry';
 
 const STORAGE_KEY = 'erp_mobile_shared_counter_mode';
 const LAST_COUNTER_COMPANY_KEY = 'erp_mobile_counter_company_id';
@@ -55,7 +55,7 @@ export function subscribeSharedCounterMode(onChange: () => void): () => void {
 /** True when the app should show the POS lock screen (mode on + at least one enrolled user for this company). */
 export async function shouldActivateCounterLockScreen(companyId: string | null): Promise<boolean> {
   if (!isSharedCounterModeEnabled() || !companyId) return false;
-  return (await countCounterUsers(companyId)) > 0;
+  return (await countWorkers(companyId)) > 0;
 }
 
 /** Boot-safe wrapper — never throws; returns false on vault/storage errors. */

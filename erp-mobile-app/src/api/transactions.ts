@@ -1,4 +1,6 @@
+import { getContactWhatsAppPhone } from './contacts';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getCurrentLocalTimestamp } from '../utils/localDate';
 import { fetchReferenceAttachments } from './transactionDetail';
 import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 
@@ -685,11 +687,12 @@ export async function getTransactionDetail(
   if (base.partyId) {
     const { data: contact } = await supabase
       .from('contacts')
-      .select('phone, type')
+      .select('phone, mobile, type')
       .eq('id', base.partyId)
       .maybeSingle();
     if (contact) {
-      partyPhone = ((contact as Record<string, unknown>).phone as string | null) ?? null;
+      const raw = getContactWhatsAppPhone(contact as { phone?: string | null; mobile?: string | null });
+      partyPhone = raw || null;
       partyType = ((contact as Record<string, unknown>).type as string | null) ?? null;
     }
   }
@@ -834,7 +837,7 @@ export async function updatePaymentTransactionInPlace(
       payment_method: input.paymentMethod || paymentRow.payment_method || 'cash',
       notes: input.notes ?? null,
       reference_number: input.referenceNumber ?? paymentRow.reference_number ?? null,
-      updated_at: new Date().toISOString(),
+      updated_at: getCurrentLocalTimestamp(),
     })
     .eq('id', input.paymentId)
     .eq('company_id', input.companyId);
@@ -845,7 +848,7 @@ export async function updatePaymentTransactionInPlace(
     .update({
       entry_date: input.paymentDate,
       description: `Payment: ${input.referenceNumber || paymentRow.reference_number || input.paymentId}`,
-      updated_at: new Date().toISOString(),
+      updated_at: getCurrentLocalTimestamp(),
     })
     .eq('id', jeRow.id)
     .eq('company_id', input.companyId);
