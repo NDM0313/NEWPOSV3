@@ -303,7 +303,7 @@ export function InventoryModule({ onBack, user, companyId, branch }: InventoryMo
                   className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-3 flex gap-3 hover:border-[#3B82F6] transition"
                 >
                   <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-[#111827]">
-                    <ProductImage src={item.imageUrl} alt={item.name} variant="thumb" />
+                    <ProductImage src={item.imageUrl} alt={item.name} variant="thumb" deferUntilVisible />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">

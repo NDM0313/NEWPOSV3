@@ -4,7 +4,42 @@ Copy a new block for every build. Keep the newest entry at the top.
 
 ---
 
-## Latest build — 1.0.5 (build 21) — 2026-05-31
+## Latest build — 1.0.5 (build 22) — 2026-05-31
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-31 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 22 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build22.apk` |
+
+### Changelog (user-facing) — build 22
+
+- **Product photos (APK):** Native thumbs use authenticated `storage.download` → blob URL (primary path). Signed `<img>` URLs use direct `supabase.dincouture.pk` host (PWA parity). Removed bogus public-URL fallback for private `product-images` bucket.
+- **Lists:** Product/POS/inventory thumbs load when scrolled into view (less sign storm on cold start).
+- **Sale attachments:** Native upload fallback via patched fetch + CapacitorHttp when WebView `fetch` fails.
+
+### Install notes (build 22)
+
+1. **Uninstall** ERP Mobile (build 21 or older).
+2. Install **`releases/erp-mobile-1.0.5-build22.apk`** only.
+3. Sign in → **Products** → scroll list; thumbnails should appear within a few seconds.
+4. Optional: complete a sale with one photo attachment (no `Failed to fetch`).
+
+### Mobile test checklist (build 22)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Products list | 3+ items with photos show thumbs after scroll |
+| 2 | Cold start | Re-open app → Products thumbs within ~5s |
+| 3 | POS grid | Product cards show images when visible |
+| 4 | PWA regression | `https://erp.dincouture.pk/m/` products still OK |
+| 5 | Sale attachment | Upload 1 image on sale; no fetch error |
+
+---
+
+## Previous build — 1.0.5 (build 21) — 2026-05-31
 
 | Field | Value |
 |--------|--------|

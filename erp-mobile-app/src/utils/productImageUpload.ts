@@ -1,10 +1,13 @@
 import { supabase } from '../lib/supabase';
 import {
   extractProductImageStoragePath,
+  getProductImageBlobDisplayUrl,
   getStorageDisplayUrl,
   getStoragePublicUrl,
   storageRefForPersistence,
 } from './storageDisplayUrl';
+
+export { getProductImageBlobDisplayUrl };
 import { compressImageIfNeeded } from './imageCompression';
 import { storageUploadBody } from './storageUploadBody';
 

@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { invalidateSalesListCache, listCacheKeys } from '../lib/listCache';
 import { dispatchMobileInvalidated } from '../lib/dataInvalidationBus';
@@ -10,6 +11,7 @@ import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
 import { storageUploadBody } from '../utils/storageUploadBody';
 import { classifyStorageUploadError } from '../utils/storageUploadErrors';
+import { nativeStorageObjectUpload } from '../utils/nativeStorageUpload';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -98,6 +100,26 @@ export async function uploadSaleAttachments(
       );
       if (error) {
         const classified = classifyStorageUploadError(error, file.name);
+        const fetchLike =
+          /failed to fetch|network error|load failed/i.test(classified.userMessage) ||
+          /failed to fetch|network error/i.test(String((error as { message?: string }).message ?? ''));
+        if (Capacitor.isNativePlatform() && fetchLike) {
+          const native = await nativeStorageObjectUpload(
+            SALE_ATTACHMENTS_BUCKET,
+            path,
+            body,
+            contentType,
+            true,
+          );
+          if (!native.error) {
+            uploaded.push({
+              url: storageRefForPersistence(SALE_ATTACHMENTS_BUCKET, path),
+              name: file.name,
+            });
+            continue;
+          }
+          return { data: uploaded, error: native.error };
+        }
         const bucketMissing = classified.kind === 'bucket';
         return {
           data: uploaded,
@@ -109,9 +131,36 @@ export async function uploadSaleAttachments(
       uploaded.push({ url: storageRefForPersistence(SALE_ATTACHMENTS_BUCKET, path), name: file.name });
     } catch (err) {
       console.warn('[uploadSaleAttachments]', (err as Error)?.message ?? err);
+      const classified = classifyStorageUploadError(err, file.name);
+      const fetchLike = /failed to fetch|network error|load failed/i.test(classified.userMessage);
+      if (Capacitor.isNativePlatform() && fetchLike) {
+        try {
+          const { body, contentType } = await storageUploadBody(file);
+          const native = await nativeStorageObjectUpload(
+            SALE_ATTACHMENTS_BUCKET,
+            path,
+            body,
+            contentType,
+            true,
+          );
+          if (!native.error) {
+            uploaded.push({
+              url: storageRefForPersistence(SALE_ATTACHMENTS_BUCKET, path),
+              name: file.name,
+            });
+            continue;
+          }
+          return { data: uploaded, error: native.error };
+        } catch (nativeErr) {
+          return {
+            data: uploaded,
+            error: classifyStorageUploadError(nativeErr, file.name).userMessage,
+          };
+        }
+      }
       return {
         data: uploaded,
-        error: classifyStorageUploadError(err, file.name).userMessage,
+        error: classified.userMessage,
       };
     }
   }

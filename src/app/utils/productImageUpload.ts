@@ -3,13 +3,28 @@ import { compressImageIfNeeded } from '@/app/utils/imageCompression';
 
 const BUCKET = 'product-images';
 
-/** Storage object path from a public/signed URL or raw path. */
+/** Storage object path from a public/signed URL, path-only, or mobile `product-images/...` ref. */
 export function extractProductImageStoragePath(rawUrl: string): string | null {
   if (!rawUrl || typeof rawUrl !== 'string') return null;
   const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+
+  const bucketPrefix = `${BUCKET}/`;
+  if (trimmed.startsWith(bucketPrefix) && !trimmed.includes('://')) {
+    const path = trimmed.slice(bucketPrefix.length).split('?')[0].trim();
+    return path || null;
+  }
+
   const idx = trimmed.indexOf(`/${BUCKET}/`);
-  if (idx >= 0) return trimmed.slice(idx + BUCKET.length + 2).split('?')[0] || null;
-  if (!trimmed.includes('://') && !trimmed.startsWith('/')) return trimmed.split('?')[0] || null;
+  if (idx >= 0) {
+    const path = trimmed.slice(idx + BUCKET.length + 2).split('?')[0].trim();
+    return path || null;
+  }
+
+  if (!trimmed.includes('://') && !trimmed.startsWith('/') && trimmed.includes('/')) {
+    return trimmed.split('?')[0].trim() || null;
+  }
+
   return null;
 }
 

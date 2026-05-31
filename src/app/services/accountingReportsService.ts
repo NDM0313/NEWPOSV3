@@ -11,6 +11,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { COA_HEADER_CODES } from '@/app/data/defaultCoASeed';
 import { assertGlTruthQueryTable } from '@/app/services/accountingCanonicalGuard';
 import {
@@ -388,17 +389,27 @@ export const accountingReportsService = {
     const accountIds = accounts.map((a: any) => a.id);
     const accountMap = new Map(accounts.map((a: any) => [a.id, a]));
 
-    let query = supabase
-      .from('journal_entry_lines')
-      .select(`
+    const lineSelect = `
         account_id,
         debit,
         credit,
         journal_entry:journal_entries(entry_date, company_id, branch_id, is_void)
-      `)
-      .in('account_id', accountIds);
-
-    const { data: lines, error } = await query;
+      `;
+    let lines: any[] = [];
+    let error: { message?: string } | null = null;
+    try {
+      lines = await fetchInBatches(accountIds, async (chunk) => {
+        const { data, error: chunkErr } = await supabase
+          .from('journal_entry_lines')
+          .select(lineSelect)
+          .in('account_id', chunk);
+        if (chunkErr) throw chunkErr;
+        return data || [];
+      });
+    } catch (e: any) {
+      error = e;
+      lines = [];
+    }
     if (error || !lines?.length) {
       const rows: TrialBalanceRow[] = accounts.map((a: any) => ({
         account_id: a.id,

@@ -36,6 +36,13 @@ const NATIVE_SIGN_MAX_CONCURRENT = 6;
 let nativeSignInFlight = 0;
 const nativeSignQueue: Array<() => void> = [];
 
+/** Direct storage host for native `<img>` GET (PWA parity; avoids ERP proxy sign GET issues). */
+const DIRECT_STORAGE_HOST = 'https://supabase.dincouture.pk';
+
+type BlobUrlCacheEntry = { blobUrl: string; expiresAt: number };
+const blobUrlCache = new Map<string, BlobUrlCacheEntry>();
+const BLOB_URL_POSITIVE_TTL_MS = 45 * 60 * 1000;
+
 function runWithNativeSignThrottle<T>(fn: () => Promise<T>): Promise<T> {
   if (!isNativeCapacitor) return fn();
   return new Promise((resolve, reject) => {
@@ -180,13 +187,59 @@ export function storageRefForPersistence(bucket: StorageBucket, path: string): s
   return `${bucket}/${path}`;
 }
 
-/** Rewrite signed URL host to ERP proxy; keep encoded path/query from Supabase intact. */
-function rewriteSignedUrlForNative(signedUrl: string): string {
-  const base = productionStorageBase().replace(/\/$/, '');
-  if (!base) return signedUrl;
+/**
+ * Native display: use direct supabase host for signed URL GET in WebView (not ERP rewrite).
+ * Sign POST still goes through erp.dincouture.pk via the Supabase client.
+ */
+function signedUrlForNativeImgDisplay(signedUrl: string): string {
   const trimmed = signedUrl.trim();
-  if (trimmed.startsWith(base)) return trimmed;
-  return trimmed.replace(/^https:\/\/supabase\.dincouture\.pk/i, base);
+  const erpBase = productionStorageBase().replace(/\/$/, '');
+  if (erpBase && trimmed.startsWith(erpBase)) {
+    return trimmed.replace(erpBase, DIRECT_STORAGE_HOST);
+  }
+  return trimmed;
+}
+
+function revokeAllBlobUrls(): void {
+  for (const entry of blobUrlCache.values()) {
+    try {
+      URL.revokeObjectURL(entry.blobUrl);
+    } catch {
+      /* ignore */
+    }
+  }
+  blobUrlCache.clear();
+}
+
+async function getStorageBlobDisplayUrl(ref: StorageRef): Promise<string | null> {
+  if (!isNativeCapacitor) return null;
+
+  const cacheKey = `blob:${ref.bucket}/${ref.path}`;
+  const cached = blobUrlCache.get(cacheKey);
+  if (cached) {
+    if (cached.expiresAt > Date.now()) return cached.blobUrl;
+    try {
+      URL.revokeObjectURL(cached.blobUrl);
+    } catch {
+      /* ignore */
+    }
+    blobUrlCache.delete(cacheKey);
+  }
+
+  const token = await waitForAccessToken();
+  if (!token) return null;
+
+  const { data, error } = await supabase.storage.from(ref.bucket).download(ref.path);
+  if (error || !data) {
+    if (isDevBuild) {
+      console.warn('[StorageUrl] native download failed', ref.bucket, (error as { message?: string })?.message);
+    }
+    return null;
+  }
+
+  const blobUrl = URL.createObjectURL(data);
+  blobUrlCache.set(cacheKey, { blobUrl, expiresAt: Date.now() + BLOB_URL_POSITIVE_TTL_MS });
+  return blobUrl;
 }
 
 async function createSignedUrlThrottled(
@@ -230,7 +283,7 @@ async function tryProductImageRpc(
       return null;
     }
     if (typeof data.signed_url === 'string' && data.signed_url) {
-      return isNativeCapacitor ? rewriteSignedUrlForNative(data.signed_url) : data.signed_url;
+      return isNativeCapacitor ? signedUrlForNativeImgDisplay(data.signed_url) : data.signed_url;
     }
     if (typeof data.path === 'string' && data.path) {
       const { signedUrl, error: signErr } = await createSignedUrlThrottled(
@@ -239,7 +292,7 @@ async function tryProductImageRpc(
         expiresSeconds,
       );
       if (!signErr && signedUrl) {
-        return isNativeCapacitor ? rewriteSignedUrlForNative(signedUrl) : signedUrl;
+        return isNativeCapacitor ? signedUrlForNativeImgDisplay(signedUrl) : signedUrl;
       }
       if (isUpstreamUnavailableError(signErr)) {
         logDevStorageProxyHintOnce();
@@ -298,6 +351,14 @@ async function resolveStorageDisplayUrlNow(ref: StorageRef, cacheKey: string): P
   let upstreamUnavailable = false;
   let authError = false;
 
+  if (isNativeCapacitor && ref.bucket === 'product-images') {
+    const blobUrl = await getStorageBlobDisplayUrl(ref);
+    if (blobUrl) {
+      writeCache(cacheKey, blobUrl, SIGNED_URL_POSITIVE_TTL_MS);
+      return blobUrl;
+    }
+  }
+
   try {
     const { signedUrl, error, authMissing } = await createSignedUrlThrottled(
       ref.bucket,
@@ -308,7 +369,7 @@ async function resolveStorageDisplayUrlNow(ref: StorageRef, cacheKey: string): P
       return null;
     }
     if (!error && signedUrl) {
-      const signed = isNativeCapacitor ? rewriteSignedUrlForNative(signedUrl) : signedUrl;
+      const signed = isNativeCapacitor ? signedUrlForNativeImgDisplay(signedUrl) : signedUrl;
       if (isNativeCapacitor && isLocalDevHost(signed)) {
         writeCache(cacheKey, null, SIGNED_URL_NEGATIVE_TTL_MS);
         return null;
@@ -358,6 +419,10 @@ async function resolveStorageDisplayUrlNow(ref: StorageRef, cacheKey: string): P
   }
 
   if (isNativeCapacitor) {
+    if (ref.bucket === 'product-images') {
+      writeCache(cacheKey, null, SIGNED_URL_NEGATIVE_TTL_MS);
+      return null;
+    }
     const pub = normalizePublicUrl(ref);
     if (pub && !isLocalDevHost(pub)) {
       writeCache(cacheKey, pub, SIGNED_URL_POSITIVE_TTL_MS);
@@ -383,11 +448,19 @@ export function invalidateStorageDisplayUrl(rawUrl: string): void {
 export function clearStorageDisplayUrlCache(): void {
   signedUrlCache.clear();
   signedUrlInflight.clear();
+  revokeAllBlobUrls();
   devStorageUpstreamUnavailable = false;
   nativeStorageSignWarnLogged = false;
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('erp-storage-cache-cleared'));
   }
+}
+
+/** Native fallback when signed `<img>` GET fails — authenticated download → blob URL. */
+export async function getProductImageBlobDisplayUrl(rawUrl: string): Promise<string | null> {
+  const ref = resolveStorageRef(rawUrl);
+  if (!ref || ref.bucket !== 'product-images') return null;
+  return getStorageBlobDisplayUrl(ref);
 }
 
 export function getStoragePublicUrl(rawUrl: string): string {

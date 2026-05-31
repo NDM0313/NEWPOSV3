@@ -504,7 +504,7 @@ export function AddProducts({
                 className={`bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#3B82F6] transition-all text-left ${blocked ? 'opacity-60 cursor-not-allowed' : ''}`}
               >
                 <div className="w-full h-20 bg-[#111827] rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-                  <ProductImage src={item.imageUrl} alt={item.name} variant="thumb" />
+                  <ProductImage src={item.imageUrl} alt={item.name} variant="thumb" deferUntilVisible />
                 </div>
                 <h3 className="font-medium text-sm text-[#F9FAFB] line-clamp-1 mb-1">{item.name}</h3>
                 <p className="text-xs text-[#9CA3AF] mb-1">{item.unit}</p>

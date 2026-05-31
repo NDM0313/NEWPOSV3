@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { ImageOff, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { extractProductImageStoragePath, getProductImageDisplayUrl } from '../../utils/productImageUpload';
+import {
+  extractProductImageStoragePath,
+  getProductImageBlobDisplayUrl,
+  getProductImageDisplayUrl,
+} from '../../utils/productImageUpload';
 
 interface ProductImageProps {
   src: string | undefined | null;
@@ -10,6 +15,8 @@ interface ProductImageProps {
   placeholderClassName?: string;
   /** List thumb: explicit empty / loading / loaded states. */
   variant?: 'thumb' | 'inline';
+  /** Defer signing/download until the thumb scrolls into view (product lists). */
+  deferUntilVisible?: boolean;
 }
 
 /**
@@ -21,11 +28,35 @@ export function ProductImage({
   className = 'w-full h-full object-cover',
   placeholderClassName = 'text-[#4B5563]',
   variant = 'thumb',
+  deferUntilVisible = false,
 }: ProductImageProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(!deferUntilVisible);
   const [displayUrl, setDisplayUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [authRevision, setAuthRevision] = useState(0);
+  const [blobRetried, setBlobRetried] = useState(false);
+
+  useEffect(() => {
+    if (!deferUntilVisible) {
+      setVisible(true);
+      return;
+    }
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setVisible(true);
+          obs.disconnect();
+        }
+      },
+      { rootMargin: '120px', threshold: 0.01 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [deferUntilVisible]);
 
   useEffect(() => {
     const {
@@ -46,8 +77,9 @@ export function ProductImage({
 
   useEffect(() => {
     setLoadFailed(false);
+    setBlobRetried(false);
     setDisplayUrl(null);
-    if (!src) {
+    if (!src || !visible) {
       setLoading(false);
       return;
     }
@@ -71,39 +103,67 @@ export function ProductImage({
     }
     setLoading(false);
     setDisplayUrl(src);
-  }, [src, authRevision]);
+  }, [src, authRevision, visible]);
+
+  const handleImgError = () => {
+    if (
+      loadFailed ||
+      blobRetried ||
+      !src ||
+      !Capacitor.isNativePlatform() ||
+      !extractProductImageStoragePath(src)
+    ) {
+      setLoadFailed(true);
+      return;
+    }
+    setBlobRetried(true);
+    setLoading(true);
+    void getProductImageBlobDisplayUrl(src).then((blobUrl) => {
+      setLoading(false);
+      if (blobUrl) {
+        setDisplayUrl(blobUrl);
+        setLoadFailed(false);
+      } else {
+        setLoadFailed(true);
+      }
+    });
+  };
+
+  const wrap = (node: ReactNode) =>
+    deferUntilVisible ? (
+      <div ref={containerRef} className="w-full h-full min-h-0">
+        {node}
+      </div>
+    ) : (
+      node
+    );
 
   if (variant === 'thumb') {
     if (!src) {
-      return (
+      return wrap(
         <div className="w-full h-full flex flex-col items-center justify-center gap-0.5 border border-dashed border-[#4B5563] rounded-lg bg-[#0B1120]/80">
           <ImageOff size={18} className="text-[#6B7280]" />
           <span className="text-[9px] text-[#6B7280] leading-none">No photo</span>
-        </div>
+        </div>,
       );
     }
-    if (loading && !displayUrl) {
-      return (
+    if (!visible || (loading && !displayUrl)) {
+      return wrap(
         <div className="w-full h-full flex items-center justify-center bg-[#1F2937]">
           <Loader2 size={18} className="text-[#6B7280] animate-spin" />
-        </div>
+        </div>,
       );
     }
     if (loadFailed || !displayUrl) {
-      return (
+      return wrap(
         <div className="w-full h-full flex flex-col items-center justify-center gap-0.5 border border-dashed border-[#4B5563] rounded-lg bg-[#0B1120]/80">
           <ImageOff size={18} className="text-[#6B7280]" />
           <span className="text-[9px] text-[#6B7280] leading-none">No photo</span>
-        </div>
+        </div>,
       );
     }
-    return (
-      <img
-        src={displayUrl}
-        alt={alt}
-        className={className}
-        onError={() => setLoadFailed(true)}
-      />
+    return wrap(
+      <img src={displayUrl} alt={alt} className={className} onError={handleImgError} />,
     );
   }
 
@@ -111,14 +171,11 @@ export function ProductImage({
     return <ImageIcon size={20} className={placeholderClassName} />;
   }
 
+  if (!visible || (loading && !displayUrl)) {
+    return <Loader2 size={20} className={`animate-spin ${placeholderClassName}`} />;
+  }
+
   const url = displayUrl || src;
 
-  return (
-    <img
-      src={url}
-      alt={alt}
-      className={className}
-      onError={() => setLoadFailed(true)}
-    />
-  );
+  return <img src={url} alt={alt} className={className} onError={handleImgError} />;
 }

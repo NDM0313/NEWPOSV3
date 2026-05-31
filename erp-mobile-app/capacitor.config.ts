@@ -14,6 +14,9 @@ const config: CapacitorConfig = {
     allowMixedContent: true,
   },
   plugins: {
+    CapacitorHttp: {
+      enabled: true,
+    },
     SplashScreen: {
       launchAutoHide: true,
       launchShowDuration: 2000,

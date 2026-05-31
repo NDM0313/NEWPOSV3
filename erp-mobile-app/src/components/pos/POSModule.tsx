@@ -530,6 +530,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
                       alt={product.name}
                       className="w-full h-full object-cover"
                       placeholderClassName="text-[#6B7280]"
+                      deferUntilVisible
                     />
                   ) : (
                     <Package className="w-8 h-8 text-[#6B7280]" aria-hidden />

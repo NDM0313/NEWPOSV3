@@ -128,6 +128,27 @@ async function fetchStockMovementsBatched(
   }
 }
 
+/** True when company (and optional branch) has at least one stock_movements row. */
+async function companyHasStockMovements(
+  companyId: string,
+  branchId?: string | null,
+): Promise<boolean> {
+  let q = supabase
+    .from('stock_movements')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', companyId)
+    .limit(1);
+  if (branchId && branchId !== 'all') {
+    q = q.eq('branch_id', branchId);
+  }
+  const { count, error } = await q;
+  if (error) {
+    console.warn('[INVENTORY SERVICE] stock_movements presence check failed:', error.message);
+    return true;
+  }
+  return (count ?? 0) > 0;
+}
+
 /** Fast path: inventory_balance for simple products; targeted movements for variation products. */
 async function fetchOverviewStockMaps(
   companyId: string,
@@ -162,11 +183,14 @@ async function fetchOverviewStockMaps(
       }
     );
     if (balances.length) {
-      balanceHasData = true;
-      for (const row of balances) {
-        maps.productStockMap[row.product_id] = Number(row.qty) || 0;
-        maps.productBoxMap[row.product_id] = Number(row.boxes) || 0;
-        maps.productPieceMap[row.product_id] = Number(row.pieces) || 0;
+      const movementsExist = await companyHasStockMovements(companyId, branchId);
+      if (movementsExist) {
+        balanceHasData = true;
+        for (const row of balances) {
+          maps.productStockMap[row.product_id] = Number(row.qty) || 0;
+          maps.productBoxMap[row.product_id] = Number(row.boxes) || 0;
+          maps.productPieceMap[row.product_id] = Number(row.pieces) || 0;
+        }
       }
     }
   }

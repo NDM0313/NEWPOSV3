@@ -480,7 +480,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                         }`}
                         aria-label={`View image for ${p.name}`}
                       >
-                        <ProductImage src={thumb} alt={p.name} variant="thumb" />
+                        <ProductImage src={thumb} alt={p.name} variant="thumb" deferUntilVisible />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">

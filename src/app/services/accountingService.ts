@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { fetchCustomerLedgerSalesForRange, ledgerSalesRpcBranchId } from '@/app/services/customerLedgerApi';
 
 export interface JournalEntry {
@@ -788,11 +789,15 @@ export const accountingService = {
       const payIds = [...new Set(validEntries.map((e: any) => e.payment_id).filter(Boolean))] as string[];
       const paymentContactNameByPaymentId = new Map<string, string>();
       if (payIds.length > 0) {
-        const { data: payPartyRows } = await supabase
-          .from('payments')
-          .select('id, contact_id, contact:contacts(name)')
-          .in('id', payIds);
-        (payPartyRows || []).forEach((p: any) => {
+        const payPartyRows = await fetchInBatches(payIds, async (chunk) => {
+          const { data, error: pErr } = await supabase
+            .from('payments')
+            .select('id, contact_id, contact:contacts(name)')
+            .in('id', chunk);
+          if (pErr) throw pErr;
+          return data || [];
+        });
+        payPartyRows.forEach((p: any) => {
           const c = Array.isArray(p.contact) ? p.contact[0] : p.contact;
           const nm = c?.name && String(c.name).trim();
           if (nm) paymentContactNameByPaymentId.set(String(p.id), nm);
@@ -815,15 +820,23 @@ export const accountingService = {
       ] as string[];
       const purchaseSupplierNameByPurchaseId = new Map<string, string>();
       if (purchaseIdsForParty.length > 0) {
-        const { data: purs } = await supabase
-          .from('purchases')
-          .select('id, supplier_id')
-          .in('id', purchaseIdsForParty);
-        const supIds = [...new Set((purs || []).map((p: any) => p.supplier_id).filter(Boolean))] as string[];
+        const purs = await fetchInBatches(purchaseIdsForParty, async (chunk) => {
+          const { data, error: purErr } = await supabase
+            .from('purchases')
+            .select('id, supplier_id')
+            .in('id', chunk);
+          if (purErr) throw purErr;
+          return data || [];
+        });
+        const supIds = [...new Set(purs.map((p: any) => p.supplier_id).filter(Boolean))] as string[];
         if (supIds.length > 0) {
-          const { data: supContacts } = await supabase.from('contacts').select('id, name').in('id', supIds);
-          const nmBySup = new Map((supContacts || []).map((c: any) => [String(c.id), String(c.name || '').trim()]));
-          (purs || []).forEach((p: any) => {
+          const supContacts = await fetchInBatches(supIds, async (chunk) => {
+            const { data, error: cErr } = await supabase.from('contacts').select('id, name').in('id', chunk);
+            if (cErr) throw cErr;
+            return data || [];
+          });
+          const nmBySup = new Map(supContacts.map((c: any) => [String(c.id), String(c.name || '').trim()]));
+          purs.forEach((p: any) => {
             const nm = p.supplier_id ? nmBySup.get(String(p.supplier_id)) : '';
             if (nm) purchaseSupplierNameByPurchaseId.set(String(p.id), nm);
           });
@@ -2308,10 +2321,7 @@ export const accountingService = {
 
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 1: Starting with customerId:', customerId);
 
-      // Get journal entry lines for AR accounts only (1100; never 2000 = AP)
-      const { data: lines, error } = await supabase
-        .from('journal_entry_lines')
-        .select(`
+      const arLineSelect = `
           *,
           account:accounts(id, name, code),
           journal_entry:journal_entries(
@@ -2327,9 +2337,28 @@ export const accountingService = {
             created_at,
             branch:branches(id, name, code)
           )
-        `)
-        .in('account_id', arAccountIds)
-        .order('created_at', { ascending: true });
+        `;
+      let lines: any[] = [];
+      let error: { message?: string } | null = null;
+      try {
+        lines = await fetchInBatches(arAccountIds, async (chunk) => {
+          const { data, error: chunkErr } = await supabase
+            .from('journal_entry_lines')
+            .select(arLineSelect)
+            .in('account_id', chunk)
+            .order('created_at', { ascending: true });
+          if (chunkErr) throw chunkErr;
+          return data || [];
+        });
+        lines.sort((a: any, b: any) => {
+          const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return tA - tB;
+        });
+      } catch (e: any) {
+        error = e;
+        lines = [];
+      }
       
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - PHASE 1: Total AR journal entry lines:', lines?.length || 0);
 

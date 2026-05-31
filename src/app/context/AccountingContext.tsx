@@ -33,6 +33,7 @@ import {
   stripPaymentChainHistoricalPrefix,
 } from '@/app/services/paymentChainMutationGuard';
 import { logPaymentCreated } from '@/app/services/auditLogService';
+import { fetchInBatches } from '@/app/lib/chunkInQuery';
 
 /** Leading numeric segment of account code (e.g. "1021-NDM" → "1021"). */
 function accountCodeDigits(acc: { code?: string } | null): string {
@@ -793,13 +794,22 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     const linkContactsToAccounts = async (list: Account[]): Promise<Account[]> => {
       const linkedIds = [...new Set(list.map((a) => a.linked_contact_id).filter(Boolean))] as string[];
       if (linkedIds.length === 0) return list;
-      const { data: contactRows, error: cErr } = await supabase
-        .from('contacts')
-        .select('id, name, type')
-        .eq('company_id', companyId)
-        .in('id', linkedIds);
-      if (cErr || !contactRows?.length) return list;
-      const byId = new Map(contactRows.map((c: { id: string; name: string; type?: string }) => [c.id, c]));
+      let contactRows: { id: string; name: string; type?: string }[] = [];
+      try {
+        contactRows = await fetchInBatches(linkedIds, async (chunk) => {
+          const { data, error } = await supabase
+            .from('contacts')
+            .select('id, name, type')
+            .eq('company_id', companyId)
+            .in('id', chunk);
+          if (error) throw error;
+          return data || [];
+        });
+      } catch {
+        return list;
+      }
+      if (!contactRows.length) return list;
+      const byId = new Map(contactRows.map((c) => [c.id, c]));
       return list.map((acc) => {
         const cid = acc.linked_contact_id;
         if (!cid) return acc;
@@ -897,7 +907,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             .map((j) => String(j.id || '').trim())
             .filter(Boolean);
           const reversedOriginalIds = new Set<string>();
-          const CHUNK = 150;
+          const CHUNK = 25;
           for (let i = 0; i < jeIds.length; i += CHUNK) {
             const chunk = jeIds.slice(i, i + CHUNK);
             const { data: revParents, error: revErr } = await supabase
@@ -1026,7 +1036,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       try {
         const jeIds = rows.map((j) => String(j.id || '').trim()).filter(Boolean);
         const reversedOriginalIds = new Set<string>();
-        const CHUNK = 150;
+        const CHUNK = 25;
         for (let i = 0; i < jeIds.length; i += CHUNK) {
           const chunk = jeIds.slice(i, i + CHUNK);
           const { data: revParents, error: revErr } = await supabase
