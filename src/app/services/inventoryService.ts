@@ -149,12 +149,15 @@ async function companyHasStockMovements(
   return (count ?? 0) > 0;
 }
 
-/** Fast path: inventory_balance for simple products; targeted movements for variation products. */
+/**
+ * Stock maps for overview/POS. Prefer stock_movements (ledger truth). Use inventory_balance
+ * only when the company has no movements yet (e.g. fresh reset before first transaction).
+ */
 async function fetchOverviewStockMaps(
   companyId: string,
   productIds: string[],
   simpleProductIds: string[],
-  varProductIds: string[],
+  _varProductIds: string[],
   branchId?: string | null
 ): Promise<{
   maps: OverviewStockMaps;
@@ -163,8 +166,32 @@ async function fetchOverviewStockMaps(
   balanceHasData: boolean;
 }> {
   const maps = emptyOverviewStockMaps();
-  let balanceHasData = false;
+  const movementsExist = await companyHasStockMovements(companyId, branchId);
 
+  const loadMovementsForProducts = async (ids: string[]) => {
+    if (!ids.length) return { movRows: [] as any[], movementsError: null as { code?: string; message?: string } | null };
+    let pack = await fetchStockMovementsBatched(companyId, ids, branchId, MOVEMENT_STOCK_SELECT);
+    if (pack.error && isPostgrestMissingColumnError(pack.error)) {
+      pack = await fetchStockMovementsBatched(companyId, ids, branchId, MOVEMENT_STOCK_SELECT_FALLBACK);
+    }
+    return { movRows: pack.rows, movementsError: pack.error };
+  };
+
+  if (movementsExist) {
+    const { movRows, movementsError } = await loadMovementsForProducts(productIds);
+    if (movementsError && !isPostgrestMissingColumnError(movementsError)) {
+      return { maps, movRows: null, movementsError, balanceHasData: false };
+    }
+    applyMovementRowsToStockMaps(movRows || [], maps);
+    return {
+      maps,
+      movRows: movRows || [],
+      movementsError: movementsError ?? null,
+      balanceHasData: false,
+    };
+  }
+
+  let balanceHasData = false;
   if (simpleProductIds.length > 0) {
     const balances = await fetchInBatches(
       simpleProductIds,
@@ -183,74 +210,26 @@ async function fetchOverviewStockMaps(
       }
     );
     if (balances.length) {
-      const movementsExist = await companyHasStockMovements(companyId, branchId);
-      if (movementsExist) {
-        balanceHasData = true;
-        for (const row of balances) {
-          maps.productStockMap[row.product_id] = Number(row.qty) || 0;
-          maps.productBoxMap[row.product_id] = Number(row.boxes) || 0;
-          maps.productPieceMap[row.product_id] = Number(row.pieces) || 0;
-        }
+      balanceHasData = true;
+      for (const row of balances) {
+        maps.productStockMap[row.product_id] = Number(row.qty) || 0;
+        maps.productBoxMap[row.product_id] = Number(row.boxes) || 0;
+        maps.productPieceMap[row.product_id] = Number(row.pieces) || 0;
       }
     }
   }
 
-  if (balanceHasData) {
-    let movRows: any[] = [];
-    if (varProductIds.length > 0) {
-      let pack = await fetchStockMovementsBatched(
-        companyId,
-        varProductIds,
-        branchId,
-        MOVEMENT_STOCK_SELECT
-      );
-      if (pack.error && !isPostgrestMissingColumnError(pack.error)) {
-        return { maps, movRows: null, movementsError: pack.error, balanceHasData };
-      }
-      movRows = pack.rows;
-      if (pack.error && isPostgrestMissingColumnError(pack.error)) {
-        pack = await fetchStockMovementsBatched(
-          companyId,
-          varProductIds,
-          branchId,
-          MOVEMENT_STOCK_SELECT_FALLBACK
-        );
-        if (pack.error && !isPostgrestMissingColumnError(pack.error)) {
-          return { maps, movRows: null, movementsError: pack.error, balanceHasData };
-        }
-        movRows = pack.rows;
-      }
-      applyMovementRowsToStockMaps(movRows, maps);
-    }
-    return { maps, movRows, movementsError: null, balanceHasData };
-  }
-
-  let pack = await fetchStockMovementsBatched(
-    companyId,
-    productIds,
-    branchId,
-    MOVEMENT_STOCK_SELECT
-  );
-  let movRows = pack.rows;
-  let movementsError = pack.error;
-  if (movementsError && isPostgrestMissingColumnError(movementsError)) {
-    pack = await fetchStockMovementsBatched(
-      companyId,
-      productIds,
-      branchId,
-      MOVEMENT_STOCK_SELECT_FALLBACK
-    );
-    if (!pack.error) {
-      movRows = pack.rows;
-      movementsError = null;
-    } else {
-      return { maps, movRows: null, movementsError: pack.error, balanceHasData };
-    }
-  } else if (movementsError) {
+  const { movRows, movementsError } = await loadMovementsForProducts(productIds);
+  if (movementsError && !isPostgrestMissingColumnError(movementsError)) {
     return { maps, movRows: null, movementsError, balanceHasData };
   }
   applyMovementRowsToStockMaps(movRows || [], maps);
-  return { maps, movRows: movRows || [], movementsError: movementsError ?? null, balanceHasData };
+  return {
+    maps,
+    movRows: movRows || [],
+    movementsError: movementsError ?? null,
+    balanceHasData,
+  };
 }
 
 /** Branch-scoped stock maps for POS and pickers. */
@@ -513,13 +492,9 @@ export const inventoryService = {
 
     if (movementsError && !isPostgrestMissingColumnError(movementsError)) {
       console.error('[INVENTORY SERVICE] ❌ Error fetching stock movements:', movementsError);
-    } else if (
-      balanceHasData &&
-      !movRows?.length &&
-      (Object.keys(productStockMap).length > 0 || Object.keys(variationStockMap).length > 0)
-    ) {
+    } else if (balanceHasData && !movRows?.length && Object.keys(productStockMap).length > 0) {
       console.warn(
-        '[INVENTORY SERVICE] inventory_balance has rows but no stock_movements — stale snapshot after reset?',
+        '[INVENTORY SERVICE] Using inventory_balance only (no stock_movements for this scope).',
       );
     }
 

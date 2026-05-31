@@ -2,6 +2,8 @@
 
 **Goal:** Inventory is not dummy numbers. Stock is the single source of truth. Sale / Purchase / Adjustment / Packing all verify from here.
 
+> **Errata (2026-05): UI display stock** — Grids, Products, Stock Report, and POS qty shown to users follow **`stock_movements` sums** via `inventoryService.getInventoryOverview`, not raw `inventory_balance` rows when movements exist. See **[`docs/infra/ERP_DISPLAY_LOCKED.md`](infra/ERP_DISPLAY_LOCKED.md)** Section B. This document’s `inventory_balance` tables below remain valid for snapshot/trigger design, not for bypassing the overview API.
+
 ---
 
 ## STEP 1 – Real Scope (ERP Thinking)

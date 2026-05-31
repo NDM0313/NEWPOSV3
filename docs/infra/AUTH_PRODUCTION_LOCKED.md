@@ -31,6 +31,7 @@ This document defines the **canonical** way Supabase keys reach the Din Couture 
 ## ERP Nginx → Kong (same-origin bridge)
 
 - [`deploy/nginx.conf`](../../deploy/nginx.conf) proxies `/auth/`, `/rest/`, `/storage/`, `/realtime/` to `supabase-kong:8000` with `Host: supabase.dincouture.pk`. `client_max_body_size` and `proxy_buffering off` on `/auth/` and `/rest/` reduce risk of truncated or buffered JSON bodies on login and large filters.
+- **Product photos + stock display:** sign/upload path rules and nginx static-regex exclusions are locked in [`ERP_DISPLAY_LOCKED.md`](ERP_DISPLAY_LOCKED.md) — read before changing `/storage/` or asset caching in nginx.
 
 ## VPS bridge audit (read-only)
 

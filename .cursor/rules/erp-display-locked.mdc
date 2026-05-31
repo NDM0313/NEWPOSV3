@@ -1,0 +1,29 @@
+---
+description: Product photo sign/upload and inventory stock display are locked — read ERP_DISPLAY_LOCKED.md before changing.
+globs:
+  - src/app/utils/productImageUpload.ts
+  - src/app/components/products/ProductImage.tsx
+  - src/app/services/inventoryService.ts
+  - src/app/components/inventory/InventoryDesignTestPage.tsx
+  - src/app/components/products/ProductsPage.tsx
+  - src/app/components/reports/StockReportPage.tsx
+  - src/app/components/products/FullStockLedgerView.tsx
+  - deploy/nginx.conf
+  - vite.config.ts
+  - src/main.tsx
+  - erp-mobile-app/src/utils/storageDisplayUrl.ts
+  - erp-mobile-app/src/utils/productImageUpload.ts
+alwaysApply: false
+---
+
+# Locked: ERP display (photos + stock)
+
+- **Canonical doc:** [`docs/infra/ERP_DISPLAY_LOCKED.md`](docs/infra/ERP_DISPLAY_LOCKED.md)
+
+- **Product photos:** Do not remove `product-images/` prefix stripping in [`productImageUpload.ts`](src/app/utils/productImageUpload.ts). Do not change [`deploy/nginx.conf`](deploy/nginx.conf) static file regex without `(?!storage/)` exclusion. Keep PWA `skipWaiting` / `clientsClaim` unless user approves cache regressions.
+
+- **Stock qty on UI:** Overview grids/reports must use [`inventoryService.getInventoryOverview`](src/app/services/inventoryService.ts). When `stock_movements` exist for the company, do **not** read `inventory_balance` for displayed qty on simple products. Ledger lines use `getStockMovements`; header qty must match overview.
+
+- **Mobile:** Native image URLs follow [`docs/infra/MOBILE_APK_LOCKED_PATTERN.md`](docs/infra/MOBILE_APK_LOCKED_PATTERN.md).
+
+If the user reports wrong thumbs, HTML 404 on storage upload, or stock 0 on grid vs 1 in ledger, read `ERP_DISPLAY_LOCKED.md` verification checklists first, then propose a **minimal** fix with explicit approval.
