@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { Capacitor } from '@capacitor/core';
-import { acceptAllowsCamera, capturePhotoWithNativeCamera } from '../../lib/mediaPick';
+import { acceptAllowsCamera } from '../../lib/mediaPick';
 import { MediaSourceActionSheet } from './MediaSourceActionSheet';
 
 export interface MediaSourcePickerProps {
@@ -16,8 +15,8 @@ export interface MediaSourcePickerProps {
 }
 
 /**
- * Opens a camera vs gallery/upload sheet on tap. Native uses @capacitor/camera for photos;
- * gallery uses file input (supports PDF and multi-select).
+ * Camera vs gallery sheet. Camera uses file input with capture=environment (works in Capacitor WebView + mobile browsers).
+ * Gallery uses standard file input (PDF, multi-select).
  */
 export function MediaSourcePicker({
   accept,
@@ -25,13 +24,13 @@ export function MediaSourcePicker({
   allowCamera,
   disabled = false,
   onFiles,
-  onError,
+  onError: _onError,
   sheetTitle,
   children,
 }: MediaSourcePickerProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const galleryRef = useRef<HTMLInputElement>(null);
-  const cameraWebRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
 
   const showCamera = allowCamera ?? acceptAllowsCamera(accept);
 
@@ -55,18 +54,7 @@ export function MediaSourcePicker({
 
   const openCamera = () => {
     if (disabled) return;
-    void (async () => {
-      try {
-        if (Capacitor.isNativePlatform()) {
-          const file = await capturePhotoWithNativeCamera();
-          if (file) emitFiles([file]);
-          return;
-        }
-        cameraWebRef.current?.click();
-      } catch (err) {
-        onError?.(err instanceof Error ? err.message : 'Could not open camera.');
-      }
-    })();
+    cameraRef.current?.click();
   };
 
   const openPicker = () => {
@@ -98,9 +86,9 @@ export function MediaSourcePicker({
         disabled={disabled}
         onChange={handleInputChange}
       />
-      {showCamera && !Capacitor.isNativePlatform() && (
+      {showCamera && (
         <input
-          ref={cameraWebRef}
+          ref={cameraRef}
           type="file"
           accept="image/*"
           capture="environment"
