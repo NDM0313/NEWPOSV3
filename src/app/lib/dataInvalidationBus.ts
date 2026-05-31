@@ -112,6 +112,21 @@ export function dispatchRentalLifecycleInvalidated(opts: {
 }
 
 /** Single accounting-domain invalidation (prefer over `accountingEntriesChanged` + `paymentAdded` + `ledgerUpdated`). */
+/** Accounting-only invalidations that must not reload full inventory overview. */
+export function shouldSkipInventoryReloadForReason(reason?: string): boolean {
+  if (!reason) return false;
+  const r = reason.toLowerCase();
+  return (
+    r.includes('sale-payment') ||
+    r.includes('saledocumentjournalcreated') ||
+    r.includes('accounting-entries-changed') ||
+    r.includes('sales-context-payment') ||
+    r.includes('manualreceipt') ||
+    r.includes('manualsupplier') ||
+    r.includes('product-csv-import')
+  );
+}
+
 export function dispatchAccountingInvalidated(opts: {
   companyId: string;
   branchId?: string | null;

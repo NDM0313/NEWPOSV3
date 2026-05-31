@@ -72,6 +72,8 @@ import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { productCategoryService } from '@/app/services/productCategoryService';
 import { getStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
 import { isStudioPipelineStructurallyLocked, todayDateInputValue } from '@/app/lib/studioOrderDisplay';
+import { workerRoleCatalogService } from '@/app/services/workerRoleCatalogService';
+import { workerRoleMatchesStage, type WorkerRoleOption } from '@/app/lib/workerRoles';
 import {
   formatExtraStageNotes,
   parseExtraStageDisplayName,
@@ -273,6 +275,7 @@ export const StudioSaleDetailNew = () => {
   const [productionId, setProductionId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [workers, setWorkers] = useState<Worker[]>([]);
+  const [mergedWorkerRoleCatalog, setMergedWorkerRoleCatalog] = useState<WorkerRoleOption[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showSaveConfirmDialog, setShowSaveConfirmDialog] = useState(false);
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
@@ -883,18 +886,27 @@ export const StudioSaleDetailNew = () => {
     return () => window.removeEventListener('saleUpdated', handler as EventListener);
   }, [selectedStudioSaleId, loadStudioOrder]);
 
-  /** Filter workers by task category: Dyeing → dyer/dyeing; Stitching → tailor/stitching-master/cutter; Handwork → hand-worker/helper/embroidery */
+  /** Filter workers by task category: built-in slugs + custom roles from company catalog. */
   const getWorkersForStageType = useCallback((stageType: 'dyer' | 'stitching' | 'handwork' | undefined, workerList: Worker[]): Worker[] => {
     if (!stageType) return workerList;
-    const role = (r: string) => (r || '').toLowerCase();
-    return workerList.filter(w => {
-      const d = role(w.department);
-      if (stageType === 'dyer') return d === 'dyer' || d === 'dyeing';
-      if (stageType === 'stitching') return ['tailor', 'stitching-master', 'cutter', 'stitching'].includes(d);
-      if (stageType === 'handwork') return ['hand-worker', 'helper', 'embroidery', 'handwork'].includes(d);
-      return false;
+    return workerList.filter((w) =>
+      workerRoleMatchesStage(w.department, stageType, mergedWorkerRoleCatalog),
+    );
+  }, [mergedWorkerRoleCatalog]);
+
+  useEffect(() => {
+    if (!companyId) {
+      setMergedWorkerRoleCatalog([]);
+      return;
+    }
+    let cancelled = false;
+    workerRoleCatalogService.loadMergedRoles(companyId).then((roles) => {
+      if (!cancelled) setMergedWorkerRoleCatalog(roles);
     });
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
 
   /** Workers from workers table + contacts merge (valid FK ids for assigned_worker_id). */
   const loadWorkers = useCallback(async () => {

@@ -4,7 +4,171 @@ Copy a new block for every build. Keep the newest entry at the top.
 
 ---
 
-## Latest build — 1.0.5 (build 12) — 2026-05-21
+## Latest build — 1.0.5 (build 21) — 2026-05-31
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-31 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 21 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build21.apk` |
+
+### Changelog (user-facing) — build 21
+
+- **VPS sync:** Push + full ERP deploy so web hosting matches localhost (login, products, settings, migrations).
+- **Web product photos:** Sign path-only `image_urls`; no invalid `img src` on failure.
+- **Mobile:** ERP proxy, storage auth retry, CORS upload headers on VPS nginx.
+
+### Install notes (build 21)
+
+1. Uninstall older ERP Mobile → install **`releases/erp-mobile-1.0.5-build21.apk`** only.
+2. Web: hard refresh after deploy (`Ctrl+Shift+R`).
+
+---
+
+## Previous build — 1.0.5 (build 20) — 2026-05-31
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-31 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 20 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build20.apk` |
+
+### Changelog (user-facing) — build 20
+
+- **Product photos (root fix):** Thumbnails re-sign after login when session becomes ready (fixes all "No photo" on build 19). Auth errors (401) are no longer cached for 5 minutes. Session wait/retry before storage sign.
+- **Web ERP (same deploy):** Products table signs path-only `image_urls` from web upload (was only signing URLs containing `/product-images/`).
+
+### Install notes (build 20)
+
+1. **Uninstall** ERP Mobile (build 19 or older).
+2. Install **`releases/erp-mobile-1.0.5-build20.apk`** only.
+3. Sign in → open **Products**; photos should load within a few seconds.
+4. **Web:** hard-refresh Products page after VPS deploy (`Ctrl+Shift+R`).
+
+---
+
+## Previous build — 1.0.5 (build 19) — 2026-05-31
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-31 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 19 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build19.apk` |
+
+### Changelog (user-facing) — build 19
+
+- **Product photos on APK:** Safer signed-URL host rewrite (keeps Supabase-encoded path/query). Native storage signing is throttled (max 6 concurrent) so the Products list does not stampede storage and cache "No photo" for 5 minutes.
+- **Cache:** Signed URL cache clears on login / token refresh so failed signs before session ready do not stick.
+- Requires build **18+** ERP proxy (`https://erp.dincouture.pk`); build 19 fixes display on top of that.
+
+### Install notes (build 19)
+
+1. **Uninstall** ERP Mobile (build 18 or older).
+2. Install **`releases/erp-mobile-1.0.5-build19.apk`** only.
+3. Sign in with email/password (same as PWA).
+4. **Products** → thumbnails for items that show photos on `https://erp.dincouture.pk/m/`.
+
+### Mobile test checklist (build 19)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Login | Email/password works |
+| 2 | Products list | Items with PWA photos show thumbnails (not all "No photo") |
+| 3 | Product tap | Preview opens image |
+| 4 | Sales → Add Products | Same product photos visible |
+
+---
+
+## Previous build — 1.0.5 (build 18) — 2026-05-31
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-31 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 18 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build18.apk` |
+
+### Changelog (user-facing) — build 18
+
+- **APK login fix (CORS):** Native app now calls **`https://erp.dincouture.pk`** for auth/REST/storage (nginx proxy), not direct `supabase.dincouture.pk`. Kong echoes PWA origins but not `capacitor://localhost`; ERP nginx does (`access-control-allow-origin: capacitor://localhost`).
+- Builds 16–17 used direct Supabase + password grant — still blocked by CORS on device.
+
+### Install notes (build 18)
+
+1. **Uninstall** ERP Mobile (build 17 or older).
+2. Install **`releases/erp-mobile-1.0.5-build18.apk`** only.
+3. Sign in with email/password (same as PWA).
+4. Product photos / uploads use ERP proxy path (same CORS as login).
+
+---
+
+## Previous build — 1.0.5 (build 17) — 2026-05-31
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-31 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 17 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build17.apk` |
+
+### Changelog (user-facing) — build 17
+
+- **APK login fix:** Native app now uses the same direct GoTrue password grant as PWA (`erp.dincouture.pk/m/`). Build 16 still called `signInWithPassword` from the WebView, which failed cross-origin and showed “Cannot reach the server” even after uninstall.
+- **Support:** Network login errors on APK mention installing the latest build when PWA works.
+
+### Install notes (build 17)
+
+1. **Uninstall** ERP Mobile (build 16 or older).
+2. Install `releases/erp-mobile-1.0.5-build17.apk` — **not** build 16.
+3. Sign in with email/password (same account as PWA).
+4. Product photo upload should work (Kong storage CORS already fixed on VPS).
+
+---
+
+## Previous build — 1.0.5 (build 16) — 2026-05-31
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-31 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 16 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build16.apk` |
+| **Supabase API** | `https://supabase.dincouture.pk` (anon synced from VPS Kong `ANON_KEY`) |
+
+### Changelog (user-facing) — build 16
+
+- **Login on APK:** release build bakes current VPS anon JWT (`sync-env-from-vps.mjs`); fixes “Cannot reach the server” when local key was stale (Kong CORS for `capacitor://localhost` verified on VPS).
+- **Settings crash:** ErpPrinter Bluetooth list no longer crashes WebView on Android 12+ without runtime `BLUETOOTH_CONNECT`; paired devices load only when **Printer & barcode** section is opened.
+- **Settings:** screen-level error boundary with Go back / Reload.
+
+### Install notes (build 16)
+
+1. **Uninstall** any previous ERP Mobile app (required — clears old WebView cache and auth storage).
+2. Install `releases/erp-mobile-1.0.5-build16.apk`.
+3. Sign in with email/password — must not show red network error.
+4. Open **Settings** from home — screen must stay open (no instant crash).
+5. Optional: **Printer & barcode** → Thermal → grant Bluetooth if prompted → pick paired printer.
+
+### Operator: rebuild with VPS key
+
+```bash
+cd erp-mobile-app
+npm run sync:mobile:env:vps    # or falls back to local .env
+npm run android:apk:release:win
+```
+
+---
+
+## Previous build — 1.0.5 (build 12) — 2026-05-21
 
 | Field | Value |
 |--------|--------|

@@ -26,7 +26,8 @@
     "android:apk:release": "cd android && ./gradlew assembleRelease",
     "sync:mobile:env": "node scripts/sync-env-production-from-local.mjs",
     "verify:mobile:env": "node scripts/verify-mobile-build-env.mjs",
-    "android:apk:release:win": "node scripts/sync-env-production-from-local.mjs && node scripts/verify-mobile-build-env.mjs && npm run cap:sync:android:prod && cd android && gradlew.bat assembleRelease && cd .. && node scripts/copy-release-apk.mjs",
+    "sync:mobile:env:vps": "node scripts/sync-env-from-vps.mjs",
+    "android:apk:release:win": "node scripts/prepare-release-env.mjs && node scripts/verify-mobile-build-env.mjs && npm run cap:sync:android:prod && cd android && gradlew.bat assembleRelease && cd .. && node scripts/copy-release-apk.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

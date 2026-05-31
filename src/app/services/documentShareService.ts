@@ -3,6 +3,7 @@
  * Works with the unified document engine (caller provides the DOM element for PDF).
  */
 
+import { buildWhatsAppUrl, openWhatsAppShare as openWhatsAppShareImpl } from '@/app/lib/phoneWhatsApp';
 import {
   pdfExportService,
   type DocumentType,
@@ -40,12 +41,7 @@ export async function downloadAsPdf(
  * Uses wa.me with text query. For "Share Invoice" flow: message can say "Please find invoice INV-001 attached" and user downloads PDF then attaches in WhatsApp.
  */
 export function getWhatsAppShareUrl(phone: string | null, text: string): string {
-  const cleanPhone = phone ? phone.replace(/\D/g, '') : '';
-  const base = 'https://wa.me/';
-  if (!cleanPhone) {
-    return `${base}?text=${encodeURIComponent(text)}`;
-  }
-  return `${base}${cleanPhone}?text=${encodeURIComponent(text)}`;
+  return buildWhatsAppUrl(phone || undefined, text);
 }
 
 /**
@@ -55,8 +51,7 @@ export function shareViaWhatsApp(
   text: string,
   phone?: string | null
 ): void {
-  const url = getWhatsAppShareUrl(phone ?? null, text);
-  window.open(url, '_blank', 'noopener,noreferrer');
+  openWhatsAppShareImpl(phone ?? undefined, text);
 }
 
 /**

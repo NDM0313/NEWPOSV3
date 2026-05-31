@@ -1,3 +1,4 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 import { supabase } from '@/lib/supabase';
 import { productService } from './productService';
 import { accountingService } from './accountingService';
@@ -311,7 +312,7 @@ export const saleReturnService = {
       discount_amount,
       tax_amount,
       total,
-      updated_at: new Date().toISOString(),
+      updated_at: getCurrentLocalTimestamp(),
     };
     if (customer_id !== undefined) updatePayload.customer_id = customer_id;
     if (customer_name !== undefined) updatePayload.customer_name = customer_name;
@@ -485,7 +486,7 @@ export const saleReturnService = {
 
     const { data: claimedFinal, error: claimErr } = await supabase
       .from('sale_returns')
-      .update({ status: 'final', updated_at: new Date().toISOString() })
+      .update({ status: 'final', updated_at: getCurrentLocalTimestamp() })
       .eq('id', returnId)
       .eq('company_id', companyId)
       .eq('status', 'draft')
@@ -502,7 +503,7 @@ export const saleReturnService = {
     const rollbackToDraft = async () => {
       await supabase
         .from('sale_returns')
-        .update({ status: 'draft', updated_at: new Date().toISOString() })
+        .update({ status: 'draft', updated_at: getCurrentLocalTimestamp() })
         .eq('id', returnId)
         .eq('company_id', companyId)
         .eq('status', 'final');
@@ -647,7 +648,7 @@ export const saleReturnService = {
       .update({
         subtotal: lineSum,
         total: Math.max(0, roundMoney2(lineSum - disc + tax)),
-        updated_at: new Date().toISOString(),
+        updated_at: getCurrentLocalTimestamp(),
       })
       .eq('id', returnId)
       .eq('company_id', companyId);
@@ -750,7 +751,7 @@ export const saleReturnService = {
 
     const { data: claimedVoid, error: claimVoidErr } = await supabase
       .from('sale_returns')
-      .update({ status: 'void', updated_at: new Date().toISOString() })
+      .update({ status: 'void', updated_at: getCurrentLocalTimestamp() })
       .eq('id', returnId)
       .eq('company_id', companyId)
       .eq('status', 'final')
@@ -769,7 +770,7 @@ export const saleReturnService = {
     const rollbackToFinal = async () => {
       await supabase
         .from('sale_returns')
-        .update({ status: 'final', updated_at: new Date().toISOString() })
+        .update({ status: 'final', updated_at: getCurrentLocalTimestamp() })
         .eq('id', returnId)
         .eq('company_id', companyId)
         .eq('status', 'void');
@@ -954,7 +955,7 @@ export const saleReturnService = {
 
     const { data: claimed, error: claimErr } = await supabase
       .from('sale_returns')
-      .update({ status: 'final', updated_at: new Date().toISOString() })
+      .update({ status: 'final', updated_at: getCurrentLocalTimestamp() })
       .eq('id', returnId)
       .eq('company_id', companyId)
       .eq('status', 'void')

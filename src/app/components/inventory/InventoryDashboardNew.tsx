@@ -24,8 +24,10 @@ import { groupStockMovements, ViewMode, GroupedMovementRow } from '../../utils/s
 import {
   DATA_INVALIDATED_EVENT,
   shouldAcceptInvalidation,
+  shouldSkipInventoryReloadForReason,
   type DataInvalidationDetail,
 } from '@/app/lib/dataInvalidationBus';
+import { isBulkImportActive } from '@/app/lib/bulkImportSession';
 
 type InventoryTab = 'overview' | 'analytics';
 
@@ -184,11 +186,7 @@ export const InventoryDashboardNew = () => {
 
     // Also listen for payment events (payments can affect inventory indirectly)
     const handlePaymentAdded = () => {
-      console.log('[INVENTORY] Payment added - refreshing inventory');
-      loadOverview();
-      if (activeTab === 'analytics') {
-        loadMovements();
-      }
+      /* Payments do not change stock — saleService posts stock on finalize only */
     };
 
     const handleProductsUpdated = () => {
@@ -231,10 +229,17 @@ export const InventoryDashboardNew = () => {
         timer = null;
         void loadOverview();
         if (activeTab === 'analytics') void loadMovements();
-      }, 220);
+      }, 400);
     };
     const onInvalidated = (ev: Event) => {
+      if (isBulkImportActive()) return;
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
+      if (
+        detail?.domain === 'accounting' &&
+        shouldSkipInventoryReloadForReason(detail?.reason)
+      ) {
+        return;
+      }
       if (
         !shouldAcceptInvalidation(detail, {
           domain: ['inventory', 'sales', 'purchases', 'accounting', 'rentals', 'studio'],

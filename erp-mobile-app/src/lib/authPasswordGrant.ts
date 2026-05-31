@@ -90,6 +90,10 @@ export async function loginWithPasswordGrant(
     return { data: { session, user: session.user }, error: null };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    if (typeof console !== 'undefined' && /fetch|network/i.test(message)) {
+      const tail = anon.length >= 8 ? anon.slice(-8) : '(short)';
+      console.warn('[ERP Mobile] password grant failed:', message, 'url=', base, 'anon…', tail);
+    }
     return {
       data: null,
       error: { name: 'AuthRetryableFetchError', message, status: 0 } as AuthError,

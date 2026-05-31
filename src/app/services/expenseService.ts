@@ -1,3 +1,4 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 import { supabase } from '@/lib/supabase';
 
 export interface Expense {
@@ -133,7 +134,7 @@ export const expenseService = {
 
   // Delete expense — true delete + void JEs + void payments
   async deleteExpense(id: string, companyId?: string) {
-    const now = new Date().toISOString();
+    const now = getCurrentLocalTimestamp();
     if (companyId) {
       // Void associated journal entries
       await supabase

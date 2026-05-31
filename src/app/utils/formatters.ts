@@ -239,6 +239,13 @@ export const formatStockReference = (options: {
     return 'PR-????';
   }
 
+  if (type === 'bespoke_work_order') {
+    const fromNotes = notes?.match(/BWO-[\w-]+/i)?.[0];
+    if (fromNotes) return fromNotes;
+    if (referenceId && isUUID(referenceId)) return `BWO-${referenceId.substring(0, 4)}`;
+    return 'BWO';
+  }
+
   if (type.includes('sale') || type.includes('invoice')) {
     if (saleInvoiceNo && !isUUID(saleInvoiceNo)) return saleInvoiceNo;
     if (referenceId && isUUID(referenceId)) return `SL-${referenceId.substring(0, 4)}`;

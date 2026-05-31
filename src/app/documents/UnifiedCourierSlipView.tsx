@@ -4,7 +4,7 @@
  */
 import React, { useRef } from 'react';
 import { useUnifiedDocumentSettings } from './useUnifiedDocumentSettings';
-import { resolveDocumentOptions } from './resolveOptions';
+import { useCompanyLogoDisplayUrl } from '@/app/hooks/useCompanyLogoDisplayUrl';
 import { CourierSlipTemplate } from './templates/CourierSlipTemplate';
 import type { CourierSlipDocument } from './templates/CourierSlipTemplate';
 import { Button } from '@/app/components/ui/button';
@@ -26,8 +26,11 @@ export const UnifiedCourierSlipView: React.FC<UnifiedCourierSlipViewProps> = ({
   onClose,
   showPrintAction = true,
 }) => {
-  const { settings, loading, error } = useUnifiedDocumentSettings(companyId, 'courier_slip');
-  const resolved = settings ? resolveDocumentOptions(settings, 'courier_slip') : null;
+  const { resolvedOptions, showLogo, loading, error } = useUnifiedDocumentSettings(companyId, 'courier_slip');
+  const logoDisplay = useCompanyLogoDisplayUrl(showLogo ? resolvedOptions?.courierSlip.logoUrl : undefined);
+  const resolved = resolvedOptions
+    ? { ...resolvedOptions, courierSlip: { ...resolvedOptions.courierSlip, logoUrl: logoDisplay || null } }
+    : null;
   const options = resolved ? {
     showCompanyAddress: resolved.courierSlip.showCompanyAddress,
     showNotes: resolved.courierSlip.showNotes,

@@ -1,3 +1,4 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 /**
  * PF-14.1: Payment amount edit – post delta JE only (never touch original payment JE).
  * When user edits a posted payment amount (e.g. 30,000 → 27,000), we update the payment row
@@ -595,7 +596,7 @@ export async function syncPaymentAccountAdjustmentsForCompany(companyId: string)
         newAccountId: currentAccountId,
         amount,
         invoiceNoOrRef,
-        entryDate: (p.payment_date || primary.entry_date || new Date().toISOString().slice(0, 10)).toString().slice(0, 10),
+        entryDate: (p.payment_date || primary.entry_date || localNowDateString()).toString().slice(0, 10),
         createdBy: null,
       });
       if (posted) synced++;

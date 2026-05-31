@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   Search, 
   ShoppingCart, 
@@ -26,15 +27,19 @@ import {
   ChevronDown,
   Hash,
   Edit2,
+  Scissors,
   Loader2,
   ChevronLeft,
   ChevronRight,
-  FileEdit
+  FileEdit,
+  Building2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
+import { useGlobalFilterOptional } from '../../context/GlobalFilterContext';
 import { productService } from '../../services/productService';
+import { branchService, type Branch } from '../../services/branchService';
 import { fetchBranchStockMaps } from '../../services/inventoryService';
 import { contactService } from '../../services/contactService';
 import { saleService } from '../../services/saleService';
@@ -51,9 +56,27 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Label } from "../ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 import { toast } from 'sonner';
 import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 import type { Sale, SaleItem } from '@/app/context/SalesContext';
+import { BespokeDetailsModal } from '../bespoke/BespokeDetailsModal';
+import type { CustomizationDetails } from '@/app/types/bespoke';
+import { buildBespokeMetadataForPersist } from '@/app/types/bespoke';
+import type { BespokeInjectionPayload } from '@/app/lib/bespokeCartInjection';
+import {
+  syncFabricChildLines,
+  orderSaleLinesForPersist,
+  hydrateFabricDraftsFromChildren,
+  isInjectedBespokeLine,
+  resolveFabricMaterialRetailPrice,
+} from '@/app/lib/bespokeCartInjection';
 
 interface POSVariation {
   id: string;
@@ -83,18 +106,35 @@ interface POSCustomer {
 interface CartItem {
   id: string;
   name: string;
+  sku?: string;
   retailPrice: number;
   wholesalePrice: number;
   qty: number;
   customPrice?: number;
-  productId: string; // Supabase product ID
+  productId: string;
+  variationId?: string;
+  customizationDetails?: CustomizationDetails;
+  bespokeParentCartId?: string;
+  bespokeRole?: 'fabric';
+  isBespokeInjected?: boolean;
+  parentLineIndex?: number;
+}
+
+interface POSExtraExpense {
+  id: string;
+  type: 'stitching' | 'lining' | 'dying' | 'cargo' | 'other';
+  amount: number;
+  notes?: string;
 }
 
 export const POS = () => {
   const { setCurrentView } = useNavigation();
-  const { companyId, branchId, user } = useSupabase();
+  const { companyId, branchId, setBranchId, accessibleBranchIds, user } = useSupabase();
+  const globalFilter = useGlobalFilterOptional();
   const { sales, createSale, updateSale, refreshSales, getSaleById } = useSales();
-  const { posSettings } = useSettings();
+  const { posSettings, businessSettings } = useSettings();
+  const enableBespoke = businessSettings.enableBespokeOrders;
+  const bespokeFormConfig = businessSettings.bespokeFormConfig;
   // Company-level setting from DB (same for all users — not context)
   const [allowNegativeStock, setAllowNegativeStock] = useState(false);
   const { formatCurrency, currencySymbol } = useFormatCurrency();
@@ -104,6 +144,7 @@ export const POS = () => {
   ]);
   const [loading, setLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [bespokeCartId, setBespokeCartId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState("All");
   const [isWholesale, setIsWholesale] = useState(false);
@@ -149,6 +190,78 @@ export const POS = () => {
   const [paymentDialogTotal, setPaymentDialogTotal] = useState(0);
   const [posSaveInProgress, setPosSaveInProgress] = useState(false);
   const posSaveInProgressRef = React.useRef(false);
+  const [extraExpenses, setExtraExpenses] = useState<POSExtraExpense[]>([]);
+  const [newExpenseType, setNewExpenseType] = useState<POSExtraExpense['type']>('stitching');
+  const [newExpenseAmount, setNewExpenseAmount] = useState(0);
+  const [newExpenseNotes, setNewExpenseNotes] = useState('');
+
+  const [posBranches, setPosBranches] = useState<Branch[]>([]);
+  const [loadingPosBranches, setLoadingPosBranches] = useState(false);
+  const prevBranchIdRef = useRef<string | null>(branchId);
+
+  const posBranchReady = Boolean(branchId && branchId !== 'all');
+  const showPosBranchPicker = posBranches.length > 1;
+
+  const applyPosBranchId = useCallback(
+    (id: string) => {
+      if (!id || id === 'all') return;
+      setBranchId(id);
+      globalFilter?.setBranchId(id);
+    },
+    [setBranchId, globalFilter],
+  );
+
+  const loadPosBranches = useCallback(async () => {
+    if (!companyId) {
+      setPosBranches([]);
+      return;
+    }
+    setLoadingPosBranches(true);
+    try {
+      const all = await branchService.getBranchesCached(companyId);
+      const filtered =
+        accessibleBranchIds.length > 0
+          ? all.filter((b) => accessibleBranchIds.includes(b.id))
+          : all;
+      setPosBranches(filtered.filter((b) => b.is_active !== false));
+    } catch (e) {
+      console.error('[POS] Failed to load branches:', e);
+      toast.error('Failed to load branches');
+      setPosBranches([]);
+    } finally {
+      setLoadingPosBranches(false);
+    }
+  }, [companyId, accessibleBranchIds]);
+
+  useEffect(() => {
+    loadPosBranches();
+  }, [loadPosBranches]);
+
+  useEffect(() => {
+    if (posBranches.length !== 1) return;
+    const onlyId = posBranches[0].id;
+    if (branchId === onlyId) return;
+    if (!branchId || branchId === 'all') {
+      applyPosBranchId(onlyId);
+    }
+  }, [posBranches, branchId, applyPosBranchId]);
+
+  useEffect(() => {
+    const prev = prevBranchIdRef.current;
+    if (
+      prev &&
+      prev !== 'all' &&
+      branchId &&
+      branchId !== 'all' &&
+      prev !== branchId &&
+      cart.length > 0
+    ) {
+      toast.info('Branch changed — cart cleared; stock is branch-specific');
+      setCart([]);
+      setBespokeCartId(null);
+    }
+    prevBranchIdRef.current = branchId;
+  }, [branchId, cart.length]);
 
   const isViewMode = selectedSaleIndex >= 0 && !editMode;
   const isEditable = editMode || selectedSaleIndex === -1;
@@ -216,16 +329,57 @@ export const POS = () => {
   // Enter edit mode: refill cart from viewing sale (POS inline edit only). Use sum of payments as Paid when available.
   const enterEditMode = useCallback(() => {
     if (!viewingSale?.items?.length) return;
-    const cartItems: CartItem[] = viewingSale.items.map((item: SaleItem, i: number) => ({
-      id: item.productId + (i ? `-${i}` : ''),
-      name: item.productName || '',
-      retailPrice: item.price || 0,
-      wholesalePrice: item.price || 0,
-      qty: item.quantity,
-      customPrice: item.price,
-      productId: item.productId,
-    }));
+    const parentCartIds = new Map<string, string>();
+    viewingSale.items.forEach((item: SaleItem) => {
+      if (!item.bespokeParentItemId) {
+        parentCartIds.set(item.id, item.id);
+      }
+    });
+    const cartItems: CartItem[] = viewingSale.items.map((item: SaleItem) => {
+      const isFabricChild = !!item.bespokeParentItemId;
+      const cartId = item.id;
+      if (isFabricChild) {
+        const parentCartId = parentCartIds.get(item.bespokeParentItemId!) ?? item.bespokeParentItemId!;
+        return {
+          id: cartId,
+          name: item.productName || '',
+          sku: item.sku,
+          retailPrice: item.price || 0,
+          wholesalePrice: item.price || 0,
+          qty: item.quantity,
+          productId: item.productId,
+          variationId: item.variationId,
+          bespokeParentCartId: parentCartId,
+          bespokeRole: 'fabric' as const,
+          isBespokeInjected: true,
+        };
+      }
+      return {
+        id: cartId,
+        name: item.productName || '',
+        sku: item.sku,
+        retailPrice: item.price || 0,
+        wholesalePrice: item.price || 0,
+        qty: item.quantity,
+        productId: item.productId,
+        variationId: item.variationId,
+        customizationDetails: item.customizationDetails as CustomizationDetails | undefined,
+      };
+    });
     setCart(cartItems);
+    const chargeRows = (viewingSale.charges || []).filter(
+      (c) => {
+        const t = (c.charge_type || c.chargeType || '').toLowerCase();
+        return t !== 'shipping' && t !== 'discount';
+      },
+    );
+    setExtraExpenses(
+      chargeRows.map((c, idx) => ({
+        id: `exp-${idx}`,
+        type: ((c.charge_type || c.chargeType || 'other') as POSExtraExpense['type']),
+        amount: Number(c.amount) || 0,
+      })),
+    );
     setDiscountValue(String(viewingSale.discount || 0));
     setDiscountType('amount');
     setSelectedCustomer(viewingSale.customer || 'walk-in');
@@ -241,13 +395,79 @@ export const POS = () => {
     setCart([]);
   }, []);
 
-  const getPrice = (item: any) => isWholesale ? item.wholesalePrice : item.retailPrice;
+  const getPrice = (item: CartItem) => isWholesale ? item.wholesalePrice : item.retailPrice;
+
+  const getLineUnitPrice = (item: CartItem) => {
+    if (item.customPrice !== undefined) return item.customPrice;
+    return getPrice(item);
+  };
+
+  const buildPosSaleItems = useCallback((cartItems: CartItem[]) => {
+    const ordered = orderSaleLinesForPersist(
+      cartItems.map((c) => ({
+        id: c.id,
+        productId: c.productId,
+        name: c.name,
+        sku: c.sku ?? 'N/A',
+        price: getLineUnitPrice(c),
+        qty: c.qty,
+        variationId: c.variationId,
+        customizationDetails: c.customizationDetails as Record<string, unknown> | undefined,
+        bespokeParentCartId: c.bespokeParentCartId,
+        bespokeRole: c.bespokeRole,
+        isBespokeInjected: c.isBespokeInjected,
+      })),
+    );
+    return ordered.map((item) => {
+      const unit = item.price;
+      const meta = buildBespokeMetadataForPersist(item.customizationDetails);
+      return {
+        id: '',
+        productId: item.productId,
+        variationId: item.variationId,
+        productName: item.name,
+        sku: item.sku ?? 'N/A',
+        quantity: item.qty,
+        price: unit,
+        discount: 0,
+        tax: 0,
+        total: unit * item.qty,
+        customizationDetails: meta ?? item.customizationDetails,
+        parentLineIndex: item.parentLineIndex,
+        bespokeParentCartId: item.bespokeParentCartId,
+      };
+    });
+  }, []);
+
+  const handleBespokeSave = (cartId: string, payload: BespokeInjectionPayload) => {
+    const { items: nextCart } = syncFabricChildLines(
+      cart,
+      cartId,
+      payload.fabrics,
+      resolveFabricMaterialRetailPrice,
+      () => `fabric-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    );
+    setCart(
+      nextCart.map((row) => {
+        if (row.isBespokeInjected) {
+          const unit = Number((row as { price?: number }).price) || 0;
+          return {
+            ...row,
+            retailPrice: unit,
+            wholesalePrice: unit,
+          } as CartItem;
+        }
+        if (row.id !== cartId) return row;
+        const meta = buildBespokeMetadataForPersist(payload.metadata);
+        return { ...row, customizationDetails: meta ?? undefined };
+      }),
+    );
+    setBespokeCartId(null);
+    toast.success('Customization saved');
+  };
 
   // Calculate subtotal with custom prices (must be before handleSavePosEdit)
-  const subtotal = cart.reduce((sum, item) => {
-    const price = item.customPrice !== undefined ? item.customPrice : getPrice(item);
-    return sum + (price * item.qty);
-  }, 0);
+  const subtotal = cart.reduce((sum, item) => sum + getLineUnitPrice(item) * item.qty, 0);
 
   const discountAmount = useMemo(() => {
     const value = parseFloat(discountValue) || 0;
@@ -257,9 +477,10 @@ export const POS = () => {
     return value;
   }, [discountValue, discountType, subtotal]);
 
+  const expensesTotal = extraExpenses.reduce((sum, exp) => sum + exp.amount, 0);
   const afterDiscount = subtotal - discountAmount;
   const tax = 0;
-  const total = afterDiscount;
+  const total = afterDiscount + expensesTotal;
 
   const selectedCustomerData = customers.find(c => c.id === selectedCustomer);
 
@@ -267,18 +488,7 @@ export const POS = () => {
   const handleSavePosEdit = useCallback(async () => {
     if (!editMode || !selectedSaleId || !viewingSale || cart.length === 0) return;
     try {
-      const saleItems = cart.map(item => ({
-        id: '',
-        productId: item.productId,
-        variationId: item.variationId,
-        productName: item.name,
-        sku: 'N/A',
-        quantity: item.qty,
-        price: item.customPrice !== undefined ? item.customPrice : getPrice(item),
-        discount: 0,
-        tax: 0,
-        total: (item.customPrice !== undefined ? item.customPrice : getPrice(item)) * item.qty,
-      }));
+      const saleItems = buildPosSaleItems(cart);
       const paid = Math.max(0, Number(editPaidAmount) || 0);
       const due = Math.max(0, total - paid);
       const paymentStatus = due <= 0 ? 'paid' : 'partial';
@@ -294,6 +504,9 @@ export const POS = () => {
         customerName: selectedCustomerData?.name || 'Walk-in Customer',
         paymentStatus,
         paymentMethod: editPaymentMethod,
+        extraExpenses,
+        replaceSaleCharges: true,
+        expenses: expensesTotal,
       });
       toast.success('POS invoice updated');
       refreshSales();
@@ -308,7 +521,7 @@ export const POS = () => {
     } catch (e: any) {
       toast.error(e?.message || 'Failed to update');
     }
-  }, [editMode, selectedSaleId, viewingSale, cart, subtotal, discountAmount, tax, total, editPaidAmount, editPaymentMethod, selectedCustomer, selectedCustomerData, updateSale, refreshSales]);
+  }, [editMode, selectedSaleId, viewingSale, cart, subtotal, discountAmount, tax, total, expensesTotal, extraExpenses, editPaidAmount, editPaymentMethod, selectedCustomer, selectedCustomerData, updateSale, refreshSales, buildPosSaleItems]);
 
   // Load products and customers from Supabase; when branchId set, overlay branch-scoped stock from stock_movements
   const loadData = useCallback(async () => {
@@ -411,7 +624,7 @@ export const POS = () => {
   const loadTodayStats = useCallback(async () => {
     if (!companyId) return;
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = localNowDateString();
       const sales = await saleService.getSalesReport(companyId, today, today);
       const total = (sales || []).reduce((sum: number, s: any) => sum + (Number(s.total) || 0), 0);
       setTodayStats({ total, count: (sales || []).length });
@@ -479,22 +692,53 @@ export const POS = () => {
     }).filter(p => p.qty > 0));
   };
 
-  // NEW: Update custom price
+  // Update line price (fabric injected lines: retail; others: customPrice override)
   const updateCustomPrice = (id: string, price: string) => {
     const priceValue = parseFloat(price);
-    setCart(prev => prev.map(p => 
-      p.id === id 
-        ? { ...p, customPrice: isNaN(priceValue) ? undefined : priceValue }
-        : p
-    ));
+    setCart(prev => prev.map(p => {
+      if (p.id !== id) return p;
+      if (isNaN(priceValue)) {
+        if (p.isBespokeInjected) {
+          return { ...p, retailPrice: 0, wholesalePrice: 0, customPrice: undefined };
+        }
+        return { ...p, customPrice: undefined };
+      }
+      if (p.isBespokeInjected) {
+        return {
+          ...p,
+          retailPrice: priceValue,
+          wholesalePrice: priceValue,
+          customPrice: priceValue,
+        };
+      }
+      return { ...p, customPrice: priceValue };
+    }));
   };
 
   const removeItem = (id: string) => {
-    setCart(prev => prev.filter(p => p.id !== id));
+    setCart(prev => prev.filter(p => p.id !== id && p.bespokeParentCartId !== id));
+  };
+
+  const addExtraExpense = () => {
+    if (newExpenseAmount <= 0) return;
+    setExtraExpenses(prev => [...prev, {
+      id: Date.now().toString(),
+      type: newExpenseType,
+      amount: newExpenseAmount,
+      notes: newExpenseNotes || undefined,
+    }]);
+    setNewExpenseAmount(0);
+    setNewExpenseNotes('');
+    toast.success('Expense added');
+  };
+
+  const removeExtraExpense = (expId: string) => {
+    setExtraExpenses(prev => prev.filter(e => e.id !== expId));
   };
 
   const clearCart = () => {
     setCart([]);
+    setExtraExpenses([]);
     setSelectedCustomer("walk-in");
     setDiscountValue('');
   };
@@ -558,21 +802,14 @@ export const POS = () => {
     try {
       const customerId = selectedCustomer === 'walk-in' ? null : selectedCustomer;
       const customerName = selectedCustomerData?.name || 'Walk-in Customer';
-      const saleItems = cart.map(item => ({
-        productId: item.productId,
-        variationId: item.variationId,
-        productName: item.name,
-        quantity: item.qty,
-        unitPrice: item.customPrice !== undefined ? item.customPrice : getPrice(item),
-        total: (item.customPrice !== undefined ? item.customPrice : getPrice(item)) * item.qty,
-      }));
+      const saleItems = buildPosSaleItems(cart);
 
       const saleData = {
         isPOS: true as const,
         customer: customerId ?? '',
         customerName,
         contactNumber: '',
-        date: new Date().toISOString().split('T')[0],
+        date: localNowDateString(),
         location: branchId,
         type: 'invoice' as const,
         status: 'final' as const,
@@ -583,12 +820,13 @@ export const POS = () => {
         subtotal,
         discount: discountAmount,
         tax: 0,
-        expenses: 0,
+        expenses: expensesTotal,
         total,
         paid: 0,
         due: total,
         returnDue: 0,
         items: saleItems,
+        extraExpenses,
         salesmanId: (user as any)?.id ?? null,
         commissionAmount: 0,
         commissionPercent: null,
@@ -648,8 +886,46 @@ export const POS = () => {
               </div>
             </div>
 
+            {/* Branch (POS has no TopHeader — required for checkout) */}
+            <div className="flex items-center gap-3 min-w-0">
+              {showPosBranchPicker ? (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700">
+                  <Building2 size={14} className="text-blue-400 shrink-0" />
+                  <Select
+                    key={posBranchReady ? branchId! : 'pos-branch-unset'}
+                    value={posBranchReady ? branchId! : undefined}
+                    onValueChange={applyPosBranchId}
+                    disabled={loadingPosBranches || posBranches.length === 0}
+                  >
+                    <SelectTrigger className="h-7 min-w-[140px] max-w-[200px] border-0 bg-transparent p-0 text-xs text-gray-200 shadow-none focus:ring-0">
+                      <SelectValue placeholder="Select branch" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-gray-950 border-gray-800 text-white">
+                      {posBranches.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : posBranches.length === 1 && posBranchReady ? (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700">
+                  <Building2 size={14} className="text-blue-400 shrink-0" />
+                  <span className="text-xs text-gray-300 truncate max-w-[180px]">
+                    {posBranches[0].name}
+                  </span>
+                </div>
+              ) : null}
+              {!posBranchReady && posBranches.length > 0 && (
+                <span className="text-xs text-amber-400 whitespace-nowrap">
+                  Select a branch to enable checkout
+                </span>
+              )}
+            </div>
+
             {/* Date & Time */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 shrink-0">
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700">
                 <Calendar size={14} className="text-blue-400" />
                 <span className="text-xs text-gray-300">{currentDate}</span>
@@ -1056,17 +1332,20 @@ export const POS = () => {
                         <Input
                           type="number"
                           step="0.01"
-                          value={item.customPrice !== undefined ? item.customPrice : getPrice(item)}
+                          value={getLineUnitPrice(item)}
                           onChange={(e) => updateCustomPrice(item.id, e.target.value)}
                           className="bg-gray-900 border-gray-700 text-white h-7 w-20 text-xs px-2"
                           placeholder="Price"
                         />
                         <span className="text-xs text-gray-500">× {item.qty}</span>
+                        {item.isBespokeInjected && (
+                          <span className="text-[10px] text-amber-400/90">Fabric line</span>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <p className="font-bold text-blue-400 text-sm">
-                        {formatCurrency((item.customPrice !== undefined ? item.customPrice : getPrice(item)) * item.qty)}
+                        {formatCurrency(getLineUnitPrice(item) * item.qty)}
                       </p>
                       <button
                         onClick={() => removeItem(item.id)}
@@ -1096,13 +1375,33 @@ export const POS = () => {
                         <Plus size={14} />
                       </button>
                     </div>
-                    {item.customPrice !== undefined && (
-                      <span className="text-[10px] text-yellow-400 flex items-center gap-1">
-                        <Edit2 size={10} />
-                        Custom Price
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                      {item.customizationDetails && (
+                        <span className="text-[10px] text-violet-400 flex items-center gap-1">
+                          <Scissors size={10} />
+                          Customized
+                        </span>
+                      )}
+                      {item.customPrice !== undefined && (
+                        <span className="text-[10px] text-yellow-400 flex items-center gap-1">
+                          <Edit2 size={10} />
+                          Custom Price
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  {enableBespoke && !isInjectedBespokeLine(item) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-2 h-7 text-xs border-violet-500/40 text-violet-300 hover:bg-violet-500/10"
+                      onClick={() => setBespokeCartId(item.id)}
+                    >
+                      <Scissors size={12} className="mr-1" />
+                      Customize / Add Details
+                    </Button>
+                  )}
                 </motion.div>
               ))}
             </div>
@@ -1112,6 +1411,56 @@ export const POS = () => {
         {/* PAYMENT SECTION: New order (Cash/Card) or Edit mode (Save/Cancel) */}
         {(editMode && cart.length > 0) || (selectedSaleIndex === -1 && cart.length > 0) ? (
           <div className="border-t border-gray-800 bg-gray-950/70 backdrop-blur-sm shrink-0">
+            {/* Extra Expenses (stitching etc. → sale_charges) */}
+            <div className="px-5 py-4 border-b border-gray-800">
+              <Label className="text-xs text-gray-400 uppercase font-medium mb-2 block flex items-center gap-2">
+                <DollarSign size={12} className="text-purple-400" />
+                Extra Expenses
+                {expensesTotal > 0 && (
+                  <span className="text-purple-400 normal-case">({formatCurrency(expensesTotal)})</span>
+                )}
+              </Label>
+              <div className="flex gap-2 mb-2 flex-wrap">
+                <Select value={newExpenseType} onValueChange={(v) => setNewExpenseType(v as POSExtraExpense['type'])}>
+                  <SelectTrigger className="w-[110px] bg-gray-900 border-gray-700 text-white h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-950 border-gray-800 text-white">
+                    <SelectItem value="stitching">Stitching</SelectItem>
+                    <SelectItem value="lining">Lining</SelectItem>
+                    <SelectItem value="dying">Dying</SelectItem>
+                    <SelectItem value="cargo">Cargo</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  placeholder="Amount"
+                  className="bg-gray-900 border-gray-700 text-white h-8 w-[90px] text-xs"
+                  value={newExpenseAmount > 0 ? newExpenseAmount : ''}
+                  onChange={(e) => setNewExpenseAmount(parseFloat(e.target.value) || 0)}
+                />
+                <Button onClick={addExtraExpense} className="bg-purple-600 hover:bg-purple-500 h-8 px-3 text-xs">
+                  <Plus size={14} className="mr-1" /> Add
+                </Button>
+              </div>
+              {extraExpenses.length > 0 && (
+                <div className="space-y-1">
+                  {extraExpenses.map((exp) => (
+                    <div key={exp.id} className="flex justify-between items-center text-xs bg-gray-900/80 rounded px-2 py-1.5 border border-gray-800">
+                      <span className="text-gray-300 capitalize">{exp.type}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white">{formatCurrency(exp.amount)}</span>
+                        <button type="button" onClick={() => removeExtraExpense(exp.id)} className="text-gray-500 hover:text-red-400">
+                          <X size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Discount Section */}
             <div className="px-5 py-4 border-b border-gray-800">
               <Label className="text-xs text-gray-400 uppercase font-medium mb-2 block">Discount</Label>
@@ -1156,6 +1505,7 @@ export const POS = () => {
             <div className="px-5 py-4 space-y-2 border-b border-gray-800">
               <div className="flex justify-between text-sm"><span className="text-gray-400">Subtotal</span><span className="text-white font-medium">{formatCurrency(subtotal)}</span></div>
               {discountAmount > 0 && <div className="flex justify-between text-sm"><span className="text-gray-400">Discount</span><span className="text-green-400 font-medium">-{formatCurrency(discountAmount)}</span></div>}
+              {expensesTotal > 0 && <div className="flex justify-between text-sm"><span className="text-gray-400">Extra expenses</span><span className="text-purple-300 font-medium">{formatCurrency(expensesTotal)}</span></div>}
               <div className="flex justify-between items-center pt-2 border-t border-gray-700">
                 <span className="text-base font-semibold text-white">Total</span>
                 <span className="text-2xl font-bold text-blue-400">{formatCurrency(total)}</span>
@@ -1303,6 +1653,24 @@ export const POS = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {enableBespoke && companyId && (
+        <BespokeDetailsModal
+          open={bespokeCartId != null}
+          onOpenChange={(open) => { if (!open) setBespokeCartId(null); }}
+          productName={cart.find((c) => c.id === bespokeCartId)?.name}
+          config={bespokeFormConfig}
+          initial={cart.find((c) => c.id === bespokeCartId)?.customizationDetails}
+          initialFabrics={
+            bespokeCartId ? hydrateFabricDraftsFromChildren(bespokeCartId, cart) : undefined
+          }
+          companyId={companyId}
+          branchId={branchId}
+          onSave={(payload) => {
+            if (bespokeCartId) handleBespokeSave(bespokeCartId, payload);
+          }}
+        />
       )}
 
       <UnifiedPaymentDialog

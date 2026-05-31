@@ -1,3 +1,4 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 /**
  * Purchase Return service – same rules as Sale Return: FINAL when saved, no edit/delete.
  * On finalize: stock OUT (negative movement), supplier ledger CREDIT (reduces payable).
@@ -247,7 +248,7 @@ export const purchaseReturnService = {
 
     const { data: claimedPrFinal, error: claimPrErr } = await supabase
       .from('purchase_returns')
-      .update({ status: 'final', updated_at: new Date().toISOString() })
+      .update({ status: 'final', updated_at: getCurrentLocalTimestamp() })
       .eq('id', returnId)
       .eq('company_id', companyId)
       .eq('status', 'draft')
@@ -264,7 +265,7 @@ export const purchaseReturnService = {
     const rollbackPurchaseDraft = async () => {
       await supabase
         .from('purchase_returns')
-        .update({ status: 'draft', updated_at: new Date().toISOString() })
+        .update({ status: 'draft', updated_at: getCurrentLocalTimestamp() })
         .eq('id', returnId)
         .eq('company_id', companyId)
         .eq('status', 'final');
@@ -347,7 +348,7 @@ export const purchaseReturnService = {
           {
             company_id: companyId,
             branch_id: prBranchId,
-            entry_date: new Date().toISOString().split('T')[0],
+            entry_date: localNowDateString(),
             description: `Purchase Return Settlement: ${(purchaseReturn as any).return_no || returnId}`,
             reference_type: 'purchase_return',
             reference_id: returnId,
@@ -432,7 +433,7 @@ export const purchaseReturnService = {
 
     const { data: claimedPrVoid, error: claimPrVoidErr } = await supabase
       .from('purchase_returns')
-      .update({ status: 'void', updated_at: new Date().toISOString() })
+      .update({ status: 'void', updated_at: getCurrentLocalTimestamp() })
       .eq('id', returnId)
       .eq('company_id', companyId)
       .eq('status', 'final')
@@ -451,7 +452,7 @@ export const purchaseReturnService = {
     const rollbackPurchaseFinal = async () => {
       await supabase
         .from('purchase_returns')
-        .update({ status: 'final', updated_at: new Date().toISOString() })
+        .update({ status: 'final', updated_at: getCurrentLocalTimestamp() })
         .eq('id', returnId)
         .eq('company_id', companyId)
         .eq('status', 'void');
@@ -580,7 +581,7 @@ export const purchaseReturnService = {
 
     const { error: updateError } = await supabase
       .from('purchase_returns')
-      .update({ status: 'draft', updated_at: new Date().toISOString() })
+      .update({ status: 'draft', updated_at: getCurrentLocalTimestamp() })
       .eq('id', returnId)
       .eq('company_id', companyId)
       .eq('status', 'void');

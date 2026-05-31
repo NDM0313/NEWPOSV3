@@ -5,6 +5,7 @@
 import React from 'react';
 import { ClassicPrintBase } from '@/app/components/shared/ClassicPrintBase';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useCompanyLogoDisplayUrl } from '@/app/hooks/useCompanyLogoDisplayUrl';
 import type { InvoiceDocument, InvoiceTemplate } from '@/app/types/invoiceDocument';
 import { formatPackingFromItem } from '@/app/components/shared/invoice/formatPackingFromDocument';
 import type { PrinterMode } from '@/app/components/shared/ClassicPrintBase';
@@ -18,6 +19,7 @@ export interface PurchaseInvoiceTemplateProps {
   actionChildren?: React.ReactNode;
   printerMode?: PrinterMode;
   paperSize?: '58mm' | '80mm';
+  showLogo?: boolean;
 }
 
 export const PurchaseInvoiceTemplate: React.FC<PurchaseInvoiceTemplateProps> = ({
@@ -29,8 +31,10 @@ export const PurchaseInvoiceTemplate: React.FC<PurchaseInvoiceTemplateProps> = (
   actionChildren,
   printerMode = 'a4',
   paperSize = '80mm',
+  showLogo = true,
 }) => {
   const { inventorySettings } = useSettings();
+  const logoDisplay = useCompanyLogoDisplayUrl(showLogo ? template.logo_url : undefined);
   const enablePacking = inventorySettings.enablePacking ?? false;
 
   const headerMeta = [
@@ -43,7 +47,7 @@ export const PurchaseInvoiceTemplate: React.FC<PurchaseInvoiceTemplateProps> = (
     <ClassicPrintBase
       documentTitle="PURCHASE ORDER"
       companyName={doc.company.name}
-      logoUrl={template.logo_url ?? undefined}
+      logoUrl={logoDisplay || undefined}
       headerMeta={headerMeta}
       onPrint={onPrint}
       onClose={onClose}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { ScreenErrorBoundary } from './components/ScreenErrorBoundary';
 import { initInputKeyboard } from './utils/inputKeyboard';
 import type { Screen, User, Branch, BottomNavTab } from './types';
 import * as authApi from './api/auth';
@@ -776,7 +777,9 @@ export default function App() {
           : <ContactsModule onBack={navigateHome} user={user} companyId={companyId} branchId={selectedBranch?.id ?? null} />
       )}
       {currentScreen === 'settings' && user && (
-          <SettingsModule
+        <ScreenErrorBoundary screenName="Settings" onBack={navigateHome}>
+          <Suspense fallback={<ModuleLoadingFallback />}>
+            <SettingsModule
               onBack={navigateHome}
               user={user}
               branch={selectedBranch}
@@ -789,6 +792,8 @@ export default function App() {
                 runSync().then(({ errors }) => setStatus(errors > 0 ? 'sync_error' : 'online')).catch(() => setStatus('sync_error'));
               }}
             />
+          </Suspense>
+        </ScreenErrorBoundary>
       )}
       {currentScreen === 'products' && user && (
         !canAccessScreen('products', selectedBranch?.id)

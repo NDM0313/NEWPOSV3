@@ -5,8 +5,10 @@
 import React from 'react';
 import { ClassicPrintBase } from '@/app/components/shared/ClassicPrintBase';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useCompanyLogoDisplayUrl } from '@/app/hooks/useCompanyLogoDisplayUrl';
 import type { InvoiceDocument, InvoiceTemplate } from '@/app/types/invoiceDocument';
 import { formatPackingFromItem } from './formatPackingFromDocument';
+import { BespokeInstructionBullets } from '@/app/components/bespoke/BespokeInstructionBullets';
 
 export interface A4InvoiceTemplateProps {
   document: InvoiceDocument;
@@ -19,6 +21,8 @@ export interface A4InvoiceTemplateProps {
   documentTitle?: string;
   /** Ref for PDF export (attached to root printable element). */
   contentRef?: React.RefObject<HTMLDivElement | null>;
+  /** When false, logo is hidden (Settings → Printing → Show logo). */
+  showLogo?: boolean;
 }
 
 export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
@@ -30,8 +34,11 @@ export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
   actionChildren,
   documentTitle = 'INVOICE',
   contentRef,
+  showLogo = true,
 }) => {
-  const { inventorySettings } = useSettings();
+  const { inventorySettings, businessSettings } = useSettings();
+  const logoDisplay = useCompanyLogoDisplayUrl(showLogo ? template.logo_url : undefined);
+  const enableBespoke = businessSettings.enableBespokeOrders;
   const enablePacking = inventorySettings.enablePacking ?? false;
 
   const headerMeta = [
@@ -45,7 +52,7 @@ export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
     <ClassicPrintBase
       documentTitle={documentTitle}
       companyName={doc.company.name}
-      logoUrl={template.logo_url ?? undefined}
+      logoUrl={logoDisplay || undefined}
       headerMeta={headerMeta}
       onPrint={onPrint}
       onClose={onClose}
@@ -85,6 +92,12 @@ export const A4InvoiceTemplate: React.FC<A4InvoiceTemplateProps> = ({
                 <span>{item.product_name}</span>
                 {template.show_sku && item.sku && (
                   <span className="classic-print-sku" style={{ marginLeft: '6px' }}>{item.sku}</span>
+                )}
+                {enableBespoke && !item.bespoke_parent_item_id && (
+                  <BespokeInstructionBullets
+                    variant="print"
+                    customizationDetails={item.customization_details}
+                  />
                 )}
               </td>
               {enablePacking && <td style={{ fontSize: '11px' }}>{formatPackingFromItem(item)}</td>}

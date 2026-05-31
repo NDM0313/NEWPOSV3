@@ -4,7 +4,7 @@
  */
 import React, { useRef } from 'react';
 import { useUnifiedDocumentSettings } from './useUnifiedDocumentSettings';
-import { resolveDocumentOptions } from './resolveOptions';
+import { useCompanyLogoDisplayUrl } from '@/app/hooks/useCompanyLogoDisplayUrl';
 import { QuotationTemplate } from './templates/QuotationTemplate';
 import type { QuotationDocument } from './templates/QuotationTemplate';
 import { Button } from '@/app/components/ui/button';
@@ -28,8 +28,11 @@ export const UnifiedQuotationView: React.FC<UnifiedQuotationViewProps> = ({
   showPrintAction = true,
 }) => {
   const { formatCurrency } = useFormatCurrency();
-  const { settings, loading, error } = useUnifiedDocumentSettings(companyId, 'quotation');
-  const resolved = settings ? resolveDocumentOptions(settings, 'quotation') : null;
+  const { resolvedOptions, showLogo, loading, error } = useUnifiedDocumentSettings(companyId, 'quotation');
+  const logoDisplay = useCompanyLogoDisplayUrl(showLogo ? resolvedOptions?.quotation.logoUrl : undefined);
+  const resolved = resolvedOptions
+    ? { ...resolvedOptions, quotation: { ...resolvedOptions.quotation, logoUrl: logoDisplay || null } }
+    : null;
   const options = resolved ? {
     showSku: resolved.quotation.showSku,
     showDiscount: resolved.quotation.showDiscount,

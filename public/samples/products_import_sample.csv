@@ -1,6 +1,10 @@
-name,sku,category,unit,cost_price,selling_price,opening_stock,barcode,description
-Sample Product 1,PROD-001,General,Piece,100,200,10,,Sample description
-Sample Product 2,PROD-002,General,Piece,150,300,5,,Another product
-Sample Product 3,PROD-003,General,Piece,200,400,0,,
-Sample Product 4,PROD-004,General,Meter,50,120,20,,Fabric roll
-Sample Product 5,PROD-005,General,Piece,80,180,0,,Accessory item
+name,sku,category,subcategory,unit,brand,cost_price,selling_price,wholesale_price,opening_stock,min_stock,max_stock,track_stock,is_sellable,barcode,description,image_url,variation_name,variation_sku,variation_barcode
+Design 2000 (Maxi),DSN-2000,Bridal,Lehenga,Piece,Din Bridal,8000,25000,22000,0,2,25,yes,yes,8901234567001,Bridal maxi parent — heavy formal range,,,,
+Design 2000 (Maxi),,Bridal,Lehenga,Piece,Din Bridal,12000,45000,40000,5,2,25,yes,yes,8901234567002,,,Raw Silk - Heavy Embroidery,DSN-2000-RSHE,
+Design 2000 (Maxi),,Bridal,Lehenga,Piece,Din Bridal,5500,18000,15500,8,2,25,yes,yes,8901234567003,,,Chiffon - Light Work / Replica,DSN-2000-CHFR,
+Design 3005 (Loose Fabric),DSN-3005,Fabric,Unstitched Embroidered,Meter,Saddar Vendor,1200,3500,3000,0,10,500,yes,yes,8901234567010,Unstitched embroidered cloth — sold per meter,,,,
+Design 3005 (Loose Fabric),,Fabric,Unstitched Embroidered,Meter,Saddar Vendor,1800,5200,4800,50,10,500,yes,yes,8901234567011,,,Shamooz Silk - Jet Black,DSN-3005-SSJB,
+Design 3005 (Loose Fabric),,Fabric,Unstitched Embroidered,Meter,Saddar Vendor,1400,4200,3800,35,10,500,yes,yes,8901234567012,,,Chiffon - Royal Blue,DSN-3005-CHRB,
+Design 4010 (Front Open Shirt),DSN-4010,Casual,Shirts,Piece,Din Couture,2500,8500,7500,0,3,40,yes,yes,8901234567020,Front open shirt — tissue silk range,,,,
+Design 4010 (Front Open Shirt),,Casual,Shirts,Piece,Din Couture,4200,14000,12500,12,3,40,yes,yes,8901234567021,,,Tissue Silk - Master Copy,DSN-4010-TSMC,
+Design 4010 (Front Open Shirt),,Casual,Shirts,Piece,Din Couture,2200,6500,5800,20,3,40,yes,yes,8901234567022,,,Tissue Silk - Commercial Replica,DSN-4010-TSCR,

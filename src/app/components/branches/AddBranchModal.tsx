@@ -20,6 +20,8 @@ import { branchService, Branch } from '../../services/branchService';
 import { accountService, Account } from '../../services/accountService';
 import { settingsService } from '../../services/settingsService';
 import { toast } from 'sonner';
+import { normalizeDateOnly, suggestFiscalYearEnd } from '../../utils/fiscalDates';
+import { supabase } from '@/lib/supabase';
 
 interface AddBranchModalProps {
   open: boolean;
@@ -131,8 +133,8 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
           city: editingBranch.city || '',
           state: editingBranch.state || '',
           is_active: editingBranch.is_active ?? true,
-          fiscalYearStart: (editingBranch as any).fiscal_year_start || '',
-          fiscalYearEnd: (editingBranch as any).fiscal_year_end || '',
+          fiscalYearStart: normalizeDateOnly((editingBranch as any).fiscal_year_start),
+          fiscalYearEnd: normalizeDateOnly((editingBranch as any).fiscal_year_end),
           cashAccountId: editingBranch.default_cash_account_id || '',
           bankAccountId: editingBranch.default_bank_account_id || '',
           posCashDrawerId: editingBranch.default_pos_drawer_account_id || '',
@@ -189,6 +191,11 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
         }
       }
 
+      const fiscalStart = normalizeDateOnly(formData.fiscalYearStart?.trim()) || null;
+      const fiscalEnd =
+        normalizeDateOnly(formData.fiscalYearEnd?.trim()) ||
+        (fiscalStart ? suggestFiscalYearEnd(fiscalStart) : null);
+
       const branchData: Partial<Branch> = {
         company_id: companyId,
         name: formData.name.trim(),
@@ -198,8 +205,8 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
         city: formData.city.trim() || undefined,
         state: formData.state.trim() || undefined,
         is_active: formData.is_active,
-        fiscal_year_start: formData.fiscalYearStart?.trim() || null,
-        fiscal_year_end: formData.fiscalYearEnd?.trim() || null,
+        fiscal_year_start: fiscalStart,
+        fiscal_year_end: fiscalEnd,
         default_cash_account_id: formData.cashAccountId?.trim() || null,
         default_bank_account_id: formData.bankAccountId?.trim() || null,
         default_pos_drawer_account_id: formData.posCashDrawerId?.trim() || null,
@@ -219,6 +226,32 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
         const result = await branchService.createBranch(branchData);
         console.log('[ADD BRANCH MODAL] Create result:', result);
         toast.success('Branch created successfully!');
+      }
+
+      branchService.clearBranchCache();
+
+      if (fiscalStart && companyId) {
+        try {
+          const existing = await settingsService.getSetting(companyId, 'accounting_settings');
+          const current = (existing?.value as Record<string, unknown>) || {};
+          await settingsService.setSetting(
+            companyId,
+            'accounting_settings',
+            {
+              ...current,
+              fiscalYearStart: fiscalStart,
+              fiscalYearEnd: fiscalEnd || suggestFiscalYearEnd(fiscalStart),
+            },
+            'accounting',
+            'Accounting configuration settings'
+          );
+          await supabase
+            .from('companies')
+            .update({ financial_year_start: fiscalStart })
+            .eq('id', companyId);
+        } catch (syncErr) {
+          console.warn('[ADD BRANCH MODAL] Fiscal settings sync skipped:', syncErr);
+        }
       }
 
       // Trigger success callback to refresh list
@@ -312,7 +345,14 @@ export const AddBranchModal: React.FC<AddBranchModalProps> = ({
                 id="fiscalYearStart"
                 type="date"
                 value={formData.fiscalYearStart}
-                onChange={(e) => setFormData({ ...formData, fiscalYearStart: e.target.value })}
+                onChange={(e) => {
+                  const start = e.target.value;
+                  setFormData((prev) => ({
+                    ...prev,
+                    fiscalYearStart: start,
+                    fiscalYearEnd: prev.fiscalYearEnd || suggestFiscalYearEnd(start),
+                  }));
+                }}
                 className="bg-gray-900 border-gray-700 text-white"
               />
             </div>

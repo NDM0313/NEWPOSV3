@@ -1,5 +1,13 @@
 # CORS for supabase.dincouture.pk (if Kong CORS is not enough)
 
+**Storage / image uploads (2026-05-31):** If product photo upload fails on PWA/APK with `cache-control is not allowed by Access-Control-Allow-Headers`, run on VPS:
+
+```bash
+cd /root/NEWPOSV3 && bash deploy/add-kong-cors-erp-origin.sh
+```
+
+That script merges `cache-control`, `x-upsert`, and `range` into Kong `cors` plugin headers (plus `erp.dincouture.pk` / Capacitor origins). No APK rebuild required.
+
 If login from **erp.dincouture.pk** still fails with "blocked by CORS policy: No 'Access-Control-Allow-Origin' header", the reverse proxy **in front of** supabase.dincouture.pk (Caddy, Nginx, or Traefik) may be answering OPTIONS preflight without passing CORS headers. Add CORS at the proxy so OPTIONS and responses include the header.
 
 ## Caddy (Caddyfile)
@@ -13,7 +21,7 @@ supabase.dincouture.pk {
     handle @options {
         header Access-Control-Allow-Origin "https://erp.dincouture.pk"
         header Access-Control-Allow-Methods "GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS"
-        header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, apikey, prefer, x-client-info, x-supabase-api-version, x-supabase-client-info, accept-profile, content-profile"
+        header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, apikey, prefer, x-client-info, x-supabase-api-version, x-supabase-client-info, accept-profile, content-profile, cache-control, x-upsert, range"
         header Access-Control-Allow-Credentials "true"
         header Access-Control-Max-Age "86400"
         respond 204

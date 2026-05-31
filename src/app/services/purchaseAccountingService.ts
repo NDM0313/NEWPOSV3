@@ -1,3 +1,4 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 /**
  * Purchase Accounting Service (Phase 5: one contract)
  *
@@ -276,7 +277,7 @@ export async function createPurchaseJournalEntry(params: {
     company_id: companyId,
     branch_id: branchId && branchId !== 'all' ? branchId : undefined,
     entry_no: entryNo,
-    entry_date: entryDate || new Date().toISOString().slice(0, 10),
+    entry_date: entryDate || localNowDateString(),
     description: `Purchase ${poNo} from ${supplierName}`,
     reference_type: 'purchase',
     reference_id: purchaseId,
@@ -501,7 +502,7 @@ export async function reversePurchaseDocumentJournalEntry(params: {
   }
 
   const entryNo = await documentNumberService.getNextJournalEntryNumber(companyId, branchId);
-  const entryDate = new Date().toISOString().split('T')[0];
+  const entryDate = localNowDateString();
   const entry: JournalEntry = {
     id: '',
     company_id: companyId,

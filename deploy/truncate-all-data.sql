@@ -1,4 +1,9 @@
 -- ============================================
+-- SUPERSEDED FOR FULL WIPE — use deploy/wipe-public-schema-data.sql
+-- This file remains for PARTIAL resets that KEEP companies, branches,
+-- users, roles, settings, modules_config, units, schema_migrations.
+-- See docs/accounting/COMPANY_RESET_PLAYBOOK.md (Mode A / Mode B).
+-- ============================================
 -- FULL DATABASE TRUNCATE - All transaction + master data
 -- ============================================
 -- Total: 53 tables in DB | KEEP: 9 | TRUNCATE: 44

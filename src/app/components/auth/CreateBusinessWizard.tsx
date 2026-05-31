@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { businessService } from '@/app/services/businessService';
+import { suggestFiscalYearEnd } from '@/app/utils/fiscalDates';
 import {
   BUSINESS_TYPE_MODULES,
   MODULE_REGISTRY,
@@ -126,6 +127,7 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
     // Step 2
     currency: 'PKR',
     fiscalYearStart: defaultFiscalStart,
+    fiscalYearEnd: suggestFiscalYearEnd(defaultFiscalStart),
     fiscalMonth: '7',
     accountingMethod: 'Accrual' as 'Accrual' | 'Cash',
     taxMode: 'Inclusive' as 'Inclusive' | 'Exclusive',
@@ -141,6 +143,8 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
     // Step 5
     branchName: 'Main Branch',
     branchCode: 'HQ',
+    branchCity: '',
+    branchState: '',
     defaultWarehouse: 'Main',
   });
 
@@ -207,6 +211,7 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
     setLoading(true);
     try {
       const fiscalYearStart = getFiscalYearStartFromMonth(formData.fiscalMonth);
+      const fiscalYearEnd = formData.fiscalYearEnd || suggestFiscalYearEnd(fiscalYearStart);
       const result = await businessService.createBusiness({
         businessName: formData.businessName,
         ownerName: formData.ownerName,
@@ -214,8 +219,11 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
         password: formData.password,
         currency: formData.currency,
         fiscalYearStart,
+        fiscalYearEnd,
         branchName: formData.branchName,
         branchCode: formData.branchCode,
+        branchCity: formData.branchCity || undefined,
+        branchState: formData.branchState || undefined,
         phone: formData.phone || undefined,
         address: formData.address || undefined,
         country: formData.country || undefined,
@@ -433,7 +441,15 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
                   <Label className="text-gray-400">Financial Year Start *</Label>
                   <Select
                     value={formData.fiscalMonth}
-                    onValueChange={(v) => setFormData({ ...formData, fiscalMonth: v, fiscalYearStart: getFiscalYearStartFromMonth(v) })}
+                    onValueChange={(v) => {
+                      const start = getFiscalYearStartFromMonth(v);
+                      setFormData({
+                        ...formData,
+                        fiscalMonth: v,
+                        fiscalYearStart: start,
+                        fiscalYearEnd: suggestFiscalYearEnd(start),
+                      });
+                    }}
                   >
                     <SelectTrigger className="bg-gray-800 border-gray-700 text-white mt-1">
                       <SelectValue placeholder="Select month" />
@@ -445,6 +461,17 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-gray-500 mt-1">First month of your financial year</p>
+                </div>
+                <div>
+                  <Label className="text-gray-400">Financial Year End</Label>
+                  <Input
+                    type="date"
+                    value={formData.fiscalYearEnd}
+                    onChange={(e) => setFormData({ ...formData, fiscalYearEnd: e.target.value })}
+                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    disabled={loading}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Auto-suggested from start date; editable</p>
                 </div>
                 <div>
                   <Label className="text-gray-400">Accounting Method</Label>
@@ -615,6 +642,26 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
                     value={formData.branchCode}
                     onChange={(e) => setFormData({ ...formData, branchCode: e.target.value })}
                     placeholder="HQ"
+                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    disabled={loading}
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-400">City</Label>
+                  <Input
+                    value={formData.branchCity}
+                    onChange={(e) => setFormData({ ...formData, branchCity: e.target.value })}
+                    placeholder="Karachi"
+                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    disabled={loading}
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-400">State / Province</Label>
+                  <Input
+                    value={formData.branchState}
+                    onChange={(e) => setFormData({ ...formData, branchState: e.target.value })}
+                    placeholder="Sindh"
                     className="bg-gray-800 border-gray-700 text-white mt-1"
                     disabled={loading}
                   />

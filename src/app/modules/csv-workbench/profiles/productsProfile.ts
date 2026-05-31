@@ -9,11 +9,21 @@ import { DEFAULT_IMPORT_CHUNK_SIZE, runChunkedAllSettled } from '../chunkedCommi
 import type { CsvEntityProfile, CsvRowValidation, CsvWorkbenchResult, ParsedCsv } from '../types';
 import type { CsvPreviewColumn } from '../components/CsvPreviewDataGrid';
 import { productService } from '@/app/services/productService';
-import { inventoryService } from '@/app/services/inventoryService';
 import { productCategoryService } from '@/app/services/productCategoryService';
 import { unitService } from '@/app/services/unitService';
 import { brandService } from '@/app/services/brandService';
+import { defaultAccountsService } from '@/app/services/defaultAccountsService';
+import { openingBalanceJournalService } from '@/app/services/openingBalanceJournalService';
 import type { DocumentType } from '@/app/hooks/useDocumentNumbering';
+import {
+  buildMatrixParentSku,
+  buildMatrixVariantSku,
+  createSkuLookupWithIndex,
+  ensureUniqueProductSku,
+  previewSkuForRow,
+  skuIndexAdd,
+  type ImportSkuIndex,
+} from '@/app/utils/productImportSku';
 
 /** Header order = template = export round-trip (matches legacy ImportProductsModal). */
 export const PRODUCT_CANONICAL_HEADERS = [
@@ -129,10 +139,20 @@ export interface ImportRowError {
 
 export interface ImportSummary {
   created: number;
+  updated: number;
   skipped: number;
   failed: number;
   errors: ImportRowError[];
+  /** Opening stock movements GL-synced in batch after import */
+  openingMovementsSynced?: number;
 }
+
+export type ProductImportProgress =
+  | { phase: 'groups'; completed: number; total: number }
+  | { phase: 'gl'; completed: number; total: number };
+
+/** Parallel opening GL sync after bulk product import (bounded concurrency). */
+const OPENING_GL_SYNC_CHUNK_SIZE = 5;
 
 export type ProductCatalogContext = {
   categoryByName: Map<string, string>;
@@ -153,52 +173,209 @@ export function buildProductsBlankTemplate(): string {
   return serializeCsvMatrix([[...PRODUCT_CANONICAL_HEADERS], emptyRow]);
 }
 
-/** Example rows for documentation / optional sample download (not used for blank template). */
+/** Example rows — Matrix / Bespoke: 3 boutique scenarios (parent + 2 variants each). */
 export function buildProductsSampleTemplate(): string {
   return serializeCsvMatrix([
     [...PRODUCT_CANONICAL_HEADERS],
+    // Example 1: Lehenga / Maxi (Bridal)
     [
-      'T-Shirt Basic',
-      'TSH-001',
-      'Apparel',
-      '',
+      'Design 2000 (Maxi)',
+      'DSN-2000',
+      'Bridal',
+      'Lehenga',
       'Piece',
-      'Brand A',
-      '80',
-      '200',
-      '160',
+      'Din Bridal',
+      '8000',
+      '25000',
+      '22000',
       '0',
-      '5',
-      '500',
+      '2',
+      '25',
       'yes',
       'yes',
-      '',
-      'Plain t-shirt',
+      '8901234567001',
+      'Bridal maxi parent — heavy formal range',
       '',
       '',
       '',
       '',
     ],
     [
-      'T-Shirt Basic',
-      'TSH-001',
-      'Apparel',
+      'Design 2000 (Maxi)',
       '',
+      'Bridal',
+      'Lehenga',
       'Piece',
-      'Brand A',
-      '80',
-      '200',
-      '160',
+      'Din Bridal',
+      '12000',
+      '45000',
+      '40000',
+      '5',
+      '2',
+      '25',
+      'yes',
+      'yes',
+      '8901234567002',
+      '',
+      '',
+      'Raw Silk - Heavy Embroidery',
+      'DSN-2000-RSHE',
+      '',
+    ],
+    [
+      'Design 2000 (Maxi)',
+      '',
+      'Bridal',
+      'Lehenga',
+      'Piece',
+      'Din Bridal',
+      '5500',
+      '18000',
+      '15500',
+      '8',
+      '2',
+      '25',
+      'yes',
+      'yes',
+      '8901234567003',
+      '',
+      '',
+      'Chiffon - Light Work / Replica',
+      'DSN-2000-CHFR',
+      '',
+    ],
+    // Example 2: Loose cutting fabric (meter)
+    [
+      'Design 3005 (Loose Fabric)',
+      'DSN-3005',
+      'Fabric',
+      'Unstitched Embroidered',
+      'Meter',
+      'Saddar Vendor',
+      '1200',
+      '3500',
+      '3000',
+      '0',
       '10',
-      '',
-      '',
+      '500',
       'yes',
       'yes',
+      '8901234567010',
+      'Unstitched embroidered cloth — sold per meter',
       '',
       '',
       '',
-      'Size: S',
-      'TSH-001-S',
+      '',
+    ],
+    [
+      'Design 3005 (Loose Fabric)',
+      '',
+      'Fabric',
+      'Unstitched Embroidered',
+      'Meter',
+      'Saddar Vendor',
+      '1800',
+      '5200',
+      '4800',
+      '50',
+      '10',
+      '500',
+      'yes',
+      'yes',
+      '8901234567011',
+      '',
+      '',
+      'Shamooz Silk - Jet Black',
+      'DSN-3005-SSJB',
+      '',
+    ],
+    [
+      'Design 3005 (Loose Fabric)',
+      '',
+      'Fabric',
+      'Unstitched Embroidered',
+      'Meter',
+      'Saddar Vendor',
+      '1400',
+      '4200',
+      '3800',
+      '35',
+      '10',
+      '500',
+      'yes',
+      'yes',
+      '8901234567012',
+      '',
+      '',
+      'Chiffon - Royal Blue',
+      'DSN-3005-CHRB',
+      '',
+    ],
+    // Example 3: Casual shirts (premium vs commercial)
+    [
+      'Design 4010 (Front Open Shirt)',
+      'DSN-4010',
+      'Casual',
+      'Shirts',
+      'Piece',
+      'Din Couture',
+      '2500',
+      '8500',
+      '7500',
+      '0',
+      '3',
+      '40',
+      'yes',
+      'yes',
+      '8901234567020',
+      'Front open shirt — tissue silk range',
+      '',
+      '',
+      '',
+      '',
+    ],
+    [
+      'Design 4010 (Front Open Shirt)',
+      '',
+      'Casual',
+      'Shirts',
+      'Piece',
+      'Din Couture',
+      '4200',
+      '14000',
+      '12500',
+      '12',
+      '3',
+      '40',
+      'yes',
+      'yes',
+      '8901234567021',
+      '',
+      '',
+      'Tissue Silk - Master Copy',
+      'DSN-4010-TSMC',
+      '',
+    ],
+    [
+      'Design 4010 (Front Open Shirt)',
+      '',
+      'Casual',
+      'Shirts',
+      'Piece',
+      'Din Couture',
+      '2200',
+      '6500',
+      '5800',
+      '20',
+      '3',
+      '40',
+      'yes',
+      'yes',
+      '8901234567022',
+      '',
+      '',
+      'Tissue Silk - Commercial Replica',
+      'DSN-4010-TSCR',
       '',
     ],
   ]);
@@ -284,6 +461,49 @@ export function normalizeProductVariationHeuristics(groups: Map<string, ParsedPr
   }
 }
 
+/** Matrix/Bespoke: variant row has non-empty variation_name. */
+export function isMatrixVariantRow(row: ParsedProductRow): boolean {
+  return !!row.variation_name?.trim();
+}
+
+/** Group key for matrix import — same product name = one parent + variants. */
+export function groupNameKeyForProduct(row: ParsedProductRow): string {
+  return row.name.trim().toLowerCase();
+}
+
+/** Group rows by product name (preserves CSV order within each group). */
+export function groupProductRowsByName(rows: ParsedProductRow[]): Map<string, ParsedProductRow[]> {
+  const groups = new Map<string, ParsedProductRow[]>();
+  for (const row of rows) {
+    const key = groupNameKeyForProduct(row);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(row);
+  }
+  return groups;
+}
+
+/** Parent row = empty variation_name; error if matrix group has 0 or >1 parents. */
+export function resolveParentRow(rows: ParsedProductRow[]): { parent?: ParsedProductRow; error?: string } {
+  const parentRows = rows.filter((r) => !isMatrixVariantRow(r));
+  const hasVariants = rows.some((r) => isMatrixVariantRow(r));
+  if (!hasVariants) {
+    if (parentRows.length === 0) return { error: 'No product rows in group' };
+    if (parentRows.length > 1) return { error: 'Simple product group must have one row' };
+    return { parent: parentRows[0] };
+  }
+  if (parentRows.length === 0) {
+    return { error: 'Matrix group requires one parent row (empty variation_name)' };
+  }
+  if (parentRows.length > 1) {
+    return { error: 'Matrix group must have exactly one parent row (empty variation_name)' };
+  }
+  return { parent: parentRows[0] };
+}
+
+export function resolveVariantRows(rows: ParsedProductRow[]): ParsedProductRow[] {
+  return rows.filter((r) => isMatrixVariantRow(r));
+}
+
 export function groupKeyForProduct(row: ParsedProductRow, autoSkuLabel: boolean): string {
   const skuPart = row.sku || (autoSkuLabel ? '(auto)' : '');
   return `${row.name}|${skuPart || '(auto)'}`;
@@ -354,29 +574,165 @@ export function rowsFromParsedCsvWithIndices(parsed: ParsedCsv): ParsedProductRo
   return out;
 }
 
+function stripIndex(row: ParsedProductRowWithIndex): ParsedProductRow {
+  const { _sourceRowIndex: _idx, ...rest } = row;
+  void _idx;
+  return rest;
+}
+
+/** Warn when blank-SKU rows would share the same auto-generated parent SKU. */
+export function validateDerivedSkuCollisions(
+  rows: ParsedProductRowWithIndex[],
+  autoGenerateSku: boolean
+): CsvRowValidation[] {
+  if (autoGenerateSku) return [];
+  const issues: CsvRowValidation[] = [];
+  const plainRows = rows.map(stripIndex);
+  const groups = groupProductRowsByName(plainRows);
+  const skuToGroups = new Map<
+    string,
+    { sku: string; groupKey: string; rowIndex: number; productName: string }[]
+  >();
+
+  for (const [groupKey, groupRows] of groups) {
+    const parentResult = resolveParentRow(groupRows);
+    const parent = parentResult.parent ?? groupRows[0];
+    if (!parent || parent.sku?.trim()) continue;
+    const sku = buildMatrixParentSku(parent);
+    const skuKey = sku.toLowerCase();
+    const rowIndex =
+      rows.find((r) => groupNameKeyForProduct(r) === groupKey)?._sourceRowIndex ?? 1;
+    const list = skuToGroups.get(skuKey) ?? [];
+    list.push({ sku, groupKey, rowIndex, productName: parent.name });
+    skuToGroups.set(skuKey, list);
+  }
+
+  for (const [, entries] of skuToGroups) {
+    if (entries.length < 2) continue;
+    const displaySku = entries[0]!.sku;
+    for (const e of entries) {
+      issues.push({
+        rowIndex: e.rowIndex,
+        severity: 'warning',
+        field: 'sku',
+        message: `Auto SKU collision: "${displaySku}" shared with ${entries.length - 1} other product(s) — use explicit sku column or enable ERP numbering`,
+      });
+    }
+  }
+
+  return issues;
+}
+
 export function validateProductsStructuralIndexed(
   rows: ParsedProductRowWithIndex[],
   autoGenerateSku: boolean
 ): CsvRowValidation[] {
   const issues: CsvRowValidation[] = [];
-  for (const r of rows) {
-    if (!Number.isFinite(r.selling_price)) {
+  const plainRows = rows.map(stripIndex);
+  const groups = groupProductRowsByName(plainRows);
+  const indexByRow = new Map<ParsedProductRow, number>();
+  rows.forEach((r) => indexByRow.set(stripIndex(r), r._sourceRowIndex));
+
+  for (const [, groupRows] of groups) {
+    const hasVariants = groupRows.some((r) => isMatrixVariantRow(r));
+    const parentResult = resolveParentRow(groupRows);
+    const parent = parentResult.parent;
+    const parentRowIndex = parent ? indexByRow.get(parent) ?? groupRows[0]?.name.length : 0;
+
+    if (parentResult.error) {
+      const firstIndexed = rows.find((r) => groupNameKeyForProduct(r) === groupNameKeyForProduct(groupRows[0]!));
       issues.push({
-        rowIndex: r._sourceRowIndex,
+        rowIndex: firstIndexed?._sourceRowIndex ?? 1,
         severity: 'error',
-        field: 'selling_price',
-        message: 'Selling price must be a valid number',
+        message: parentResult.error,
       });
+      continue;
     }
-    if (!autoGenerateSku && !r.sku?.trim()) {
-      issues.push({
-        rowIndex: r._sourceRowIndex,
-        severity: 'error',
-        field: 'sku',
-        message: 'SKU required unless auto-generate is enabled',
-      });
+
+    if (parent) {
+      if (!Number.isFinite(parent.selling_price)) {
+        issues.push({
+          rowIndex: indexByRow.get(parent) ?? parentRowIndex,
+          severity: 'error',
+          field: 'selling_price',
+          message: 'Selling price must be a valid number on parent row',
+        });
+      }
+    }
+
+    if (hasVariants && parent) {
+      const parentIdx = indexByRow.get(parent) ?? 0;
+      const variantRows = resolveVariantRows(groupRows);
+      const seenVarSkus = new Set<string>();
+      const previewParentSku = parent.sku?.trim() || buildMatrixParentSku(parent);
+
+      for (const vRow of variantRows) {
+        const vIdx = indexByRow.get(vRow) ?? parentIdx;
+        if (!vRow.variation_name?.trim()) {
+          issues.push({
+            rowIndex: vIdx,
+            severity: 'error',
+            field: 'variation_name',
+            message: 'Variant row requires variation_name',
+          });
+        }
+        const providedVarSku = vRow.variation_sku?.trim();
+        if (providedVarSku) {
+          const skuKey = providedVarSku.toLowerCase();
+          if (seenVarSkus.has(skuKey)) {
+            issues.push({
+              rowIndex: vIdx,
+              severity: 'error',
+              field: 'variation_sku',
+              message: `Duplicate variation_sku "${vRow.variation_sku}" in group`,
+            });
+          }
+          seenVarSkus.add(skuKey);
+        } else {
+          let suffixIndex = 0;
+          let generated = buildMatrixVariantSku(previewParentSku, vRow.variation_name ?? '', suffixIndex);
+          while (seenVarSkus.has(generated.toLowerCase())) {
+            suffixIndex++;
+            generated = buildMatrixVariantSku(previewParentSku, vRow.variation_name ?? '', suffixIndex);
+          }
+          seenVarSkus.add(generated.toLowerCase());
+        }
+        if (!Number.isFinite(vRow.selling_price)) {
+          issues.push({
+            rowIndex: vIdx,
+            severity: 'error',
+            field: 'selling_price',
+            message: 'Variant selling price must be a valid number',
+          });
+        }
+      }
+
+      const firstVariantIdx = variantRows.length
+        ? indexByRow.get(variantRows[0]!) ?? parentIdx
+        : null;
+      if (firstVariantIdx != null && parentIdx > 0 && firstVariantIdx < parentIdx) {
+        issues.push({
+          rowIndex: firstVariantIdx,
+          severity: 'warning',
+          message: 'Variant row appears before parent row; import will still use empty variation_name as parent',
+        });
+      }
+    } else {
+      for (const r of groupRows) {
+        if (!Number.isFinite(r.selling_price)) {
+          issues.push({
+            rowIndex: indexByRow.get(r) ?? 1,
+            severity: 'error',
+            field: 'selling_price',
+            message: 'Selling price must be a valid number',
+          });
+        }
+      }
     }
   }
+
+  issues.push(...validateDerivedSkuCollisions(rows, autoGenerateSku));
+
   return issues;
 }
 
@@ -419,6 +775,12 @@ export type ProductCommitDeps = {
   autoCreateCatalog: boolean;
   generateDocumentNumberSafe: (docType: DocumentType) => Promise<string>;
   incrementNextNumber: (docType: DocumentType) => void;
+  /** Prefetched + in-flight SKUs for this import batch */
+  skuIndex?: ImportSkuIndex;
+  onProgress?: (progress: ProductImportProgress) => void;
+  /** Bulk CSV: defer per-row opening GL; batch at end of commitProductImport */
+  deferOpeningBalanceGlSync?: boolean;
+  deferredOpeningMovementIds?: string[];
 };
 
 export type ResolvedProductCatalogIds = {
@@ -589,19 +951,23 @@ export async function validateProductsCatalogForPreview(
   const seenGroups = new Set<string>();
 
   for (const row of rows) {
-    const gk = groupKeyForProduct(row, true);
+    const gk = groupNameKeyForProduct(row);
     if (seenGroups.has(gk)) continue;
     seenGroups.add(gk);
 
-    const dryError = checkProductCatalogRefsDry(catalog, row);
+    const groupRows = rows.filter((r) => groupNameKeyForProduct(r) === gk);
+    const parentResult = resolveParentRow(groupRows.map(stripIndex));
+    const catalogRow = parentResult.parent ?? row;
+
+    const dryError = checkProductCatalogRefsDry(catalog, catalogRow);
     if (dryError) {
       if (autoCreateCatalog) {
         const hints: string[] = [];
-        if (row.category && dryError.includes('Category')) hints.push(`will create category "${row.category}"`);
-        if (row.unit && dryError.includes('Unit')) hints.push(`will create unit "${row.unit}"`);
-        if (row.brand && dryError.includes('Brand')) hints.push(`will create brand "${row.brand}"`);
-        if (row.subcategory && dryError.includes('Subcategory')) {
-          hints.push(`will create subcategory "${row.subcategory}"`);
+        if (row.category && dryError.includes('Category')) hints.push(`will create category "${catalogRow.category}"`);
+        if (row.unit && dryError.includes('Unit')) hints.push(`will create unit "${catalogRow.unit}"`);
+        if (row.brand && dryError.includes('Brand')) hints.push(`will create brand "${catalogRow.brand}"`);
+        if (catalogRow.subcategory && dryError.includes('Subcategory')) {
+          hints.push(`will create subcategory "${catalogRow.subcategory}"`);
         }
         if (hints.length) {
           issues.push({ rowIndex: row._sourceRowIndex, severity: 'warning', message: hints.join('; ') });
@@ -637,9 +1003,15 @@ export function rowErrorsMapForPreview(
 }
 
 export function productRowToPreviewRecord(row: ParsedProductRowWithIndex): Record<string, string | number> {
+  const isVariant = !!row.variation_name?.trim();
+  const skuDisplay = isVariant
+    ? previewSkuForRow(row)
+    : row.sku?.trim()
+      ? row.sku.trim()
+      : previewSkuForRow(row);
   return {
     name: row.name,
-    sku: row.sku || '(auto)',
+    sku: skuDisplay,
     category: row.category ?? '',
     variation_name: row.variation_name ?? '',
     cost_price: row.cost_price,
@@ -648,51 +1020,131 @@ export function productRowToPreviewRecord(row: ParsedProductRowWithIndex): Recor
   };
 }
 
-function stripIndex(row: ParsedProductRowWithIndex): ParsedProductRow {
-  const { _sourceRowIndex: _idx, ...rest } = row;
-  void _idx;
-  return rest;
+export type ResolvedImportSkus = {
+  parentSku: string;
+  variantSkus: Map<ParsedProductRow, string>;
+  erpParentGenerated: boolean;
+};
+
+/** Resolve blank parent/variant SKUs before commit (boutique pattern or ERP parent). */
+export async function resolveImportSkusForGroup(
+  parentRow: ParsedProductRow,
+  variantRows: ParsedProductRow[],
+  deps: ProductCommitDeps,
+  existingParentProductId?: string | null
+): Promise<ResolvedImportSkus> {
+  const { companyId, autoGenerateSku, generateDocumentNumberSafe, skuIndex } = deps;
+  const findBySku = createSkuLookupWithIndex(
+    skuIndex,
+    (cid, sku) => productService.findProductBySku(cid, sku)
+  );
+  let parentSku = parentRow.sku?.trim() || '';
+  let erpParentGenerated = false;
+
+  if (!parentSku) {
+    if (autoGenerateSku) {
+      parentSku = await generateDocumentNumberSafe('production');
+      erpParentGenerated = true;
+      skuIndexAdd(skuIndex, parentSku);
+    } else {
+      parentSku = buildMatrixParentSku(parentRow);
+    }
+    const existing = await findBySku(companyId, parentSku);
+    const existingId =
+      existing && typeof existing === 'object' && 'id' in existing
+        ? String((existing as { id: string }).id)
+        : null;
+    if (!existingId || existingId === '__import_reserved__') {
+      parentSku = await ensureUniqueProductSku(
+        companyId,
+        parentSku,
+        findBySku,
+        existingParentProductId ?? null,
+        20,
+        skuIndex
+      );
+    } else if (existingParentProductId && existingId !== existingParentProductId) {
+      parentSku = await ensureUniqueProductSku(
+        companyId,
+        parentSku,
+        findBySku,
+        existingParentProductId,
+        20,
+        skuIndex
+      );
+    }
+  }
+
+  const variantSkus = new Map<ParsedProductRow, string>();
+  const seenVarSkus = new Set<string>();
+
+  for (let i = 0; i < variantRows.length; i++) {
+    const row = variantRows[i]!;
+    let varSku = row.variation_sku?.trim() || '';
+    if (!varSku) {
+      let suffixIndex = 0;
+      let candidate = buildMatrixVariantSku(parentSku, row.variation_name ?? '', suffixIndex);
+      while (seenVarSkus.has(candidate.toLowerCase())) {
+        suffixIndex++;
+        candidate = buildMatrixVariantSku(parentSku, row.variation_name ?? '', suffixIndex);
+      }
+      varSku = candidate;
+    }
+    seenVarSkus.add(varSku.toLowerCase());
+    variantSkus.set(row, varSku);
+  }
+
+  return { parentSku, variantSkus, erpParentGenerated };
 }
 
-function representativeRowIndex(rowsWithIndex: ParsedProductRowWithIndex[], first: ParsedProductRow): number {
+function representativeRowIndex(rowsWithIndex: ParsedProductRowWithIndex[], parent: ParsedProductRow): number {
   const indices = rowsWithIndex
-    .filter((r) => r.name === first.name && (r.sku || '') === (first.sku || ''))
+    .filter((r) => groupNameKeyForProduct(r) === groupNameKeyForProduct(parent))
     .map((r) => r._sourceRowIndex);
   return indices.length ? Math.min(...indices) : 1;
 }
 
-/**
- * Import one product group. Mutates shared `catalog` when auto-creating refs; parallel groups
- * may race on the same new name — DB/services handle uniqueness. Variations + stock stay
- * sequential inside this group.
- */
 async function importOneProductGroup(
   key: string,
   rows: ParsedProductRow[],
   rowsWithIndex: ParsedProductRowWithIndex[],
   deps: ProductCommitDeps
-): Promise<{ status: 'created' | 'skipped' | 'failed'; error?: ImportRowError }> {
+): Promise<{ status: 'created' | 'updated' | 'skipped' | 'failed'; error?: ImportRowError }> {
   const {
     companyId,
     branchIdOrNull,
     catalog,
-    autoGenerateSku,
     autoCreateCatalog,
-    generateDocumentNumberSafe,
     incrementNextNumber,
   } = deps;
 
-  const hasVariations = rows.some((r) => r.variation_name);
-  const first = rows[0]!;
-  const rowIndex = representativeRowIndex(rowsWithIndex, first);
+  const parentResult = resolveParentRow(rows);
+  if (parentResult.error || !parentResult.parent) {
+    const rowIndex = rowsWithIndex.find((r) => groupNameKeyForProduct(r) === key)?._sourceRowIndex ?? 1;
+    return {
+      status: 'skipped',
+      error: {
+        groupKey: key,
+        productName: rows[0]?.name ?? '',
+        rowIndex,
+        message: parentResult.error ?? 'Could not resolve parent row',
+        type: 'validation',
+      },
+    };
+  }
 
-  const resolved = await resolveProductCatalogIds(companyId, catalog, first, autoCreateCatalog);
+  const parentRow = parentResult.parent;
+  const variantRows = resolveVariantRows(rows);
+  const hasVariations = variantRows.length > 0;
+  const rowIndex = representativeRowIndex(rowsWithIndex, parentRow);
+
+  const resolved = await resolveProductCatalogIds(companyId, catalog, parentRow, autoCreateCatalog);
   if (resolved.error) {
     return {
       status: 'skipped',
       error: {
         groupKey: key,
-        productName: first.name,
+        productName: parentRow.name,
         rowIndex,
         message: resolved.error,
         type: 'validation',
@@ -701,23 +1153,23 @@ async function importOneProductGroup(
   }
   const { categoryId, unitId, brandId } = resolved;
 
-  let skuToUse = first.sku && !autoGenerateSku ? first.sku : '';
-  if (!skuToUse) {
-    try {
-      skuToUse = await generateDocumentNumberSafe('production');
-    } catch {
-      return {
-        status: 'failed',
-        error: {
-          groupKey: key,
-          productName: first.name,
-          rowIndex,
-          message: 'Failed to generate SKU',
-          type: 'failed',
-        },
-      };
-    }
+  let skuResolved: ResolvedImportSkus;
+  try {
+    skuResolved = await resolveImportSkusForGroup(parentRow, variantRows, deps);
+  } catch {
+    return {
+      status: 'failed',
+      error: {
+        groupKey: key,
+        productName: parentRow.name,
+        rowIndex,
+        message: 'Failed to generate SKU',
+        type: 'failed',
+      },
+    };
   }
+
+  const skuToUse = skuResolved.parentSku;
 
   try {
     const productData: Record<string, unknown> = {
@@ -725,102 +1177,61 @@ async function importOneProductGroup(
       category_id: categoryId,
       brand_id: brandId,
       unit_id: unitId,
-      name: first.name,
+      name: parentRow.name,
       sku: skuToUse,
-      barcode: first.barcode || null,
-      description: first.description || null,
-      cost_price: first.cost_price,
-      retail_price: first.selling_price,
-      wholesale_price: first.wholesale_price ?? first.selling_price,
-      current_stock: 0,
-      min_stock: first.min_stock ?? 0,
-      max_stock: first.max_stock ?? 1000,
+      barcode: parentRow.barcode || null,
+      description: parentRow.description || null,
+      cost_price: parentRow.cost_price,
+      retail_price: parentRow.selling_price,
+      wholesale_price: parentRow.wholesale_price ?? parentRow.selling_price,
+      min_stock: parentRow.min_stock ?? 0,
+      max_stock: parentRow.max_stock ?? 1000,
       has_variations: hasVariations,
       is_rentable: false,
-      is_sellable: first.is_sellable ?? true,
-      track_stock: first.track_stock ?? true,
+      is_sellable: parentRow.is_sellable ?? true,
+      track_stock: parentRow.track_stock ?? true,
       is_active: true,
       is_combo_product: false,
+      opening_stock: hasVariations ? 0 : parentRow.opening_stock,
     };
-    if (first.image_url) {
-      productData.image_urls = [first.image_url];
+    if (parentRow.image_url) {
+      productData.image_urls = [parentRow.image_url];
     }
 
-    const product = await productService.createProduct(productData);
-    if (!product?.id) {
-      return {
-        status: 'failed',
-        error: {
-          groupKey: key,
-          productName: first.name,
-          rowIndex,
-          message: 'Create product returned no ID',
-          type: 'failed',
-        },
-      };
+    const variations = variantRows.map((row) => ({
+      name: row.variation_name!.trim(),
+      sku: skuResolved.variantSkus.get(row) ?? row.variation_sku!.trim(),
+      barcode: row.variation_barcode || null,
+      attributes: { variant: row.variation_name!.trim() },
+      cost_price: row.cost_price,
+      retail_price: row.selling_price,
+      wholesale_price: row.wholesale_price ?? row.selling_price,
+      opening_stock: row.opening_stock,
+    }));
+
+    const saveResult = await productService.saveProductWithVariations({
+      companyId,
+      branchIdOrNull,
+      parent: productData,
+      variations,
+      deferOpeningBalanceGlSync: deps.deferOpeningBalanceGlSync ?? false,
+    });
+
+    if (deps.deferredOpeningMovementIds && saveResult.openingMovementIds.length > 0) {
+      deps.deferredOpeningMovementIds.push(...saveResult.openingMovementIds);
     }
 
-    if (autoGenerateSku || !first.sku) {
+    if (skuResolved.erpParentGenerated) {
       incrementNextNumber('production');
     }
+    skuIndexAdd(deps.skuIndex, skuToUse);
 
-    if (!hasVariations) {
-      const row = rows[0]!;
-      if (row.opening_stock > 0) {
-        const { error: movErr } = await inventoryService.insertOpeningBalanceMovement(
-          companyId,
-          branchIdOrNull,
-          product.id,
-          row.opening_stock,
-          row.cost_price
-        );
-        if (movErr) {
-          return {
-            status: 'failed',
-            error: {
-              groupKey: key,
-              productName: first.name,
-              rowIndex,
-              message: movErr.message || 'Opening stock failed',
-              type: 'failed',
-            },
-          };
-        }
-      }
-      return { status: 'created' };
-    }
-
-    const variationRows = rows.filter((r) => r.variation_name);
-    for (const row of variationRows) {
-      const varSku = row.variation_sku?.trim() || `${skuToUse}-${(row.variation_name ?? '').replace(/\s+/g, '-')}`;
-      const varRecord = await productService.createVariation({
-        product_id: product.id,
-        name: row.variation_name!,
-        sku: varSku,
-        barcode: row.variation_barcode || null,
-        attributes: { variant: row.variation_name! },
-        cost_price: row.cost_price,
-        retail_price: row.selling_price,
-        wholesale_price: row.wholesale_price ?? row.selling_price,
-        current_stock: 0,
-      });
-      if (row.opening_stock > 0 && varRecord?.id) {
-        await inventoryService.insertOpeningBalanceMovement(
-          companyId,
-          branchIdOrNull,
-          product.id,
-          row.opening_stock,
-          row.cost_price,
-          varRecord.id
-        );
-      }
-    }
-    return { status: 'created' };
+    return { status: saveResult.parentCreated ? 'created' : 'updated' };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return {
       status: 'failed',
-      error: { groupKey: key, productName: first.name, rowIndex, message: msg, type: 'failed' },
+      error: { groupKey: key, productName: parentRow.name, rowIndex, message: msg, type: 'failed' },
     };
   }
 }
@@ -835,31 +1246,45 @@ export async function commitProductImport(
 ): Promise<ImportSummary> {
   const errors: ImportRowError[] = [];
   let created = 0;
+  let updated = 0;
   let skipped = 0;
   let failed = 0;
 
   const plainRows = rowsWithIndex.map(stripIndex);
-  const groups = groupProductRows(plainRows, true);
-  normalizeProductVariationHeuristics(groups);
+  const groups = groupProductRowsByName(plainRows);
+
+  const skuIndex =
+    deps.skuIndex ?? (await productService.listActiveProductSkuKeys(deps.companyId));
+  const deferredOpeningMovementIds: string[] = deps.deferredOpeningMovementIds ?? [];
+  const commitDeps: ProductCommitDeps = {
+    ...deps,
+    skuIndex,
+    deferOpeningBalanceGlSync: deps.deferOpeningBalanceGlSync ?? true,
+    deferredOpeningMovementIds,
+  };
 
   const groupEntries = Array.from(groups.entries());
+  const groupTotal = groupEntries.length;
+  deps.onProgress?.({ phase: 'groups', completed: 0, total: groupTotal });
   const settled = await runChunkedAllSettled(
     groupEntries,
     DEFAULT_IMPORT_CHUNK_SIZE,
-    ([key, rows]) => importOneProductGroup(key, rows, rowsWithIndex, deps)
+    ([key, rows]) => importOneProductGroup(key, rows, rowsWithIndex, commitDeps),
+    (completed, total) => deps.onProgress?.({ phase: 'groups', completed, total })
   );
 
   let gi = 0;
   for (const s of settled) {
     const [key, rows] = groupEntries[gi++]!;
-    const first = rows[0];
-    const rowIndex = first ? representativeRowIndex(rowsWithIndex, first) : 0;
+    const parentResult = resolveParentRow(rows);
+    const parent = parentResult.parent ?? rows[0];
+    const rowIndex = parent ? representativeRowIndex(rowsWithIndex, parent) : 0;
     if (s.status === 'rejected') {
       failed++;
       const msg = s.reason instanceof Error ? s.reason.message : String(s.reason ?? 'Unknown error');
       errors.push({
         groupKey: key,
-        productName: first?.name ?? '',
+        productName: parent?.name ?? '',
         rowIndex,
         message: msg,
         type: 'failed',
@@ -869,6 +1294,8 @@ export async function commitProductImport(
     const r = s.value;
     if (r.status === 'created') {
       created++;
+    } else if (r.status === 'updated') {
+      updated++;
     } else if (r.status === 'skipped') {
       skipped++;
       if (r.error) errors.push(r.error);
@@ -878,7 +1305,38 @@ export async function commitProductImport(
     }
   }
 
-  return { created, skipped, failed, errors };
+  if (commitDeps.deferOpeningBalanceGlSync && deferredOpeningMovementIds.length > 0) {
+    const glTotal = deferredOpeningMovementIds.length;
+    deps.onProgress?.({ phase: 'gl', completed: 0, total: glTotal });
+    try {
+      await defaultAccountsService.ensureDefaultAccounts(deps.companyId);
+      await runChunkedAllSettled(
+        deferredOpeningMovementIds,
+        OPENING_GL_SYNC_CHUNK_SIZE,
+        async (movementId) => {
+          try {
+            await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(movementId, {
+              suppressNotify: true,
+            });
+          } catch (glErr) {
+            console.warn('[product import] Opening GL sync failed for movement', movementId, glErr);
+          }
+        },
+        (completed, total) => deps.onProgress?.({ phase: 'gl', completed, total })
+      );
+    } catch (batchErr) {
+      console.warn('[product import] Batch opening GL sync failed:', batchErr);
+    }
+  }
+
+  return {
+    created,
+    updated,
+    skipped,
+    failed,
+    errors,
+    openingMovementsSynced: deferredOpeningMovementIds.length,
+  };
 }
 
 /** Serialize products to canonical CSV (round-trip with import template). */

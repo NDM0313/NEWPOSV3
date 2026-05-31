@@ -27,6 +27,9 @@ export interface InvoiceDocumentItem {
   tax_amount: number;
   total: number;
   packing_details?: Record<string, unknown> | null;
+  /** Metadata-only bespoke JSON on parent generic SKU lines. */
+  customization_details?: Record<string, unknown> | null;
+  bespoke_parent_item_id?: string | null;
 }
 
 export interface InvoiceDocumentPayment {

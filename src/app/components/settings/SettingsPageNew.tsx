@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   Building2, CreditCard, Hash, ToggleLeft, Save, 
   CheckCircle, Users, Lock,   Key, Settings as SettingsIcon, AlertCircle, UserCog,
   Briefcase,
-  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw, QrCode, FileText, Activity, Shield, FlaskConical, Factory
+  MapPin, Store, ShoppingCart, ShoppingBag, Package, Shirt, Calculator, X, Edit, Download, Server, Copy, Printer, RefreshCw, QrCode, FileText, Activity, Shield, FlaskConical, Factory,   ChevronDown, Scissors, Loader2
 } from 'lucide-react';
+import type { BespokeFormConfig } from '@/app/types/bespoke';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -13,8 +14,8 @@ import { Switch } from "../ui/switch";
 import { cn } from "../ui/utils";
 import { useSettings, BranchSettings } from '@/app/context/SettingsContext';
 import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
-import { branchService } from '@/app/services/branchService';
-import { accountService } from '@/app/services/accountService';
+import { branchService, type Branch } from '@/app/services/branchService';
+import { accountService, type Account } from '@/app/services/accountService';
 import { unitService } from '@/app/services/unitService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { userService, User as UserType } from '@/app/services/userService';
@@ -24,7 +25,15 @@ import { AddUserModal } from '../users/AddUserModal';
 import { AddBranchModal } from '../branches/AddBranchModal';
 import { exportAndDownloadBackup, restoreCompanyBackup, type CompanyBackupData } from '@/app/services/backupService';
 import { BackupRestoreWorkbench } from '@/app/modules/csv-workbench';
-import { companyResetService, type CompanyResetPreview } from '@/app/services/companyResetService';
+import {
+  companyResetService,
+  type CompanyResetPreview,
+  type CompanyResetMode,
+  type CompanyResetDomains,
+  buildResetOptionsForMode,
+  requiredConfirmationPhrase,
+} from '@/app/services/companyResetService';
+import { defaultAccountsService } from '@/app/services/defaultAccountsService';
 import { InventoryMasters, type InventoryMasterTab } from './inventory/InventoryMasters';
 import { LeadTools } from './LeadTools';
 import { invoiceDocumentService } from '@/app/services/invoiceDocumentService';
@@ -42,7 +51,38 @@ import { DeveloperToolsPanel } from '@/app/components/settings/developer/Develop
 import { settingsService } from '@/app/services/settingsService';
 import { NumberingPanel } from './NumberingPanel';
 import { ModuleTogglesSection } from './ModuleTogglesSection';
+import { BarcodeLabelSettingsPanel } from './BarcodeLabelSettingsPanel';
+import { CompanyLogoUpload } from './CompanyLogoUpload';
 import type { NumberingInnerTab } from './NumberingPanel';
+import { SettingsLayout } from './SettingsLayout';
+import {
+  findNavItem,
+  getVisibleSettingsNav,
+  parseSettingsHash,
+  writeSettingsHash,
+  type SettingsCategoryId,
+  type SettingsContentKey,
+} from './settingsNavigation';
+import {
+  filterPaymentAccountsByMethod,
+  findDefaultPaymentAccount,
+  formatPaymentAccountOptionLabel,
+} from '@/app/lib/paymentAccountFilters';
+import {
+  getHealthCheckGuidance,
+  HEALTH_OVERALL_FAIL_BANNER_UR,
+  HEALTH_SKIP_NOTE_UR,
+  HEALTH_SQL_COPY_WARNING_UR,
+} from '@/app/lib/healthCheckGuidance';
+
+const INVENTORY_SUB_TAB_TO_NAV_ITEM: Record<InventoryMasterTab, string> = {
+  general: 'inventoryGeneral',
+  units: 'inventoryUnits',
+  categories: 'inventoryCategories',
+  'sub-categories': 'inventorySubCategories',
+  brands: 'inventoryBrands',
+  variations: 'inventoryVariations',
+};
 
 function TemplateFormFields({
   template,
@@ -77,7 +117,10 @@ function TemplateFormFields({
         <Switch checked={template.show_signature ?? false} onCheckedChange={(v) => update('show_signature', v)} />
       </div>
       <div>
-        <Label className="text-gray-300">Logo URL</Label>
+        <Label className="text-gray-300">Logo URL (optional override)</Label>
+        <p className="text-xs text-gray-500 mt-1 mb-2">
+          Leave blank to use the company logo from Company Information.
+        </p>
         <Input
           className="mt-1 bg-gray-800 border-gray-700 text-white"
           placeholder="https://..."
@@ -111,6 +154,7 @@ function SystemHealthPanel() {
   const [rows, setRows] = useState<ErpHealthRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expandedGuides, setExpandedGuides] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -131,9 +175,23 @@ function SystemHealthPanel() {
     load();
   }, [load]);
 
+  const toggleGuide = (component: string) => {
+    setExpandedGuides((prev) => ({ ...prev, [component]: !prev[component] }));
+  };
+
+  const copySql = async (sql: string) => {
+    try {
+      await navigator.clipboard.writeText(sql);
+      toast.success('Diagnostic SQL copy ho gaya');
+    } catch {
+      toast.error('Copy fail — manually select karein');
+    }
+  };
+
   const statusColor = (status: string) => {
     if (status === 'OK') return 'text-green-400 bg-green-500/10';
     if (status === 'FAIL') return 'text-red-400 bg-red-500/10';
+    if (status === 'SKIP') return 'text-amber-400 bg-amber-500/10';
     return 'text-gray-400 bg-gray-500/10';
   };
 
@@ -175,6 +233,8 @@ function SystemHealthPanel() {
     displayRows.push({ component: 'OVERALL', status: overallStatus === 'PASS' ? 'OK' : 'FAIL', details: null });
   }
 
+  const hasFail = rows.some((r) => r.status === 'FAIL');
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3 mb-6">
@@ -186,30 +246,93 @@ function SystemHealthPanel() {
           <p className="text-sm text-gray-400">ERP integrity checks (admin/owner only)</p>
         </div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full border border-gray-700 rounded-lg border-collapse">
-          <thead>
-            <tr className="bg-gray-800">
-              <th className="text-left text-gray-300 font-medium p-3 border-b border-gray-700">Component</th>
-              <th className="text-left text-gray-300 font-medium p-3 border-b border-gray-700">Status</th>
-              <th className="text-left text-gray-300 font-medium p-3 border-b border-gray-700">Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {displayRows.map((r, i) => (
-              <tr key={i} className="border-b border-gray-800">
-                <td className="p-3 text-white">{r.component}</td>
-                <td className="p-3">
-                  <span className={cn('inline-block px-2 py-0.5 rounded text-sm font-medium', statusColor(r.status))}>
-                    {r.status}
-                  </span>
-                </td>
-                <td className="p-3 text-gray-400">{r.details ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+      {hasFail ? (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          {HEALTH_OVERALL_FAIL_BANNER_UR}
+        </div>
+      ) : null}
+
+      <div className="overflow-x-auto space-y-3">
+        {displayRows.map((r, i) => {
+          const guide = getHealthCheckGuidance(r.component);
+          const isExpanded = Boolean(expandedGuides[r.component]);
+          const showGuide = (r.status === 'FAIL' || r.status === 'SKIP') && guide;
+
+          return (
+            <div
+              key={`${r.component}-${i}`}
+              className={cn(
+                'rounded-lg border border-gray-800 bg-gray-950/40 overflow-hidden',
+                r.status === 'FAIL' && 'border-red-900/40',
+              )}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3 p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-white font-medium">{r.component}</span>
+                    <span className={cn('inline-block px-2 py-0.5 rounded text-sm font-medium', statusColor(r.status))}>
+                      {r.status}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-400 mt-1">{r.details ?? '—'}</p>
+                  {r.status === 'SKIP' ? (
+                    <p className="text-xs text-amber-400/90 mt-1">{HEALTH_SKIP_NOTE_UR}</p>
+                  ) : null}
+                </div>
+                {showGuide ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleGuide(r.component)}
+                    className="border-gray-600 text-gray-300 hover:bg-gray-800 shrink-0 gap-1"
+                  >
+                    Fix guide
+                    <ChevronDown
+                      size={14}
+                      className={cn('transition-transform', isExpanded ? 'rotate-180' : '')}
+                    />
+                  </Button>
+                ) : null}
+              </div>
+
+              {showGuide && isExpanded && guide ? (
+                <div className="border-t border-gray-800 px-4 py-3 space-y-3 bg-gray-900/30">
+                  <p className="text-sm text-gray-300">{guide.meaningUr}</p>
+                  {guide.settingsHint ? (
+                    <p className="text-xs text-blue-300">Settings: {guide.settingsHint}</p>
+                  ) : null}
+                  <ol className="list-decimal list-inside space-y-1.5 text-sm text-gray-400">
+                    {guide.stepsUr.map((step, idx) => (
+                      <li key={idx}>{step}</li>
+                    ))}
+                  </ol>
+                  {guide.diagnosticSql ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500">{HEALTH_SQL_COPY_WARNING_UR}</p>
+                      <pre className="text-xs text-gray-400 bg-gray-950 border border-gray-800 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap font-mono">
+                        {guide.diagnosticSql}
+                      </pre>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => copySql(guide.diagnosticSql!)}
+                        className="border-gray-600 text-gray-300 hover:bg-gray-800 gap-2"
+                      >
+                        <Copy size={14} />
+                        Copy diagnostic SQL
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
+
       {error && <p className="text-amber-400 text-sm">{error}</p>}
       <Button
         type="button"
@@ -222,142 +345,6 @@ function SystemHealthPanel() {
       </Button>
     </div>
   );
-}
-
-/** Content key used to render the right panel (maps main tab + sub-tab to legacy tab id) */
-type SettingsContentKey =
-  | 'company'
-  | 'branches'
-  | 'pos'
-  | 'sales'
-  | 'purchase'
-  | 'inventory'
-  | 'rental'
-  | 'accounting'
-  | 'accounts'
-  | 'numbering'
-  | 'printer'
-  | 'printing'
-  | 'invoiceTemplates'
-  | 'users'
-  | 'rolesPermissions'
-  | 'modules'
-  | 'leadTools'
-  | 'employees'
-  | 'systemHealth'
-  | 'data';
-
-type MainTab = 'general' | 'sales' | 'purchases' | 'inventory' | 'accounting' | 'system' | 'access' | 'workforce' | 'numbering' | 'printing';
-
-const MAIN_TABS: { id: MainTab; label: string }[] = [
-  { id: 'general', label: 'General' },
-  { id: 'sales', label: 'Sales' },
-  { id: 'purchases', label: 'Purchases' },
-  { id: 'inventory', label: 'Inventory' },
-  { id: 'accounting', label: 'Accounting' },
-  { id: 'printing', label: 'Printing' },
-  { id: 'system', label: 'System' },
-  { id: 'access', label: 'Access' },
-  { id: 'workforce', label: 'Workforce' },
-  { id: 'numbering', label: 'Numbering' },
-];
-
-const SUB_TABS: Record<MainTab, { id: string; label: string }[]> = {
-  general: [
-    { id: 'company', label: 'Company' },
-    { id: 'branches', label: 'Branches' },
-  ],
-  sales: [
-    { id: 'pos', label: 'POS' },
-    { id: 'salesRules', label: 'Sales Rules' },
-    { id: 'invoiceTemplates', label: 'Invoice Templates' },
-  ],
-  printing: [
-    { id: 'general', label: 'General' },
-    { id: 'documentTemplates', label: 'Document Templates' },
-    { id: 'pageSetup', label: 'Page Setup' },
-    { id: 'fields', label: 'Fields' },
-    { id: 'layoutEditor', label: 'Layout Editor' },
-    { id: 'thermalPrint', label: 'Thermal Print' },
-    { id: 'pdfExport', label: 'PDF Export' },
-  ],
-  purchases: [
-    { id: 'purchaseRules', label: 'Purchase Rules' },
-  ],
-  inventory: [
-    { id: 'general', label: 'General' },
-    { id: 'units', label: 'Units' },
-    { id: 'categories', label: 'Categories' },
-    { id: 'sub-categories', label: 'Sub-Categories' },
-    { id: 'brands', label: 'Brands' },
-    { id: 'variations', label: 'Variations' },
-  ],
-  accounting: [
-    { id: 'fiscalTax', label: 'Fiscal & Tax' },
-    { id: 'defaultAccounts', label: 'Default Accounts' },
-    { id: 'policies', label: 'Policies' },
-  ],
-  system: [
-    { id: 'documentsPrinting', label: 'Documents & Printing' },
-    { id: 'numbering', label: 'Numbering' },
-    { id: 'modules', label: 'Modules' },
-    { id: 'backup', label: 'Backup' },
-    { id: 'systemHealth', label: 'System Health' },
-    { id: 'rental', label: 'Rental' },
-    { id: 'leadTools', label: 'Lead Tools' },
-  ],
-  access: [
-    { id: 'users', label: 'Users' },
-    { id: 'rolesPermissions', label: 'Roles & Permissions' },
-  ],
-  workforce: [
-    { id: 'employees', label: 'Employees' },
-  ],
-  numbering: [
-    { id: 'rules', label: 'Numbering Rules' },
-    { id: 'maintenance', label: 'Maintenance' },
-    { id: 'audit', label: 'Audit Log' },
-  ],
-};
-
-/** Maps (mainTab, subTabId) to content key for rendering */
-function getContentKey(mainTab: MainTab, subTabId: string): SettingsContentKey {
-  const map: Record<string, Record<string, SettingsContentKey>> = {
-    general: { company: 'company', branches: 'branches' },
-    sales: { pos: 'pos', salesRules: 'sales', invoiceTemplates: 'invoiceTemplates' },
-    printing: {
-      general: 'printing',
-      documentTemplates: 'printing',
-      pageSetup: 'printing',
-      fields: 'printing',
-      layoutEditor: 'printing',
-      thermalPrint: 'printing',
-      pdfExport: 'printing',
-    },
-    purchases: { purchaseRules: 'purchase' },
-    inventory: {
-      general: 'inventory',
-      units: 'inventory',
-      categories: 'inventory',
-      'sub-categories': 'inventory',
-      brands: 'inventory',
-      variations: 'inventory',
-    },
-    accounting: { fiscalTax: 'accounting', defaultAccounts: 'accounts', policies: 'accounting' },
-    system: {
-      documentsPrinting: 'printer',
-      numbering: 'numbering',
-      modules: 'modules',
-      backup: 'data',
-      systemHealth: 'systemHealth',
-      rental: 'rental',
-      leadTools: 'leadTools',
-    },
-    access: { users: 'users', rolesPermissions: 'rolesPermissions' },
-    workforce: { employees: 'employees' },
-    numbering: { rules: 'numbering', maintenance: 'numbering', audit: 'numbering' },
-  };
-  return map[mainTab]?.[subTabId] ?? 'company';
 }
 
 export const SettingsPageNew = () => {
@@ -374,19 +361,43 @@ export const SettingsPageNew = () => {
     const r = userRole.toLowerCase().trim();
     return r === 'owner';
   })();
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H1',location:'SettingsPageNew.tsx:roleCheck',message:'reset panel role gate evaluated',data:{userRole:userRole||null,isAdminOrOwner},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }, [userRole, isAdminOrOwner]);
+  const canDeveloperTools = canAccessTechnicalDeveloperSettings(userRole);
+  const visibleNav = useMemo(
+    () => getVisibleSettingsNav(isAdminOrOwner, canDeveloperTools),
+    [isAdminOrOwner, canDeveloperTools],
+  );
   const accounting = useAccounting();
-  const [mainTab, setMainTab] = useState<MainTab>('general');
-  const [activeSubTab, setActiveSubTab] = useState<string>('company');
+  const [activeCategoryId, setActiveCategoryId] = useState<SettingsCategoryId>(visibleNav.defaultCategoryId);
+  const [activeItemId, setActiveItemId] = useState<string>(visibleNav.defaultItemId);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  const subTabs = SUB_TABS[mainTab];
-  const effectiveSubTab = subTabs.some((t) => t.id === activeSubTab) ? activeSubTab : subTabs[0]?.id ?? '';
-  const contentKey: SettingsContentKey = getContentKey(mainTab, effectiveSubTab);
+  useEffect(() => {
+    const fromHash = parseSettingsHash();
+    if (!fromHash) return;
+    const item = findNavItem(visibleNav.categories, fromHash.categoryId, fromHash.itemId);
+    if (item) {
+      setActiveCategoryId(fromHash.categoryId);
+      setActiveItemId(fromHash.itemId);
+    }
+  }, [visibleNav.categories]);
+
+  const activeNavItem =
+    findNavItem(visibleNav.categories, activeCategoryId, activeItemId) ??
+    findNavItem(visibleNav.categories, visibleNav.defaultCategoryId, visibleNav.defaultItemId);
+
+  const resolvedCategoryId = activeNavItem
+    ? visibleNav.categories.find((c) => c.items.some((i) => i.id === activeNavItem.id))?.id ?? visibleNav.defaultCategoryId
+    : visibleNav.defaultCategoryId;
+
+  const resolvedItemId = activeNavItem?.id ?? visibleNav.defaultItemId;
+  const contentKey: SettingsContentKey = activeNavItem?.contentKey ?? 'company';
+  const navSubTabId = activeNavItem?.subTabId ?? resolvedItemId;
+
+  const handleNavSelect = useCallback((categoryId: SettingsCategoryId, itemId: string) => {
+    setActiveCategoryId(categoryId);
+    setActiveItemId(itemId);
+    writeSettingsHash(categoryId, itemId);
+  }, []);
 
   // Branch edit dialog state (OLD - keeping for backward compatibility)
   const [isBranchDialogOpen, setIsBranchDialogOpen] = useState(false);
@@ -420,6 +431,27 @@ export const SettingsPageNew = () => {
   const [loadingResetPreview, setLoadingResetPreview] = useState(false);
   const [executingReset, setExecutingReset] = useState(false);
   const [resetConfirmation, setResetConfirmation] = useState('');
+  const [resetMode, setResetMode] = useState<CompanyResetMode>('transactional');
+  const [resetDomains, setResetDomains] = useState<CompanyResetDomains>({
+    transactional: true,
+    contacts: false,
+    products: false,
+    accounts: false,
+    workers: false,
+  });
+  const resetOptions = useMemo(
+    () => buildResetOptionsForMode(resetMode, resetDomains),
+    [resetMode, resetDomains]
+  );
+  const resetConfirmPhrase = useMemo(() => requiredConfirmationPhrase(resetOptions), [resetOptions]);
+  const resetPhraseMatches = useMemo(
+    () => resetConfirmation.trim().toUpperCase() === resetConfirmPhrase,
+    [resetConfirmation, resetConfirmPhrase]
+  );
+  const resetBusy = executingReset || loadingResetPreview;
+  const resetRunDisabled = !companyId || executingReset || !resetPhraseMatches;
+  const [paymentAccounts, setPaymentAccounts] = useState<Account[]>([]);
+  const [loadingPaymentAccounts, setLoadingPaymentAccounts] = useState(false);
 
   // Phase B: Invoice template settings (A4 & Thermal)
   const [invoiceTemplateA4, setInvoiceTemplateA4] = useState<Partial<InvoiceTemplate>>({
@@ -477,57 +509,87 @@ export const SettingsPageNew = () => {
     return msg;
   }, []);
 
+  const handleResetModeChange = useCallback((mode: CompanyResetMode) => {
+    setResetMode(mode);
+    setResetConfirmation('');
+    setResetPreview(null);
+    if (mode === 'transactional') {
+      setResetDomains({
+        transactional: true,
+        contacts: false,
+        products: false,
+        accounts: false,
+        workers: false,
+      });
+    } else if (mode === 'complete') {
+      setResetDomains({
+        transactional: true,
+        contacts: true,
+        products: true,
+        accounts: true,
+        workers: true,
+      });
+    }
+  }, []);
+
   const loadResetPreview = useCallback(async () => {
     if (!companyId) return;
-    // #region agent log
-    fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H2',location:'SettingsPageNew.tsx:loadResetPreview:start',message:'Preview reset requested from UI',data:{companyIdPresent:Boolean(companyId),contentKey},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     setLoadingResetPreview(true);
     try {
-      const preview = await companyResetService.preview(companyId);
+      const preview = await companyResetService.preview(companyId, resetOptions);
       if (!preview.success) {
-        // #region agent log
-        fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H2',location:'SettingsPageNew.tsx:loadResetPreview:failed',message:'Preview reset failed in UI',data:{error:preview.error||null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         toast.error(formatResetError(preview.error || 'Failed to load reset preview'));
         return;
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H2',location:'SettingsPageNew.tsx:loadResetPreview:success',message:'Preview reset loaded in UI',data:{hasTransactional:Boolean(preview.transactional)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       setResetPreview(preview);
     } catch (error: any) {
       toast.error(formatResetError(error?.message || 'Failed to load reset preview'));
     } finally {
       setLoadingResetPreview(false);
     }
-  }, [companyId, formatResetError]);
+  }, [companyId, formatResetError, resetOptions]);
 
   const executeCompanyReset = useCallback(async () => {
     if (!companyId) return;
-    // #region agent log
-    fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H4',location:'SettingsPageNew.tsx:executeCompanyReset:start',message:'Execute reset requested from UI',data:{companyIdPresent:Boolean(companyId),typed:resetConfirmation.trim().toUpperCase(),isAdminOrOwner,userRole:userRole||null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    if (resetConfirmation.trim().toUpperCase() !== 'RESET') {
-      toast.error('Please type RESET to confirm');
+    const phrase = resetConfirmPhrase;
+    if (resetConfirmation.trim().toUpperCase() !== phrase) {
+      toast.error(`Please type ${phrase} to confirm`);
       return;
     }
     setExecutingReset(true);
     try {
-      const result = await companyResetService.execute(companyId, resetConfirmation.trim().toUpperCase());
+      const result = await companyResetService.execute(
+        companyId,
+        resetConfirmation.trim().toUpperCase(),
+        resetOptions
+      );
       if (!result.success) {
-        // #region agent log
-        fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H3',location:'SettingsPageNew.tsx:executeCompanyReset:failed',message:'Execute reset failed in UI',data:{error:result.error||null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         toast.error(formatResetError(result.error || 'Reset failed'));
         return;
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H3',location:'SettingsPageNew.tsx:executeCompanyReset:success',message:'Execute reset succeeded in UI',data:{auditId:result.auditId||null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      toast.success('Company transactional data reset completed');
+      const shouldReseed =
+        result.reseed_accounts === true ||
+        resetOptions.reseed_accounts === true ||
+        resetOptions.domains.accounts;
+      if (shouldReseed) {
+        try {
+          await defaultAccountsService.ensureDefaultAccounts(companyId);
+        } catch (reseedErr: unknown) {
+          const msg = reseedErr instanceof Error ? reseedErr.message : 'Failed to reseed chart of accounts';
+          toast.error(msg);
+        }
+      }
+      toast.success(
+        resetMode === 'complete'
+          ? 'Complete company reset finished'
+          : resetMode === 'selective'
+            ? 'Selective company reset finished'
+            : 'Company transactional data reset completed'
+      );
       setResetConfirmation('');
       await loadResetPreview();
+      window.dispatchEvent(new Event('inventory-updated'));
+      window.dispatchEvent(new Event('products-updated'));
       try {
         localStorage.removeItem('erp_modules');
         sessionStorage.clear();
@@ -538,7 +600,15 @@ export const SettingsPageNew = () => {
     } finally {
       setExecutingReset(false);
     }
-  }, [companyId, formatResetError, loadResetPreview, resetConfirmation]);
+  }, [
+    companyId,
+    formatResetError,
+    loadResetPreview,
+    resetConfirmation,
+    resetConfirmPhrase,
+    resetMode,
+    resetOptions,
+  ]);
 
   const parseBackupFile = async (file: File): Promise<CompanyBackupData> => {
     const text = await file.text();
@@ -669,6 +739,20 @@ export const SettingsPageNew = () => {
     }
   }, [companyId, printingSettings]);
 
+  const loadPaymentAccounts = useCallback(async () => {
+    if (!companyId) return;
+    setLoadingPaymentAccounts(true);
+    try {
+      const list = await accountService.getPaymentAccountsOnly(companyId);
+      setPaymentAccounts((list || []) as Account[]);
+    } catch (e) {
+      console.error('[SETTINGS] Error loading payment accounts:', e);
+      setPaymentAccounts([]);
+    } finally {
+      setLoadingPaymentAccounts(false);
+    }
+  }, [companyId]);
+
   // Load branches from database and resolve default account names
   const loadBranches = useCallback(async () => {
     if (!companyId) return;
@@ -685,6 +769,10 @@ export const SettingsPageNew = () => {
         branchCode: branch.code || '',
         address: branch.address || '',
         phone: branch.phone || '',
+        city: branch.city || '',
+        state: branch.state || '',
+        fiscalYearStart: branch.fiscal_year_start ? String(branch.fiscal_year_start).split('T')[0] : '',
+        fiscalYearEnd: branch.fiscal_year_end ? String(branch.fiscal_year_end).split('T')[0] : '',
         isActive: branch.is_active ?? true,
         isDefault: !!branch.is_default,
         cashAccount: (branch.default_cash_account_id && accountNameById.get(branch.default_cash_account_id)) || '',
@@ -738,67 +826,39 @@ export const SettingsPageNew = () => {
     }
   }, [contentKey, companyId]);
 
-  // 🔧 FIX: Auto-select default core accounts if not already set
-  // This runs when accounts tab is opened and accounts are loaded
+  // Load default payment accounts when accounts tab is active
   useEffect(() => {
-    if (contentKey === 'accounts' && accounting.accounts.length > 0) {
-      setAccountsForm(prev => {
-        // Check if any default account needs to be auto-selected
-        const cashMethod = prev.paymentMethods.find(p => p.method === 'Cash');
-        const bankMethod = prev.paymentMethods.find(p => p.method === 'Bank');
-        const walletMethod = prev.paymentMethods.find(p => p.method === 'Mobile Wallet');
-        
-        // Only update if at least one account is missing
-        const needsUpdate = 
-          (!cashMethod?.defaultAccount || cashMethod.defaultAccount === '') ||
-          (!bankMethod?.defaultAccount || bankMethod.defaultAccount === '') ||
-          (!walletMethod?.defaultAccount || walletMethod.defaultAccount === '');
-        
-        if (!needsUpdate) {
-          return prev; // No update needed
-        }
-        
-        const updatedMethods = prev.paymentMethods.map(p => {
-          // Auto-select Cash account (code 1000) if not set
-          if (p.method === 'Cash' && (!p.defaultAccount || p.defaultAccount === '')) {
-            const cashAccount = accounting.accounts.find(acc => 
-              acc.code === '1000' || 
-              (acc.type === 'Cash' && acc.isActive)
-            );
-            if (cashAccount) {
-              return { ...p, defaultAccount: cashAccount.name };
-            }
-          }
-          
-          // Auto-select Bank account (code 1010) if not set
-          if (p.method === 'Bank' && (!p.defaultAccount || p.defaultAccount === '')) {
-            const bankAccount = accounting.accounts.find(acc => 
-              acc.code === '1010' || 
-              (acc.type === 'Bank' && acc.isActive)
-            );
-            if (bankAccount) {
-              return { ...p, defaultAccount: bankAccount.name };
-            }
-          }
-          
-          // Auto-select Mobile Wallet account (code 1020) if not set
-          if (p.method === 'Mobile Wallet' && (!p.defaultAccount || p.defaultAccount === '')) {
-            const walletAccount = accounting.accounts.find(acc => 
-              acc.code === '1020' || 
-              (acc.type === 'Mobile Wallet' && acc.isActive)
-            );
-            if (walletAccount) {
-              return { ...p, defaultAccount: walletAccount.name };
-            }
-          }
-          
-          return p;
-        });
-        
-        return { ...prev, paymentMethods: updatedMethods };
-      });
+    if (contentKey === 'accounts' && companyId) {
+      setAccountsForm(settings.defaultAccounts);
+      loadPaymentAccounts();
     }
-  }, [contentKey, accounting.accounts.length]); // Only depend on accounts length to avoid infinite loops
+  }, [contentKey, companyId, loadPaymentAccounts, settings.defaultAccounts]);
+
+  // Auto-select default core accounts if not already set
+  useEffect(() => {
+    if (contentKey !== 'accounts' || paymentAccounts.length === 0) return;
+
+    setAccountsForm((prev) => {
+      const cashMethod = prev.paymentMethods.find((p) => p.method === 'Cash');
+      const bankMethod = prev.paymentMethods.find((p) => p.method === 'Bank');
+      const walletMethod = prev.paymentMethods.find((p) => p.method === 'Mobile Wallet');
+
+      const needsUpdate =
+        !cashMethod?.defaultAccount
+        || !bankMethod?.defaultAccount
+        || !walletMethod?.defaultAccount;
+
+      if (!needsUpdate) return prev;
+
+      const updatedMethods = prev.paymentMethods.map((p) => {
+        if (p.defaultAccount) return p;
+        const match = findDefaultPaymentAccount(paymentAccounts, p.method as 'Cash' | 'Bank' | 'Mobile Wallet');
+        return match ? { ...p, defaultAccount: match.name } : p;
+      });
+
+      return { ...prev, paymentMethods: updatedMethods };
+    });
+  }, [contentKey, paymentAccounts]);
 
   // Listen for userCreated event - Real-time update
   useEffect(() => {
@@ -814,24 +874,16 @@ export const SettingsPageNew = () => {
     };
   }, [contentKey, loadUsers]);
 
-  // Handle branch edit (using new modal) – pass default account IDs so modal can prefill
-  const handleEditBranch = (branch: BranchSettings) => {
-    const branchForModal = {
-      id: branch.id,
-      company_id: companyId || '',
-      name: branch.branchName,
-      code: branch.branchCode,
-      phone: branch.phone,
-      address: branch.address,
-      city: undefined,
-      state: undefined,
-      is_active: branch.isActive ?? true,
-      default_cash_account_id: branch.cashAccountId || null,
-      default_bank_account_id: branch.bankAccountId || null,
-      default_pos_drawer_account_id: branch.posCashDrawerId || null,
-    };
-    setEditingBranchForModal(branchForModal);
-    setAddBranchModalOpen(true);
+  // Handle branch edit — load full row from DB so fiscal/location fields are not stale
+  const handleEditBranch = async (branch: BranchSettings) => {
+    try {
+      const full = await branchService.getBranch(branch.id);
+      setEditingBranchForModal(full);
+      setAddBranchModalOpen(true);
+    } catch (error) {
+      console.error('[SETTINGS] Error loading branch for edit:', error);
+      toast.error('Failed to load branch details');
+    }
   };
 
   // Handle branch save
@@ -846,13 +898,12 @@ export const SettingsPageNew = () => {
       }
 
       // Map BranchSettings to Branch format for database
-      const branchUpdates = {
+      const branchUpdates: Partial<Branch> = {
         name: branchForm.branchName,
         code: branchForm.branchCode,
-        address: branchForm.address || null,
-        phone: branchForm.phone || null,
+        address: branchForm.address || undefined,
+        phone: branchForm.phone || undefined,
         is_active: branchForm.isActive ?? true,
-        is_default: branchForm.isDefault ?? false,
       };
 
       // Save to database
@@ -921,80 +972,19 @@ export const SettingsPageNew = () => {
     }
   };
 
-  const visibleSystemSubTabs = isAdminOrOwner
-    ? SUB_TABS.system
-    : SUB_TABS.system.filter((t) => t.id !== 'systemHealth');
-
-  const visibleMainTabs = isAdminOrOwner
-    ? MAIN_TABS
-    : MAIN_TABS.filter((t) => t.id !== 'numbering');
+  const activeCategory = visibleNav.categories.find((c) => c.id === resolvedCategoryId);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white animate-in fade-in duration-500">
-      {/* HEADER – sticky, max-width container */}
-      <div className="sticky top-0 z-30 border-b border-gray-800 bg-gray-950">
-        <div className="max-w-6xl mx-auto px-6 py-4">
-          <div className="flex justify-between items-start">
-            <div>
-              <h1 className="text-xl font-semibold text-white">Settings</h1>
-              <p className="text-sm text-gray-400 mt-0.5">
-                Configure your ERP defaults and preferences
-              </p>
-            </div>
-            {hasUnsavedChanges && (
-              <Button
-                onClick={handleSave}
-                className="bg-green-600 hover:bg-green-500 text-white gap-2 shadow-lg shrink-0"
-              >
-                <Save size={16} /> Save Changes
-              </Button>
-            )}
-          </div>
-
-          {/* MAIN TABS – Stripe/Shopify style (Numbering only for Admin/Owner) */}
-          <div className="flex gap-6 mt-4 text-sm overflow-x-auto pb-px">
-            {visibleMainTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  setMainTab(tab.id);
-                  setActiveSubTab(SUB_TABS[tab.id][0]?.id ?? '');
-                }}
-                className={cn(
-                  'shrink-0 pb-1.5 font-medium transition-colors',
-                  mainTab === tab.id
-                    ? 'text-white border-b-2 border-blue-500'
-                    : 'text-gray-400 hover:text-white'
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* SUB TABS */}
-          <div className="flex gap-3 mt-4 overflow-x-auto">
-            {(mainTab === 'system' ? visibleSystemSubTabs : subTabs).map((st) => (
-              <button
-                key={st.id}
-                onClick={() => setActiveSubTab(st.id)}
-                className={cn(
-                  'shrink-0 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors',
-                  effectiveSubTab === st.id
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-900 text-gray-400 hover:text-white'
-                )}
-              >
-                {st.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* CONTENT – max-width container, consistent spacing */}
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 space-y-8">
+    <>
+      <SettingsLayout
+        categories={visibleNav.categories}
+        activeCategoryId={resolvedCategoryId}
+        activeItemId={resolvedItemId}
+        onSelect={handleNavSelect}
+        categoryDescription={activeCategory?.description}
+        hasUnsavedChanges={hasUnsavedChanges}
+        onSave={handleSave}
+      >
           {/* COMPANY INFO */}
           {contentKey === 'company' && (
               <div className="space-y-6">
@@ -1073,6 +1063,14 @@ export const SettingsPageNew = () => {
                       placeholder="contact@dincollection.com"
                     />
                   </div>
+
+                  <CompanyLogoUpload
+                    logoUrl={companyForm.logoUrl}
+                    onChange={(logoUrl) => {
+                      setCompanyForm({ ...companyForm, logoUrl });
+                      setHasUnsavedChanges(true);
+                    }}
+                  />
 
                   <div>
                     <Label className="text-gray-300 mb-2 block">Currency</Label>
@@ -1458,6 +1456,71 @@ export const SettingsPageNew = () => {
                     />
                   </div>
                 </div>
+
+                {isAdminOrOwner && (
+                  <div className="space-y-3 pt-4 border-t border-gray-800">
+                    <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
+                      <Scissors size={16} className="text-violet-400" />
+                      Bespoke / Custom Orders
+                    </h4>
+                    <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-violet-500/30">
+                      <div>
+                        <p className="text-white font-medium">Enable customization</p>
+                        <p className="text-sm text-gray-400">
+                          When ON, generic custom SKUs (CUSTOM-BRIDAL, etc.) appear in search and the Customize button is available. Stitching charges use Extra Expenses on the sale.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={settings.businessSettings.enableBespokeOrders}
+                        onCheckedChange={async (val) => {
+                          try {
+                            await settings.updateBusinessSettings({ enableBespokeOrders: val }, { silent: true });
+                            toast.success(val ? 'Customization enabled' : 'Customization disabled');
+                          } catch (e: unknown) {
+                            const err = e as { code?: string; message?: string };
+                            if (err?.code === 'MIGRATION_REQUIRED') {
+                              toast.error(err.message || 'Database migration required for customization.');
+                              return;
+                            }
+                            toast.error(err?.message || 'Failed to update');
+                          }
+                        }}
+                      />
+                    </div>
+
+                    {settings.businessSettings.enableBespokeOrders && (
+                      <div className="bg-gray-950 p-4 rounded-lg border border-gray-800 space-y-3">
+                        <p className="text-sm text-gray-400">Choose which fields appear in the customization modal:</p>
+                        {(
+                          [
+                            ['show_measurements', 'Measurements'],
+                            ['show_fabric', 'Fabric details'],
+                            ['show_color_code', 'Color / shade card code'],
+                            ['show_image_upload', 'Reference image (URL or upload)'],
+                            ['show_delivery_date', 'Expected delivery date'],
+                          ] as const
+                        ).map(([key, label]) => (
+                          <div key={key} className="flex items-center justify-between">
+                            <p className="text-white text-sm">{label}</p>
+                            <Switch
+                              checked={settings.businessSettings.bespokeFormConfig[key as keyof BespokeFormConfig]}
+                              onCheckedChange={async (val) => {
+                                try {
+                                  await settings.updateBusinessSettings(
+                                    { bespokeFormConfig: { [key]: val } },
+                                    { silent: true },
+                                  );
+                                } catch (e: any) {
+                                  toast.error(e?.message || 'Failed to update');
+                                }
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1580,8 +1643,11 @@ export const SettingsPageNew = () => {
                 </div>
 
                 <InventoryMasters
-                  activeSubTab={(mainTab === 'inventory' ? effectiveSubTab : 'general') as InventoryMasterTab}
-                  onSubTabChange={(t) => setActiveSubTab(t)}
+                  activeSubTab={navSubTabId as InventoryMasterTab}
+                  onSubTabChange={(t) => {
+                    const itemId = INVENTORY_SUB_TAB_TO_NAV_ITEM[t] ?? 'inventoryGeneral';
+                    handleNavSelect('operations', itemId);
+                  }}
                   generalContent={
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1734,6 +1800,13 @@ export const SettingsPageNew = () => {
                             }}
                           />
                         </div>
+                      </div>
+
+                      <div className="mt-8 pt-8 border-t border-gray-800">
+                        <BarcodeLabelSettingsPanel
+                          companyId={companyId}
+                          companyName={companyForm.businessName}
+                        />
                       </div>
                     </>
                   }
@@ -2045,6 +2118,9 @@ export const SettingsPageNew = () => {
                 </div>
 
                 <div className="space-y-6">
+                  {loadingPaymentAccounts ? (
+                    <p className="text-sm text-gray-400">Payment accounts load ho rahe hain…</p>
+                  ) : null}
                   <div>
                     <Label className="text-gray-300 mb-2 block flex items-center gap-2">
                       <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Cash</Badge>
@@ -2062,13 +2138,11 @@ export const SettingsPageNew = () => {
                       className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white"
                     >
                       <option value="">Select Cash Account</option>
-                      {accounting.accounts
-                        .filter(acc => acc.type === 'Cash' && acc.isActive)
-                        .map(acc => (
-                          <option key={acc.id} value={acc.name}>
-                            {acc.name} {acc.code ? `(${acc.code})` : ''} • GL (journal): Rs {acc.balance.toLocaleString()}
-                          </option>
-                        ))}
+                      {filterPaymentAccountsByMethod(paymentAccounts, 'Cash').map((acc) => (
+                        <option key={acc.id ?? acc.name} value={acc.name}>
+                          {formatPaymentAccountOptionLabel(acc)}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -2089,13 +2163,11 @@ export const SettingsPageNew = () => {
                       className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white"
                     >
                       <option value="">Select Bank Account</option>
-                      {accounting.accounts
-                        .filter(acc => acc.type === 'Bank' && acc.isActive)
-                        .map(acc => (
-                          <option key={acc.id} value={acc.name}>
-                            {acc.name} {acc.code ? `(${acc.code})` : ''} • GL (journal): Rs {acc.balance.toLocaleString()}
-                          </option>
-                        ))}
+                      {filterPaymentAccountsByMethod(paymentAccounts, 'Bank').map((acc) => (
+                        <option key={acc.id ?? acc.name} value={acc.name}>
+                          {formatPaymentAccountOptionLabel(acc)}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -2116,13 +2188,11 @@ export const SettingsPageNew = () => {
                       className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white"
                     >
                       <option value="">Select Mobile Wallet Account</option>
-                      {accounting.accounts
-                        .filter(acc => acc.type === 'Mobile Wallet' && acc.isActive)
-                        .map(acc => (
-                          <option key={acc.id} value={acc.name}>
-                            {acc.name} {acc.code ? `(${acc.code})` : ''} • GL (journal): Rs {acc.balance.toLocaleString()}
-                          </option>
-                        ))}
+                      {filterPaymentAccountsByMethod(paymentAccounts, 'Mobile Wallet').map((acc) => (
+                        <option key={acc.id ?? acc.name} value={acc.name}>
+                          {formatPaymentAccountOptionLabel(acc)}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -2133,7 +2203,7 @@ export const SettingsPageNew = () => {
             {contentKey === 'numbering' && (
               <NumberingPanel
                 isAdminOrOwner={isAdminOrOwner}
-                activeSubTab={(effectiveSubTab === 'rules' || effectiveSubTab === 'maintenance' || effectiveSubTab === 'audit' ? effectiveSubTab : 'rules') as NumberingInnerTab}
+                activeSubTab={(navSubTabId === 'rules' || navSubTabId === 'maintenance' || navSubTabId === 'audit' ? navSubTabId : 'rules') as NumberingInnerTab}
               />
             )}
 
@@ -2217,7 +2287,7 @@ export const SettingsPageNew = () => {
             {/* Centralized Printing (Settings → Printing) */}
             {contentKey === 'printing' && (
               <PrintingSettingsPanel
-                subTabId={effectiveSubTab}
+                subTabId={navSubTabId}
                 settings={printingSettings}
                 loading={loadingPrinting}
                 saving={savingPrinting}
@@ -2600,7 +2670,19 @@ export const SettingsPageNew = () => {
 
             {/* DATA & BACKUP TAB */}
             {contentKey === 'data' && (
-              <div className="space-y-6">
+              <div className="relative space-y-6">
+                {executingReset && (
+                  <div
+                    className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 rounded-lg bg-gray-950/85 backdrop-blur-[2px]"
+                    aria-busy="true"
+                    aria-live="polite"
+                  >
+                    <Loader2 className="h-8 w-8 animate-spin text-red-400" />
+                    <p className="text-sm font-medium text-red-300">Resetting company data…</p>
+                    <p className="text-xs text-gray-500">Please wait — do not use other controls on this tab</p>
+                  </div>
+                )}
+                <div className={cn(executingReset && 'pointer-events-none select-none opacity-50')}>
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-emerald-500/10 rounded-lg">
                     <Download className="text-emerald-500" size={24} />
@@ -2731,71 +2813,310 @@ export const SettingsPageNew = () => {
                   </Button>
                 </div>
 
-                <div className="bg-red-950/30 p-6 rounded-lg border border-red-800/60">
+                {isAdminOrOwner && (
+                <div className="relative bg-red-950/30 p-6 rounded-lg border border-red-800/60">
+                  {resetBusy && (
+                    <div
+                      className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-lg bg-gray-950/85 backdrop-blur-[2px]"
+                      aria-busy="true"
+                      aria-live="polite"
+                    >
+                      <Loader2 className="h-8 w-8 animate-spin text-red-400" />
+                      <p className="text-sm font-medium text-red-300">
+                        {executingReset ? 'Resetting company data…' : 'Loading reset preview…'}
+                      </p>
+                      <p className="text-xs text-gray-500">Please wait — do not change options</p>
+                    </div>
+                  )}
+                  <div className={cn(resetBusy && 'pointer-events-none select-none opacity-50')}>
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="flex items-center gap-2">
                       <AlertCircle className="text-red-400" size={20} />
-                      <h4 className="text-white font-medium">Company Transaction Reset (Danger Zone)</h4>
+                      <h4 className="text-white font-medium">Company Reset (Danger Zone)</h4>
                     </div>
                     <Button
                       variant="outline"
                       className="border-red-700 text-red-300 hover:bg-red-900/30"
-                      disabled={!companyId || loadingResetPreview}
+                      disabled={!companyId || resetBusy}
                       onClick={loadResetPreview}
                     >
                       {loadingResetPreview ? 'Loading...' : 'Preview reset impact'}
                     </Button>
                   </div>
 
-                  <p className="text-sm text-gray-300 mb-3">
-                    Ye action transactional data wipe karega aur master data preserve karega: customers, suppliers, items/products, workers.
-                  </p>
-                  <p className="text-xs text-gray-400 mb-4">
-                    Remove hoga: sales, purchases, rentals, payments, expenses, journal/ledger, stock, courier/studio flows.
+                  <p className="text-sm text-gray-400 mb-4">
+                    Company shell, branches, ERP users, and settings are never deleted. Choose a reset mode, preview counts, then confirm.
                   </p>
 
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                    {(
+                      [
+                        {
+                          id: 'transactional' as CompanyResetMode,
+                          title: 'Transaction reset',
+                          desc: 'Same as before: wipe sales, purchases, GL, stock, studio, numbering. Keeps contacts, products, COA, workers.',
+                        },
+                        {
+                          id: 'selective' as CompanyResetMode,
+                          title: 'Custom selection',
+                          desc: 'Pick which domains to delete. Master deletes require RESET ALL.',
+                        },
+                        {
+                          id: 'complete' as CompanyResetMode,
+                          title: 'Complete reset (A–Z)',
+                          desc: 'Transactions + contacts + products + chart of accounts + workers. Keeps company, branches, users, settings. COA re-seeded after run.',
+                        },
+                      ] as const
+                    ).map((card) => (
+                      <button
+                        key={card.id}
+                        type="button"
+                        disabled={resetBusy}
+                        onClick={() => handleResetModeChange(card.id)}
+                        className={cn(
+                          'text-left p-4 rounded-lg border transition-colors',
+                          resetMode === card.id
+                            ? 'border-red-500 bg-red-950/50'
+                            : 'border-gray-800 bg-gray-900/50 hover:border-gray-600',
+                          resetBusy && 'cursor-not-allowed opacity-60'
+                        )}
+                      >
+                        <p className="text-sm font-medium text-white mb-1">{card.title}</p>
+                        <p className="text-xs text-gray-400 leading-relaxed">{card.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="space-y-2 mb-4 rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+                    <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Domains to delete</p>
+                    {(
+                      [
+                        {
+                          key: 'transactional' as const,
+                          label: 'Transactional data',
+                          hint: 'Sales, purchases, payments, expenses, journal, stock, studio, bespoke, document sequences',
+                        },
+                        {
+                          key: 'contacts' as const,
+                          label: 'Contacts',
+                          hint: 'Customers, suppliers, and contact-linked workers',
+                        },
+                        {
+                          key: 'products' as const,
+                          label: 'Products & variations',
+                          hint: 'Products, combos, variations, branch product links',
+                        },
+                        {
+                          key: 'accounts' as const,
+                          label: 'Chart of accounts (COA)',
+                          hint: 'All company accounts; default COA re-seeded after reset if selected',
+                        },
+                        {
+                          key: 'workers' as const,
+                          label: 'Workers table',
+                          hint: 'Worker master rows for this company',
+                        },
+                      ] as const
+                    ).map((domain) => {
+                      const locked =
+                        resetMode === 'complete' ||
+                        (resetMode === 'transactional' && domain.key !== 'transactional');
+                      const checked = resetDomains[domain.key];
+                      return (
+                        <label
+                          key={domain.key}
+                          className={cn(
+                            'flex items-start gap-3 rounded-md p-2',
+                            locked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-800/50'
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={checked}
+                            disabled={locked || resetBusy}
+                            onChange={(e) => {
+                              if (locked) return;
+                              setResetDomains((prev) => ({
+                                ...prev,
+                                [domain.key]: e.target.checked,
+                              }));
+                              setResetConfirmation('');
+                            }}
+                          />
+                          <span>
+                            <span className="text-sm text-gray-200 block">{domain.label}</span>
+                            <span className="text-xs text-gray-500">{domain.hint}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                    {resetMode === 'selective' &&
+                    (resetDomains.contacts ||
+                      resetDomains.products ||
+                      resetDomains.accounts ||
+                      resetDomains.workers) &&
+                    !resetDomains.transactional ? (
+                      <p className="text-xs text-amber-400 mt-2">
+                        Master data deletes always run transactional cleanup first (enforced server-side).
+                      </p>
+                    ) : null}
+                  </div>
+
                   {resetPreview?.success ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                      <div className="bg-gray-900/70 border border-gray-800 rounded p-3">
-                        <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Preserved</p>
-                        <p className="text-sm text-gray-200">Contacts: {resetPreview.preserve?.contacts ?? 0}</p>
-                        <p className="text-sm text-gray-200">Products: {resetPreview.preserve?.products ?? 0}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                      <div className="bg-gray-900/70 border border-emerald-900/40 rounded p-3">
+                        <p className="text-xs uppercase tracking-wide text-emerald-600 mb-2">Preserved (shell)</p>
+                        <p className="text-sm text-gray-200">Branches: {resetPreview.preserve?.branches ?? 0}</p>
+                        <p className="text-sm text-gray-200">ERP users: {resetPreview.preserve?.users ?? 0}</p>
+                        <p className="text-sm text-gray-200">Settings keys: {resetPreview.preserve?.settings_keys ?? 0}</p>
+                        {(resetPreview.preserve?.contacts ?? 0) > 0 ||
+                        (resetPreview.preserve?.products ?? 0) > 0 ||
+                        (resetPreview.preserve?.accounts ?? 0) > 0 ? (
+                          <>
+                            <p className="text-xs text-gray-500 mt-2 mb-1">Master kept after reset</p>
+                            {(resetPreview.preserve?.contacts ?? 0) > 0 ? (
+                              <p className="text-sm text-gray-200">Contacts: {resetPreview.preserve?.contacts}</p>
+                            ) : null}
+                            {(resetPreview.preserve?.products ?? 0) > 0 ? (
+                              <p className="text-sm text-gray-200">Products: {resetPreview.preserve?.products}</p>
+                            ) : null}
+                            {(resetPreview.preserve?.accounts ?? 0) > 0 ? (
+                              <p className="text-sm text-gray-200">Accounts: {resetPreview.preserve?.accounts}</p>
+                            ) : null}
+                          </>
+                        ) : null}
                       </div>
-                      <div className="bg-gray-900/70 border border-gray-800 rounded p-3">
-                        <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Transactional rows (preview)</p>
-                        <p className="text-sm text-red-300">
-                          Total: {Object.values(resetPreview.transactional || {}).reduce((sum, n) => sum + Number(n || 0), 0)}
+                      <div className="bg-gray-900/70 border border-gray-800 rounded p-3 max-h-48 overflow-y-auto">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Transactional (to delete)</p>
+                        <p className="text-sm text-red-300 mb-2">
+                          Total:{' '}
+                          {Object.values(resetPreview.transactional || {}).reduce(
+                            (sum, n) => sum + Number(n || 0),
+                            0
+                          )}
                         </p>
+                        {Object.entries(resetPreview.transactional || {})
+                          .filter(([, n]) => Number(n) > 0)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([key, n]) => (
+                            <p key={key} className="text-xs text-gray-400">
+                              {key.replace(/_/g, ' ')}: {n}
+                            </p>
+                          ))}
+                      </div>
+                      <div className="bg-gray-900/70 border border-gray-800 rounded p-3 max-h-48 overflow-y-auto">
+                        <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Master (to delete)</p>
+                        <p className="text-sm text-red-300 mb-2">
+                          Total:{' '}
+                          {Object.values(resetPreview.master || {}).reduce(
+                            (sum, n) => sum + Number(n || 0),
+                            0
+                          )}
+                        </p>
+                        {Object.keys(resetPreview.master || {}).length === 0 ? (
+                          <p className="text-xs text-gray-500">No master domains selected</p>
+                        ) : (
+                          Object.entries(resetPreview.master || {})
+                            .filter(([, n]) => Number(n) > 0)
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([key, n]) => (
+                              <p key={key} className="text-xs text-gray-400">
+                                {key.replace(/_/g, ' ')}: {n}
+                              </p>
+                            ))
+                        )}
                       </div>
                     </div>
                   ) : null}
 
-                  <div className="flex flex-col md:flex-row gap-3 md:items-center">
-                    <Input
-                      value={resetConfirmation}
-                      onChange={(e) => setResetConfirmation(e.target.value)}
-                      placeholder="Type RESET to confirm"
-                      className="bg-gray-900 border-red-900/70 text-white md:max-w-xs"
-                    />
-                    <Button
-                      onClick={executeCompanyReset}
-                      disabled={!companyId || executingReset || resetConfirmation.trim().toUpperCase() !== 'RESET'}
-                      className="bg-red-700 hover:bg-red-600 text-white"
-                    >
-                      {executingReset ? 'Resetting...' : 'Run Transaction Reset'}
-                    </Button>
+                  <div className="space-y-2">
+                    <Label className="text-gray-300">
+                      Confirmation — type exactly:{' '}
+                      <span className="font-mono text-red-300">{resetConfirmPhrase}</span>
+                    </Label>
+                    <div className="flex flex-col md:flex-row gap-3 md:items-end">
+                      <div className="flex flex-col gap-1.5 md:max-w-sm flex-1">
+                        <Input
+                          value={resetConfirmation}
+                          onChange={(e) => setResetConfirmation(e.target.value)}
+                          placeholder={resetConfirmPhrase}
+                          aria-label={`Confirmation phrase: ${resetConfirmPhrase}`}
+                          className="bg-gray-900 border-red-900/70 text-white font-mono"
+                          autoComplete="off"
+                          spellCheck={false}
+                          disabled={resetBusy}
+                        />
+                        <p
+                          className={cn(
+                            'text-xs flex items-center gap-1.5',
+                            resetPhraseMatches ? 'text-emerald-400' : 'text-gray-500'
+                          )}
+                        >
+                          {resetPhraseMatches ? (
+                            <>
+                              <CheckCircle size={14} aria-hidden />
+                              Phrase matches — reset button is enabled
+                            </>
+                          ) : (
+                            <>
+                              <AlertCircle size={14} aria-hidden />
+                              Type <span className="font-mono text-gray-400">{resetConfirmPhrase}</span> to
+                              enable the reset button
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <Button
+                        onClick={executeCompanyReset}
+                        disabled={resetRunDisabled}
+                        title={
+                          resetRunDisabled && !executingReset
+                            ? `Type ${resetConfirmPhrase} in the field above to enable`
+                            : undefined
+                        }
+                        className="bg-red-700 hover:bg-red-600 text-white disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                      >
+                        {executingReset
+                          ? 'Resetting...'
+                          : resetMode === 'complete'
+                            ? 'Run Complete Reset'
+                            : resetMode === 'selective'
+                              ? 'Run Selective Reset'
+                              : 'Run Transaction Reset'}
+                      </Button>
+                    </div>
                   </div>
+                  {resetConfirmPhrase === 'RESET ALL' ? (
+                    <p className="text-xs text-amber-400 mt-1">
+                      Complete / master reset uses <span className="font-mono">RESET ALL</span> (two words), not{' '}
+                      <span className="font-mono">RESET</span>.
+                    </p>
+                  ) : null}
+                  </div>
+                </div>
+                )}
                 </div>
               </div>
             )}
 
-            <div className="border-t border-gray-800 pt-6 space-y-4">
-              <AppVersionTapTarget />
-              <DeveloperToolsPanel />
-            </div>
+            {contentKey === 'developerTools' && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-violet-500/10 rounded-lg">
+                    <FlaskConical className="text-violet-500" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Developer Tools</h3>
+                    <p className="text-sm text-gray-400">Technical diagnostics aur feature flags</p>
+                  </div>
+                </div>
+                <AppVersionTapTarget />
+                <DeveloperToolsPanel />
+              </div>
+            )}
 
-          </div>
-        </div>
+      </SettingsLayout>
 
       {/* Branch Edit Dialog */}
       <Dialog open={isBranchDialogOpen} onOpenChange={setIsBranchDialogOpen}>
@@ -2945,6 +3266,6 @@ export const SettingsPageNew = () => {
         }}
         editingBranch={editingBranchForModal}
       />
-    </div>
+    </>
   );
 };

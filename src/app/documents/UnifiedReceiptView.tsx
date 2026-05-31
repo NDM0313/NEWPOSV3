@@ -4,7 +4,7 @@
  */
 import React, { useRef } from 'react';
 import { useUnifiedDocumentSettings } from './useUnifiedDocumentSettings';
-import { resolveDocumentOptions } from './resolveOptions';
+import { useCompanyLogoDisplayUrl } from '@/app/hooks/useCompanyLogoDisplayUrl';
 import { ReceiptTemplate } from './templates/ReceiptTemplate';
 import type { ReceiptDocument } from './templates/ReceiptTemplate';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -28,14 +28,18 @@ export const UnifiedReceiptView: React.FC<UnifiedReceiptViewProps> = ({
   showPrintAction = true,
 }) => {
   const { formatCurrency } = useFormatCurrency();
-  const { settings, loading, error } = useUnifiedDocumentSettings(companyId, 'payment_receipt');
-  const resolved = settings ? resolveDocumentOptions(settings, 'payment_receipt') : null;
-  const options = resolved ? {
-    showCompanyAddress: resolved.receipt.showCompanyAddress,
-    showNotes: resolved.receipt.showNotes,
-    showSignature: resolved.receipt.showSignature,
-    logoUrl: resolved.receipt.logoUrl,
-  } : null;
+  const { resolvedOptions, showLogo, loading, error } = useUnifiedDocumentSettings(companyId, 'payment_receipt');
+  const logoDisplay = useCompanyLogoDisplayUrl(
+    showLogo ? resolvedOptions?.receipt.logoUrl : undefined
+  );
+  const options = resolvedOptions
+    ? {
+        showCompanyAddress: resolvedOptions.receipt.showCompanyAddress,
+        showNotes: resolvedOptions.receipt.showNotes,
+        showSignature: resolvedOptions.receipt.showSignature,
+        logoUrl: logoDisplay || null,
+      }
+    : null;
 
   const contentRef = useRef<HTMLDivElement>(null);
   const handlePrint = () => window.print();

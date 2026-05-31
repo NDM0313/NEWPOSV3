@@ -4,7 +4,7 @@
  */
 import React, { useRef } from 'react';
 import { useUnifiedDocumentSettings } from './useUnifiedDocumentSettings';
-import { resolveDocumentOptions } from './resolveOptions';
+import { useCompanyLogoDisplayUrl } from '@/app/hooks/useCompanyLogoDisplayUrl';
 import { PackingListTemplate } from './templates/PackingListTemplate';
 import type { PackingListDocument } from './templates/PackingListTemplate';
 import { Button } from '@/app/components/ui/button';
@@ -26,8 +26,11 @@ export const UnifiedPackingListView: React.FC<UnifiedPackingListViewProps> = ({
   onClose,
   showPrintAction = true,
 }) => {
-  const { settings, loading, error } = useUnifiedDocumentSettings(companyId, 'packing_list');
-  const resolved = settings ? resolveDocumentOptions(settings, 'packing_list') : null;
+  const { resolvedOptions, showLogo, loading, error } = useUnifiedDocumentSettings(companyId, 'packing_list');
+  const logoDisplay = useCompanyLogoDisplayUrl(showLogo ? resolvedOptions?.packingList.logoUrl : undefined);
+  const resolved = resolvedOptions
+    ? { ...resolvedOptions, packingList: { ...resolvedOptions.packingList, logoUrl: logoDisplay || null } }
+    : null;
   const options = resolved ? {
     showSku: resolved.packingList.showSku,
     showCompanyAddress: resolved.packingList.showCompanyAddress,

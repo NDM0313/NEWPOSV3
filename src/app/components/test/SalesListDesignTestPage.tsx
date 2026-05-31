@@ -29,9 +29,7 @@ type SourceTab = 'all' | 'pos' | 'regular';
 type StatusTab = 'all' | 'draft' | 'order' | 'quotation' | 'final';
 
 function isLikelyPOS(sale: Sale): boolean {
-  const walkIn = (sale.customerName || '').toLowerCase().includes('walk-in');
-  const final = sale.status === 'final';
-  return !!(walkIn && final);
+  return (sale.invoiceNo || '').trim().startsWith('POS-');
 }
 
 export const SalesListDesignTestPage = () => {

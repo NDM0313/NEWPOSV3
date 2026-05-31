@@ -397,7 +397,7 @@ export const EnhancedProductForm = ({
 
   useEffect(() => {
     if (!companyId) return;
-    void branchService.getBranches(companyId).then((branches) => {
+    void branchService.getBranchesCached(companyId).then((branches) => {
       const list = (branches || []).map((b: { id: string; name: string }) => ({ id: b.id, name: b.name }));
       setCompanyBranches(list);
       const productId = initialProduct?.uuid ?? initialProduct?.id;
@@ -1342,9 +1342,50 @@ export const EnhancedProductForm = ({
           onSave(payload);
         }
       } else {
-        // CREATE new product
-        const result = await productService.createProduct(productData);
-        incrementNextNumber('production'); // So next product gets next SKU for next product.
+        // CREATE new product (orchestrated parent + variations)
+        const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
+        const hasVariations = enableVariations;
+        const initialStock = Number(data.initialStock) || 0;
+
+        if (hasVariations && generatedVariations.length > MAX_VARIATIONS) {
+          toast.error(`Variation limit (${MAX_VARIATIONS}) exceeded. Save without variations or reduce to ${MAX_VARIATIONS} or fewer.`);
+          setSaving(false);
+          submitInProgressRef.current = false;
+          return;
+        }
+
+        const parentCost = Number(data.purchasePrice) || 0;
+        const parentSell = Number(data.sellingPrice) || 0;
+        const variationPayload =
+          hasVariations && generatedVariations.length > 0
+            ? generatedVariations.map((variation) => {
+                const purchN = Number(variation.purchasePrice);
+                const sellN = Number(variation.price);
+                const cost = Number.isFinite(purchN) ? purchN : parentCost;
+                const retail = Number.isFinite(sellN) ? sellN : parentSell;
+                return {
+                  name: formatVariationName(variation.combination),
+                  sku: variation.sku,
+                  barcode: variation.barcode || null,
+                  attributes: variation.combination,
+                  cost_price: cost,
+                  retail_price: retail,
+                  opening_stock: parseVariationQtyInput(String(variation.stock ?? '')),
+                };
+              })
+            : [];
+
+        const saveResult = await productService.saveProductWithVariations({
+          companyId: finalCompanyId,
+          branchIdOrNull,
+          parent: {
+            ...productData,
+            opening_stock: hasVariations ? 0 : initialStock,
+          },
+          variations: variationPayload,
+        });
+        incrementNextNumber('production');
+        const result = { id: saveResult.productId };
 
         if (companyBranches.length > 1 && result?.id) {
           try {
@@ -1355,24 +1396,6 @@ export const EnhancedProductForm = ({
             );
           } catch (branchErr) {
             console.warn('[PRODUCT FORM] branch availability save failed:', branchErr);
-          }
-        }
-
-        // RULE 1: Opening stock at parent only when variations OFF; with variations ON, opening is per variation
-        const hasVariations = enableVariations;
-        const initialStock = Number(data.initialStock) || 0;
-        if (!hasVariations && initialStock > 0 && result?.id && finalCompanyId) {
-          const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
-          const { error: movErr } = await inventoryService.insertOpeningBalanceMovement(
-            finalCompanyId,
-            branchIdOrNull,
-            result.id,
-            initialStock,
-            Number(data.purchasePrice) || 0
-          );
-          if (movErr) {
-            console.error('[PRODUCT FORM] Opening balance movement failed:', movErr);
-            toast.error('Product saved but opening stock could not be recorded. You can add an adjustment in Inventory.');
           }
         }
 
@@ -1389,60 +1412,6 @@ export const EnhancedProductForm = ({
           }
         }
 
-        if (generatedVariations.length > 0 && result.id) {
-          if (generatedVariations.length > MAX_VARIATIONS) {
-            toast.error(`Variation limit (${MAX_VARIATIONS}) exceeded. Save without variations or reduce to ${MAX_VARIATIONS} or fewer.`);
-            setSaving(false);
-            submitInProgressRef.current = false;
-            return;
-          }
-          try {
-            const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
-            const parentCost = Number(data.purchasePrice) || 0;
-            const parentSell = Number(data.sellingPrice) || 0;
-            for (const variation of generatedVariations) {
-              const purchN = Number(variation.purchasePrice);
-              const sellN = Number(variation.price);
-              const cost = Number.isFinite(purchN) ? purchN : parentCost;
-              const retail = Number.isFinite(sellN) ? sellN : parentSell;
-              if (import.meta.env.DEV && !Number.isFinite(purchN)) {
-                console.warn(
-                  '[PRODUCT FORM] Variation create: purchasePrice not finite; using parent cost',
-                  variation.sku,
-                  variation
-                );
-              }
-              const q = parseVariationQtyInput(String(variation.stock ?? ''));
-              const created = await productService.createVariation({
-                product_id: result.id,
-                name: formatVariationName(variation.combination),
-                sku: variation.sku,
-                barcode: variation.barcode || null,
-                attributes: variation.combination,
-                cost_price: cost,
-                retail_price: retail,
-                current_stock: q,
-              });
-              const vid = (created as { id?: string })?.id;
-              if (q > 0 && vid && finalCompanyId) {
-                const { error: movErr } = await inventoryService.insertOpeningBalanceMovement(
-                  finalCompanyId,
-                  branchIdOrNull,
-                  result.id,
-                  q,
-                  cost,
-                  vid
-                );
-                if (movErr) console.error('[PRODUCT FORM] Opening balance for variation failed:', movErr);
-              }
-            }
-            toast.success(`Product created with ${generatedVariations.length} variations!`);
-          } catch (variationsError) {
-            console.error('[PRODUCT FORM] Error saving variations:', variationsError);
-            toast.warning('Product saved but variations could not be saved. Please add them manually.');
-          }
-        }
-
         const payload = {
           ...data,
           sku: finalSKU,
@@ -1453,7 +1422,9 @@ export const EnhancedProductForm = ({
           combos: combos,
         };
 
-        if (generatedVariations.length === 0) {
+        if (generatedVariations.length > 0) {
+          toast.success(`Product created with ${generatedVariations.length} variations!`);
+        } else {
           toast.success('Product created successfully!');
         }
 
@@ -3161,3 +3132,5 @@ export const EnhancedProductForm = ({
     </div>
   );
 };
+
+export default EnhancedProductForm;

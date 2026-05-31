@@ -479,7 +479,10 @@ export const openingBalanceJournalService = {
    * - skippedZeroCost: movement has zero cost even after product cost fallback
    * - amount: the Rs. amount posted (or kept)
    */
-  async syncInventoryOpeningFromStockMovementId(movementId: string): Promise<{
+  async syncInventoryOpeningFromStockMovementId(
+    movementId: string,
+    opts?: { suppressNotify?: boolean }
+  ): Promise<{
     posted: boolean;
     kept: boolean;
     skippedZeroCost: boolean;
@@ -561,11 +564,13 @@ export const openingBalanceJournalService = {
       // Truly zero cost even after fallback — void any stale JE and skip
       const ex = await findActiveOpeningEntry(companyId, OPENING_BALANCE_REFERENCE.INVENTORY_OPENING, movementId);
       if (ex) await voidJournalEntry(ex.id);
-      try {
-        const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
-        notifyAccountingEntriesChanged();
-      } catch {
-        /* ignore */
+      if (!opts?.suppressNotify) {
+        try {
+          const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
+          notifyAccountingEntriesChanged();
+        } catch {
+          /* ignore */
+        }
       }
       return { posted: false, kept: false, skippedZeroCost: true, amount: 0 };
     }
@@ -578,11 +583,13 @@ export const openingBalanceJournalService = {
       expectedPrimaryNet: amt,
     });
     if (ok) {
-      try {
-        const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
-        notifyAccountingEntriesChanged();
-      } catch {
-        /* ignore */
+      if (!opts?.suppressNotify) {
+        try {
+          const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
+          notifyAccountingEntriesChanged();
+        } catch {
+          /* ignore */
+        }
       }
       return { posted: false, kept: true, skippedZeroCost: false, amount: amt };
     }

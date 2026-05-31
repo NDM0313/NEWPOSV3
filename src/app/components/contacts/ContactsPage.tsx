@@ -45,6 +45,8 @@ import {
   shouldAcceptInvalidation,
 } from '@/app/lib/dataInvalidationBus';
 import { shouldRunFocusRefresh } from '@/app/lib/focusRefreshPolicy';
+import { workerRoleCatalogService } from '@/app/services/workerRoleCatalogService';
+import { getWorkerRoleLabel, type WorkerRoleOption } from '@/app/lib/workerRoles';
 import { Pagination } from '@/app/components/ui/pagination';
 import { CustomSelect } from '@/app/components/ui/custom-select';
 import { BackgroundSyncBar } from '@/app/components/ui/BackgroundSyncBar';
@@ -61,7 +63,6 @@ import {
 } from "@/app/components/ui/alert-dialog";
 
 type ContactType = 'all' | 'customers' | 'suppliers' | 'workers';
-type WorkerRole = 'tailor' | 'stitching-master' | 'cutter' | 'hand-worker' | 'dyer' | 'helper' | 'embroidery';
 type BalanceType = 'all' | 'due' | 'paid';
 type StatusType = 'all' | 'active' | 'inactive' | 'onhold';
 
@@ -71,7 +72,7 @@ interface Contact {
   name: string;
   code: string;
   type: 'customer' | 'supplier' | 'worker' | 'both';
-  workerRole?: WorkerRole;
+  workerRole?: string;
   email: string;
   phone: string;
   receivables: number;
@@ -103,7 +104,7 @@ function getContactDisplayRef(contact: Contact): string {
   return '—';
 }
 
-const workerRoleLabels: Record<WorkerRole, string> = {
+const builtinWorkerRoleLabels: Record<string, string> = {
   'tailor': 'Tailor',
   'stitching-master': 'Stitching Master',
   'cutter': 'Cutter',
@@ -184,6 +185,7 @@ export const ContactsPage = () => {
   const { openDrawer, setCurrentView, createdContactId, setCreatedContactId, openPartyLedger } = useNavigation();
   const { companyId, branchId, userRole } = useSupabase();
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [mergedWorkerRoles, setMergedWorkerRoles] = useState<WorkerRoleOption[]>([]);
   /** True until first contact list is ready to show (before / without balance RPC). */
   const [listLoading, setListLoading] = useState(false);
   /** True while RPC or sales/purchase merge updates receivables/payables. */
@@ -325,7 +327,7 @@ export const ContactsPage = () => {
       name: supabaseContact.name || '',
       code,
       type: contactType,
-      workerRole: supabaseContact.worker_role as WorkerRole | undefined,
+      workerRole: supabaseContact.worker_role as string | undefined,
       email: supabaseContact.email || '-',
       phone: supabaseContact.phone || supabaseContact.mobile || '-',
       receivables,
@@ -635,6 +637,39 @@ export const ContactsPage = () => {
     setLedgerOpen(true);
   }, [listLoading, contacts]);
 
+  useEffect(() => {
+    if (!companyId) {
+      setMergedWorkerRoles([]);
+      return;
+    }
+    let cancelled = false;
+    workerRoleCatalogService.loadMergedRoles(companyId).then((roles) => {
+      if (!cancelled) setMergedWorkerRoles(roles);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
+
+  const workerRoleFilterOptions = useMemo(
+    () =>
+      mergedWorkerRoles.map((r) => ({
+        value: r.value,
+        label: r.label,
+      })),
+    [mergedWorkerRoles],
+  );
+
+  const resolveWorkerRoleText = useCallback(
+    (role: string | undefined) => {
+      if (!role) return '';
+      const formatted = getWorkerRoleLabel(role, mergedWorkerRoles);
+      const parts = formatted.split(' → ');
+      return parts.length > 1 ? parts[parts.length - 1] : formatted;
+    },
+    [mergedWorkerRoles],
+  );
+
   // GL AR/AP from journal (life-to-date, same branch scope as contact balance RPC)
   useEffect(() => {
     if (!companyId) {
@@ -774,7 +809,7 @@ export const ContactsPage = () => {
   
   // Filter states
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
-  const [workerRoleFilter, setWorkerRoleFilter] = useState<WorkerRole[]>([]);
+  const [workerRoleFilter, setWorkerRoleFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusType>('all');
   const [balanceFilter, setBalanceFilter] = useState<BalanceType>('all');
   const [branchFilter, setBranchFilter] = useState('all');
@@ -802,7 +837,11 @@ export const ContactsPage = () => {
           contact.email.toLowerCase().includes(search) ||
           contact.phone.toLowerCase().includes(search) ||
           contact.branch.toLowerCase().includes(search) ||
-          (contact.workerRole && workerRoleLabels[contact.workerRole].toLowerCase().includes(search));
+          (contact.workerRole && (
+            resolveWorkerRoleText(contact.workerRole).toLowerCase().includes(search)
+            || getWorkerRoleLabel(contact.workerRole, mergedWorkerRoles).toLowerCase().includes(search)
+            || (builtinWorkerRoleLabels[contact.workerRole]?.toLowerCase().includes(search) ?? false)
+          ));
         if (!matchesSearch) return false;
       }
 
@@ -841,6 +880,8 @@ export const ContactsPage = () => {
     searchTerm,
     typeFilter,
     workerRoleFilter,
+    mergedWorkerRoles,
+    resolveWorkerRoleText,
     statusFilter,
     balanceFilter,
     branchFilter,
@@ -1019,7 +1060,7 @@ export const ContactsPage = () => {
     );
   };
 
-  const toggleWorkerRoleFilter = (role: WorkerRole) => {
+  const toggleWorkerRoleFilter = (role: string) => {
     setWorkerRoleFilter(prev => 
       prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
     );
@@ -1358,15 +1399,15 @@ export const ContactsPage = () => {
                           <div>
                             <label className="text-xs text-gray-400 mb-2 block font-medium">Worker Role</label>
                             <div className="space-y-2">
-                              {Object.entries(workerRoleLabels).map(([key, label]) => (
-                                <label key={key} className="flex items-center gap-2 cursor-pointer">
+                              {workerRoleFilterOptions.map((opt) => (
+                                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                                   <input
                                     type="checkbox"
-                                    checked={workerRoleFilter.includes(key as WorkerRole)}
-                                    onChange={() => toggleWorkerRoleFilter(key as WorkerRole)}
+                                    checked={workerRoleFilter.includes(opt.value)}
+                                    onChange={() => toggleWorkerRoleFilter(opt.value)}
                                     className="w-4 h-4 rounded bg-gray-950 border-gray-700"
                                   />
-                                  <span className="text-sm text-gray-300">{label}</span>
+                                  <span className="text-sm text-gray-300">{opt.label}</span>
                                 </label>
                               ))}
                             </div>
@@ -1993,7 +2034,7 @@ export const ContactsPage = () => {
                         </Badge>
                         {contact.type === 'worker' && contact.workerRole && (
                           <span className="text-[10px] text-gray-500 leading-[1.2]">
-                            {workerRoleLabels[contact.workerRole]}
+                            {resolveWorkerRoleText(contact.workerRole)}
                           </span>
                         )}
                       </div>

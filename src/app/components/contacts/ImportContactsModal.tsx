@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Upload, FileText, Download, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { X, Upload, FileText, Download, AlertCircle, CheckCircle2, Info, Loader2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/components/ui/utils';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -47,6 +47,9 @@ export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContac
   const [summary, setSummary] = useState<ContactImportSummary | null>(null);
   const [previewValidations, setPreviewValidations] = useState<CsvRowValidation[]>([]);
   const [lastParsedCsv, setLastParsedCsv] = useState<ParsedCsv | null>(null);
+  const [importProgress, setImportProgress] = useState<{ completed: number; total: number } | null>(null);
+
+  const isImportBusy = importStatus === 'processing';
 
   const resetState = useCallback(() => {
     setSelectedFile(null);
@@ -57,6 +60,7 @@ export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContac
     setSummary(null);
     setPreviewValidations([]);
     setLastParsedCsv(null);
+    setImportProgress(null);
   }, []);
 
   const blockingErrorCount = useMemo(
@@ -137,9 +141,13 @@ export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContac
     setImportStatus('processing');
     setImportError(null);
     setSummary(null);
+    setImportProgress({ completed: 0, total: 0 });
 
     try {
-      const result = await commitContactImport(parsedRows, companyId);
+      const result = await commitContactImport(parsedRows, companyId, {
+        onProgress: (completed, total) => setImportProgress({ completed, total }),
+      });
+      setImportProgress(null);
       setImportedCount(result.created);
       setSummary(result);
       setImportStatus(
@@ -158,6 +166,7 @@ export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContac
         );
       }
     } catch (err: unknown) {
+      setImportProgress(null);
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setImportError(msg);
       setImportStatus('error');
@@ -186,6 +195,7 @@ export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContac
   }, [summary]);
 
   const handleClose = () => {
+    if (isImportBusy) return;
     onClose();
     resetState();
   };
@@ -194,7 +204,11 @@ export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContac
 
   const modalContent = (
     <>
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999]" onClick={handleClose} role="presentation" />
+      <div
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999]"
+        onClick={() => { if (!isImportBusy) handleClose(); }}
+        role="presentation"
+      />
       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 pointer-events-none">
         <div
           className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl pointer-events-auto max-h-[92vh] flex flex-col"
@@ -213,13 +227,31 @@ export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContac
             <button
               type="button"
               onClick={handleClose}
-              className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white"
+              disabled={isImportBusy}
+              className="w-8 h-8 rounded-lg bg-gray-800/50 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white disabled:opacity-40 disabled:pointer-events-none"
             >
               <X size={18} />
             </button>
           </div>
 
-          <div className="p-6 space-y-5 overflow-y-auto flex-1">
+          <div className="relative p-6 space-y-5 overflow-y-auto flex-1">
+            {isImportBusy && (
+              <div
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 bg-gray-950/70 rounded-b-2xl px-6 text-center max-w-md mx-auto"
+                aria-busy="true"
+                aria-live="polite"
+              >
+                <Loader2 className="h-12 w-12 text-blue-400 animate-spin" />
+                <p className="text-lg md:text-xl font-semibold text-blue-300">Importing contacts…</p>
+                {importProgress && importProgress.total > 0 ? (
+                  <p className="text-base md:text-lg text-gray-300">
+                    {importProgress.completed} / {importProgress.total} contacts
+                  </p>
+                ) : null}
+                <p className="text-sm text-gray-400">Please wait — do not close this window</p>
+              </div>
+            )}
+            <div className={cn('space-y-5', isImportBusy && 'pointer-events-none select-none opacity-60')}>
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 flex gap-3">
               <Info size={20} className="text-blue-400 shrink-0 mt-0.5" />
               <ul className="text-xs text-gray-300 space-y-1 list-disc list-inside">
@@ -232,10 +264,10 @@ export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContac
             <div>
               <p className="text-sm font-semibold text-white mb-2">Step 1: Download template</p>
               <div className="flex gap-3">
-                <Button type="button" variant="outline" className="flex-1 h-11 bg-gray-800 border-gray-700 text-white gap-2" onClick={() => downloadTemplate(true)}>
+                <Button type="button" variant="outline" disabled={isImportBusy} className="flex-1 h-11 bg-gray-800 border-gray-700 text-white gap-2" onClick={() => downloadTemplate(true)}>
                   <Download size={16} /> Blank template
                 </Button>
-                <Button type="button" variant="outline" className="flex-1 h-11 bg-gray-800 border-gray-700 text-white gap-2" onClick={() => downloadTemplate(false)}>
+                <Button type="button" variant="outline" disabled={isImportBusy} className="flex-1 h-11 bg-gray-800 border-gray-700 text-white gap-2" onClick={() => downloadTemplate(false)}>
                   <Download size={16} /> Sample with examples
                 </Button>
               </div>
@@ -244,9 +276,10 @@ export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContac
             <div>
               <p className="text-sm font-semibold text-white mb-2">Step 2: Upload file</p>
               <div
-                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragOver={(e) => { if (isImportBusy) return; e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={(e) => {
+                  if (isImportBusy) return;
                   e.preventDefault();
                   setIsDragging(false);
                   const file = e.dataTransfer.files[0];
@@ -262,15 +295,15 @@ export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContac
                     <FileText size={32} className="text-green-500 mx-auto mb-2" />
                     <p className="text-sm font-semibold text-white">{selectedFile.name}</p>
                     <p className="text-xs text-green-400 mt-1">{parsedRows.length} row(s) parsed</p>
-                    <button type="button" onClick={() => { setSelectedFile(null); setParsedRows([]); setLastParsedCsv(null); }} className="text-xs text-red-400 mt-2 hover:text-red-300">Remove file</button>
+                    <button type="button" disabled={isImportBusy} onClick={() => { setSelectedFile(null); setParsedRows([]); setLastParsedCsv(null); }} className="text-xs text-red-400 mt-2 hover:text-red-300 disabled:opacity-50">Remove file</button>
                   </div>
                 ) : (
                   <div className="text-center">
                     <Upload size={32} className="text-gray-400 mx-auto mb-2" />
                     <p className="text-sm text-white mb-2">Drag and drop CSV here</p>
-                    <label className="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg cursor-pointer">
+                    <label className={cn('inline-block px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg', isImportBusy ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer')}>
                       Browse
-                      <input type="file" accept=".csv" onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileSelect(file); }} className="hidden" />
+                      <input type="file" accept=".csv" disabled={isImportBusy} onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileSelect(file); }} className="hidden" />
                     </label>
                   </div>
                 )}
@@ -302,7 +335,7 @@ export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContac
                         <li key={i}>Row {e.rowIndex}: {e.contactName} — {e.message}</li>
                       ))}
                     </ul>
-                    <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={downloadErrorReport}>
+                    <Button type="button" variant="outline" size="sm" disabled={isImportBusy} className="h-8 text-xs" onClick={downloadErrorReport}>
                       <Download size={12} className="mr-1" /> Download error report
                     </Button>
                   </>
@@ -310,31 +343,30 @@ export const ImportContactsModal = ({ isOpen, onClose, onSuccess }: ImportContac
               </div>
             )}
 
-            {importStatus !== 'idle' && (
+            {importStatus !== 'idle' && importStatus !== 'processing' && (
               <div className={cn(
                 'p-4 rounded-xl border flex items-center gap-3 text-sm',
-                importStatus === 'processing' && 'bg-blue-500/10 border-blue-500/30 text-blue-400',
                 importStatus === 'success' && 'bg-green-500/10 border-green-500/30 text-green-400',
                 importStatus === 'error' && 'bg-red-500/10 border-red-500/30 text-red-400'
               )}>
-                {importStatus === 'processing' && <span>Processing import…</span>}
                 {importStatus === 'success' && (<><CheckCircle2 size={18} /><span>Imported {importedCount} contact(s)</span></>)}
                 {importStatus === 'error' && (<><AlertCircle size={18} /><span>{importError ?? 'Import finished with issues'}</span></>)}
               </div>
             )}
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-800 shrink-0">
-            <Button onClick={handleClose} variant="outline" className="h-10 bg-gray-800 border-gray-700 hover:bg-gray-700 text-white">
+            <Button onClick={handleClose} disabled={isImportBusy} variant="outline" className="h-10 bg-gray-800 border-gray-700 hover:bg-gray-700 text-white disabled:opacity-50">
               {importStatus === 'success' ? 'Close' : 'Cancel'}
             </Button>
             {importStatus !== 'success' && (
               <Button
                 onClick={handleImport}
-                disabled={!selectedFile || parsedRows.length === 0 || importStatus === 'processing' || blockingErrorCount > 0}
+                disabled={!selectedFile || parsedRows.length === 0 || isImportBusy || blockingErrorCount > 0}
                 className="h-10 bg-blue-600 hover:bg-blue-500 text-white gap-2 disabled:opacity-50"
               >
-                {importStatus === 'processing' ? 'Importing…' : `Import ${parsedRows.length} Contact(s)`}
+                {isImportBusy ? 'Importing…' : `Import ${parsedRows.length} Contact(s)`}
               </Button>
             )}
           </div>

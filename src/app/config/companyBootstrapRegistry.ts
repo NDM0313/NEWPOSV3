@@ -201,6 +201,7 @@ export const COMPANY_FIELD_REGISTRY: CompanyFieldRegistryEntry[] = [
   { id: 'timezone', label: 'Timezone', wizardStep: 1, settingsTab: 'company', companiesColumn: 'timezone', rpcParam: 'p_timezone', surfaces: ['wizard', 'settings', 'rpc'] },
   { id: 'currency', label: 'Currency', wizardStep: 2, settingsTab: 'accounting', settingsKey: 'accounting_settings.defaultCurrency', rpcParam: 'p_currency', surfaces: ['wizard', 'settings', 'rpc'] },
   { id: 'fiscalYearStart', label: 'Fiscal year start', wizardStep: 2, settingsTab: 'accounting', settingsKey: 'accounting_settings.fiscalYearStart', rpcParam: 'p_fiscal_year_start', surfaces: ['wizard', 'settings', 'rpc'] },
+  { id: 'fiscalYearEnd', label: 'Fiscal year end', wizardStep: 2, settingsTab: 'accounting', settingsKey: 'accounting_settings.fiscalYearEnd', rpcParam: 'p_fiscal_year_end', surfaces: ['wizard', 'settings', 'rpc'] },
   { id: 'accountingMethod', label: 'Accounting method', wizardStep: 2, settingsTab: 'accounting', settingsKey: 'accounting_settings.accountingMethod', rpcParam: 'p_accounting_method', surfaces: ['wizard', 'settings', 'rpc'] },
   { id: 'taxMode', label: 'Tax mode', wizardStep: 2, settingsTab: 'accounting', settingsKey: 'accounting_settings.taxCalculationMethod', rpcParam: 'p_tax_mode', surfaces: ['wizard', 'settings', 'rpc'] },
   { id: 'defaultTaxRate', label: 'Default tax rate', wizardStep: 2, settingsTab: 'accounting', settingsKey: 'accounting_settings.defaultTaxRate', rpcParam: 'p_default_tax_rate', surfaces: ['wizard', 'settings', 'rpc'] },
@@ -209,6 +210,8 @@ export const COMPANY_FIELD_REGISTRY: CompanyFieldRegistryEntry[] = [
   { id: 'defaultUnit', label: 'Default unit', wizardStep: 3, settingsTab: 'inventory', settingsKey: 'inventory_settings.defaultUnitId', rpcParam: 'p_default_unit', surfaces: ['wizard', 'settings', 'rpc'] },
   { id: 'branchName', label: 'Branch name', wizardStep: 5, settingsTab: 'branches', rpcParam: 'p_branch_name', surfaces: ['wizard', 'settings', 'rpc'] },
   { id: 'branchCode', label: 'Branch code', wizardStep: 5, settingsTab: 'branches', rpcParam: 'p_branch_code', surfaces: ['wizard', 'settings', 'rpc'] },
+  { id: 'branchCity', label: 'Branch city', wizardStep: 5, settingsTab: 'branches', rpcParam: 'p_branch_city', surfaces: ['wizard', 'settings', 'rpc'] },
+  { id: 'branchState', label: 'Branch state', wizardStep: 5, settingsTab: 'branches', rpcParam: 'p_branch_state', surfaces: ['wizard', 'settings', 'rpc'] },
 ];
 
 export interface ModuleToggles {

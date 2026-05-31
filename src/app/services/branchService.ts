@@ -154,6 +154,9 @@ export const branchService = {
       }
       
       console.log('[BRANCH SERVICE] Branch created successfully:', data);
+      if (branch.company_id) {
+        branchListCache.delete(branch.company_id);
+      }
       return data;
     } catch (error: any) {
       console.error('[BRANCH SERVICE] Exception creating branch:', error);
@@ -179,6 +182,9 @@ export const branchService = {
       }
       
       console.log('[BRANCH SERVICE] Branch updated successfully:', data);
+      if (data?.company_id) {
+        branchListCache.delete(data.company_id);
+      }
       return data;
     } catch (error: any) {
       console.error('[BRANCH SERVICE] Exception updating branch:', error);

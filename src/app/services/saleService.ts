@@ -22,6 +22,44 @@ import {
   syncJournalEntryDateByDocumentRefs,
   syncJournalEntryDateByPaymentId,
 } from '@/app/services/journalTransactionDateSyncService';
+import { filterSaleLinesForStockPosting } from '@/app/lib/saleStockLineEligibility';
+
+/** Sale lines that require stock balance check at Final (excludes deferred bespoke/fabric). */
+async function itemsRequiringStockAtFinal(items: SaleItem[], companyId: string): Promise<SaleItem[]> {
+  const productIds = [...new Set(items.map((i) => i.product_id).filter(Boolean))];
+  const productMap = new Map<string, { sku?: string | null; track_stock?: boolean | null }>();
+  if (productIds.length > 0) {
+    const { data: products } = await supabase
+      .from('products')
+      .select('id, sku, track_stock')
+      .in('id', productIds);
+    for (const p of products || []) {
+      productMap.set(p.id, { sku: p.sku, track_stock: p.track_stock });
+    }
+  }
+  let customGenericProductIds: string[] | null = null;
+  try {
+    const { data: bs } = await supabase
+      .from('business_settings')
+      .select('custom_generic_product_ids')
+      .eq('company_id', companyId)
+      .maybeSingle();
+    customGenericProductIds =
+      (bs as { custom_generic_product_ids?: string[] } | null)?.custom_generic_product_ids ?? null;
+  } catch {
+    /* ignore */
+  }
+  const ctx = items.map((i) => ({
+    product_id: i.product_id,
+    variation_id: i.variation_id ?? null,
+    quantity: i.quantity,
+    bespoke_parent_item_id: i.bespoke_parent_item_id,
+    customization_details: i.customization_details,
+  }));
+  const eligible = filterSaleLinesForStockPosting(ctx, productMap, customGenericProductIds);
+  const keys = new Set(eligible.map((e) => `${e.product_id}|${e.variation_id ?? ''}`));
+  return items.filter((i) => keys.has(`${i.product_id}|${i.variation_id ?? ''}`));
+}
 
 /** Enrich sales with creator full_name. sales.created_by stores auth.users.id; resolve via users.auth_user_id. */
 async function enrichSalesWithCreatorNames(sales: any[]): Promise<void> {
@@ -240,9 +278,10 @@ export const saleService = {
     }
     if (canPostStockForSaleStatus(sale.status) && items.length > 0 && !allowNegative) {
       const branchId = sale.branch_id || undefined;
-      const productIds = [...new Set(items.map(i => i.product_id))];
+      const stockCheckItems = await itemsRequiringStockAtFinal(items, sale.company_id);
+      const productIds = [...new Set(stockCheckItems.map((i) => i.product_id))];
       const stockMap = await productService.getStockForProducts(productIds, sale.company_id, branchId);
-      for (const item of items) {
+      for (const item of stockCheckItems) {
         const key = item.variation_id ? `${item.product_id}:${item.variation_id}` : `${item.product_id}:`;
         const currentBalance = stockMap.get(key) ?? 0;
         if (Number(item.quantity) > currentBalance) {
@@ -1911,6 +1950,182 @@ export const saleService = {
     return data || [];
   },
 
+  /** Batch fetch payments for many sales (one query for direct sale payments + allocations). */
+  async getSalePaymentsBatch(saleIds: string[]): Promise<Map<string, any[]>> {
+    const result = new Map<string, any[]>();
+    const unique = [...new Set(saleIds.filter(Boolean))];
+    if (unique.length === 0) return result;
+    for (const id of unique) result.set(id, []);
+
+    const selectWithAttachments = `
+      id,
+      payment_date,
+      reference_number,
+      amount,
+      payment_method,
+      payment_account_id,
+      notes,
+      attachments,
+      created_at,
+      updated_at,
+      voided_at,
+      received_by,
+      reference_id,
+      account:accounts(id, name)
+    `;
+    let batchResult = await supabase
+      .from('payments')
+      .select(selectWithAttachments)
+      .eq('reference_type', 'sale')
+      .in('reference_id', unique)
+      .order('payment_date', { ascending: false });
+
+    if (
+      batchResult.error &&
+      batchResult.error.code === 'PGRST204' &&
+      batchResult.error.message?.includes('attachments')
+    ) {
+      batchResult = await supabase
+        .from('payments')
+        .select(`
+          id,
+          payment_date,
+          reference_number,
+          amount,
+          payment_method,
+          payment_account_id,
+          notes,
+          created_at,
+          updated_at,
+          voided_at,
+          received_by,
+          reference_id,
+          account:accounts(id, name)
+        `)
+        .eq('reference_type', 'sale')
+        .in('reference_id', unique)
+        .order('payment_date', { ascending: false });
+    }
+
+    const rowsBySale = new Map<string, any[]>();
+    for (const p of batchResult.data || []) {
+      const sid = String((p as any).reference_id || '');
+      if (!sid) continue;
+      if (!rowsBySale.has(sid)) rowsBySale.set(sid, []);
+      rowsBySale.get(sid)!.push(p);
+    }
+
+    const allReceivedBy = new Set<string>();
+    for (const rows of rowsBySale.values()) {
+      for (const p of rows) {
+        if ((p as any).received_by) allReceivedBy.add((p as any).received_by);
+      }
+    }
+    const nameByReceivedBy = new Map<string, string>();
+    if (allReceivedBy.size > 0) {
+      const { data: usersByAuth } = await supabase
+        .from('users')
+        .select('auth_user_id, full_name, email')
+        .in('auth_user_id', [...allReceivedBy]);
+      (usersByAuth || []).forEach((u: any) => {
+        if (u?.auth_user_id) nameByReceivedBy.set(u.auth_user_id, u.full_name || u.email || '');
+      });
+    }
+
+    const mapDirectRows = (saleId: string, data: any[]) => {
+      const directRows: any[] = [];
+      for (const p of data) {
+        if (p.voided_at) continue;
+        let att = p.attachments;
+        if (typeof att === 'string' && att) {
+          try {
+            att = JSON.parse(att);
+          } catch {
+            att = null;
+          }
+        }
+        directRows.push({
+          id: p.id,
+          date: p.payment_date,
+          referenceNo: p.reference_number || '',
+          amount: parseFloat(p.amount || 0),
+          method: p.payment_method || 'cash',
+          accountId: p.payment_account_id,
+          accountName: p.account?.name || '',
+          notes: p.notes || '',
+          attachments: att ?? null,
+          createdAt: p.created_at,
+          updatedAt: p.updated_at ?? p.created_at,
+          receivedBy: p.received_by ? nameByReceivedBy.get(p.received_by) || null : null,
+          source: 'sale_payment' as const,
+        });
+      }
+      return directRows;
+    };
+
+    const { data: allocs } = await supabase
+      .from('payment_allocations')
+      .select('id, allocated_amount, allocation_date, payment_id, allocation_order, sale_id')
+      .in('sale_id', unique);
+
+    const allocPayIds = [...new Set((allocs || []).map((a: any) => a.payment_id).filter(Boolean))];
+    const parentById = new Map<string, any>();
+    if (allocPayIds.length > 0) {
+      const { data: parents } = await supabase
+        .from('payments')
+        .select(
+          `id, payment_date, reference_number, amount, payment_method, payment_account_id, notes, attachments, voided_at, created_at, updated_at, account:accounts(id, name)`
+        )
+        .in('id', allocPayIds);
+      (parents || []).forEach((p: any) => parentById.set(p.id, p));
+    }
+
+    const allocsBySale = new Map<string, any[]>();
+    for (const a of allocs || []) {
+      const sid = String((a as any).sale_id || '');
+      if (!sid) continue;
+      if (!allocsBySale.has(sid)) allocsBySale.set(sid, []);
+      allocsBySale.get(sid)!.push(a);
+    }
+
+    for (const saleId of unique) {
+      const directRows = mapDirectRows(saleId, rowsBySale.get(saleId) || []);
+      const allocRows: any[] = [];
+      for (const a of allocsBySale.get(saleId) || []) {
+        const p = parentById.get(a.payment_id);
+        if (!p || p.voided_at) continue;
+        const ord = Number(a.allocation_order) || 0;
+        allocRows.push({
+          id: `alloc:${a.id}`,
+          date: p?.payment_date || a.allocation_date,
+          referenceNo: p?.reference_number || '',
+          allocationBadge: `Receipt alloc #${ord || '—'}`,
+          amount: parseFloat(a.allocated_amount || 0),
+          parentPaymentAmount: parseFloat(p?.amount || 0),
+          method: p?.payment_method || 'cash',
+          accountId: p?.payment_account_id,
+          accountName: p?.account?.name || '',
+          notes: p?.notes || '',
+          attachments: p?.attachments ?? null,
+          createdAt: p.created_at,
+          updatedAt: p?.updated_at ?? p.created_at,
+          receivedBy: null,
+          source: 'manual_receipt_allocation' as const,
+          parentPaymentId: a.payment_id,
+          allocationOrder: ord,
+        });
+      }
+      const combined = [...directRows, ...allocRows].sort((x, y) => {
+        const dx = new Date(x.date).getTime();
+        const dy = new Date(y.date).getTime();
+        if (dy !== dx) return dy - dx;
+        return String(y.referenceNo).localeCompare(String(x.referenceNo));
+      });
+      result.set(saleId, combined);
+    }
+    return result;
+  },
+
   // Get payments for a specific sale (by sale ID), including manual_receipt allocations
   async getSalePayments(saleId: string) {
     const selectWithAttachments = `
@@ -1968,7 +2183,12 @@ export const saleService = {
 
     const directRows: any[] = [];
     if (data && data.length > 0) {
-      console.log('[SALE SERVICE] Found', data.length, 'payments for sale:', saleId);
+      if (import.meta.env?.DEV) {
+        const { isDebugErpEnabled } = await import('@/app/lib/debugErp');
+        if (isDebugErpEnabled()) {
+          console.log('[SALE SERVICE] Found', data.length, 'payments for sale:', saleId);
+        }
+      }
       const receivedByIds = [...new Set((data as any[]).map((p: any) => p.received_by).filter(Boolean))] as string[];
       const nameByReceivedBy = new Map<string, string>();
       if (receivedByIds.length > 0) {

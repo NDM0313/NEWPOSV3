@@ -125,8 +125,7 @@ export function flattenLinesToJobs(lines: LabelPrintLine[], ctx?: LabelPrintCont
   return jobs;
 }
 
-/** Open A4 label grid in a new window and trigger print. */
-export function printLabelsInBrowser(html: string): void {
+function openLabelHtmlInBrowser(html: string, autoPrint: boolean): void {
   const win = window.open('', '_blank', 'width=900,height=700');
   if (!win) {
     throw new Error('Pop-up blocked. Allow pop-ups to print labels.');
@@ -135,9 +134,21 @@ export function printLabelsInBrowser(html: string): void {
   win.document.write(html);
   win.document.close();
   win.focus();
-  setTimeout(() => {
-    win.print();
-  }, 400);
+  if (autoPrint) {
+    setTimeout(() => {
+      win.print();
+    }, 400);
+  }
+}
+
+/** Open A4 label grid in a new window (no print dialog). */
+export function previewLabelsInBrowser(html: string): void {
+  openLabelHtmlInBrowser(html, false);
+}
+
+/** Open A4 label grid in a new window and trigger print. */
+export function printLabelsInBrowser(html: string): void {
+  openLabelHtmlInBrowser(html, true);
 }
 
 export function printProductLabelsBatch(

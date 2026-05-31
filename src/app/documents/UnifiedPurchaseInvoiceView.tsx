@@ -84,7 +84,8 @@ export const UnifiedPurchaseInvoiceView: React.FC<UnifiedPurchaseInvoiceViewProp
     loadPurchase();
   }, [loadPurchase]);
 
-  const { resolvedInvoice, loading: settingsLoading, error: settingsError } = useUnifiedDocumentSettings(companyId, 'purchase_invoice');
+  const { resolvedInvoice, showLogo, loading: settingsLoading, error: settingsError } =
+    useUnifiedDocumentSettings(companyId, 'purchase_invoice');
 
   const loadingCombined = loading || settingsLoading;
   const errorCombined = error || settingsError;
@@ -151,6 +152,7 @@ export const UnifiedPurchaseInvoiceView: React.FC<UnifiedPurchaseInvoiceViewProp
         actionChildren={actionChildren}
         printerMode={templateType === 'Thermal' ? 'thermal' : 'a4'}
         paperSize={thermalPaperSize}
+        showLogo={showLogo}
       />
     </div>
   );

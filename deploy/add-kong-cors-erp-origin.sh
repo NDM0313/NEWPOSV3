@@ -39,6 +39,10 @@ REQUIRED_CORS_HEADERS = [
     "x-supabase-client-info",
     "accept-profile",
     "content-profile",
+    # Storage uploads (Supabase JS + browser send these on cross-origin PUT/POST)
+    "cache-control",
+    "x-upsert",
+    "range",
 ]
 
 

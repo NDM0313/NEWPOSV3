@@ -59,6 +59,12 @@ if [[ -n "$DB_CID" ]]; then
   docker exec "$DB_CID" psql -U postgres -d postgres -t -A -c \
     "SELECT COUNT(*) FROM storage.buckets WHERE name = 'payment-attachments';" \
     2>/dev/null | sed 's/^/payment_attachments_bucket: /' || true
+  docker exec "$DB_CID" psql -U postgres -d postgres -t -A -c \
+    "SELECT COUNT(*) FROM storage.buckets WHERE name = 'expense-receipts';" \
+    2>/dev/null | sed 's/^/expense_receipts_bucket: /' || true
+  docker exec "$DB_CID" psql -U postgres -d postgres -t -A -c \
+    "SELECT COUNT(*) FROM pg_policies WHERE tablename = 'objects' AND schemaname = 'storage' AND policyname LIKE 'expense_receipts%';" \
+    2>/dev/null | sed 's/^/expense_receipts_policies: /' || true
 else
   echo "WARN: postgres container not found"
 fi

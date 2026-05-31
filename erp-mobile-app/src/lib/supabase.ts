@@ -12,6 +12,7 @@ import {
   recoverStaleAuthSessionIfNeeded,
 } from './authSessionRecovery';
 import { resolveSupabaseApiUrl } from './resolveSupabaseApiUrl';
+import { clearStorageDisplayUrlCache } from '../utils/storageDisplayUrl';
 
 /** Vite defines `import.meta.env`; Node (e.g. tsx --test) does not — avoid crashing on import. */
 const env =
@@ -27,7 +28,7 @@ const supabaseUrl = resolveSupabaseApiUrl(String(env.VITE_SUPABASE_URL ?? ''), {
 });
 
 /**
- * Production PWA/native: direct supabase.dincouture.pk (never erp nginx /storage proxy).
+ * Production PWA: direct supabase.dincouture.pk. Native Capacitor: erp.dincouture.pk nginx proxy (CORS).
  * Vite dev browser: same-origin localhost → Vite proxy → Kong (auth, REST, storage, Realtime WS).
  * @see resolveSupabaseApiUrl.ts
  */
@@ -225,6 +226,9 @@ if (hasConfig) {
     if (event === 'SIGNED_OUT' && !session) {
       clearSecure().catch(() => {});
       window.dispatchEvent(new CustomEvent('erp-auth-signed-out'));
+    }
+    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      clearStorageDisplayUrlCache();
     }
     if (event === 'INITIAL_SESSION') {
       void recoverStaleAuthSessionAfterInitCheck();

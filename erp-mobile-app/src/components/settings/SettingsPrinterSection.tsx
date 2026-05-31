@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2, Printer, Scan } from 'lucide-react';
 import * as settingsApi from '../../api/settings';
 import type { ReceiptFieldToggles } from '../../api/printingSettings';
@@ -26,6 +26,8 @@ export interface SettingsPrinterSectionProps {
   onLabelSettingsChange: (next: settingsApi.MobileBarcodeLabelSettings) => void;
   onBarcodeMethod: (method: settingsApi.BarcodeScannerMethod) => void;
   onPersistLabelSettings: (next: settingsApi.MobileBarcodeLabelSettings) => Promise<void>;
+  /** Native only: load paired BT when printer section opens (needs runtime permission on Android 12+). */
+  onRefreshBluetooth?: () => void;
 }
 
 export function SettingsPrinterSection({
@@ -51,8 +53,13 @@ export function SettingsPrinterSection({
   onLabelSettingsChange,
   onBarcodeMethod,
   onPersistLabelSettings,
+  onRefreshBluetooth,
 }: SettingsPrinterSectionProps) {
   const [labelBusy, setLabelBusy] = useState(false);
+
+  useEffect(() => {
+    onRefreshBluetooth?.();
+  }, [onRefreshBluetooth]);
   const persistLabel = (next: settingsApi.MobileBarcodeLabelSettings) => {
     onLabelSettingsChange(next);
     if (!companyId) return;

@@ -54,6 +54,7 @@ import { useNavigation } from '@/app/context/NavigationContext';
 import { useSales, Sale, convertFromSupabaseSale } from '@/app/context/SalesContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
+import { getContactWhatsAppPhone, openWhatsAppShare } from '@/app/lib/phoneWhatsApp';
 import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
 import { branchService, Branch } from '@/app/services/branchService';
@@ -137,13 +138,12 @@ export const SalesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+  const [statusPopoverSaleId, setStatusPopoverSaleId] = useState<string | null>(null);
+  const [actionsMenuSaleId, setActionsMenuSaleId] = useState<string | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchMap, setBranchMap] = useState<Map<string, string>>(new Map());
   
   // Bulk selection removed - using single-row actions only
-  
-  // Store branch_id mapping for sales (for location resolution when location is empty)
-  const [salesBranchIdMap, setSalesBranchIdMap] = useState<Map<string, string>>(new Map());
   
   // Load branches for location display
   useEffect(() => {
@@ -166,31 +166,6 @@ export const SalesPage = () => {
     loadBranches();
   }, [companyId]);
   
-  // Load sales with branch_id for location resolution (only when sales change)
-  useEffect(() => {
-    const loadSalesBranchIds = async () => {
-      if (!companyId || sales.length === 0) return;
-      try {
-        // Fetch sales with branch_id to create mapping
-        const data = await saleService.getAllSales(companyId, branchId === 'all' ? undefined : branchId || undefined);
-        const branchIdMap = new Map<string, string>();
-        data.forEach((sale: any) => {
-          if (sale.branch_id && sale.id) {
-            branchIdMap.set(sale.id, sale.branch_id);
-          }
-        });
-        setSalesBranchIdMap(branchIdMap);
-        console.log('[SALES PAGE] ✅ Sales branch_id map loaded:', branchIdMap.size, 'sales');
-      } catch (error) {
-        console.error('[SALES PAGE] Error loading sales branch_ids:', error);
-      }
-    };
-    // Only load if we have sales but no branch_id mapping yet, or if sales count changed
-    if (sales.length > 0 && (salesBranchIdMap.size === 0 || salesBranchIdMap.size !== sales.length)) {
-      loadSalesBranchIds();
-    }
-  }, [companyId, branchId, sales.length]);
-
   // Track which sales have returns
   const [salesWithReturns, setSalesWithReturns] = useState<Set<string>>(new Set());
 
@@ -542,7 +517,7 @@ export const SalesPage = () => {
         ].join('\n');
         saleService.logShare(sale.id, 'whatsapp', user?.id).catch(() => {});
         saleService.logSaleAction(sale.id, 'share_whatsapp', user?.id).catch(() => {});
-        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+        openWhatsAppShare(getContactWhatsAppPhone({ contact_number: sale.contact_number }), text);
         toast.success('WhatsApp share opened');
         break;
       }
@@ -915,13 +890,9 @@ export const SalesPage = () => {
     return columns.trim();
   }, [columnOrder, visibleColumns]);
 
-  // Helper: POS = invoice prefix POS- or walk-in + final
+  // Helper: POS = POS terminal checkout only (invoice prefix POS-)
   const isLikelyPOS = (sale: Sale): boolean => {
-    const inv = (sale.invoiceNo || '').trim();
-    if (inv.startsWith('POS-')) return true;
-    const walkIn = sale.customerName?.toLowerCase().includes('walk-in') || sale.customer === 'walk-in';
-    const final = sale.status === 'final';
-    return !!(walkIn && final);
+    return (sale.invoiceNo || '').trim().startsWith('POS-');
   };
 
   // Helper: Studio = invoice prefix STD- / ST- or is_studio or has studio charges
@@ -1028,7 +999,7 @@ export const SalesPage = () => {
 
       // Branch filter (value = branch UUID from loaded branches; fallback match display name)
       if (branchFilter !== 'all') {
-        const saleBranchId = salesBranchIdMap.get(sale.id);
+        const saleBranchId = sale.branchId;
         if (saleBranchId) {
           if (saleBranchId !== branchFilter) return false;
         } else {
@@ -1061,7 +1032,6 @@ export const SalesPage = () => {
     branchFilter,
     paymentMethodFilter,
     branches,
-    salesBranchIdMap,
   ]);
 
   // Sort state: default createdAt descending so newest-created sales appear first
@@ -1139,15 +1109,16 @@ export const SalesPage = () => {
     }
     let cancelled = false;
     const saleIds = paginatedSales.map((s) => s.id);
-    Promise.all(saleIds.map((id) => saleService.getSalePayments(id)))
-      .then((results) => {
+    saleService
+      .getSalePaymentsBatch(saleIds)
+      .then((paymentsBySale) => {
         if (cancelled) return;
         const map = new Map<string, number>();
-        results.forEach((payments, i) => {
-          const id = saleIds[i];
-          const sum = (payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+        for (const id of saleIds) {
+          const payments = paymentsBySale.get(id) || [];
+          const sum = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
           map.set(id, sum);
-        });
+        }
         setPaidBySaleId(map);
       })
       .catch(() => {
@@ -1341,10 +1312,9 @@ export const SalesPage = () => {
         let locationText = sale.location || '';
         
         // CRITICAL FIX: If location is empty, try to resolve using branch_id from salesBranchIdMap
-        if (!locationText && branchMap.size > 0) {
-          const saleBranchId = salesBranchIdMap.get(sale.id);
-          if (saleBranchId && branchMap.has(saleBranchId)) {
-            locationText = branchMap.get(saleBranchId) || '';
+        if (!locationText && branchMap.size > 0 && sale.branchId) {
+          if (branchMap.has(sale.branchId)) {
+            locationText = branchMap.get(sale.branchId) || '';
           }
         }
         
@@ -1379,7 +1349,10 @@ export const SalesPage = () => {
         
         return (
           <div className={cn("flex items-center gap-2", alignments['saleStatus'])}>
-            <Popover>
+            <Popover
+              open={statusPopoverSaleId === sale.id}
+              onOpenChange={(open) => setStatusPopoverSaleId(open ? sale.id : null)}
+            >
               <PopoverTrigger asChild>
                 <button
                   type="button"
@@ -1394,7 +1367,11 @@ export const SalesPage = () => {
                 className="w-auto p-0 border-gray-700 bg-gray-900 text-white"
                 onClick={(e) => e.stopPropagation()}
               >
-                <SaleLifecycleMenuBlock sale={sale} onPick={(a) => void runSaleLifecycleFromUi(sale, a)} />
+                <SaleLifecycleMenuBlock
+                  sale={sale}
+                  onPick={(a) => void runSaleLifecycleFromUi(sale, a)}
+                  onAfterPick={() => setStatusPopoverSaleId(null)}
+                />
               </PopoverContent>
             </Popover>
             {hasReturn && (
@@ -2309,7 +2286,10 @@ export const SalesPage = () => {
                         if (key === 'actions') {
                           return (
                             <div key="actions" className="flex justify-center">
-                              <DropdownMenu>
+                              <DropdownMenu
+                                open={actionsMenuSaleId === sale.id}
+                                onOpenChange={(open) => setActionsMenuSaleId(open ? sale.id : null)}
+                              >
                           <DropdownMenuTrigger asChild>
                             <button 
                               className={cn(
@@ -2330,7 +2310,12 @@ export const SalesPage = () => {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator className="bg-gray-700" />
                             <div className="px-0 py-1">
-                              <SaleLifecycleMenuBlock variant="menu" sale={sale} onPick={(a) => void runSaleLifecycleFromUi(sale, a)} />
+                              <SaleLifecycleMenuBlock
+                                variant="menu"
+                                sale={sale}
+                                onPick={(a) => void runSaleLifecycleFromUi(sale, a)}
+                                onAfterPick={() => setActionsMenuSaleId(null)}
+                              />
                             </div>
                             <DropdownMenuSeparator className="bg-gray-700" />
                             {/* Edit: requires canEditSale (role_permissions sales.edit) and no return lock. RLS allows UPDATE only when created_by = auth.uid() for salesman. */}
@@ -2810,7 +2795,9 @@ export const SalesPage = () => {
 
       {/* 🎯 ADD SHIPMENT – same ShipmentModal as SaleForm (PART 3, PART 4) */}
       {addShipmentSaleId && selectedSale?.id === addShipmentSaleId && companyId && (() => {
-        const branchIdForShipment = salesBranchIdMap.get(addShipmentSaleId) ?? (branchId !== 'all' ? branchId : branches[0]?.id);
+        const shipmentSale = sales.find((s) => s.id === addShipmentSaleId);
+        const branchIdForShipment =
+          shipmentSale?.branchId ?? (branchId !== 'all' ? branchId : branches[0]?.id);
         if (!branchIdForShipment) return null;
         return (
           <ShipmentModal

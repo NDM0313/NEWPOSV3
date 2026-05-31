@@ -50,6 +50,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/app/components/ui/dialog";
 import {
   DATA_INVALIDATED_EVENT,
   shouldAcceptInvalidation,
+  shouldSkipInventoryReloadForReason,
   type DataInvalidationDetail,
 } from '@/app/lib/dataInvalidationBus';
 import { BarcodeLabelPrintDialog } from './BarcodeLabelPrintDialog';
@@ -223,6 +224,12 @@ export const ProductsPage = () => {
     const onInvalidated = (ev: Event) => {
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
       if (
+        detail?.domain === 'accounting' &&
+        shouldSkipInventoryReloadForReason(detail?.reason)
+      ) {
+        return;
+      }
+      if (
         !shouldAcceptInvalidation(detail, {
           domain: ['inventory', 'studio', 'sales', 'purchases'],
           companyId,
@@ -235,7 +242,7 @@ export const ProductsPage = () => {
       timer = setTimeout(() => {
         timer = null;
         void loadProducts();
-      }, 220);
+      }, 400);
     };
     window.addEventListener(DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
     return () => {
@@ -470,6 +477,46 @@ export const ProductsPage = () => {
 
   const totalPages = Math.ceil(sortedProducts.length / pageSize);
 
+  const selectUuids = useCallback((uuids: string[]) => {
+    setSelectedUuids((prev) => {
+      const next = new Set(prev);
+      uuids.forEach((id) => next.add(id));
+      return next;
+    });
+  }, []);
+
+  const selectPage = useCallback(() => {
+    selectUuids(paginatedProducts.map((p) => p.uuid));
+  }, [paginatedProducts, selectUuids]);
+
+  const selectFiltered = useCallback(() => {
+    selectUuids(filteredProducts.map((p) => p.uuid));
+  }, [filteredProducts, selectUuids]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedUuids(new Set());
+  }, []);
+
+  const pageUuids = useMemo(() => paginatedProducts.map((p) => p.uuid), [paginatedProducts]);
+  const pageSelectedCount = useMemo(
+    () => pageUuids.filter((id) => selectedUuids.has(id)).length,
+    [pageUuids, selectedUuids]
+  );
+  const pageAllSelected = pageUuids.length > 0 && pageSelectedCount === pageUuids.length;
+  const pageSomeSelected = pageSelectedCount > 0 && !pageAllSelected;
+
+  const togglePageSelectAll = () => {
+    if (pageAllSelected) {
+      setSelectedUuids((prev) => {
+        const next = new Set(prev);
+        pageUuids.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      selectPage();
+    }
+  };
+
   const columnKeyToSortKey = (key: string): SortKey | null => {
     const map: Record<string, SortKey> = {
       sku: 'sku', name: 'name', branch: 'branch', unit: 'unit',
@@ -577,11 +624,48 @@ export const ProductsPage = () => {
   const getColumnWidth = (key: string): string => {
     const widths: Record<string, string> = {
       actions: '60px',
-      sku: '80px', image: '60px', name: '1fr', branch: '140px', unit: '80px',
-      purchase: '110px', selling: '110px', margin: '100px', stock: '100px',
-      type: '120px', category: '120px',
+      sku: '100px',
+      image: '60px',
+      name: 'minmax(220px, 1fr)',
+      branch: '140px',
+      unit: '80px',
+      purchase: '110px',
+      selling: '110px',
+      margin: '100px',
+      stock: '100px',
+      type: '120px',
+      category: '120px',
     };
     return widths[key] || '100px';
+  };
+
+  const getColumnCellClass = (key: string): string => {
+    if (key === 'actions' || key === 'image' || key === 'stock') {
+      return 'flex justify-center items-center min-w-0';
+    }
+    if (key === 'purchase' || key === 'selling' || key === 'margin') {
+      return 'min-w-0 text-right';
+    }
+    return 'min-w-0 overflow-hidden';
+  };
+
+  const getHeaderCellClass = (key: string, isSortable: boolean): string => {
+    if (key === 'actions' || key === 'image' || key === 'stock') {
+      return cn(
+        'flex justify-center items-center min-w-0 gap-0.5',
+        isSortable && 'cursor-pointer select-none hover:text-gray-300'
+      );
+    }
+    if (key === 'purchase' || key === 'selling' || key === 'margin') {
+      return cn(
+        'flex justify-end items-center min-w-0 gap-0.5 tabular-nums',
+        isSortable && 'cursor-pointer select-none hover:text-gray-300'
+      );
+    }
+    return cn(
+      'flex items-center min-w-0 overflow-hidden gap-0.5',
+      isSortable && 'cursor-pointer select-none hover:text-gray-300'
+    );
   };
 
   const gridTemplateColumns = useMemo(() => {
@@ -701,17 +785,49 @@ export const ProductsPage = () => {
             <p className="text-sm text-gray-400 mt-0.5">Manage your inventory across all branches</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (selectMode) exitSelectMode();
-                else setSelectMode(true);
-              }}
-              className="border-gray-700 text-gray-300 h-10 gap-2"
-            >
-              {selectMode ? <CheckSquare size={16} /> : <Square size={16} />}
-              {selectMode ? 'Done' : 'Select'}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="border-gray-700 text-gray-300 h-10 gap-2">
+                  {selectMode ? <CheckSquare size={16} /> : <Square size={16} />}
+                  {selectMode ? `Selected (${selectedUuids.size})` : 'Select'}
+                  <ChevronDown size={14} className="opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-white w-56">
+                {!selectMode ? (
+                  <DropdownMenuItem
+                    className="cursor-pointer focus:bg-gray-800"
+                    onClick={() => setSelectMode(true)}
+                  >
+                    Start selecting
+                  </DropdownMenuItem>
+                ) : (
+                  <>
+                    <DropdownMenuItem className="cursor-pointer focus:bg-gray-800" onClick={selectPage}>
+                      Select on this page ({paginatedProducts.length})
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="cursor-pointer focus:bg-gray-800" onClick={selectFiltered}>
+                      Select all matching filters ({filteredProducts.length})
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-gray-700" />
+                    <DropdownMenuItem className="cursor-pointer focus:bg-gray-800" onClick={clearSelection}>
+                      Clear selection
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="cursor-pointer focus:bg-gray-800"
+                      onClick={() => void handleBulkPrintLabels()}
+                      disabled={selectedUuids.size === 0}
+                    >
+                      Print labels ({selectedUuids.size})
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-gray-700" />
+                    <DropdownMenuItem className="cursor-pointer focus:bg-gray-800" onClick={exitSelectMode}>
+                      Exit select mode
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button 
               onClick={() => openDrawer('addProduct')}
               className="bg-blue-600 hover:bg-blue-500 text-white h-10 gap-2"
@@ -1030,23 +1146,31 @@ export const ProductsPage = () => {
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
           {/* Wrapper for horizontal scroll */}
           <div className="overflow-x-auto">
-            <div className="min-w-[1400px]">
-              {/* Table Header - full-width; order from Columns dropdown (Move Up/Down) */}
-              <div className="sticky top-0 bg-gray-950/95 backdrop-blur-sm z-10 border-b border-gray-800 min-w-[1400px] w-max">
-                <div className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+            <div className="w-full min-w-[1400px]">
+              {/* Table Header - shared grid width with body rows */}
+              <div className="sticky top-0 bg-gray-950/95 backdrop-blur-sm z-10 border-b border-gray-800 w-full">
+                <div
+                  className="grid w-full gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
                   style={{ gridTemplateColumns: selectMode ? `40px ${gridTemplateColumns}` : gridTemplateColumns }}
                 >
-                  {selectMode && <div />}
+                  {selectMode && (
+                    <div className="flex justify-center items-center">
+                      <Checkbox
+                        checked={pageAllSelected ? true : pageSomeSelected ? 'indeterminate' : false}
+                        onCheckedChange={togglePageSelectAll}
+                        className="border-gray-500 data-[state=checked]:bg-blue-600"
+                        aria-label="Select all on this page"
+                      />
+                    </div>
+                  )}
                   {columnOrder.map(key => {
                     if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
-                    if (key === 'actions') return <div key="actions" className="text-center">Actions</div>;
-                    const align = (key === 'image' || key === 'stock') ? 'text-center' : (key === 'purchase' || key === 'selling' || key === 'margin') ? 'text-right' : 'text-left';
                     const isSortable = columnKeyToSortKey(key) != null;
                     const isActive = sortKeyToColumnKey(sortKey) === key;
                     return (
                       <div
                         key={key}
-                        className={cn(align, isSortable && 'cursor-pointer select-none hover:text-gray-300 flex items-center gap-0.5')}
+                        className={getHeaderCellClass(key, isSortable)}
                         onClick={() => isSortable && handleSort(key)}
                       >
                         {columnLabels[key]}
@@ -1057,8 +1181,8 @@ export const ProductsPage = () => {
                 </div>
               </div>
 
-              {/* Table Body - w-max so row lines span full table width */}
-              <div className="min-w-[1400px] w-max">
+              {/* Table Body */}
+              <div className="w-full">
                 {loading ? (
                   <div className="py-12 text-center">
                     <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
@@ -1097,9 +1221,9 @@ export const ProductsPage = () => {
                         onMouseLeave={() => setHoveredRow(null)}
                         onClick={selectMode ? () => toggleSelectedUuid(product.uuid) : undefined}
                         className={cn(
-                          "grid gap-3 px-4 h-16 min-w-[1400px] w-max hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0",
-                          selectMode && "cursor-pointer",
-                          selectMode && selectedUuids.has(product.uuid) && "bg-blue-500/10"
+                          'grid w-full gap-3 px-4 h-16 hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0',
+                          selectMode && 'cursor-pointer',
+                          selectMode && selectedUuids.has(product.uuid) && 'bg-blue-500/10'
                         )}
                         style={{ gridTemplateColumns: selectMode ? `40px ${gridTemplateColumns}` : gridTemplateColumns }}
                       >
@@ -1116,7 +1240,7 @@ export const ProductsPage = () => {
                           if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
                           if (key === 'actions') {
                             return (
-                              <div key="actions" className="flex justify-center">
+                              <div key="actions" className={getColumnCellClass('actions')}>
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <button 
@@ -1184,7 +1308,11 @@ export const ProductsPage = () => {
                               </div>
                             );
                           }
-                          return <div key={key}>{renderProductCell(product, key)}</div>;
+                          return (
+                            <div key={key} className={getColumnCellClass(key)}>
+                              {renderProductCell(product, key)}
+                            </div>
+                          );
                         })}
                       </div>
                   ))
@@ -1337,14 +1465,33 @@ export const ProductsPage = () => {
         </DialogContent>
       </Dialog>
 
-      {selectMode && selectedUuids.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+      {selectMode && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-gray-900/95 border border-gray-700 rounded-xl px-4 py-3 shadow-2xl backdrop-blur-sm">
+          <span className="text-sm text-gray-300 whitespace-nowrap">
+            <span className="font-semibold text-white">{selectedUuids.size}</span> selected
+            {filteredProducts.length > 0 && (
+              <span className="text-gray-500"> / {filteredProducts.length} filtered</span>
+            )}
+          </span>
+          <Button type="button" variant="outline" size="sm" onClick={selectPage} className="h-9 border-gray-600 text-gray-200">
+            Page
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={selectFiltered} className="h-9 border-gray-600 text-gray-200">
+            All filtered
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={clearSelection} className="h-9 border-gray-600 text-gray-200">
+            Clear
+          </Button>
           <Button
-            onClick={handleBulkPrintLabels}
-            className="bg-blue-600 hover:bg-blue-500 shadow-lg gap-2 px-6 h-12"
+            onClick={() => void handleBulkPrintLabels()}
+            disabled={selectedUuids.size === 0}
+            className="bg-blue-600 hover:bg-blue-500 shadow-lg gap-2 h-9 disabled:opacity-50"
           >
-            <Printer size={18} />
-            Print labels ({selectedUuids.size})
+            <Printer size={16} />
+            Print labels
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={exitSelectMode} className="h-9 text-gray-400">
+            Done
           </Button>
         </div>
       )}
@@ -1356,6 +1503,7 @@ export const ProductsPage = () => {
         lines={labelLines}
         labelSettings={labelSettings}
         companyName={labelCompanyName}
+        companyId={companyId ?? undefined}
       />
     </div>
   );

@@ -17,6 +17,8 @@ export type SaleLifecycleAction =
 interface Props {
   sale: Sale;
   onPick: (action: SaleLifecycleAction) => void;
+  /** Called after a lifecycle action is picked (e.g. close popover/menu). */
+  onAfterPick?: () => void;
   /** Use compact list styling (popover or dropdown). */
   variant?: 'popover' | 'menu';
 }
@@ -49,8 +51,13 @@ const Btn = ({
   </button>
 );
 
+const pick = (onPick: Props['onPick'], onAfterPick: Props['onAfterPick'], action: SaleLifecycleAction) => {
+  onPick(action);
+  onAfterPick?.();
+};
+
 /** Shared lifecycle actions for status popover + row ⋮ menu (same-row model). */
-export function SaleLifecycleMenuBlock({ sale, onPick, variant = 'popover' }: Props) {
+export function SaleLifecycleMenuBlock({ sale, onPick, onAfterPick, variant = 'popover' }: Props) {
   const eff = getEffectiveSaleStatus(sale);
   const cancelled = eff === 'cancelled';
   const isFinal = sale.status === 'final';
@@ -64,13 +71,13 @@ export function SaleLifecycleMenuBlock({ sale, onPick, variant = 'popover' }: Pr
         <p className="px-2 pb-2 text-[11px] text-muted-foreground leading-snug">
           You cannot finalize while cancelled. Restore to a stage, then use Convert to Final.
         </p>
-        <Btn onClick={() => onPick('restore_draft')}>
+        <Btn onClick={() => pick(onPick, onAfterPick, 'restore_draft')}>
           <RotateCcw className="h-4 w-4 shrink-0 text-blue-400" /> Restore to Draft
         </Btn>
-        <Btn onClick={() => onPick('restore_quotation')}>
+        <Btn onClick={() => pick(onPick, onAfterPick, 'restore_quotation')}>
           <RotateCcw className="h-4 w-4 shrink-0 text-blue-400" /> Restore to Quotation
         </Btn>
-        <Btn onClick={() => onPick('restore_order')}>
+        <Btn onClick={() => pick(onPick, onAfterPick, 'restore_order')}>
           <RotateCcw className="h-4 w-4 shrink-0 text-blue-400" /> Restore to Order
         </Btn>
       </div>
@@ -82,20 +89,20 @@ export function SaleLifecycleMenuBlock({ sale, onPick, variant = 'popover' }: Pr
       <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         Status & lifecycle
       </div>
-      <Btn onClick={() => onPick('lifecycle_draft')}>
+      <Btn onClick={() => pick(onPick, onAfterPick, 'lifecycle_draft')}>
         <FileText className="h-4 w-4 shrink-0" /> Save as Draft
       </Btn>
-      <Btn disabled={isFinal} onClick={() => onPick('lifecycle_quotation')}>
+      <Btn disabled={isFinal} onClick={() => pick(onPick, onAfterPick, 'lifecycle_quotation')}>
         <FileCheck className="h-4 w-4 shrink-0" /> Convert to Quotation
       </Btn>
-      <Btn disabled={isFinal} onClick={() => onPick('lifecycle_order')}>
+      <Btn disabled={isFinal} onClick={() => pick(onPick, onAfterPick, 'lifecycle_order')}>
         <ShoppingCart className="h-4 w-4 shrink-0" /> Convert to Order
       </Btn>
-      <Btn disabled={isFinal} onClick={() => onPick('lifecycle_final')}>
+      <Btn disabled={isFinal} onClick={() => pick(onPick, onAfterPick, 'lifecycle_final')}>
         <CheckCircle2 className="h-4 w-4 shrink-0" /> Convert to Final
       </Btn>
       <div className="my-1 h-px bg-border" />
-      <Btn onClick={() => onPick('lifecycle_cancel')} className="text-amber-400 hover:text-amber-300">
+      <Btn onClick={() => pick(onPick, onAfterPick, 'lifecycle_cancel')} className="text-amber-400 hover:text-amber-300">
         <Ban className="h-4 w-4 shrink-0" /> Cancel
       </Btn>
     </div>

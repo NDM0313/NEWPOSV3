@@ -3,6 +3,8 @@
  * Used by A4/Thermal templates and Print/PDF/Share flows.
  */
 import { useState, useEffect, useCallback } from 'react';
+import { useSettings } from '@/app/context/SettingsContext';
+import { resolveDocumentLogoUrl } from '@/app/lib/resolveDocumentLogo';
 import { invoiceDocumentService } from '@/app/services/invoiceDocumentService';
 import type { InvoiceDocument, InvoiceTemplate, InvoiceTemplateType } from '@/app/types/invoiceDocument';
 
@@ -19,6 +21,7 @@ export function useInvoiceDocument(
   companyId: string | null,
   templateType: InvoiceTemplateType
 ): UseInvoiceDocumentResult {
+  const { company } = useSettings();
   const [document, setDocument] = useState<InvoiceDocument | null>(null);
   const [template, setTemplate] = useState<InvoiceTemplate | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,8 +50,13 @@ export function useInvoiceDocument(
       if (tplRes.error) {
         setTemplate(null);
         if (!docRes.error) setError(tplRes.error);
+      } else if (tplRes.data) {
+        setTemplate({
+          ...tplRes.data,
+          logo_url: resolveDocumentLogoUrl(tplRes.data.logo_url, company.logoUrl),
+        });
       } else {
-        setTemplate(tplRes.data);
+        setTemplate(null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load invoice');
@@ -57,7 +65,7 @@ export function useInvoiceDocument(
     } finally {
       setLoading(false);
     }
-  }, [saleId, companyId, templateType]);
+  }, [saleId, companyId, templateType, company.logoUrl]);
 
   useEffect(() => {
     load();

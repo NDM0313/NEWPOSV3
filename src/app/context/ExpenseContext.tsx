@@ -1,3 +1,4 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 // ============================================
 // 🎯 EXPENSE CONTEXT
 // ============================================
@@ -169,7 +170,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       category: mapCategoryFromSupabase(categoryRaw),
       description: supabaseExpense.description || '',
       amount: supabaseExpense.amount || 0,
-      date: supabaseExpense.expense_date || new Date().toISOString().split('T')[0],
+      date: supabaseExpense.expense_date || localNowDateString(),
       paymentMethod: supabaseExpense.payment_method || 'Cash',
       paymentAccountId: supabaseExpense.payment_account_id || undefined,
       payeeName:
@@ -185,8 +186,8 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       approvedDate: supabaseExpense.approved_at,
       receiptAttached: false, // TODO: Add receipt field to schema
       notes: supabaseExpense.notes,
-      createdAt: supabaseExpense.created_at || new Date().toISOString(),
-      updatedAt: supabaseExpense.updated_at || new Date().toISOString(),
+      createdAt: supabaseExpense.created_at || getCurrentLocalTimestamp(),
+      updatedAt: supabaseExpense.updated_at || getCurrentLocalTimestamp(),
     };
   }, []);
 
@@ -320,7 +321,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       if (!existing) throw new Error('Expense not found');
       pushExpenseEditTrace({
         traceId,
-        ts: new Date().toISOString(),
+        ts: getCurrentLocalTimestamp(),
         expenseId: id,
         companyId: companyId || null,
         phase: 'start',
@@ -400,7 +401,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       assertDomainEditSafetyTestMode(classification, 'expense updateExpense');
       pushExpenseEditTrace({
         traceId,
-        ts: new Date().toISOString(),
+        ts: getCurrentLocalTimestamp(),
         expenseId: id,
         companyId: companyId || null,
         phase: 'classified',
@@ -425,7 +426,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         const stack = new Error(`[EXPENSE EDIT] blocked ${op} for ${classification.kind}`).stack;
         pushExpenseEditTrace({
           traceId,
-          ts: new Date().toISOString(),
+          ts: getCurrentLocalTimestamp(),
           expenseId: id,
           companyId: companyId || null,
           phase: 'error',
@@ -442,7 +443,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         if (Object.keys(supabaseUpdates).length > 0) {
           pushExpenseEditTrace({
             traceId,
-            ts: new Date().toISOString(),
+            ts: getCurrentLocalTimestamp(),
             expenseId: id,
             companyId: companyId || null,
             phase: 'db_update',
@@ -531,7 +532,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         }
         pushExpenseEditTrace({
           traceId,
-          ts: new Date().toISOString(),
+          ts: getCurrentLocalTimestamp(),
           expenseId: id,
           companyId: companyId || null,
           phase: 'header_patch',
@@ -598,7 +599,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
 
           pushExpenseEditTrace({
             traceId,
-            ts: new Date().toISOString(),
+            ts: getCurrentLocalTimestamp(),
             expenseId: id,
             companyId: companyId || null,
             phase: 'inplace_update',
@@ -639,7 +640,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
               updates.paymentMethod !== undefined ? updates.paymentMethod : expense.paymentMethod,
             location: updates.location !== undefined ? updates.location : expense.location,
             status: updates.status !== undefined ? updates.status : expense.status,
-            updatedAt: new Date().toISOString(),
+            updatedAt: getCurrentLocalTimestamp(),
           };
         })
       );
@@ -648,7 +649,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       void accounting?.refreshEntries();
       pushExpenseEditTrace({
         traceId,
-        ts: new Date().toISOString(),
+        ts: getCurrentLocalTimestamp(),
         expenseId: id,
         companyId: companyId || null,
         phase: 'done',
@@ -658,7 +659,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       console.error('[EXPENSE CONTEXT] Error updating expense:', error);
       pushExpenseEditTrace({
         traceId,
-        ts: new Date().toISOString(),
+        ts: getCurrentLocalTimestamp(),
         expenseId: id,
         companyId: companyId || null,
         phase: 'error',
@@ -698,7 +699,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      const now = new Date().toISOString();
+      const now = getCurrentLocalTimestamp();
       
       await updateExpense(id, {
         status: 'approved',

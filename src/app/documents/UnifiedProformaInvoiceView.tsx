@@ -6,7 +6,6 @@ import React, { useRef } from 'react';
 import type { InvoiceDocument } from '@/app/types/invoiceDocument';
 import { DocumentPreviewButton } from '@/app/components/shared/DocumentPreviewButton';
 import { useUnifiedDocumentSettings } from './useUnifiedDocumentSettings';
-import { resolveInvoiceTemplateFromSettings } from './resolveOptions';
 import { A4InvoiceTemplate } from '@/app/components/shared/invoice/A4InvoiceTemplate';
 import type { InvoiceTemplate, InvoiceTemplateType } from '@/app/types/invoiceDocument';
 import type { ResolvedInvoiceTemplate } from './types';
@@ -45,9 +44,8 @@ export const UnifiedProformaInvoiceView: React.FC<UnifiedProformaInvoiceViewProp
   showPrintAction = true,
 }) => {
   const { formatCurrency } = useFormatCurrency();
-  const { settings, loading, error } = useUnifiedDocumentSettings(companyId, 'proforma_invoice');
-  const resolved = settings ? resolveInvoiceTemplateFromSettings(settings, 'proforma_invoice') : null;
-  const template = companyId && resolved ? toTemplate(resolved, companyId) : null;
+  const { resolvedInvoice, showLogo, loading, error } = useUnifiedDocumentSettings(companyId, 'proforma_invoice');
+  const template = companyId && resolvedInvoice ? toTemplate(resolvedInvoice, companyId) : null;
 
   const contentRef = useRef<HTMLDivElement>(null);
   const handlePrint = () => window.print();
@@ -102,6 +100,7 @@ export const UnifiedProformaInvoiceView: React.FC<UnifiedProformaInvoiceViewProp
         onClose={onClose}
         actionChildren={actionChildren}
         documentTitle="PROFORMA INVOICE"
+        showLogo={showLogo}
       />
     </div>
   );

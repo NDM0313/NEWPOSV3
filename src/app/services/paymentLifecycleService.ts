@@ -1,3 +1,4 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 /**
  * Live vs audit: voided payments stay in DB for journal audit but must not affect
  * customer/supplier ledger or sale/purchase allocations (payment_allocations cleared on void).
@@ -19,7 +20,7 @@ export async function voidPaymentAfterJournalReversal(params: {
 
   const { error: updErr } = await supabase
     .from('payments')
-    .update({ voided_at: new Date().toISOString() })
+    .update({ voided_at: getCurrentLocalTimestamp() })
     .eq('id', paymentId)
     .eq('company_id', companyId);
   if (updErr) throw new Error(updErr.message);
@@ -36,7 +37,7 @@ export async function voidPaymentAfterJournalReversal(params: {
  * already created them as the audit record of the cancellation.
  */
 async function voidAllPaymentChainJournals(companyId: string, paymentId: string): Promise<void> {
-  const nowIso = new Date().toISOString();
+  const nowIso = getCurrentLocalTimestamp();
   const reason = 'Linked payment voided — full chain cleanup (primary + PF-14 adjustments)';
 
   const { error: e1 } = await supabase
@@ -92,7 +93,7 @@ export async function undoLastPaymentMutation(params: {
   const jeIdToVoid = lastMut.adjustment_journal_entry_id;
   if (!jeIdToVoid) return null;
 
-  const nowIso = new Date().toISOString();
+  const nowIso = getCurrentLocalTimestamp();
   const { error: voidErr } = await supabase
     .from('journal_entries')
     .update({

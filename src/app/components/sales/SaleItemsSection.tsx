@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Plus, Trash2, Package, ChevronsUpDown, Edit, Sparkles } from 'lucide-react';
+import { Search, Plus, Trash2, Package, ChevronsUpDown, Edit, Sparkles, Scissors } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
@@ -19,6 +19,14 @@ import {
     PopoverTrigger,
 } from "../ui/popover";
 import { useNavigation } from '../../context/NavigationContext';
+import {
+    parseCustomizationDetails,
+    formatFabricSummary,
+    getBespokeLineCharges,
+    normalizeFabricMaterials,
+    type CustomizationDetails,
+} from '@/app/types/bespoke';
+import { isInjectedBespokeLine } from '@/app/lib/bespokeCartInjection';
 
 interface Product {
     id: number | string;
@@ -44,6 +52,10 @@ interface SaleItem {
     thaans?: number;
     meters?: number;
     packingDetails?: any;
+    customizationDetails?: Record<string, unknown>;
+    bespokeParentCartId?: number;
+    bespokeRole?: 'fabric';
+    isBespokeInjected?: boolean;
     stock?: number;
     showVariations?: boolean; // Flag to show variation selector inline
     selectedVariationId?: string; // Currently selected variation ID (for edit preselect + read-only)
@@ -93,8 +105,13 @@ interface SaleItemsSectionProps {
     handleInlineVariationSelect: (itemId: number, variation: { id?: string; size?: string; color?: string }) => void;
     /** When false, Packing column and modal trigger are hidden (global Enable Packing = OFF). */
     enablePacking?: boolean;
+    enableBespoke?: boolean;
+    onOpenBespokeModal?: (itemId: number) => void;
     /** Edit mode: variation is read-only (locked); no re-select – delete row + re-add to change. */
     isEditMode?: boolean;
+    getLineUnitPrice?: (item: SaleItem) => number;
+    getLineBasePrice?: (item: SaleItem) => number;
+    formatCurrencyDisplay?: (amount: number) => string;
     // Update item function
     updateItem: (id: number, field: 'qty' | 'price', value: number) => void;
     // Keyboard navigation
@@ -148,7 +165,12 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
     setSelectedProductForVariation,
     handleInlineVariationSelect,
     enablePacking = false,
+    enableBespoke = false,
+    onOpenBespokeModal,
     isEditMode = false,
+    getLineUnitPrice,
+    getLineBasePrice,
+    formatCurrencyDisplay,
     updateItem,
     // Keyboard navigation
     itemQtyRefs,
@@ -159,6 +181,51 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
     lastAddedItemId = null,
 }) => {
     const { openDrawer, activeDrawer } = useNavigation();
+
+    const resolveUnitPrice = (item: SaleItem) =>
+        getLineUnitPrice ? getLineUnitPrice(item) : item.price;
+
+    const resolveBasePrice = (item: SaleItem) =>
+        getLineBasePrice ? getLineBasePrice(item) : item.price;
+
+    /** Editable price in the grid: fabric lines use retail; parent/normal lines edit base only. */
+    const resolveEditablePrice = (item: SaleItem) =>
+        isInjectedBespokeLine(item) ? item.price : resolveBasePrice(item);
+
+    const formatMoney = (amount: number) =>
+        formatCurrencyDisplay
+            ? formatCurrencyDisplay(amount)
+            : amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const getBespokeSummaryLines = (raw?: CustomizationDetails | Record<string, unknown>) => {
+        const details = parseCustomizationDetails(raw);
+        if (!details) return { fabricLine: '', metaLine: '', charges: 0 };
+        const materials = details.fabric_materials ?? normalizeFabricMaterials(details.fabric_materials);
+        const fabricLine =
+            materials.length > 0
+                ? formatFabricSummary(materials)
+                : typeof details.fabric === 'string' && details.fabric.trim()
+                  ? details.fabric.trim()
+                  : '';
+        const metaParts: string[] = [];
+        if (details.shade_card_code) metaParts.push(`Shade: ${details.shade_card_code}`);
+        if (details.color_name) metaParts.push(details.color_name);
+        if (details.measurements) {
+            const m =
+                typeof details.measurements === 'string'
+                    ? details.measurements
+                    : Object.entries(details.measurements)
+                          .filter(([, v]) => v)
+                          .map(([k, v]) => `${k}: ${v}`)
+                          .join(', ');
+            if (m.trim()) metaParts.push(m.trim());
+        }
+        return {
+            fabricLine,
+            metaLine: metaParts.join(' · '),
+            charges: getBespokeLineCharges(details),
+        };
+    };
 
     return (
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col h-full">
@@ -379,6 +446,9 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                     displayStock = currentProduct?.stock ?? item.stock ?? 0;
                                 }
 
+                                const bespokeSummary = getBespokeSummaryLines(item.customizationDetails);
+                                const bespokeCharges = bespokeSummary.charges;
+
                                 return (
                                 <div key={item.id}>
                                     {/* Main Item Row - FIXED SPACING (Packing cell when enablePacking) */}
@@ -421,6 +491,30 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                                             </>
                                                         )}
                                                     </div>
+                                                    {enableBespoke &&
+                                                      (item.isBespokeInjected || item.bespokeRole === 'fabric') ? (
+                                                        <div className="mt-1 text-[10px] text-amber-400/90">Fabric (linked to custom order)</div>
+                                                    ) : null}
+                                                    {enableBespoke && onOpenBespokeModal && !isInjectedBespokeLine(item) && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onOpenBespokeModal(item.id)}
+                                                            className="mt-1 text-[10px] text-violet-400 hover:text-violet-300 flex items-center gap-1"
+                                                        >
+                                                            <Scissors size={10} />
+                                                            {item.customizationDetails ? 'Edit customization' : 'Customize / Add Details'}
+                                                        </button>
+                                                    )}
+                                                    {item.customizationDetails && bespokeSummary.fabricLine && (
+                                                        <div className="mt-0.5 text-[10px] text-gray-500 truncate" title={bespokeSummary.fabricLine}>
+                                                            {bespokeSummary.fabricLine}
+                                                        </div>
+                                                    )}
+                                                    {item.customizationDetails && bespokeSummary.metaLine && (
+                                                        <div className="mt-0.5 text-[10px] text-violet-400/80 truncate" title={bespokeSummary.metaLine}>
+                                                            {bespokeSummary.metaLine}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -503,7 +597,7 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                             ref={(el) => (itemPriceRefs.current[item.id] = el)}
                                             type="number"
                                             className="h-7 w-full text-right bg-transparent border-transparent hover:border-gray-700 focus:bg-gray-950 focus:border-blue-500 px-2 py-0.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                                            value={item.price === 0 ? '' : item.price}
+                                            value={resolveEditablePrice(item) === 0 ? '' : resolveEditablePrice(item)}
                                             onChange={(e) => {
                                                 const raw = e.target.value;
                                                 updateItem(item.id, 'price', raw === '' ? 0 : parseFloat(raw) || 0);
@@ -512,12 +606,24 @@ export const SaleItemsSection: React.FC<SaleItemsSectionProps> = ({
                                             disabled={item.showVariations && !item.selectedVariationId}
                                             placeholder={item.showVariations && !item.selectedVariationId ? "—" : ""}
                                         />
+                                        {item.customizationDetails &&
+                                            (bespokeCharges > 0 ||
+                                                resolveUnitPrice(item) - resolveBasePrice(item) > 0) && (
+                                            <div className="text-[9px] text-gray-500 text-right mt-0.5 leading-tight">
+                                                Base {formatMoney(resolveBasePrice(item))} + Custom{' '}
+                                                {formatMoney(
+                                                    bespokeCharges > 0
+                                                        ? bespokeCharges
+                                                        : resolveUnitPrice(item) - resolveBasePrice(item),
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Total (Fixed 80px - RIGHT ALIGNED) */}
                                     <div className="w-[80px]">
                                         <div className="text-right text-sm font-bold text-white">
-                                            {(item.price * item.qty).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                            {(resolveUnitPrice(item) * item.qty).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                         </div>
                                     </div>
 

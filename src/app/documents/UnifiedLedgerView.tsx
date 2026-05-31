@@ -4,7 +4,7 @@
  */
 import React, { useRef } from 'react';
 import { useUnifiedDocumentSettings } from './useUnifiedDocumentSettings';
-import { resolveDocumentOptions } from './resolveOptions';
+import { useCompanyLogoDisplayUrl } from '@/app/hooks/useCompanyLogoDisplayUrl';
 import { LedgerTemplate } from './templates/LedgerTemplate';
 import type { LedgerDocument } from './templates/LedgerTemplate';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -28,8 +28,11 @@ export const UnifiedLedgerView: React.FC<UnifiedLedgerViewProps> = ({
   showPrintAction = true,
 }) => {
   const { formatCurrency } = useFormatCurrency();
-  const { settings, loading, error } = useUnifiedDocumentSettings(companyId, 'ledger_statement');
-  const resolved = settings ? resolveDocumentOptions(settings, 'ledger_statement') : null;
+  const { resolvedOptions, showLogo, loading, error } = useUnifiedDocumentSettings(companyId, 'ledger_statement');
+  const logoDisplay = useCompanyLogoDisplayUrl(showLogo ? resolvedOptions?.ledger.logoUrl : undefined);
+  const resolved = resolvedOptions
+    ? { ...resolvedOptions, ledger: { ...resolvedOptions.ledger, logoUrl: logoDisplay || null } }
+    : null;
   const options = resolved ? {
     showCompanyAddress: resolved.ledger.showCompanyAddress,
     showNotes: resolved.ledger.showNotes,

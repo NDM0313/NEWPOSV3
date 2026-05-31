@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Capacitor } from '@capacitor/core';
 import {
   ArrowLeft,
   Settings as SettingsIcon,
@@ -164,6 +165,11 @@ export function SettingsModule({
 
   const refreshUnsynced = () => getUnsyncedCount().then(setUnsyncedCount);
 
+  const refreshBluetoothDevices = useCallback(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    void listPairedBluetoothDevices().then(setBluetoothDevices);
+  }, []);
+
   useEffect(() => {
     if (!companyId) {
       setRlsBranches([]);
@@ -252,7 +258,6 @@ export function SettingsModule({
     settingsApi.getMobileBarcodeScannerSettings(companyId).then(({ data }) => setBarcodeSettings(data));
     settingsApi.getMobileBarcodeLabelSettings(companyId).then(({ data }) => setLabelSettings(data));
     settingsApi.getDefaultDressDevaluation(companyId).then(({ data }) => setDefaultDressDevaluation(data));
-    void listPairedBluetoothDevices().then(setBluetoothDevices);
     void probePrinterBackend(null).then(() => setPrinterBackendLabel(getCachedPrinterBackendLabel()));
     getMergedPrintingSettings(companyId).then(({ data }) => setReceiptFields(data.fields));
     getCompanyBrand(companyId).then((b) => {
@@ -305,6 +310,7 @@ export function SettingsModule({
     const prev = printerConfig;
     const next = { ...printerConfig, mode };
     setPrinterConfig(next);
+    if (mode === 'thermal') refreshBluetoothDevices();
     const err = await persistPrinterConfig(next);
     if (err) setPrinterConfig(prev);
   };
@@ -686,6 +692,7 @@ export function SettingsModule({
               if (!companyId) return;
               await settingsApi.setMobileBarcodeLabelSettings(companyId, next);
             }}
+            onRefreshBluetooth={refreshBluetoothDevices}
           />
         </SettingsCollapsible>
 

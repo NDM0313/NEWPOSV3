@@ -19,7 +19,7 @@ import {
   normalizePurchaseStatusForPosting,
 } from '@/app/lib/postingStatusGate';
 import { getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
-import { localNowDateString } from '@/app/utils/localDate';
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 import { assertDomainEditSafetyTestMode, classifyPurchaseEdit } from '@/app/lib/accountingEditClassification';
 import { createAccountingEditTraceId, pushAccountingEditTrace } from '@/app/lib/accountingEditTrace';
 import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
@@ -187,7 +187,7 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
     supplier: supabasePurchase.supplier_id || '',
     supplierName: supabasePurchase.supplier_name || '',
     contactNumber: supabasePurchase.supplier?.phone || '',
-    date: supabasePurchase.po_date || new Date().toISOString().split('T')[0],
+    date: supabasePurchase.po_date || localNowDateString(),
     expectedDelivery: supabasePurchase.expected_delivery_date,
     location: locationDisplay, // NOW uses resolved branch name/code instead of raw UUID
     status: supabasePurchase.status || 'draft',
@@ -228,8 +228,8 @@ export const convertFromSupabasePurchase = (supabasePurchase: any): Purchase => 
     attachments: supabasePurchase.attachments || null,
     charges: Array.isArray(supabasePurchase.charges) ? supabasePurchase.charges : (Array.isArray(supabasePurchase.purchase_charges) ? supabasePurchase.purchase_charges : []),
     reference: supabasePurchase.notes || supabasePurchase.reference || undefined,
-    createdAt: supabasePurchase.created_at || new Date().toISOString(),
-    updatedAt: supabasePurchase.updated_at || new Date().toISOString(),
+    createdAt: supabasePurchase.created_at || getCurrentLocalTimestamp(),
+    updatedAt: supabasePurchase.updated_at || getCurrentLocalTimestamp(),
   };
 };
 
@@ -586,7 +586,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           purchaseNo: newPurchase.purchaseNo,
           amount: newPurchase.paid,
           paymentMethod: newPurchase.paymentMethod as any,
-          date: new Date().toISOString(),
+          date: getCurrentLocalTimestamp(),
           notes: `Payment for ${newPurchase.purchaseNo}`,
         });
       }
@@ -659,7 +659,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       const purchase = getPurchaseById(id);
       pushAccountingEditTrace({
         traceId,
-        ts: new Date().toISOString(),
+        ts: getCurrentLocalTimestamp(),
         module: 'purchases',
         entityType: 'purchase',
         entityId: id,
@@ -732,7 +732,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       }
       pushAccountingEditTrace({
         traceId,
-        ts: new Date().toISOString(),
+        ts: getCurrentLocalTimestamp(),
         module: 'purchases',
         entityType: 'purchase',
         entityId: id,
@@ -857,7 +857,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
         if (purchaseClassification && purchaseClassification.kind === 'FULL_REVERSE_REPOST') {
           pushAccountingEditTrace({
             traceId,
-            ts: new Date().toISOString(),
+            ts: getCurrentLocalTimestamp(),
             module: 'purchases',
             entityType: 'purchase',
             entityId: id,
@@ -1279,7 +1279,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
                 .update({
                   total_debit: totalDebit,
                   total_credit: totalCredit,
-                  updated_at: new Date().toISOString(),
+                  updated_at: getCurrentLocalTimestamp(),
                 })
                 .eq('id', jeId);
 
@@ -1325,7 +1325,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
           console.error('[PURCHASE CONTEXT] PF-COMPONENT: Purchase edit accounting failed:', repostErr);
           pushAccountingEditTrace({
             traceId,
-            ts: new Date().toISOString(),
+            ts: getCurrentLocalTimestamp(),
             module: 'purchases',
             entityType: 'purchase',
             entityId: id,
@@ -1361,7 +1361,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       // Update local state
       setPurchases(prev => prev.map(purchase => 
         purchase.id === id 
-          ? { ...purchase, ...updates, updatedAt: new Date().toISOString() }
+          ? { ...purchase, ...updates, updatedAt: getCurrentLocalTimestamp() }
           : purchase
       ));
       
@@ -1407,7 +1407,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       emitPurchaseInvalidation('updated', id);
       pushAccountingEditTrace({
         traceId,
-        ts: new Date().toISOString(),
+        ts: getCurrentLocalTimestamp(),
         module: 'purchases',
         entityType: 'purchase',
         entityId: id,
@@ -1426,7 +1426,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       const errorMessage = error.message || error.details || error.hint || 'Unknown error';
       pushAccountingEditTrace({
         traceId,
-        ts: new Date().toISOString(),
+        ts: getCurrentLocalTimestamp(),
         module: 'purchases',
         entityType: 'purchase',
         entityId: id,
@@ -1620,7 +1620,7 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
       // Update local state
       setPurchases(prev => prev.map(p => 
         p.id === purchaseId 
-          ? { ...p, items: updatedItems, status: newStatus, updatedAt: new Date().toISOString() }
+          ? { ...p, items: updatedItems, status: newStatus, updatedAt: getCurrentLocalTimestamp() }
           : p
       ));
 

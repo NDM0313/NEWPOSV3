@@ -1,3 +1,4 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 import React, { useState, useEffect } from 'react';
 import { X, Wallet, Building2, CreditCard, AlertCircle, Check, ChevronDown, Upload, FileText, Calendar, Clock, Trash2, History, Banknote } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
@@ -714,7 +715,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             payment_account_id: selectedAccount || null,
             payment_date: paymentDate,
             notes: notes || null,
-            updated_at: new Date().toISOString(),
+            updated_at: getCurrentLocalTimestamp(),
           };
           if (mergedAttachments.length) patch.attachments = mergedAttachments;
           const { data: updatedPayment, error: upErr } = await supabase

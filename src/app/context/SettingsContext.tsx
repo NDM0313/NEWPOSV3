@@ -13,6 +13,8 @@ import { toast } from 'sonner';
 import { isDebugErpEnabled } from '@/app/lib/debugErp';
 import type { ModuleToggles } from '@/app/config/companyBootstrapRegistry';
 import { defaultModuleToggles } from '@/app/config/companyBootstrapRegistry';
+import { businessSettingsService, type BusinessSettings } from '@/app/services/businessSettingsService';
+import { DEFAULT_BESPOKE_FORM_CONFIG, type BespokeFormConfig } from '@/app/types/bespoke';
 import { buildModuleTogglesFromConfigRows, moduleTogglePatchesToDb } from '@/app/config/moduleConfigSemantics';
 import {
   mapAppRoleToEngineRole,
@@ -124,6 +126,10 @@ export interface BranchSettings {
   branchName: string;
   address: string;
   phone: string;
+  city?: string;
+  state?: string;
+  fiscalYearStart?: string;
+  fiscalYearEnd?: string;
   isActive: boolean;
   isDefault: boolean;
   cashAccount: string;
@@ -227,6 +233,16 @@ interface SettingsContextType {
   // Inventory Settings
   inventorySettings: InventorySettings;
   updateInventorySettings: (settings: Partial<InventorySettings>, options?: { silent?: boolean }) => Promise<void>;
+
+  // Bespoke / custom orders (business_settings table)
+  businessSettings: BusinessSettings;
+  updateBusinessSettings: (
+    settings: Partial<{
+      enableBespokeOrders: boolean;
+      bespokeFormConfig: Partial<BespokeFormConfig>;
+    }>,
+    options?: { silent?: boolean },
+  ) => Promise<void>;
   
   // Rental Settings
   rentalSettings: RentalSettings;
@@ -287,6 +303,12 @@ function getDefaultSettingsStub(): SettingsContextType {
     updatePurchaseSettings: noop,
     inventorySettings: { lowStockThreshold: 0, reorderAlertDays: 0, negativeStockAllowed: false, valuationMethod: 'FIFO', autoReorderEnabled: false, barcodeRequired: false, enablePacking: false, defaultUnitId: null },
     updateInventorySettings: noop,
+    businessSettings: {
+      enableBespokeOrders: false,
+      bespokeFormConfig: { ...DEFAULT_BESPOKE_FORM_CONFIG },
+      customGenericProductIds: [],
+    },
+    updateBusinessSettings: noop,
     rentalSettings: { defaultLateFeePerDay: 0, gracePeriodDays: 0, advanceRequired: false, advancePercentage: 0, securityDepositRequired: false, securityDepositAmount: 0, damageChargeEnabled: false, autoExtendAllowed: false },
     updateRentalSettings: noop,
     accountingSettings: { fiscalYearStart: '', fiscalYearEnd: '', manualJournalEnabled: true, defaultCurrency: 'PKR', multiCurrencyEnabled: false, taxCalculationMethod: 'Inclusive', defaultTaxRate: 0 },
@@ -390,6 +412,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     defaultUnitId: null,
   });
 
+  const [businessSettings, setBusinessSettings] = useState<BusinessSettings>({
+    enableBespokeOrders: false,
+    customGenericProductIds: [],
+    bespokeFormConfig: { ...DEFAULT_BESPOKE_FORM_CONFIG },
+  });
+
   // Rental Settings
   const [rentalSettings, setRentalSettings] = useState<RentalSettings>({
     defaultLateFeePerDay: 0,
@@ -484,6 +512,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   const loadAllSettingsInProgressRef = useRef(false);
   const lastLoadKeyRef = useRef<string | null>(null);
   const lastLoadAtRef = useRef(0);
+  const settingsHydratedForCompanyRef = useRef<string | null>(null);
 
   // ============================================
   // 🎯 LOAD SETTINGS FROM DATABASE
@@ -493,7 +522,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     if (loadAllSettingsInProgressRef.current) return;
     const loadKey = `${companyId ?? 'none'}:${branchId ?? 'none'}:${user?.id ?? 'none'}`;
     const now = Date.now();
-    if (lastLoadKeyRef.current === loadKey && now - lastLoadAtRef.current < 1500) return;
+    if (lastLoadKeyRef.current === loadKey && now - lastLoadAtRef.current < 5000) return;
     loadAllSettingsInProgressRef.current = true;
     lastLoadKeyRef.current = loadKey;
     lastLoadAtRef.current = now;
@@ -506,11 +535,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       return;
     }
 
-    setLoading(true);
+    const tierABlocking =
+      settingsHydratedForCompanyRef.current !== companyId;
+    if (tierABlocking) setLoading(true);
     try {
       console.time('loadAllSettings');
 
-      // Run all independent top-level fetches in parallel
       const branchFilterId = branchId === 'all' ? null : branchId || null;
       const [
         { data: companyData },
@@ -518,6 +548,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         accountsList,
         allSettings,
         enablePacking,
+        businessSettingsData,
         erpSequences,
         sequences,
         moduleConfigs,
@@ -529,6 +560,11 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         accountService.getAllAccounts(companyId),
         settingsService.getAllSettings(companyId),
         settingsService.getEnablePacking(companyId),
+        businessSettingsService.getBusinessSettings(companyId).catch(() => ({
+          enableBespokeOrders: false,
+          bespokeFormConfig: { ...DEFAULT_BESPOKE_FORM_CONFIG },
+          customGenericProductIds: [],
+        })),
         settingsService.getErpDocumentSequences(companyId, branchFilterId).catch(() => [] as any[]),
         settingsService.getAllDocumentSequences(companyId, branchFilterId ?? undefined),
         settingsService.getAllModuleConfigs(companyId),
@@ -571,6 +607,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         branchName: b.name || '',
         address: b.address || '',
         phone: b.phone || '',
+        city: b.city || '',
+        state: b.state || '',
+        fiscalYearStart: b.fiscal_year_start ? String(b.fiscal_year_start).split('T')[0] : '',
+        fiscalYearEnd: b.fiscal_year_end ? String(b.fiscal_year_end).split('T')[0] : '',
         isActive: b.is_active !== false,
         isDefault: !!b.is_default,
         cashAccount: (b.default_cash_account_id && accountNameById.get(b.default_cash_account_id)) || '',
@@ -619,6 +659,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         autoPostToInventory: purchaseData.autoPostToInventory || false,
         defaultPaymentTerms: purchaseData.defaultPaymentTerms || 0,
       });
+
+      setBusinessSettings(businessSettingsData);
 
       // Load Inventory Settings (enablePacking already fetched in parallel above)
       const inventoryData = (settingsMap.get('inventory_settings') as any) || {};
@@ -830,6 +872,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       toast.error('Failed to load settings');
     } finally {
       setLoading(false);
+      if (companyId) settingsHydratedForCompanyRef.current = companyId;
       loadAllSettingsInProgressRef.current = false;
       if (import.meta.env?.DEV && isDebugErpEnabled()) {
         console.log('[PERM_DEBUG] loadAllSettings finished; loading=false → isPermissionLoaded=true');
@@ -941,7 +984,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       const { enablePacking, ...otherSettings } = updated;
       const payload = { ...otherSettings, negativeStockAllowed: Boolean(otherSettings.negativeStockAllowed) };
       await settingsService.setSetting(companyId, 'inventory_settings', payload, 'inventory', 'Inventory module settings');
-      
+      settingsService.clearAllowNegativeStockCache(companyId);
+
       if (settings.enablePacking !== undefined) {
         await settingsService.setEnablePacking(companyId, settings.enablePacking);
       }
@@ -953,6 +997,22 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       console.error('[SETTINGS] Error saving inventory settings:', error);
       toast.error('Failed to save inventory settings');
     }
+  };
+
+  const updateBusinessSettings = async (
+    settings: Partial<{
+      enableBespokeOrders: boolean;
+      bespokeFormConfig: Partial<import('@/app/types/bespoke').BespokeFormConfig>;
+    }>,
+    options?: { silent?: boolean },
+  ) => {
+    if (!companyId) return;
+    const updated = await businessSettingsService.updateBusinessSettings(companyId, {
+      enableBespokeOrders: settings.enableBespokeOrders,
+      bespokeFormConfig: settings.bespokeFormConfig,
+    });
+    setBusinessSettings(updated);
+    if (!options?.silent) toast.success('Bespoke order settings saved');
   };
 
   const updateRentalSettings = async (settings: Partial<RentalSettings>) => {
@@ -1155,6 +1215,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     updatePurchaseSettings,
     inventorySettings,
     updateInventorySettings,
+    businessSettings,
+    updateBusinessSettings,
     rentalSettings,
     updateRentalSettings,
     accountingSettings,
@@ -1173,10 +1235,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     refreshSettings: loadAllSettings,
   }), [
     loading, company, branches, posSettings, salesSettings, purchaseSettings,
-    inventorySettings, rentalSettings, accountingSettings, defaultAccounts,
+    inventorySettings, businessSettings, rentalSettings, accountingSettings, defaultAccounts,
     numberingRules, currentUser, modules, featureFlags,
     updateCompanySettings, updateBranches, addBranch, updatePOSSettings,
-    updateSalesSettings, updatePurchaseSettings, updateInventorySettings,
+    updateSalesSettings, updatePurchaseSettings, updateInventorySettings, updateBusinessSettings,
     updateRentalSettings, updateAccountingSettings, updateDefaultAccounts,
     updateNumberingRules, getNextNumber, updatePermissions, updateModules,
     updateFeatureFlag, loadAllSettings,

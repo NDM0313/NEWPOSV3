@@ -171,6 +171,19 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
     }
   }, [selectedVariationId, selectedBranchId]); // Reload when filters change
 
+  useEffect(() => {
+    if (!isOpen || !productId || !companyId) return;
+    const refresh = () => {
+      void loadStockMovements();
+    };
+    window.addEventListener('saleSaved', refresh);
+    window.addEventListener('erp-mobile:autosync-complete', refresh);
+    return () => {
+      window.removeEventListener('saleSaved', refresh);
+      window.removeEventListener('erp-mobile:autosync-complete', refresh);
+    };
+  }, [isOpen, productId, companyId, selectedVariationId, selectedBranchId]);
+
   const loadStockMovements = async () => {
     if (!productId || !companyId) {
       console.log('[FULL LEDGER] Missing required params:', { productId, companyId });
@@ -831,9 +844,29 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
               <div className="text-center py-12 text-gray-400">
                 <FileText size={48} className="mx-auto mb-4 opacity-50" />
                 <p>No stock movements found</p>
-                <p className="text-xs mt-2 text-gray-500">
-                  No movements in selected filters. Try changing branch or variation.
-                </p>
+                {productSku?.toUpperCase().startsWith('CUSTOM-') ? (
+                  <div className="text-xs mt-2 text-amber-400/90 max-w-lg mx-auto space-y-1">
+                    <p>
+                      Custom order (CUSTOM-*) shows <strong className="text-amber-300">order qty IN (+)</strong>{' '}
+                      here when the bespoke work order is completed (reference{' '}
+                      <span className="font-mono">bespoke_work_order</span>).
+                    </p>
+                    <p className="text-gray-500">
+                      Fabric meters post separately on the <strong className="text-gray-400">fabric product</strong>{' '}
+                      ledger (e.g. Design 3005) as OUT (−). If empty after WO complete, use Post stock on the work order
+                      or re-save the sale so fabric lines are linked.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="text-xs mt-2 text-gray-500 max-w-md mx-auto space-y-1">
+                    <p>No movements in selected filters.</p>
+                    <p>Try branch <strong className="text-gray-400">All branches</strong> and variation{' '}
+                      <strong className="text-gray-400">All</strong> (movements with no variation are hidden when one variation is selected).</p>
+                    {selectedVariationId && (
+                      <p className="text-amber-500/80">A specific variation is selected — switch to All variations if stock still looks empty.</p>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -862,7 +895,19 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                       const isIn = qty > 0;
                       const balance = runningBalance.get(movement.id) || 0;
                       const movementType = getMovementType(movement);
-                      const sale = movement.reference_type && movement.reference_id && movement.reference_type.toLowerCase().includes('sale') ? getSaleById(movement.reference_id) : null;
+                      const movementNotes = String(movement.notes ?? '');
+                      const isBespokeParent =
+                        movement.reference_type?.toLowerCase() === 'bespoke_work_order' &&
+                        movementNotes.startsWith('Bespoke custom order');
+                      const isBespokeFabric =
+                        movement.reference_type?.toLowerCase() === 'bespoke_work_order' &&
+                        !isBespokeParent;
+                      const sale =
+                        movement.reference_type &&
+                        movement.reference_id &&
+                        movement.reference_type.toLowerCase() === 'sale'
+                          ? getSaleById(movement.reference_id)
+                          : null;
                       const purchase = movement.reference_type && movement.reference_id && movement.reference_type.toLowerCase().includes('purchase') ? getPurchaseById(movement.reference_id) : null;
                       const referenceNo = formatStockReference({
                         referenceType: movement.reference_type,
@@ -890,7 +935,11 @@ export const FullStockLedgerView: React.FC<FullStockLedgerViewProps> = ({
                                 getMovementTypeColor(movementType, qty)
                               )}
                             >
-                              {getMovementTypeLabel(movementType)}
+                              {isBespokeParent
+                                ? 'Bespoke order'
+                                : isBespokeFabric
+                                  ? 'Bespoke fabric'
+                                  : getMovementTypeLabel(movementType)}
                             </Badge>
                           </td>
                           <td className={cn('py-3 px-4 text-right font-mono font-semibold whitespace-nowrap', isIn ? 'text-green-400' : 'text-red-400')}>

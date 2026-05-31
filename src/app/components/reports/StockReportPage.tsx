@@ -22,6 +22,7 @@ import {
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 import { exportToCSV, exportToExcel, exportToPDF, ExportData } from '../../utils/exportUtils';
 import { ListToolbar } from '../ui/list-toolbar';
+import { Pagination } from '../ui/pagination';
 import { toast } from 'sonner';
 
 // --------------- Types ---------------
@@ -60,7 +61,8 @@ export const StockReportPage = () => {
 
   // Filter/UI state
   const [searchTerm, setSearchTerm] = useState('');
-  const [pageSize, setPageSize] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -195,10 +197,31 @@ export const StockReportPage = () => {
     return list;
   }, [flatRows, searchTerm, categoryFilter, statusFilter]);
 
-  const displayedRows = useMemo(() => {
-    const size = typeof pageSize === 'number' && pageSize > 0 ? pageSize : filteredRows.length;
-    return filteredRows.slice(0, size);
-  }, [filteredRows, pageSize]);
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize) || 1);
+
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, currentPage, pageSize]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, categoryFilter, statusFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
 
   // --------------- Summary Cards ---------------
 
@@ -340,7 +363,13 @@ export const StockReportPage = () => {
       <div className="shrink-0 border-b border-gray-800">
         <ListToolbar
           search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search by product name, SKU, or variation...' }}
-          rowsSelector={{ value: pageSize, onChange: setPageSize, totalItems: filteredRows.length }}
+          rowsSelector={{
+            value: pageSize,
+            onChange: handlePageSizeChange,
+            totalItems: filteredRows.length,
+            options: [25, 50, 100],
+            showAllOption: false,
+          }}
           columnsManager={{
             columns: columnsList,
             visibleColumns,
@@ -416,7 +445,7 @@ export const StockReportPage = () => {
                       <p className="text-gray-400 text-sm">Loading stock report...</p>
                     </td>
                   </tr>
-                ) : displayedRows.length === 0 ? (
+                ) : paginatedRows.length === 0 && filteredRows.length === 0 ? (
                   <tr>
                     <td colSpan={visibleCols.length} className="px-6 py-12 text-center">
                       <Package size={40} className="mx-auto text-gray-600 mb-2" />
@@ -424,7 +453,7 @@ export const StockReportPage = () => {
                     </td>
                   </tr>
                 ) : (
-                  displayedRows.map((row, idx) => (
+                  paginatedRows.map((row, idx) => (
                     <tr key={`${row.productId}-${row.variationId || 'base'}-${idx}`} className="hover:bg-gray-800/30 transition-colors">
                       {visibleCols.includes('sku') && (
                         <td className="px-4 py-3 text-gray-400 font-mono text-base whitespace-nowrap">{row.sku}</td>
@@ -496,7 +525,7 @@ export const StockReportPage = () => {
                 )}
               </tbody>
               {/* Table Footer Totals */}
-              {!loading && displayedRows.length > 0 && (
+              {!loading && filteredRows.length > 0 && (
                 <tfoot className="bg-gray-950/70 border-t-2 border-gray-700">
                   <tr className="font-semibold text-base">
                     {visibleCols.includes('sku') && <td className="px-4 py-3 text-gray-300">Totals</td>}
@@ -543,6 +572,15 @@ export const StockReportPage = () => {
           </div>
         </div>
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        totalItems={filteredRows.length}
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+      />
     </div>
   );
 };

@@ -26,20 +26,37 @@ export function productImageUrlForPersistence(storagePath: string): string {
   return storagePath;
 }
 
+const SESSION_RETRY_MS = 150;
+const SESSION_RETRY_COUNT = 3;
+
+async function waitForAccessToken(): Promise<string | null> {
+  for (let i = 0; i <= SESSION_RETRY_COUNT; i++) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) return session.access_token;
+    if (i < SESSION_RETRY_COUNT) {
+      await new Promise((r) => setTimeout(r, SESSION_RETRY_MS));
+    }
+  }
+  return null;
+}
+
 /**
  * Get a URL suitable for displaying a product image (img src).
  * If the URL is from the product-images bucket, returns a signed URL so it works when the bucket is private.
+ * Returns null when signing fails (never return path-only refs — invalid as img src).
  */
-export async function getProductImageDisplayUrl(rawUrl: string): Promise<string> {
-  if (!rawUrl || typeof rawUrl !== 'string') return rawUrl;
+export async function getProductImageDisplayUrl(rawUrl: string): Promise<string | null> {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const path = extractProductImageStoragePath(rawUrl);
+  if (!path) return rawUrl;
   try {
-    const path = extractProductImageStoragePath(rawUrl);
-    if (!path) return rawUrl;
+    const token = await waitForAccessToken();
+    if (!token) return null;
     const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600);
-    if (error || !data?.signedUrl) return rawUrl;
+    if (error || !data?.signedUrl) return null;
     return data.signedUrl;
   } catch {
-    return rawUrl;
+    return null;
   }
 }
 

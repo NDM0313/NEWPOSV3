@@ -33,7 +33,6 @@ import { PurchaseProvider } from './context/PurchaseContext';
 import { RentalProvider } from './context/RentalContext';
 import { ExpenseProvider } from './context/ExpenseContext';
 import { ProductionProvider } from './context/ProductionContext';
-import { ModuleSettings } from './components/settings/ModuleSettings';
 const ReportsDashboard = lazy(() => import('./components/reports/ReportsDashboard').then(m => ({ default: m.ReportsDashboard })));
 const ReportsDashboardEnhanced = lazy(() => import('./components/reports/ReportsDashboardEnhanced').then(m => ({ default: m.ReportsDashboardEnhanced })));
 import { ViewContactProfile } from './components/contacts/ViewContactProfile';
@@ -46,10 +45,8 @@ const InventoryDesignTestPage = lazy(() => import('./components/inventory/Invent
 const InventoryAnalyticsTestPage = lazy(() => import('./components/inventory/InventoryAnalyticsTestPage').then(m => ({ default: m.InventoryAnalyticsTestPage })));
 const StockReportPage = lazy(() => import('./components/reports/StockReportPage').then(m => ({ default: m.StockReportPage })));
 const StudioDashboardNew = lazy(() => import('./components/studio/StudioDashboardNew').then(m => ({ default: m.StudioDashboardNew })));
-import { SettingsPage } from './components/settings/SettingsPage';
 const SettingsPageNew = lazy(() => import('./components/settings/SettingsPageNew').then(m => ({ default: m.SettingsPageNew })));
 const ErpPermissionArchitecturePage = lazy(() => import('./components/erp-permissions/ErpPermissionArchitecturePage').then(m => ({ default: m.ErpPermissionArchitecturePage })));
-import { SettingsPageClean } from './components/settings/SettingsPageClean';
 import { StudioWorkflowPage } from './components/studio/StudioWorkflowPage';
 import { PackingEntryPage } from './components/packing/PackingEntryPage';
 import { StudioOrdersList } from './components/studio/StudioOrdersList';
@@ -65,6 +62,7 @@ import { StudioProductionAddPage } from './components/studio/StudioProductionAdd
 const StudioPipelinePage = lazy(() => import('./components/studio/StudioPipelinePage').then(m => ({ default: m.StudioPipelinePage })));
 import { AccountingIntegrationDemo } from './components/accounting/AccountingIntegrationDemo';
 import { PurchaseListExample } from './components/purchases/PurchaseListExample';
+import { BespokeWorkOrdersPage } from './components/bespoke/BespokeWorkOrdersPage';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsModal } from './components/shared/KeyboardShortcutsModal';
 import { ContactSearchTestPage } from './components/demo/ContactSearchTestPage';
@@ -137,7 +135,7 @@ const ProductionWorkflow = lazy(() => import('./manufacturing/ProductionWorkflow
 
 const AppContent = () => {
   const { currentView, partyLedgerParams, setCurrentView, setPartyLedgerParams } = useNavigation();
-  const { modules, featureFlags } = useSettings();
+  const { modules, featureFlags, businessSettings } = useSettings();
   const { hasPermission } = useCheckPermission();
   const studioProductionV2 = featureFlags?.studio_production_v2 === true;
   const studioProductionV3 = featureFlags?.studio_production_v3 === true;
@@ -246,6 +244,23 @@ const AppContent = () => {
   if (currentView === 'sales' && !modules.salesModuleEnabled) {
     return moduleDisabledScreen('Sales Module Disabled');
   }
+  if (currentView === 'bespoke-work-orders' && !modules.salesModuleEnabled) {
+    return moduleDisabledScreen('Sales Module Disabled');
+  }
+  if (currentView === 'bespoke-work-orders' && !businessSettings.enableBespokeOrders) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center max-w-md px-4">
+            <h2 className="text-2xl font-bold text-white mb-2">Customization Disabled</h2>
+            <p className="text-gray-400">
+              Bespoke work orders are hidden while <strong className="text-gray-300">Enable customization</strong> is off in Settings → Business. Turn it on to use work orders and fabric posting, or continue with standard sales.
+            </p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
   if (currentView === 'purchases' && !modules.purchasesModuleEnabled) {
     return moduleDisabledScreen('Purchases Module Disabled');
   }
@@ -340,6 +355,7 @@ const AppContent = () => {
           <SalesPage />
         </Suspense>
       )}
+      {currentView === 'bespoke-work-orders' && <BespokeWorkOrdersPage />}
       {currentView === 'rentals' && (
         <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
           <RentalDashboard />

@@ -7,6 +7,9 @@ export interface CreateBusinessRequest {
   password: string;
   currency?: string;
   fiscalYearStart?: string;
+  fiscalYearEnd?: string;
+  branchCity?: string;
+  branchState?: string;
   branchName?: string;
   branchCode?: string;
   /** Company & branch address - saved to DB, shown in Settings */
@@ -95,6 +98,9 @@ export const businessService = {
           p_fiscal_year_start: data.fiscalYearStart || null,
           p_branch_name: data.branchName || 'Main Branch',
           p_branch_code: data.branchCode || 'HQ',
+          p_branch_city: data.branchCity || null,
+          p_branch_state: data.branchState || null,
+          p_fiscal_year_end: data.fiscalYearEnd || null,
           p_phone: data.phone || null,
           p_address: data.address || null,
           p_country: data.country || null,
@@ -152,6 +158,10 @@ export const businessService = {
     businessName: string;
     ownerName?: string;
     currency?: string;
+    fiscalYearStart?: string;
+    fiscalYearEnd?: string;
+    branchCity?: string;
+    branchState?: string;
     branchName?: string;
     branchCode?: string;
     phone?: string;
@@ -184,9 +194,12 @@ export const businessService = {
         p_password: '',
         p_user_id: user.id,
         p_currency: data.currency || 'PKR',
-        p_fiscal_year_start: null,
+        p_fiscal_year_start: data.fiscalYearStart || null,
         p_branch_name: data.branchName || 'Main Branch',
         p_branch_code: data.branchCode || 'HQ',
+        p_branch_city: data.branchCity || null,
+        p_branch_state: data.branchState || null,
+        p_fiscal_year_end: data.fiscalYearEnd || null,
         p_phone: data.phone || null,
         p_address: data.address || null,
         p_country: data.country || null,

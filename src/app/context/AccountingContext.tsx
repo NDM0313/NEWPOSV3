@@ -22,6 +22,7 @@ import {
   type DataInvalidationDetail,
   shouldAcceptInvalidation,
 } from '@/app/lib/dataInvalidationBus';
+import { isBulkImportActive } from '@/app/lib/bulkImportSession';
 import {
   buildPaymentChainIndex,
   paymentChainFlagsForJournalEntry,
@@ -460,14 +461,14 @@ const AccountingContext = createContext<AccountingContextType | undefined>(undef
 // ============================================
 
 const BALANCE_SYNC_THROTTLE_MS = 60_000;
-const COALESCED_REFRESH_MS = 500;
+const COALESCED_REFRESH_MS = 1200;
 
 /** Reload COA on invalidation only when the chart changed — not payments/sales/realtime noise. */
 function invalidationShouldReloadAccounts(reason?: string): boolean {
   if (!reason) return false;
   const r = reason.toLowerCase();
   if (
-    /realtime-change|fallback-poll|contact-balance|sale-payment|accounting-entries-changed|manualreceipt|manualsupplier|sale:|rental:|payment-added/.test(
+    /realtime-change|fallback-poll|contact-balance|sale-payment|saledocumentjournalcreated|accounting-entries-changed|manualreceipt|manualsupplier|sale:|rental:|payment-added|sales-context-payment/.test(
       r
     )
   ) {
@@ -947,6 +948,13 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const scheduleCoalescedRefresh = useCallback(
     (opts?: { entries?: boolean; accounts?: boolean; blocking?: boolean }) => {
+      if (isBulkImportActive()) {
+        if (opts?.entries) pendingEntriesReloadRef.current = true;
+        if (opts?.accounts) {
+          coalescedRefreshOptsRef.current.accounts = true;
+        }
+        return;
+      }
       const acc = coalescedRefreshOptsRef.current;
       if (opts?.entries !== undefined) acc.entries = opts.entries;
       if (opts?.accounts !== undefined) acc.accounts = opts.accounts;
@@ -1012,6 +1020,77 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     [applyJournalRowsToState, recalculateBalances]
   );
 
+  const mergeIncrementalJournalRows = useCallback(
+    async (rows: JournalEntryWithLines[]) => {
+      if (!rows.length || !companyId) return false;
+      try {
+        const jeIds = rows.map((j) => String(j.id || '').trim()).filter(Boolean);
+        const reversedOriginalIds = new Set<string>();
+        const CHUNK = 150;
+        for (let i = 0; i < jeIds.length; i += CHUNK) {
+          const chunk = jeIds.slice(i, i + CHUNK);
+          const { data: revParents, error: revErr } = await supabase
+            .from('journal_entries')
+            .select('reference_id')
+            .eq('company_id', companyId)
+            .eq('reference_type', 'correction_reversal')
+            .in('reference_id', chunk)
+            .or('is_void.is.null,is_void.eq.false');
+          if (revErr && import.meta.env?.DEV) {
+            console.warn('[ACCOUNTING CONTEXT] incremental reversal lookup:', revErr.message);
+          }
+          for (const r of revParents || []) {
+            const rid = (r as { reference_id?: string }).reference_id;
+            if (rid) reversedOriginalIds.add(String(rid));
+          }
+        }
+        const flagged = rows.map((je) => ({
+          ...je,
+          _has_active_correction_reversal: Boolean(je.id && reversedOriginalIds.has(String(je.id))),
+        })) as JournalEntryWithLines[];
+        appendOrMergeEntries(flagged);
+        return true;
+      } catch (e) {
+        if (import.meta.env?.DEV) console.warn('[ACCOUNTING CONTEXT] incremental journal merge failed:', e);
+        return false;
+      }
+    },
+    [companyId, appendOrMergeEntries]
+  );
+
+  const tryIncrementalJournalFromInvalidation = useCallback(
+    async (detail: DataInvalidationDetail | undefined): Promise<boolean> => {
+      if (!companyId || !detail?.entityId) return false;
+      const reason = String(detail.reason ?? '').toLowerCase();
+      const entityId = String(detail.entityId);
+      const branchFilter = branchId === 'all' ? undefined : branchId || undefined;
+
+      if (
+        reason.includes('saledocumentjournalcreated') ||
+        reason.includes('sale-payment') ||
+        reason.includes('sales-context-payment')
+      ) {
+        const rows = await accountingService.fetchJournalEntriesForSale(
+          companyId,
+          entityId,
+          branchFilter
+        );
+        if (rows.length > 0) return mergeIncrementalJournalRows(rows as JournalEntryWithLines[]);
+      }
+
+      if (reason.includes('accounting-entries-changed')) {
+        const row = await accountingService.getEntryById(entityId, companyId);
+        if (row) return mergeIncrementalJournalRows([row as JournalEntryWithLines]);
+      }
+
+      return false;
+    },
+    [companyId, branchId, mergeIncrementalJournalRows]
+  );
+
+  const tryIncrementalJournalFromInvalidationRef = useRef(tryIncrementalJournalFromInvalidation);
+  tryIncrementalJournalFromInvalidationRef.current = tryIncrementalJournalFromInvalidation;
+
   const patchAccountBalances = useCallback((accountIdToBalance: Record<string, number>) => {
     setAccounts((prev) =>
       prev.map((acc) => {
@@ -1059,7 +1138,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     if (!companyId) return;
 
     const bumpEntriesOnly = () => {
-      scheduleCoalescedRefreshRef.current({ entries: true, accounts: false });
+      void (async () => {
+        const handled = await tryIncrementalJournalFromInvalidationRef.current(undefined);
+        if (!handled) {
+          scheduleCoalescedRefreshRef.current({ entries: true, accounts: false });
+        }
+      })();
     };
 
     const onDataInvalidated = (ev: Event) => {
@@ -1073,11 +1157,15 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       ) {
         return;
       }
-      const reloadAccounts = invalidationShouldReloadAccounts(detail?.reason);
-      scheduleCoalescedRefreshRef.current({
-        entries: true,
-        accounts: reloadAccounts,
-      });
+      void (async () => {
+        const handled = await tryIncrementalJournalFromInvalidationRef.current(detail);
+        if (handled) return;
+        const reloadAccounts = invalidationShouldReloadAccounts(detail?.reason);
+        scheduleCoalescedRefreshRef.current({
+          entries: true,
+          accounts: reloadAccounts,
+        });
+      })();
     };
 
     window.addEventListener('accountingEntriesChanged', bumpEntriesOnly);

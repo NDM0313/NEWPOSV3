@@ -1,3 +1,4 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 import { supabase } from '@/lib/supabase';
 import { getDocumentConversionSchemaFlags } from '@/app/lib/documentConversionSchema';
 import { canPostAccountingForPurchaseStatus, wasPurchasePostedForReversal } from '@/app/lib/postingStatusGate';
@@ -421,7 +422,7 @@ async function applyWeightedCostRollup(params: {
     const incomingCost = incoming.sum / Math.max(1, incoming.qty);
     const next = computeWeightedCost(currentQty, currentCost, incoming.qty, incomingCost);
     if (next <= 0) continue;
-    await supabase.from('products').update({ cost_price: next, updated_at: new Date().toISOString() }).eq('id', productId);
+    await supabase.from('products').update({ cost_price: next, updated_at: getCurrentLocalTimestamp() }).eq('id', productId);
   }
 }
 
@@ -1366,7 +1367,7 @@ export const purchaseService = {
       paymentMethod,
       paymentAccountId: accountId,
       purchaseId,
-      paymentDate: new Date().toISOString().split('T')[0],
+      paymentDate: localNowDateString(),
       notes: buildPaymentNote(options?.notes, referenceNumber),
       attachments: options?.attachments,
     });
@@ -1411,7 +1412,7 @@ export const purchaseService = {
       paymentAccountId: accountId,
       contactId,
       supplierName: contactName,
-      paymentDate: paymentDate || new Date().toISOString().split('T')[0],
+      paymentDate: paymentDate || localNowDateString(),
       notes: buildPaymentNote(options?.notes, null),
       attachments: options?.attachments,
     });
@@ -1573,7 +1574,7 @@ export const purchaseService = {
               context: 'purchase', companyId, branchId, paymentId, referenceId: purchaseId,
               oldAmount, newAmount, paymentAccountId: oldAccountId || paymentAccountId || '',
               invoiceNoOrRef: poNo,
-              entryDate: (updates.paymentDate || paymentDate || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
+              entryDate: (updates.paymentDate || paymentDate || localNowDateString()).toString().slice(0, 10),
               createdBy: (user as any)?.id ?? null, payableAccountId,
             });
           }
@@ -1640,7 +1641,7 @@ export const purchaseService = {
             await postPaymentAccountAdjustment({
               context: 'purchase', companyId, branchId, paymentId, referenceId: purchaseId,
               oldAccountId, newAccountId, amount: newAmount, invoiceNoOrRef: poNo,
-              entryDate: (updates.paymentDate || paymentDate || (data as any)?.payment_date || new Date().toISOString().split('T')[0]).toString().slice(0, 10),
+              entryDate: (updates.paymentDate || paymentDate || (data as any)?.payment_date || localNowDateString()).toString().slice(0, 10),
               createdBy: (user as any)?.id ?? null,
             });
           }
@@ -1750,7 +1751,7 @@ export const purchaseService = {
         }
         directRows.push({
           id: p.id,
-          date: p.payment_date || p.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+          date: p.payment_date || p.created_at?.split('T')[0] || localNowDateString(),
           referenceNo: p.reference_number || '',
           amount: parseFloat(p.amount || 0),
           method: p.payment_method || 'cash',
@@ -1810,7 +1811,7 @@ export const purchaseService = {
         for (const [, g] of grouped) {
           const p = parentById.get(g.payment_id);
           if (!p) continue;
-          const payDate = (p as any)?.payment_date || new Date().toISOString().split('T')[0];
+          const payDate = (p as any)?.payment_date || localNowDateString();
           let att = (p as any).attachments;
           if (typeof att === 'string' && att) {
             try {

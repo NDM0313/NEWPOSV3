@@ -1,3 +1,4 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 /**
  * Single backend path for posting payments + journal lines (matches mobile `record_payment_with_accounting`).
  * Never allocate PAY reference numbers on the client — the RPC uses generate_document_number server-side.
@@ -112,7 +113,7 @@ export async function recordPaymentWithAccounting(
   }
 
   const branch = await resolveBranchIdForPaymentRpc(companyId, branchId);
-  const dateVal = String(paymentDate || new Date().toISOString().split('T')[0]).slice(0, 10);
+  const dateVal = String(paymentDate || localNowDateString()).slice(0, 10);
   const composedNotes = composePaymentRpcNotes(notes, bankTraceId);
   const enumMethod = normalizePaymentMethodForRpc(paymentMethod);
 

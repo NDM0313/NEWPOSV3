@@ -365,10 +365,15 @@ function rowToContactPayload(
   };
 }
 
+export type ContactImportCommitOptions = {
+  onProgress?: (completed: number, total: number) => void;
+};
+
 /** Per-row import — one failure does not abort the batch. Parallel chunks (same APIs). */
 export async function commitContactImport(
   rows: ParsedContactRowWithIndex[],
-  companyId: string
+  companyId: string,
+  opts?: ContactImportCommitOptions
 ): Promise<ContactImportSummary> {
   const errors: ContactImportRowError[] = [];
   let created = 0;
@@ -400,10 +405,13 @@ export async function commitContactImport(
     ready.push(row);
   }
 
+  const total = ready.length;
+  opts?.onProgress?.(0, total);
   const settled = await runChunkedAllSettled(
     ready,
     DEFAULT_IMPORT_CHUNK_SIZE,
-    (row) => contactService.createContact(rowToContactPayload(row, companyId))
+    (row) => contactService.createContact(rowToContactPayload(row, companyId)),
+    opts?.onProgress
   );
 
   let ri = 0;

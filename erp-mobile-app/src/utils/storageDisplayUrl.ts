@@ -30,6 +30,38 @@ const isDevBrowser =
 let devStorageProxyHintLogged = false;
 /** Set on first 503 in dev browser — skip parallel sign storms until page reload. */
 let devStorageUpstreamUnavailable = false;
+let nativeStorageSignWarnLogged = false;
+
+const NATIVE_SIGN_MAX_CONCURRENT = 6;
+let nativeSignInFlight = 0;
+const nativeSignQueue: Array<() => void> = [];
+
+function runWithNativeSignThrottle<T>(fn: () => Promise<T>): Promise<T> {
+  if (!isNativeCapacitor) return fn();
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      nativeSignInFlight += 1;
+      fn()
+        .then(resolve, reject)
+        .finally(() => {
+          nativeSignInFlight -= 1;
+          const next = nativeSignQueue.shift();
+          if (next) next();
+        });
+    };
+    if (nativeSignInFlight < NATIVE_SIGN_MAX_CONCURRENT) run();
+    else nativeSignQueue.push(run);
+  });
+}
+
+function logNativeStorageSignFailureOnce(bucket: string, err: unknown): void {
+  if (!isNativeCapacitor || isDevBuild || nativeStorageSignWarnLogged) return;
+  nativeStorageSignWarnLogged = true;
+  const status = (err as { status?: number; statusCode?: number }).status
+    ?? (err as { statusCode?: number }).statusCode;
+  const msg = String((err as { message?: string }).message ?? err ?? 'sign failed');
+  console.warn('[StorageUrl] native sign failed (once per session)', bucket, status ?? '', msg);
+}
 
 /**
  * Module-level cache so the same `bucket/path` is signed at most once per TTL window —
@@ -73,6 +105,29 @@ function isUpstreamUnavailableError(err: unknown): boolean {
   if (status === 502 || status === 503) return true;
   const msg = String((err as { message?: string }).message ?? '').toLowerCase();
   return /service unavailable|name resolution failed|bad gateway/i.test(msg);
+}
+
+function isAuthError(err: unknown): boolean {
+  if (!err) return false;
+  const status = (err as { status?: number; statusCode?: number }).status
+    ?? (err as { statusCode?: number }).statusCode;
+  if (status === 401 || status === 403) return true;
+  const msg = String((err as { message?: string }).message ?? '').toLowerCase();
+  return /jwt|not authenticated|unauthorized|invalid token|session/i.test(msg);
+}
+
+const SESSION_RETRY_MS = 150;
+const SESSION_RETRY_COUNT = 3;
+
+async function waitForAccessToken(): Promise<string | null> {
+  for (let i = 0; i <= SESSION_RETRY_COUNT; i++) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) return session.access_token;
+    if (i < SESSION_RETRY_COUNT) {
+      await new Promise((r) => setTimeout(r, SESSION_RETRY_MS));
+    }
+  }
+  return null;
 }
 
 function logDevStorageProxyHintOnce(): void {
@@ -125,12 +180,28 @@ export function storageRefForPersistence(bucket: StorageBucket, path: string): s
   return `${bucket}/${path}`;
 }
 
-function rewriteSignedUrlForNative(signedUrl: string, bucket: string, path: string): string {
-  const base = productionStorageBase();
+/** Rewrite signed URL host to ERP proxy; keep encoded path/query from Supabase intact. */
+function rewriteSignedUrlForNative(signedUrl: string): string {
+  const base = productionStorageBase().replace(/\/$/, '');
   if (!base) return signedUrl;
-  const qIdx = signedUrl.indexOf('?');
-  const query = qIdx >= 0 ? signedUrl.slice(qIdx) : '';
-  return `${base}/storage/v1/object/sign/${bucket}/${path}${query}`;
+  const trimmed = signedUrl.trim();
+  if (trimmed.startsWith(base)) return trimmed;
+  return trimmed.replace(/^https:\/\/supabase\.dincouture\.pk/i, base);
+}
+
+async function createSignedUrlThrottled(
+  bucket: StorageBucket,
+  path: string,
+  expiresSeconds: number,
+): Promise<{ signedUrl?: string; error: unknown; authMissing?: boolean }> {
+  return runWithNativeSignThrottle(async () => {
+    const token = await waitForAccessToken();
+    if (!token) {
+      return { error: null, authMissing: true };
+    }
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresSeconds);
+    return { signedUrl: data?.signedUrl, error: error ?? null };
+  });
 }
 
 function normalizePublicUrl(ref: StorageRef): string {
@@ -159,18 +230,16 @@ async function tryProductImageRpc(
       return null;
     }
     if (typeof data.signed_url === 'string' && data.signed_url) {
-      return isNativeCapacitor
-        ? rewriteSignedUrlForNative(data.signed_url, 'product-images', path)
-        : data.signed_url;
+      return isNativeCapacitor ? rewriteSignedUrlForNative(data.signed_url) : data.signed_url;
     }
     if (typeof data.path === 'string' && data.path) {
-      const { data: signed, error: signErr } = await supabase.storage
-        .from('product-images')
-        .createSignedUrl(data.path, expiresSeconds);
-      if (!signErr && signed?.signedUrl) {
-        return isNativeCapacitor
-          ? rewriteSignedUrlForNative(signed.signedUrl, 'product-images', path)
-          : signed.signedUrl;
+      const { signedUrl, error: signErr } = await createSignedUrlThrottled(
+        'product-images',
+        data.path,
+        expiresSeconds,
+      );
+      if (!signErr && signedUrl) {
+        return isNativeCapacitor ? rewriteSignedUrlForNative(signedUrl) : signedUrl;
       }
       if (isUpstreamUnavailableError(signErr)) {
         logDevStorageProxyHintOnce();
@@ -227,13 +296,19 @@ async function resolveStorageDisplayUrlNow(ref: StorageRef, cacheKey: string): P
   const expiresSeconds = 3600;
   let notFound = false;
   let upstreamUnavailable = false;
+  let authError = false;
 
   try {
-    const { data, error } = await supabase.storage.from(ref.bucket).createSignedUrl(ref.path, expiresSeconds);
-    if (!error && data?.signedUrl) {
-      const signed = isNativeCapacitor
-        ? rewriteSignedUrlForNative(data.signedUrl, ref.bucket, ref.path)
-        : data.signedUrl;
+    const { signedUrl, error, authMissing } = await createSignedUrlThrottled(
+      ref.bucket,
+      ref.path,
+      expiresSeconds,
+    );
+    if (authMissing) {
+      return null;
+    }
+    if (!error && signedUrl) {
+      const signed = isNativeCapacitor ? rewriteSignedUrlForNative(signedUrl) : signedUrl;
       if (isNativeCapacitor && isLocalDevHost(signed)) {
         writeCache(cacheKey, null, SIGNED_URL_NEGATIVE_TTL_MS);
         return null;
@@ -243,13 +318,26 @@ async function resolveStorageDisplayUrlNow(ref: StorageRef, cacheKey: string): P
     }
     if (isNotFoundError(error)) notFound = true;
     if (isUpstreamUnavailableError(error)) upstreamUnavailable = true;
-    if (isDevBuild && !upstreamUnavailable) {
-      console.warn('[StorageUrl] sign failed', ref.bucket, error?.message ?? 'no signedUrl');
+    if (isAuthError(error)) authError = true;
+    if (!upstreamUnavailable && !authError) {
+      if (isDevBuild) {
+        console.warn('[StorageUrl] sign failed', ref.bucket, (error as { message?: string })?.message ?? 'no signedUrl');
+      } else {
+        logNativeStorageSignFailureOnce(ref.bucket, error);
+      }
     }
   } catch (e) {
     if (isNotFoundError(e)) notFound = true;
     if (isUpstreamUnavailableError(e)) upstreamUnavailable = true;
-    if (isDevBuild && !upstreamUnavailable) console.warn('[StorageUrl] sign exception', ref.bucket, e);
+    if (isAuthError(e)) authError = true;
+    if (!upstreamUnavailable && !authError) {
+      if (isDevBuild) console.warn('[StorageUrl] sign exception', ref.bucket, e);
+      else logNativeStorageSignFailureOnce(ref.bucket, e);
+    }
+  }
+
+  if (authError) {
+    return null;
   }
 
   if (notFound || upstreamUnavailable) {
@@ -289,6 +377,17 @@ export function invalidateStorageDisplayUrl(rawUrl: string): void {
   const ref = resolveStorageRef(rawUrl);
   if (!ref) return;
   signedUrlCache.delete(`${ref.bucket}/${ref.path}`);
+}
+
+/** Clear all signed URL cache (e.g. after login so negative cache does not stick). */
+export function clearStorageDisplayUrlCache(): void {
+  signedUrlCache.clear();
+  signedUrlInflight.clear();
+  devStorageUpstreamUnavailable = false;
+  nativeStorageSignWarnLogged = false;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('erp-storage-cache-cleared'));
+  }
 }
 
 export function getStoragePublicUrl(rawUrl: string): string {

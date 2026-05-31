@@ -388,7 +388,12 @@ export const ProductLedger = () => {
 
       // ── 3. Sales ──
       if (enabledTypes.has('Sale')) {
-        let q = supabase.from('sales_items').select('sale_id, quantity, unit_price, discount_amount, total, variation_id').eq('product_id', selectedProductId);
+        let q = supabase
+          .from('sales_items')
+          .select(
+            'sale_id, quantity, unit_price, discount_amount, total, variation_id, bespoke_parent_item_id',
+          )
+          .eq('product_id', selectedProductId);
         if (selectedVariationId) q = q.eq('variation_id', selectedVariationId);
         const { data: sItems, error: sErr } = await q;
         // Fallback to legacy table
@@ -404,6 +409,7 @@ export const ProductLedger = () => {
           const { data: sales } = await sq;
           const saleMap = new Map((sales || []).map((s: any) => [s.id, s]));
           for (const si of (finalSaleItems || []) as any[]) {
+            if (si.bespoke_parent_item_id) continue;
             const sale = saleMap.get(si.sale_id);
             if (!sale) continue;
             const d = (sale.invoice_date || '').slice(0, 10);
@@ -421,6 +427,49 @@ export const ProductLedger = () => {
               runningQty: 0, runningValue: 0, grossProfit: 0, remarks: '',
             });
           }
+        }
+      }
+
+      // ── 3b. Bespoke WO stock (fabric OUT / custom parent IN) ──
+      if (enabledTypes.has('Sale')) {
+        let bq = supabase
+          .from('stock_movements')
+          .select(
+            'id, quantity, unit_cost, total_cost, movement_type, reference_type, reference_id, notes, created_at, branch_id',
+          )
+          .eq('company_id', companyId)
+          .eq('product_id', selectedProductId)
+          .eq('reference_type', 'bespoke_work_order')
+          .eq('movement_type', 'sale');
+        if (selectedVariationId) bq = bq.eq('variation_id', selectedVariationId);
+        if (branchFilter) bq = bq.eq('branch_id', branchFilter);
+        const { data: bespokeMovs } = await bq;
+        for (const m of (bespokeMovs || []) as any[]) {
+          const d = (m.created_at || '').slice(0, 10);
+          if (d < startDate || d > endDate) continue;
+          const notes = String(m.notes || '');
+          const isParentOrder = notes.startsWith('Bespoke custom order');
+          const qty = Math.abs(Number(m.quantity) || 0);
+          const cost = Number(m.unit_cost) || 0;
+          const woNo = notes.match(/BWO-[\w-]+/i)?.[0] || 'BWO';
+          allRows.push({
+            id: `bwo-mov-${m.id}`,
+            date: d,
+            voucherNo: woNo,
+            type: 'Sale',
+            partyName: 'Bespoke work order',
+            qtyIn: isParentOrder ? qty : 0,
+            qtyOut: isParentOrder ? 0 : qty,
+            purchaseRate: cost,
+            saleRate: 0,
+            amount: Math.abs(Number(m.total_cost) || qty * cost),
+            discount: 0,
+            netAmount: Math.abs(Number(m.total_cost) || qty * cost),
+            runningQty: 0,
+            runningValue: 0,
+            grossProfit: 0,
+            remarks: notes || (isParentOrder ? 'Bespoke custom order IN' : 'Bespoke fabric OUT'),
+          });
         }
       }
 

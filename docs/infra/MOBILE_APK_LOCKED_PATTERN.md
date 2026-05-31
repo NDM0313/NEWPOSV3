@@ -6,7 +6,8 @@ This document **locks** how the **ERP mobile app** (`erp-mobile-app/`, Capacitor
 
 | Rule | Detail |
 |------|--------|
-| **Always use baked env on native** | On **native** platforms (`Capacitor.isNativePlatform() === true`), the Supabase client **must** use **`import.meta.env.VITE_SUPABASE_URL`** only (trimmed). In production builds this is **`https://erp.dincouture.pk`**, baked at `vite build` from [`erp-mobile-app/.env.production`](../../erp-mobile-app/.env.production). |
+| **Native API base (resolved at runtime)** | On **native** (`Capacitor.isNativePlatform()`), [`resolveSupabaseApiUrl.ts`](../../erp-mobile-app/src/lib/resolveSupabaseApiUrl.ts) **always** returns **`https://erp.dincouture.pk`** (ERP nginx → Kong). This is required so `Origin: capacitor://localhost` gets `Access-Control-Allow-Origin` from [`deploy/nginx.conf`](../../deploy/nginx.conf). Do not rewrite native to direct `supabase.dincouture.pk` (Kong does not echo Capacitor origins on auth). |
+| **PWA `/m/` (browser)** | Baked env may use **`https://supabase.dincouture.pk`**; browser `Origin` is **`https://erp.dincouture.pk`**, which Kong allows. PWA and native intentionally differ. |
 | **Never use `window.location.origin` on native** | Do **not** override the Supabase URL with `window.location.origin` for native apps. Capacitor WebViews commonly report **`http://localhost`**, **`capacitor://localhost`**, or **`ionic://localhost`**. Using that as the API base sends traffic to the **device**, not the VPS — “Cannot reach server” / network errors. |
 | **Anon key** | **`import.meta.env.VITE_SUPABASE_ANON_KEY`** must match Kong’s canonical JWT (same as web). Sync from [`deploy/write-erp-env-from-supabase-docker-env.sh`](../../deploy/write-erp-env-from-supabase-docker-env.sh) / root `.env.production`; rebuild the APK after any key rotation. |
 

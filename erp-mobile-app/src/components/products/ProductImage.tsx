@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ImageOff, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { extractProductImageStoragePath, getProductImageDisplayUrl } from '../../utils/productImageUpload';
 
 interface ProductImageProps {
@@ -24,6 +25,24 @@ export function ProductImage({
   const [displayUrl, setDisplayUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [authRevision, setAuthRevision] = useState(0);
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'SIGNED_OUT') {
+        setAuthRevision((n) => n + 1);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const onCacheCleared = () => setAuthRevision((n) => n + 1);
+    window.addEventListener('erp-storage-cache-cleared', onCacheCleared);
+    return () => window.removeEventListener('erp-storage-cache-cleared', onCacheCleared);
+  }, []);
 
   useEffect(() => {
     setLoadFailed(false);
@@ -52,7 +71,7 @@ export function ProductImage({
     }
     setLoading(false);
     setDisplayUrl(src);
-  }, [src]);
+  }, [src, authRevision]);
 
   if (variant === 'thumb') {
     if (!src) {

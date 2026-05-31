@@ -59,7 +59,11 @@ function formatSignInErrorMessage(msg: string): string {
   }
   if (msg.includes('Email not confirmed')) return 'Please confirm your email first.';
   if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(msg)) {
-    return 'Cannot reach the server. Check network or contact admin.';
+    const base = 'Cannot reach the server. Check network or contact admin.';
+    if (Capacitor.isNativePlatform()) {
+      return `${base} If https://erp.dincouture.pk/m/ works, install the latest APK build.`;
+    }
+    return base;
   }
   if (isStorageOrSecurityError({ message: msg })) {
     return 'Browser blocked site storage. Allow cookies/storage for this site or use a normal (non-private) window.';
@@ -342,7 +346,7 @@ export async function signIn(email: string, password: string): Promise<{ data: A
     };
   }
 
-  if (authStorageIsEphemeral() || isProductionMobileHost()) {
+  if (authStorageIsEphemeral() || isProductionMobileHost() || Capacitor.isNativePlatform()) {
     return applyRestSignIn(email, password);
   }
 

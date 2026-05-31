@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useSupabase, STORAGE_BLOCKED_MESSAGE } from '@/app/context/SupabaseContext';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { Lock, Mail, AlertCircle, Building2, User } from 'lucide-react';
+import { Lock, Mail, AlertCircle, Building2 } from 'lucide-react';
 import { CreateBusinessWizard } from './CreateBusinessWizard';
 
 function isStorageSecurityMessage(err: unknown): boolean {
@@ -95,30 +95,6 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleMainLogin = async () => {
-    const mainEmail = 'ndm313@yahoo.com';
-    const mainPassword = '123456';
-    setEmail(mainEmail);
-    setPassword(mainPassword);
-    await runSignIn(mainEmail, mainPassword);
-  };
-
-  const handleAdminLogin = async () => {
-    const adminEmail = 'admin@dincouture.pk';
-    const adminPassword = 'AdminDincouture2026';
-    setEmail(adminEmail);
-    setPassword(adminPassword);
-    await runSignIn(adminEmail, adminPassword);
-  };
-
-  const handleDemoLogin = async () => {
-    const demoEmail = 'demo@dincollection.com';
-    const demoPassword = 'demo123';
-    setEmail(demoEmail);
-    setPassword(demoPassword);
-    await runSignIn(demoEmail, demoPassword);
-  };
-
   // Show create business wizard
   if (showCreateBusiness) {
     return (
@@ -206,52 +182,11 @@ export const LoginPage: React.FC = () => {
             </Button>
           </form>
 
-          {/* Divider */}
           <div className="my-6 flex items-center">
             <div className="flex-1 border-t border-[#374151]"></div>
             <span className="px-4 text-sm text-[#9CA3AF]">OR</span>
             <div className="flex-1 border-t border-[#374151]"></div>
           </div>
-
-          <p className="text-xs text-[#6B7280] mb-3 text-center">
-            Quick login (fills form and signs in):
-          </p>
-
-          {/* Main Login Button */}
-          <Button
-            type="button"
-            onClick={handleMainLogin}
-            disabled={loading}
-            className="w-full h-12 bg-[#3B82F6]/20 hover:bg-[#3B82F6]/30 border border-[#3B82F6]/40 text-[#60A5FA] font-medium rounded-lg flex items-center justify-center gap-2 mb-2"
-          >
-            <User size={18} />
-            {loading ? 'Logging in...' : 'Main (ndm313@yahoo.com)'}
-          </Button>
-
-          {/* Admin Login Button */}
-          <Button
-            type="button"
-            onClick={handleAdminLogin}
-            disabled={loading}
-            className="w-full h-12 bg-[#10B981]/20 hover:bg-[#10B981]/30 border border-[#10B981]/40 text-[#34D399] font-medium rounded-lg flex items-center justify-center gap-2 mb-2"
-          >
-            <User size={18} />
-            {loading ? 'Logging in...' : 'Admin (admin@dincouture.pk)'}
-          </Button>
-
-          {/* Demo Login Button */}
-          <Button
-            type="button"
-            onClick={handleDemoLogin}
-            disabled={loading}
-            className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] text-white font-medium rounded-lg flex items-center justify-center gap-2 mb-3"
-          >
-            <User size={18} />
-            {loading ? 'Logging in...' : 'Demo Login'}
-          </Button>
-          <p className="text-xs text-[#9CA3AF] text-center mb-4">
-            Quick access with demo or admin account
-          </p>
 
           {/* Create Business Button */}
           <Button

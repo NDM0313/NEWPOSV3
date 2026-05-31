@@ -1051,6 +1051,68 @@ export const accountingService = {
     return data;
   },
 
+  /** Incremental refresh: journal rows for a sale document + its payment JEs (avoids full getAllEntries). */
+  async fetchJournalEntriesForSale(
+    companyId: string,
+    saleId: string,
+    branchId?: string
+  ): Promise<any[]> {
+    if (!companyId || !saleId) return [];
+    const jeSelect = `
+      *,
+      lines:journal_entry_lines(
+        id,
+        journal_entry_id,
+        account_id,
+        debit,
+        credit,
+        description,
+        account:accounts(name, code, type)
+      )
+    `;
+    let saleQuery = supabase
+      .from('journal_entries')
+      .select(jeSelect)
+      .eq('company_id', companyId)
+      .eq('reference_id', saleId)
+      .in('reference_type', ['sale', 'sale_adjustment']);
+    if (branchId) {
+      saleQuery = saleQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+    }
+    const { data: saleRows, error: saleErr } = await saleQuery;
+    if (saleErr && import.meta.env?.DEV) {
+      console.warn('[ACCOUNTING SERVICE] fetchJournalEntriesForSale:', saleErr.message);
+    }
+    const out: any[] = ((saleRows || []) as any[]).filter((e) => e.is_void !== true);
+
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('reference_type', 'sale')
+      .eq('reference_id', saleId);
+    const payIds = [...new Set((payments || []).map((p: any) => String(p.id)).filter(Boolean))];
+    if (payIds.length > 0) {
+      let payQuery = supabase
+        .from('journal_entries')
+        .select(jeSelect)
+        .eq('company_id', companyId)
+        .in('reference_id', payIds)
+        .in('reference_type', ['payment', 'payment_adjustment']);
+      if (branchId) {
+        payQuery = payQuery.or(`branch_id.eq.${branchId},branch_id.is.null`);
+      }
+      const { data: payRows } = await payQuery;
+      for (const row of (payRows || []) as any[]) {
+        if (row.is_void !== true) out.push(row);
+      }
+    }
+    const byId = new Map<string, any>();
+    for (const row of out) {
+      if (row?.id) byId.set(String(row.id), row);
+    }
+    return Array.from(byId.values());
+  },
+
   /**
    * PF-14.4: Idempotency – check if a sale_adjustment JE already exists for this sale with the same description.
    * Prevents duplicate JEs when postSaleEditAdjustments is called multiple times for the same logical edit.
@@ -1710,7 +1772,6 @@ export const accountingService = {
               account:accounts(id, name, code, type)
             ),
           payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
-          sale:sales(id, invoice_no, customer_name, total, paid_amount, due_amount),
             branch:branches(id, name, code)
           `)
           .eq('company_id', companyId)

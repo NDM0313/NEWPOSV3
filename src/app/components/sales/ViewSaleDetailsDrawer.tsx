@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSales, Sale, convertFromSupabaseSale } from '@/app/context/SalesContext';
+import { useSales, Sale, convertFromSupabaseSale, isValidBranchId } from '@/app/context/SalesContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useSettings } from '@/app/context/SettingsContext';
 import { branchService, Branch } from '@/app/services/branchService';
@@ -10,7 +10,11 @@ import { saleReturnService } from '@/app/services/saleReturnService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { studioProductionService } from '@/app/services/studioProductionService';
 import { supabase } from '@/lib/supabase';
+import { getContactWhatsAppPhone, openWhatsAppShare } from '@/app/lib/phoneWhatsApp';
 import { UnifiedSalesInvoiceView } from '@/app/documents';
+import { BespokeInstructionBullets } from '@/app/components/bespoke/BespokeInstructionBullets';
+import { BespokeWorkOrdersPanel } from '@/app/components/bespoke/BespokeWorkOrdersPanel';
+import { hasBespokeMetadataContent, buildBespokeMetadataForPersist, parseCustomizationDetails } from '@/app/types/bespoke';
 import { PackingListWorkflow } from '@/app/wholesale/PackingListWorkflow';
 import { WorkflowNextStepBanner } from '@/app/workflows';
 import type { InvoiceTemplateType } from '@/app/types/invoiceDocument';
@@ -136,6 +140,14 @@ interface SaleDetails {
   updatedAt?: string;
 }
 
+function formatSaleChargeLabel(type: string): string {
+  const t = String(type || 'other').toLowerCase();
+  if (t === 'stitching') return 'Stitching';
+  if (t === 'shipping') return 'Shipping';
+  if (t === 'other') return 'Other';
+  return t.charAt(0).toUpperCase() + t.slice(1).replace(/_/g, ' ');
+}
+
 interface ViewSaleDetailsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -163,7 +175,8 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const getSaleByIdRef = useRef(getSaleById);
   getSaleByIdRef.current = getSaleById;
   const { companyId, user } = useSupabase();
-  const { company, inventorySettings } = useSettings();
+  const { company, inventorySettings, businessSettings } = useSettings();
+  const enableBespoke = businessSettings.enableBespokeOrders;
   const { formatCurrency } = useFormatCurrency();
   const enablePacking = inventorySettings.enablePacking;
   const [sale, setSale] = useState<Sale | null>(null);
@@ -195,7 +208,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const handleShareWhatsApp = useCallback(() => {
     if (!sale) return;
     // Use sale.total directly — studio product line is already included in total
-    const total = (sale.total ?? 0) + (Number(sale.shippingCharges ?? sale.expenses ?? (sale as any).shipment_charges) || 0);
+    const total = (sale.total ?? 0) + (Number(sale.shippingCharges ?? (sale as { shipment_charges?: number }).shipment_charges) || 0);
     const paid = payments.length > 0 ? payments.reduce((s, p) => s + (Number(p.amount) || 0), 0) : (sale.paid ?? 0);
     const due = Math.max(0, total - paid);
     const baseUrl = typeof window !== 'undefined' ? window.location.origin + (import.meta.env?.BASE_URL || '') : '';
@@ -203,7 +216,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
     const text = [`Invoice: ${sale.invoiceNo}`, `Customer: ${sale.customerName || 'Walk-in'}`, `Total: Rs. ${total.toLocaleString()}`, `Balance Due: Rs. ${due.toLocaleString()}`, `View: ${link}`].join('\n');
     saleService.logShare(sale.id, 'whatsapp', user?.id).catch(() => {});
     saleService.logSaleAction(sale.id, 'share_whatsapp', user?.id).catch(() => {});
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    openWhatsAppShare(getContactWhatsAppPhone({ contact_number: sale.contact_number }), text);
     toast.success('WhatsApp share opened');
   }, [sale, payments, user?.id]);
   const handleSharePdf = useCallback(() => {
@@ -323,6 +336,9 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     variation: rawItem.variation || rawItem.product_variations || null,
                     packing_details: rawPacking ?? item.packing_details ?? undefined,
                     packingDetails: packingDetails ?? item.packingDetails ?? undefined,
+                    customizationDetails:
+                      item.customizationDetails ??
+                      (rawItem as { customization_details?: unknown }).customization_details,
                   } as any;
                 }
                 return item;
@@ -578,7 +594,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
     : 0;
   const studioCost = studioLineTotalFromInvoice > 0 ? studioLineTotalFromInvoice : studioCostLegacy;
   // Issue 02: Include shipping in grand total (sale.total is product-only when shipment exists; shipment_charges synced by trigger)
-  const saleWithShipping = (sale.total ?? 0) + (Number(sale.shippingCharges ?? sale.expenses ?? (sale as any).shipment_charges) || 0);
+  const saleWithShipping = (sale.total ?? 0) + (Number(sale.shippingCharges ?? (sale as { shipment_charges?: number }).shipment_charges) || 0);
   const grandTotal = studioLineTotalFromInvoice > 0 ? saleWithShipping : saleWithShipping + studioCostLegacy;
   // Use sum of actual payment records when loaded (single source of truth); fallback to sale.paid from DB.
   // Fixes desktop drawer showing wrong paid amount (e.g. doubled) when sales.paid_amount is out of sync.
@@ -1090,6 +1106,16 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                                 {finalSku && finalSku !== 'N/A' && (
                                   <p className="text-xs text-gray-500">SKU: {finalSku}</p>
                                 )}
+                                {enableBespoke &&
+                                  !(item as { bespokeParentItemId?: string | null }).bespokeParentItemId && (
+                                  <BespokeInstructionBullets
+                                    variant="screen"
+                                    customizationDetails={
+                                      (item as { customizationDetails?: unknown }).customizationDetails ??
+                                      (item as { customization_details?: unknown }).customization_details
+                                    }
+                                  />
+                                )}
                               </div>
                             </TableCell>
                             <TableCell className="text-gray-400">{finalSku}</TableCell>
@@ -1122,6 +1148,36 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                   </Table>
                 </div>
               </div>
+
+              {enableBespoke && companyId && isValidBranchId(sale.branchId) && (
+                <BespokeWorkOrdersPanel
+                  saleId={sale.id}
+                  companyId={companyId}
+                  branchId={sale.branchId}
+                  formatCurrency={formatCurrency}
+                  parentItems={(sale.items ?? [])
+                    .filter((item: { bespokeParentItemId?: string | null; id?: string }) => !item.bespokeParentItemId)
+                    .filter((item: { customizationDetails?: unknown; customization_details?: unknown }) =>
+                      hasBespokeMetadataContent(
+                        buildBespokeMetadataForPersist(
+                          (item as { customizationDetails?: unknown }).customizationDetails ??
+                            (item as { customization_details?: unknown }).customization_details,
+                        ) ??
+                          parseCustomizationDetails(
+                            (item as { customizationDetails?: unknown }).customizationDetails ??
+                              (item as { customization_details?: unknown }).customization_details,
+                          ),
+                      ),
+                    )
+                    .map((item: { id?: string; productName?: string; name?: string; customizationDetails?: unknown; customization_details?: unknown }) => ({
+                      id: String(item.id),
+                      productName: item.productName ?? item.name ?? 'Item',
+                      customizationDetails:
+                        (item as { customizationDetails?: unknown }).customizationDetails ??
+                        (item as { customization_details?: unknown }).customization_details,
+                    }))}
+                />
+              )}
 
               {/* Studio Cost Summary – real-time from studio_productions + stages */}
               {(studioSummary?.hasStudio || (sale as any).studioCharges) && (
@@ -1274,29 +1330,47 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                     </div>
                   )}
                   
-                  {/* Extra expenses: use line-level charges (sale_charges) when available, else DB totals */}
+                  {/* Extra expenses + shipping: line-level sale_charges when available */}
                   {(() => {
-                    const charges = (sale as any).charges ?? [];
-                    const expenseRows = Array.isArray(charges) ? charges.filter((c: any) => (c.charge_type || c.chargeType) !== 'discount') : [];
-                    const expensesTotalFromCharges = expenseRows.length > 0
-                      ? expenseRows.reduce((sum: number, c: any) => sum + (Number(c.amount) || 0), 0)
-                      : (sale.expenses ?? sale.shippingCharges ?? 0);
-                    if (expensesTotalFromCharges <= 0) return null;
+                    const charges = (sale as { charges?: Array<{ id?: string; charge_type?: string; chargeType?: string; amount?: number }> }).charges ?? [];
+                    const chargeList = Array.isArray(charges) ? charges : [];
+                    const shippingRows = chargeList.filter((c) => (c.charge_type || c.chargeType) === 'shipping');
+                    const extraRows = chargeList.filter((c) => {
+                      const t = c.charge_type || c.chargeType;
+                      return t !== 'discount' && t !== 'shipping';
+                    });
+                    const extraFallback = Number(sale.expenses ?? (sale as { extra_expenses?: number }).extra_expenses ?? 0) || 0;
+                    const shippingFallback = Number(sale.shippingCharges ?? (sale as { shipment_charges?: number }).shipment_charges ?? 0) || 0;
+                    const hasLines = shippingRows.length > 0 || extraRows.length > 0 || extraFallback > 0 || shippingFallback > 0;
+                    if (!hasLines) return null;
                     return (
                       <>
-                        {expenseRows.length > 0 ? (
-                          expenseRows.map((c: any, idx: number) => (
-                            <div key={c.id || idx} className="flex justify-between text-sm">
-                              <span className="text-gray-400">{c.charge_type || c.chargeType || 'Other'}</span>
-                              <span className="text-white font-medium">{formatCurrency(Number(c.amount) || 0)}</span>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-400">Shipping / Extra expenses</span>
-                            <span className="text-white font-medium">{formatCurrency(expensesTotalFromCharges)}</span>
-                          </div>
-                        )}
+                        {shippingRows.length > 0
+                          ? shippingRows.map((c, idx) => (
+                              <div key={c.id || `ship-${idx}`} className="flex justify-between text-sm">
+                                <span className="text-gray-400">{formatSaleChargeLabel('shipping')}</span>
+                                <span className="text-white font-medium">{formatCurrency(Number(c.amount) || 0)}</span>
+                              </div>
+                            ))
+                          : shippingFallback > 0 ? (
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-400">Shipping</span>
+                                <span className="text-white font-medium">{formatCurrency(shippingFallback)}</span>
+                              </div>
+                            ) : null}
+                        {extraRows.length > 0
+                          ? extraRows.map((c, idx) => (
+                              <div key={c.id || `extra-${idx}`} className="flex justify-between text-sm">
+                                <span className="text-gray-400">{formatSaleChargeLabel(c.charge_type || c.chargeType || 'other')}</span>
+                                <span className="text-white font-medium">{formatCurrency(Number(c.amount) || 0)}</span>
+                              </div>
+                            ))
+                          : extraFallback > 0 ? (
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-400">Extra charges</span>
+                                <span className="text-white font-medium">{formatCurrency(extraFallback)}</span>
+                              </div>
+                            ) : null}
                       </>
                     );
                   })()}

@@ -1,3 +1,4 @@
+import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 /**
  * Canonical supplier payment flow (Accounting Stabilization Phase 3).
  * Single backend path: `record_payment_with_accounting` allocates PAY refs and posts Dr AP / Cr Cash(Bank).
@@ -80,7 +81,7 @@ export async function createSupplierPayment(params: CreateSupplierPaymentParams)
   }
 
   const validBranchId = branchId && branchId !== 'all' ? branchId : null;
-  const paymentDateValue = paymentDate || new Date().toISOString().split('T')[0];
+  const paymentDateValue = paymentDate || localNowDateString();
 
   const { data: { user: authUser } } = await supabase.auth.getUser();
   const authUserId = authUser?.id ?? null;

@@ -48,7 +48,7 @@ type NavItem = {
 
 export const Sidebar = () => {
   const { currentView, setCurrentView, isSidebarOpen, toggleSidebar, openDrawer, setPartyLedgerParams } = useNavigation();
-  const { modules: settingsModules, featureFlags, isPermissionLoaded } = useSettings();
+  const { modules: settingsModules, featureFlags, isPermissionLoaded, businessSettings } = useSettings();
   const { hasPermission } = useCheckPermission();
   const { userRole } = useSupabase();
   const developerToolsNavAllowed = canAccessTechnicalDeveloperSettings(userRole);
@@ -75,6 +75,7 @@ export const Sidebar = () => {
     { id: 'stock-report', label: 'Stock Report', icon: FileBarChart, isHidden: !hasPermission('inventory.view') },
     { id: 'purchases', label: 'Purchases', icon: ShoppingBag, isHidden: !settingsModules.purchasesModuleEnabled || !hasPermission('purchases.view') },
     { id: 'sales', label: 'Sales', icon: ShoppingCart, isHidden: !settingsModules.salesModuleEnabled || !hasPermission('sales.view') },
+    { id: 'bespoke-work-orders', label: 'Work Orders', icon: Scissors, isHidden: !settingsModules.salesModuleEnabled || !hasPermission('sales.view') || !businessSettings.enableBespokeOrders },
     { id: 'rentals', label: 'Rentals', icon: Shirt, isHidden: !settingsModules.rentalModuleEnabled || !hasPermission('rentals.view') },
     { id: 'pos', label: 'POS System', icon: Store, isHidden: !settingsModules.posModuleEnabled || !hasPermission('pos.view') },
     { 

@@ -4,16 +4,16 @@
  * Save Rules / Reset Defaults.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSupabase } from '@/app/context/SupabaseContext';
-import { settingsService } from '@/app/services/settingsService';
+import { settingsService, isNumberingIncludeBranchCodeSupported } from '@/app/services/settingsService';
+import { branchService, type Branch } from '@/app/services/branchService';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Switch } from '@/app/components/ui/switch';
+import { Label } from '@/app/components/ui/label';
 import { Loader2, Save, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
-
-const SENTINEL = '00000000-0000-0000-0000-000000000000';
 
 /** Document = transaction (invoice, payment). Master = permanent record (product, customer). */
 const MODULES: { document_type: string; label: string; defaultPrefix: string; type: 'Document' | 'Master' }[] = [
@@ -38,14 +38,56 @@ export interface NumberingRuleRow {
   padding: number;
   year_reset: boolean;
   branch_based: boolean;
+  include_branch_code: boolean;
   last_number: number;
   type?: 'Document' | 'Master';
 }
 
-function previewNumber(prefix: string, padding: number): string {
-  const p = (prefix || '').trim().replace(/-$/, '');
-  const num = 1;
-  return p ? `${p}-${String(num).padStart(Math.max(1, padding), '0')}` : '—';
+type BranchLastNumberMap = Record<string, number>;
+
+function normalizeBranchCode(code?: string | null): string {
+  return String(code || '')
+    .toUpperCase()
+    .trim()
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+function previewDocumentNumber(row: NumberingRuleRow, lastNumber: number, branchCode?: string | null): string {
+  const p = (row.prefix || '').trim().replace(/-$/, '');
+  if (!p) return '—';
+  const next = (lastNumber ?? 0) + 1;
+  const padded = String(next).padStart(Math.max(1, row.padding), '0');
+  let formatted: string;
+  if (row.year_reset) {
+    const yy = String(new Date().getFullYear()).slice(-2);
+    formatted = `${p}-${yy}-${padded}`;
+  } else {
+    formatted = `${p}-${padded}`;
+  }
+  const code = normalizeBranchCode(branchCode);
+  if (row.include_branch_code && row.branch_based && code) {
+    return `${code}-${formatted}`;
+  }
+  return formatted;
+}
+
+function mergeSequences(
+  data: Awaited<ReturnType<typeof settingsService.getErpDocumentSequences>>,
+): NumberingRuleRow[] {
+  const byType = new Map(data.map((r) => [r.document_type.toUpperCase(), r]));
+  return MODULES.map((m) => {
+    const existing = byType.get(m.document_type);
+    return {
+      document_type: m.document_type,
+      prefix: existing?.prefix ?? m.defaultPrefix,
+      padding: existing?.padding ?? 4,
+      year_reset: existing?.year_reset ?? (m.type === 'Master' ? false : true),
+      branch_based: existing?.branch_based ?? false,
+      include_branch_code: existing?.include_branch_code ?? false,
+      last_number: existing?.last_number ?? 0,
+      type: m.type,
+    };
+  });
 }
 
 export function NumberingRulesTable() {
@@ -53,26 +95,24 @@ export function NumberingRulesTable() {
   const [rows, setRows] = useState<NumberingRuleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('');
+  const [branchLastNumbers, setBranchLastNumbers] = useState<Record<string, BranchLastNumberMap>>({});
+  const [loadingBranchSeq, setLoadingBranchSeq] = useState(false);
+  const [branchCodeColumnSupported, setBranchCodeColumnSupported] = useState(true);
 
-  const load = useCallback(async () => {
+  const selectedBranch = useMemo(
+    () => branches.find((b) => b.id === selectedBranchId) ?? null,
+    [branches, selectedBranchId],
+  );
+
+  const loadCompanyRules = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
     try {
       const data = await settingsService.getErpDocumentSequences(companyId, null);
-      const byType = new Map(data.map((r) => [r.document_type.toUpperCase(), r]));
-      const merged: NumberingRuleRow[] = MODULES.map((m) => {
-        const existing = byType.get(m.document_type);
-        return {
-          document_type: m.document_type,
-          prefix: existing?.prefix ?? m.defaultPrefix,
-          padding: existing?.padding ?? 4,
-          year_reset: existing?.year_reset ?? (m.type === 'Master' ? false : true),
-          branch_based: existing?.branch_based ?? false,
-          last_number: existing?.last_number ?? 0,
-          type: m.type,
-        };
-      });
-      setRows(merged);
+      setBranchCodeColumnSupported(isNumberingIncludeBranchCodeSupported());
+      setRows(mergeSequences(data));
     } catch (e) {
       console.error('[NumberingRulesTable] load error:', e);
       toast.error('Failed to load numbering rules');
@@ -83,31 +123,98 @@ export function NumberingRulesTable() {
           padding: 4,
           year_reset: m.type === 'Master' ? false : true,
           branch_based: false,
+          include_branch_code: false,
           last_number: 0,
           type: m.type,
-        }))
+        })),
       );
     } finally {
       setLoading(false);
     }
   }, [companyId]);
 
+  const loadBranches = useCallback(async () => {
+    if (!companyId) return;
+    try {
+      const list = await branchService.getAllBranches(companyId);
+      const active = (list || []).filter((b) => b.is_active !== false);
+      setBranches(active);
+      setSelectedBranchId((prev) => prev || active[0]?.id || '');
+    } catch (e) {
+      console.error('[NumberingRulesTable] branches load error:', e);
+      setBranches([]);
+    }
+  }, [companyId]);
+
+  const loadBranchSequences = useCallback(
+    async (branchId: string, force = false) => {
+      if (!companyId || !branchId) return;
+      setLoadingBranchSeq(true);
+      try {
+        const data = await settingsService.getErpDocumentSequences(companyId, branchId);
+        const map: BranchLastNumberMap = {};
+        data.forEach((r) => {
+          map[r.document_type.toUpperCase()] = r.last_number ?? 0;
+        });
+        setBranchLastNumbers((prev) => {
+          if (!force && prev[branchId]) return prev;
+          return { ...prev, [branchId]: map };
+        });
+      } catch (e) {
+        console.error('[NumberingRulesTable] branch sequences load error:', e);
+      } finally {
+        setLoadingBranchSeq(false);
+      }
+    },
+    [companyId],
+  );
+
   useEffect(() => {
-    load();
-  }, [load]);
+    loadCompanyRules();
+    loadBranches();
+  }, [loadCompanyRules, loadBranches]);
+
+  useEffect(() => {
+    if (selectedBranchId) {
+      loadBranchSequences(selectedBranchId);
+    }
+  }, [selectedBranchId, loadBranchSequences]);
+
+  const resolveLastNumber = (row: NumberingRuleRow): number => {
+    if (row.branch_based && selectedBranchId) {
+      const branchMap = branchLastNumbers[selectedBranchId];
+      if (branchMap && row.document_type.toUpperCase() in branchMap) {
+        return branchMap[row.document_type.toUpperCase()] ?? 0;
+      }
+    }
+    return row.last_number ?? 0;
+  };
 
   const updateRow = (documentType: string, patch: Partial<NumberingRuleRow>) => {
     setRows((prev) =>
-      prev.map((r) => (r.document_type === documentType ? { ...r, ...patch } : r))
+      prev.map((r) => {
+        if (r.document_type !== documentType) return r;
+        const next = { ...r, ...patch };
+        if (patch.branch_based === false) {
+          next.include_branch_code = false;
+        }
+        return next;
+      }),
     );
+    if ((patch.branch_based || patch.include_branch_code) && selectedBranchId) {
+      loadBranchSequences(selectedBranchId);
+    }
   };
 
   const handleSave = async () => {
     if (!companyId) return;
     setSaving(true);
     try {
+      let wantedBranchCode = false;
+      let appliedBranchCode = false;
       for (const row of rows) {
-        await settingsService.setErpDocumentSequence(
+        if (row.include_branch_code && row.branch_based) wantedBranchCode = true;
+        const result = await settingsService.setErpDocumentSequence(
           companyId,
           null,
           row.document_type,
@@ -115,11 +222,23 @@ export function NumberingRulesTable() {
           undefined,
           row.padding,
           row.year_reset,
-          row.branch_based
+          row.branch_based,
+          row.include_branch_code,
+        );
+        if (result.includeBranchCodeApplied) appliedBranchCode = true;
+      }
+      setBranchCodeColumnSupported(isNumberingIncludeBranchCodeSupported());
+      if (wantedBranchCode && !appliedBranchCode && !isNumberingIncludeBranchCodeSupported()) {
+        toast.warning(
+          'Branch Code column DB par nahi — admin se migration apply karwaein (include_branch_code).',
         );
       }
       toast.success('Numbering rules saved');
-      await load();
+      setBranchLastNumbers({});
+      await loadCompanyRules();
+      if (selectedBranchId) {
+        await loadBranchSequences(selectedBranchId, true);
+      }
     } catch (e) {
       console.error('[NumberingRulesTable] save error:', e);
       toast.error('Failed to save numbering rules');
@@ -138,11 +257,14 @@ export function NumberingRulesTable() {
           padding: 4,
           year_reset: true,
           branch_based: false,
+          include_branch_code: false,
         };
-      })
+      }),
     );
     toast.info('Defaults restored in form. Click Save Rules to apply.');
   };
+
+  const hasBranchBasedRows = rows.some((r) => r.branch_based);
 
   if (loading) {
     return (
@@ -155,8 +277,36 @@ export function NumberingRulesTable() {
   return (
     <div className="space-y-6">
       <p className="text-sm text-gray-400">
-        Configure prefixes and digits for document numbers. Next numbers are generated by the ERP engine (no duplicates).
+        Configure prefixes and digits for document numbers. Preview next number engine ke mutabiq hai (last issued + 1).
       </p>
+
+      {!branchCodeColumnSupported ? (
+        <p className="text-xs text-amber-400/90 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2">
+          Branch Code feature ke liye DB migration chahiye (`include_branch_code` column). Baqi numbering rules save ho sakti hain.
+        </p>
+      ) : null}
+
+      {hasBranchBasedRows && branches.length > 0 ? (
+        <div className="rounded-lg border border-gray-800 bg-gray-950/50 p-4 space-y-2">
+          <Label className="text-gray-300">Preview branch (Branch Based rules ke liye)</Label>
+          <select
+            value={selectedBranchId}
+            onChange={(e) => setSelectedBranchId(e.target.value)}
+            className="w-full max-w-md bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm"
+          >
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name} {b.code ? `(${b.code})` : ''}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500">
+            Branch Based ON = har branch ka alag counter. Branch Code ON = number mein branch code embed (maslan CR-SL-0001).
+            {loadingBranchSeq ? ' Branch sequences load ho rahe hain…' : null}
+          </p>
+        </div>
+      ) : null}
+
       <div className="rounded-xl border border-gray-800 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -168,49 +318,85 @@ export function NumberingRulesTable() {
                 <th className="px-4 py-3 text-left font-medium w-24">Digits</th>
                 <th className="px-4 py-3 text-left font-medium w-28">Year Reset</th>
                 <th className="px-4 py-3 text-left font-medium w-28">Branch Based</th>
-                <th className="px-4 py-3 text-left font-medium w-28">Preview</th>
+                <th className="px-4 py-3 text-left font-medium w-28">Branch Code</th>
+                <th className="px-4 py-3 text-left font-medium min-w-[140px]">Preview</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {rows.map((r) => (
-                <tr key={r.document_type} className="hover:bg-gray-800/30 bg-gray-950/30">
-                  <td className="px-4 py-3 text-white font-medium">{r.document_type.charAt(0) + r.document_type.slice(1).toLowerCase()}</td>
-                  <td className="px-4 py-3 text-gray-400 text-xs uppercase tracking-wide">{r.type ?? 'Document'}</td>
-                  <td className="px-4 py-3">
-                    <Input
-                      value={r.prefix}
-                      onChange={(e) => updateRow(r.document_type, { prefix: e.target.value.replace(/-/g, '').toUpperCase().slice(0, 8) })}
-                      className="bg-gray-900 border-gray-700 text-white w-24 font-mono"
-                      maxLength={8}
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <Input
-                      type="number"
-                      min={1}
-                      max={8}
-                      value={r.padding}
-                      onChange={(e) => updateRow(r.document_type, { padding: Math.min(8, Math.max(1, Number(e.target.value) || 4)) })}
-                      className="bg-gray-900 border-gray-700 text-white w-20"
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <Switch
-                      checked={r.year_reset}
-                      onCheckedChange={(v) => updateRow(r.document_type, { year_reset: v })}
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <Switch
-                      checked={r.branch_based}
-                      onCheckedChange={(v) => updateRow(r.document_type, { branch_based: v })}
-                    />
-                  </td>
-                  <td className="px-4 py-3 font-mono text-gray-300">
-                    {previewNumber(r.prefix, r.padding)}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                const lastNum = resolveLastNumber(r);
+                const preview = previewDocumentNumber(r, lastNum, selectedBranch?.code);
+                return (
+                  <tr key={r.document_type} className="hover:bg-gray-800/30 bg-gray-950/30">
+                    <td className="px-4 py-3 text-white font-medium">
+                      {r.document_type.charAt(0) + r.document_type.slice(1).toLowerCase()}
+                    </td>
+                    <td className="px-4 py-3 text-gray-400 text-xs uppercase tracking-wide">{r.type ?? 'Document'}</td>
+                    <td className="px-4 py-3">
+                      <Input
+                        value={r.prefix}
+                        onChange={(e) =>
+                          updateRow(r.document_type, {
+                            prefix: e.target.value.replace(/-/g, '').toUpperCase().slice(0, 8),
+                          })
+                        }
+                        className="bg-gray-900 border-gray-700 text-white w-24 font-mono"
+                        maxLength={8}
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={8}
+                        value={r.padding}
+                        onChange={(e) =>
+                          updateRow(r.document_type, {
+                            padding: Math.min(8, Math.max(1, Number(e.target.value) || 4)),
+                          })
+                        }
+                        className="bg-gray-900 border-gray-700 text-white w-20"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Switch
+                        checked={r.year_reset}
+                        onCheckedChange={(v) => updateRow(r.document_type, { year_reset: v })}
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Switch
+                        checked={r.branch_based}
+                        onCheckedChange={(v) => updateRow(r.document_type, { branch_based: v })}
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Switch
+                        checked={r.include_branch_code}
+                        disabled={!r.branch_based || !branchCodeColumnSupported}
+                        title={
+                          !branchCodeColumnSupported
+                            ? 'Branch Code column DB par nahi — migration apply karein'
+                            : !r.branch_based
+                              ? 'Pehle Branch Based ON karein'
+                              : undefined
+                        }
+                        onCheckedChange={(v) => updateRow(r.document_type, { include_branch_code: v })}
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-mono text-gray-300">{preview}</div>
+                      {r.branch_based && selectedBranch ? (
+                        <div className="text-[11px] text-gray-500 mt-0.5">
+                          Branch: {selectedBranch.name}
+                          {selectedBranch.code ? ` (${selectedBranch.code})` : ''}
+                          {r.include_branch_code && !normalizeBranchCode(selectedBranch.code) ? ' — branch code set karein (Settings → Branches)' : ''}
+                        </div>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

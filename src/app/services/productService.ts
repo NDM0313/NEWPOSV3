@@ -10,6 +10,7 @@ import {
   variationPurchaseFromApiRow,
   variationRetailFromApiRow,
 } from '@/app/utils/variationFieldMap';
+import { isPostgrestMissingColumnError } from '@/app/utils/postgrestSchemaError';
 
 /** normal = catalog product; production = manufactured from studio (STD-PROD, inventory + cost). */
 export type ProductType = 'normal' | 'production';
@@ -69,11 +70,33 @@ const VARIATION_SELECT_LAYERS = [
   'id, product_id, sku, attributes',
 ] as const;
 
-function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  if (error.code === '42703') return true;
-  const m = (error.message || '').toLowerCase();
-  return (m.includes('column') && m.includes('does not exist')) || m.includes('pgrst');
+type VariationInsertSchema = 'minimal' | 'erp';
+
+let variationInsertSchemaCache: VariationInsertSchema | null = null;
+
+/** Probe once per session which product_variations insert shape matches the DB (reduces 400 noise). */
+async function resolveVariationInsertSchema(): Promise<VariationInsertSchema> {
+  if (variationInsertSchemaCache) return variationInsertSchemaCache;
+  const { error: minimalProbe } = await supabase
+    .from('product_variations')
+    .select(VARIATION_SELECT_LAYERS[0])
+    .limit(1);
+  if (!minimalProbe) {
+    variationInsertSchemaCache = 'minimal';
+    return 'minimal';
+  }
+  if (isPostgrestMissingColumnError(minimalProbe)) {
+    const { error: erpProbe } = await supabase
+      .from('product_variations')
+      .select(VARIATION_SELECT_LAYERS[2])
+      .limit(1);
+    if (!erpProbe) {
+      variationInsertSchemaCache = 'erp';
+      return 'erp';
+    }
+  }
+  variationInsertSchemaCache = 'erp';
+  return 'erp';
 }
 
 /** Human-readable variation name for DB `name` column when present. */
@@ -134,7 +157,7 @@ export const productService = {
     for (const vSel of VARIATION_SELECT_LAYERS) {
       const { data, error } = await withVariations(vSel);
       if (!error) return data;
-      if (isMissingColumnError(error)) {
+      if (isPostgrestMissingColumnError(error)) {
         lastErr = error;
         continue;
       }
@@ -152,7 +175,7 @@ export const productService = {
           .eq('company_id', companyId)
           .order('name');
         if (!error) return data;
-        if (!isMissingColumnError(error)) throw error;
+        if (!isPostgrestMissingColumnError(error)) throw error;
       }
     }
     if (lastErr?.code === '42703' && lastErr?.message?.includes('company_id')) {
@@ -165,7 +188,7 @@ export const productService = {
           .eq('is_active', true)
           .order('name');
         if (!error) return data;
-        if (!isMissingColumnError(error)) throw error;
+        if (!isPostgrestMissingColumnError(error)) throw error;
       }
     }
 
@@ -190,7 +213,7 @@ export const productService = {
         .eq('id', id)
         .single();
       if (!error) return data;
-      if (isMissingColumnError(error)) continue;
+      if (isPostgrestMissingColumnError(error)) continue;
       throw error;
     }
     const { data, error } = await supabase
@@ -206,7 +229,7 @@ export const productService = {
   // Never send current_stock to DB (column may not exist; stock is movement-based).
   async createProduct(product: Partial<Product>) {
     const raw = ensureProductIds(product as Record<string, unknown>);
-    const { current_stock: _cs, ...payload } = raw as Record<string, unknown>;
+    const { current_stock: _cs, opening_stock: _os, ...payload } = raw as Record<string, unknown>;
     const companyId = (payload.company_id as string) || (product as any).company_id;
     let lastError: unknown = null;
 
@@ -245,7 +268,7 @@ export const productService = {
   },
 
   /** Create a product variation (Size, Color, etc.). product_variations table.
-   * Supports two schemas: (name, cost_price, retail_price, current_stock) and (price, stock) only. */
+   * Tries ERP (name/cost/retail/current_stock), minimal (price/stock), and slim ERP payloads. */
   async createVariation(params: {
     product_id: string;
     name: string;
@@ -257,7 +280,24 @@ export const productService = {
     wholesale_price?: number;
     current_stock?: number;
   }) {
-    const payloadFull = {
+    const purchaseForEmbed =
+      params.cost_price != null && Number.isFinite(Number(params.cost_price))
+        ? Number(params.cost_price)
+        : null;
+    const attrsMinimal = variationAttributesForMinimalSchemaSave(params.attributes ?? {}, purchaseForEmbed);
+    const payloadMinimal: Record<string, unknown> = {
+      product_id: params.product_id,
+      name: params.name,
+      sku: params.sku,
+      barcode: params.barcode ?? null,
+      attributes: attrsMinimal,
+      price: params.retail_price ?? (params as { price?: number }).price ?? null,
+      stock: params.current_stock ?? 0,
+      is_active: true,
+    };
+    const { name: _mn, ...payloadMinimalNoName } = payloadMinimal;
+
+    const erpFull: Record<string, unknown> = {
       product_id: params.product_id,
       name: params.name,
       sku: params.sku,
@@ -269,43 +309,39 @@ export const productService = {
       current_stock: params.current_stock ?? 0,
       is_active: true,
     };
-    const { data, error } = await supabase
-      .from('product_variations')
-      .insert(payloadFull)
-      .select()
-      .single();
+    const erpSlim: Record<string, unknown> = {
+      product_id: params.product_id,
+      name: params.name,
+      sku: params.sku,
+      barcode: params.barcode ?? null,
+      attributes: params.attributes ?? {},
+      cost_price: params.cost_price ?? null,
+      retail_price: params.retail_price ?? null,
+      current_stock: params.current_stock ?? 0,
+      is_active: true,
+    };
+    const erpAttempts = [erpFull, erpSlim];
+    const minimalAttempts = [payloadMinimal, payloadMinimalNoName];
+    const schema = await resolveVariationInsertSchema();
+    const insertAttempts =
+      schema === 'minimal'
+        ? [...minimalAttempts, ...erpAttempts]
+        : [...erpAttempts, ...minimalAttempts];
 
-    if (error) {
-      const msg = (error as any).message || '';
-      const columnNotFound = /could not find.*column|column.*does not exist|PGRST/i.test(msg);
-      if (columnNotFound) {
-        const purchaseForEmbed =
-          params.cost_price != null && Number.isFinite(Number(params.cost_price))
-            ? Number(params.cost_price)
-            : null;
-        const attrsMinimal = variationAttributesForMinimalSchemaSave(params.attributes ?? {}, purchaseForEmbed);
-        const payloadAlt: Record<string, unknown> = {
-          product_id: params.product_id,
-          name: params.name,
-          sku: params.sku,
-          barcode: params.barcode ?? null,
-          attributes: attrsMinimal,
-          // Minimal schema: `price` is selling only; purchase lives in cost columns (if added) or __erp_purchase_price in attributes.
-          price: params.retail_price ?? (params as { price?: number }).price ?? null,
-          stock: params.current_stock ?? 0,
-          is_active: true,
-        };
-        let res = await supabase.from('product_variations').insert(payloadAlt).select().single();
-        if (res.error && /could not find.*column|column.*does not exist|name/i.test((res.error as any).message || '')) {
-          const { name: _n, ...payloadNoName } = payloadAlt;
-          res = await supabase.from('product_variations').insert(payloadNoName).select().single();
-        }
-        if (res.error) throw res.error;
-        return res.data;
-      }
+    let lastError: { code?: string; message?: string } | null = null;
+    for (const payload of insertAttempts) {
+      const { data, error } = await supabase.from('product_variations').insert(payload).select().single();
+      if (!error) return data;
+      lastError = error;
+      if (isPostgrestMissingColumnError(error)) continue;
       throw error;
     }
-    return data;
+    console.warn(
+      '[productService] createVariation failed all schema paths:',
+      lastError?.code,
+      lastError?.message,
+    );
+    throw lastError ?? new Error('Failed to create product variation');
   },
 
   /** Update existing variation row (full ERP schema first, then price-only minimal schema). Stock stays movement-based — do not zero DB stock columns here. */
@@ -336,9 +372,7 @@ export const productService = {
     const { error } = await supabase.from('product_variations').update(fullPayload).eq('id', variationId);
     if (!error) return;
 
-    const msg = (error as { message?: string }).message || '';
-    const columnNotFound = /could not find.*column|column.*does not exist|PGRST/i.test(msg);
-    if (!columnNotFound) throw error;
+    if (!isPostgrestMissingColumnError(error)) throw error;
 
     const purchaseForEmbed =
       params.cost_price != null && params.cost_price !== '' && Number.isFinite(Number(params.cost_price))
@@ -363,7 +397,7 @@ export const productService = {
   // Update product (form sends unit_id, category_id, brand_id in updates).
   // Never send current_stock to DB (column may not exist; stock is movement-based).
   async updateProduct(id: string, updates: Partial<Product>) {
-    const { current_stock: _cs, ...safe } = updates as Record<string, unknown>;
+    const { current_stock: _cs, opening_stock: _os, ...safe } = updates as Record<string, unknown>;
     const { data, error } = await supabase
       .from('products')
       .update(safe)
@@ -383,6 +417,264 @@ export const productService = {
       .eq('id', id);
 
     if (error) throw error;
+  },
+
+  /** All active parent SKUs for a company (import prefetch — lowercased keys). */
+  async listActiveProductSkuKeys(companyId: string): Promise<Set<string>> {
+    const keys = new Set<string>();
+    const pageSize = 1000;
+    let from = 0;
+    for (;;) {
+      const { data, error } = await supabase
+        .from('products')
+        .select('sku')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .range(from, from + pageSize - 1);
+      if (error) {
+        if (error.message?.includes('is_active')) {
+          const { data: retry, error: retryErr } = await supabase
+            .from('products')
+            .select('sku')
+            .eq('company_id', companyId)
+            .range(from, from + pageSize - 1);
+          if (retryErr) throw retryErr;
+          for (const row of retry ?? []) {
+            const k = String(row.sku ?? '').trim().toLowerCase();
+            if (k) keys.add(k);
+          }
+          if (!retry || retry.length < pageSize) break;
+          from += pageSize;
+          continue;
+        }
+        throw error;
+      }
+      for (const row of data ?? []) {
+        const k = String(row.sku ?? '').trim().toLowerCase();
+        if (k) keys.add(k);
+      }
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+    return keys;
+  },
+
+  /** Active product lookup by company + SKU (matrix import upsert). */
+  async findProductBySku(companyId: string, sku: string) {
+    const trimmed = sku?.trim();
+    if (!trimmed) return null;
+    const { data, error } = await supabase
+      .from('products')
+      .select(PRODUCT_SELECT_SAFE)
+      .eq('company_id', companyId)
+      .eq('sku', trimmed)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (error) {
+      if (error.message?.includes('is_active')) {
+        const { data: retry, error: retryErr } = await supabase
+          .from('products')
+          .select(PRODUCT_SELECT_SAFE)
+          .eq('company_id', companyId)
+          .eq('sku', trimmed)
+          .maybeSingle();
+        if (retryErr) throw retryErr;
+        return retry;
+      }
+      throw error;
+    }
+    return data;
+  },
+
+  /** Variation lookup by product + SKU (matrix import upsert). */
+  async findVariationBySku(productId: string, sku: string): Promise<{ id: string } | null> {
+    const trimmed = sku?.trim();
+    if (!trimmed) return null;
+    for (const vSel of VARIATION_SELECT_LAYERS) {
+      const { data, error } = await supabase
+        .from('product_variations')
+        .select(vSel)
+        .eq('product_id', productId)
+        .eq('sku', trimmed)
+        .maybeSingle();
+      if (!error && data && typeof (data as { id?: string }).id === 'string') {
+        return { id: (data as { id: string }).id };
+      }
+      if (error && isPostgrestMissingColumnError(error)) continue;
+      if (error) {
+        console.warn('[productService] findVariationBySku:', error.code, error.message);
+        return null;
+      }
+    }
+    return null;
+  },
+
+  /**
+   * Create or update a parent product and its variations in one orchestrated flow.
+   * Compensates by soft-deleting the parent if it was newly created and a variation save fails.
+   */
+  async saveProductWithVariations(params: {
+    companyId: string;
+    branchIdOrNull?: string | null;
+    parentId?: string;
+    parent: Record<string, unknown>;
+    variations?: Array<{
+      name: string;
+      sku: string;
+      barcode?: string | null;
+      attributes?: Record<string, string>;
+      cost_price?: number;
+      retail_price?: number;
+      wholesale_price?: number;
+      opening_stock?: number;
+    }>;
+    /** CSV bulk import: insert stock now, sync opening GL in one batch at end */
+    deferOpeningBalanceGlSync?: boolean;
+  }): Promise<{
+    productId: string;
+    variationIds: string[];
+    parentCreated: boolean;
+    parentUpdated: boolean;
+    variationsCreated: number;
+    variationsUpdated: number;
+    openingMovementIds: string[];
+  }> {
+    const { companyId, branchIdOrNull = null, parentId, parent, variations = [], deferOpeningBalanceGlSync = false } =
+      params;
+    const openingMovementIds: string[] = [];
+    const hasVariations = variations.length > 0;
+    const parentOpeningStock = Number((parent as { opening_stock?: number }).opening_stock) || 0;
+    const { opening_stock: _parentOs, current_stock: _parentCs, ...parentForDb } = parent as Record<string, unknown>;
+    const parentPayload = {
+      ...parentForDb,
+      company_id: companyId,
+      has_variations: hasVariations,
+      current_stock: 0,
+    };
+
+    let productId = parentId;
+    let parentCreated = false;
+    let parentUpdated = false;
+
+    const sku = String(parent.sku ?? '').trim();
+    const existing =
+      productId != null
+        ? await this.getProduct(productId).catch(() => null)
+        : sku
+          ? await this.findProductBySku(companyId, sku)
+          : null;
+
+    if (existing?.id) {
+      productId = existing.id;
+      await this.updateProduct(existing.id, parentPayload as Partial<Product>);
+      parentUpdated = true;
+    } else {
+      const created = await this.createProduct(parentPayload as Partial<Product>);
+      if (!created?.id) throw new Error('Create product returned no ID');
+      productId = created.id;
+      parentCreated = true;
+    }
+
+    const variationIds: string[] = [];
+    let variationsCreated = 0;
+    let variationsUpdated = 0;
+
+    try {
+      for (const row of variations) {
+        const varSku = row.sku.trim();
+        if (!varSku) throw new Error(`Variation "${row.name}" is missing SKU`);
+        const attrs = row.attributes ?? { variant: row.name };
+        const existingVar = await this.findVariationBySku(productId!, varSku);
+
+        if (existingVar?.id) {
+          await this.updateVariation(String(existingVar.id), {
+            sku: varSku,
+            barcode: row.barcode ?? null,
+            attributes: attrs,
+            name: row.name,
+            cost_price: row.cost_price ?? null,
+            retail_price: row.retail_price ?? null,
+            wholesale_price: row.wholesale_price ?? null,
+            price: row.retail_price ?? null,
+          });
+          variationIds.push(String(existingVar.id));
+          variationsUpdated++;
+        } else {
+          const createdVar = await this.createVariation({
+            product_id: productId!,
+            name: row.name,
+            sku: varSku,
+            barcode: row.barcode ?? null,
+            attributes: attrs,
+            cost_price: row.cost_price,
+            retail_price: row.retail_price,
+            wholesale_price: row.wholesale_price,
+            current_stock: 0,
+          });
+          const vid = (createdVar as { id?: string })?.id;
+          if (!vid) throw new Error(`Variation "${row.name}" save returned no ID`);
+          variationIds.push(vid);
+          variationsCreated++;
+
+          const openingStock = Number(row.opening_stock) || 0;
+          if (openingStock > 0) {
+            const { error: movErr, movementId } = await inventoryService.insertOpeningBalanceMovement(
+              companyId,
+              branchIdOrNull,
+              productId!,
+              openingStock,
+              row.cost_price ?? 0,
+              vid,
+              { deferGlSync: deferOpeningBalanceGlSync }
+            );
+            if (movErr) {
+              console.warn('[productService] Variation opening stock skipped:', movErr.message || movErr);
+            } else if (movementId) {
+              openingMovementIds.push(movementId);
+            }
+          }
+        }
+      }
+
+      if (!hasVariations && parentCreated) {
+        const openingStock = parentOpeningStock;
+        if (openingStock > 0) {
+          const { error: movErr, movementId } = await inventoryService.insertOpeningBalanceMovement(
+            companyId,
+            branchIdOrNull,
+            productId!,
+            openingStock,
+            Number(parent.cost_price) || 0,
+            undefined,
+            { deferGlSync: deferOpeningBalanceGlSync }
+          );
+          if (movErr) {
+            console.warn('[productService] Parent opening stock skipped:', movErr.message || movErr);
+          } else if (movementId) {
+            openingMovementIds.push(movementId);
+          }
+        }
+      }
+    } catch (err) {
+      if (parentCreated && productId) {
+        try {
+          await this.deleteProduct(productId);
+        } catch (rollbackErr) {
+          console.error('[productService] saveProductWithVariations rollback failed:', rollbackErr);
+        }
+      }
+      throw err;
+    }
+
+    return {
+      productId: productId!,
+      variationIds,
+      parentCreated,
+      parentUpdated,
+      variationsCreated,
+      variationsUpdated,
+      openingMovementIds,
+    };
   },
 
   // Search products (explicit columns; no current_stock)

@@ -7,6 +7,20 @@ import { supabase } from '@/lib/supabase';
 
 const SENTINEL = '00000000-0000-0000-0000-000000000000';
 
+function isMissingColumnError(
+  error: { code?: string; message?: string } | null | undefined,
+  column: string,
+): boolean {
+  if (!error) return false;
+  const msg = error.message ?? '';
+  return (
+    error.code === 'PGRST204'
+    || msg.includes('schema cache')
+    || msg.includes(`'${column}'`)
+    || msg.includes(column)
+  );
+}
+
 /** Sequence numbers are small (e.g. 1–999999). Ignore timestamp-like or junk values. */
 const MAX_REASONABLE_SEQUENCE = 999_999_999;
 
@@ -159,14 +173,36 @@ export const numberingMaintenanceService = {
   async fixSequence(companyId: string, documentType: string, newLastNumber: number): Promise<void> {
     const safeLast = Math.min(Math.max(0, Math.floor(newLastNumber)), MAX_REASONABLE_SEQUENCE);
     const year = new Date().getFullYear();
-    const { data: existing } = await supabase
+    const selectColumns = 'id, prefix, padding, year_reset, branch_based, include_branch_code';
+    let existing: Record<string, unknown> | null = null;
+    let selectError: { code?: string; message?: string } | null = null;
+
+    const primary = await supabase
       .from('erp_document_sequences')
-      .select('id, prefix, padding, year_reset, branch_based')
+      .select(selectColumns)
       .eq('company_id', companyId)
       .eq('branch_id', SENTINEL)
       .eq('document_type', documentType.toUpperCase())
       .eq('year', year)
       .maybeSingle();
+
+    existing = (primary.data as Record<string, unknown> | null) ?? null;
+    selectError = primary.error;
+
+    if (selectError && isMissingColumnError(selectError, 'include_branch_code')) {
+      const fallback = await supabase
+        .from('erp_document_sequences')
+        .select('id, prefix, padding, year_reset, branch_based')
+        .eq('company_id', companyId)
+        .eq('branch_id', SENTINEL)
+        .eq('document_type', documentType.toUpperCase())
+        .eq('year', year)
+        .maybeSingle();
+      existing = (fallback.data as Record<string, unknown> | null) ?? null;
+      selectError = fallback.error;
+    }
+
+    if (selectError) throw selectError;
 
     const payload: Record<string, unknown> = {
       company_id: companyId,
@@ -177,10 +213,11 @@ export const numberingMaintenanceService = {
       updated_at: new Date().toISOString(),
     };
     if (existing) {
-      if ((existing as any).prefix != null) payload.prefix = (existing as any).prefix;
-      if ((existing as any).padding != null) payload.padding = (existing as any).padding;
-      if ((existing as any).year_reset != null) payload.year_reset = (existing as any).year_reset;
-      if ((existing as any).branch_based != null) payload.branch_based = (existing as any).branch_based;
+      if (existing.prefix != null) payload.prefix = existing.prefix;
+      if (existing.padding != null) payload.padding = existing.padding;
+      if (existing.year_reset != null) payload.year_reset = existing.year_reset;
+      if (existing.branch_based != null) payload.branch_based = existing.branch_based;
+      if (existing.include_branch_code != null) payload.include_branch_code = existing.include_branch_code;
     } else {
       const defaults: Record<string, string> = {
         SALE: 'SL',
@@ -203,9 +240,18 @@ export const numberingMaintenanceService = {
       payload.branch_based = false;
     }
 
-    const { error } = await supabase.from('erp_document_sequences').upsert(payload, {
+    let { error } = await supabase.from('erp_document_sequences').upsert(payload, {
       onConflict: 'company_id,branch_id,document_type,year',
     });
+
+    if (error && isMissingColumnError(error, 'include_branch_code')) {
+      delete payload.include_branch_code;
+      const retry = await supabase.from('erp_document_sequences').upsert(payload, {
+        onConflict: 'company_id,branch_id,document_type,year',
+      });
+      error = retry.error;
+    }
+
     if (error) throw error;
   },
 };

@@ -30,6 +30,8 @@ export interface RowsSelectorConfig {
   onChange: (value: number) => void;
   totalItems: number;
   options?: number[]; // Default: [25, 50, 100, 500, 1000]
+  /** When false, omit "All (N)" — use with bottom Pagination to avoid rendering thousands of rows */
+  showAllOption?: boolean;
 }
 
 export interface ColumnConfig {
@@ -165,7 +167,9 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
           onChange={rowsSelector.onChange}
           options={[
             ...rowsOptions.map(val => ({ value: val, label: String(val) })),
-            { value: rowsSelector.totalItems, label: `All (${rowsSelector.totalItems})` },
+            ...(rowsSelector.showAllOption !== false
+              ? [{ value: rowsSelector.totalItems, label: `All (${rowsSelector.totalItems})` }]
+              : []),
           ]}
         />
 

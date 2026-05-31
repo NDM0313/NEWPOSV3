@@ -8,6 +8,8 @@ import React from 'react';
 import type { DocumentTemplateId } from '@/app/types/printingSettings';
 import type { CompanyPrintingSettings } from '@/app/types/printingSettings';
 import { mergeWithDefaults } from '@/app/types/printingSettings';
+import { useSettings } from '@/app/context/SettingsContext';
+import { useCompanyLogoDisplayUrl } from '@/app/hooks/useCompanyLogoDisplayUrl';
 
 const PREVIEW_DOCUMENT_OPTIONS: { id: DocumentTemplateId; label: string }[] = [
   { id: 'sales_invoice', label: 'Sales Invoice' },
@@ -85,19 +87,29 @@ function PreviewHeader({
   merged,
   title,
   showLogo,
+  logoDisplayUrl,
 }: {
   merged: ReturnType<typeof mergeWithDefaults>;
   title: string;
   showLogo: boolean;
+  logoDisplayUrl: string;
 }) {
   const { layout, fields } = merged;
   return (
     <header className="border-b border-gray-300 pb-3 mb-3">
       <div className={`flex ${flexPosition(layout.header.logoPosition)} gap-4 flex-wrap`}>
         {showLogo && fields.showLogo && (
-          <div className="w-14 h-14 bg-gray-200 rounded flex items-center justify-center text-[10px] text-gray-500 shrink-0">
-            LOGO
-          </div>
+          logoDisplayUrl ? (
+            <img
+              src={logoDisplayUrl}
+              alt="Company logo"
+              className="w-14 h-14 object-contain shrink-0 rounded"
+            />
+          ) : (
+            <div className="w-14 h-14 bg-gray-200 rounded flex items-center justify-center text-[10px] text-gray-500 shrink-0">
+              LOGO
+            </div>
+          )
         )}
         <div className={`flex-1 min-w-0 ${flexPosition(layout.header.companyDetailsPosition)}`}>
           {fields.showCompanyAddress && <div className="font-semibold text-base" style={{ fontSize: '16px' }}>{MOCK_INVOICE.companyName}</div>}
@@ -118,6 +130,8 @@ export function PrintingPreviewPanel({
   previewDocument,
   onPreviewDocumentChange,
 }: PrintingPreviewPanelProps) {
+  const { company } = useSettings();
+  const logoDisplayUrl = useCompanyLogoDisplayUrl(company.logoUrl);
   const merged = mergeWithDefaults(settings);
   const { pageSetup, fields, layout, pdf } = merged;
   const isLandscape = pageSetup.orientation === 'landscape';
@@ -359,7 +373,12 @@ export function PrintingPreviewPanel({
               paddingRight: Math.max(8, m.right * 0.5),
             }}
           >
-            <PreviewHeader merged={merged} title={title} showLogo={previewDocument !== 'payment_receipt'} />
+            <PreviewHeader
+              merged={merged}
+              title={title}
+              showLogo={previewDocument !== 'payment_receipt'}
+              logoDisplayUrl={logoDisplayUrl}
+            />
             {renderContent()}
             {/* Footer for invoice-type and packing */}
             {(previewDocument === 'sales_invoice' || previewDocument === 'purchase_invoice' || previewDocument === 'packing_list') && (

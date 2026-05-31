@@ -8,6 +8,8 @@ import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { contactService } from '../../services/contactService';
 import { contactGroupService } from '../../services/contactGroupService';
+import { WorkerRoleCombobox } from '../contacts/WorkerRoleCombobox';
+import { DEFAULT_WORKER_ROLES } from '@/app/lib/workerRoles';
 import {
   Sheet,
   SheetContent,
@@ -131,7 +133,7 @@ export const GlobalDrawer = () => {
 
         {/* Sale Form - Edit */}
         <div style={{ display: shouldShowParentDrawer('edit-sale') ? 'block' : 'none' }}>
-          <SaleForm key={`edit-sale-${drawerData?.sale?.id ?? 'none'}`} sale={drawerData?.sale} convertToFinal={drawerData?.convertToFinal} onClose={() => closeDrawer()} />
+          <SaleForm key={`edit-sale-${drawerData?.sale?.id ?? 'none'}-${drawerData?.convertToFinal ? 'convert' : 'edit'}`} sale={drawerData?.sale} convertToFinal={drawerData?.convertToFinal} onClose={() => closeDrawer()} />
         </div>
 
         {/* Purchase Form - Add */}
@@ -159,7 +161,7 @@ export const GlobalDrawer = () => {
 
         {/* Sale Form - Edit */}
         <div style={{ display: shouldShowParentDrawer('edit-sale') ? 'block' : 'none' }}>
-          <SaleForm key={`edit-sale-${drawerData?.sale?.id ?? 'none'}`} sale={drawerData?.sale} convertToFinal={drawerData?.convertToFinal} onClose={() => closeDrawer()} />
+          <SaleForm key={`edit-sale-${drawerData?.sale?.id ?? 'none'}-${drawerData?.convertToFinal ? 'convert' : 'edit'}`} sale={drawerData?.sale} convertToFinal={drawerData?.convertToFinal} onClose={() => closeDrawer()} />
         </div>
 
         {/* Purchase Form - Add */}
@@ -387,16 +389,7 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
     supplier: drawerContactType === 'supplier' ? true : false,
     worker: drawerContactType === 'worker' ? true : false,
   });
-  const WORKER_ROLES = [
-    { value: 'dyer', label: 'Dyer', category: 'Dyeing' },
-    { value: 'tailor', label: 'Tailor', category: 'Stitching' },
-    { value: 'stitching-master', label: 'Stitching Master', category: 'Stitching' },
-    { value: 'cutter', label: 'Cutter', category: 'Stitching' },
-    { value: 'hand-worker', label: 'Hand Worker', category: 'Handwork' },
-    { value: 'helper', label: 'Helper / Labour', category: 'Handwork' },
-    { value: 'embroidery', label: 'Embroidery', category: 'Handwork' },
-  ] as const;
-  const [workerType, setWorkerType] = useState<string>(WORKER_ROLES[0].value);
+  const [workerType, setWorkerType] = useState<string>(DEFAULT_WORKER_ROLES[0].value);
   const [saving, setSaving] = useState(false);
   const [country, setCountry] = useState<string>('pk');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('none');
@@ -655,13 +648,10 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
         setSaving(false);
         return;
       }
-      if (contactRoles.worker) {
-        const validWorkerRoles = ['dyer', 'tailor', 'stitching-master', 'cutter', 'hand-worker', 'helper', 'embroidery'];
-        if (!workerType || !validWorkerRoles.includes(workerType)) {
-          toast.error('Please select a worker role (Dyeing / Stitching / Handwork)');
-          setSaving(false);
-          return;
-        }
+      if (contactRoles.worker && !workerType?.trim()) {
+        toast.error('Please select or add a worker role');
+        setSaving(false);
+        return;
       }
 
       const editingContactId = drawerData?.contact?.uuid;
@@ -1005,20 +995,15 @@ const ContactFormContent = ({ onClose }: { onClose: () => void }) => {
               Worker Role (required)
             </h3>
             <p className="text-xs text-gray-500">Used for Studio: Dyeing / Stitching / Handwork task assignment.</p>
-            <Select value={workerType} onValueChange={(v) => setWorkerType(v)} required>
-              <SelectTrigger className="bg-gray-900 border-gray-700 text-white">
-                <SelectValue placeholder="Select role..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="dyer" className="text-white focus:bg-gray-800">Dyeing → Dyer</SelectItem>
-                <SelectItem value="tailor" className="text-white focus:bg-gray-800">Stitching → Tailor</SelectItem>
-                <SelectItem value="stitching-master" className="text-white focus:bg-gray-800">Stitching → Stitching Master</SelectItem>
-                <SelectItem value="cutter" className="text-white focus:bg-gray-800">Stitching → Cutter</SelectItem>
-                <SelectItem value="hand-worker" className="text-white focus:bg-gray-800">Handwork → Hand Worker</SelectItem>
-                <SelectItem value="helper" className="text-white focus:bg-gray-800">Handwork → Helper / Labour</SelectItem>
-                <SelectItem value="embroidery" className="text-white focus:bg-gray-800">Handwork → Embroidery</SelectItem>
-              </SelectContent>
-            </Select>
+            {companyId ? (
+              <WorkerRoleCombobox
+                companyId={companyId}
+                value={workerType}
+                onChange={setWorkerType}
+              />
+            ) : (
+              <p className="text-xs text-amber-400">Company context required to load roles.</p>
+            )}
 
             {/* Worker Rate */}
             <div className="space-y-2">

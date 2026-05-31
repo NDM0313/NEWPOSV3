@@ -10,6 +10,7 @@ import type { InvoiceDocument } from '@/app/types/invoiceDocument';
 import { useUnifiedDocumentSettings } from './useUnifiedDocumentSettings';
 import { A4InvoiceTemplate } from '@/app/components/shared/invoice/A4InvoiceTemplate';
 import { ThermalInvoiceTemplate } from '@/app/components/shared/invoice/ThermalInvoiceTemplate';
+import { getContactWhatsAppPhone } from '@/app/lib/phoneWhatsApp';
 import { DocumentShareActions } from '@/app/components/shared/DocumentShareActions';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import type { InvoiceTemplateType } from '@/app/types/invoiceDocument';
@@ -107,7 +108,8 @@ export const UnifiedSalesInvoiceView: React.FC<UnifiedSalesInvoiceViewProps> = (
   }, [loadDocument, documentProp]);
 
   const printContentRef = useRef<HTMLDivElement | null>(null);
-  const { resolvedInvoice, loading: settingsLoading, error: settingsError } = useUnifiedDocumentSettings(companyId, 'sales_invoice');
+  const { resolvedInvoice, showLogo, loading: settingsLoading, error: settingsError } =
+    useUnifiedDocumentSettings(companyId, 'sales_invoice');
 
   const handlePrint = () => {
     window.print();
@@ -147,7 +149,15 @@ export const UnifiedSalesInvoiceView: React.FC<UnifiedSalesInvoiceViewProps> = (
       contentRef={printContentRef}
       documentType={docType}
       reference={document?.meta?.invoice_no}
-      sharePhone={document?.customer?.contact_number}
+      sharePhone={
+        document?.customer
+          ? getContactWhatsAppPhone({
+              phone: (document.customer as { phone?: string }).phone,
+              mobile: (document.customer as { mobile?: string }).mobile,
+              contact_number: document.customer.contact_number,
+            }) || null
+          : null
+      }
       format={templateType === 'Thermal' ? 'thermal' : 'a4'}
       onPrint={handlePrint}
       onClose={onClose}
@@ -166,6 +176,7 @@ export const UnifiedSalesInvoiceView: React.FC<UnifiedSalesInvoiceViewProps> = (
       onClose={onClose}
       actionChildren={actionChildren}
       contentRef={printContentRef}
+      showLogo={showLogo}
     />
   ) : (
     <A4InvoiceTemplate
@@ -176,6 +187,7 @@ export const UnifiedSalesInvoiceView: React.FC<UnifiedSalesInvoiceViewProps> = (
       onClose={onClose}
       actionChildren={actionChildren}
       contentRef={printContentRef}
+      showLogo={showLogo}
     />
   );
 };

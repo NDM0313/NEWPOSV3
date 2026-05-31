@@ -1,3 +1,4 @@
+const ERP_PROXY = 'https://erp.dincouture.pk';
 const DIRECT = 'https://supabase.dincouture.pk';
 
 export type ResolveSupabaseApiUrlOptions = {
@@ -5,11 +6,19 @@ export type ResolveSupabaseApiUrlOptions = {
   isDev?: boolean;
 };
 
-/** Mobile/PWA: never route Supabase API through erp.dincouture.pk nginx /storage proxy. */
+/**
+ * PWA/browser: direct supabase.dincouture.pk (Kong echoes https://erp.dincouture.pk Origin).
+ * Native Capacitor: https://erp.dincouture.pk nginx proxy (/auth, /rest, /storage) so
+ * capacitor://localhost gets Access-Control-Allow-Origin from deploy/nginx.conf.
+ */
 export function resolveSupabaseApiUrl(
   raw?: string,
   opts?: ResolveSupabaseApiUrlOptions,
 ): string {
+  if (opts?.isNativeCapacitor) {
+    return ERP_PROXY;
+  }
+
   const isDev =
     opts?.isDev ??
     Boolean(

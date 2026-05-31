@@ -7,10 +7,14 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Base64;
+
+import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -68,21 +72,48 @@ public class ErpPrinterPlugin extends Plugin {
     @PluginMethod
     public void listPairedBluetooth(PluginCall call) {
         JSArray devices = new JSArray();
-        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-        if (adapter != null) {
-            Set<BluetoothDevice> paired = adapter.getBondedDevices();
-            if (paired != null) {
-                for (BluetoothDevice d : paired) {
-                    JSObject item = new JSObject();
-                    item.put("name", d.getName() != null ? d.getName() : "Unknown");
-                    item.put("address", d.getAddress());
-                    devices.put(item);
+        try {
+            if (!hasBluetoothConnectPermission()) {
+                JSObject ret = new JSObject();
+                ret.put("devices", devices);
+                call.resolve(ret);
+                return;
+            }
+            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+            if (adapter != null) {
+                Set<BluetoothDevice> paired = adapter.getBondedDevices();
+                if (paired != null) {
+                    for (BluetoothDevice d : paired) {
+                        JSObject item = new JSObject();
+                        try {
+                            item.put("name", d.getName() != null ? d.getName() : "Unknown");
+                            item.put("address", d.getAddress());
+                        } catch (SecurityException se) {
+                            item.put("name", "Unknown");
+                            item.put("address", d.getAddress());
+                        }
+                        devices.put(item);
+                    }
                 }
             }
+        } catch (SecurityException e) {
+            // Android 12+ without BLUETOOTH_CONNECT runtime grant — must not crash WebView
         }
         JSObject ret = new JSObject();
         ret.put("devices", devices);
         call.resolve(ret);
+    }
+
+    private boolean hasBluetoothConnectPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return true;
+        }
+        Context ctx = getContext();
+        if (ctx == null) {
+            return false;
+        }
+        return ContextCompat.checkSelfPermission(ctx, Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
     @PluginMethod

@@ -44,11 +44,18 @@ import {
   shouldAcceptInvalidation,
   type DataInvalidationDetail,
 } from '@/app/lib/dataInvalidationBus';
+import { filterSaleLinesForStockPosting } from '@/app/lib/saleStockLineEligibility';
+import {
+  snapshotBespokeWorkOrderAnchors,
+  relinkBespokeWorkOrdersAfterSaleItemReplace,
+} from '@/app/services/bespokeWorkOrderRelinkService';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function isValidBranchId(id: string | null): id is string {
+function isValidBranchId(id: string | null | undefined): id is string {
   return !!id && UUID_REGEX.test(id);
 }
+
+export { isValidBranchId };
 
 /** Sale header `location` is branch UUID. Prefer it over context `branchId` (often `'all'` for admins). */
 function branchIdFromSaleHeader(
@@ -157,7 +164,10 @@ export interface Sale {
   customerName: string;
   contactNumber: string;
   date: string;
+  /** Branch display name for UI only — use branchId for DB writes. */
   location: string;
+  /** Branch UUID from sales.branch_id — use for stock, WO, GL; never show in UI. */
+  branchId?: string;
   items: SaleItem[];
   itemsCount: number;
   subtotal: number;
@@ -398,6 +408,7 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
       contactNumber: supabaseSale.customer?.phone || '',
       date: supabaseSale.invoice_date || localNowDateString(),
     location: locationDisplay,
+    branchId: supabaseSale.branch_id || supabaseSale.branch?.id || undefined,
     items: (supabaseSale.items || []).map((item: any) => {
       // Packing: single source of truth from backend (same as Purchase – parse if JSON string from API)
       const rawPd = item.packing_details;
@@ -534,13 +545,43 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     else setLoading(false);
   }, [companyId, loadSales]);
 
+  const patchSaleInList = useCallback(async (saleId: string) => {
+    if (!companyId) return;
+    try {
+      const row = await saleService.getSaleById(saleId);
+      if (!row) return;
+      const updated = convertFromSupabaseSale(row);
+      setSales((prev) => {
+        const idx = prev.findIndex((s) => s.id === saleId);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = updated;
+          return next;
+        }
+        return [updated, ...prev];
+      });
+    } catch (e) {
+      console.warn('[SALES CONTEXT] patchSaleInList failed:', e);
+    }
+  }, [companyId]);
+
   useEffect(() => {
-    const onSaleUpdated = () => {
-      if (companyId) loadSales();
+    const onSaleUpdated = (ev: Event) => {
+      if (!companyId) return;
+      const detail = (ev as CustomEvent<{ saleId?: string; fullReload?: boolean }>).detail;
+      if (detail?.fullReload) {
+        void loadSales();
+        return;
+      }
+      if (detail?.saleId) {
+        void patchSaleInList(detail.saleId);
+        return;
+      }
+      void loadSales();
     };
     window.addEventListener('saleUpdated', onSaleUpdated);
     return () => window.removeEventListener('saleUpdated', onSaleUpdated);
-  }, [companyId, loadSales]);
+  }, [companyId, loadSales, patchSaleInList]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -556,11 +597,19 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const detail = (ev as CustomEvent<DataInvalidationDetail>).detail;
       if (
         !shouldAcceptInvalidation(detail, {
-          domain: ['sales', 'accounting', 'contacts', 'studio'],
+          domain: ['sales', 'contacts', 'studio'],
           companyId,
           branchId: branchId === 'all' ? null : branchId ?? null,
         })
       ) {
+        return;
+      }
+      const reason = String(detail?.reason ?? '');
+      if (
+        (reason.includes('sales-context-payment') || reason.includes('sale-payment')) &&
+        detail?.entityId
+      ) {
+        void patchSaleInList(String(detail.entityId));
         return;
       }
       queue();
@@ -656,7 +705,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       // Negative stock: only enforce when this save will post stock (`final`), not for draft/quotation/order
       const effectiveCreateStatus = saleData.status || (saleData.type === 'invoice' ? 'final' : 'quotation');
       const fromContext = inventorySettings.negativeStockAllowed === true;
-      const fromDb = await import('@/app/services/settingsService').then(m => m.settingsService.getAllowNegativeStock(companyId));
+      const fromDb = fromContext
+        ? true
+        : await import('@/app/services/settingsService').then((m) =>
+            m.settingsService.getAllowNegativeStock(companyId)
+          );
       const allowNegative = fromContext || fromDb;
       if (import.meta.env?.DEV) {
         console.log('[SALES CONTEXT] Negative stock:', { allowNegative, fromContext, fromDb, inventorySettingsNegative: inventorySettings.negativeStockAllowed });
@@ -1593,9 +1646,13 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
 
       // Negative stock enforcement: company-level setting from DB only (same for all users)
       const reducingDeltas = stockMovementDeltas.filter((d) => d.deltaQty < 0);
-      const allowNegativeUpdate = companyId
-        ? await import('@/app/services/settingsService').then(m => m.settingsService.getAllowNegativeStock(companyId))
-        : false;
+      const allowNegativeUpdate =
+        inventorySettings.negativeStockAllowed === true ||
+        (companyId
+          ? await import('@/app/services/settingsService').then((m) =>
+              m.settingsService.getAllowNegativeStock(companyId)
+            )
+          : false);
       let headerBranchForStockEdit: string | undefined =
         updates.location !== undefined ? updates.location : undefined;
       if (headerBranchForStockEdit === undefined && companyId) {
@@ -1719,6 +1776,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           packing_unit: item.packingDetails?.unit || 'meters',
           packing_details: item.packingDetails || null,
           customization_details: customizationDetails,
+          parent_line_index: (item as { parentLineIndex?: number }).parentLineIndex
+            ?? (item as { parent_line_index?: number }).parent_line_index,
+          bespoke_parent_item_id:
+            (item as { bespokeParentItemId?: string }).bespokeParentItemId
+            ?? (item as { bespoke_parent_item_id?: string }).bespoke_parent_item_id,
         };
         console.log(`[SALES CONTEXT] ✅ Converted item ${index}:`, {
           product_id: saleItem.product_id,
@@ -1732,7 +1794,19 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         
         console.log('[SALES CONTEXT] ✅ Final saleItems array length:', saleItems.length);
         
-        // Delete existing items and insert new ones
+        // Snapshot bespoke WO anchors so parent_sales_item_id can be restored after line replace
+        try {
+          await snapshotBespokeWorkOrderAnchors(id);
+        } catch (snapshotErr) {
+          const msg =
+            snapshotErr instanceof Error
+              ? snapshotErr.message
+              : 'Cannot update sale lines while bespoke work orders are linked — contact support';
+          toast.error(msg);
+          throw snapshotErr;
+        }
+
+        // Delete existing items and insert new ones (WO FK is ON DELETE SET NULL after migration)
         const { error: deleteError } = await supabase.from('sales_items').delete().eq('sale_id', id);
         if (deleteError) {
           console.error('[SALES CONTEXT] ❌ Error deleting old items:', deleteError);
@@ -1746,6 +1820,17 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           console.log('[SALES CONTEXT] ✅ Successfully inserted', saleItems.length, 'sale_items');
         } else {
           console.log('[SALES CONTEXT] ⚠️ No items to insert (saleItems.length = 0)');
+        }
+
+        try {
+          await relinkBespokeWorkOrdersAfterSaleItemReplace(id);
+        } catch (relinkErr) {
+          const msg =
+            relinkErr instanceof Error
+              ? relinkErr.message
+              : 'Sale lines updated but bespoke work order link failed — contact support';
+          toast.error(msg);
+          throw relinkErr;
         }
       }
 
@@ -1805,7 +1890,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             }
             const missingIds = editProductIds.filter((id: string) => !editCostMap.has(id));
             if (missingIds.length > 0) {
-              const { data: fallback } = await supabase.from('products').select('id, cost_price').in('id', missingIds);
+              const { data: fallback } = await sbDelta.from('products').select('id, cost_price').in('id', missingIds);
               for (const r of fallback || []) {
                 if (!editCostMap.has(r.id)) editCostMap.set(r.id, Number((r as any).cost_price) || 0);
               }
@@ -1921,15 +2006,60 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       if (wasNotFinal && isNowFinal && stockMovementDeltas.length === 0 && effectiveCompanyId) {
         try {
           const { supabase: sb } = await import('@/lib/supabase');
-          let currentItems: { product_id: string; variation_id?: string; quantity: number; unit_price?: number; product_name?: string }[] = [];
+          let currentItems: {
+            product_id: string;
+            variation_id?: string;
+            quantity: number;
+            unit_price?: number;
+            product_name?: string;
+            bespoke_parent_item_id?: string | null;
+            customization_details?: unknown;
+            product_sku?: string | null;
+            track_stock?: boolean | null;
+          }[] = [];
           const { data: itemsFromSalesItems, error: itemsErr } = await sb
             .from('sales_items')
-            .select('product_id, variation_id, quantity, unit_price, product_name, customization_details')
+            .select(
+              'product_id, variation_id, quantity, unit_price, product_name, customization_details, bespoke_parent_item_id, product:products(sku, track_stock)',
+            )
             .eq('sale_id', id);
           if (!itemsErr && itemsFromSalesItems?.length) {
-            currentItems = itemsFromSalesItems;
+            currentItems = (itemsFromSalesItems as any[]).map((row) => ({
+              product_id: row.product_id,
+              variation_id: row.variation_id,
+              quantity: row.quantity,
+              unit_price: row.unit_price,
+              product_name: row.product_name,
+              bespoke_parent_item_id: row.bespoke_parent_item_id,
+              customization_details: row.customization_details,
+              product_sku: row.product?.sku ?? null,
+              track_stock: row.product?.track_stock,
+            }));
           }
           if (currentItems.length > 0) {
+            let customGenericProductIds: string[] | null = null;
+            try {
+              const { data: bs } = await sb
+                .from('business_settings')
+                .select('custom_generic_product_ids')
+                .eq('company_id', effectiveCompanyId)
+                .maybeSingle();
+              customGenericProductIds =
+                (bs as { custom_generic_product_ids?: string[] } | null)?.custom_generic_product_ids ?? null;
+            } catch {
+              /* ignore */
+            }
+            const productMap = new Map(
+              currentItems.map((row) => [
+                row.product_id,
+                { sku: row.product_sku, track_stock: row.track_stock },
+              ]),
+            );
+            const stockEligibleItems = filterSaleLinesForStockPosting(
+              currentItems,
+              productMap,
+              customGenericProductIds,
+            );
             const { data: { user: authUser } } = await sb.auth.getUser();
             const updateCreatedByAuthId = authUser?.id ?? (user as any)?.auth_user_id ?? user?.id;
             const saleForStock = await saleService.getSaleById(id);
@@ -1944,7 +2074,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
             }
             if (effectiveBranchId === 'all') effectiveBranchId = null;
             // Fetch weighted average cost from stock_movements (actual purchase cost)
-            const statusChangeProductIds = currentItems.map(i => i.product_id).filter(Boolean);
+            const statusChangeProductIds = stockEligibleItems.map((i) => i.product_id).filter(Boolean);
             const statusCostMap = new Map<string, number>();
             if (statusChangeProductIds.length > 0 && effectiveCompanyId) {
               const { data: movements } = await sb
@@ -1974,26 +2104,43 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 }
               }
             }
-            for (const item of currentItems) {
-              const qty = Number(item.quantity) || 0;
-              if (qty <= 0) continue;
-              const productId = item.product_id;
-              const variationId = item.variation_id || undefined;
-              await productService.createStockMovement({
-                company_id: effectiveCompanyId,
-                branch_id: effectiveBranchId ?? undefined,
-                product_id: productId,
-                variation_id: variationId,
-                movement_type: 'sale',
-                quantity: -qty,
-                unit_cost: statusCostMap.get(productId) || Number(item.unit_price) || 0,
-                reference_type: 'sale',
-                reference_id: id,
-                notes: `Sale ${saleInvoiceNo} – ${(item as any).product_name || 'Item'}`,
-                created_by: updateCreatedByAuthId ?? undefined,
-              });
+            const { count: existingSaleMovCount } = await sb
+              .from('stock_movements')
+              .select('id', { count: 'exact', head: true })
+              .eq('reference_type', 'sale')
+              .eq('reference_id', id)
+              .ilike('movement_type', 'sale');
+            if ((existingSaleMovCount ?? 0) > 0) {
+              console.log(
+                '[SALES CONTEXT] Order→Final: stock already posted (trigger), skipping duplicate OUT',
+                { saleId: id, existingSaleMovCount },
+              );
+            } else {
+              for (const item of stockEligibleItems) {
+                const qty = Number(item.quantity) || 0;
+                if (qty <= 0) continue;
+                const productId = item.product_id;
+                const variationId = item.variation_id || undefined;
+                await productService.createStockMovement({
+                  company_id: effectiveCompanyId,
+                  branch_id: effectiveBranchId ?? undefined,
+                  product_id: productId,
+                  variation_id: variationId,
+                  movement_type: 'sale',
+                  quantity: -qty,
+                  unit_cost: statusCostMap.get(productId) || Number(item.unit_price) || 0,
+                  reference_type: 'sale',
+                  reference_id: id,
+                  notes: `Sale ${saleInvoiceNo} – ${(item as any).product_name || 'Item'}`,
+                  created_by: updateCreatedByAuthId ?? undefined,
+                });
+              }
+              console.log(
+                '[SALES CONTEXT] ✅ Stock OUT created for Order→Final (no item change):',
+                stockEligibleItems.length,
+                'items',
+              );
             }
-            console.log('[SALES CONTEXT] ✅ Stock OUT created for Order→Final (no item change):', currentItems.length, 'items');
             window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: id } }));
             const custId = sale?.customerId ?? (saleForStock as any)?.customer_id;
             if (custId) window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: custId } }));
@@ -2004,48 +2151,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Bespoke loose-fabric stock OUT on first finalize (idempotent; runs even when item deltas posted main lines)
-      if (wasNotFinal && isNowFinal && effectiveCompanyId) {
-        try {
-          const { postBespokeFabricStockOnFinalize } = await import('@/app/services/bespokeFabricStockService');
-          const { supabase: sbFabric } = await import('@/lib/supabase');
-          const { data: { user: authUserFabric } } = await sbFabric.auth.getUser();
-          const fabricCreatedBy = authUserFabric?.id ?? (user as any)?.auth_user_id ?? user?.id;
-          const saleForFabric = await saleService.getSaleById(id);
-          const fabricInvoiceNo =
-            getSaleDisplayNumber(saleForFabric as any) ||
-            String((saleForFabric as any)?.invoice_no ?? (saleForFabric as any)?.invoiceNo ?? id);
-          let fabricBranchId = (saleForFabric as any)?.branch_id ?? branchId ?? null;
-          if (!isValidBranchId(fabricBranchId) && effectiveCompanyId) {
-            const branches = await branchService.getAllBranches(effectiveCompanyId);
-            fabricBranchId = branches?.length ? branches[0].id : null;
-          }
-          if (fabricBranchId === 'all') fabricBranchId = null;
-          const { data: childFabricLines } = await sbFabric
-            .from('sales_items')
-            .select('id')
-            .eq('sale_id', id)
-            .not('bespoke_parent_item_id', 'is', null)
-            .limit(1);
-          const hasInjectedFabricLines = (childFabricLines?.length ?? 0) > 0;
-          const fabricPosted = hasInjectedFabricLines
-            ? 0
-            : await postBespokeFabricStockOnFinalize({
-                saleId: id,
-                companyId: effectiveCompanyId,
-                branchId: fabricBranchId,
-                invoiceNo: fabricInvoiceNo,
-                createdBy: fabricCreatedBy ?? undefined,
-              });
-          if (fabricPosted > 0) {
-            console.log('[SALES CONTEXT] ✅ Bespoke fabric stock OUT:', fabricPosted, 'material(s) for sale', id);
-            window.dispatchEvent(new CustomEvent('saleSaved', { detail: { saleId: id } }));
-          }
-        } catch (fabricStockErr: any) {
-          console.error('[SALES CONTEXT] Bespoke fabric stock error:', fabricStockErr);
-          toast.warning('Sale finalized but some bespoke fabric stock movements failed.');
-        }
-      }
+      // Bespoke fabric stock posts on work order complete (RPC), not on sale finalize.
 
       // Line-level charges: only replace when form explicitly saves or non-empty payload (never wipe on empty [] by mistake)
       const extraExpensesList = (updates as { extraExpenses?: { type?: string; amount?: number }[] }).extraExpenses;
@@ -2747,6 +2853,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         accountId: paymentAccountId, // CRITICAL: Pass account ID
       });
 
+      window.dispatchEvent(
+        new CustomEvent('saleUpdated', { detail: { saleId, fullReload: false } })
+      );
       toast.success(`Payment of ${formatCurrency(amount)} recorded!`);
     } catch (error: any) {
       console.error('[SALES CONTEXT] Error recording payment:', error);

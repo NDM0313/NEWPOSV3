@@ -5,6 +5,7 @@ import { Label } from '../ui/label';
 import { Building2, User, Mail, Lock, AlertCircle, Loader2, DollarSign, Calendar } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { businessService } from '@/app/services/businessService';
+import { suggestFiscalYearEnd } from '@/app/utils/fiscalDates';
 
 const CURRENCIES = [
   { code: 'PKR', label: 'PKR (Pakistani Rupee)' },
@@ -38,6 +39,9 @@ export const CreateBusinessForm: React.FC<CreateBusinessFormProps> = ({ onSucces
     confirmPassword: '',
     currency: 'PKR',
     fiscalYearStart: defaultFiscalStart,
+    fiscalYearEnd: suggestFiscalYearEnd(defaultFiscalStart),
+    branchCity: '',
+    branchState: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -86,6 +90,9 @@ export const CreateBusinessForm: React.FC<CreateBusinessFormProps> = ({ onSucces
         password: formData.password,
         currency: formData.currency,
         fiscalYearStart: formData.fiscalYearStart,
+        fiscalYearEnd: formData.fiscalYearEnd || suggestFiscalYearEnd(formData.fiscalYearStart),
+        branchCity: formData.branchCity || undefined,
+        branchState: formData.branchState || undefined,
       });
 
       if (!result.success) {
@@ -233,11 +240,61 @@ export const CreateBusinessForm: React.FC<CreateBusinessFormProps> = ({ onSucces
                 id="fiscalYearStart"
                 type="date"
                 value={formData.fiscalYearStart}
-                onChange={(e) => setFormData({ ...formData, fiscalYearStart: e.target.value })}
+                onChange={(e) => {
+                  const start = e.target.value;
+                  setFormData((prev) => ({
+                    ...prev,
+                    fiscalYearStart: start,
+                    fiscalYearEnd: suggestFiscalYearEnd(start),
+                  }));
+                }}
                 className="bg-gray-800 border-gray-700 text-white"
                 disabled={loading}
               />
               <p className="text-xs text-gray-500 mt-1">Default: July 1 of current fiscal year</p>
+            </div>
+
+            <div>
+              <Label htmlFor="fiscalYearEnd" className="text-gray-400 mb-2 block flex items-center gap-2">
+                <Calendar size={16} />
+                Financial Year End
+              </Label>
+              <Input
+                id="fiscalYearEnd"
+                type="date"
+                value={formData.fiscalYearEnd}
+                onChange={(e) => setFormData({ ...formData, fiscalYearEnd: e.target.value })}
+                className="bg-gray-800 border-gray-700 text-white"
+                disabled={loading}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="branchCity" className="text-gray-400 mb-2 block">
+                City
+              </Label>
+              <Input
+                id="branchCity"
+                value={formData.branchCity}
+                onChange={(e) => setFormData({ ...formData, branchCity: e.target.value })}
+                placeholder="Karachi"
+                className="bg-gray-800 border-gray-700 text-white"
+                disabled={loading}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="branchState" className="text-gray-400 mb-2 block">
+                State / Province
+              </Label>
+              <Input
+                id="branchState"
+                value={formData.branchState}
+                onChange={(e) => setFormData({ ...formData, branchState: e.target.value })}
+                placeholder="Sindh"
+                className="bg-gray-800 border-gray-700 text-white"
+                disabled={loading}
+              />
             </div>
 
             {/* Confirm Password */}

@@ -4,9 +4,11 @@
 import React from 'react';
 import { ClassicPrintBase } from '@/app/components/shared/ClassicPrintBase';
 import { useSettings } from '@/app/context/SettingsContext';
+import { useCompanyLogoDisplayUrl } from '@/app/hooks/useCompanyLogoDisplayUrl';
 import type { InvoiceDocument, InvoiceTemplate } from '@/app/types/invoiceDocument';
 import type { PaperSize } from '@/app/components/shared/ClassicPrintBase';
 import { formatPackingFromItem } from './formatPackingFromDocument';
+import { BespokeInstructionBullets } from '@/app/components/bespoke/BespokeInstructionBullets';
 
 export interface ThermalInvoiceTemplateProps {
   document: InvoiceDocument;
@@ -18,6 +20,7 @@ export interface ThermalInvoiceTemplateProps {
   actionChildren?: React.ReactNode;
   /** Ref for PDF export (attached to root printable element). */
   contentRef?: React.RefObject<HTMLDivElement | null>;
+  showLogo?: boolean;
 }
 
 export const ThermalInvoiceTemplate: React.FC<ThermalInvoiceTemplateProps> = ({
@@ -29,8 +32,11 @@ export const ThermalInvoiceTemplate: React.FC<ThermalInvoiceTemplateProps> = ({
   onClose,
   actionChildren,
   contentRef,
+  showLogo = true,
 }) => {
-  const { inventorySettings } = useSettings();
+  const { inventorySettings, businessSettings } = useSettings();
+  const logoDisplay = useCompanyLogoDisplayUrl(showLogo ? template.logo_url : undefined);
+  const enableBespoke = businessSettings.enableBespokeOrders;
   const enablePacking = inventorySettings.enablePacking ?? false;
 
   const headerMeta = [
@@ -42,7 +48,7 @@ export const ThermalInvoiceTemplate: React.FC<ThermalInvoiceTemplateProps> = ({
     <ClassicPrintBase
       documentTitle="INVOICE"
       companyName={doc.company.name}
-      logoUrl={template.logo_url ?? undefined}
+      logoUrl={logoDisplay || undefined}
       headerMeta={headerMeta}
       onPrint={onPrint}
       onClose={onClose}
@@ -75,6 +81,12 @@ export const ThermalInvoiceTemplate: React.FC<ThermalInvoiceTemplateProps> = ({
                   <span className="classic-print-sku" style={{ marginLeft: '5px' }}>{item.sku}</span>
                 )}
                 {enablePacking && <div style={{ fontSize: '9px', color: '#6b7280' }}>{formatPackingFromItem(item)}</div>}
+                {enableBespoke && !item.bespoke_parent_item_id && (
+                  <BespokeInstructionBullets
+                    variant="print"
+                    customizationDetails={item.customization_details}
+                  />
+                )}
               </td>
               <td className="text-right">{Number(item.quantity).toFixed(2)}</td>
               <td className="text-right classic-print-currency">{formatCurrency(item.total)}</td>

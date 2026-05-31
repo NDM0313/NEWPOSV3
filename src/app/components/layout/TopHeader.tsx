@@ -17,9 +17,11 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
-  Loader2
+  Loader2,
+  Scissors
 } from 'lucide-react';
 import { useNavigation } from '../../context/NavigationContext';
+import { useSettings } from '../../context/SettingsContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useSales } from '../../context/SalesContext';
 import { usePurchases } from '../../context/PurchaseContext';
@@ -48,6 +50,7 @@ import { useCheckPermission } from '../../hooks/useCheckPermission';
 
 export const TopHeader = () => {
   const { toggleSidebar, openDrawer, setCurrentView, setMobileNavOpen } = useNavigation();
+  const { businessSettings } = useSettings();
   const { signOut, user, companyId, branchId } = useSupabase();
   const { hasPermission } = useCheckPermission();
   const { formatCurrency } = useFormatCurrency();
@@ -350,6 +353,18 @@ export const TopHeader = () => {
               <FileText size={16} className="text-emerald-500" />
               <span>New Invoice</span>
             </DropdownMenuItem>
+            {businessSettings.enableBespokeOrders && (
+              <DropdownMenuItem
+                onClick={() => openDrawer('addSale', undefined, { bespokeOrder: true })}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-foreground hover:bg-accent cursor-pointer transition-all"
+              >
+                <Scissors size={16} className="text-violet-500" />
+                <div className="flex flex-col">
+                  <span>Custom / Bespoke Order</span>
+                  <span className="text-xs text-muted-foreground">Fabric, measurements, delivery date</span>
+                </div>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem 
               onClick={() => openDrawer('addPurchase')}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-foreground hover:bg-accent cursor-pointer transition-all"

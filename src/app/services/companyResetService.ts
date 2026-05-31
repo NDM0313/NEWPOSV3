@@ -1,10 +1,29 @@
 import { supabase } from '@/lib/supabase';
 
+export type CompanyResetMode = 'transactional' | 'selective' | 'complete';
+
+export interface CompanyResetDomains {
+  transactional: boolean;
+  contacts: boolean;
+  products: boolean;
+  accounts: boolean;
+  workers: boolean;
+}
+
+export interface CompanyResetOptions {
+  mode: CompanyResetMode;
+  domains: CompanyResetDomains;
+  reseed_accounts?: boolean;
+}
+
 export interface CompanyResetPreview {
   success: boolean;
   mode?: string;
+  options?: CompanyResetOptions;
+  requires_reset_all?: boolean;
   preserve?: Record<string, number>;
   transactional?: Record<string, number>;
+  master?: Record<string, number>;
   error?: string;
 }
 
@@ -13,7 +32,66 @@ export interface CompanyResetExecuteResult {
   auditId?: string;
   preview?: CompanyResetPreview;
   deleted?: Record<string, number>;
+  options?: CompanyResetOptions;
+  reseed_accounts?: boolean;
   error?: string;
+}
+
+export const DEFAULT_TRANSACTIONAL_RESET_OPTIONS: CompanyResetOptions = {
+  mode: 'transactional',
+  domains: {
+    transactional: true,
+    contacts: false,
+    products: false,
+    accounts: false,
+    workers: false,
+  },
+  reseed_accounts: false,
+};
+
+export const DEFAULT_COMPLETE_RESET_OPTIONS: CompanyResetOptions = {
+  mode: 'complete',
+  domains: {
+    transactional: true,
+    contacts: true,
+    products: true,
+    accounts: true,
+    workers: true,
+  },
+  reseed_accounts: true,
+};
+
+export function buildResetOptionsForMode(
+  mode: CompanyResetMode,
+  domains?: Partial<CompanyResetDomains>
+): CompanyResetOptions {
+  if (mode === 'complete') return { ...DEFAULT_COMPLETE_RESET_OPTIONS };
+  if (mode === 'transactional') return { ...DEFAULT_TRANSACTIONAL_RESET_OPTIONS };
+  return {
+    mode: 'selective',
+    domains: {
+      transactional: domains?.transactional ?? true,
+      contacts: domains?.contacts ?? false,
+      products: domains?.products ?? false,
+      accounts: domains?.accounts ?? false,
+      workers: domains?.workers ?? false,
+    },
+    reseed_accounts: domains?.accounts ?? false,
+  };
+}
+
+export function requiredConfirmationPhrase(options: CompanyResetOptions): 'RESET' | 'RESET ALL' {
+  const d = options.domains;
+  if (
+    options.mode === 'complete' ||
+    d.contacts ||
+    d.products ||
+    d.accounts ||
+    d.workers
+  ) {
+    return 'RESET ALL';
+  }
+  return 'RESET';
 }
 
 const RESET_RPC_MAX_RETRIES = 2;
@@ -59,48 +137,52 @@ async function callResetRpcWithRetry<T>(fn: () => Promise<{ data: T | null; erro
   return { data: null, error: lastError };
 }
 
+function optionsToRpcPayload(options?: CompanyResetOptions): Record<string, unknown> | null {
+  if (!options) return null;
+  return {
+    mode: options.mode,
+    domains: options.domains,
+    reseed_accounts: options.reseed_accounts ?? false,
+  };
+}
+
 export const companyResetService = {
-  async preview(companyId: string): Promise<CompanyResetPreview> {
-    // #region agent log
-    fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H2',location:'companyResetService.ts:preview:start',message:'preview_company_transaction_reset called',data:{companyIdPresent:Boolean(companyId)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+  async preview(companyId: string, options?: CompanyResetOptions): Promise<CompanyResetPreview> {
     const { data, error } = await callResetRpcWithRetry(() =>
       supabase.rpc('preview_company_transaction_reset', {
         p_company_id: companyId,
+        p_options: optionsToRpcPayload(options),
       })
     );
     if (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H2',location:'companyResetService.ts:preview:error',message:'preview_company_transaction_reset error',data:{code:(error as any)?.code||null,message:error.message},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return { success: false, error: normalizeRpcError(error) };
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H2',location:'companyResetService.ts:preview:success',message:'preview_company_transaction_reset success',data:{success:(data as any)?.success===true},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    return (data || { success: false, error: 'No preview response' }) as CompanyResetPreview;
+    const raw = (data || { success: false, error: 'No preview response' }) as CompanyResetPreview & {
+      options?: CompanyResetOptions;
+    };
+    if (raw.options && typeof raw.options === 'object') {
+      const o = raw.options as CompanyResetOptions;
+      raw.requires_reset_all =
+        raw.requires_reset_all ?? requiredConfirmationPhrase(o) === 'RESET ALL';
+    }
+    return raw;
   },
 
-  async execute(companyId: string, confirmation: string): Promise<CompanyResetExecuteResult> {
-    // #region agent log
-    fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H3',location:'companyResetService.ts:execute:start',message:'execute_company_transaction_reset called',data:{companyIdPresent:Boolean(companyId),confirmation:confirmation?.trim()?.toUpperCase()||''},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+  async execute(
+    companyId: string,
+    confirmation: string,
+    options?: CompanyResetOptions
+  ): Promise<CompanyResetExecuteResult> {
     const { data, error } = await callResetRpcWithRetry(() =>
       supabase.rpc('execute_company_transaction_reset', {
         p_company_id: companyId,
         p_confirmation: confirmation,
+        p_options: optionsToRpcPayload(options),
       })
     );
     if (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H3',location:'companyResetService.ts:execute:error',message:'execute_company_transaction_reset error',data:{code:(error as any)?.code||null,message:error.message},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return { success: false, error: normalizeRpcError(error) };
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7640/ingest/5a1d8cd1-36ee-48f0-a16a-f5008fbf5b6b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'91c22f'},body:JSON.stringify({sessionId:'91c22f',runId:'run1',hypothesisId:'H3',location:'companyResetService.ts:execute:success',message:'execute_company_transaction_reset response',data:{success:(data as any)?.success===true,error:(data as any)?.error||null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return (data || { success: false, error: 'No reset response' }) as CompanyResetExecuteResult;
   },
 };
-

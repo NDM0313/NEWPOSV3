@@ -72,7 +72,8 @@ type View =
   | 'manufacturing-orders'
   | 'manufacturing-workflow'
   | 'party-ledger'
-  | 'stock-report';
+  | 'stock-report'
+  | 'bespoke-work-orders';
 
 type DrawerType = 'none' | 'addUser' | 'addProduct' | 'edit-product' | 'addSale' | 'edit-sale' | 'addPurchase' | 'edit-purchase' | 'addContact';
 
@@ -84,8 +85,11 @@ interface NavigationContextType {
   mobileNavOpen: boolean;
   setMobileNavOpen: (open: boolean) => void;
   activeDrawer: DrawerType;
-  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string; convertToFinal?: boolean }) => void;
+  openDrawer: (drawer: DrawerType, parentDrawer?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string; convertToFinal?: boolean; bespokeOrder?: boolean }) => void;
   closeDrawer: () => void;
+  /** True when sale drawer opened via Create New → Custom / Bespoke Order */
+  saleDrawerBespokeMode: boolean;
+  clearSaleDrawerBespokeMode: () => void;
   parentDrawer: DrawerType | null;
   selectedStudioSaleId?: string;
   setSelectedStudioSaleId?: (id: string) => void;
@@ -145,6 +149,8 @@ const defaultNavigationContext: NavigationContextType = {
   partyLedgerParams: null,
   setPartyLedgerParams: () => {},
   openPartyLedger: () => {},
+  saleDrawerBespokeMode: false,
+  clearSaleDrawerBespokeMode: () => {},
 };
 
 export const NavigationProvider = ({ children }: { children: ReactNode }) => {
@@ -165,7 +171,12 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const [createdContactId, setCreatedContactIdState] = useState<string | null>(null);
   const [createdContactType, setCreatedContactType] = useState<'customer' | 'supplier' | 'both' | null>(null);
   const [createdProduct, setCreatedProduct] = useState<any | null>(null);
-  
+  const [saleDrawerBespokeMode, setSaleDrawerBespokeMode] = useState(false);
+
+  const clearSaleDrawerBespokeMode = useCallback(() => {
+    setSaleDrawerBespokeMode(false);
+  }, []);
+
   // Packing Modal State (Global)
   const [packingModalOpen, setPackingModalOpen] = useState(false);
   const [packingModalData, setPackingModalData] = useState<{ itemId: number | string | null; productName: string; initialData?: any; onSave?: (details: any) => void } | null>(null);
@@ -206,7 +217,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
   const toggleSidebar = useCallback(() => setIsSidebarOpen(prev => !prev), []);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   
-  const openDrawer = useCallback((drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string; convertToFinal?: boolean }) => {
+  const openDrawer = useCallback((drawer: DrawerType, parent?: DrawerType, options?: { contactType?: 'customer' | 'supplier' | 'worker'; product?: any; sale?: any; purchase?: any; contact?: any; prefillName?: string; prefillPhone?: string; convertToFinal?: boolean; bespokeOrder?: boolean }) => {
     // Set contact type if provided (or from contact when editing)
     if (options?.contactType) {
       setDrawerContactType(options.contactType);
@@ -251,6 +262,11 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
       setParentDrawer(null);
     }
     if (drawer === 'addProduct') setCreatedProduct(null);
+    if (drawer === 'addSale' && options?.bespokeOrder) {
+      setSaleDrawerBespokeMode(true);
+    } else if (drawer === 'addSale' && !parent) {
+      setSaleDrawerBespokeMode(false);
+    }
     setActiveDrawer(drawer);
   }, []);
 
@@ -260,6 +276,7 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     setDrawerData(undefined);
     setDrawerPrefillName(undefined);
     setDrawerPrefillPhone(undefined);
+    setSaleDrawerBespokeMode(false);
     
     // If there's a parent drawer, return to it
     setParentDrawer(prev => {
@@ -312,13 +329,15 @@ export const NavigationProvider = ({ children }: { children: ReactNode }) => {
     partyLedgerParams,
     setPartyLedgerParams,
     openPartyLedger,
+    saleDrawerBespokeMode,
+    clearSaleDrawerBespokeMode,
   }), [
     currentView, isSidebarOpen, mobileNavOpen, activeDrawer, parentDrawer,
     selectedStudioSaleId, openSaleIdForView, selectedWorkerId, selectedProductionId,
     selectedStudioOrderIdV3, selectedManufacturingOrderId, drawerContactType, drawerData, drawerPrefillName,
     drawerPrefillPhone, createdContactId, createdContactType, createdProduct, packingModalOpen,
     packingModalData, partyLedgerParams, toggleSidebar, openDrawer, closeDrawer, setCreatedContactId, setCreatedProduct,
-    openPackingModal, closePackingModal, openPartyLedger
+    openPackingModal, closePackingModal, openPartyLedger, saleDrawerBespokeMode, clearSaleDrawerBespokeMode
   ]);
 
   return (

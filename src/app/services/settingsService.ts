@@ -2,6 +2,30 @@ import { supabase } from '@/lib/supabase';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import type { ErpDocumentType } from '@/app/services/documentNumberService';
 
+const ERP_SEQ_SENTINEL = '00000000-0000-0000-0000-000000000000';
+
+/** null = unknown; false = column missing on DB (PGRST204). */
+let numberingIncludeBranchCodeSupported: boolean | null = null;
+
+function isMissingColumnError(
+  error: { code?: string; message?: string } | null | undefined,
+  column: string,
+): boolean {
+  if (!error) return false;
+  const msg = error.message ?? '';
+  return (
+    error.code === 'PGRST204'
+    || msg.includes('schema cache')
+    || msg.includes(`'${column}'`)
+    || msg.includes(column)
+  );
+}
+
+/** Whether erp_document_sequences.include_branch_code is available (Phase B migration applied). */
+export function isNumberingIncludeBranchCodeSupported(): boolean {
+  return numberingIncludeBranchCodeSupported !== false;
+}
+
 // ============================================
 // 🎯 SETTINGS SERVICE
 // ============================================
@@ -165,11 +189,21 @@ export const settingsService = {
     );
   },
 
+  /** In-memory cache for negative-stock flag (5 min TTL). Cleared on refreshSettings / sign-out. */
+  _allowNegativeStockCache: new Map<string, { value: boolean; ts: number }>(),
+  clearAllowNegativeStockCache(companyId?: string): void {
+    if (companyId) this._allowNegativeStockCache.delete(companyId);
+    else this._allowNegativeStockCache.clear();
+  },
+
   /**
    * Company-level: allow negative stock (inventory_settings OR pos_settings OR legacy).
-   * Single source of truth for validation — always read from DB so all users get same behavior.
+   * Cached 5 minutes per company to avoid 3 setting reads on every sale save.
    */
   async getAllowNegativeStock(companyId: string): Promise<boolean> {
+    const cached = this._allowNegativeStockCache.get(companyId);
+    if (cached && Date.now() - cached.ts < 5 * 60 * 1000) return cached.value;
+
     const [invRecord, posRecord, legacyRecord] = await Promise.all([
       this.getSetting(companyId, 'inventory_settings'),
       this.getSetting(companyId, 'pos_settings'),
@@ -203,14 +237,18 @@ export const settingsService = {
 
     const result = invFlag === true || posFlag === true || legacy;
 
+    this._allowNegativeStockCache.set(companyId, { value: result, ts: Date.now() });
     if (import.meta.env?.DEV) {
-      console.log('[SETTINGS] getAllowNegativeStock:', {
-        companyId,
-        invFlag,
-        posFlag,
-        legacy,
-        result,
-      });
+      const { isDebugErpEnabled } = await import('@/app/lib/debugErp');
+      if (isDebugErpEnabled()) {
+        console.log('[SETTINGS] getAllowNegativeStock:', {
+          companyId,
+          invFlag,
+          posFlag,
+          legacy,
+          result,
+        });
+      }
     }
     return result;
   },
@@ -395,45 +433,72 @@ export const settingsService = {
   async getErpDocumentSequences(
     companyId: string,
     branchId?: string | null
-  ): Promise<{ document_type: string; prefix: string; last_number: number; padding: number; year_reset: boolean; branch_based: boolean }[]> {
+  ): Promise<{ document_type: string; prefix: string; last_number: number; padding: number; year_reset: boolean; branch_based: boolean; include_branch_code: boolean }[]> {
     const year = new Date().getFullYear();
-    const sentinel = '00000000-0000-0000-0000-000000000000';
-    let query = supabase
-      .from('erp_document_sequences')
-      .select('document_type, prefix, last_number, padding, year_reset, branch_based')
-      .eq('company_id', companyId)
-      .eq('year', year);
-    if (branchId && branchId !== 'all') {
-      query = query.eq('branch_id', branchId);
-    } else {
-      query = query.eq('branch_id', sentinel);
-    }
-    let result: any = await query.order('document_type');
-    if (result.error && (result.error.message?.includes('year_reset') || result.error.message?.includes('branch_based'))) {
-      result = await supabase
+    const branchFilter = branchId && branchId !== 'all' ? branchId : ERP_SEQ_SENTINEL;
+
+    const runQuery = (columns: string) =>
+      supabase
         .from('erp_document_sequences')
-        .select('document_type, prefix, last_number, padding')
+        .select(columns)
         .eq('company_id', companyId)
         .eq('year', year)
-        .eq('branch_id', sentinel)
+        .eq('branch_id', branchFilter)
         .order('document_type');
+
+    const mapRows = (
+      data: any[] | null,
+      opts: { includeBranchCode: boolean; defaultYearReset: boolean; defaultBranchBased: boolean },
+    ) =>
+      (data || []).map((r: any) => {
+        const p = (r.prefix || '').trim().replace(/-$/, '');
+        return {
+          document_type: r.document_type,
+          prefix: p,
+          last_number: Number(r.last_number ?? 0),
+          padding: Number(r.padding ?? 4),
+          year_reset: r.year_reset !== undefined ? r.year_reset !== false : opts.defaultYearReset,
+          branch_based: r.branch_based === true,
+          include_branch_code: opts.includeBranchCode ? r.include_branch_code === true : false,
+        };
+      });
+
+    let queriedIncludeBranchCode = numberingIncludeBranchCodeSupported !== false;
+    let columns = 'document_type, prefix, last_number, padding, year_reset, branch_based';
+    if (queriedIncludeBranchCode) {
+      columns += ', include_branch_code';
     }
+
+    let result: any = await runQuery(columns);
+
+    if (result.error && isMissingColumnError(result.error, 'include_branch_code')) {
+      numberingIncludeBranchCodeSupported = false;
+      queriedIncludeBranchCode = false;
+      columns = 'document_type, prefix, last_number, padding, year_reset, branch_based';
+      result = await runQuery(columns);
+    } else if (!result.error && queriedIncludeBranchCode) {
+      numberingIncludeBranchCodeSupported = true;
+    }
+
+    if (
+      result.error
+      && (isMissingColumnError(result.error, 'year_reset') || isMissingColumnError(result.error, 'branch_based'))
+    ) {
+      queriedIncludeBranchCode = false;
+      result = await runQuery('document_type, prefix, last_number, padding');
+    }
+
     const { data, error } = result;
     if (error) return [];
-    return (data || []).map((r: any) => {
-      const p = (r.prefix || '').trim().replace(/-$/, '');
-      return {
-        document_type: r.document_type,
-        prefix: p,
-        last_number: Number(r.last_number ?? 0),
-        padding: Number(r.padding ?? 4),
-        year_reset: r.year_reset !== false,
-        branch_based: r.branch_based === true,
-      };
+
+    return mapRows(data, {
+      includeBranchCode: queriedIncludeBranchCode,
+      defaultYearReset: true,
+      defaultBranchBased: false,
     });
   },
 
-  /** Update numbering rule in ERP engine (prefix, padding, year_reset, branch_based). last_number optional. */
+  /** Update numbering rule in ERP engine (prefix, padding, year_reset, branch_based, include_branch_code). last_number optional. */
   async setErpDocumentSequence(
     companyId: string,
     branchId: string | null,
@@ -442,10 +507,11 @@ export const settingsService = {
     lastNumber?: number,
     padding: number = 4,
     yearReset: boolean = true,
-    branchBased: boolean = false
-  ): Promise<void> {
+    branchBased: boolean = false,
+    includeBranchCode: boolean = false
+  ): Promise<{ includeBranchCodeApplied: boolean }> {
     const year = new Date().getFullYear();
-    const branchUuid = branchId && branchId !== 'all' ? branchId : '00000000-0000-0000-0000-000000000000';
+    const branchUuid = branchId && branchId !== 'all' ? branchId : ERP_SEQ_SENTINEL;
     const prefixClean = (prefix || '').trim().replace(/-$/, '');
     const payload: Record<string, unknown> = {
       company_id: companyId,
@@ -459,10 +525,32 @@ export const settingsService = {
       branch_based: branchBased,
       updated_at: new Date().toISOString(),
     };
-    const { error } = await supabase.from('erp_document_sequences').upsert(payload, {
+
+    const wantsIncludeBranchCode = includeBranchCode && branchBased;
+    let includeBranchCodeApplied = false;
+
+    if (numberingIncludeBranchCodeSupported !== false && wantsIncludeBranchCode) {
+      payload.include_branch_code = true;
+    }
+
+    let { error } = await supabase.from('erp_document_sequences').upsert(payload, {
       onConflict: 'company_id,branch_id,document_type,year',
     });
+
+    if (error && isMissingColumnError(error, 'include_branch_code')) {
+      numberingIncludeBranchCodeSupported = false;
+      delete payload.include_branch_code;
+      const retry = await supabase.from('erp_document_sequences').upsert(payload, {
+        onConflict: 'company_id,branch_id,document_type,year',
+      });
+      error = retry.error;
+    } else if (!error && wantsIncludeBranchCode && numberingIncludeBranchCodeSupported !== false) {
+      numberingIncludeBranchCodeSupported = true;
+      includeBranchCodeApplied = true;
+    }
+
     if (error) throw error;
+    return { includeBranchCodeApplied };
   },
 
   // Increment document sequence and return next number. Tries ERP engine first for supported types.

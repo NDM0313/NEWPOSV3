@@ -13,6 +13,7 @@ import {
   canPostStockForPurchaseStatus,
   canPostStockForSaleStatus,
 } from '@/app/lib/postingStatusGate';
+import { filterSaleLinesForStockPosting } from '@/app/lib/saleStockLineEligibility';
 
 const EPS = 1e-4;
 
@@ -26,18 +27,58 @@ function normMovType(t: unknown): string {
     .toLowerCase();
 }
 
-async function fetchSaleLines(saleId: string): Promise<
+async function fetchSaleLines(
+  saleId: string,
+  companyId: string,
+): Promise<
   { product_id: string; variation_id: string | null; quantity: number; unit_price: number }[]
 > {
-  let { data } = await supabase
+  const { data } = await supabase
     .from('sales_items')
-    .select('product_id, variation_id, quantity, unit_price')
+    .select(
+      'product_id, variation_id, quantity, unit_price, bespoke_parent_item_id, customization_details, product:products(sku, track_stock)',
+    )
     .eq('sale_id', saleId);
-  return (data || []).map((r: any) => ({
-    product_id: String(r.product_id ?? ''),
-    variation_id: r.variation_id ?? null,
-    quantity: Number(r.quantity) || 0,
-    unit_price: Number(r.unit_price) || 0,
+
+  let customGenericProductIds: string[] | null = null;
+  try {
+    const { data: bs } = await supabase
+      .from('business_settings')
+      .select('custom_generic_product_ids')
+      .eq('company_id', companyId)
+      .maybeSingle();
+    customGenericProductIds =
+      (bs as { custom_generic_product_ids?: string[] } | null)?.custom_generic_product_ids ?? null;
+  } catch {
+    /* ignore */
+  }
+
+  const rows = (data || []).map((r: any) => {
+    const product = r.product as { sku?: string; track_stock?: boolean } | null;
+    return {
+      product_id: String(r.product_id ?? ''),
+      variation_id: r.variation_id ?? null,
+      quantity: Number(r.quantity) || 0,
+      unit_price: Number(r.unit_price) || 0,
+      bespoke_parent_item_id: r.bespoke_parent_item_id ?? null,
+      customization_details: r.customization_details,
+      product_sku: product?.sku ?? null,
+      track_stock: product?.track_stock,
+    };
+  });
+
+  const productMap = new Map(
+    rows.map((row) => [
+      row.product_id,
+      { sku: row.product_sku, track_stock: row.track_stock },
+    ]),
+  );
+
+  return filterSaleLinesForStockPosting(rows, productMap, customGenericProductIds).map((row) => ({
+    product_id: row.product_id,
+    variation_id: row.variation_id ?? null,
+    quantity: row.quantity ?? 0,
+    unit_price: row.unit_price ?? 0,
   }));
 }
 
@@ -151,7 +192,7 @@ export async function syncSaleStockForDocument(saleId: string): Promise<Document
     movMap.set(k, (movMap.get(k) ?? 0) + (Number((m as any).quantity) || 0));
   }
 
-  const lines = await fetchSaleLines(saleId);
+  const lines = await fetchSaleLines(saleId, (sale as { company_id: string }).company_id);
   const lineMap = new Map<string, { qty: number; unit_price: number }>();
   for (const row of lines) {
     if (row.quantity <= 0) continue;
@@ -166,6 +207,20 @@ export async function syncSaleStockForDocument(saleId: string): Promise<Document
   const companyId = (sale as any).company_id as string;
   const branchId = (sale as any).branch_id as string | null;
   const invoiceNo = String((sale as any).invoice_no || saleId).slice(0, 80);
+
+  let allMatched = true;
+  for (const k of keys) {
+    const lineQty = lineMap.get(k)?.qty ?? 0;
+    const expectedMovSum = -lineQty;
+    const actual = movMap.get(k) ?? 0;
+    if (Math.abs(expectedMovSum - actual) > EPS) {
+      allMatched = false;
+      break;
+    }
+  }
+  if (allMatched) {
+    return { saleId, adjustmentsInserted: 0, keysAdjusted: [] };
+  }
 
   let adjustmentsInserted = 0;
   const keysAdjusted: string[] = [];

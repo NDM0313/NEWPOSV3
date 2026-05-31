@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { FullStockLedgerView } from '../products/FullStockLedgerView';
 import { StockAdjustmentDrawer } from './StockAdjustmentDrawer';
 import { ListToolbar } from '../ui/list-toolbar';
+import { Pagination } from '../ui/pagination';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
 
 export const InventoryDesignTestPage = () => {
@@ -33,6 +34,7 @@ export const InventoryDesignTestPage = () => {
   const [overviewRows, setOverviewRows] = useState<InventoryOverviewRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [comboDetailsCache, setComboDetailsCache] = useState<Record<string, Array<{ product_name: string; qty: number; variation_sku?: string | null }>>>({});
@@ -97,15 +99,36 @@ export const InventoryDesignTestPage = () => {
     return list;
   }, [overviewRows, searchTerm, overviewCategoryFilter, overviewStatusFilter, overviewMovementFilter]);
 
-  const displayedProducts = useMemo(() => {
-    const size = typeof pageSize === 'number' && pageSize > 0 ? pageSize : filteredProducts.length;
-    return filteredProducts.slice(0, size);
-  }, [filteredProducts, pageSize]);
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize) || 1);
 
-  // Load combo items when a combo product row is expanded (must run after displayedProducts is defined)
+  const paginatedProducts = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredProducts.slice(start, start + pageSize);
+  }, [filteredProducts, currentPage, pageSize]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, overviewCategoryFilter, overviewStatusFilter, overviewMovementFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
+
+  // Load combo items when a combo product row is expanded (must run after paginatedProducts is defined)
   useEffect(() => {
     if (!companyId || !combosEnabled) return;
-    const toLoad = displayedProducts.filter(
+    const toLoad = paginatedProducts.filter(
       p => (p as any).isComboProduct && (p as any).comboItemCount > 0 && expandedIds.has(p.id) && !comboDetailsCache[p.id]
     );
     toLoad.forEach(async (product) => {
@@ -129,7 +152,7 @@ export const InventoryDesignTestPage = () => {
         setLoadingComboId(prev => (prev === product.id ? null : prev));
       }
     });
-  }, [companyId, combosEnabled, displayedProducts, expandedIds]);
+  }, [companyId, combosEnabled, paginatedProducts, expandedIds]);
 
   const overviewFilterActiveCount = [overviewCategoryFilter !== 'all', overviewStatusFilter !== 'all', overviewMovementFilter !== 'all'].filter(Boolean).length;
   const uniqueCategories = useMemo(() => {
@@ -252,7 +275,13 @@ export const InventoryDesignTestPage = () => {
       <div className="shrink-0 border-b border-gray-800">
         <ListToolbar
           search={{ value: searchTerm, onChange: setSearchTerm, placeholder: 'Search by product name, SKU, or category...' }}
-          rowsSelector={{ value: pageSize, onChange: setPageSize, totalItems: filteredProducts.length }}
+          rowsSelector={{
+            value: pageSize,
+            onChange: handlePageSizeChange,
+            totalItems: filteredProducts.length,
+            options: [25, 50, 100],
+            showAllOption: false,
+          }}
           columnsManager={{
             columns: columnsList,
             visibleColumns,
@@ -327,7 +356,7 @@ export const InventoryDesignTestPage = () => {
                     <p className="text-gray-400 text-sm">Loading inventory...</p>
                   </td>
                 </tr>
-              ) : displayedProducts.length === 0 ? (
+              ) : paginatedProducts.length === 0 ? (
                 <tr>
                   <td colSpan={visibleCols.length} className="px-6 py-12 text-center">
                     <Package size={40} className="mx-auto text-gray-600 mb-2" />
@@ -335,7 +364,7 @@ export const InventoryDesignTestPage = () => {
                   </td>
                 </tr>
               ) : (
-                displayedProducts.flatMap(product => {
+                paginatedProducts.flatMap(product => {
                   const rows: React.ReactNode[] = [];
                   const hasVariations = product.hasVariations && (product as any).variations?.length > 0;
                   const isCombo = combosEnabled && !!(product as any).isComboProduct && ((product as any).comboItemCount ?? 0) > 0;
@@ -537,6 +566,15 @@ export const InventoryDesignTestPage = () => {
           </div>
         </div>
       </div>
+
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        totalItems={filteredProducts.length}
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+      />
 
       {ledgerProduct && (
         <FullStockLedgerView

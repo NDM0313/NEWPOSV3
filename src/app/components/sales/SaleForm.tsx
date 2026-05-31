@@ -96,6 +96,16 @@ import {
     AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { PackingDetails } from '../transactions/PackingEntryModal';
+import { BespokeDetailsModal } from '../bespoke/BespokeDetailsModal';
+import { parseCustomizationDetails, deriveBaseUnitPriceFromStored, resolveSaleLineUnitPrice, buildCustomizationDetailsForPersist, buildBespokeMetadataForPersist, type CustomizationDetails } from '@/app/types/bespoke';
+import type { BespokeInjectionPayload } from '@/app/lib/bespokeCartInjection';
+import {
+  syncFabricChildLines,
+  orderSaleLinesForPersist,
+  hydrateFabricDraftsFromChildren,
+  isInjectedBespokeLine,
+  resolveFabricMaterialRetailPrice,
+} from '@/app/lib/bespokeCartInjection';
 import { toast } from "sonner";
 import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import { SaleItemsSection } from './SaleItemsSection';
@@ -118,6 +128,7 @@ import { useNavigation } from '@/app/context/NavigationContext';
 import { Loader2 } from 'lucide-react';
 import { useDocumentNumbering } from '@/app/hooks/useDocumentNumbering';
 import { documentNumberService } from '@/app/services/documentNumberService';
+import { isPreFinalSaleDocumentNo } from '@/app/lib/documentDisplayNumbers';
 import { shipmentService, mapShipmentRowsToUi, type ShipmentType } from '@/app/services/shipmentService';
 import { courierService, type CourierRow } from '@/app/services/courierService';
 import { ShipmentModal } from './ShipmentModal';
@@ -132,6 +143,8 @@ interface SaleItem {
     name: string;
     sku: string;
     price: number;
+    /** Retail/wholesale base before bespoke customization charges. */
+    baseUnitPrice?: number;
     qty: number;
     // Standard Variation Fields (from backend product_variations)
     size?: string;
@@ -141,6 +154,7 @@ interface SaleItem {
     thaans?: number;
     meters?: number;
     packingDetails?: PackingDetails;
+    customizationDetails?: CustomizationDetails;
     packing_quantity?: number; // Backend-ready: total_meters
     packing_unit?: string; // Backend-ready: 'meters' etc.
     unit?: string; // Short code (pcs, m, yd) – from DB on edit, from product on new
@@ -154,6 +168,12 @@ interface SaleItem {
     selectedVariationId?: string; // Currently selected variation ID
     /** Set when user opens packing modal; cleared on save. Used to block submit if packing not saved. */
     packingTouched?: boolean;
+    bespokeParentCartId?: number;
+    bespokeRole?: 'fabric';
+    isBespokeInjected?: boolean;
+    /** DB parent line id when editing existing sale */
+    dbLineId?: string;
+    bespokeParentItemId?: string | null;
 }
 
 interface PartialPayment {
@@ -163,6 +183,8 @@ interface PartialPayment {
     reference?: string;
     notes?: string;
     attachments?: PaymentAttachment[];
+    /** Existing order deposit — do not re-post on convert save */
+    isExisting?: boolean;
 }
 
 interface ExtraExpense {
@@ -236,11 +258,34 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // Supabase & Context
     const { companyId, branchId: contextBranchId, user, userRole, accessibleBranchIds, requiresBranchSelection } = useSupabase();
     const { canManageSettings } = useCheckPermission();
-    const { inventorySettings, loading: settingsLoading, company } = useSettings();
+    const { inventorySettings, businessSettings, loading: settingsLoading, company } = useSettings();
     const enablePacking = inventorySettings.enablePacking;
-    const { createSale, updateSale, deleteSale } = useSales();
-    const { openDrawer, closeDrawer, activeDrawer, createdContactId, createdContactType, setCreatedContactId, createdProduct, setCreatedProduct, openPackingModal, setCurrentView, setSelectedStudioSaleId } = useNavigation();
-    
+    const enableBespoke = businessSettings.enableBespokeOrders;
+    const bespokeFormConfig = businessSettings.bespokeFormConfig;
+    const { createSale, updateSale, deleteSale, refreshSales } = useSales();
+    const {
+        openDrawer,
+        closeDrawer,
+        activeDrawer,
+        createdContactId,
+        createdContactType,
+        setCreatedContactId,
+        createdProduct,
+        setCreatedProduct,
+        openPackingModal,
+        setCurrentView,
+        setSelectedStudioSaleId,
+        saleDrawerBespokeMode,
+        clearSaleDrawerBespokeMode,
+    } = useNavigation();
+
+    useEffect(() => {
+        if (!saleDrawerBespokeMode || initialSale || !enableBespoke) return;
+        setSaleStatus('order');
+        toast.info('Custom order mode — status set to Order. Add products and customize each line.');
+        clearSaleDrawerBespokeMode();
+    }, [saleDrawerBespokeMode, initialSale, enableBespoke, clearSaleDrawerBespokeMode]);
+
     // Permission-based: settings access allows branch selection and full branch list (was role === 'admin')
     const isAdmin = canManageSettings;
     
@@ -264,6 +309,34 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     const [pendingCustomerId, setPendingCustomerId] = useState<string | null>(null);
     const dataLoadedRef = useRef(false); // Track if initial data load has completed
     const stockBranchRef = useRef<string | null>(null);
+    const itemsHydratedRef = useRef(!convertToFinal || !initialSale?.id);
+    const paymentsHydratedRef = useRef(!convertToFinal || !initialSale?.id);
+    const extraExpensesHydratedRef = useRef(!convertToFinal || !initialSale?.id);
+    const [extraExpensesHydrated, setExtraExpensesHydrated] = useState(!convertToFinal || !initialSale?.id);
+    const [convertHydrationReady, setConvertHydrationReady] = useState(
+        !convertToFinal || !initialSale?.id,
+    );
+
+    useEffect(() => {
+        const ready = !convertToFinal || !initialSale?.id;
+        itemsHydratedRef.current = ready;
+        paymentsHydratedRef.current = ready;
+        extraExpensesHydratedRef.current = ready;
+        setExtraExpensesHydrated(ready);
+        setConvertHydrationReady(ready);
+    }, [initialSale?.id, convertToFinal]);
+
+    // Fresh bootstrap when opening a different sale or convert-to-final mode
+    useEffect(() => {
+        dataLoadedRef.current = false;
+    }, [initialSale?.id, convertToFinal]);
+
+    // Edit/convert: show form immediately; item hydration runs in parallel
+    useEffect(() => {
+        if (initialSale?.id) {
+            setLoading(false);
+        }
+    }, [initialSale?.id]);
     const [saleDate, setSaleDate] = useState<Date>(new Date());
     const [refNumber, setRefNumber] = useState("");
     const [saleNotes, setSaleNotes] = useState(""); // Notes field for sale (saves to database)
@@ -328,6 +401,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
     // Payment State
     const [partialPayments, setPartialPayments] = useState<PartialPayment[]>([]);
+    const [paymentsLoading, setPaymentsLoading] = useState(false);
     
     // Payment Form State
     const [newPaymentMethod, setNewPaymentMethod] = useState<'cash' | 'bank' | 'Mobile Wallet'>('cash');
@@ -428,12 +502,60 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
     // Packing Modal State - Now using global modal via NavigationContext
     const [activePackingItemId, setActivePackingItemId] = useState<number | null>(null);
+    const [bespokeItemId, setBespokeItemId] = useState<number | null>(null);
 
     // Document numbering (must be before displayInvoiceNumber useMemo)
     const { generateDocumentNumber, incrementNextNumber } = useDocumentNumbering();
 
+    const initialOrderStatus =
+        String((initialSale as { status?: string })?.status || '').toLowerCase() === 'order';
+    const isOrderToFinal =
+        convertToFinal ||
+        (Boolean(initialSale?.id) && initialOrderStatus && saleStatus === 'final');
+    const needsConvertHydration = isOrderToFinal;
+
+    useEffect(() => {
+        if (!needsConvertHydration || !initialSale?.id) return;
+        if (itemsHydratedRef.current && paymentsHydratedRef.current && extraExpensesHydratedRef.current) {
+            setConvertHydrationReady(true);
+        } else {
+            setConvertHydrationReady(false);
+        }
+    }, [needsConvertHydration, initialSale?.id, saleStatus, extraExpensesHydrated]);
+
+    useEffect(() => {
+        if (!needsConvertHydration || !initialSale?.id || convertHydrationReady) return;
+        const timer = window.setTimeout(() => {
+            if (!itemsHydratedRef.current || !paymentsHydratedRef.current || !extraExpensesHydratedRef.current) {
+                toast.warning(
+                    'Order data took longer than expected. Verify line totals, extra charges, and deposit before saving.',
+                );
+            }
+            itemsHydratedRef.current = true;
+            paymentsHydratedRef.current = true;
+            extraExpensesHydratedRef.current = true;
+            setExtraExpensesHydrated(true);
+            setConvertHydrationReady(true);
+        }, 8000);
+        return () => window.clearTimeout(timer);
+    }, [needsConvertHydration, initialSale?.id, convertHydrationReady]);
+
+    const getSaleItemBasePrice = (item: SaleItem): number => {
+        if (item.baseUnitPrice != null && Number.isFinite(item.baseUnitPrice)) {
+            return item.baseUnitPrice;
+        }
+        return deriveBaseUnitPriceFromStored(item.price, item.customizationDetails);
+    };
+
+    const getSaleItemUnitPrice = (item: SaleItem): number =>
+        resolveSaleLineUnitPrice({
+            price: item.price,
+            baseUnitPrice: item.baseUnitPrice,
+            customizationDetails: item.customizationDetails,
+        });
+
     // Calculations
-    const subtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    const subtotal = items.reduce((sum, item) => sum + getSaleItemUnitPrice(item) * item.qty, 0);
     const expensesTotal = extraExpenses.reduce((sum, exp) => sum + exp.amount, 0);
     
     // Calculate discount amount
@@ -443,8 +565,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     
     // Shipment charges from sale_shipments (when editing existing sale with shipment(s))
     const shipmentChargesFromApi = saleShipments.reduce((s, x) => s + x.chargedToCustomer, 0);
-    // Document state: only Final enables shipping/shipment/attachments/extra expenses
+    // Document state: Order or Final enables shipping/shipment/attachments/extra expenses
     const isFinal = saleStatus === 'final';
+    const saleExtrasActive = saleStatus === 'final' || saleStatus === 'order';
+    const saleExtrasPanelLocked = !saleExtrasActive;
 
     // PART 2: grand_total = items_total + extra_expenses + shipping_charges - discount (shipping_charges = shipment.charged_to_customer or input for new sale)
     const afterDiscountTotal = subtotal - discountAmount + expensesTotal;
@@ -550,7 +674,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
         
         const results = products.filter(p => {
             // Match product name
-            const nameMatch = p.name.toLowerCase().includes(searchLower);
+            const nameMatch = (p.name ?? '').toLowerCase().includes(searchLower);
             
             // Match SKU (full or numeric part)
             const skuMatch = matchesSku(p.sku, searchTerm);
@@ -633,12 +757,19 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // This prevents remount/reload from resetting customer selection
     useEffect(() => {
         const loadData = async () => {
-            if (!companyId) return;
-            
+            if (!companyId) {
+                setLoading(false);
+                return;
+            }
+
+            const finishBootstrapLoading = () => setLoading(false);
+
             // CRITICAL: Don't reload if data has already been loaded (prevents state reset)
-            // This prevents remount/reload from resetting customer selection
             if (dataLoadedRef.current) {
-                console.log('[SALE FORM] Skipping loadData - data already loaded (prevents state reset)');
+                if (import.meta.env?.DEV) {
+                    console.log('[SALE FORM] Skipping loadData - data already loaded (prevents state reset)');
+                }
+                finishBootstrapLoading();
                 return;
             }
             const branchForBalances =
@@ -649,6 +780,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                       : null;
             const cacheKey = `${companyId}:${branchForBalances ?? 'all'}`;
             const cached = saleFormBootstrapCache.get(cacheKey);
+            const isEditOrConvert = Boolean(initialSale?.id);
             if (cached && Date.now() - cached.ts < SALE_FORM_BOOTSTRAP_TTL_MS) {
                 setCustomers(cached.customers);
                 setProducts(cached.products);
@@ -658,6 +790,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 dataLoadedRef.current = true;
                 if (import.meta.env?.DEV) console.log('[SALE FORM] Reused bootstrap cache');
                 stockBranchRef.current = branchForBalances ?? 'all';
+                finishBootstrapLoading();
                 return;
             }
             
@@ -729,15 +862,28 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     }
                 }
                 
-                // Load products + stock via single inventory overview (no per-product movement queries)
+                // Load products (+ stock overview for new sales only; edit/convert skips slow inventory pass)
                 const branchForStock =
-                  branchForBalances && branchForBalances !== 'all' ? branchForBalances : undefined;
+                  !isEditOrConvert && branchForBalances && branchForBalances !== 'all'
+                    ? branchForBalances
+                    : undefined;
                 const { unitService } = await import('@/app/services/unitService');
-                const [productsData, unitsData, overview] = await Promise.all([
-                  productService.getAllProducts(companyId),
-                  unitService.getAll(companyId),
-                  inventoryService.getInventoryOverview(companyId, branchForStock),
-                ]);
+                let productsData: Awaited<ReturnType<typeof productService.getAllProducts>>;
+                let unitsData: Awaited<ReturnType<typeof unitService.getAll>>;
+                let overview: Awaited<ReturnType<typeof inventoryService.getInventoryOverview>> = [];
+
+                if (isEditOrConvert) {
+                    [productsData, unitsData] = await Promise.all([
+                      productService.getAllProducts(companyId),
+                      unitService.getAll(companyId),
+                    ]);
+                } else {
+                    [productsData, unitsData, overview] = await Promise.all([
+                      productService.getAllProducts(companyId),
+                      unitService.getAll(companyId),
+                      inventoryService.getInventoryOverview(companyId, branchForStock),
+                    ]);
+                }
                 const unitsMap = new Map(unitsData.map((u) => [u.id, u]));
 
                 const productsListBase = productsData.map((p) => {
@@ -756,7 +902,9 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     unitAllowDecimal: unit?.allow_decimal ?? false,
                   };
                 });
-                const productsList = mergeOverviewStockIntoSaleProducts(productsListBase, overview);
+                const productsList = isEditOrConvert
+                  ? productsListBase
+                  : mergeOverviewStockIntoSaleProducts(productsListBase, overview);
                 
                 setProducts(productsList);
                 stockBranchRef.current = branchForBalances ?? 'all';
@@ -1179,6 +1327,21 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // Pre-populate form when editing (TASK 3 FIX) – date must come from DB, not current date
     useEffect(() => {
         if (initialSale) {
+            const paidOptimistic = Number((initialSale as { paid?: number }).paid ?? 0);
+            if (paidOptimistic > 0) {
+                setPartialPayments([{
+                    id: 'optimistic-paid',
+                    method: ((initialSale as { paymentMethod?: string }).paymentMethod || 'cash') as 'cash' | 'bank' | 'Mobile Wallet',
+                    amount: paidOptimistic,
+                    reference: '',
+                    attachments: [],
+                    isExisting: true,
+                }]);
+            }
+            if (initialSale.id) {
+                setPaymentsLoading(true);
+            }
+
             // Pre-fill header fields – use DB date so picker shows saved date (never current for saved sale)
             const dateRaw = initialSale.date || (initialSale as any).createdAt || (initialSale as any).invoice_date;
             if (dateRaw) {
@@ -1262,35 +1425,75 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         }
                     }
                     
+                    const parentDbId =
+                        item.bespoke_parent_item_id ??
+                        item.bespokeParentItemId ??
+                        null;
+                    const isFabricChild = !!parentDbId;
+                    const dbLineId = String(item.id ?? item.dbLineId ?? '');
+                    const details = parseCustomizationDetails(
+                        item.customization_details ?? item.customizationDetails,
+                    );
+                    const storedUnitPrice = Number(item.price ?? item.unit_price ?? 0);
+                    const productRetail = Number((item.product as { retail_price?: number } | undefined)?.retail_price ?? 0) || 0;
+                    const resolvedStoredPrice =
+                        storedUnitPrice > 0
+                            ? storedUnitPrice
+                            : isFabricChild && productRetail > 0
+                              ? productRetail
+                              : storedUnitPrice;
+                    const baseUnitPrice = isFabricChild
+                        ? resolvedStoredPrice
+                        : deriveBaseUnitPriceFromStored(resolvedStoredPrice, details);
+
                     return {
                         id: baseTimestamp + index,
+                        dbLineId,
+                        bespokeParentItemId: parentDbId,
                         productId: item.productId || item.product_id || '',
                         name: item.productName || item.product_name || '',
                         sku: item.sku || '',
-                        price: item.price ?? item.unit_price ?? 0,
+                        price: isFabricChild ? resolvedStoredPrice : baseUnitPrice,
+                        baseUnitPrice,
                         qty: item.quantity || 0,
                         size: item.size,
                         color: item.color,
                         variationId,
                         selectedVariationId: variationId,
-                        showVariations: hasVariation || Boolean(item.product?.has_variations),
+                        showVariations: isFabricChild
+                            ? false
+                            : hasVariation || Boolean(item.product?.has_variations),
                         stock: 0,
                         lastPurchasePrice: undefined,
                         lastSupplier: undefined,
                         unit: item.unit ?? undefined,
-                        packingDetails: packingDetails, // CRITICAL: Pass complete structure
+                        packingDetails: packingDetails,
                         thaans: packingDetails?.total_boxes || packingDetails?.boxes || 0,
                         meters: packingDetails?.total_meters || packingDetails?.meters || 0,
+                        customizationDetails: buildBespokeMetadataForPersist(details) ?? details,
+                        isBespokeInjected: !!parentDbId,
+                        bespokeRole: parentDbId ? ('fabric' as const) : undefined,
                     };
                 });
-                console.log('[SALE FORM] ✅ Converted items for edit mode:', convertedItems.length, 'items');
-                console.log('[SALE FORM] Item IDs:', convertedItems.map((item, idx) => ({ index: idx, id: item.id, name: item.name, qty: item.qty, price: item.price })));
-                setItems(convertedItems);
+                const parentIdByDb = new Map<string, number>();
+                convertedItems.forEach((row) => {
+                    if (!row.bespokeParentItemId && row.dbLineId) {
+                        parentIdByDb.set(row.dbLineId, row.id);
+                    }
+                });
+                const linked = convertedItems.map((row) => {
+                    if (!row.bespokeParentItemId) return row;
+                    const parentCartId = parentIdByDb.get(String(row.bespokeParentItemId));
+                    if (parentCartId == null) return row;
+                    return { ...row, bespokeParentCartId: parentCartId };
+                });
+                console.log('[SALE FORM] ✅ Converted items for edit mode:', linked.length, 'items');
+                setItems(linked);
             };
             // 🔒 LOCK CHECK: Prevent editing if sale has returns
             if (initialSale.id) {
                     saleService.getSaleById(initialSale.id)
-                    .then((full) => {
+                    .then(async (full) => {
                         // Check if sale has returns (LOCKED)
                         if (full.hasReturn) {
                             toast.error('Cannot edit sale: This sale has a return and is locked. Returns cannot be edited or deleted.');
@@ -1307,6 +1510,64 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             } else if (initialSale.items && initialSale.items.length > 0) {
                                 mapItemsToForm(initialSale.items);
                             }
+                        }
+                        itemsHydratedRef.current = true;
+
+                        // Always load payment history for edit/convert (deposits must reduce balance due)
+                        setPaymentsLoading(true);
+                        let paymentCount = 0;
+                        try {
+                            const existingPayments = await saleService.getSalePayments(initialSale.id);
+                            paymentCount = existingPayments?.length ?? 0;
+                            const paidFallback = Number((full as any).paid_amount ?? initialSale.paid ?? 0);
+                            if (existingPayments && existingPayments.length > 0) {
+                                setPartialPayments(
+                                    existingPayments.map((p: any, index: number) => ({
+                                        id: `existing-${p.id || index}`,
+                                        method: (p.method === 'cash' ? 'cash'
+                                            : p.method === 'bank' || p.method === 'card' ? 'bank'
+                                            : 'Mobile Wallet') as 'cash' | 'bank' | 'Mobile Wallet',
+                                        amount: p.amount,
+                                        reference: p.referenceNo || '',
+                                        attachments: [],
+                                        isExisting: true,
+                                    })),
+                                );
+                            } else if (paidFallback > 0) {
+                                setPartialPayments([{
+                                    id: '1',
+                                    method: (initialSale.paymentMethod || 'cash') as 'cash' | 'bank' | 'Mobile Wallet',
+                                    amount: paidFallback,
+                                    reference: '',
+                                    attachments: [],
+                                    isExisting: true,
+                                }]);
+                            }
+                        } catch (paymentErr) {
+                            console.error('[SALE FORM] Error loading existing payments:', paymentErr);
+                            const paidFallback = Number((full as any).paid_amount ?? initialSale.paid ?? 0);
+                            if (paidFallback > 0) {
+                                setPartialPayments([{
+                                    id: '1',
+                                    method: (initialSale.paymentMethod || 'cash') as 'cash' | 'bank' | 'Mobile Wallet',
+                                    amount: paidFallback,
+                                    reference: '',
+                                    attachments: [],
+                                    isExisting: true,
+                                }]);
+                            }
+                        } finally {
+                            setPaymentsLoading(false);
+                        }
+                        paymentsHydratedRef.current = true;
+                        if (import.meta.env?.DEV) {
+                            const sampleItem = full.items?.[0];
+                            const cd = sampleItem?.customization_details ?? sampleItem?.customizationDetails;
+                            console.log('[SALE FORM] Hydrate complete:', {
+                                paymentCount,
+                                paidAmount: (full as any).paid_amount,
+                                customizationKeys: cd && typeof cd === 'object' ? Object.keys(cd as object) : [],
+                            });
                         }
                         // Sync deadline & notes from DB so edit always shows saved values (not null)
                         const dbDeadline = (full as any).deadline || getStudioDeadlineFromNotes((full as any).notes);
@@ -1355,10 +1616,28 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 notes: (c as any).notes || ''
                             }));
                             setExtraExpenses(expenses);
+                        } else {
+                            const extraFromDb =
+                                Number((full as any).extra_expenses ?? 0) ||
+                                (Number((full as any).expenses ?? 0) > 0 && Number((full as any).shipment_charges ?? 0) <= 0
+                                    ? Number((full as any).expenses)
+                                    : 0);
+                            if (extraFromDb > 0) {
+                                setExtraExpenses([{
+                                    id: '1',
+                                    type: 'stitching',
+                                    amount: extraFromDb,
+                                    notes: '',
+                                }]);
+                            }
                         }
+                        extraExpensesHydratedRef.current = true;
+                        setExtraExpensesHydrated(true);
                     })
                     .catch((err: any) => {
                         console.warn('[SaleForm] Could not load sale items for edit:', err);
+                        extraExpensesHydratedRef.current = true;
+                        setExtraExpensesHydrated(true);
                         if (err.message?.includes('return') || err.message?.includes('locked')) {
                             toast.error(err.message);
                             onClose();
@@ -1366,55 +1645,11 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     });
             } else if (initialSale.items && initialSale.items.length > 0) {
                 mapItemsToForm(initialSale.items);
+                itemsHydratedRef.current = true;
             }
 
-            // CRITICAL FIX: Pre-fill payments from existing payments (split by method)
-            if (initialSale.paid > 0) {
-                // Fetch existing payments to show split
-                const loadExistingPayments = async () => {
-                    try {
-                        const { saleService } = await import('@/app/services/saleService');
-                        const existingPayments = await saleService.getSalePayments(initialSale.id);
-                        
-                        if (existingPayments && existingPayments.length > 0) {
-                            // Convert to partialPayments format (read-only for existing)
-                            const paymentRows = existingPayments.map((p: any, index: number) => ({
-                                id: `existing-${p.id || index}`,
-                                method: (p.method === 'cash' ? 'cash' : 
-                                        p.method === 'bank' || p.method === 'card' ? 'bank' : 
-                                        'Mobile Wallet') as 'cash' | 'bank' | 'Mobile Wallet',
-                                amount: p.amount,
-                                reference: p.referenceNo || '',
-                                attachments: [],
-                                isExisting: true // Mark as existing (read-only)
-                            }));
-                            setPartialPayments(paymentRows);
-                        } else {
-                            // Fallback: Single payment if no breakdown available
-                            setPartialPayments([{
-                                id: '1',
-                                method: (initialSale.paymentMethod || 'cash') as 'cash' | 'bank' | 'Mobile Wallet',
-                                amount: initialSale.paid,
-                                reference: '',
-                                attachments: []
-                            }]);
-                        }
-                    } catch (error) {
-                        console.error('[SALE FORM] Error loading existing payments:', error);
-                        // Fallback: Single payment
-                        setPartialPayments([{
-                            id: '1',
-                            method: (initialSale.paymentMethod || 'cash') as 'cash' | 'bank' | 'other',
-                            amount: initialSale.paid,
-                            reference: '',
-                            attachments: []
-                        }]);
-                    }
-                };
-                
-                loadExistingPayments();
-            }
-            
+            // Pre-fill charges from context only when not loading full sale from API (id path hydrates async)
+            if (!initialSale.id) {
             // Pre-fill from sale_charges: shipping → Shipping section; others → Extra Expenses. Exclude 'discount'.
             const charges = (initialSale as any).charges ?? (initialSale as any).sale_charges ?? [];
             const chargeList = Array.isArray(charges) ? charges : [];
@@ -1438,6 +1673,9 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     notes: 'Shipping/Other charges'
                 }]);
                 setShippingChargeInput(initialSale.expenses);
+            }
+            extraExpensesHydratedRef.current = true;
+            setExtraExpensesHydrated(true);
             }
             
             // Pre-fill discount
@@ -1646,8 +1884,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     const displayInvoiceNumber = useMemo(() => {
         if (initialSale?.invoiceNo) {
             const inv = initialSale.invoiceNo;
-            // User selected Final in edit mode: show the SL- number they will get on save (not DRAFT-0005)
-            if (saleStatus === 'final' && (inv.startsWith('DRAFT-') || inv.startsWith('QT-') || inv.startsWith('SO-'))) {
+            if (saleStatus === 'final' && isPreFinalSaleDocumentNo(inv)) {
                 if (typeof generateDocumentNumber === 'function') return generateDocumentNumber('invoice');
                 return 'SL-0001';
             }
@@ -1677,6 +1914,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 name: product.name,
                 sku: product.sku,
                 price: product.price,
+                baseUnitPrice: product.price,
                 qty: 1,
                 size: undefined,
                 color: undefined,
@@ -1700,6 +1938,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 name: product.name,
                 sku: product.sku,
                 price: product.price,
+                baseUnitPrice: product.price,
                 qty: 1,
                 size: undefined,
                 color: undefined,
@@ -1754,6 +1993,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     color: color,
                     sku: variationSku, // Update SKU to variation-specific SKU
                     price: variation.price || item.price,
+                    baseUnitPrice: variation.price ?? getSaleItemBasePrice(item),
                     stock: variation.stock ?? item.stock,
                     showVariations: false, // Hide variation selector
                     selectedVariationId: variation.id,
@@ -1803,17 +2043,21 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     const updateItem = (id: number, field: keyof SaleItem, value: number) => {
         setItems(prev => {
             const updated = prev.map(item => {
-                if (item.id === id) {
-                    const updatedItem = { ...item, [field]: value };
-                    console.log(`[SALE FORM] ✅ Updated item ID ${id} field ${field}:`, {
-                        oldValue: item[field],
-                        newValue: value,
-                        itemName: item.name,
-                        itemIndex: prev.findIndex(i => i.id === id)
-                    });
-                    return updatedItem;
+                if (item.id !== id) return item;
+                if (field === 'price') {
+                    if (isInjectedBespokeLine(item)) {
+                        return { ...item, price: value };
+                    }
+                    return { ...item, price: value, baseUnitPrice: value };
                 }
-                return item;
+                const updatedItem = { ...item, [field]: value };
+                console.log(`[SALE FORM] ✅ Updated item ID ${id} field ${field}:`, {
+                    oldValue: item[field],
+                    newValue: value,
+                    itemName: item.name,
+                    itemIndex: prev.findIndex(i => i.id === id)
+                });
+                return updatedItem;
             });
             console.log(`[SALE FORM] ✅ State updated. Total items: ${updated.length}, Updated item count: ${updated.filter((item, idx) => {
                 const original = prev[idx];
@@ -1824,7 +2068,9 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     };
 
     const removeItem = (id: number) => {
-        setItems(prev => prev.filter(item => item.id !== id));
+        setItems((prev) =>
+            prev.filter((item) => item.id !== id && item.bespokeParentCartId !== id),
+        );
     };
 
     // Packing normalization: backend-ready shape (first-time save)
@@ -1889,7 +2135,31 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             return item;
         }));
         toast.success("Packing details saved");
-        setActivePackingItemId(null);
+    };
+
+    const handleSaveBespoke = (itemId: number, payload: BespokeInjectionPayload) => {
+        const parent = items.find((i) => i.id === itemId);
+        if (!parent) return;
+        const { items: nextItems } = syncFabricChildLines(
+            items,
+            itemId,
+            payload.fabrics,
+            resolveFabricMaterialRetailPrice,
+            () => Date.now() + Math.floor(Math.random() * 1000),
+        );
+        setItems(
+            nextItems.map((row) => {
+                if (row.id !== itemId) return row;
+                const meta = buildBespokeMetadataForPersist(payload.metadata);
+                return {
+                    ...row,
+                    customizationDetails: meta ?? undefined,
+                    baseUnitPrice: row.baseUnitPrice ?? row.price,
+                };
+            }),
+        );
+        setBespokeItemId(null);
+        toast.success('Customization saved — fabrics added as cart lines');
     };
 
     const openPackingModalLocal = (item: SaleItem) => {
@@ -1979,6 +2249,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     
     // Handle Save
     const handleSave = async (print: boolean = false) => {
+        if (needsConvertHydration && !convertHydrationReady) {
+            toast.error('Still loading order data. Please wait a moment.');
+            return;
+        }
         if (!customerId || customerId === '') {
             toast.error('Please select a customer');
             return;
@@ -2022,8 +2296,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             return;
         }
 
-        // If status is final, show payment choice dialog – only for NEW sale, not when updating
-        if (saleStatus === 'final' && !initialSale) {
+        // If status is final, show payment choice for new sale or convert-to-final
+        if (saleStatus === 'final' && (!initialSale || isOrderToFinal)) {
             setPendingSaveAction({ print });
             setPaymentChoiceDialogOpen(true);
             return;
@@ -2040,6 +2314,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // Returns the created/updated sale ID and invoice number if payment dialog should open
     const proceedWithSave = async (print: boolean = false, shouldOpenPaymentDialog: boolean = false): Promise<{ saleId: string | null; invoiceNo: string | null }> => {
         if (saveInProgressRef.current) return null;
+        if (convertToFinal && initialSale?.id && !convertHydrationReady) {
+            toast.error('Order data is still loading — please wait before saving.');
+            return null;
+        }
         try {
             saveInProgressRef.current = true;
             setSaving(true);
@@ -2066,8 +2344,15 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
               price: item.price
             })));
             
+            const orderedItems = orderSaleLinesForPersist(
+              items.map((item) => ({
+                ...item,
+                productId: item.productId.toString(),
+              })),
+            );
+
             const saleItems = await Promise.all(
-              items.map(async (item, index) => {
+              orderedItems.map(async (item, index) => {
                 let variationId: string | undefined = undefined;
                 
                 // Use variationId from inline selector (backend) if set; else resolve from size/color
@@ -2090,34 +2375,55 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 }
                 
                 // Same as Purchase: context expects packingDetails (camelCase); it maps to packing_details for DB
+                const rawCustomization =
+                  item.customizationDetails ?? (item as { customization_details?: unknown }).customization_details;
+                const persistedCustomization = buildCustomizationDetailsForPersist(rawCustomization);
+                const unitPrice = getSaleItemUnitPrice(item);
                 const saleItem = {
                   id: item.id.toString(),
                   productId: item.productId.toString(),
                   productName: item.name,
                   sku: item.sku,
                   quantity: item.qty,
-                  price: item.price,
+                  price: unitPrice,
+                  baseUnitPrice: item.baseUnitPrice,
                   discount: 0,
                   tax: 0,
-                  total: item.price * item.qty,
+                  total: unitPrice * item.qty,
                   variationId: variationId,
+                  parentLineIndex: (item as { parentLineIndex?: number }).parentLineIndex,
+                  bespokeParentItemId: item.bespokeParentItemId ?? undefined,
+                  bespokeParentCartId: item.bespokeParentCartId,
                   ...(enablePacking ? {
-                    packingDetails: item.packingDetails, // CRITICAL: context reads item.packingDetails for DB packing_details
+                    packingDetails: item.packingDetails,
                     packing_type: item.packingDetails?.packing_type || undefined,
                     packing_quantity: item.packingDetails?.total_meters || item.meters || undefined,
                     packing_unit: item.packingDetails?.packing_unit || 'meters',
                     thaans: item.thaans,
                     meters: item.meters
-                  } : { packingDetails: undefined, packing_type: undefined, packing_quantity: undefined, packing_unit: undefined, thaans: undefined, meters: undefined })
+                  } : { packingDetails: undefined, packing_type: undefined, packing_quantity: undefined, packing_unit: undefined, thaans: undefined, meters: undefined }),
+                  customizationDetails: persistedCustomization,
                 };
                 
-                console.log(`[SALE FORM] ✅ Converted item ${index}:`, {
-                  id: saleItem.id,
-                  productId: saleItem.productId,
-                  name: saleItem.productName,
-                  qty: saleItem.quantity,
-                  price: saleItem.price
-                });
+                if (import.meta.env?.DEV) {
+                  console.log(`[SALE FORM] ✅ Converted item ${index}:`, {
+                    id: saleItem.id,
+                    productId: saleItem.productId,
+                    name: saleItem.productName,
+                    qty: saleItem.quantity,
+                    unitPrice: saleItem.price,
+                    baseUnitPrice: saleItem.baseUnitPrice,
+                    hasCustomization: persistedCustomization != null,
+                  });
+                } else {
+                  console.log(`[SALE FORM] ✅ Converted item ${index}:`, {
+                    id: saleItem.id,
+                    productId: saleItem.productId,
+                    name: saleItem.productName,
+                    qty: saleItem.quantity,
+                    price: saleItem.price,
+                  });
+                }
                 
                 return saleItem;
               })
@@ -2147,7 +2453,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             let documentNumber: string;
             let documentType: 'draft' | 'quotation' | 'order' | 'invoice' | 'studio';
             
-            if (initialSale?.id && convertToFinal && companyId) {
+            if (initialSale?.id && isOrderToFinal && companyId) {
                 documentType = 'invoice';
                 documentNumber = await documentNumberService.getNextDocumentNumberGlobal(companyId, 'SL');
             } else if (initialSale && initialSale.invoiceNo) {
@@ -2164,18 +2470,19 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         documentNumber = generateDocumentNumber('studio');
                     }
                     } else {
-                    if (saleStatus === 'final' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
-                        // When user changed status to Final in edit mode (not convert flow), use new SL- number
-                        documentNumber = generateDocumentNumber('invoice');
+                    if (saleStatus === 'final' && isPreFinalSaleDocumentNo(initialSale.invoiceNo)) {
+                        documentNumber = companyId
+                            ? await documentNumberService.getNextDocumentNumberGlobal(companyId, 'SL')
+                            : generateDocumentNumber('invoice');
                         documentType = 'invoice';
                     } else {
                         documentNumber = initialSale.invoiceNo;
                         // Determine document type from existing invoice number prefix
-                        if (documentNumber.startsWith('DRAFT-')) {
+                        if (documentNumber.startsWith('DRAFT-') || documentNumber.startsWith('SDR-')) {
                             documentType = 'draft';
-                        } else if (documentNumber.startsWith('QT-')) {
+                        } else if (documentNumber.startsWith('QT-') || documentNumber.startsWith('SQT-')) {
                             documentType = 'quotation';
-                        } else if (documentNumber.startsWith('SO-')) {
+                        } else if (documentNumber.startsWith('SO-') || documentNumber.startsWith('SOR-')) {
                             documentType = 'order';
                         } else if (documentNumber.startsWith('SL-') || documentNumber.startsWith('INV-')) {
                             documentType = 'invoice';
@@ -2270,7 +2577,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 // Create/convert: product-only total + due from trigger after shipment row created. Edit: same when sale has or will have shipping.
                 total: (() => {
                     const hasShipping = saleShipments.length > 0 || (shippingChargeInput || 0) > 0;
-                    if (hasShipping && (!initialSale?.id || !!convertToFinal)) return afterDiscountTotal; // new/convert with shipping
+                    if (hasShipping && (!initialSale?.id || !!isOrderToFinal)) return afterDiscountTotal; // new/convert with shipping
                     if (hasShipping && initialSale?.id) return afterDiscountTotal; // PF-03: edit with shipping → product-only
                     return totalAmount;
                 })(),
@@ -2278,7 +2585,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 due: (() => {
                     const hasShipping = saleShipments.length > 0 || (shippingChargeInput || 0) > 0;
                     const effShipping = initialSale?.id ? (saleShipments.length > 0 ? shipmentChargesFromApi : (shippingChargeInput || 0)) : (shippingChargeInput || 0);
-                    if (hasShipping && (!initialSale?.id || !!convertToFinal)) return Math.max(0, afterDiscountTotal - totalPaid);
+                    if (hasShipping && (!initialSale?.id || !!isOrderToFinal)) return Math.max(0, afterDiscountTotal - totalPaid);
                     if (hasShipping && initialSale?.id) return Math.max(0, (afterDiscountTotal + effShipping) - totalPaid); // PF-03: edit with shipping
                     return finalDue;
                 })(),
@@ -2299,6 +2606,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 })(),
                 // CRITICAL: Include extra expenses; shipping from sale_shipments when editing, or shippingChargeInput when new
                 extraExpenses: extraExpenses,
+                replaceSaleCharges: true,
                 shippingCharges: effectiveShippingCharges,
                 commissionAmount: commissionAmount,
                 salesmanId: (salesmanId && salesmanId !== "1" && salesmanId !== "none") ? salesmanId : null,
@@ -2332,10 +2640,16 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 if (isStudioSale && !initialSale.invoiceNo.startsWith('STD-') && !initialSale.invoiceNo.startsWith('ST-')) {
                     incrementNextNumber('studio');
                 }
-                if (documentType === 'invoice' && (initialSale.invoiceNo?.startsWith('DRAFT-') || initialSale.invoiceNo?.startsWith('QT-') || initialSale.invoiceNo?.startsWith('SO-'))) {
+                if (documentType === 'invoice' && initialSale.invoiceNo && isPreFinalSaleDocumentNo(initialSale.invoiceNo)) {
                     incrementNextNumber('invoice');
                 }
-                toast.success(`Sale ${documentNumber} updated successfully!`);
+                if (isOrderToFinal) {
+                    saleFormBootstrapCache.clear();
+                    await refreshSales();
+                    toast.success(`Order converted to invoice ${documentNumber}`);
+                } else {
+                    toast.success(`Sale ${documentNumber} updated successfully!`);
+                }
                 
                 // Store sale ID and invoice number for payment dialog (edit mode)
                 setSavedSaleId(initialSale.id);
@@ -2590,17 +2904,23 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 <div className="space-y-1">
                                     {(['draft', 'quotation', 'order', 'final'] as const).map((s) => {
                                         const isFinalSale = initialSale && initialSale.type !== 'quotation';
-                                        const isDisabled = isFinalSale && s === 'draft';
+                                        const isDisabled =
+                                            (isFinalSale && s === 'draft') ||
+                                            (initialOrderStatus && s === 'final' && !convertToFinal);
                                         return (
                                         <button
                                             key={s}
                                             type="button"
                                             disabled={isDisabled}
                                             onClick={() => {
-                                                if (!isDisabled) {
-                                                    setSaleStatus(s);
-                                                    setStatusDropdownOpen(false);
+                                                if (isDisabled) {
+                                                    if (initialOrderStatus && s === 'final') {
+                                                        toast.info('Use “Convert to Final” from the sales list to finalize this order.');
+                                                    }
+                                                    return;
                                                 }
+                                                setSaleStatus(s);
+                                                setStatusDropdownOpen(false);
                                             }}
                                             className={cn(
                                                 "w-full text-left px-3 py-2 rounded-md text-sm transition-all flex items-center gap-2",
@@ -2960,6 +3280,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     handleAddItem={commitPendingItem}
                     handleOpenPackingModal={handleOpenPackingModalById}
                     enablePacking={enablePacking}
+                    enableBespoke={enableBespoke}
+                    onOpenBespokeModal={(id) => setBespokeItemId(id)}
                     searchInputRef={searchInputRef}
                     qtyInputRef={qtyInputRef}
                     priceInputRef={priceInputRef}
@@ -2973,6 +3295,9 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     handleInlineVariationSelect={handleInlineVariationSelect}
                     isEditMode={Boolean(initialSale)}
                     updateItem={updateItem}
+                    getLineUnitPrice={getSaleItemUnitPrice}
+                    getLineBasePrice={getSaleItemBasePrice}
+                    formatCurrencyDisplay={formatCurrency}
                     itemQtyRefs={itemQtyRefs}
                     itemPriceRefs={itemPriceRefs}
                     itemVariationRefs={itemVariationRefs}
@@ -2985,8 +3310,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                         {/* RIGHT PANEL - Summary + Payment (Independent Scroll) */}
                         <div className="flex flex-col h-full overflow-y-auto space-y-3 pb-3">
                             {/* PART 8 order: Extra Expenses → Shipping Charge → Shipment → Attachments → Invoice Summary */}
-                            {/* Extra Expenses - disabled (always) */}
-                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0 opacity-60 pointer-events-none")}>
+                            {/* Extra Expenses — enabled when status is Order or Final */}
+                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-4 shrink-0", saleExtrasPanelLocked && "opacity-60 pointer-events-none")}>
                                 <div className="flex items-center justify-between mb-3">
                                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
                                     <DollarSign size={14} className="text-purple-500" />
@@ -2998,6 +3323,9 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     </Badge>
                                 )}
                                 </div>
+                                {saleExtrasPanelLocked && (
+                                    <p className="text-xs text-gray-500 mb-2">Set sale status to <strong className="text-gray-400">Order</strong> or <strong className="text-gray-400">Final</strong> to use extra expenses, shipping, shipment, and attachments.</p>
+                                )}
 
                                 {/* Add Expense Form - More Compact */}
                                 <div className="flex gap-2 mb-3">
@@ -3058,8 +3386,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 )}
                             </div>
 
-                            {/* Shipping Charge – disabled (always) */}
-                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-3 shrink-0 opacity-60 pointer-events-none")}>
+                            {/* Shipping Charge — enabled when status is Order or Final */}
+                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-3 shrink-0", saleExtrasPanelLocked && "opacity-60 pointer-events-none")}>
                                 <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wide flex items-center gap-2 mb-2">
                                     <Truck size={14} />
                                     Shipping Charge
@@ -3078,13 +3406,13 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 )}
                             </div>
 
-                            {/* Shipment section – disabled (always) */}
-                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-3 shrink-0 opacity-60 pointer-events-none")}>
+                            {/* Shipment — enabled when status is Order or Final (saved sale required) */}
+                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-3 shrink-0", saleExtrasPanelLocked && "opacity-60 pointer-events-none")}>
                                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-2">
                                     <Truck size={14} />
                                     Shipment
                                 </h3>
-                                {isFinal && initialSale?.id ? (
+                                {saleExtrasActive && initialSale?.id ? (
                                     saleShipments.length === 0 ? (
                                         <Button type="button" variant="outline" size="sm" className="w-full border-gray-600 text-blue-400 hover:bg-blue-900/20" onClick={() => openShipmentModal(false)}>
                                             <Plus size={14} className="mr-2" />
@@ -3130,13 +3458,15 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                             })()}
                                         </div>
                                     )
+                                ) : saleExtrasActive ? (
+                                    <p className="text-xs text-gray-500">Save the sale first to add shipment</p>
                                 ) : (
-                                    <p className="text-xs text-gray-500">Available when status is Final</p>
+                                    <p className="text-xs text-gray-500">Set status to Order or Final to use shipment</p>
                                 )}
                             </div>
 
-                            {/* Attachments – disabled (always) */}
-                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3 shrink-0 opacity-60 pointer-events-none")}>
+                            {/* Attachments — enabled when status is Order or Final */}
+                            <div className={cn("bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3 shrink-0", saleExtrasPanelLocked && "opacity-60 pointer-events-none")}>
                                 <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-2">
                                     <Paperclip size={14} />
                                     Attachments
@@ -3340,6 +3670,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
                                 <Separator className="bg-gray-800" />
 
+                                {paymentsLoading && (
+                                    <p className="text-xs text-gray-500">Loading payment history…</p>
+                                )}
+
                                 {/* Payment history – same as Purchase */}
                                 {partialPayments.length > 0 && (
                                     <>
@@ -3538,7 +3872,6 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     setSavedSaleId(null);
                     setSavedSaleInvoiceNo(null);
                     setSaleAttachmentFiles([]);
-                    window.dispatchEvent(new CustomEvent('paymentAdded'));
                     if (customerId && customerId !== 'walk-in') {
                         window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'customer', entityId: customerId } }));
                     }
@@ -3634,19 +3967,27 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 variant="outline"
                                 className="h-10 bg-transparent border border-gray-700 hover:border-gray-600 hover:bg-gray-800 text-white text-sm font-semibold"
                                 onClick={() => handleSave(false)}
-                                disabled={saving}
+                                disabled={saving || (needsConvertHydration && !convertHydrationReady)}
                             >
                                 <Save size={15} className="mr-1.5" />
-                                {saving ? (initialSale ? 'Updating...' : 'Saving...') : (initialSale ? 'Update' : 'Save')}
+                                {needsConvertHydration && !convertHydrationReady
+                                    ? 'Loading order…'
+                                    : saving
+                                        ? (initialSale ? 'Updating...' : 'Saving...')
+                                        : (initialSale ? 'Update' : 'Save')}
                             </Button>
                             <Button 
                                 type="button"
                                 className="h-10 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold shadow-lg shadow-blue-900/20"
                                 onClick={() => handleSave(true)}
-                                disabled={saving}
+                                disabled={saving || (needsConvertHydration && !convertHydrationReady)}
                             >
                                 <Printer size={15} className="mr-1.5" />
-                                {saving ? (initialSale ? 'Updating...' : 'Saving...') : (initialSale ? 'Update & Print' : 'Save & Print')}
+                                {needsConvertHydration && !convertHydrationReady
+                                    ? 'Loading order…'
+                                    : saving
+                                        ? (initialSale ? 'Updating...' : 'Saving...')
+                                        : (initialSale ? 'Update & Print' : 'Save & Print')}
                             </Button>
                         </div>
                     </div>
@@ -3721,6 +4062,26 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             )}
 
             {/* Packing Modal - Now rendered globally in GlobalDrawer */}
+
+            {enableBespoke && companyId && (
+                <BespokeDetailsModal
+                    open={bespokeItemId != null}
+                    onOpenChange={(open) => { if (!open) setBespokeItemId(null); }}
+                    productName={items.find((i) => i.id === bespokeItemId)?.name}
+                    config={bespokeFormConfig}
+                    initial={items.find((i) => i.id === bespokeItemId)?.customizationDetails}
+                    initialFabrics={
+                        bespokeItemId != null
+                            ? hydrateFabricDraftsFromChildren(bespokeItemId, items)
+                            : undefined
+                    }
+                    companyId={companyId}
+                    branchId={branchId && branchId !== 'all' ? branchId : contextBranchId}
+                    onSave={(payload) => {
+                        if (bespokeItemId != null) handleSaveBespoke(bespokeItemId, payload);
+                    }}
+                />
+            )}
         </div>
     );
 };
