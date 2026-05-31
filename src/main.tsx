@@ -6,7 +6,7 @@
   if (import.meta.env.PROD && "serviceWorker" in navigator) {
     import("virtual:pwa-register")
       .then(({ registerSW }) =>
-        registerSW({ onRegisterError: () => {} })
+        registerSW({ immediate: true, onRegisterError: () => {} })
       )
       .catch(() => {});
   }

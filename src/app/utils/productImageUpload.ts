@@ -3,26 +3,32 @@ import { compressImageIfNeeded } from '@/app/utils/imageCompression';
 
 const BUCKET = 'product-images';
 
+/** Strip leading `product-images/` segments (handles legacy double-prefix refs). */
+function stripLeadingBucketPrefixes(value: string): string {
+  const bucketPrefix = `${BUCKET}/`;
+  let path = value;
+  while (path.startsWith(bucketPrefix) && !path.includes('://')) {
+    path = path.slice(bucketPrefix.length);
+  }
+  return path;
+}
+
 /** Storage object path from a public/signed URL, path-only, or mobile `product-images/...` ref. */
 export function extractProductImageStoragePath(rawUrl: string): string | null {
   if (!rawUrl || typeof rawUrl !== 'string') return null;
-  const trimmed = rawUrl.trim();
+  let trimmed = rawUrl.trim();
   if (!trimmed) return null;
-
-  const bucketPrefix = `${BUCKET}/`;
-  if (trimmed.startsWith(bucketPrefix) && !trimmed.includes('://')) {
-    const path = trimmed.slice(bucketPrefix.length).split('?')[0].trim();
-    return path || null;
-  }
 
   const idx = trimmed.indexOf(`/${BUCKET}/`);
   if (idx >= 0) {
-    const path = trimmed.slice(idx + BUCKET.length + 2).split('?')[0].trim();
-    return path || null;
+    trimmed = trimmed.slice(idx + BUCKET.length + 2);
   }
 
+  trimmed = stripLeadingBucketPrefixes(trimmed).split('?')[0].trim();
+  if (!trimmed) return null;
+
   if (!trimmed.includes('://') && !trimmed.startsWith('/') && trimmed.includes('/')) {
-    return trimmed.split('?')[0].trim() || null;
+    return trimmed;
   }
 
   return null;
