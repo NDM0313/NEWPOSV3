@@ -18,6 +18,8 @@
 | Item | Command | Frequency |
 |------|---------|-----------|
 | Database backup | `cd /root/NEWPOSV3 && bash deploy/backup-supabase-db.sh 7` | Daily via cron (e.g. `0 2 * * *`) |
+| Studio 502 auto-heal | `/root/NEWPOSV3/deploy/studio-auto-repair-if-needed.sh` | Every 5 min via cron (`*/5 * * * *`) |
+| Kong restart loop | `/root/NEWPOSV3/deploy/kong-auto-repair-if-needed.sh` | Every 5 min via cron (optional) |
 
 ## What’s different on self-hosted (not fixable in app)
 

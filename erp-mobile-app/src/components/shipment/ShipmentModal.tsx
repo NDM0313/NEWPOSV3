@@ -7,6 +7,8 @@ import * as courierShipmentsApi from '../../api/courierShipments';
 import { syncSaleShipmentFromCourier } from '../../api/shipmentSync';
 import { postSaleShipmentJournal } from '../../api/shipmentAccounting';
 import { COURIER_STATUS_STEPS } from '../../lib/shipmentStatus';
+import { useSubmitLock } from '../../contexts/LoadingContext';
+import { SaveBlockingOverlay } from '../common/SaveBlockingOverlay';
 
 export type ShipmentModalMode = 'sale' | 'packing_list';
 
@@ -50,7 +52,7 @@ export function ShipmentModal({
   const [bookingDate, setBookingDate] = useState(today);
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
   const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
+  const { run: runSave, busy: saving } = useSubmitLock();
   const [error, setError] = useState<string | null>(null);
   const [glMessage, setGlMessage] = useState<string | null>(null);
 
@@ -66,12 +68,10 @@ export function ShipmentModal({
     e.preventDefault();
     setError(null);
     setGlMessage(null);
-    setSaving(true);
-
+    await runSave('Saving shipment...', async () => {
     if (mode === 'packing_list') {
       if (!packingListId || !saleId) {
         setError('Packing list and sale required.');
-        setSaving(false);
         return;
       }
       const { data, error: err } = await courierShipmentsApi.createCourierShipment({
@@ -87,7 +87,6 @@ export function ShipmentModal({
         createdBy: dbUserId ?? null,
       });
       if (err) {
-        setSaving(false);
         setError(err);
         return;
       }
@@ -103,7 +102,6 @@ export function ShipmentModal({
           courierMasterId: courierId || null,
         });
         if (syncRes.error) {
-          setSaving(false);
           setError(syncRes.error);
           return;
         }
@@ -115,7 +113,6 @@ export function ShipmentModal({
           setGlMessage('Shipment saved (ledger already posted or zero amounts).');
         }
       }
-      setSaving(false);
       onSaved?.();
       onClose();
       return;
@@ -123,7 +120,6 @@ export function ShipmentModal({
 
     if (!saleId) {
       setError('Sale required.');
-      setSaving(false);
       return;
     }
     const cost = parseFloat(shipmentCost) || 0;
@@ -146,7 +142,6 @@ export function ShipmentModal({
       dbUserId ?? userId,
     );
     if (err) {
-      setSaving(false);
       setError(err);
       return;
     }
@@ -155,9 +150,9 @@ export function ShipmentModal({
       if (!gl.success && gl.error) setGlMessage(`Shipment saved; ledger: ${gl.error}`);
       else if (gl.journalEntryId) setGlMessage('Posted to Chart of Accounts.');
     }
-    setSaving(false);
     onSaved?.();
     onClose();
+    });
   };
 
   const title = mode === 'packing_list' ? 'Book courier / cargo' : 'Add shipment';
@@ -167,17 +162,21 @@ export function ShipmentModal({
       : COURIER_STATUS_STEPS.map((s) => s.key);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={saving ? undefined : onClose}
+    >
       <div
-        className="bg-[#1F2937] border border-[#374151] rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+        className="relative bg-[#1F2937] border border-[#374151] rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
+        <SaveBlockingOverlay active={saving} label="Saving shipment..." />
         <div className="flex items-center justify-between p-4 border-b border-[#374151] sticky top-0 bg-[#1F2937] z-10">
           <div className="flex items-center gap-2">
             <Truck className="w-5 h-5 text-[#10B981]" />
             <h2 className="text-lg font-semibold text-white">{title}</h2>
           </div>
-          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF]">
+          <button type="button" onClick={onClose} disabled={saving} className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF] disabled:opacity-50">
             <X className="w-5 h-5" />
           </button>
         </div>

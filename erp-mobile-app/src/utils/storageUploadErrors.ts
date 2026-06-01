@@ -15,7 +15,7 @@ export interface UploadWithFailuresResult<T> {
   failures: UploadFailure[];
 }
 
-function messageFrom(err: unknown): string {
+export function messageFrom(err: unknown): string {
   if (!err) return '';
   if (typeof err === 'string') return err;
   if (typeof err === 'object' && err !== null) {

@@ -9,6 +9,8 @@ import {
 } from '../../../../api/transactions';
 import { getPaymentAccounts } from '../../../../api/accounts';
 import { CustomSelect } from '../../../common';
+import { useSubmitLock } from '../../../../contexts/LoadingContext';
+import { SaveBlockingOverlay } from '../../../common/SaveBlockingOverlay';
 
 interface EditTransactionSheetProps {
   open: boolean;
@@ -21,7 +23,7 @@ interface EditTransactionSheetProps {
 
 export function EditTransactionSheet({ open, companyId, mode, targetId, onClose, onSaved }: EditTransactionSheetProps) {
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const { run: runSave, busy: saving } = useSubmitLock();
   const [error, setError] = useState<string | null>(null);
   const [paymentDetail, setPaymentDetail] = useState<TransactionDetail | null>(null);
   const [journalDetail, setJournalDetail] = useState<JournalEntryEditRow | null>(null);
@@ -115,9 +117,8 @@ export function EditTransactionSheet({ open, companyId, mode, targetId, onClose,
   }, [form.amount, form.date, form.paymentAccountId, form.debitAccountId, form.creditAccountId, mode]);
 
   const onSubmit = async () => {
-    setSaving(true);
+    await runSave('Saving changes...', async () => {
     setError(null);
-    try {
       if (mode === 'payment' && paymentDetail) {
         const res = await updatePaymentTransactionInPlace({
           companyId,
@@ -151,22 +152,24 @@ export function EditTransactionSheet({ open, companyId, mode, targetId, onClose,
       }
       onSaved();
       onClose();
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4"
+      onClick={saving ? undefined : onClose}
+    >
       <div
-        className="w-full sm:max-w-lg bg-[#1F2937] sm:rounded-xl rounded-t-2xl border border-[#374151] max-h-[90vh] flex flex-col"
+        className="relative w-full sm:max-w-lg bg-[#1F2937] sm:rounded-xl rounded-t-2xl border border-[#374151] max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
+        <SaveBlockingOverlay active={saving} label="Saving changes..." />
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#374151]">
           <h3 className="text-sm font-semibold text-white">Edit Transaction</h3>
-          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF]">
+          <button type="button" onClick={onClose} disabled={saving} className="p-2 rounded-lg hover:bg-[#374151] text-[#9CA3AF] disabled:opacity-50">
             <X className="w-5 h-5" />
           </button>
         </div>

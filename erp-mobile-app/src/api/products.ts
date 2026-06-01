@@ -5,14 +5,20 @@ import {
   listCacheGetMeta,
   listCacheKeys,
   listCacheRemove,
+  listCacheRemoveByPrefix,
   listCacheSet,
 } from '../lib/listCache';
 import { fetchProductStockByKey } from '../utils/productStockFetch';
 import { fetchInBatches } from '../lib/chunkInQuery';
-import { isRealBranchUuid } from '../utils/branchId';
+import { applyBranchStockMovementFilter, isRealBranchUuid } from '../utils/branchId';
 
 import { getNextDocumentNumber } from './documentNumber';
-import { uploadProductImages } from '../utils/productImageUpload';
+import {
+  normalizeProductImageUrls,
+  removeProductImagesFromStorage,
+  uploadProductImages,
+} from '../utils/productImageUpload';
+import { bustProductImageDisplayCache } from '../utils/storageDisplayUrl';
 import {
   ensureAttribute as ensureVariationAttribute,
   ensureValue as ensureVariationValue,
@@ -104,7 +110,7 @@ async function filterProductRowsForBranch<T extends { id: string }>(
 
 /** Products table select: omit current_stock so query works when column is missing. Stock from variations or 0. */
 const PRODUCTS_SELECT =
-  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, image_urls, product_categories(name), units(name)';
+  'id, company_id, name, sku, barcode, description, cost_price, retail_price, wholesale_price, min_stock, category_id, brand_id, unit_id, is_active, has_variations, image_urls, product_categories(name), units(name, allow_decimal)';
 
 export interface ProductRow {
   id: string;
@@ -163,7 +169,7 @@ async function getProductStockFromMovements(
     .select('quantity')
     .eq('company_id', companyId)
     .eq('product_id', productId);
-  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
+  q = applyBranchStockMovementFilter(q, branchId);
   const { data } = await q;
   const sum = (data || []).reduce((s, r) => s + Number((r as { quantity: number }).quantity) || 0, 0);
   return sum;
@@ -245,7 +251,7 @@ export async function getProductByBarcodeOrSku(
       minStock: row.min_stock ?? 0,
       wholesalePrice: row.wholesale_price != null ? Number(row.wholesale_price) : undefined,
       hasVariations: row.has_variations ?? false,
-      imageUrls: Array.isArray(row.image_urls) ? row.image_urls : [],
+      imageUrls: normalizeProductImageUrls(row.image_urls),
     };
     return { data: product, error: null };
   }
@@ -292,7 +298,7 @@ export async function getProductByBarcodeOrSku(
     minStock: row.min_stock ?? 0,
     wholesalePrice: row.wholesale_price != null ? Number(row.wholesale_price) : undefined,
     hasVariations: row.has_variations ?? false,
-    imageUrls: Array.isArray(row.image_urls) ? row.image_urls : [],
+    imageUrls: normalizeProductImageUrls(row.image_urls),
   };
   return { data: product, error: null };
 }
@@ -389,11 +395,118 @@ async function getProductsInner(
       wholesalePrice: row.wholesale_price != null ? Number(row.wholesale_price) : undefined,
       hasVariations: row.has_variations ?? false,
       variations,
-      imageUrls: Array.isArray(row.image_urls) ? row.image_urls : [],
+      imageUrls: normalizeProductImageUrls(row.image_urls),
     });
   }
   void listCacheSet(cacheKey, list);
   return { data: list, error: null };
+}
+
+type ProductDbRow = ProductRow & {
+  has_variations?: boolean;
+  min_stock?: number;
+  description?: string | null;
+  barcode?: string | null;
+  brand_id?: string | null;
+  image_urls?: string[] | null;
+  product_categories?: { name: string } | { name: string }[] | null;
+  units?: { name?: string; allow_decimal?: boolean } | null;
+};
+
+async function buildProductFromRow(
+  companyId: string,
+  row: ProductDbRow,
+  branchId: string | null,
+): Promise<Product> {
+  const productIds = [row.id];
+  const simpleProductIds = row.has_variations ? [] : [row.id];
+  const varProductIds = row.has_variations ? [row.id] : [];
+  const stockByKey = await fetchProductStockByKey(
+    companyId,
+    productIds,
+    simpleProductIds,
+    varProductIds,
+    branchId,
+  );
+
+  let variations: ProductVariationRow[] | undefined;
+  if (row.has_variations) {
+    const { data: varData, error: varErr } = await supabase
+      .from('product_variations')
+      .select('id, product_id, sku, attributes, price')
+      .eq('product_id', row.id)
+      .eq('is_active', true);
+    if (!varErr && varData?.length) {
+      variations = varData.map((v) => {
+        const pv = v as {
+          product_id: string;
+          id: string;
+          sku: string;
+          attributes: Record<string, string>;
+          price: number;
+        };
+        return {
+          id: pv.id,
+          sku: pv.sku,
+          attributes: pv.attributes || {},
+          price: Number(pv.price) || 0,
+          stock: stockByKey[`${pv.product_id}_${pv.id}`] ?? 0,
+        };
+      });
+    } else {
+      variations = [];
+    }
+  }
+
+  const categoryName = Array.isArray(row.product_categories)
+    ? row.product_categories[0]?.name
+    : row.product_categories?.name;
+
+  return {
+    id: row.id,
+    sku: row.sku || '—',
+    name: row.name,
+    category: categoryName || 'Other',
+    categoryId: row.category_id ?? undefined,
+    brandId: row.brand_id ?? undefined,
+    unitId: row.unit_id ?? undefined,
+    costPrice: Number(row.cost_price) || 0,
+    retailPrice: Number(row.retail_price) || 0,
+    stock: row.has_variations ? 0 : (stockByKey[row.id] ?? 0),
+    unit: row.units?.name || 'Piece',
+    unitAllowDecimal: row.units?.allow_decimal ?? false,
+    status: row.is_active !== false ? 'active' : 'inactive',
+    description: row.description ?? undefined,
+    barcode: row.barcode ?? undefined,
+    minStock: row.min_stock ?? 0,
+    wholesalePrice: row.wholesale_price != null ? Number(row.wholesale_price) : undefined,
+    hasVariations: row.has_variations ?? false,
+    variations,
+    imageUrls: normalizeProductImageUrls(row.image_urls),
+  };
+}
+
+/** Fresh product row for edit/detail (bypasses stale list cache). */
+export async function getProductById(
+  companyId: string,
+  productId: string,
+  options?: { branchId?: string | null },
+): Promise<{ data: Product | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const branchId = options?.branchId && isRealBranchUuid(options.branchId) ? options.branchId.trim() : null;
+
+  const { data, error } = await supabase
+    .from('products')
+    .select(PRODUCTS_SELECT)
+    .eq('company_id', companyId)
+    .eq('id', productId)
+    .maybeSingle();
+
+  if (error) return { data: null, error: error.message };
+  if (!data) return { data: null, error: 'Product not found.' };
+
+  const product = await buildProductFromRow(companyId, data as ProductDbRow, branchId);
+  return { data: product, error: null };
 }
 
 export async function getProducts(
@@ -429,7 +542,10 @@ export async function getProducts(
 
 /** Bust product list cache after image or catalog changes so other devices refresh. */
 export async function invalidateProductsListCache(companyId: string): Promise<void> {
-  await listCacheRemove(listCacheKeys.products(companyId));
+  if (!companyId?.trim()) return;
+  const base = listCacheKeys.products(companyId);
+  await listCacheRemove(base);
+  await listCacheRemoveByPrefix(`${base}:`);
 }
 
 export interface RentalProductVariation {
@@ -448,6 +564,7 @@ export interface RentalProduct {
   isRentable: boolean;
   hasVariations: boolean;
   variations: RentalProductVariation[];
+  imageUrls?: string[];
 }
 
 function variationLabel(attrs: Record<string, string> | null | undefined, fallback: string): string {
@@ -461,7 +578,7 @@ export async function getRentalProducts(companyId: string): Promise<{ data: Rent
 
   const { data, error } = await supabase
     .from('products')
-    .select('id, name, sku, rental_price_daily, is_rentable, retail_price, has_variations')
+    .select('id, name, sku, rental_price_daily, is_rentable, retail_price, has_variations, image_urls')
     .eq('company_id', companyId)
     .eq('is_active', true)
     .order('name');
@@ -517,6 +634,7 @@ export async function getRentalProducts(companyId: string): Promise<{ data: Rent
       isRentable: r.is_rentable === true || (Number(r.rental_price_daily) || 0) > 0,
       hasVariations: r.has_variations === true,
       variations: varsByProduct[id] ?? [],
+      imageUrls: normalizeProductImageUrls(r.image_urls as string[] | null),
     };
   };
 
@@ -707,15 +825,20 @@ export async function createProduct(
 
   // Upload product images (if any) and persist URLs on the product row.
   let finalImageUrls: string[] = [];
+  let imageUploadError: string | null = null;
   if (p.imageFiles && p.imageFiles.length > 0) {
     try {
       const urls = await uploadProductImages(companyId, row.id, p.imageFiles);
       finalImageUrls = urls;
-      if (urls.length > 0) {
+      if (urls.length === 0) {
+        imageUploadError = 'Product saved but no images were uploaded.';
+      } else {
         await supabase.from('products').update({ image_urls: urls }).eq('id', row.id);
       }
     } catch (err) {
-      console.warn('[createProduct] image upload failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('[createProduct] image upload failed:', msg);
+      imageUploadError = `Product saved but image upload failed: ${msg}`;
     }
   }
 
@@ -766,6 +889,11 @@ export async function createProduct(
     }
   }
 
+  const normalizedImageUrls = normalizeProductImageUrls(finalImageUrls);
+  if (normalizedImageUrls.length > 0 || (p.imageFiles && p.imageFiles.length > 0)) {
+    bustProductImageDisplayCache(normalizedImageUrls);
+  }
+
   return {
     data: {
       id: row.id,
@@ -782,23 +910,25 @@ export async function createProduct(
       minStock: p.minStock,
       wholesalePrice: p.wholesalePrice,
       hasVariations: p.hasVariations,
-      imageUrls: finalImageUrls,
+      imageUrls: normalizedImageUrls,
     },
-    error: null,
+    error: imageUploadError,
   };
 }
 
 export async function updateProduct(
   companyId: string,
   productId: string,
-  p: Partial<CreateProductInput>
+  p: Partial<CreateProductInput>,
+  options?: { branchId?: string | null },
 ): Promise<{ data: Product | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const branchId = options?.branchId && isRealBranchUuid(options.branchId) ? options.branchId.trim() : null;
   const payload: Record<string, unknown> = {};
   if (p.name != null) payload.name = p.name;
   if (p.sku != null) payload.sku = p.sku;
-  if (p.description != null) payload.description = p.description;
-  if (p.barcode != null) payload.barcode = p.barcode;
+  if (p.description !== undefined) payload.description = p.description || null;
+  if (p.barcode !== undefined) payload.barcode = p.barcode || null;
   if (p.costPrice != null) payload.cost_price = p.costPrice;
   if (p.retailPrice != null) payload.retail_price = p.retailPrice;
   if (p.wholesalePrice != null) payload.wholesale_price = p.wholesalePrice;
@@ -810,40 +940,56 @@ export async function updateProduct(
 
   // Handle image updates: upload new files, merge with existing kept URLs.
   let nextImageUrls: string[] | undefined;
+  let imageUploadError: string | null = null;
+  let previousImageUrls: string[] = [];
+  const imageFieldsTouched = (p.imageFiles && p.imageFiles.length > 0) || Array.isArray(p.existingImageUrls);
+  if (imageFieldsTouched) {
+    const { data: prevRow } = await supabase
+      .from('products')
+      .select('image_urls')
+      .eq('id', productId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    previousImageUrls = Array.isArray((prevRow as { image_urls?: string[] } | null)?.image_urls)
+      ? ((prevRow as { image_urls: string[] }).image_urls)
+      : [];
+  }
   if (p.imageFiles && p.imageFiles.length > 0) {
     try {
       const urls = await uploadProductImages(companyId, productId, p.imageFiles);
-      nextImageUrls = [...(p.existingImageUrls ?? []), ...urls];
+      if (urls.length === 0) {
+        imageUploadError = 'Product updated but no images were uploaded.';
+        nextImageUrls = p.existingImageUrls ?? [];
+      } else {
+        nextImageUrls = [...urls, ...(p.existingImageUrls ?? [])];
+      }
     } catch (err) {
-      console.warn('[updateProduct] image upload failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('[updateProduct] image upload failed:', msg);
+      imageUploadError = `Product updated but image upload failed: ${msg}`;
+      nextImageUrls = p.existingImageUrls ?? [];
     }
   } else if (Array.isArray(p.existingImageUrls)) {
     nextImageUrls = p.existingImageUrls;
   }
-  if (nextImageUrls !== undefined) payload.image_urls = nextImageUrls;
+  if (nextImageUrls !== undefined) {
+    payload.image_urls = nextImageUrls;
+    const removed = previousImageUrls.filter((u) => !nextImageUrls!.includes(u));
+    if (removed.length > 0) {
+      void removeProductImagesFromStorage(removed);
+    }
+  }
 
   if (Object.keys(payload).length === 0 && p.isCombo === undefined && p.branchIds === undefined) {
     return { data: null, error: 'No fields to update.' };
   }
-  let row: ProductRow | null = null;
   if (Object.keys(payload).length > 0) {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('products')
       .update(payload)
       .eq('id', productId)
-      .eq('company_id', companyId)
-      .select('id, name, sku, cost_price, retail_price, is_active')
-      .single();
+      .eq('company_id', companyId);
     if (error) return { data: null, error: error.message };
-    row = data as ProductRow;
-  } else {
-    const { data } = await supabase
-      .from('products')
-      .select('id, name, sku, cost_price, retail_price, is_active')
-      .eq('id', productId)
-      .eq('company_id', companyId)
-      .single();
-    row = data as ProductRow;
   }
 
   // Replace combo items if combo toggled on with items.
@@ -865,7 +1011,7 @@ export async function updateProduct(
             .insert({
               company_id: companyId,
               combo_product_id: productId,
-              combo_name: p.name || row?.name || 'Combo',
+              combo_name: p.name || 'Combo',
               combo_price: total || Number(p.retailPrice) || 0,
               is_active: true,
             })
@@ -875,7 +1021,7 @@ export async function updateProduct(
         } else {
           await supabase
             .from('product_combos')
-            .update({ combo_price: total, is_active: true, combo_name: p.name || row?.name })
+            .update({ combo_price: total, is_active: true, combo_name: p.name || 'Combo' })
             .eq('id', comboId);
           await supabase.from('product_combo_items').delete().eq('combo_id', comboId).eq('company_id', companyId);
         }
@@ -900,8 +1046,6 @@ export async function updateProduct(
     }
   }
 
-  if (!row) return { data: null, error: 'Product not found after update.' };
-
   if (p.branchIds !== undefined) {
     const branchRes = await setProductBranchAvailability(companyId, productId, p.branchIds);
     if (branchRes.error) {
@@ -909,21 +1053,24 @@ export async function updateProduct(
     }
   }
 
-  return {
-    data: {
-      id: row.id,
-      sku: row.sku || '—',
-      name: row.name,
-      category: p.category || 'Other',
-      costPrice: Number(row.cost_price) || 0,
-      retailPrice: Number(row.retail_price) || 0,
-      stock: 0,
-      unit: p.unit || 'Piece',
-      status: row.is_active !== false ? 'active' : 'inactive',
-      imageUrls: nextImageUrls,
-    },
-    error: null,
-  };
+  const { data: freshRow, error: fetchErr } = await supabase
+    .from('products')
+    .select(PRODUCTS_SELECT)
+    .eq('id', productId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+
+  if (fetchErr) return { data: null, error: fetchErr.message };
+  if (!freshRow) return { data: null, error: 'Product not found after update.' };
+
+  const product = await buildProductFromRow(companyId, freshRow as ProductDbRow, branchId);
+  if (imageFieldsTouched) {
+    bustProductImageDisplayCache([
+      ...previousImageUrls,
+      ...(product.imageUrls ?? []),
+    ]);
+  }
+  return { data: product, error: imageUploadError };
 }
 
 export async function deleteProduct(companyId: string, productId: string): Promise<{ error: string | null }> {

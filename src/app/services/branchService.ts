@@ -54,7 +54,7 @@ export const branchService = {
     return count ?? 0;
   },
 
-  // Get all branches for a company
+  // Get all branches for a company (active only — selectors, filters)
   async getAllBranches(companyId: string) {
     const { data, error } = await supabase
       .from('branches')
@@ -65,6 +65,18 @@ export const branchService = {
 
     if (error) throw error;
     return data;
+  },
+
+  /** Settings / management: all branches (active + inactive). */
+  async getBranchesForManagement(companyId: string): Promise<Branch[]> {
+    const { data, error } = await supabase
+      .from('branches')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('name');
+
+    if (error) throw error;
+    return (data || []) as Branch[];
   },
 
   // Get single branch
@@ -194,11 +206,20 @@ export const branchService = {
 
   // Delete branch (soft delete)
   async deleteBranch(id: string) {
+    const { data: row, error: fetchErr } = await supabase
+      .from('branches')
+      .select('company_id')
+      .eq('id', id)
+      .maybeSingle();
+    if (fetchErr) throw fetchErr;
+
     const { error } = await supabase
       .from('branches')
       .update({ is_active: false })
       .eq('id', id);
 
     if (error) throw error;
+    const companyId = (row as { company_id?: string } | null)?.company_id;
+    if (companyId) branchListCache.delete(companyId);
   },
 };

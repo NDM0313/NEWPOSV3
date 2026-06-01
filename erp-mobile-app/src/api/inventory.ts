@@ -138,11 +138,15 @@ export type StockMovementType =
   | 'opening'
   | 'production_in';
 
-/** Lowercase movement_type from DB (e.g. SALE → sale, PRODUCTION_IN → production_in). */
-export function normalizeMovementType(raw: string): StockMovementType {
+/** Lowercase movement_type from DB (e.g. SALE → sale, TRANSFER + qty sign → transfer_in/out). */
+export function normalizeMovementType(raw: string, quantity?: number): StockMovementType {
   const t = String(raw || 'adjustment').trim().toLowerCase().replace(/-/g, '_');
   if (t === 'production_in' || t === 'production') return 'production_in';
   if (t === 'sell_return') return 'sale_return';
+  if (t === 'transfer') {
+    const q = Number(quantity ?? 0);
+    return q < 0 ? 'transfer_out' : 'transfer_in';
+  }
   const known: StockMovementType[] = [
     'purchase',
     'sale',
@@ -251,7 +255,7 @@ export async function getProductStockMovements(
       }
     }
     const bid = r.branch_id as string | null;
-    const movementType = normalizeMovementType(String(r.movement_type ?? 'adjustment'));
+    const movementType = normalizeMovementType(String(r.movement_type ?? 'adjustment'), qty);
     return {
       id: String(r.id ?? ''),
       createdAt: String(r.created_at ?? ''),
@@ -325,6 +329,113 @@ export async function createStockAdjustment(input: CreateStockAdjustmentInput): 
 
   const { error } = await supabase.from('stock_movements').insert(payload);
   return { error: error?.message ?? null };
+}
+
+export interface CreateStockTransferInput {
+  companyId: string;
+  productId: string;
+  variationId?: string | null;
+  fromBranchId: string;
+  toBranchId: string;
+  quantity: number;
+  notes?: string | null;
+  createdBy?: string | null;
+  fromBranchName?: string | null;
+  toBranchName?: string | null;
+}
+
+/** Branch-to-branch transfer: paired TRANSFER rows (negative at source, positive at destination). */
+export async function createStockTransfer(
+  input: CreateStockTransferInput,
+): Promise<{ error: string | null; transferRefId?: string }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const {
+    companyId,
+    productId,
+    variationId,
+    fromBranchId,
+    toBranchId,
+    quantity,
+    notes,
+    createdBy,
+    fromBranchName,
+    toBranchName,
+  } = input;
+
+  const qty = Math.abs(Number(quantity));
+  if (!companyId || !productId || !fromBranchId || !toBranchId) {
+    return { error: 'Missing company, product, or branch.' };
+  }
+  if (qty <= 0) return { error: 'Quantity must be greater than zero.' };
+  if (fromBranchId === toBranchId) {
+    return { error: 'Source and destination branches must be different.' };
+  }
+
+  const stockKey = variationId ? `${productId}_${variationId}` : productId;
+  const { fetchProductStockByKey } = await import('../utils/productStockFetch');
+  const stockMap = await fetchProductStockByKey(
+    companyId,
+    [productId],
+    [productId],
+    variationId ? [productId] : [],
+    fromBranchId,
+  );
+  const onHand = stockMap[stockKey] ?? stockMap[productId] ?? 0;
+  if (qty > onHand) {
+    return {
+      error: `You cannot transfer more than available stock (on hand: ${onHand}).`,
+    };
+  }
+
+  const transferRefId = crypto.randomUUID();
+  const noteParts = [
+    fromBranchName && toBranchName
+      ? `Transfer: ${fromBranchName} → ${toBranchName}`
+      : 'Branch transfer',
+  ];
+  if (notes?.trim()) noteParts.push(notes.trim());
+  const noteText = noteParts.join(' — ');
+
+  const base = {
+    company_id: companyId,
+    product_id: productId,
+    variation_id: variationId ?? null,
+    unit_cost: 0,
+    total_cost: 0,
+    reference_type: 'transfer',
+    reference_id: transferRefId,
+    notes: noteText,
+    created_by: createdBy ?? null,
+  };
+
+  const { error: outErr } = await supabase.from('stock_movements').insert({
+    ...base,
+    branch_id: fromBranchId,
+    movement_type: 'TRANSFER',
+    quantity: -qty,
+  });
+  if (outErr) {
+    const msg = outErr.message ?? 'Transfer failed.';
+    if (/movement_type_check/i.test(msg)) {
+      return { error: 'Stock transfer type is not enabled on the server. Contact your administrator.' };
+    }
+    return { error: msg };
+  }
+
+  const { error: inErr } = await supabase.from('stock_movements').insert({
+    ...base,
+    branch_id: toBranchId,
+    movement_type: 'TRANSFER',
+    quantity: qty,
+  });
+  if (inErr) {
+    return {
+      error: `Transfer in failed after stock left source branch. ${inErr.message} Review stock movements for reference ${transferRefId}.`,
+      transferRefId,
+    };
+  }
+
+  return { error: null, transferRefId };
 }
 
 async function fetchSaleRefs(

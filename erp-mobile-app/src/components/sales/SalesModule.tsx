@@ -25,6 +25,46 @@ import { localNowDateString, formatLocalDateYYYYMMDD, getCurrentLocalTimestamp }
 import { useSettings } from '../../context/SettingsContext';
 import { orderSaleLinesForPersist } from '../../lib/bespokeCartInjection';
 import { useEffectiveWorkerId, useEffectiveWorkerRole, useEffectiveWorkerProfileId } from '../../context/CounterWorkerContext';
+import type { ExtraExpense } from '../../types/saleExtras';
+import {
+  computeBillableSubtotal,
+  computeSaleGrandTotal,
+  defaultChargeExtrasToCustomer,
+  isStockOnlyBespokeLine,
+  validateInclusiveExtraChargeCap,
+} from '../../lib/saleTotals';
+
+/** Fabric children bill at 0 — stock/WO only (web parity). */
+function normalizeStockOnlyLinePrices(products: Product[]): Product[] {
+  return products.map((p) => {
+    if (!isStockOnlyBespokeLine(p)) return p;
+    return { ...p, price: 0, total: 0 };
+  });
+}
+
+function recalcSaleData(patch: SaleData): SaleData {
+  const shippingCharge = patch.shippingCharge ?? patch.shipping ?? 0;
+  const products = normalizeStockOnlyLinePrices(patch.products ?? []);
+  const billableSubtotal = computeBillableSubtotal(products);
+  const chargeExtrasToCustomer =
+    patch.chargeExtrasToCustomer ?? defaultChargeExtrasToCustomer(products);
+  return {
+    ...patch,
+    shippingCharge,
+    shipping: shippingCharge,
+    subtotal: billableSubtotal,
+    chargeExtrasToCustomer,
+    total: computeSaleGrandTotal({
+      subtotal: billableSubtotal,
+      products,
+      discount: patch.discount,
+      extraExpenses: patch.extraExpenses,
+      shippingCharge,
+      tax: patch.tax,
+      chargeExtrasToCustomer,
+    }),
+  };
+}
 
 function localDatePlusDays(days: number): string {
   const d = new Date();
@@ -82,6 +122,12 @@ export interface SaleData {
   productionNotes?: string;
   /** Regular sale only: draft / quotation / order / final (studio always order). */
   documentStatus?: 'draft' | 'quotation' | 'order' | 'final';
+  /** Web parity: stitching, lining, cargo, etc. */
+  extraExpenses?: ExtraExpense[];
+  /** Customer shipping (maps to shipment_charges). */
+  shippingCharge?: number;
+  /** When true, extra amounts add to customer invoice total (4120 ON). */
+  chargeExtrasToCustomer?: boolean;
 }
 
 interface SalesModuleProps {
@@ -149,6 +195,9 @@ export function SalesModule({
     studioProductName: '',
     productionNotes: '',
     documentStatus: 'order',
+    extraExpenses: [],
+    shippingCharge: 0,
+    chargeExtrasToCustomer: true,
   });
 
   const { runWithBranch, modalProps: branchGateModalProps } = useDocumentBranchGate({
@@ -204,6 +253,9 @@ export function SalesModule({
       studioProductName: '',
       productionNotes: '',
       documentStatus: saleType === 'studio' ? 'order' : 'order',
+      extraExpenses: [],
+      shippingCharge: 0,
+      chargeExtrasToCustomer: true,
     });
   }, []);
 
@@ -243,8 +295,7 @@ export function SalesModule({
     setStep('products');
   };
   const handleProductsUpdate = (products: Product[]) => {
-    const subtotal = products.reduce((sum, p) => sum + p.total, 0);
-    setSaleData((prev) => ({ ...prev, products, subtotal, total: subtotal - prev.discount + prev.shipping + prev.tax }));
+    setSaleData((prev) => recalcSaleData({ ...prev, products }));
   };
   const handleNextFromProducts = () => {
     if (saleData.saleType === 'studio') setStep('studioDetails');
@@ -259,16 +310,22 @@ export function SalesModule({
     setStep('summary');
   };
   const handleSummaryUpdate = (data: Partial<SaleData>) => {
-    setSaleData((prev) => {
-      const next = { ...prev, ...data };
-      next.total = next.subtotal - next.discount + next.shipping + next.tax;
-      return next;
-    });
+    setSaleData((prev) => recalcSaleData({ ...prev, ...data }));
   };
   const handleProceedToPayment = () => {
     setSaveError(null);
     if (!branchReady || !effectiveBranchId) {
       setSaveError(branchSelectionError ?? 'Select a branch for this sale.');
+      return;
+    }
+    const cap = validateInclusiveExtraChargeCap({
+      invoiceTotal: saleData.total,
+      shippingCharge: saleData.shippingCharge ?? saleData.shipping,
+      extraExpenses: saleData.extraExpenses,
+      chargeExtrasToCustomer: saleData.chargeExtrasToCustomer,
+    });
+    if (!cap.ok) {
+      setSaveError(cap.error);
       return;
     }
     const status = saleData.saleType === 'studio' ? 'order' : (saleData.documentStatus ?? 'order');
@@ -343,8 +400,11 @@ export function SalesModule({
       subtotal: saleData.subtotal,
       discountAmount: saleData.discount,
       taxAmount: 0,
-      expenses: saleData.shipping,
+      expenses: 0,
       total: saleData.total,
+      extraExpenses: saleData.extraExpenses ?? [],
+      shippingCharge: saleData.shippingCharge ?? saleData.shipping ?? 0,
+      chargeExtrasToCustomer: saleData.chargeExtrasToCustomer ?? true,
       paymentMethod: result.paymentMethod,
       paidAmount: result.paidAmount,
       dueAmount: result.dueAmount,
@@ -455,6 +515,8 @@ export function SalesModule({
       deadlineDate: localDatePlusDays(7),
       studioProductName: '',
       productionNotes: '',
+      extraExpenses: [],
+      shippingCharge: 0,
     });
     onBack();
   };
@@ -503,6 +565,8 @@ export function SalesModule({
       deadlineDate: localDatePlusDays(7),
       studioProductName: '',
       productionNotes: '',
+      extraExpenses: [],
+      shippingCharge: 0,
     });
     if (wasStudio && studioSaleId && onOpenStudio) {
       onOpenStudio(studioSaleId);
@@ -556,6 +620,7 @@ export function SalesModule({
         <AddProducts
           companyId={companyId}
           branchId={documentBranchId ?? effectiveBranchId}
+          saleDocumentStatus={saleData.documentStatus ?? 'order'}
           onBack={handleStepBack}
           customer={saleData.customer}
           initialProducts={saleData.products}
@@ -581,6 +646,7 @@ export function SalesModule({
           saleData={saleData}
           onUpdate={handleSummaryUpdate}
           onProceedToPayment={handleProceedToPayment}
+          companyId={companyId}
           needsBranchPicker={needsPicker}
           branchPickerBranches={pickerBranches}
           pickedBranchId={pickedBranchId}

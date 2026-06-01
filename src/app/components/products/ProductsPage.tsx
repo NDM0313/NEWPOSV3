@@ -19,10 +19,12 @@ import {
 import { cn, formatDecimal } from "@/app/components/ui/utils";
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
+import { stockOverviewBranchId } from '@/app/utils/branchScope';
 import { useSales } from '@/app/context/SalesContext';
 import { usePurchases } from '@/app/context/PurchaseContext';
 import { productService } from '@/app/services/productService';
-import { inventoryService } from '@/app/services/inventoryService';
+import { inventoryService, clearInventoryOverviewCache } from '@/app/services/inventoryService';
 import { unitService } from '@/app/services/unitService';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ImportProductsModal } from './ImportProductsModal';
@@ -89,6 +91,8 @@ interface Product {
 export const ProductsPage = () => {
   const { openDrawer } = useNavigation();
   const { companyId } = useSupabase();
+  const { branchId: globalBranchId } = useGlobalFilter();
+  const overviewBranchId = stockOverviewBranchId(globalBranchId);
   const { sales } = useSales();
   const { purchases } = usePurchases();
   const [products, setProducts] = useState<Product[]>([]);
@@ -110,7 +114,7 @@ export const ProductsPage = () => {
       setLoading(true);
       const [data, overviewRows, unitsData] = await Promise.all([
         productService.getAllProducts(companyId),
-        inventoryService.getInventoryOverview(companyId, null),
+        inventoryService.getInventoryOverview(companyId, overviewBranchId),
         unitService.getAll(companyId).catch(() => []),
       ]);
       const stockByProductId: Record<string, number> = {};
@@ -149,7 +153,7 @@ export const ProductsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, overviewBranchId]);
 
   // Load products from Supabase
   useEffect(() => {
@@ -213,10 +217,17 @@ export const ProductsPage = () => {
 
   // Refresh list when a product is added/updated from GlobalDrawer (no full page reload)
   useEffect(() => {
-    const onProductsUpdated = () => loadProducts();
-    window.addEventListener('products-updated', onProductsUpdated);
-    return () => window.removeEventListener('products-updated', onProductsUpdated);
-  }, [loadProducts]);
+    const refreshAfterStockChange = () => {
+      if (companyId) clearInventoryOverviewCache(companyId);
+      void loadProducts();
+    };
+    window.addEventListener('products-updated', refreshAfterStockChange);
+    window.addEventListener('inventory-updated', refreshAfterStockChange);
+    return () => {
+      window.removeEventListener('products-updated', refreshAfterStockChange);
+      window.removeEventListener('inventory-updated', refreshAfterStockChange);
+    };
+  }, [companyId, loadProducts]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -587,20 +598,25 @@ export const ProductsPage = () => {
     'actions', 'sku', 'image', 'name', 'branch', 'unit', 'purchase', 'selling', 'margin', 'stock', 'type', 'category',
   ]);
 
-  const columnLabels: Record<string, string> = {
-    actions: 'Actions',
-    sku: 'SKU',
-    image: 'Image',
-    name: 'Product Name',
-    branch: 'Branch',
-    unit: 'Unit',
-    purchase: 'Purchase Price',
-    selling: 'Selling Price',
-    margin: 'Margin',
-    stock: 'Stock Status',
-    type: 'Type',
-    category: 'Category',
-  };
+  const columnLabels: Record<string, string> = useMemo(
+    () => ({
+      actions: 'Actions',
+      sku: 'SKU',
+      image: 'Image',
+      name: 'Product Name',
+      branch: 'Branch',
+      unit: 'Unit',
+      purchase: 'Purchase Price',
+      selling: 'Selling Price',
+      margin: 'Margin',
+      stock: overviewBranchId
+        ? 'Stock (location + opening)'
+        : 'Stock',
+      type: 'Type',
+      category: 'Category',
+    }),
+    [overviewBranchId],
+  );
   const columns = columnOrder.map(key => ({ key, label: columnLabels[key] || key }));
 
   const moveColumnUp = (key: string) => {
@@ -685,7 +701,8 @@ export const ProductsPage = () => {
           <div className="flex justify-center">
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 if (product.image) {
                   setImagePreviewUrl(product.image);
                   setImagePreviewName(product.name);
@@ -1219,10 +1236,13 @@ export const ProductsPage = () => {
                         key={product.id}
                         onMouseEnter={() => setHoveredRow(product.id)}
                         onMouseLeave={() => setHoveredRow(null)}
-                        onClick={selectMode ? () => toggleSelectedUuid(product.uuid) : undefined}
+                        onClick={
+                          selectMode
+                            ? () => toggleSelectedUuid(product.uuid)
+                            : () => handleAction(product, 'view')
+                        }
                         className={cn(
-                          'grid w-full gap-3 px-4 h-16 hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0',
-                          selectMode && 'cursor-pointer',
+                          'grid w-full gap-3 px-4 h-16 hover:bg-gray-800/30 transition-colors items-center border-b border-gray-800 last:border-b-0 cursor-pointer',
                           selectMode && selectedUuids.has(product.uuid) && 'bg-blue-500/10'
                         )}
                         style={{ gridTemplateColumns: selectMode ? `40px ${gridTemplateColumns}` : gridTemplateColumns }}
@@ -1240,7 +1260,11 @@ export const ProductsPage = () => {
                           if (!visibleColumns[key as keyof typeof visibleColumns]) return null;
                           if (key === 'actions') {
                             return (
-                              <div key="actions" className={getColumnCellClass('actions')}>
+                              <div
+                                key="actions"
+                                className={getColumnCellClass('actions')}
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
                                     <button 

@@ -354,7 +354,7 @@ async function enrichPurchasesWithCreatorNames(rows: Record<string, unknown>[]):
 }
 
 /** Match web: paid / due from actual payment rows (company-wide link by reference_id), exclude voided. */
-async function enrichPurchasesPaidFromPayments(companyId: string, rows: Record<string, unknown>[]): Promise<void> {
+export async function enrichPurchasesPaidFromPayments(companyId: string, rows: Record<string, unknown>[]): Promise<void> {
   if (!rows.length) return;
   const ids = rows.map((r) => r.id as string).filter(Boolean);
   const { data: payData } = await supabase

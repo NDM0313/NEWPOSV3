@@ -14,6 +14,7 @@ import {
   shouldOfferCounterPinSync,
 } from '../../lib/counterPinFromDevicePin';
 import { getWorkerUserIdForPin } from '../../lib/counterWorkerRegistry';
+import { PinNumericInput } from '../common/PinNumericInput';
 
 interface SetPinModalProps {
   onClose: () => void;
@@ -174,27 +175,21 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
           <p className="text-xs text-[#6B7280]">
             Exactly 4 digits enables optional counter tablet PIN on the shared lock screen.
           </p>
-          <input
-            type="password"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={6}
+          <PinNumericInput
             autoComplete="new-password"
+            enterKeyHint="next"
             placeholder="New PIN (4–6 digits)"
             value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+            onChange={setPin}
             className="w-full px-4 py-3 bg-[#111827] border border-[#374151] rounded-lg text-white placeholder-[#6B7280] focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]"
             autoFocus
           />
-          <input
-            type="password"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={6}
+          <PinNumericInput
             autoComplete="new-password"
+            enterKeyHint="done"
             placeholder="Confirm PIN"
             value={confirmPin}
-            onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+            onChange={setConfirmPin}
             className="w-full px-4 py-3 bg-[#111827] border border-[#374151] rounded-lg text-white placeholder-[#6B7280] focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]"
           />
 

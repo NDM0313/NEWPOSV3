@@ -22,6 +22,8 @@ import { localNowDateString, getCurrentLocalTimestamp } from '../../utils/localD
 import { formatStockLabel, getTotalProductStock, stockLabelClassName } from '../../utils/productStockGate';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 import { MediaSourcePicker } from '../shared/MediaSourcePicker';
+import { NumericInput } from '../common/NumericInput';
+import { unitAllowsDecimal } from '../../lib/unitDecimal';
 
 const MAX_PURCHASE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
@@ -793,7 +795,7 @@ interface AddToPurchaseModalProps {
 
 function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps) {
   const { enablePacking } = useSettings();
-  const allowDecimal = product.unitAllowDecimal === true;
+  const allowDecimal = unitAllowsDecimal(product.unitAllowDecimal);
   const [quantity, setQuantity] = useState<string>('1');
   const [unitPrice, setUnitPrice] = useState<string>(String(product.costPrice || 0));
   const [selectedVariation, setSelectedVariation] = useState<ProductVariationRow | null>(null);
@@ -917,19 +919,17 @@ function AddToPurchaseModal({ product, onClose, onAdd }: AddToPurchaseModalProps
               >
                 <Minus className="w-5 h-5 text-[#F9FAFB]" />
               </button>
-              <input
-                type="number"
-                min={allowDecimal ? 0.01 : 1}
-                step={usePackingQty ? 1 : allowDecimal ? 0.01 : 1}
-                inputMode={allowDecimal ? 'decimal' : 'numeric'}
-                pattern={allowDecimal ? '[0-9.]*' : '[0-9]*'}
+              <NumericInput
                 value={quantity}
-                onChange={(e) => {
+                onChange={(raw) => {
                   if (usePackingQty) return;
-                  handleQtyChange(e.target.value);
+                  handleQtyChange(raw);
                 }}
-                readOnly={usePackingQty}
-                className="flex-1 h-12 bg-[#111827] border border-[#374151] rounded-lg text-center text-lg font-semibold text-[#F9FAFB] focus:outline-none focus:border-[#10B981] disabled:opacity-70 disabled:cursor-not-allowed"
+                allowDecimal={allowDecimal}
+                maxDecimals={4}
+                disabled={usePackingQty}
+                className="flex-1 min-w-0"
+                inputClassName="!h-12 !text-center !text-lg !font-semibold !bg-[#111827] !border-[#374151] !rounded-lg focus:!border-[#10B981] disabled:opacity-70"
               />
               <button
                 type="button"

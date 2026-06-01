@@ -236,7 +236,7 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
-      <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
+      <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">

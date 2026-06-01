@@ -60,7 +60,11 @@ export function MediaSourcePicker({
       try {
         if (useNativeCamera) {
           const file = await capturePhotoWithNativeCamera();
-          if (file) emitFiles([file]);
+          if (file) {
+            emitFiles([file]);
+            return;
+          }
+          onError?.('No photo captured. Try again or choose from gallery.');
           return;
         }
         cameraWebRef.current?.click();

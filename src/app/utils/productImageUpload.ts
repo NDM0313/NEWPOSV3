@@ -127,3 +127,15 @@ export async function uploadProductImages(
   }
   return urls;
 }
+
+/** Best-effort delete storage objects when user removes images from a product (non-fatal). */
+export async function removeProductImagesFromStorage(urls: string[]): Promise<void> {
+  const paths = urls
+    .map((u) => extractProductImageStoragePath(u))
+    .filter((p): p is string => Boolean(p));
+  if (paths.length === 0) return;
+  const { error } = await supabase.storage.from(BUCKET).remove(paths);
+  if (error) {
+    console.warn('[removeProductImagesFromStorage]', error.message);
+  }
+}

@@ -11,6 +11,9 @@ import { PermissionProvider } from './context/PermissionContext';
 import { CounterWorkerProvider } from './context/CounterWorkerContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { LoadingProvider } from './contexts/LoadingContext';
+import { ensureMobileDebugLogCapture } from './lib/mobileDebugLog';
+
+ensureMobileDebugLogCapture();
 
 declare global {
   interface Window {

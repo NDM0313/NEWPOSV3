@@ -3,6 +3,8 @@ import { ArrowLeft, Loader2, Mail, User, Key } from 'lucide-react';
 import { CustomSelect } from '../common';
 import * as usersApi from '../../api/users';
 import { FUNCTIONAL_ROLE_OPTIONS, normalizeAppRole } from '../../config/functionalRoles';
+import { useSubmitLock } from '../../contexts/LoadingContext';
+import { SaveBlockingOverlay } from '../common/SaveBlockingOverlay';
 
 interface AddUserSheetProps {
   companyId: string;
@@ -34,7 +36,7 @@ export function AddUserSheet({ companyId, branchId, onBack, onSuccess }: AddUser
   const [tempMode, setTempMode] = useState<'password' | 'pin'>('password');
   const [temporaryPassword, setTemporaryPassword] = useState('');
   const [pinDigits, setPinDigits] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const { run: runSave, busy: submitting } = useSubmitLock();
   const [error, setError] = useState('');
 
   const appendPin = (d: string) => {
@@ -66,7 +68,7 @@ export function AddUserSheet({ companyId, branchId, onBack, onSuccess }: AddUser
         tempPass = temporaryPassword;
       }
     }
-    setSubmitting(true);
+    await runSave('Creating user...', async () => {
     const branch_ids = branchId && branchId !== 'all' ? [branchId] : undefined;
     const { error: err } = await usersApi.createUserWithAuth({
       full_name: name,
@@ -79,20 +81,21 @@ export function AddUserSheet({ companyId, branchId, onBack, onSuccess }: AddUser
       default_branch_id: branchId && branchId !== 'all' ? branchId : undefined,
       is_active: true,
     });
-    setSubmitting(false);
     if (err) {
       setError(err);
       return;
     }
     onSuccess();
     onBack();
+    });
   };
 
   return (
-    <div className="min-h-screen bg-[#111827] pb-24">
-      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
+    <div className="relative min-h-screen bg-[#111827] pb-24">
+      <SaveBlockingOverlay active={submitting} label="Creating user..." />
+      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
         <div className="flex items-center gap-3 px-4 h-14">
-          <button type="button" onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg text-white">
+          <button type="button" onClick={onBack} disabled={submitting} className="p-2 hover:bg-[#374151] rounded-lg text-white disabled:opacity-50">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h1 className="text-white font-semibold text-base">Add user</h1>

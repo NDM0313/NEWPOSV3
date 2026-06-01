@@ -10,6 +10,7 @@ import {
 } from '../../lib/developerMode';
 import { getUnsynced, getOfflineQueueMetrics, type PendingRecord } from '../../lib/offlineStore';
 import { subscribeNetworkConnectivity } from '../../lib/networkBridge';
+import { MobileDebugLogSection } from './MobileDebugLogSection';
 
 const LAST_AUTOSYNC_KEY = 'erp_mobile_last_autosync_at';
 
@@ -139,6 +140,8 @@ export function DeveloperToolsSection() {
           <p className="text-xs text-[#6B7280] mt-1">Keeps login (Supabase session keys) and developer flags.</p>
           {cacheHint ? <p className="text-xs text-emerald-400 mt-1">{cacheHint}</p> : null}
         </div>
+
+        <MobileDebugLogSection />
 
         <div className="border-t border-[#374151] pt-3">
           <div className="flex items-center justify-between mb-2">

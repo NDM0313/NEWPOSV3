@@ -21,7 +21,7 @@ import { contactService } from '@/app/services/contactService';
 import { branchService } from '@/app/services/branchService';
 import { comboService } from '@/app/services/comboService';
 import { supabase } from '@/lib/supabase';
-import { uploadProductImages } from '@/app/utils/productImageUpload';
+import { uploadProductImages, removeProductImagesFromStorage } from '@/app/utils/productImageUpload';
 import { parseVariationAttributesRaw, publicVariationAttributes } from '@/app/utils/variationFieldMap';
 import { ProductImage } from './ProductImage';
 import { getSupabaseStorageDashboardUrl } from '@/app/utils/paymentAttachmentUrl';
@@ -1171,6 +1171,10 @@ export const EnhancedProductForm = ({
 
       if (isEdit) {
         // UPDATE: merge existing image_urls (including any user-removed) with newly uploaded files
+        const editSource = fullProductForEdit ?? initialProduct;
+        const previousImageUrls = Array.isArray((editSource as { image_urls?: string[] })?.image_urls)
+          ? [...((editSource as { image_urls: string[] }).image_urls)]
+          : [];
         let imageUrls: string[] = [...existingImageUrls];
         if (images.length > 0) {
           try {
@@ -1183,7 +1187,7 @@ export const EnhancedProductForm = ({
             toast.error(msg, isBucketMissing ? { action: { label: 'Open Storage', onClick: () => window.open(getSupabaseStorageDashboardUrl(), '_blank') } } : undefined);
           }
         }
-        if (imageUrls.length > 0) (productData as any).image_urls = imageUrls;
+        (productData as { image_urls: string[] }).image_urls = imageUrls;
 
         // RULE 5: Block enabling variations when product has parent-level stock (show modal)
         if (enableVariations) {
@@ -1204,6 +1208,11 @@ export const EnhancedProductForm = ({
         if (hasVariations) (productData as any).current_stock = 0; // RULE 1: parent never holds stock
 
         const result = await productService.updateProduct(productId, productData);
+
+        const removedImageUrls = previousImageUrls.filter((u) => !imageUrls.includes(u));
+        if (removedImageUrls.length > 0) {
+          void removeProductImagesFromStorage(removedImageUrls);
+        }
 
         const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
 

@@ -9,12 +9,14 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import type { User } from '../../types';
-import * as reportsApi from '../../api/reports';
 import * as inventoryApi from '../../api/inventory';
-import { getJournalEntries } from '../../api/accounts';
-import { getFinancialDashboardMetrics, sumTrendTail } from '../../api/financialDashboard';
+import { getMyWorkerDashboardMetrics } from '../../api/myWorkerDashboard';
+import { sumTrendTail } from '../../api/financialDashboard';
 import { formatLocalDateYYYYMMDD, localNowDateString } from '../../utils/localDate';
-import { supabase } from '../../lib/supabase';
+import {
+  useEffectiveWorkerId,
+  useEffectiveWorkerProfileId,
+} from '../../context/CounterWorkerContext';
 import { MOBILE_DATA_INVALIDATED_EVENT, shouldAcceptMobileInvalidation, type MobileInvalidationDetail } from '../../lib/dataInvalidationBus';
 
 interface DashboardModuleProps {
@@ -69,7 +71,9 @@ function StatCard({
   );
 }
 
-export function DashboardModule({ onBack, user: _user, companyId, branchId, onNewSale, onNewPurchase }: DashboardModuleProps) {
+export function DashboardModule({ onBack, user, companyId, branchId, onNewSale, onNewPurchase }: DashboardModuleProps) {
+  const effectiveUserId = useEffectiveWorkerId(user.id);
+  const effectiveProfileId = useEffectiveWorkerProfileId();
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [income, setIncome] = useState(0);
@@ -86,112 +90,64 @@ export function DashboardModule({ onBack, user: _user, companyId, branchId, onNe
   const days = timeRange === 'today' ? 1 : timeRange === 'week' ? 7 : 30;
 
   const loadData = async () => {
-    if (!companyId) return;
+    if (!companyId || !effectiveUserId) return;
     setIsRefreshing(true);
     const invBranch = branchId && branchId !== 'all' && branchId !== 'default' ? branchId : null;
     const rangeStart = new Date();
     rangeStart.setDate(rangeStart.getDate() - Math.max(1, days) + 1);
     const fromDate = formatLocalDateYYYYMMDD(rangeStart);
     const toDate = localNowDateString();
-    const [salesRes, invRes, finRes] = await Promise.all([
-      reportsApi.getSalesSummary(companyId, branchId, days),
-      inventoryApi.getInventory(companyId, invBranch),
-      getFinancialDashboardMetrics(companyId, branchId),
-    ]);
-    setOrders(salesRes.data?.count ?? 0);
+
+    const invRes = await inventoryApi.getInventory(companyId, invBranch);
     const lowStockItems = (invRes.data || []).filter((p) => p.isLowStock).slice(0, 5);
     setLowStock(lowStockItems.map((p) => ({ name: p.name, current: p.stock, min: p.minStock })));
     setPendingOrders([]);
-    try {
-      let payQuery = supabase
-        .from('payments')
-        .select('payment_type, amount, branch_id, payment_date')
-        .eq('company_id', companyId)
-        .gte('payment_date', fromDate)
-        .lte('payment_date', toDate)
-        .is('voided_at', null);
-      if (invBranch) payQuery = payQuery.eq('branch_id', invBranch);
-      const { data: payRows } = await payQuery;
-      let incoming = 0;
-      let outgoing = 0;
-      (payRows || []).forEach((r: Record<string, unknown>) => {
-        const amount = Number(r.amount ?? 0) || 0;
-        if (String(r.payment_type || '').toLowerCase() === 'received') incoming += amount;
-        else outgoing += amount;
-      });
-      setPaymentsIn(incoming);
-      setPaymentsOut(outgoing);
-    } catch {
-      setPaymentsIn(0);
-      setPaymentsOut(0);
-    }
 
-    const m = finRes.data;
-    const rpcOk = Boolean(m && !finRes.error && !m.error);
+    const { data: metrics, error: metricsErr } = await getMyWorkerDashboardMetrics(
+      companyId,
+      branchId,
+      effectiveUserId,
+      effectiveProfileId,
+      { fromDate, toDate },
+    );
 
-    if (rpcOk && m) {
+    if (metrics && !metricsErr) {
       if (timeRange === 'today') {
-        setIncome(m.today_sales);
-        setExpense(Math.max(0, m.today_sales - m.today_profit));
-        setReceivable(m.receivables);
-        setPayable(m.payables);
-        setProfit(m.today_profit);
+        setIncome(metrics.revenue);
+        setExpense(metrics.cost);
+        setProfit(metrics.profit);
       } else if (timeRange === 'week') {
-        setIncome(sumTrendTail(m.sales_trend, 7));
-        setExpense(sumTrendTail(m.expense_trend, 7));
-        setReceivable(m.receivables);
-        setPayable(m.payables);
-        setProfit(sumTrendTail(m.profit_trend, 7));
+        setIncome(sumTrendTail(metrics.salesTrend, 7));
+        setExpense(metrics.cost);
+        setProfit(sumTrendTail(metrics.profitTrend, 7));
       } else {
-        setIncome(m.monthly_revenue);
-        setExpense(m.monthly_expenses);
-        setReceivable(m.receivables);
-        setPayable(m.payables);
-        setProfit(m.monthly_profit);
+        setIncome(metrics.revenue);
+        setExpense(metrics.cost);
+        setProfit(metrics.profit);
       }
+      setReceivable(metrics.receivables);
+      setPayable(metrics.payables);
+      setPaymentsIn(metrics.paymentsIn);
+      setPaymentsOut(metrics.paymentsOut);
+      setOrders(metrics.ordersCount);
       setIsRefreshing(false);
       return;
     }
 
-    const jeRes = await getJournalEntries(companyId, branchId, 500);
-    const since = new Date();
-    since.setDate(since.getDate() - Math.max(1, days));
-    let inc = 0;
-    let exp = 0;
-    let arDebit = 0;
-    let arCredit = 0;
-    let apCredit = 0;
-    let apDebit = 0;
-    for (const je of jeRes.data || []) {
-      const d = new Date(je.entry_date);
-      if (isNaN(d.getTime()) || d < since) continue;
-      for (const line of je.lines || []) {
-        const accountName = String(line.account?.name || '').toLowerCase();
-        const debit = Number(line.debit || 0);
-        const credit = Number(line.credit || 0);
-        if (accountName.includes('income') || accountName.includes('revenue') || accountName.includes('sales')) inc += credit;
-        if (accountName.includes('expense') || accountName.includes('cost')) exp += debit;
-        if (accountName.includes('receivable')) {
-          arDebit += debit;
-          arCredit += credit;
-        }
-        if (accountName.includes('payable')) {
-          apCredit += credit;
-          apDebit += debit;
-        }
-      }
-    }
-    setIncome(inc);
-    setExpense(exp);
-    setReceivable(Math.max(0, arDebit - arCredit));
-    setPayable(Math.max(0, apCredit - apDebit));
-    setProfit(inc - exp);
+    setIncome(0);
+    setExpense(0);
+    setReceivable(0);
+    setPayable(0);
+    setProfit(0);
+    setPaymentsIn(0);
+    setPaymentsOut(0);
+    setOrders(0);
     setIsRefreshing(false);
   };
 
   useEffect(() => {
-    loadData();
-  }, [companyId, branchId, timeRange]);
+    void loadData();
+  }, [companyId, branchId, timeRange, effectiveUserId, effectiveProfileId]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -218,11 +174,11 @@ export function DashboardModule({ onBack, user: _user, companyId, branchId, onNe
       if (timer) clearTimeout(timer);
       window.removeEventListener(MOBILE_DATA_INVALIDATED_EVENT, onInvalidated as EventListener);
     };
-  }, [branchId, companyId, timeRange]);
+  }, [branchId, companyId, timeRange, effectiveUserId, effectiveProfileId]);
 
   return (
     <div className="min-h-screen pb-24 bg-[#111827]">
-      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
+      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
         <div className="flex items-center justify-between px-4 h-14">
           <div className="flex items-center gap-3">
             <button onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg transition-colors text-white">
@@ -260,17 +216,17 @@ export function DashboardModule({ onBack, user: _user, companyId, branchId, onNe
 
       <div className="p-4 space-y-4">
         <p className="text-[11px] text-[#6B7280] leading-snug">
-          Revenue/profit: company-wide from dashboard RPC. Receivables/payables: SUM(<code className="text-[#9CA3AF]">get_contact_balances_summary</code>) for company or selected branch (after DB migration 20260370); payables include supplier + studio/worker slice per that RPC. Orders and low stock use the selected branch.
+          Revenue, receivables, payables, and payments are scoped to the active logged-in user (sales/purchases/payments you created). Low stock uses branch inventory for the selected branch.
         </p>
         <div className="space-y-3">
-          <StatCard title="Total revenue" value={income} icon={<DollarSign size={20} />} color="blue" />
-          <StatCard title="Total cost (purchases + expenses)" value={expense} icon={<ShoppingCart size={20} />} color="green" />
-          <StatCard title="Net profit" value={profit} icon={<TrendingUp size={20} />} color="purple" />
-          <StatCard title="Receivables (sales due)" value={receivable} icon={<Package size={20} />} color="blue" />
-          <StatCard title="Payables (purchase due)" value={payable} icon={<Package size={20} />} color="green" />
-          <StatCard title="Payments received" value={paymentsIn} icon={<TrendingUp size={20} />} color="blue" />
-          <StatCard title="Payments made" value={paymentsOut} icon={<TrendingDown size={20} />} color="green" />
-          <StatCard title="Total Orders" value={orders} icon={<Package size={20} />} color="blue" />
+          <StatCard title="My revenue" value={income} icon={<DollarSign size={20} />} color="blue" />
+          <StatCard title="My cost (purchases + expenses)" value={expense} icon={<ShoppingCart size={20} />} color="green" />
+          <StatCard title="My net profit" value={profit} icon={<TrendingUp size={20} />} color="purple" />
+          <StatCard title="My receivables" value={receivable} icon={<Package size={20} />} color="blue" />
+          <StatCard title="My payables" value={payable} icon={<Package size={20} />} color="green" />
+          <StatCard title="My payments received" value={paymentsIn} icon={<TrendingUp size={20} />} color="blue" />
+          <StatCard title="My payments made" value={paymentsOut} icon={<TrendingDown size={20} />} color="green" />
+          <StatCard title="My orders" value={orders} icon={<Package size={20} />} color="blue" />
         </div>
 
         {lowStock.length > 0 && (

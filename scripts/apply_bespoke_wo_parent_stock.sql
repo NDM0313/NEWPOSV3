@@ -1,0 +1,2 @@
+-- VPS: pipe this file OR migrations/20260602140000_bespoke_wo_parent_stock_movement.sql
+-- Get-Content migrations/20260602140000_bespoke_wo_parent_stock_movement.sql -Raw | ssh dincouture-vps "docker exec -i supabase-db psql -U supabase_admin -d postgres"

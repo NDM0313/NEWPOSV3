@@ -1,14 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { X, Box, Plus, Minus, AlertCircle, TrendingUp, TrendingDown, Layers } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, Box, Plus, Minus, AlertCircle, TrendingUp, TrendingDown, Layers, MapPin } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 import { productService } from '@/app/services/productService';
 import { inventoryService } from '@/app/services/inventoryService';
+import { branchService, type Branch } from '@/app/services/branchService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { pickInitialStockAdjustBranchId } from '@/app/utils/branchScope';
 
 interface Product {
   id: number;
@@ -42,11 +51,16 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
   product,
   onSuccess,
 }) => {
-  const { companyId, branchId, user } = useSupabase();
+  const { companyId, branchId, defaultBranchId, user } = useSupabase();
   const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>('increase');
-  const [quantity, setQuantity] = useState<string>('');
-  const [reason, setReason] = useState<string>('');
+  const [quantity, setQuantity] = useState('');
+  const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [adjustBranchId, setAdjustBranchId] = useState<string | null>(null);
+  const [branchStock, setBranchStock] = useState<number | null>(null);
+  const [loadingBranchStock, setLoadingBranchStock] = useState(false);
   const [variations, setVariations] = useState<VariationWithStock[]>([]);
   const [selectedVariationId, setSelectedVariationId] = useState<string | null>(null);
   const [loadingVariations, setLoadingVariations] = useState(false);
@@ -54,44 +68,114 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
   const isVariable = product?.type === 'variable';
   const isCombo = product?.type === 'combo';
   const selectedVariation = selectedVariationId ? variations.find((v) => v.id === selectedVariationId) : null;
-  const effectiveStock = isVariable && selectedVariation ? selectedVariation.stock : (product?.stock ?? 0);
+  const showBranchSelect = branches.length > 1;
+
+  const effectiveStock =
+    isVariable && selectedVariation
+      ? selectedVariation.stock
+      : branchStock ?? (loadingBranchStock ? null : product?.stock ?? 0);
+
+  const loadBranchStock = useCallback(
+    async (branchUuid: string | null) => {
+      if (!companyId || !product?.uuid || !branchUuid) {
+        setBranchStock(null);
+        return;
+      }
+      if (isVariable) return;
+      setLoadingBranchStock(true);
+      try {
+        const rows = await inventoryService.getInventoryOverview(companyId, branchUuid);
+        const row = rows.find((r) => r.productId === product.uuid);
+        setBranchStock(row?.stock ?? 0);
+      } catch (e) {
+        console.error('[AdjustStock] Failed to load branch stock:', e);
+        setBranchStock(0);
+      } finally {
+        setLoadingBranchStock(false);
+      }
+    },
+    [companyId, product?.uuid, isVariable],
+  );
+
+  const loadVariationsForBranch = useCallback(
+    async (branchUuid: string | null) => {
+      if (!companyId || !product?.uuid || !isVariable) return;
+      setLoadingVariations(true);
+      try {
+        const list = await inventoryService.getVariationsWithStock(companyId, product.uuid, branchUuid);
+        setVariations(list);
+        setSelectedVariationId(list.length === 1 ? list[0].id : null);
+      } catch (e) {
+        console.error('[AdjustStock] Failed to load variations:', e);
+        toast.error('Could not load variations');
+        setVariations([]);
+        setSelectedVariationId(null);
+      } finally {
+        setLoadingVariations(false);
+      }
+    },
+    [companyId, product?.uuid, isVariable],
+  );
 
   useEffect(() => {
-    if (isOpen && product) {
-      setQuantity('');
-      setReason('');
-      setAdjustmentType('increase');
-      setSelectedVariationId(null);
-      setVariations([]);
-      if (isVariable && product.uuid && companyId) {
-        setLoadingVariations(true);
-        inventoryService
-          .getVariationsWithStock(companyId, product.uuid, branchId)
-          .then((list) => {
-            setVariations(list);
-            if (list.length === 1) setSelectedVariationId(list[0].id);
-          })
-          .catch((e) => {
-            console.error('[AdjustStock] Failed to load variations:', e);
-            toast.error('Could not load variations');
-          })
-          .finally(() => setLoadingVariations(false));
-      }
-    }
-  }, [isOpen, product?.uuid, isVariable, companyId, branchId]);
+    if (!isOpen || !product || !companyId) return;
+
+    setQuantity('');
+    setReason('');
+    setAdjustmentType('increase');
+    setSelectedVariationId(null);
+    setVariations([]);
+    setBranchStock(null);
+
+    let cancelled = false;
+    setLoadingBranches(true);
+    void branchService
+      .getBranchesCached(companyId)
+      .then((list) => {
+        if (cancelled) return;
+        const activeList = list.filter((b) => b.is_active !== false);
+        setBranches(activeList.length > 0 ? activeList : list);
+        const initial = pickInitialStockAdjustBranchId(list, branchId, defaultBranchId);
+        setAdjustBranchId(initial);
+        if (!initial && list.length === 0) {
+          toast.error('No branches found. Add a branch in Settings first.');
+        }
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        console.error('[AdjustStock] Failed to load branches:', e);
+        toast.error('Could not load branches');
+        setBranches([]);
+        setAdjustBranchId(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingBranches(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, product?.uuid, companyId, branchId, defaultBranchId]);
+
+  useEffect(() => {
+    if (!isOpen || !product || !adjustBranchId) return;
+    void loadBranchStock(adjustBranchId);
+    if (isVariable) void loadVariationsForBranch(adjustBranchId);
+  }, [isOpen, product?.uuid, adjustBranchId, isVariable, loadBranchStock, loadVariationsForBranch]);
 
   const calculateNewStock = () => {
-    if (!quantity) return effectiveStock;
+    const base = effectiveStock ?? 0;
+    if (!quantity) return base;
     const qty = parseFloat(quantity) || 0;
     switch (adjustmentType) {
       case 'increase':
-        return effectiveStock + qty;
+        return base + qty;
       case 'decrease':
-        return Math.max(0, effectiveStock - qty);
+        return Math.max(0, base - qty);
       case 'set':
         return qty;
       default:
-        return effectiveStock;
+        return base;
     }
   };
 
@@ -115,13 +199,19 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
       return;
     }
 
-    if (adjustmentType === 'decrease' && qty > effectiveStock) {
+    const stockNow = effectiveStock ?? 0;
+    if (adjustmentType === 'decrease' && qty > stockNow) {
       toast.error('Cannot decrease stock by more than current stock');
       return;
     }
 
     if (!companyId) {
       toast.error('Company ID not found');
+      return;
+    }
+
+    if (!adjustBranchId || !isRealBranchUuid(adjustBranchId)) {
+      toast.error('Select a branch / location to adjust stock.');
       return;
     }
 
@@ -134,14 +224,13 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
       } else if (adjustmentType === 'decrease') {
         adjustmentQuantity = -qty;
       } else if (adjustmentType === 'set') {
-        adjustmentQuantity = newStock - effectiveStock;
+        adjustmentQuantity = newStock - stockNow;
       }
 
       if (isVariable && selectedVariationId) {
-        // Variation: only create stock movement (stock is movement-based)
         await productService.createStockMovement({
           company_id: companyId,
-          branch_id: branchId || undefined,
+          branch_id: adjustBranchId,
           product_id: product.uuid,
           variation_id: selectedVariationId,
           movement_type: 'adjustment',
@@ -149,31 +238,39 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
           unit_cost: 0,
           total_cost: 0,
           reference_type: 'adjustment',
-          notes: reason || `Stock ${adjustmentType} - ${selectedVariation?.sku || selectedVariationId} - ${adjustmentType === 'set' ? `Set to ${newStock}` : `${adjustmentQuantity >= 0 ? '+' : ''}${adjustmentQuantity}`}`,
+          notes:
+            reason ||
+            `Stock ${adjustmentType} - ${selectedVariation?.sku || selectedVariationId} - ${adjustmentType === 'set' ? `Set to ${newStock}` : `${adjustmentQuantity >= 0 ? '+' : ''}${adjustmentQuantity}`}`,
           created_by: user?.id || undefined,
         });
       } else {
-        // Simple product: stock only via stock_movements (trigger updates products.current_stock)
         await productService.createStockMovement({
           company_id: companyId,
-          branch_id: branchId || undefined,
+          branch_id: adjustBranchId,
           product_id: product.uuid,
           movement_type: 'adjustment',
           quantity: adjustmentQuantity,
           unit_cost: 0,
           total_cost: 0,
           reference_type: 'adjustment',
-          notes: reason || `Stock ${adjustmentType === 'increase' ? 'increase' : adjustmentType === 'decrease' ? 'decrease' : 'set'} - ${adjustmentType === 'set' ? `Set to ${newStock}` : `${adjustmentType === 'increase' ? '+' : '-'}${qty}`}`,
+          notes:
+            reason ||
+            `Stock ${adjustmentType === 'increase' ? 'increase' : adjustmentType === 'decrease' ? 'decrease' : 'set'} - ${adjustmentType === 'set' ? `Set to ${newStock}` : `${adjustmentType === 'increase' ? '+' : '-'}${qty}`}`,
           created_by: user?.id || undefined,
         });
       }
 
-      toast.success(`Stock ${adjustmentType === 'increase' ? 'increased' : adjustmentType === 'decrease' ? 'decreased' : 'set'} successfully`);
+      toast.success(
+        `Stock ${adjustmentType === 'increase' ? 'increased' : adjustmentType === 'decrease' ? 'decreased' : 'set'} successfully`,
+      );
+      window.dispatchEvent(new CustomEvent('products-updated'));
+      window.dispatchEvent(new CustomEvent('inventory-updated'));
       onSuccess?.();
       onClose();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[ADJUST STOCK] Error:', error);
-      toast.error('Failed to update stock: ' + (error.message || 'Unknown error'));
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      toast.error('Failed to update stock: ' + msg);
     } finally {
       setSaving(false);
     }
@@ -182,11 +279,17 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
   if (!isOpen || !product) return null;
 
   const newStock = calculateNewStock();
-  const stockChange = adjustmentType === 'increase'
-    ? `+${quantity || '0'}`
-    : adjustmentType === 'decrease'
-    ? `-${quantity || '0'}`
-    : `→ ${quantity || '0'}`;
+  const stockChange =
+    adjustmentType === 'increase'
+      ? `+${quantity || '0'}`
+      : adjustmentType === 'decrease'
+        ? `-${quantity || '0'}`
+        : `→ ${quantity || '0'}`;
+
+  const stockDisplay =
+    loadingBranchStock || (isVariable && loadingVariations)
+      ? null
+      : effectiveStock ?? 0;
 
   if (isCombo) {
     return (
@@ -207,11 +310,15 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
           <div className="p-6">
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-2">
               <AlertCircle size={20} className="text-amber-400 shrink-0 mt-0.5" />
-              <p className="text-sm text-amber-200">Stock for bundle (combo) products is managed via their components. Adjust stock of individual items instead.</p>
+              <p className="text-sm text-amber-200">
+                Stock for bundle (combo) products is managed via their components. Adjust stock of individual items instead.
+              </p>
             </div>
           </div>
           <div className="px-6 py-4 border-t border-gray-800 flex justify-end">
-            <Button variant="outline" onClick={onClose} className="bg-gray-800 border-gray-700 text-white">Close</Button>
+            <Button variant="outline" onClick={onClose} className="bg-gray-800 border-gray-700 text-white">
+              Close
+            </Button>
           </div>
         </div>
       </div>
@@ -221,7 +328,6 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200">
       <div className="w-full max-w-md bg-[#0B0F17] border border-gray-800 rounded-xl shadow-2xl animate-in zoom-in-95 duration-300">
-        {/* Header */}
         <div className="px-6 py-5 border-b border-gray-800 bg-[#111827] flex items-center justify-between rounded-t-xl">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
@@ -229,22 +335,51 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-semibold text-white">Adjust Stock</h2>
-              <p className="text-xs text-gray-400">{product.name}{isVariable ? ' (with variations)' : ''}</p>
+              <p className="text-xs text-gray-400">
+                {product.name}
+                {isVariable ? ' (with variations)' : ''}
+              </p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="text-gray-400 hover:text-white hover:bg-gray-800"
-          >
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:text-white hover:bg-gray-800">
             <X size={20} />
           </Button>
         </div>
 
-        {/* Content */}
         <div className="p-6 space-y-6">
-          {/* Variation selector (variable products only) */}
+          {(showBranchSelect || loadingBranches) && (
+            <div>
+              <Label className="text-sm text-gray-400 mb-2 flex items-center gap-2">
+                <MapPin size={14} />
+                Branch / Location
+              </Label>
+              {loadingBranches ? (
+                <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
+                  <Loader2 size={16} className="animate-spin" />
+                  Loading branches...
+                </div>
+              ) : showBranchSelect ? (
+                <Select value={adjustBranchId ?? ''} onValueChange={(v) => setAdjustBranchId(v)}>
+                  <SelectTrigger className="w-full bg-gray-800 border-gray-700 text-white">
+                    <SelectValue placeholder="Select branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                        {b.address || b.city ? ` — ${(b.address || b.city || '').slice(0, 48)}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : adjustBranchId ? (
+                <p className="text-sm text-gray-300 py-1">
+                  {branches.find((b) => b.id === adjustBranchId)?.name ?? 'Branch'}
+                </p>
+              ) : null}
+            </div>
+          )}
+
           {isVariable && (
             <div>
               <Label className="text-sm text-gray-400 mb-2 flex items-center gap-2">
@@ -267,7 +402,12 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
                   <option value="">Choose variation...</option>
                   {variations.map((v) => (
                     <option key={v.id} value={v.id}>
-                      {v.name || v.sku || (typeof v.attributes === 'object' && v.attributes && Object.values(v.attributes).length ? Object.values(v.attributes).join(' / ') : v.id)} — Stock: {v.stock}
+                      {v.name ||
+                        v.sku ||
+                        (typeof v.attributes === 'object' && v.attributes && Object.values(v.attributes).length
+                          ? Object.values(v.attributes).join(' / ')
+                          : v.id)}{' '}
+                      — Stock: {v.stock}
                     </option>
                   ))}
                 </select>
@@ -275,19 +415,25 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
             </div>
           )}
 
-          {/* Current Stock */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-            <p className="text-xs text-gray-500 mb-2">Current Stock{isVariable && selectedVariation ? ` (${selectedVariation.sku || selectedVariation.name || 'selected'})` : ''}</p>
+            <p className="text-xs text-gray-500 mb-2">
+              Current Stock
+              {isVariable && selectedVariation ? ` (${selectedVariation.sku || selectedVariation.name || 'selected'})` : ''}
+              {adjustBranchId && showBranchSelect
+                ? ` · ${branches.find((b) => b.id === adjustBranchId)?.name ?? ''}`
+                : ''}
+            </p>
             {isVariable && !selectedVariationId && variations.length > 0 ? (
               <p className="text-sm text-gray-500">Select a variation above</p>
+            ) : stockDisplay === null ? (
+              <Loader2 size={24} className="text-gray-500 animate-spin" />
             ) : (
-              <p className={`text-3xl font-bold ${effectiveStock === 0 ? 'text-red-400' : 'text-green-400'}`}>
-                {effectiveStock}
+              <p className={`text-3xl font-bold ${stockDisplay === 0 ? 'text-red-400' : 'text-green-400'}`}>
+                {stockDisplay}
               </p>
             )}
           </div>
 
-          {/* Adjustment Type */}
           <div>
             <Label className="text-sm text-gray-400 mb-3 block">Adjustment Type</Label>
             <div className="flex gap-2">
@@ -320,10 +466,13 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
             </div>
           </div>
 
-          {/* Quantity Input */}
           <div>
             <Label htmlFor="quantity" className="text-sm text-gray-400 mb-2 block">
-              {adjustmentType === 'increase' ? 'Quantity to Add' : adjustmentType === 'decrease' ? 'Quantity to Remove' : 'New Stock Quantity'}
+              {adjustmentType === 'increase'
+                ? 'Quantity to Add'
+                : adjustmentType === 'decrease'
+                  ? 'Quantity to Remove'
+                  : 'New Stock Quantity'}
             </Label>
             <div className="relative">
               <Box className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
@@ -340,7 +489,6 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
             </div>
           </div>
 
-          {/* Reason Input */}
           <div>
             <Label htmlFor="reason" className="text-sm text-gray-400 mb-2 block">
               Reason (Optional)
@@ -355,14 +503,13 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
             />
           </div>
 
-          {/* Preview */}
-          {quantity && (
+          {quantity && stockDisplay !== null && (
             <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
               <p className="text-xs text-gray-400 mb-2">Stock Change Preview</p>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-300">Current:</span>
-                  <span className="text-sm font-semibold text-white">{effectiveStock}</span>
+                  <span className="text-sm font-semibold text-white">{stockDisplay}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {adjustmentType === 'increase' && <TrendingUp size={16} className="text-green-400" />}
@@ -371,7 +518,9 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-300">New:</span>
-                  <span className={`text-lg font-bold ${newStock === 0 ? 'text-red-400' : newStock < effectiveStock ? 'text-yellow-400' : 'text-green-400'}`}>
+                  <span
+                    className={`text-lg font-bold ${newStock === 0 ? 'text-red-400' : newStock < stockDisplay ? 'text-yellow-400' : 'text-green-400'}`}
+                  >
                     {newStock}
                   </span>
                 </div>
@@ -379,26 +528,16 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
             </div>
           )}
 
-          {/* Warnings */}
-          {adjustmentType === 'decrease' && quantity && parseFloat(quantity) > effectiveStock && (
+          {adjustmentType === 'decrease' && quantity && stockDisplay !== null && parseFloat(quantity) > stockDisplay && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-start gap-2">
               <AlertCircle size={18} className="text-red-400 shrink-0 mt-0.5" />
               <p className="text-sm text-red-400">
-                Cannot decrease stock by more than current stock ({effectiveStock}).
-              </p>
-            </div>
-          )}
-          {newStock < 0 && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-start gap-2">
-              <AlertCircle size={18} className="text-red-400 shrink-0 mt-0.5" />
-              <p className="text-sm text-red-400">
-                Stock cannot be negative.
+                Cannot decrease stock by more than current stock ({stockDisplay}).
               </p>
             </div>
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-800 bg-[#111827] rounded-b-xl flex items-center justify-end gap-3">
           <Button
             variant="outline"
@@ -410,7 +549,16 @@ export const AdjustStockDialog: React.FC<AdjustStockDialogProps> = ({
           </Button>
           <Button
             onClick={handleSave}
-            disabled={saving || !quantity || parseFloat(quantity) <= 0 || (adjustmentType === 'decrease' && parseFloat(quantity) > effectiveStock) || (isVariable && !selectedVariationId) || (isVariable && variations.length === 0)}
+            disabled={
+              saving ||
+              loadingBranches ||
+              !adjustBranchId ||
+              !quantity ||
+              parseFloat(quantity) <= 0 ||
+              (stockDisplay !== null && adjustmentType === 'decrease' && parseFloat(quantity) > stockDisplay) ||
+              (isVariable && !selectedVariationId) ||
+              (isVariable && variations.length === 0)
+            }
             className="bg-blue-600 hover:bg-blue-700 text-white"
           >
             {saving ? (

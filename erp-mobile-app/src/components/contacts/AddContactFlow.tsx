@@ -80,7 +80,7 @@ export function AddContactFlow({
 
   return (
     <div className="min-h-screen pb-40 bg-[#111827]">
-      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
+      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
         <div className="flex items-center gap-3 px-4 h-14">
           <button onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg transition-colors">
             <ArrowLeft className="w-5 h-5 text-white" />

@@ -37,6 +37,13 @@ export function isInjectedBespokeLine(item: BespokeCartLineBase): boolean {
   return !!item.isBespokeInjected || item.bespokeRole === 'fabric' || item.bespokeParentCartId != null;
 }
 
+/** Retail unit price for injected fabric — default 0 so customer bill is not inflated (web parity). */
+export function resolveFabricMaterialRetailPrice(fabric: BespokeFabricMaterial): number {
+  const fromMaterial = Number(fabric.retail_price);
+  if (Number.isFinite(fromMaterial) && fromMaterial > 0) return fromMaterial;
+  return 0;
+}
+
 function fabricMaterialToOption(mat: BespokeFabricMaterial): Partial<LooseFabricProductOption> {
   return {
     product_id: mat.product_id,

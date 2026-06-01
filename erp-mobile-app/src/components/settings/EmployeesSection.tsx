@@ -185,7 +185,7 @@ export function EmployeesSection({ onBack, companyId, isAdminOrOwner, userId }: 
   if (selectedEmployee && !showAction && !showEdit) {
     return (
       <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
+        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
           <div className="flex items-center justify-between px-4 h-14">
             <div className="flex items-center gap-3">
               <button onClick={() => setSelectedEmployee(null)} className="p-2 hover:bg-[#374151] rounded-lg text-white">
@@ -280,7 +280,7 @@ export function EmployeesSection({ onBack, companyId, isAdminOrOwner, userId }: 
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
-      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
+      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
         <div className="flex items-center justify-between px-4 h-14">
           <div className="flex items-center gap-3">
             <button onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg text-white">

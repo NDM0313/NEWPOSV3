@@ -1,0 +1,3 @@
+# Generated migration JSON — do not commit large outputs
+output/
+*.json

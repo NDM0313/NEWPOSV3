@@ -563,22 +563,50 @@ export const saleService = {
   },
 
   /** One row per charge for audit-ready ledger. */
-  replaceSaleCharges(saleId: string, charges: { charge_type: string; amount: number; ledger_account_id?: string | null }[], createdBy?: string | null) {
+  replaceSaleCharges(
+    saleId: string,
+    charges: {
+      charge_type: string;
+      amount: number;
+      ledger_account_id?: string | null;
+      charged_to_customer?: boolean;
+      tailor_contact_id?: string | null;
+      expense_category_id?: string | null;
+    }[],
+    createdBy?: string | null,
+  ) {
     return (async () => {
       const { error: delError } = await supabase.from('sale_charges').delete().eq('sale_id', saleId);
       if (delError) {
         console.warn('[SALE SERVICE] replaceSaleCharges delete failed:', delError);
         throw delError;
       }
-      const chargeRows = (charges || []).filter((c) => c.amount > 0).map((c) => ({
-        sale_id: saleId,
-        charge_type: c.charge_type,
-        ledger_account_id: c.ledger_account_id ?? null,
-        amount: Number(c.amount),
-        created_by: createdBy ?? null,
-      }));
+      const chargeRows = (charges || []).filter((c) => c.amount > 0).map((c) => {
+        const row: Record<string, unknown> = {
+          sale_id: saleId,
+          charge_type: c.charge_type,
+          ledger_account_id: c.ledger_account_id ?? null,
+          amount: Number(c.amount),
+          created_by: createdBy ?? null,
+        };
+        if (c.charged_to_customer !== undefined) row.charged_to_customer = c.charged_to_customer;
+        if (c.tailor_contact_id) row.tailor_contact_id = c.tailor_contact_id;
+        if (c.expense_category_id) row.expense_category_id = c.expense_category_id;
+        return row;
+      });
       if (chargeRows.length > 0) {
-        const { error: insError } = await supabase.from('sale_charges').insert(chargeRows);
+        let { error: insError } = await supabase.from('sale_charges').insert(chargeRows);
+        if (insError) {
+          const msg = String(insError.message || '');
+          if (insError.code === '42703' || msg.includes('expense_category')) {
+            const fallback = chargeRows.map((r) => {
+              const { expense_category_id: _e, ...rest } = r;
+              return rest;
+            });
+            const retry = await supabase.from('sale_charges').insert(fallback);
+            insError = retry.error;
+          }
+        }
         if (insError) {
           console.warn('[SALE SERVICE] replaceSaleCharges insert failed:', insError);
           throw insError;

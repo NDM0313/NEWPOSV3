@@ -13,6 +13,7 @@ function applyInputAttributes(el: HTMLInputElement | HTMLTextAreaElement) {
   const type = (el.getAttribute('type') || 'text').toLowerCase();
   const step = el.getAttribute('step');
   const existingInputMode = (el.getAttribute('inputMode') || '').toLowerCase();
+  const pattern = el.getAttribute('pattern') || '';
   const hasNumericHint =
     el.hasAttribute('data-input-numeric') || existingInputMode === 'decimal' || existingInputMode === 'numeric';
 
@@ -32,8 +33,15 @@ function applyInputAttributes(el: HTMLInputElement | HTMLTextAreaElement) {
   }
 
   if (type === 'tel') {
-    el.setAttribute('inputMode', 'tel');
-    el.setAttribute('enterKeyHint', 'next');
+    const digitOnly =
+      pattern === '[0-9]*' ||
+      pattern === '[0-9]+' ||
+      el.hasAttribute('data-input-numeric') ||
+      existingInputMode === 'numeric' ||
+      existingInputMode === 'decimal';
+    el.setAttribute('inputMode', digitOnly ? 'numeric' : 'tel');
+    el.setAttribute('enterKeyHint', el.getAttribute('enterKeyHint') || 'next');
+    el.style.fontSize = el.style.fontSize || '16px';
     el.dataset.keyboardApplied = 'true';
     return;
   }
@@ -42,7 +50,7 @@ function applyInputAttributes(el: HTMLInputElement | HTMLTextAreaElement) {
     if (existingInputMode === 'decimal' || existingInputMode === 'numeric') {
       el.setAttribute('inputMode', existingInputMode);
     }
-    el.setAttribute('enterKeyHint', 'next');
+    el.setAttribute('enterKeyHint', el.getAttribute('enterKeyHint') || 'next');
     el.dataset.keyboardApplied = 'true';
     return;
   }
@@ -69,7 +77,6 @@ function applyInputAttributes(el: HTMLInputElement | HTMLTextAreaElement) {
   }
 
   const autoComplete = (el.getAttribute('autocomplete') || '').toLowerCase();
-  const pattern = el.getAttribute('pattern') || '';
   const digitOnlyPattern =
     pattern === '[0-9]*' || pattern === '[0-9]+' || pattern === '[0-9]{4,8}' || pattern === '[0-9]{6}';
   if (

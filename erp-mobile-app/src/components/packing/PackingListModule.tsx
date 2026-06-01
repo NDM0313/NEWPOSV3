@@ -186,7 +186,7 @@ export function PackingListModule({ onBack, user, companyId, branchId }: Packing
     const next = nextCourierStatus(selected.status);
     return (
       <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
+        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
           <div className="flex items-center gap-3 px-4 h-14">
             <button
               type="button"
@@ -335,7 +335,7 @@ export function PackingListModule({ onBack, user, companyId, branchId }: Packing
   if (view === 'pick_sale') {
     return (
       <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
+        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
           <div className="flex items-center gap-3 px-4 h-14">
             <button
               type="button"
@@ -409,7 +409,7 @@ export function PackingListModule({ onBack, user, companyId, branchId }: Packing
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
-      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
+      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
         <div className="flex items-center gap-3 px-4 h-14">
           <button type="button" onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg text-white">
             <ArrowLeft className="w-5 h-5" />

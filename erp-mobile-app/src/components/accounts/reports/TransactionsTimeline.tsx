@@ -316,7 +316,7 @@ export function TransactionsTimeline({
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
-      <div className="bg-gradient-to-br from-[#6366F1] to-[#4F46E5] p-4 sticky top-0 z-10">
+      <div className="bg-gradient-to-br from-[#6366F1] to-[#4F46E5] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3 mb-3">
           <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg text-white">
             <ArrowLeft className="w-5 h-5" />

@@ -1,3 +1,12 @@
+
+597a5292-14c8-4cd8-96bd-c61b5a0d8c92
+
+node migration-tools/importToSupabase.js --confirm --target-company-id 597a5292-14c8-4cd8-96bd-c61b5a0d8c92
+
+
+
+
+
 ==================================================
 ERP PROJECT – OFFICIAL GIT WORKFLOW RULES
 ==================================================
@@ -52,7 +61,7 @@ git commit -m "Bug fix: Purchase service FK issue"
 
 On current machine:
 git add .
-git commit -m "apk build8"
+git commit -m "apk build34"
 git push origin main
 
 On new machine:

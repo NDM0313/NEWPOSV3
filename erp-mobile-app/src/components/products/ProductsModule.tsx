@@ -18,9 +18,11 @@ import * as productsApi from '../../api/products';
 import type { ProductVariationRow } from '../../api/products';
 import { AddProductFlow, type AddProductFlowSavePayload } from './AddProductFlow';
 import { ProductImage } from './ProductImage';
+import { primaryImageUrl } from '../../utils/productImageUpload';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
 import { BarcodeLabelPrintSheet } from './BarcodeLabelPrintSheet';
 import { ProductImagePreviewSheet } from './ProductImagePreviewSheet';
+import { ProductDetailSheet } from './ProductDetailSheet';
 import { linesFromProducts } from '../../lib/barcodeLabelLines';
 import type { LabelPrintLine } from '../../services/barcodeLabelPrint';
 import * as settingsApi from '../../api/settings';
@@ -30,6 +32,7 @@ import { useMainScrollRef } from '../../contexts/MainScrollContext';
 import { formatQty } from '../../utils/quantity';
 import { getCompanyName } from '../../api/reports';
 import * as branchesApi from '../../api/branches';
+import { useSubmitLock } from '../../contexts/LoadingContext';
 
 /** Total stock: sum of variation stocks when hasVariations, else product stock */
 function getDisplayStock(p: productsApi.Product): number {
@@ -71,7 +74,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
   const [view, setView] = useState<'list' | 'add'>('list');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [saveError, setSaveError] = useState('');
-  const [saving, setSaving] = useState(false);
+  const { run: runSave, busy: saving } = useSubmitLock();
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -88,6 +91,8 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
   const [labelCompanyName, setLabelCompanyName] = useState('');
   const [labelBranchName, setLabelBranchName] = useState('');
   const [imagePreviewProduct, setImagePreviewProduct] = useState<Product | null>(null);
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
+  const [editLoadingId, setEditLoadingId] = useState<string | null>(null);
   const { online, pendingCount } = useOfflineListMeta();
   const mainScrollRef = useMainScrollRef();
 
@@ -108,11 +113,29 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         return;
       }
       if (!opts?.silent) setLoading(true);
-      const { data, error } = await productsApi.getProducts(companyId);
+      const { data, error } = await productsApi.getProducts(companyId, { branchId: branchId ?? null });
       setLoading(false);
       setProducts(error ? [] : data || []);
     },
-    [companyId]
+    [companyId, branchId]
+  );
+
+  const openEditProduct = useCallback(
+    async (p: Product) => {
+      if (!companyId) return;
+      setDetailProduct(null);
+      setEditLoadingId(p.id);
+      const { data, error } = await productsApi.getProductById(companyId, p.id, { branchId: branchId ?? null });
+      setEditLoadingId(null);
+      if (error || !data) {
+        setSaveError(error || 'Could not load product.');
+        return;
+      }
+      setSaveError('');
+      setEditingProduct(data);
+      setView('add');
+    },
+    [companyId, branchId],
   );
 
   useEffect(() => {
@@ -173,12 +196,23 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
     openLabelSheet(items);
   };
 
+  const mergeSavedProduct = (prev: Product, saved: Product): Product => ({
+    ...prev,
+    ...saved,
+    imageUrls: Array.isArray(saved.imageUrls) ? saved.imageUrls : prev.imageUrls,
+  });
+
   const handleAddEditSave = async (payload: AddProductFlowSavePayload) => {
     if (!companyId) return;
+    const label = payload.id ? 'Updating product...' : 'Saving product...';
+    await runSave(label, async () => {
     setSaveError('');
-    setSaving(true);
+    const hadNewImages = (payload.imageFiles?.length ?? 0) > 0;
     if (payload.id) {
-      const { data, error } = await productsApi.updateProduct(companyId, payload.id, {
+      const { data, error } = await productsApi.updateProduct(
+        companyId,
+        payload.id,
+        {
         name: payload.name,
         sku: payload.sku,
         category: payload.category,
@@ -199,15 +233,22 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         isCombo: payload.isCombo,
         comboItems: payload.comboItems,
         branchIds: payload.branchIds,
-      });
-      setSaving(false);
+        },
+        { branchId: branchId ?? null },
+      );
+      await productsApi.invalidateProductsListCache(companyId);
       if (error) {
         setSaveError(error);
+        if (data) {
+          setProducts(products.map((p) => (p.id === payload.id ? mergeSavedProduct(p, data) : p)));
+        }
+        void loadProducts({ silent: true });
         return;
       }
       if (data) {
-        setProducts(products.map((p) => (p.id === payload.id ? data : p)));
+        setProducts(products.map((p) => (p.id === payload.id ? mergeSavedProduct(p, data) : p)));
       }
+      void loadProducts({ silent: true });
     } else {
       const { data, error } = await productsApi.createProduct(companyId, {
         name: payload.name,
@@ -232,9 +273,10 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         comboItems: payload.comboItems,
         branchIds: payload.branchIds,
       });
-      setSaving(false);
+      if (hadNewImages) await productsApi.invalidateProductsListCache(companyId);
       if (error) {
         setSaveError(error);
+        if (data) setProducts([data, ...products]);
         return;
       }
       if (data) {
@@ -254,6 +296,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
     }
     setView('list');
     setEditingProduct(null);
+    });
   };
 
   const stats = useMemo(() => {
@@ -306,7 +349,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
     <div className="min-h-screen bg-[#0B1120] pb-24">
       <OfflineBanner online={online} pendingCount={pendingCount} />
       {/* Gradient header */}
-      <div className="bg-gradient-to-br from-[#1E3A8A] via-[#1E40AF] to-[#3B82F6] sticky top-0 z-40 shadow-lg">
+      <div className="bg-gradient-to-br from-[#1E3A8A] via-[#1E40AF] to-[#3B82F6] sticky top-0 z-40 flow-screen-header shadow-lg">
         <div className="flex items-center justify-between px-4 h-14">
           <div className="flex items-center gap-3">
             <button onClick={handleModuleBack} className="p-2 hover:bg-white/10 rounded-lg text-white transition-colors">
@@ -424,7 +467,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                   priceMin !== priceMax
                     ? `Rs. ${priceMin.toLocaleString()} – ${priceMax.toLocaleString()}`
                     : `Rs. ${p.retailPrice.toLocaleString()}`;
-                const thumb = (p.imageUrls && p.imageUrls[0]) || null;
+                const thumb = primaryImageUrl(p.imageUrls);
                 const isLow = p.minStock != null && displayStock <= (p.minStock ?? 0);
 
                 const isSelected = selectedIds.has(p.id);
@@ -441,8 +484,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                     onClick={() => {
                       if (selectMode) toggleSelected(p.id);
                       else {
-                        setEditingProduct(p);
-                        setView('add');
+                        setDetailProduct(p);
                       }
                     }}
                     className="w-full text-left active:scale-[0.99]"
@@ -515,7 +557,22 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
                           </p>
                         </div>
                       </div>
-                      <Edit2 size={14} className="text-[#6B7280] mt-1 flex-shrink-0" />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void openEditProduct(p);
+                        }}
+                        className="p-1.5 -m-1 text-[#6B7280] hover:text-[#3B82F6] flex-shrink-0"
+                        aria-label={`Edit ${p.name}`}
+                        disabled={editLoadingId === p.id}
+                      >
+                        {editLoadingId === p.id ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Edit2 size={14} />
+                        )}
+                      </button>
                     </div>
                   </button>
                   {!selectMode && (
@@ -559,14 +616,30 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         </div>
       )}
 
+      <ProductDetailSheet
+        open={!!detailProduct}
+        product={detailProduct}
+        displayStock={detailProduct ? getDisplayStock(detailProduct) : 0}
+        onClose={() => setDetailProduct(null)}
+        onEdit={(p) => void openEditProduct(p)}
+        onPhoto={(p) => {
+          setDetailProduct(null);
+          setImagePreviewProduct(p);
+        }}
+      />
+
       <ProductImagePreviewSheet
         open={!!imagePreviewProduct}
         product={imagePreviewProduct}
         companyId={companyId}
         onClose={() => setImagePreviewProduct(null)}
         onUpdated={(updated) => {
-          setProducts((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
-          setImagePreviewProduct(updated);
+          setProducts((prev) =>
+            prev.map((x) => (x.id === updated.id ? mergeSavedProduct(x, updated) : x)),
+          );
+          setImagePreviewProduct((prev) =>
+            prev && prev.id === updated.id ? mergeSavedProduct(prev, updated) : updated,
+          );
         }}
       />
 

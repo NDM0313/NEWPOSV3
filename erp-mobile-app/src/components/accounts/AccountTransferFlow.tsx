@@ -11,6 +11,7 @@ import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
 import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 import { AttachmentFilePicker } from '../shared/AttachmentFilePicker';
 import { uploadJournalEntryAttachments } from '../../api/journalAttachments';
+import { useSubmitLock } from '../../contexts/LoadingContext';
 
 interface AccountTransferFlowProps {
   onBack: () => void;
@@ -64,7 +65,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
   const [step, setStep] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentAccounts, setPaymentAccounts] = useState<AccountRow[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const { run: runSave, busy: submitting } = useSubmitLock();
   const [error, setError] = useState<string | null>(null);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [transferData, setTransferData] = useState<TransferData>({
@@ -107,7 +108,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
       setError(branchSelectionError ?? 'Select a branch for this transfer.');
       return;
     }
-    setSubmitting(true);
+    await runSave('Saving transfer...', async () => {
     setError(null);
     const desc = transferData.notes?.trim() || `Transfer from ${transferData.fromAccountName} to ${transferData.toAccountName}`;
     let attachments: { url: string; name: string }[] | undefined;
@@ -137,16 +138,15 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to save offline.');
       }
-      setSubmitting(false);
       return;
     }
     const { error: err } = await createJournalEntry({ ...payload, attachments });
-    setSubmitting(false);
     if (err) {
       setError(err);
       return;
     }
     onComplete();
+    });
   };
 
   const canProceed = () => {
@@ -165,7 +165,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
 
   return (
     <div className="min-h-screen pb-40 bg-[#111827]">
-      <div className="bg-gradient-to-br from-[#3B82F6] to-[#2563EB] p-4 sticky top-0 z-10">
+      <div className="bg-gradient-to-br from-[#3B82F6] to-[#2563EB] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3 mb-4">
           <button onClick={step === 1 ? onBack : handlePreviousWithReset} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
             <ArrowLeft className="w-5 h-5" />

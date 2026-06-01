@@ -358,3 +358,97 @@ export async function deleteContact(id: string): Promise<{ error: string | null 
   const { error } = await supabase.from('contacts').delete().eq('id', id);
   return { error: error?.message ?? null };
 }
+
+const WALKING_CONTACT_SELECT =
+  'id, company_id, type, name, phone, mobile, email, city, address, opening_balance, credit_limit, worker_role, is_active, created_at, updated_at, code, referral_code, lead_source, lead_status, created_from, is_system_generated, system_type, is_default';
+
+type ContactDbRow = ContactRow & {
+  created_at?: string | null;
+  updated_at?: string | null;
+  code?: string | null;
+  referral_code?: string | null;
+  lead_source?: string | null;
+  lead_status?: string | null;
+  created_from?: string | null;
+};
+
+function rowToContact(row: ContactDbRow): Contact {
+  return {
+    id: row.id,
+    name: row.name,
+    roles: typeToRoles(row.type || 'customer'),
+    phone: (row.phone ?? '').trim(),
+    mobile: (row.mobile ?? '').trim() || undefined,
+    email: row.email ?? undefined,
+    address: row.address ?? undefined,
+    city: row.city ?? undefined,
+    balance: Number(row.opening_balance ?? 0),
+    creditLimit: row.credit_limit ? Number(row.credit_limit) : undefined,
+    workerType: row.worker_role as Contact['workerType'],
+    status: row.is_active !== false ? 'active' : 'inactive',
+    createdAt: row.created_at ?? undefined,
+    updatedAt: row.updated_at ?? undefined,
+    code: row.code ?? null,
+    referralCode: row.referral_code ?? null,
+    leadSource: row.lead_source ?? null,
+    leadStatus: row.lead_status ?? null,
+    createdFrom: row.created_from ?? null,
+  };
+}
+
+/** Walk-in / walking customer for POS and new sales (one per company). */
+export async function getWalkingCustomer(
+  companyId: string,
+): Promise<{ data: Contact | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const company = normalizeCompanyId(companyId);
+  if (!company) return { data: null, error: 'Missing company.' };
+
+  const { data, error } = await supabase
+    .from('contacts')
+    .select(WALKING_CONTACT_SELECT)
+    .eq('company_id', company)
+    .eq('system_type', 'walking_customer')
+    .in('type', ['customer', 'both'])
+    .limit(1)
+    .maybeSingle();
+  if (error) return { data: null, error: error.message };
+  if (data) return { data: rowToContact(data as ContactDbRow), error: null };
+
+  const { data: legacy, error: legacyErr } = await supabase
+    .from('contacts')
+    .select(WALKING_CONTACT_SELECT)
+    .eq('company_id', company)
+    .eq('is_default', true)
+    .in('type', ['customer', 'both'])
+    .limit(1)
+    .maybeSingle();
+  if (legacyErr) return { data: null, error: legacyErr.message };
+  if (!legacy) return { data: null, error: null };
+  return { data: rowToContact(legacy as ContactDbRow), error: null };
+}
+
+/** Ensure system Walk-in Customer exists (same as web ERP). */
+export async function ensureDefaultWalkingCustomerForCompany(companyId: string): Promise<void> {
+  const existing = await getWalkingCustomer(companyId);
+  if (existing.data) return;
+
+  const company = normalizeCompanyId(companyId);
+  if (!company || !isSupabaseConfigured) return;
+
+  const { error } = await supabase.from('contacts').insert({
+    company_id: company,
+    type: 'customer',
+    name: 'Walk-in Customer',
+    code: 'CUS-0000',
+    is_active: true,
+    is_system_generated: true,
+    system_type: 'walking_customer',
+    is_default: true,
+    opening_balance: 0,
+    credit_limit: 0,
+  });
+  if (error && !String(error.message).toLowerCase().includes('duplicate')) {
+    console.warn('[contacts] ensureDefaultWalkingCustomerForCompany:', error.message);
+  }
+}

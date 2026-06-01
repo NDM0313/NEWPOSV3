@@ -407,6 +407,14 @@ export const SettingsPageNew = () => {
   // Branch modal state (NEW - using AddBranchModal)
   const [addBranchModalOpen, setAddBranchModalOpen] = useState(false);
   const [editingBranchForModal, setEditingBranchForModal] = useState<any>(null);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+  const [branchesList, setBranchesList] = useState<BranchSettings[]>([]);
+  const branchesListRef = useRef(branchesList);
+  branchesListRef.current = branchesList;
+  const updateBranchesRef = useRef(settings.updateBranches);
+  updateBranchesRef.current = settings.updateBranches;
+  const settingsBranchesRef = useRef(settings.branches);
+  settingsBranchesRef.current = settings.branches;
 
   // User Management state
   const [users, setUsers] = useState<UserType[]>([]);
@@ -753,17 +761,13 @@ export const SettingsPageNew = () => {
     }
   }, [companyId]);
 
-  // Load branches from database and resolve default account names
-  const loadBranches = useCallback(async () => {
-    if (!companyId) return;
-    try {
-      const [branchesData, accountsList] = await Promise.all([
-        branchService.getAllBranches(companyId),
-        accountService.getAllAccounts(companyId),
-      ]);
+  const mapDbBranchesToSettings = useCallback(
+    (branchesData: Branch[], accountsList: Account[]): BranchSettings[] => {
       const accountNameById = new Map<string, string>();
-      (accountsList || []).forEach((a: any) => { if (a.id && a.name) accountNameById.set(a.id, a.name); });
-      const branchSettings: BranchSettings[] = (branchesData || []).map((branch: any) => ({
+      (accountsList || []).forEach((a) => {
+        if (a.id && a.name) accountNameById.set(a.id, a.name);
+      });
+      return (branchesData || []).map((branch) => ({
         id: branch.id,
         branchName: branch.name,
         branchCode: branch.code || '',
@@ -773,21 +777,53 @@ export const SettingsPageNew = () => {
         state: branch.state || '',
         fiscalYearStart: branch.fiscal_year_start ? String(branch.fiscal_year_start).split('T')[0] : '',
         fiscalYearEnd: branch.fiscal_year_end ? String(branch.fiscal_year_end).split('T')[0] : '',
-        isActive: branch.is_active ?? true,
-        isDefault: !!branch.is_default,
-        cashAccount: (branch.default_cash_account_id && accountNameById.get(branch.default_cash_account_id)) || '',
-        bankAccount: (branch.default_bank_account_id && accountNameById.get(branch.default_bank_account_id)) || '',
-        posCashDrawer: (branch.default_pos_drawer_account_id && accountNameById.get(branch.default_pos_drawer_account_id)) || '',
+        isActive: branch.is_active !== false,
+        isDefault: !!(branch as Branch & { is_default?: boolean }).is_default,
+        cashAccount:
+          (branch.default_cash_account_id && accountNameById.get(branch.default_cash_account_id)) || '',
+        bankAccount:
+          (branch.default_bank_account_id && accountNameById.get(branch.default_bank_account_id)) || '',
+        posCashDrawer:
+          (branch.default_pos_drawer_account_id && accountNameById.get(branch.default_pos_drawer_account_id)) || '',
         cashAccountId: branch.default_cash_account_id || undefined,
         bankAccountId: branch.default_bank_account_id || undefined,
         posCashDrawerId: branch.default_pos_drawer_account_id || undefined,
       }));
-      settings.updateBranches(branchSettings);
-    } catch (error) {
-      console.error('[SETTINGS] Error loading branches:', error);
-      toast.error('Failed to load branches');
-    }
-  }, [companyId, settings]);
+    },
+    [],
+  );
+
+  // Load branches from database and resolve default account names (accounts failure is non-fatal)
+  const loadBranches = useCallback(
+    async (opts?: { showSpinner?: boolean; cancelled?: () => boolean }) => {
+      if (!companyId) return;
+      const showSpinner = opts?.showSpinner ?? false;
+      if (showSpinner) setBranchesLoading(true);
+      try {
+        const branchesData = await branchService.getBranchesForManagement(companyId);
+        const accountsList = await accountService.getAllAccounts(companyId).catch((err) => {
+          console.warn('[SETTINGS] Accounts load for branch labels failed:', err);
+          return [] as Account[];
+        });
+        if (opts?.cancelled?.()) return;
+        const branchSettings = mapDbBranchesToSettings(branchesData as Branch[], accountsList);
+        setBranchesList(branchSettings);
+        updateBranchesRef.current(branchSettings);
+      } catch (error) {
+        if (opts?.cancelled?.()) return;
+        console.error('[SETTINGS] Error loading branches:', error);
+        toast.error('Failed to load branches');
+        if (settingsBranchesRef.current.length > 0) {
+          setBranchesList(settingsBranchesRef.current);
+        } else {
+          setBranchesList([]);
+        }
+      } finally {
+        if (!opts?.cancelled?.()) setBranchesLoading(false);
+      }
+    },
+    [companyId, mapDbBranchesToSettings],
+  );
 
   // Sync forms when switching tabs (show latest from DB)
   useEffect(() => {
@@ -810,12 +846,22 @@ export const SettingsPageNew = () => {
     }
   }, [contentKey, loadUsers, loadInvoiceTemplates, loadPrintingSettings]);
 
-  // Load branches when branches tab is active
+  // Load branches when branches tab is active (avoid re-fetch loop on settings.branches updates)
   useEffect(() => {
-    if (contentKey === 'branches') {
-      loadBranches();
+    if (contentKey !== 'branches' || !companyId) return;
+
+    const contextBranches = settings.branches;
+    const hasCached = branchesListRef.current.length > 0 || contextBranches.length > 0;
+    if (contextBranches.length > 0 && branchesListRef.current.length === 0) {
+      setBranchesList(contextBranches);
     }
-  }, [contentKey, loadBranches]);
+
+    let cancelled = false;
+    void loadBranches({ showSpinner: !hasCached, cancelled: () => cancelled });
+    return () => {
+      cancelled = true;
+    };
+  }, [contentKey, companyId, loadBranches]);
 
   // Load units when inventory tab is active (for Default Unit dropdown)
   useEffect(() => {
@@ -1137,7 +1183,12 @@ export const SettingsPageNew = () => {
                     </div>
                     <div>
                       <h3 className="text-xl font-bold text-white">Branch Management</h3>
-                      <p className="text-sm text-gray-400">Manage multiple business locations</p>
+                      <p className="text-sm text-gray-400">
+                        Manage multiple business locations
+                        {!branchesLoading && branchesList.length > 0
+                          ? ` · ${branchesList.length} location${branchesList.length === 1 ? '' : 's'}`
+                          : ''}
+                      </p>
                     </div>
                   </div>
                   <Button 
@@ -1151,8 +1202,29 @@ export const SettingsPageNew = () => {
                   </Button>
                 </div>
 
+                {branchesLoading && branchesList.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <Loader2 className="w-8 h-8 text-green-500 animate-spin" />
+                    <p className="text-sm text-gray-400">Loading branches...</p>
+                  </div>
+                ) : branchesList.length === 0 ? (
+                  <div className="text-center py-16 border border-dashed border-gray-700 rounded-xl">
+                    <MapPin className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                    <p className="text-gray-300 font-medium">No branches yet</p>
+                    <p className="text-sm text-gray-500 mt-1 mb-4">Add your first location to track stock and sales per branch.</p>
+                    <Button
+                      className="bg-green-600 hover:bg-green-500 text-white gap-2"
+                      onClick={() => {
+                        setEditingBranchForModal(null);
+                        setAddBranchModalOpen(true);
+                      }}
+                    >
+                      <MapPin size={16} /> Add New Branch
+                    </Button>
+                  </div>
+                ) : (
                 <div className="grid gap-4">
-                  {settings.branches.map((branch) => (
+                  {branchesList.map((branch) => (
                     <div key={branch.id} className="bg-gray-950 border border-gray-800 rounded-lg p-5">
                       <div className="flex items-start justify-between mb-3">
                         <div>
@@ -1202,6 +1274,7 @@ export const SettingsPageNew = () => {
                     </div>
                   ))}
                 </div>
+                )}
               </div>
             )}
 
@@ -3262,7 +3335,9 @@ export const SettingsPageNew = () => {
           setEditingBranchForModal(null);
         }}
         onSuccess={() => {
-          loadBranches();
+          branchService.clearBranchCache();
+          void loadBranches({ showSpinner: false });
+          toast.success('Branch list updated');
         }}
         editingBranch={editingBranchForModal}
       />

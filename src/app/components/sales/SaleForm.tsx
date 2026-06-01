@@ -114,6 +114,8 @@ import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDial
 import { uploadSaleAttachments, MAX_FILE_SIZE_BYTES as ATTACHMENT_MAX_BYTES } from '@/app/utils/uploadTransactionAttachments';
 import { prepareAttachmentFilesForUpload } from '@/app/utils/imageCompression';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { expenseCategoryService, type ExpenseCategoryTreeItem } from '@/app/services/expenseCategoryService';
+import { getTailorOptionsForExtraType, tailorNameByCategoryId } from '@/app/utils/expenseCategoryTailors';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
 import { useSettings } from '@/app/context/SettingsContext';
 import { formatCurrency, getCurrencySymbol } from '@/app/utils/formatCurrency';
@@ -192,6 +194,8 @@ interface ExtraExpense {
     type: 'stitching' | 'lining' | 'dying' | 'cargo' | 'other';
     amount: number;
     notes?: string;
+    tailorExpenseCategoryId?: string;
+    tailorContactId?: string;
 }
 
 interface SaleFormProps {
@@ -428,9 +432,23 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
     // Extra Expenses State
     const [extraExpenses, setExtraExpenses] = useState<ExtraExpense[]>([]);
+    /** 4120 package split: when false, extras are inclusive (not on customer total). */
+    const [chargeExtrasToCustomer, setChargeExtrasToCustomer] = useState(true);
     const [newExpenseType, setNewExpenseType] = useState<'stitching' | 'lining' | 'dying' | 'cargo' | 'other'>('stitching');
     const [newExpenseAmount, setNewExpenseAmount] = useState<number>(0);
     const [newExpenseNotes, setNewExpenseNotes] = useState<string>("");
+    const [newTailorCategoryId, setNewTailorCategoryId] = useState<string>("");
+    const [expenseCategoryTree, setExpenseCategoryTree] = useState<ExpenseCategoryTreeItem[]>([]);
+
+    useEffect(() => {
+        if (!companyId) return;
+        expenseCategoryService.getTree(companyId).then(setExpenseCategoryTree).catch(() => setExpenseCategoryTree([]));
+    }, [companyId]);
+
+    const tailorOptionsForNewExpense = useMemo(
+        () => getTailorOptionsForExtraType(expenseCategoryTree, newExpenseType),
+        [expenseCategoryTree, newExpenseType],
+    );
 
     // Discount State
     const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
@@ -557,6 +575,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // Calculations
     const subtotal = items.reduce((sum, item) => sum + getSaleItemUnitPrice(item) * item.qty, 0);
     const expensesTotal = extraExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const expensesOnBill = chargeExtrasToCustomer ? expensesTotal : 0;
     
     // Calculate discount amount
     const discountAmount = discountType === 'percentage' 
@@ -570,8 +589,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     const saleExtrasActive = saleStatus === 'final' || saleStatus === 'order';
     const saleExtrasPanelLocked = !saleExtrasActive;
 
-    // PART 2: grand_total = items_total + extra_expenses + shipping_charges - discount (shipping_charges = shipment.charged_to_customer or input for new sale)
-    const afterDiscountTotal = subtotal - discountAmount + expensesTotal;
+    // PART 2: grand_total = items + (extras if on bill) + shipping - discount
+    const afterDiscountTotal = subtotal - discountAmount + expensesOnBill;
     const effectiveShippingCharges = initialSale?.id ? shipmentChargesFromApi : (shippingChargeInput || 0);
     const totalAmount = afterDiscountTotal + effectiveShippingCharges;
     
@@ -1613,9 +1632,15 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                 id: c.id?.toString() || String(index + 1),
                                 type: c.charge_type || c.chargeType || 'other',
                                 amount: Number(c.amount) || 0,
-                                notes: (c as any).notes || ''
+                                notes: (c as any).notes || '',
+                                tailorContactId: (c as any).tailor_contact_id || undefined,
+                                tailorExpenseCategoryId: (c as any).expense_category_id || undefined,
                             }));
                             setExtraExpenses(expenses);
+                            const anyOffBill = expenseRows.some(
+                                (c: any) => c.charged_to_customer === false,
+                            );
+                            setChargeExtrasToCustomer(!anyOffBill);
                         } else {
                             const extraFromDb =
                                 Number((full as any).extra_expenses ?? 0) ||
@@ -1662,9 +1687,13 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                     id: c.id?.toString() || String(index + 1),
                     type: c.charge_type || c.chargeType || 'other',
                     amount: Number(c.amount) || 0,
-                    notes: (c as any).notes || ''
+                    notes: (c as any).notes || '',
+                    tailorContactId: (c as any).tailor_contact_id || undefined,
+                    tailorExpenseCategoryId: (c as any).expense_category_id || undefined,
                 }));
                 setExtraExpenses(expenses);
+                const anyOffBill = expenseRows.some((c: any) => c.charged_to_customer === false);
+                setChargeExtrasToCustomer(!anyOffBill);
             } else if (initialSale.expenses > 0) {
                 setExtraExpenses([{
                     id: '1',
@@ -2215,10 +2244,12 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             id: Date.now().toString(),
             type: newExpenseType,
             amount: newExpenseAmount,
-            notes: newExpenseNotes
+            notes: newExpenseNotes,
+            tailorExpenseCategoryId: newTailorCategoryId || undefined,
         }]);
         setNewExpenseAmount(0); // Reset input
         setNewExpenseNotes("");
+        setNewTailorCategoryId("");
         toast.success("Expense added");
     };
 
@@ -2606,6 +2637,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 })(),
                 // CRITICAL: Include extra expenses; shipping from sale_shipments when editing, or shippingChargeInput when new
                 extraExpenses: extraExpenses,
+                chargeExtrasToCustomer,
                 replaceSaleCharges: true,
                 shippingCharges: effectiveShippingCharges,
                 commissionAmount: commissionAmount,
@@ -3327,9 +3359,26 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     <p className="text-xs text-gray-500 mb-2">Set sale status to <strong className="text-gray-400">Order</strong> or <strong className="text-gray-400">Final</strong> to use extra expenses, shipping, shipment, and attachments.</p>
                                 )}
 
+                                <label className="flex items-start gap-2 mb-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={chargeExtrasToCustomer}
+                                        onChange={(e) => setChargeExtrasToCustomer(e.target.checked)}
+                                        disabled={saleExtrasPanelLocked}
+                                        className="mt-0.5"
+                                    />
+                                    <span className="text-xs text-gray-400">
+                                        Add extra expenses to customer bill
+                                        <span className="block text-gray-500 mt-0.5">
+                                            Off = inclusive in package (4120 split on GL). Max 25% of invoice when off.
+                                        </span>
+                                    </span>
+                                </label>
+
                                 {/* Add Expense Form - More Compact */}
-                                <div className="flex gap-2 mb-3">
-                                    <Select value={newExpenseType} onValueChange={(v: any) => setNewExpenseType(v)}>
+                                <div className="flex flex-col gap-2 mb-3">
+                                    <div className="flex gap-2 flex-wrap">
+                                    <Select value={newExpenseType} onValueChange={(v: any) => { setNewExpenseType(v); setNewTailorCategoryId(''); }}>
                                         <SelectTrigger className="w-[110px] bg-gray-950 border-gray-700 text-white h-8 text-xs">
                                             <SelectValue />
                                         </SelectTrigger>
@@ -3338,9 +3387,24 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                             <SelectItem value="lining">Lining</SelectItem>
                                             <SelectItem value="dying">Dying</SelectItem>
                                             <SelectItem value="cargo">Cargo</SelectItem>
-                                            <SelectItem value="Mobile Wallet">Mobile Wallet</SelectItem>
+                                            <SelectItem value="other">Other</SelectItem>
                                         </SelectContent>
                                     </Select>
+                                    {(newExpenseType === 'stitching' || newExpenseType === 'lining' || newExpenseType === 'dying') && (
+                                      <Select value={newTailorCategoryId || '_none'} onValueChange={(v) => setNewTailorCategoryId(v === '_none' ? '' : v)}>
+                                        <SelectTrigger className="min-w-[140px] flex-1 bg-gray-950 border-gray-700 text-white h-8 text-xs">
+                                          <SelectValue placeholder="Tailor / dyer" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-gray-950 border-gray-800 text-white">
+                                          <SelectItem value="_none">Tailor / dyer (optional)</SelectItem>
+                                          {tailorOptionsForNewExpense.map((t) => (
+                                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    )}
+                                    </div>
+                                    <div className="flex gap-2">
                                     <Input 
                                         type="number" 
                                         placeholder="Amount" 
@@ -3358,6 +3422,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     <Button onClick={addExtraExpense} className="bg-purple-600 hover:bg-purple-500 h-8 w-8 p-0">
                                         <Plus size={14} />
                                     </Button>
+                                    </div>
                                 </div>
 
                                 {/* Expenses List - Only show if exists */}
@@ -3371,7 +3436,16 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                     </div>
                                                     <div>
                                                         <div className="text-xs font-medium text-white capitalize">{expense.type}</div>
-                                                        {expense.notes && <div className="text-[10px] text-gray-500">{expense.notes}</div>}
+                                                        {(expense.tailorExpenseCategoryId || expense.notes) && (
+                                                          <div className="text-[10px] text-gray-500">
+                                                            {[
+                                                              expense.tailorExpenseCategoryId
+                                                                ? tailorNameByCategoryId(expenseCategoryTree, expense.tailorExpenseCategoryId)
+                                                                : null,
+                                                              expense.notes,
+                                                            ].filter(Boolean).join(' · ')}
+                                                          </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
@@ -3615,10 +3689,16 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                     <span className="text-white font-medium text-sm">{subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
 
-                                {expensesTotal > 0 && (
+                                {expensesOnBill > 0 && (
                                     <div className="flex justify-between text-xs">
                                         <span className="text-purple-400">Extra Expenses</span>
-                                        <span className="text-purple-400 font-medium text-sm">+{expensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        <span className="text-purple-400 font-medium text-sm">+{expensesOnBill.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                )}
+                                {!chargeExtrasToCustomer && expensesTotal > 0 && (
+                                    <div className="flex justify-between text-[10px] text-gray-500">
+                                        <span>Package extras (4120, not on bill)</span>
+                                        <span>Rs. {expensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                     </div>
                                 )}
 

@@ -1027,7 +1027,7 @@ export function PurchaseModule({
     return (
       <SwipeBackShell onBack={handleSwipeBack}>
       <div className="min-h-screen bg-[#111827] flex flex-col">
-        <div className="bg-[#1F2937] border-b border-[#374151] p-4 sticky top-0 z-10 shrink-0">
+        <div className="bg-[#1F2937] border-b border-[#374151] p-4 sticky top-0 z-10 flow-screen-header shrink-0">
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
@@ -1223,7 +1223,7 @@ export function PurchaseModule({
           {branchGateError}
         </div>
       ) : null}
-      <div className="bg-gradient-to-br from-[#10B981] to-[#059669] p-4 sticky top-0 z-10">
+      <div className="bg-gradient-to-br from-[#10B981] to-[#059669] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3 mb-4">
           <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
             <ArrowLeft className="w-5 h-5" />

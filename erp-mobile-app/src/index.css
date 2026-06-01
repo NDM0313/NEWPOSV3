@@ -12,6 +12,13 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* PIN fields: tel + numeric pad; mask digits like password */
+.pin-numeric-input {
+  -webkit-text-security: disc;
+  text-security: disc;
+  font-size: 16px;
+}
+
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
@@ -76,6 +83,24 @@ input[type="number"] {
 
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* Keep flow toolbars (Back, Save) below OS status bar on phones / notched devices. */
+:root {
+  --flow-header-safe-top: max(env(safe-area-inset-top, 0px), 28px);
+}
+
+.safe-area-top {
+  padding-top: var(--flow-header-safe-top);
+}
+
+.flow-screen-header {
+  padding-top: var(--flow-header-safe-top);
+}
+
+.flow-screen-root {
+  /* Full-screen flows that use fixed inset-0 */
+  box-sizing: border-box;
 }
 
 /* Fixed bottom action bars (Next, Save).

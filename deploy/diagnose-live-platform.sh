@@ -2,8 +2,11 @@
 # Live platform health: supabase root, auth health, auth token, studio, erp.
 # Run on VPS: cd /root/NEWPOSV3 && bash deploy/diagnose-live-platform.sh
 # Option: RESTART_IF_FAIL=1 to restart Kong and auth if health fails, then re-check.
+# Option: STUDIO_AUTO_HEAL=1 to run ensure-supabase-studio.sh if studio check fails, then re-check.
 set -e
 RESTART_IF_FAIL="${RESTART_IF_FAIL:-0}"
+STUDIO_AUTO_HEAL="${STUDIO_AUTO_HEAL:-0}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${ENV_FILE:-/root/supabase/docker/.env}"
 if [ -f "$ENV_FILE" ]; then
   export $(grep -v '^#' "$ENV_FILE" | xargs)
@@ -47,6 +50,17 @@ echo "ANON_KEY set: $([ -n "$ANON_KEY" ] && echo yes || echo no)"
 run_checks
 RUN_RESULT=$?
 
+if [ "$RUN_RESULT" -ne 0 ] && [ "$STUDIO_AUTO_HEAL" = "1" ] && [ -f "$SCRIPT_DIR/ensure-supabase-studio.sh" ]; then
+  echo ""
+  echo "=== Ensuring supabase-studio (STUDIO_AUTO_HEAL=1) ==="
+  bash "$SCRIPT_DIR/ensure-supabase-studio.sh" || true
+  echo "Waiting 10s..."
+  sleep 10
+  echo "=== Re-running checks ==="
+  run_checks
+  RUN_RESULT=$?
+fi
+
 if [ "$RUN_RESULT" -ne 0 ] && [ "$RESTART_IF_FAIL" = "1" ]; then
   echo ""
   echo "=== Restarting Kong and Auth (RESTART_IF_FAIL=1) ==="
@@ -67,6 +81,8 @@ else
   echo "RESULT: One or more checks FAILED."
   echo "Run: cd /root/supabase/docker && docker compose restart kong auth"
   echo "Or: RESTART_IF_FAIL=1 bash deploy/diagnose-live-platform.sh"
+  echo "Or: STUDIO_AUTO_HEAL=1 bash deploy/diagnose-live-platform.sh"
+  echo "Or: bash deploy/ensure-supabase-studio.sh"
 fi
 echo "=============================================="
 exit $RUN_RESULT

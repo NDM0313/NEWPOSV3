@@ -6,10 +6,15 @@ import { useState, useEffect } from 'react';
 import type { User, Branch, Screen } from '../types';
 import { useResponsive } from '../hooks/useResponsive';
 import { FeaturesShowcase } from './FeaturesShowcase';
-import * as reportsApi from '../api/reports';
+import { getMyWorkerDashboardMetrics } from '../api/myWorkerDashboard';
+import { localNowDateString } from '../utils/localDate';
 import { FEATURE_MOBILE_PERMISSION_V2 } from '../config/featureFlags';
 import { usePermissions } from '../context/PermissionContext';
-import { useEffectiveWorkerProfile } from '../context/CounterWorkerContext';
+import {
+  useEffectiveWorkerId,
+  useEffectiveWorkerProfile,
+  useEffectiveWorkerProfileId,
+} from '../context/CounterWorkerContext';
 import { getPermissionModuleForScreen, screenSkipsModuleViewPermission } from '../utils/permissionModules';
 import { isDeveloperModeUnlocked, subscribeDeveloperMode } from '../lib/developerMode';
 
@@ -50,6 +55,8 @@ const MODULES: ModuleCard[] = [
 export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: HomeScreenProps) {
   const responsive = useResponsive();
   const profile = useEffectiveWorkerProfile(user);
+  const effectiveUserId = useEffectiveWorkerId(user.id);
+  const effectiveProfileId = useEffectiveWorkerProfileId();
   const displayName = profile?.displayName ?? user.name;
   const displayRole = profile?.role ?? user.role;
   const { hasPermission, isPermissionLoaded, isModuleEnabled, moduleConfigBanner, canUseFullAccounting } = usePermissions();
@@ -61,20 +68,25 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
   useEffect(() => subscribeDeveloperMode(() => setDevUnlocked(isDeveloperModeUnlocked())), []);
 
   useEffect(() => {
-    if (!companyId || !branch?.id) return;
+    if (!companyId || !branch?.id || !effectiveUserId) return;
     if (FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded) return;
     let cancelled = false;
-    const branchId = branch.id;
-    Promise.all([
-      reportsApi.getSalesSummary(companyId, branchId, 1),
-      reportsApi.getReceivables(companyId, branchId),
-    ]).then(([todayRes, receivablesRes]) => {
+    const today = localNowDateString();
+    void getMyWorkerDashboardMetrics(companyId, branch.id, effectiveUserId, effectiveProfileId, {
+      fromDate: today,
+      toDate: today,
+    }).then(({ data, error }) => {
       if (cancelled) return;
-      setTodaySales(todayRes.data?.totalSales ?? 0);
-      setPendingAmount(receivablesRes.data ?? 0);
-    }).catch(() => { if (!cancelled) setTodaySales(0); });
+      if (error || !data) {
+        setTodaySales(0);
+        setPendingAmount(0);
+        return;
+      }
+      setTodaySales(data.revenue);
+      setPendingAmount(data.receivables);
+    });
     return () => { cancelled = true; };
-  }, [companyId, branch?.id, isPermissionLoaded]);
+  }, [companyId, branch?.id, effectiveUserId, effectiveProfileId, isPermissionLoaded]);
 
   if (FEATURE_MOBILE_PERMISSION_V2 && !isPermissionLoaded) {
     return (
@@ -148,11 +160,11 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-[#111827]/50 border border-[#374151] rounded-xl p-4">
-            <p className="text-xs text-[#9CA3AF] mb-1">Today's Sales</p>
+            <p className="text-xs text-[#9CA3AF] mb-1">My sales today</p>
             <p className="text-lg font-bold text-[#10B981]">Rs. {todaySales.toLocaleString()}</p>
           </div>
           <div className="bg-[#111827]/50 border border-[#374151] rounded-xl p-4">
-            <p className="text-xs text-[#9CA3AF] mb-1">Pending</p>
+            <p className="text-xs text-[#9CA3AF] mb-1">My pending</p>
             <p className="text-lg font-bold text-[#F59E0B]">Rs. {pendingAmount.toLocaleString()}</p>
           </div>
         </div>

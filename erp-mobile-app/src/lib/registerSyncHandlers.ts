@@ -8,6 +8,7 @@
  */
 import { registerSyncHandler } from './syncEngine';
 import * as salesApi from '../api/sales';
+import type { ExtraExpense } from '../types/saleExtras';
 import * as expensesApi from '../api/expenses';
 import * as accountsApi from '../api/accounts';
 import { syncPurchasePending } from './syncPurchase';
@@ -49,6 +50,19 @@ export function registerAllSyncHandlers(): void {
       orderDate?: string;
       deadline?: string;
       studioDesignName?: string;
+      targetStatus?: 'draft' | 'quotation' | 'order' | 'final';
+      documentType?: 'invoice' | 'quotation';
+      extraExpenses?: Array<{
+        id: string;
+        type: string;
+        amount: number;
+        notes?: string;
+        tailorContactId?: string;
+        tailorExpenseCategoryId?: string;
+      }>;
+      shippingCharge?: number;
+      chargeExtrasToCustomer?: boolean;
+      excludeExtraExpensesFromCustomerBill?: boolean;
     };
     const { data, error } = await salesApi.createSale({
       companyId: p.companyId,
@@ -74,6 +88,13 @@ export function registerAllSyncHandlers(): void {
       orderDate: p.orderDate,
       deadline: p.deadline,
       studioDesignName: p.studioDesignName,
+      targetStatus: p.targetStatus,
+      documentType: p.documentType,
+      extraExpenses: p.extraExpenses as ExtraExpense[] | undefined,
+      shippingCharge: p.shippingCharge,
+      chargeExtrasToCustomer:
+        p.chargeExtrasToCustomer ??
+        (p.excludeExtraExpensesFromCustomerBill === true ? false : true),
     });
     if (error) return { error };
     return { serverId: data!.id };
@@ -93,6 +114,10 @@ export function registerAllSyncHandlers(): void {
       receiptUrl?: string | null;
       paidToUserId?: string | null;
       payeeName?: string | null;
+      saleId?: string | null;
+      saleChargeId?: string | null;
+      tailorContactId?: string | null;
+      expenseCategoryId?: string | null;
     };
     const { data, error } = await expensesApi.createExpense({
       companyId: p.companyId,
@@ -107,6 +132,10 @@ export function registerAllSyncHandlers(): void {
       receiptUrl: p.receiptUrl,
       paidToUserId: p.paidToUserId,
       payeeName: p.payeeName,
+      saleId: p.saleId,
+      saleChargeId: p.saleChargeId,
+      tailorContactId: p.tailorContactId,
+      expenseCategoryId: p.expenseCategoryId,
     });
     if (error) return { error };
     return { serverId: data!.id };

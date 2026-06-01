@@ -302,6 +302,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
             branchId: effectiveBranchId,
             payment_account_id: paidFromAccountId && /^[0-9a-f-]{36}$/i.test(paidFromAccountId) ? paidFromAccountId : undefined,
             paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
+            expense_category_id: subCategoryId || mainCategoryId || undefined,
           }
         );
       }

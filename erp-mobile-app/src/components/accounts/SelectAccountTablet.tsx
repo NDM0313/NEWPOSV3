@@ -111,7 +111,7 @@ export function SelectAccountTablet({
 
   return (
     <div className="min-h-screen bg-[#111827]">
-      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-10">
+      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-10 flow-screen-header">
         <div className="max-w-4xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">

@@ -167,7 +167,7 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
 
   return (
     <div className="min-h-screen bg-[#111827] pb-32">
-      <div className="sticky top-0 z-10 bg-[#1F2937] border-b border-[#374151] px-4 py-3">
+      <div className="sticky top-0 z-10 flow-screen-header bg-[#1F2937] border-b border-[#374151] px-4 py-3">
         <div className="flex items-center justify-between">
           <button onClick={onBack} className="p-2 text-[#F9FAFB] hover:bg-[#374151] rounded-lg">
             <ArrowLeft className="w-5 h-5" />

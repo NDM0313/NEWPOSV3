@@ -7,6 +7,8 @@ import {
   getProductImageBlobDisplayUrl,
   getProductImageDisplayUrl,
 } from '../../utils/productImageUpload';
+import { debugLog, debugLogWarn, setLastProductImageDebugRef } from '../../lib/mobileDebugLog';
+import { clearStorageDisplayUrlCache } from '../../utils/storageDisplayUrl';
 
 interface ProductImageProps {
   src: string | undefined | null;
@@ -17,6 +19,16 @@ interface ProductImageProps {
   variant?: 'thumb' | 'inline';
   /** Defer signing/download until the thumb scrolls into view (product lists). */
   deferUntilVisible?: boolean;
+}
+
+async function resolveProductDisplayUrl(src: string): Promise<string | null> {
+  if (!extractProductImageStoragePath(src)) {
+    return Capacitor.isNativePlatform() && src.startsWith('http') ? null : src;
+  }
+  if (Capacitor.isNativePlatform()) {
+    return getProductImageBlobDisplayUrl(src);
+  }
+  return getProductImageDisplayUrl(src);
 }
 
 /**
@@ -63,6 +75,7 @@ export function ProductImage({
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'SIGNED_OUT') {
+        clearStorageDisplayUrlCache();
         setAuthRevision((n) => n + 1);
       }
     });
@@ -83,47 +96,45 @@ export function ProductImage({
       setLoading(false);
       return;
     }
-    const path = extractProductImageStoragePath(src);
-    if (path) {
-      let cancelled = false;
-      setLoading(true);
-      getProductImageDisplayUrl(src).then((url) => {
-        if (cancelled) return;
-        if (!url) {
-          setLoadFailed(true);
-          setDisplayUrl(null);
-        } else {
-          setDisplayUrl(url);
-        }
-        setLoading(false);
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-    setLoading(false);
-    setDisplayUrl(src);
+    let cancelled = false;
+    setLoading(true);
+    setLastProductImageDebugRef(src);
+    debugLog('ProductImage', 'resolve start', { src: src.slice(0, 120) });
+    void resolveProductDisplayUrl(src).then((url) => {
+      if (cancelled) return;
+      if (!url) {
+        setLastProductImageDebugRef(src, 'resolve returned null');
+        debugLogWarn('ProductImage', 'resolve failed', src.slice(0, 120));
+        setLoadFailed(true);
+        setDisplayUrl(null);
+      } else {
+        setLastProductImageDebugRef(src, null);
+        debugLog('ProductImage', 'resolve ok', url.startsWith('blob:') ? 'blob URL' : url.slice(0, 80));
+        setDisplayUrl(url);
+      }
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [src, authRevision, visible]);
 
   const handleImgError = () => {
-    if (
-      loadFailed ||
-      blobRetried ||
-      !src ||
-      !Capacitor.isNativePlatform() ||
-      !extractProductImageStoragePath(src)
-    ) {
+    if (loadFailed || blobRetried || !src) {
       setLoadFailed(true);
       return;
     }
     setBlobRetried(true);
     setLoading(true);
+    debugLog('ProductImage', 'img onError → blob retry', src.slice(0, 120));
     void getProductImageBlobDisplayUrl(src).then((blobUrl) => {
       setLoading(false);
       if (blobUrl) {
+        debugLog('ProductImage', 'blob retry ok', 'blob URL');
         setDisplayUrl(blobUrl);
         setLoadFailed(false);
       } else {
+        debugLogWarn('ProductImage', 'blob retry failed', src.slice(0, 120));
         setLoadFailed(true);
       }
     });

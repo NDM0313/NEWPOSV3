@@ -28,9 +28,7 @@ const STAGE_TYPES = [
 ] as const;
 
 export function StudioStageAssignment({ companyId, onBack, onComplete, existingStage, fixedStageType }: StudioStageAssignmentProps) {
-  const { busy } = useSubmitLock();
-  const [submitting, setSubmitting] = useState(false);
-  const formBusy = busy || submitting;
+  const { run: runSave, busy: formBusy } = useSubmitLock();
 
   const initialStageType = (fixedStageType ?? existingStage?.type ?? '') as (typeof STAGE_TYPES)[number]['id'] | '';
   const skipStageStep = !!(fixedStageType || existingStage);
@@ -162,19 +160,16 @@ export function StudioStageAssignment({ companyId, onBack, onComplete, existingS
       notes: notes.trim() || undefined,
     };
 
-    setSubmitting(true);
-    try {
+    await runSave('Saving stage...', async () => {
       await onComplete(stageData);
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   const selectedType = STAGE_TYPES.find((t) => t.id === stageType);
 
   return (
     <div className="min-h-screen pb-24 bg-[#111827]">
-      <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
+      <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3 mb-4">
           <button
             type="button"

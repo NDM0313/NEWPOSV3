@@ -8,6 +8,8 @@ import { localNowDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite, isRealBranchUuid } from '../utils/branchId';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
 import { classifyStorageUploadError } from '../utils/storageUploadErrors';
+import type { ExtraExpense } from '../types/saleExtras';
+import { persistSaleChargesAfterCreate } from './saleCharges';
 import {
   ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
   uploadStorageAttachmentFile,
@@ -66,6 +68,14 @@ export interface CreateSaleInput {
   targetStatus?: 'draft' | 'quotation' | 'order' | 'final';
   /** Document type for create_sale_document_header (default invoice). */
   documentType?: 'invoice' | 'quotation';
+  /** Line-level extra expenses (stitching, etc.) — persisted to sale_charges + extra_expenses. */
+  extraExpenses?: ExtraExpense[];
+  /** Customer shipping charge (shipment_charges + sale_charges type shipping). */
+  shippingCharge?: number;
+  /** When true, extras on customer bill (ON). When false, package-inclusive (OFF). */
+  chargeExtrasToCustomer?: boolean;
+  /** @deprecated use chargeExtrasToCustomer */
+  excludeExtraExpensesFromCustomerBill?: boolean;
 }
 
 export type SaleDocumentStatus = 'draft' | 'quotation' | 'order' | 'final' | 'cancelled';
@@ -226,7 +236,14 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     isPOS,
     targetStatus: targetStatusInput,
     documentType,
+    extraExpenses,
+    shippingCharge,
+    chargeExtrasToCustomer: chargeExtrasToCustomerInput,
+    excludeExtraExpensesFromCustomerBill,
   } = input;
+  const chargeExtrasToCustomer =
+    chargeExtrasToCustomerInput ??
+    (excludeExtraExpensesFromCustomerBill === true ? false : true);
 
   if (!companyId || !branchId || !userId) {
     return { data: null, error: 'Missing company, branch, or user.' };
@@ -517,6 +534,27 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: `Failed to save items: ${itemsError.message}` };
   }
 
+  const shipCharge = Number(shippingCharge) || 0;
+  const hasExtraLines = extraExpenses?.some((e) => Number(e.amount) > 0) ?? false;
+  const hasChargeLines =
+    hasExtraLines || shipCharge > 0 || (Number(discountAmount) || 0) > 0;
+  if (hasChargeLines) {
+    const chargeErr = await persistSaleChargesAfterCreate({
+      saleId,
+      companyId,
+      userId,
+      extraExpenses,
+      shippingCharge: shipCharge,
+      discountAmount,
+      chargeExtrasToCustomer,
+      saleTotal: totalNum,
+    });
+    if (chargeErr.error) {
+      await supabase.from('sales').delete().eq('id', saleId);
+      return { data: null, error: `Failed to save sale charges: ${chargeErr.error}` };
+    }
+  }
+
   // Stock OUT only when status is final (order/quotation/draft defer — web + bespoke parity).
   if (!isStudio && postStockAndAccounting) {
     const hasStockLines = items.some((item) => item.productId && item.quantity > 0);
@@ -768,7 +806,7 @@ export async function getSaleEnrichedById(
 }
 
 /** Same as web saleService.getAllSales — studio worker cost from productions (RPC). */
-async function enrichSalesWithStudioChargesBatch(
+export async function enrichSalesWithStudioChargesBatch(
   sales: Array<Record<string, unknown>>
 ): Promise<Array<Record<string, unknown>>> {
   if (!sales.length) return sales;
@@ -803,7 +841,7 @@ async function enrichSalesWithStudioChargesBatch(
  * - Exclude voided payments.
  * - Add payment_allocations (manual receipt) where parent payment is not voided.
  */
-async function enrichSalesWithPayments(
+export async function enrichSalesWithPayments(
   companyId: string,
   sales: Array<Record<string, unknown>>
 ): Promise<Array<Record<string, unknown>>> {

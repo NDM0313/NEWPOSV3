@@ -5,6 +5,8 @@ import { supabase } from '../../lib/supabase';
 import { updateTransaction } from '../../api/transactionEdit';
 import { allowsDayBookUnifiedEdit } from '../../lib/journalEntryEditPolicy';
 import type { AccountEntry } from './AccountsDashboard';
+import { useSubmitLock } from '../../contexts/LoadingContext';
+import { SaveBlockingOverlay } from '../common/SaveBlockingOverlay';
 
 interface Props {
   entry: AccountEntry;
@@ -15,7 +17,7 @@ interface Props {
 
 export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) {
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const { run: runSave, busy: saving } = useSubmitLock();
   const [error, setError] = useState<string | null>(null);
 
   // Form state — all start empty, filled once data is loaded
@@ -184,7 +186,7 @@ export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) 
   }, [entry.id, companyId, policyAllowsEdit]);
 
   const handleSave = async () => {
-    setSaving(true);
+    await runSave('Saving changes...', async () => {
     setError(null);
     try {
       const numAmount = parseFloat(amount);
@@ -224,9 +226,8 @@ export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) 
       onSuccess();
     } catch (err: any) {
       setError(err.message || 'An error occurred while updating the transaction.');
-    } finally {
-      setSaving(false);
     }
+    });
   };
 
   if (!policyAllowsEdit) {
@@ -234,12 +235,16 @@ export function EntryEditSheet({ entry, companyId, onClose, onSuccess }: Props) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center md:justify-center bg-black/60" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-end md:items-center md:justify-center bg-black/60"
+      onClick={saving ? undefined : onClose}
+    >
       <div
-        className="w-full md:w-[28rem] bg-[#111827] rounded-t-2xl md:rounded-2xl border border-[#374151] max-h-[90vh] overflow-y-auto"
+        className="relative w-full md:w-[28rem] bg-[#111827] rounded-t-2xl md:rounded-2xl border border-[#374151] max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 bg-[#111827] border-b border-[#1F2937] flex items-center justify-between px-4 py-3">
+        <SaveBlockingOverlay active={saving} label="Saving changes..." />
+        <div className="sticky top-0 z-10 flow-screen-header bg-[#111827] border-b border-[#1F2937] flex items-center justify-between px-4 py-3">
           <h2 className="text-base font-semibold text-white">Edit Entry</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-[#1F2937] rounded-lg text-[#9CA3AF]" disabled={saving}>
             <X className="w-5 h-5" />

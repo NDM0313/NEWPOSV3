@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { PinNumericInput } from '../common/PinNumericInput';
 import { X, KeyRound, Loader2 } from 'lucide-react';
 import { notifyCounterRegistryUpdated } from '../../lib/counterPinFromDevicePin';
 import {
@@ -73,27 +74,23 @@ export function ChangeCounterPinModal({ enrollment, onClose, onSuccess }: Change
             POS lock screen par <span className="text-white font-medium">{enrollment.displayName}</span> ke liye naya
             4-digit PIN set karein.
           </p>
-          <input
-            type="password"
-            inputMode="numeric"
-            pattern="[0-9]*"
+          <PinNumericInput
             maxLength={4}
             autoComplete="new-password"
+            enterKeyHint="next"
             placeholder="New 4-digit PIN"
             value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+            onChange={setPin}
             className="w-full px-4 py-3 bg-[#111827] border border-[#374151] rounded-lg text-white placeholder-[#6B7280] focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             autoFocus
           />
-          <input
-            type="password"
-            inputMode="numeric"
-            pattern="[0-9]*"
+          <PinNumericInput
             maxLength={4}
             autoComplete="new-password"
+            enterKeyHint="done"
             placeholder="Confirm PIN"
             value={confirmPin}
-            onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+            onChange={setConfirmPin}
             className="w-full px-4 py-3 bg-[#111827] border border-[#374151] rounded-lg text-white placeholder-[#6B7280] focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
           />
           {error ? <p className="text-sm text-red-400">{error}</p> : null}

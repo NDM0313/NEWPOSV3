@@ -13,7 +13,8 @@
 | **Accounts receivable** | 1100 | Accounts Receivable | Dr on credit sale; Cr on customer payment |
 | **Sales discount** | 5200 | Discount Allowed | Dr on sale discount (contra-revenue) |
 | **Shipping income** | **4110** | Shipping Income | Cr when shipping charged to customer (not 4100 — that is Sales Revenue in seed) |
-| **Sale extra expense** | 5300 | Extra Expense | Dr when sale has extra expense; Cr = Cash (1000) or **AP 2000** (not 2020) |
+| **Extra service income (package split)** | **4120** | Extra Service Income | **Frozen (2026-06):** Cr on sale finalize for all stitching/lining/dying `sale_charges` (per-line JE tags: `sale_id`, `sale_charge_id`, `tailor_contact_id`). Merchandise **4000/4010** = customer total pool − extras. Checkbox ON: extras on `sales.total`/AR; OFF: inclusive (4000 reduced, AR unchanged). Expenditure stitching/dyeing linked to `sale_charge_id`: **Dr 4120** / Cr cash (clearing). Inclusive extras capped at 25% of invoice in `validate_sale_extra_charges_inclusive`. |
+| **Sale extra expense (legacy direct)** | 5300 | Extra Expense | Dr for non-linked operating expenses; **not** used for sale-linked tailor payout (use 4120 debit path) |
 | **Inventory** | **1200** | Inventory | Dr purchase; Cr COGS; single asset account for stock |
 | **COGS** | 5000 | Cost of Production | Dr on sale (COGS); Cr on reversal |
 | **Supplier payable** | **2000** | Accounts Payable | Cr on purchase; Dr on supplier payment; **sale extra expense credit when payable** |

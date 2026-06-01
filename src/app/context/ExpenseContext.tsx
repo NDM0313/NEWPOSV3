@@ -69,7 +69,7 @@ interface ExpenseContextType {
   expenses: Expense[];
   loading: boolean;
   getExpenseById: (id: string) => Expense | undefined;
-  createExpense: (expense: Omit<Expense, 'id' | 'expenseNo' | 'createdAt' | 'updatedAt'> & { category: ExpenseCategory | string }, options?: { branchId?: string; payment_account_id?: string; paidToUserId?: string }) => Promise<Expense>;
+  createExpense: (expense: Omit<Expense, 'id' | 'expenseNo' | 'createdAt' | 'updatedAt'> & { category: ExpenseCategory | string }, options?: { branchId?: string; payment_account_id?: string; paidToUserId?: string; expense_category_id?: string }) => Promise<Expense>;
   updateExpense: (id: string, updates: Partial<Expense>, options?: { silent?: boolean }) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   approveExpense: (id: string, approvedBy: string) => Promise<void>;
@@ -225,7 +225,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
   // Create new expense (options.branchId = override for drawer; options.payment_account_id = chart account id)
   const createExpense = async (
     expenseData: Omit<Expense, 'id' | 'expenseNo' | 'createdAt' | 'updatedAt'>,
-    options?: { branchId?: string; payment_account_id?: string }
+    options?: { branchId?: string; payment_account_id?: string; paidToUserId?: string; expense_category_id?: string }
   ): Promise<Expense> => {
     const effectiveBranchId = options?.branchId ?? branchId;
     if (!companyId || !user) throw new Error('Company and user are required');
@@ -254,6 +254,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       };
       if (options?.payment_account_id) supabaseExpense.payment_account_id = options.payment_account_id;
       if (options?.paidToUserId) (supabaseExpense as any).paid_to_user_id = options.paidToUserId;
+      if (options?.expense_category_id) (supabaseExpense as any).expense_category_id = options.expense_category_id;
       if (expenseData.payeeName?.trim()) (supabaseExpense as any).vendor_name = expenseData.payeeName.trim();
 
       // Save to Supabase

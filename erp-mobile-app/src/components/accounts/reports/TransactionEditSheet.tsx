@@ -88,7 +88,7 @@ export function TransactionEditSheet({ detail, companyId, onClose, onSuccess }: 
         className="w-full md:w-[28rem] bg-[#111827] rounded-t-2xl md:rounded-2xl border border-[#374151] max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 bg-[#111827] border-b border-[#1F2937] flex items-center justify-between px-4 py-3">
+        <div className="sticky top-0 z-10 flow-screen-header bg-[#111827] border-b border-[#1F2937] flex items-center justify-between px-4 py-3">
           <h2 className="text-base font-semibold text-white">Edit Transaction</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-[#1F2937] rounded-lg text-[#9CA3AF]" disabled={loading}>
             <X className="w-5 h-5" />

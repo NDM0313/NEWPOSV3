@@ -21,12 +21,14 @@ export interface AccountRow {
   name: string;
   type: string;
   balance: number;
+  parentId?: string | null;
+  isGroup?: boolean;
   /** Party-linked AR/AP sub-account — enables party GL ledger RPC on mobile. */
   linkedContactId?: string | null;
 }
 
-/** Account types supported for Create Account (same as web ERP) */
-export const ACCOUNT_TYPES = [
+/** Operational roles — same as web AddAccountDrawer operational tab */
+export const OPERATIONAL_ACCOUNT_ROLES = [
   { value: 'cash', label: 'Cash' },
   { value: 'bank', label: 'Bank' },
   { value: 'mobile_wallet', label: 'Mobile Wallet' },
@@ -34,11 +36,10 @@ export const ACCOUNT_TYPES = [
   { value: 'income', label: 'Income' },
   { value: 'receivable', label: 'Receivable' },
   { value: 'payable', label: 'Payable' },
-  { value: 'asset', label: 'Asset' },
-  { value: 'liability', label: 'Liability' },
-  { value: 'equity', label: 'Equity' },
-  { value: 'revenue', label: 'Revenue' },
 ] as const;
+
+/** @deprecated use OPERATIONAL_ACCOUNT_ROLES */
+export const ACCOUNT_TYPES = OPERATIONAL_ACCOUNT_ROLES;
 
 /** Reserved codes for cash/bank/wallet – same as web ERP (AddAccountDrawer) */
 const RESERVED_CODES: Record<string, string> = {
@@ -88,15 +89,37 @@ async function getNextAccountCode(companyId: string, type: string): Promise<stri
   return prefix + (maxSuffix + 1);
 }
 
-/** Create account (Chart of Accounts) – same backend and code numbering as web ERP. */
+/** Create account (Chart of Accounts) – same backend, parent_id, and code rules as web ERP. */
 export async function createAccount(
   companyId: string,
-  params: { code?: string; name: string; type: string; balance?: number; is_active?: boolean }
+  params: {
+    code?: string;
+    name: string;
+    type: string;
+    balance?: number;
+    is_active?: boolean;
+    parent_id?: string | null;
+  }
 ): Promise<{ data: AccountRow | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const trimmedCode = (params.code || '').trim();
-  const code = trimmedCode || (await getNextAccountCode(companyId, params.type || 'expense'));
-  const payload = {
+  let code = trimmedCode;
+  if (!code) {
+    if (params.parent_id) {
+      const { data: existing } = await getAccounts(companyId);
+      const list = existing || [];
+      const parent = list.find((a) => a.id === params.parent_id);
+      if (parent) {
+        const { getNextChildAccountCode } = await import('../lib/addAccountCoaPicker');
+        code = getNextChildAccountCode(
+          { id: parent.id, code: parent.code, parent_id: parent.parentId ?? null },
+          list.map((a) => ({ id: a.id, code: a.code, parent_id: a.parentId ?? null }))
+        );
+      }
+    }
+    if (!code) code = await getNextAccountCode(companyId, params.type || 'expense');
+  }
+  const payload: Record<string, unknown> = {
     company_id: companyId,
     code,
     name: (params.name || '').trim(),
@@ -104,7 +127,12 @@ export async function createAccount(
     balance: Number(params.balance) || 0,
     is_active: params.is_active !== false,
   };
-  const { data, error } = await supabase.from('accounts').insert(payload).select('id, code, name, type, balance').single();
+  if (params.parent_id) payload.parent_id = params.parent_id;
+  const { data, error } = await supabase
+    .from('accounts')
+    .insert(payload)
+    .select('id, code, name, type, balance, parent_id, is_group')
+    .single();
   if (error) return { data: null, error: error.message };
   const row = data as Record<string, unknown>;
   return {
@@ -114,6 +142,8 @@ export async function createAccount(
       name: String(row.name ?? '—'),
       type: String(row.type ?? '—'),
       balance: Number(row.balance) || 0,
+      parentId: row.parent_id != null ? String(row.parent_id) : null,
+      isGroup: row.is_group === true,
     },
     error: null,
   };
@@ -123,21 +153,31 @@ export async function getAccounts(companyId: string): Promise<{ data: AccountRow
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   const withLink = await supabase
     .from('accounts')
-    .select('id, code, name, type, balance, linked_contact_id')
+    .select('id, code, name, type, balance, parent_id, is_group, linked_contact_id')
     .eq('company_id', companyId)
     .eq('is_active', true)
     .order('code');
   let rows: Record<string, unknown>[] = (withLink.data || []) as Record<string, unknown>[];
   let error = withLink.error;
   if (error && /linked_contact|column/i.test(String(error.message || ''))) {
-    const minimal = await supabase
+    const mid = await supabase
       .from('accounts')
-      .select('id, code, name, type, balance')
+      .select('id, code, name, type, balance, parent_id, is_group')
       .eq('company_id', companyId)
       .eq('is_active', true)
       .order('code');
-    rows = (minimal.data || []) as Record<string, unknown>[];
-    error = minimal.error;
+    rows = (mid.data || []) as Record<string, unknown>[];
+    error = mid.error;
+    if (error && /parent_id|is_group|column/i.test(String(error.message || ''))) {
+      const minimal = await supabase
+        .from('accounts')
+        .select('id, code, name, type, balance')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .order('code');
+      rows = (minimal.data || []) as Record<string, unknown>[];
+      error = minimal.error;
+    }
   }
   if (error) return { data: [], error: error.message };
   return {
@@ -147,6 +187,8 @@ export async function getAccounts(companyId: string): Promise<{ data: AccountRow
       name: String(r.name ?? '—'),
       type: String(r.type ?? '—'),
       balance: Number(r.balance) || 0,
+      parentId: r['parent_id'] != null && String(r['parent_id']).trim() !== '' ? String(r['parent_id']) : null,
+      isGroup: r['is_group'] === true,
       linkedContactId:
         r['linked_contact_id'] != null && String(r['linked_contact_id']).trim() !== ''
           ? String(r['linked_contact_id'])

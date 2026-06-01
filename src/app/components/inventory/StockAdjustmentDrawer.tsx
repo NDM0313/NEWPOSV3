@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { X, Plus, Minus, AlertCircle, Calendar, FileText, Save } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, Plus, Minus, AlertCircle, Calendar, FileText, Save, MapPin, Loader2, Layers, ArrowRightLeft } from 'lucide-react';
 import { toast } from 'sonner';
+import { branchService, type Branch } from '@/app/services/branchService';
+import { inventoryService } from '@/app/services/inventoryService';
+import { useSupabase } from '@/app/context/SupabaseContext';
+import { pickInitialStockAdjustBranchId } from '@/app/utils/branchScope';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -48,6 +52,7 @@ interface StockAdjustmentDrawerProps {
   } | null;
   onAdjust: (data: {
     productId: string;
+    branchId: string;
     type: AdjustmentType;
     quantity: number;
     reason: AdjustmentReason;
@@ -57,50 +62,177 @@ interface StockAdjustmentDrawerProps {
     /** Required when product has variations – adjustment applies only to this variation */
     variationId?: string | null;
   }) => void;
+  onTransfer?: (data: {
+    productId: string;
+    fromBranchId: string;
+    toBranchId: string;
+    quantity: number;
+    notes: string;
+    variationId?: string | null;
+  }) => void;
+  /** Opens drawer on Adjust or Transfer tab */
+  initialMode?: 'adjust' | 'transfer';
 }
+
+type DrawerMode = 'adjust' | 'transfer';
 
 export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
   open,
   onClose,
   product,
-  onAdjust
+  onAdjust,
+  onTransfer,
+  initialMode = 'adjust',
 }) => {
+  const { companyId, branchId, defaultBranchId } = useSupabase();
+  const [drawerMode, setDrawerMode] = useState<DrawerMode>(initialMode);
   const [type, setType] = useState<AdjustmentType>('add');
   const [quantity, setQuantity] = useState<number>(0);
+  const [toBranchId, setToBranchId] = useState<string | null>(null);
   const [reason, setReason] = useState<AdjustmentReason>('correction');
   const [notes, setNotes] = useState('');
   const [date, setDate] = useState<Date>(new Date());
-  /** When product has variations, which variation is selected for adjustment */
   const [selectedVariationId, setSelectedVariationId] = useState<string | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [adjustBranchId, setAdjustBranchId] = useState<string | null>(null);
+  const [branchStock, setBranchStock] = useState<number | null>(null);
+  const [loadingBranchStock, setLoadingBranchStock] = useState(false);
+  const [branchVariations, setBranchVariations] = useState<AdjustmentVariationOption[]>([]);
+  const [loadingVariations, setLoadingVariations] = useState(false);
 
-  const hasVariations = Boolean(product?.hasVariations && product?.variations?.length);
-  const variations = product?.variations ?? [];
+  const hasVariations = Boolean(product?.hasVariations);
+  const variations = branchVariations.length > 0 ? branchVariations : (product?.variations ?? []);
+  const showBranchSelect = branches.length > 1;
+  const canTransfer = branches.length > 1 && Boolean(onTransfer);
+  const destinationBranches = branches.filter((b) => b.id !== adjustBranchId);
   const selectedVariation = hasVariations && selectedVariationId
     ? variations.find((v) => v.id === selectedVariationId)
     : null;
-  /** Effective current stock: selected variation's stock when product has variations, else product total */
   const effectiveCurrentStock = hasVariations && selectedVariation
     ? selectedVariation.stock
-    : (product?.currentStock ?? 0);
+    : branchStock ?? (loadingBranchStock ? product?.currentStock ?? 0 : product?.currentStock ?? 0);
 
-  // Reset form when product changes; set initial variation selection
-  useEffect(() => {
-    if (product) {
-      setType('add');
-      setQuantity(0);
-      setReason('correction');
-      setNotes('');
-      setDate(new Date());
-      if (product.hasVariations && product.variations?.length) {
-        const initial = product.variationId && product.variations.some((v) => v.id === product.variationId)
-          ? product.variationId
-          : product.variations[0]?.id ?? null;
-        setSelectedVariationId(initial);
-      } else {
-        setSelectedVariationId(null);
+  const loadBranchStock = useCallback(
+    async (branchUuid: string | null) => {
+      if (!companyId || !product?.id || !branchUuid || hasVariations) {
+        setBranchStock(null);
+        return;
       }
+      setLoadingBranchStock(true);
+      try {
+        const rows = await inventoryService.getInventoryOverview(companyId, branchUuid);
+        const row = rows.find((r) => r.productId === product.id);
+        setBranchStock(row?.stock ?? 0);
+      } catch (e) {
+        console.error('[StockAdjustmentDrawer] branch stock:', e);
+        setBranchStock(0);
+      } finally {
+        setLoadingBranchStock(false);
+      }
+    },
+    [companyId, product?.id, hasVariations],
+  );
+
+  const loadVariationsForBranch = useCallback(
+    async (branchUuid: string | null) => {
+      if (!companyId || !product?.id || !hasVariations) {
+        setBranchVariations([]);
+        return;
+      }
+      setLoadingVariations(true);
+      try {
+        const list = await inventoryService.getVariationsWithStock(companyId, product.id, branchUuid);
+        setBranchVariations(
+          list.map((v) => ({
+            id: v.id,
+            sku: v.sku,
+            attributes: v.attributes,
+            stock: v.stock,
+          })),
+        );
+        setSelectedVariationId(list.length === 1 ? list[0].id : null);
+      } catch (e) {
+        console.error('[StockAdjustmentDrawer] variations:', e);
+        setBranchVariations([]);
+      } finally {
+        setLoadingVariations(false);
+      }
+    },
+    [companyId, product?.id, hasVariations],
+  );
+
+  useEffect(() => {
+    if (!open || !product || !companyId) return;
+
+    setType('add');
+    setQuantity(0);
+    setReason('correction');
+    setNotes('');
+    setDate(new Date());
+    setBranchStock(null);
+    setBranchVariations([]);
+
+    let cancelled = false;
+    setLoadingBranches(true);
+    void branchService
+      .getBranchesCached(companyId)
+      .then((list) => {
+        if (cancelled) return;
+        const activeList = list.filter((b) => b.is_active !== false);
+        setBranches(activeList.length > 0 ? activeList : list);
+        const initial = pickInitialStockAdjustBranchId(list, branchId, defaultBranchId);
+        setAdjustBranchId(initial);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        console.error('[StockAdjustmentDrawer] branches:', e);
+        toast.error('Could not load branches');
+        setBranches([]);
+        setAdjustBranchId(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingBranches(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, product?.id, companyId, branchId, defaultBranchId]);
+
+  useEffect(() => {
+    if (!open || !product || !adjustBranchId) return;
+    if (hasVariations) {
+      void loadVariationsForBranch(adjustBranchId);
+    } else {
+      void loadBranchStock(adjustBranchId);
     }
-  }, [product?.id, product?.variationId, product?.hasVariations, product?.variations]);
+  }, [open, product?.id, adjustBranchId, hasVariations, loadBranchStock, loadVariationsForBranch]);
+
+  useEffect(() => {
+    if (!open) return;
+    setDrawerMode(initialMode);
+    setQuantity(0);
+    setToBranchId(null);
+  }, [open, product?.id, initialMode]);
+
+  useEffect(() => {
+    if (!adjustBranchId || !destinationBranches.length) {
+      setToBranchId(null);
+      return;
+    }
+    if (toBranchId && destinationBranches.some((b) => b.id === toBranchId)) return;
+    setToBranchId(destinationBranches[0]?.id ?? null);
+  }, [adjustBranchId, destinationBranches, toBranchId]);
+
+  useEffect(() => {
+    if (!product?.hasVariations || !product.variations?.length || branchVariations.length > 0) return;
+    if (product.variationId && product.variations.some((v) => v.id === product.variationId)) {
+      setSelectedVariationId(product.variationId);
+    } else {
+      setSelectedVariationId(product.variations[0]?.id ?? null);
+    }
+  }, [product?.id, product?.variationId, product?.hasVariations, product?.variations, branchVariations.length]);
 
   if (!open || !product) return null;
 
@@ -116,8 +248,37 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
       return;
     }
 
+    if (!adjustBranchId) {
+      toast.error(drawerMode === 'transfer' ? 'Select a source branch' : 'Select a branch for this adjustment');
+      return;
+    }
+
     if (hasVariations && !selectedVariationId) {
-      toast.error('Please select a variation to adjust');
+      toast.error(drawerMode === 'transfer' ? 'Please select a variation to transfer' : 'Please select a variation to adjust');
+      return;
+    }
+
+    if (drawerMode === 'transfer') {
+      if (!canTransfer || !onTransfer) {
+        toast.error('Branch transfer requires at least two branches.');
+        return;
+      }
+      if (!toBranchId) {
+        toast.error('Select a destination branch');
+        return;
+      }
+      if (quantity > effectiveCurrentStock) {
+        toast.error(`Cannot transfer more than on-hand at source (${effectiveCurrentStock} ${product.unit})`);
+        return;
+      }
+      onTransfer({
+        productId: product.id,
+        fromBranchId: adjustBranchId,
+        toBranchId,
+        quantity,
+        notes,
+        variationId: hasVariations ? selectedVariationId : undefined,
+      });
       return;
     }
 
@@ -128,6 +289,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
 
     onAdjust({
       productId: product.id,
+      branchId: adjustBranchId,
       type,
       quantity,
       reason,
@@ -135,20 +297,6 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
       date: date instanceof Date ? date.toISOString().split('T')[0] : date,
       newStock: calculatedNewStock,
       variationId: hasVariations ? selectedVariationId : undefined,
-    });
-
-    // Log for audit trail
-    console.log('Stock Adjustment Log:', {
-      timestamp: new Date().toISOString(),
-      product: product.name,
-      sku: product.sku,
-      variationId: hasVariations ? selectedVariationId : undefined,
-      type,
-      quantity,
-      reason,
-      previousStock: effectiveCurrentStock,
-      newStock: calculatedNewStock,
-      notes
     });
   };
 
@@ -177,8 +325,14 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
         <div className="sticky top-0 bg-[#111827] border-b border-gray-800 px-6 py-4 z-10">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-white">Stock Adjustment</h2>
-              <p className="text-sm text-gray-400">Correct inventory levels and log changes</p>
+              <h2 className="text-xl font-bold text-white">
+                {drawerMode === 'transfer' ? 'Stock Transfer' : 'Stock Adjustment'}
+              </h2>
+              <p className="text-sm text-gray-400">
+                {drawerMode === 'transfer'
+                  ? 'Move stock between branches'
+                  : 'Correct inventory levels and log changes'}
+              </p>
             </div>
             <button
               onClick={onClose}
@@ -215,10 +369,109 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
             </div>
           </div>
 
+          {canTransfer && (
+            <div className="flex rounded-lg bg-gray-900 border border-gray-800 p-1">
+              <button
+                type="button"
+                onClick={() => setDrawerMode('adjust')}
+                className={`flex-1 py-2 text-sm font-medium rounded-md transition ${
+                  drawerMode === 'adjust' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Adjust
+              </button>
+              <button
+                type="button"
+                onClick={() => setDrawerMode('transfer')}
+                className={`flex-1 py-2 text-sm font-medium rounded-md transition flex items-center justify-center gap-1.5 ${
+                  drawerMode === 'transfer' ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <ArrowRightLeft size={14} />
+                Transfer
+              </button>
+            </div>
+          )}
+
+          {(showBranchSelect || loadingBranches || adjustBranchId) && (
+            <div className="space-y-2">
+              <Label className="text-gray-300 flex items-center gap-2">
+                <MapPin size={14} />
+                {drawerMode === 'transfer' ? 'From branch' : 'Branch / Location'}
+              </Label>
+              {loadingBranches ? (
+                <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
+                  <Loader2 size={16} className="animate-spin" />
+                  Loading branches...
+                </div>
+              ) : showBranchSelect ? (
+                <Select value={adjustBranchId ?? ''} onValueChange={(v) => setAdjustBranchId(v)}>
+                  <SelectTrigger className="w-full bg-gray-900 border-gray-800 text-white">
+                    <SelectValue placeholder="Select branch" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                        {b.address || b.city ? ` — ${(b.address || b.city || '').slice(0, 48)}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : adjustBranchId ? (
+                <p className="text-sm text-gray-300 py-1">
+                  {branches.find((b) => b.id === adjustBranchId)?.name ?? 'Branch'}
+                </p>
+              ) : null}
+            </div>
+          )}
+
+          {drawerMode === 'transfer' && canTransfer && (
+            <div className="space-y-2">
+              <Label className="text-gray-300 flex items-center gap-2">
+                <MapPin size={14} />
+                To branch
+              </Label>
+              {loadingBranches ? (
+                <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
+                  <Loader2 size={16} className="animate-spin" />
+                  Loading branches...
+                </div>
+              ) : destinationBranches.length === 0 ? (
+                <p className="text-sm text-amber-400">Select a different source branch first.</p>
+              ) : (
+                <Select value={toBranchId ?? ''} onValueChange={(v) => setToBranchId(v)}>
+                  <SelectTrigger className="w-full bg-gray-900 border-gray-800 text-white">
+                    <SelectValue placeholder="Select destination branch" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                    {destinationBranches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                        {b.address || b.city ? ` — ${(b.address || b.city || '').slice(0, 48)}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
+
           {/* Variation selector: required when product has variations */}
           {hasVariations && (
             <div className="space-y-2">
-              <Label className="text-gray-300">Variation to adjust</Label>
+              <Label className="text-gray-300 flex items-center gap-2">
+                <Layers size={14} />
+                Variation to adjust
+              </Label>
+              {loadingVariations ? (
+                <div className="flex items-center gap-2 text-gray-400 text-sm py-2">
+                  <Loader2 size={16} className="animate-spin" />
+                  Loading variations...
+                </div>
+              ) : variations.length === 0 ? (
+                <p className="text-sm text-amber-400">No variations found for this branch.</p>
+              ) : (
               <Select value={selectedVariationId ?? ''} onValueChange={(v) => setSelectedVariationId(v || null)}>
                 <SelectTrigger className="bg-gray-900 border-gray-800 text-white">
                   <SelectValue placeholder="Select variation" />
@@ -235,10 +488,13 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                   ))}
                 </SelectContent>
               </Select>
+              )}
               <p className="text-xs text-gray-500">Adjustment will apply only to the selected variation.</p>
             </div>
           )}
 
+          {drawerMode === 'adjust' && (
+          <>
           {/* Adjustment Type */}
           <div className="space-y-2">
             <Label className="text-gray-300">Adjustment Type</Label>
@@ -271,11 +527,13 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
               </button>
             </div>
           </div>
+          </>
+          )}
 
           {/* Quantity */}
           <div className="space-y-2">
             <Label htmlFor="quantity" className="text-gray-300">
-              Quantity ({product.unit})
+              {drawerMode === 'transfer' ? 'Transfer quantity' : 'Quantity'} ({product.unit})
             </Label>
             <Input
               id="quantity"
@@ -290,6 +548,8 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
             />
           </div>
 
+          {drawerMode === 'adjust' && (
+          <>
           {/* Reason */}
           <div className="space-y-2">
             <Label htmlFor="reason" className="text-gray-300">
@@ -320,6 +580,8 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
               required
             />
           </div>
+          </>
+          )}
 
           {/* Notes */}
           <div className="space-y-2">
@@ -338,7 +600,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
           </div>
 
           {/* Preview */}
-          {quantity > 0 && (
+          {quantity > 0 && drawerMode === 'adjust' && (
             <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <AlertCircle size={20} className="text-blue-400 mt-0.5" />
@@ -347,7 +609,7 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between text-gray-300">
                       <span>Current Stock:</span>
-                      <span className="font-semibold">{product.currentStock} {product.unit}</span>
+                      <span className="font-semibold">{effectiveCurrentStock} {product.unit}</span>
                     </div>
                     <div className="flex justify-between text-gray-300">
                       <span>Adjustment:</span>
@@ -367,15 +629,47 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
             </div>
           )}
 
-          {/* Warning for subtract */}
-          {type === 'subtract' && quantity > product.currentStock && (
+          {quantity > 0 && drawerMode === 'transfer' && toBranchId && (
+            <div className="bg-violet-500/10 border border-violet-500/20 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <ArrowRightLeft size={20} className="text-violet-400 mt-0.5" />
+                <div className="flex-1 text-sm space-y-1">
+                  <p className="font-semibold text-violet-400">Transfer preview</p>
+                  <p className="text-gray-300">
+                    {quantity} {product.unit} from{' '}
+                    <span className="text-white">{branches.find((b) => b.id === adjustBranchId)?.name}</span>
+                    {' → '}
+                    <span className="text-white">{branches.find((b) => b.id === toBranchId)?.name}</span>
+                  </p>
+                  <p className="text-gray-400">Source after: {Math.max(0, effectiveCurrentStock - quantity)} {product.unit}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Warning for subtract / over-transfer */}
+          {drawerMode === 'adjust' && type === 'subtract' && quantity > effectiveCurrentStock && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <AlertCircle size={20} className="text-red-400 mt-0.5" />
                 <div>
                   <h4 className="font-semibold text-red-400">Invalid Quantity</h4>
                   <p className="text-sm text-gray-300 mt-1">
-                    Cannot subtract more than current stock ({product.currentStock} {product.unit})
+                    Cannot subtract more than current stock ({effectiveCurrentStock} {product.unit})
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {drawerMode === 'transfer' && quantity > effectiveCurrentStock && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle size={20} className="text-red-400 mt-0.5" />
+                <div>
+                  <h4 className="font-semibold text-red-400">Invalid Quantity</h4>
+                  <p className="text-sm text-gray-300 mt-1">
+                    Cannot transfer more than source stock ({effectiveCurrentStock} {product.unit})
                   </p>
                 </div>
               </div>
@@ -394,11 +688,19 @@ export const StockAdjustmentDrawer: React.FC<StockAdjustmentDrawerProps> = ({
             </Button>
             <Button
               type="submit"
-              className="flex-1 bg-blue-600 hover:bg-blue-500 text-white"
-              disabled={quantity <= 0 || (type === 'subtract' && quantity > product.currentStock)}
+              className={`flex-1 text-white ${drawerMode === 'transfer' ? 'bg-violet-600 hover:bg-violet-500' : 'bg-blue-600 hover:bg-blue-500'}`}
+              disabled={
+                quantity <= 0 ||
+                !adjustBranchId ||
+                loadingBranches ||
+                loadingBranchStock ||
+                loadingVariations ||
+                (drawerMode === 'adjust' && type === 'subtract' && quantity > effectiveCurrentStock) ||
+                (drawerMode === 'transfer' && (!toBranchId || quantity > effectiveCurrentStock))
+              }
             >
               <Save size={16} className="mr-2" />
-              Save Adjustment
+              {drawerMode === 'transfer' ? 'Transfer Stock' : 'Save Adjustment'}
             </Button>
           </div>
         </form>

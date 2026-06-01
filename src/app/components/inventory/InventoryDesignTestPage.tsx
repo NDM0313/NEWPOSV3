@@ -202,6 +202,7 @@ export const InventoryDesignTestPage = () => {
 
   const handleAdjustSave = useCallback(async (data: {
     productId: string;
+    branchId: string;
     type: 'add' | 'subtract';
     quantity: number;
     reason: string;
@@ -215,7 +216,7 @@ export const InventoryDesignTestPage = () => {
       const qty = data.type === 'add' ? data.quantity : -data.quantity;
       await productService.createStockMovement({
         company_id: companyId,
-        branch_id: branchId === 'all' ? undefined : branchId || undefined,
+        branch_id: data.branchId,
         product_id: data.productId,
         variation_id: data.variationId ?? undefined,
         movement_type: 'adjustment',
@@ -231,7 +232,7 @@ export const InventoryDesignTestPage = () => {
     } catch (error: any) {
       toast.error('Adjustment failed: ' + (error?.message || 'Unknown error'));
     }
-  }, [companyId, branchId, user?.id, loadOverview]);
+  }, [companyId, user?.id, loadOverview]);
 
   const exportCsv = () => {
     const headers = ['Product', 'SKU', 'Category', 'Stock', ...(enablePacking ? ['Unit'] : []), 'Cost Price', 'Selling Price', 'Stock Value', 'Movement', 'Status'];

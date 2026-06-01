@@ -31,6 +31,7 @@ import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceLineIfAllowed } from '../../utils/balancePrivacy';
 import { localNowDateString, getCurrentLocalTimestamp } from '../../utils/localDate';
 import { isBranchSentinel } from '../../utils/branchId';
+import { useSubmitLock } from '../../contexts/LoadingContext';
 
 function blurActiveInput(): void {
   const el = document.activeElement as HTMLElement | null;
@@ -254,9 +255,8 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
   const [branchName, setBranchName] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { run: runSave, busy: submitting } = useSubmitLock();
   const [accountPickerOpen, setAccountPickerOpen] = useState(false);
-  const submittingRef = useRef(false);
   const [success, setSuccess] = useState<
     (TransactionSuccessData & { fromAccountName?: string; toAccountName?: string; paymentIdRaw?: string | null }) | null
   >(null);
@@ -351,17 +351,14 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
       return;
     }
 
-    if (submittingRef.current) return;
-
     if (isBranchSentinel(branchId)) {
       setToast({ message: 'Select a specific branch (not All Branches) before recording payment.', type: 'error' });
       return;
     }
 
     const acct = accounts.find((a) => a.id === accountId);
-    submittingRef.current = true;
-    setSubmitting(true);
-    try {
+    await runSave('Processing payment...', async () => {
+      try {
       const result = await onSubmit({
         amount,
         method: paymentMethod,
@@ -418,13 +415,11 @@ export function MobilePaymentSheet(props: MobilePaymentSheetProps) {
         toAccountName: partyAccountName ?? undefined,
         paymentIdRaw: result.paymentId ?? null,
       });
-    } catch (err) {
-      const msg = (err as { message?: string })?.message || 'Operation failed.';
-      setToast({ message: msg, type: 'error' });
-    } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
-    }
+      } catch (err) {
+        const msg = (err as { message?: string })?.message || 'Operation failed.';
+        setToast({ message: msg, type: 'error' });
+      }
+    });
   };
 
   const closeSuccess = () => {

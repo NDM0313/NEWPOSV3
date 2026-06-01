@@ -68,7 +68,91 @@ function branchIdFromSaleHeader(
   return null;
 }
 
-type SaleChargeRow = { charge_type?: string; chargeType?: string; amount?: number };
+type SaleChargeRow = {
+  charge_type?: string;
+  chargeType?: string;
+  amount?: number;
+  charged_to_customer?: boolean;
+  tailor_contact_id?: string | null;
+};
+
+type SaleExtraExpenseInput = {
+  type?: string;
+  amount?: number;
+  tailorExpenseCategoryId?: string | null;
+  tailor_expense_category_id?: string | null;
+  tailorContactId?: string | null;
+  tailor_contact_id?: string | null;
+};
+
+function isChargeExtrasOnCustomerBill(saleData: { chargeExtrasToCustomer?: boolean }): boolean {
+  return (saleData as { chargeExtrasToCustomer?: boolean }).chargeExtrasToCustomer !== false;
+}
+
+function sumChargedExtraExpenses(
+  list: SaleExtraExpenseInput[] | undefined,
+  chargeOnBill: boolean,
+): number {
+  if (!chargeOnBill || !Array.isArray(list)) return 0;
+  return list.reduce((s, e) => s + (Number(e?.amount) || 0), 0);
+}
+
+async function buildSaleChargeRowsFromExtras(
+  companyId: string,
+  extraExpensesList: SaleExtraExpenseInput[] | undefined,
+  chargeOnBill: boolean,
+  shippingAmount: number,
+  discountAmount: number,
+): Promise<
+  {
+    charge_type: string;
+    amount: number;
+    ledger_account_id?: string | null;
+    charged_to_customer?: boolean;
+    tailor_contact_id?: string | null;
+    expense_category_id?: string | null;
+  }[]
+> {
+  const charges: {
+    charge_type: string;
+    amount: number;
+    ledger_account_id?: string | null;
+    charged_to_customer?: boolean;
+    tailor_contact_id?: string | null;
+    expense_category_id?: string | null;
+  }[] = [];
+  const hasExtraLines =
+    Array.isArray(extraExpensesList) &&
+    extraExpensesList.some((e) => Number(e?.amount ?? 0) > 0);
+  let extraLedgerAccountId: string | null = null;
+  if (hasExtraLines && companyId) {
+    const { resolveExtraServiceIncomeAccountId } = await import('@/app/services/saleAccountingService');
+    extraLedgerAccountId = await resolveExtraServiceIncomeAccountId(companyId);
+  }
+  if (Array.isArray(extraExpensesList)) {
+    extraExpensesList.forEach((e) => {
+      const amt = Number(e?.amount ?? 0);
+      if (amt > 0) {
+        charges.push({
+          charge_type: (e?.type ?? 'other') as string,
+          amount: amt,
+          ledger_account_id: extraLedgerAccountId,
+          charged_to_customer: chargeOnBill,
+          tailor_contact_id: e.tailorContactId ?? e.tailor_contact_id ?? null,
+          expense_category_id:
+            e.tailorExpenseCategoryId ?? e.tailor_expense_category_id ?? null,
+        });
+      }
+    });
+  }
+  if (shippingAmount > 0) {
+    charges.push({ charge_type: 'shipping', amount: shippingAmount, charged_to_customer: true });
+  }
+  if (discountAmount > 0) {
+    charges.push({ charge_type: 'discount', amount: discountAmount, charged_to_customer: true });
+  }
+  return charges;
+}
 
 function sumSaleChargeRows(
   charges: SaleChargeRow[] | undefined,
@@ -780,10 +864,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         tax_amount: saleData.tax || 0,
         expenses: saleData.expenses || 0, // Database has 'expenses' not 'shipping_charges'
         extra_expenses: (() => {
-          const list = (saleData as { extraExpenses?: { amount?: number }[] }).extraExpenses;
-          if (Array.isArray(list)) {
-            return list.reduce((s, e) => s + (Number(e?.amount) || 0), 0);
-          }
+          const list = (saleData as { extraExpenses?: SaleExtraExpenseInput[] }).extraExpenses;
+          const charged = sumChargedExtraExpenses(list, isChargeExtrasOnCustomerBill(saleData as object));
+          if (charged > 0) return charged;
           const ship = Number((saleData as { shippingCharges?: number }).shippingCharges ?? 0) || 0;
           return Math.max(0, (saleData.expenses || 0) - ship);
         })(),
@@ -890,27 +973,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const createExtraExpenses = (saleData as any).extraExpenses;
       const createShippingCharges = Number((saleData as any).shippingCharges ?? 0);
       if (result?.id) {
-        const charges: { charge_type: string; amount: number; ledger_account_id?: string | null }[] = [];
-        let extraLedgerAccountId: string | null = null;
-        if (Array.isArray(createExtraExpenses) && createExtraExpenses.some((e: { amount?: number }) => Number(e?.amount ?? 0) > 0)) {
-          const { resolveExtraServiceIncomeAccountId } = await import('@/app/services/saleAccountingService');
-          extraLedgerAccountId = await resolveExtraServiceIncomeAccountId(companyId);
-        }
-        if (Array.isArray(createExtraExpenses)) {
-          createExtraExpenses.forEach((e: { type?: string; amount?: number }) => {
-            const amt = Number(e?.amount ?? 0);
-            if (amt > 0) {
-              charges.push({
-                charge_type: (e?.type ?? 'other') as string,
-                amount: amt,
-                ledger_account_id: extraLedgerAccountId,
-              });
-            }
-          });
-        }
-        if (createShippingCharges > 0) charges.push({ charge_type: 'shipping', amount: createShippingCharges });
+        const chargeOnBill = isChargeExtrasOnCustomerBill(saleData as object);
         const discountAmt = Number(saleData.discount ?? 0);
-        if (discountAmt > 0) charges.push({ charge_type: 'discount', amount: discountAmt });
+        const charges = await buildSaleChargeRowsFromExtras(
+          companyId,
+          createExtraExpenses as SaleExtraExpenseInput[] | undefined,
+          chargeOnBill,
+          createShippingCharges,
+          discountAmt,
+        );
         if (charges.length > 0) {
           await saleService.replaceSaleCharges(result.id, charges, createdByAuthId);
         }
@@ -1410,9 +1481,12 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         supabaseUpdates.expenses = updates.expenses;
         supabaseUpdates.extra_expenses = updates.expenses;
       }
-      const extraExpensesForColumn = (updates as { extraExpenses?: { amount?: number }[] }).extraExpenses;
+      const extraExpensesForColumn = (updates as { extraExpenses?: SaleExtraExpenseInput[] }).extraExpenses;
       if (Array.isArray(extraExpensesForColumn)) {
-        const extraSum = extraExpensesForColumn.reduce((s, e) => s + (Number(e?.amount) || 0), 0);
+        const extraSum = sumChargedExtraExpenses(
+          extraExpensesForColumn,
+          isChargeExtrasOnCustomerBill(updates as object),
+        );
         supabaseUpdates.extra_expenses = extraSum;
         if (updates.expenses === undefined) {
           supabaseUpdates.expenses = extraSum;
@@ -2163,27 +2237,19 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const shouldReplaceCharges =
         replaceSaleChargesFlag || hasExtraLines || updateShippingCharges > 0;
       if (shouldReplaceCharges) {
-        const charges: { charge_type: string; amount: number; ledger_account_id?: string | null }[] = [];
-        let extraLedgerAccountId: string | null = null;
-        if (hasExtraLines && companyId) {
-          const { resolveExtraServiceIncomeAccountId } = await import('@/app/services/saleAccountingService');
-          extraLedgerAccountId = await resolveExtraServiceIncomeAccountId(companyId);
-        }
-        if (Array.isArray(extraExpensesList)) {
-          extraExpensesList.forEach((e) => {
-            const amt = Number(e?.amount ?? 0);
-            if (amt > 0) {
-              charges.push({
-                charge_type: (e?.type ?? 'other') as string,
-                amount: amt,
-                ledger_account_id: extraLedgerAccountId,
-              });
-            }
-          });
-        }
-        if (updateShippingCharges > 0) charges.push({ charge_type: 'shipping', amount: updateShippingCharges });
-        const discountAmt = Number((updates as { discount?: number }).discount ?? (updates as { discount_amount?: number }).discount_amount ?? 0);
-        if (discountAmt > 0) charges.push({ charge_type: 'discount', amount: discountAmt });
+        const chargeOnBill = isChargeExtrasOnCustomerBill(updates as object);
+        const discountAmt = Number(
+          (updates as { discount?: number }).discount ??
+            (updates as { discount_amount?: number }).discount_amount ??
+            0,
+        );
+        const charges = await buildSaleChargeRowsFromExtras(
+          companyId,
+          extraExpensesList as SaleExtraExpenseInput[] | undefined,
+          chargeOnBill,
+          updateShippingCharges,
+          discountAmt,
+        );
         await saleService.replaceSaleCharges(id, charges, user?.id ?? undefined);
       }
 

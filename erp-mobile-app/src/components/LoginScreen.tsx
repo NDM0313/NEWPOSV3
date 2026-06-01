@@ -5,6 +5,7 @@ import type { User } from '../types';
 import * as authApi from '../api/auth';
 import { markUnlocked } from '../lib/pinLock';
 import { OAUTH_COMPLETE_EVENT, type OauthCompleteDetail } from '../lib/oauthCallback';
+import { PinNumericInput } from './common/PinNumericInput';
 import { CounterLoginPanel } from './auth/CounterLoginPanel';
 import { getLastCounterCompanyId } from '../lib/sharedCounterMode';
 import {
@@ -458,28 +459,22 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
           <div className="space-y-4">
             <div>
               <label className="block text-xs text-[#6B7280] mb-2">PIN</label>
-              <input
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
-                autoComplete="new-password"
+              <PinNumericInput
                 value={setPinValue}
-                onChange={(e) => setSetPinValue(e.target.value.replace(/\D/g, ''))}
+                onChange={setSetPinValue}
+                autoComplete="new-password"
+                enterKeyHint="next"
                 placeholder="••••••"
                 className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-center text-lg tracking-widest text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
               />
             </div>
             <div>
               <label className="block text-xs text-[#6B7280] mb-2">Confirm PIN</label>
-              <input
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
-                autoComplete="new-password"
+              <PinNumericInput
                 value={setPinConfirm}
-                onChange={(e) => setSetPinConfirm(e.target.value.replace(/\D/g, ''))}
+                onChange={setSetPinConfirm}
+                autoComplete="new-password"
+                enterKeyHint="done"
                 placeholder="••••••"
                 className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg px-4 text-center text-lg tracking-widest text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
               />
@@ -539,12 +534,12 @@ export function LoginScreen({ onLogin, pinUnlockUser, pinUnlockCompanyId: _pinUn
                   <label className="block text-xs font-medium text-[#6B7280] mb-2">PIN</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B7280]" />
-                    <input
-                      type="password"
-                      inputMode="numeric"
-                      maxLength={PIN_LENGTH}
+                    <PinNumericInput
                       value={pin}
-                      onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                      onChange={setPin}
+                      maxLength={PIN_LENGTH}
+                      autoComplete="one-time-code"
+                      enterKeyHint="done"
                       placeholder="••••••"
                       className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-lg pl-11 pr-4 text-center text-lg tracking-widest text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6] focus:ring-2 focus:ring-[#3B82F6]/20"
                     />

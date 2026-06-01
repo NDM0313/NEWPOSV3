@@ -7,6 +7,13 @@ import type { Branch } from '../../api/branches';
 import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 import { MediaSourcePicker } from '../shared/MediaSourcePicker';
+import { SaleExtrasPanel } from './SaleExtrasPanel';
+import {
+  hasInclusiveBespokeParents,
+  isStockOnlyBespokeLine,
+  saleExtrasPanelActive,
+  sumExtraExpenses,
+} from '../../lib/saleTotals';
 
 const MAX_SALE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
@@ -15,6 +22,7 @@ interface SaleSummaryProps {
   saleData: SaleData;
   onUpdate: (data: Partial<SaleData>) => void;
   onProceedToPayment: () => void;
+  companyId?: string | null;
   needsBranchPicker?: boolean;
   branchPickerBranches?: Branch[];
   pickedBranchId?: string;
@@ -28,6 +36,7 @@ export function SaleSummary({
   saleData,
   onUpdate,
   onProceedToPayment,
+  companyId = null,
   needsBranchPicker,
   branchPickerBranches = [],
   pickedBranchId = '',
@@ -80,6 +89,13 @@ export function SaleSummary({
     onUpdate({ discount: d });
   };
   const applyNotes = () => onUpdate({ notes });
+
+  const extrasActive = saleExtrasPanelActive(saleData.saleType, saleData.documentStatus);
+  const inclusiveBespoke = hasInclusiveBespokeParents(saleData.products);
+  const chargeOnBill = saleData.chargeExtrasToCustomer !== false;
+  const extraTotal = sumExtraExpenses(saleData.extraExpenses);
+  const extraOnBill = chargeOnBill ? extraTotal : 0;
+  const shippingTotal = saleData.shippingCharge ?? saleData.shipping ?? 0;
 
   return (
     <div className="min-h-screen bg-[#111827] pb-32">
@@ -138,21 +154,36 @@ export function SaleSummary({
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <h3 className="text-sm font-medium text-[#9CA3AF] mb-3">Items ({saleData.products.length})</h3>
           <div className="space-y-3">
-            {saleData.products.map((p, i) => (
+            {saleData.products.map((p, i) => {
+              const stockOnly = isStockOnlyBespokeLine(p);
+              return (
               <div key={i} className="flex justify-between text-sm">
                 <div>
-                  <p className="text-white font-medium">{p.name}</p>
+                  <p className="text-white font-medium flex items-center gap-2 flex-wrap">
+                    {p.name}
+                    {stockOnly && (
+                      <span className="text-[10px] font-medium text-[#9CA3AF] bg-[#374151] px-1.5 py-0.5 rounded">
+                        Stock only
+                      </span>
+                    )}
+                  </p>
                   {p.variation && <p className="text-xs text-[#9CA3AF]">{p.variation}</p>}
-                  <p className="text-xs text-[#9CA3AF]">{p.quantity} × Rs. {p.price.toLocaleString()}</p>
+                  <p className="text-xs text-[#9CA3AF]">
+                    {p.quantity} × Rs. {p.price.toLocaleString()}
+                    {stockOnly ? ' (not on customer bill)' : ''}
+                  </p>
                   {p.packingDetails && (p.packingDetails.total_meters ?? 0) > 0 && (
                     <p className="text-xs text-[#3B82F6] mt-0.5">
                       {p.packingDetails.total_boxes ?? 0} Box / {p.packingDetails.total_pieces ?? 0} Pc / {(p.packingDetails.total_meters ?? 0).toFixed(1)} M
                     </p>
                   )}
                 </div>
-                <p className="font-semibold text-white">Rs. {p.total.toLocaleString()}</p>
+                <p className={`font-semibold ${stockOnly ? 'text-[#9CA3AF]' : 'text-white'}`}>
+                  Rs. {p.total.toLocaleString()}
+                </p>
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
 
@@ -186,6 +217,19 @@ export function SaleSummary({
             </button>
           </div>
         </div>
+
+        <SaleExtrasPanel
+          locked={!extrasActive}
+          companyId={companyId ?? null}
+          chargeExtrasToCustomer={chargeOnBill}
+          onChargeExtrasToCustomerChange={(chargeExtrasToCustomer) =>
+            onUpdate({ chargeExtrasToCustomer })
+          }
+          extraExpenses={saleData.extraExpenses ?? []}
+          onExtraExpensesChange={(extraExpenses) => onUpdate({ extraExpenses })}
+          shippingCharge={shippingTotal}
+          onShippingChargeChange={(shippingCharge) => onUpdate({ shippingCharge })}
+        />
 
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <h3 className="text-sm font-medium text-[#9CA3AF] mb-2">Notes</h3>
@@ -289,13 +333,44 @@ export function SaleSummary({
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <div className="space-y-2 text-sm mb-3">
             <div className="flex justify-between">
-              <span className="text-[#9CA3AF]">Subtotal</span>
+              <span className="text-[#9CA3AF]">
+                {inclusiveBespoke ? 'Customer subtotal' : 'Subtotal'}
+              </span>
               <span className="text-white">Rs. {saleData.subtotal.toLocaleString()}</span>
             </div>
+            {inclusiveBespoke && (
+              <p className="text-[10px] text-[#6B7280]">
+                Fabric child lines excluded; dress prices are all-inclusive.
+              </p>
+            )}
             {saleData.discount > 0 && (
               <div className="flex justify-between">
                 <span className="text-[#9CA3AF]">Discount</span>
                 <span className="text-[#EF4444]">- Rs. {saleData.discount.toLocaleString()}</span>
+              </div>
+            )}
+            {extraOnBill > 0 && (
+              <div className="flex justify-between">
+                <span className="text-[#9CA3AF]">Extra expenses (on bill)</span>
+                <span className="text-white">Rs. {extraOnBill.toLocaleString()}</span>
+              </div>
+            )}
+            {!chargeOnBill && extraTotal > 0 && (
+              <div className="flex justify-between text-xs">
+                <span className="text-[#6B7280]">Package extras (4120, not on bill)</span>
+                <span className="text-[#9CA3AF]">Rs. {extraTotal.toLocaleString()}</span>
+              </div>
+            )}
+            {shippingTotal > 0 && (
+              <div className="flex justify-between">
+                <span className="text-[#9CA3AF]">Shipping</span>
+                <span className="text-white">Rs. {shippingTotal.toLocaleString()}</span>
+              </div>
+            )}
+            {saleData.tax > 0 && (
+              <div className="flex justify-between">
+                <span className="text-[#9CA3AF]">Tax</span>
+                <span className="text-white">Rs. {saleData.tax.toLocaleString()}</span>
               </div>
             )}
           </div>

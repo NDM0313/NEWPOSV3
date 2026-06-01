@@ -140,6 +140,187 @@ export async function getExpenseCategoryTree(companyId: string): Promise<{ data:
   return { data: main.map(build), error: null };
 }
 
+function nameToSlug(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') || 'other';
+}
+
+/** Main categories aligned with ExpenseModule chips / CATEGORY_TO_SLUG. */
+export const DEFAULT_EXPENSE_MAIN_CATEGORIES: {
+  name: string;
+  slug: string;
+  type?: string;
+}[] = [
+  { name: 'Stitching', slug: 'stitching' },
+  { name: 'Dying', slug: 'dying' },
+  { name: 'Rent', slug: 'rent' },
+  { name: 'Utilities', slug: 'utilities', type: 'utility' },
+  { name: 'Salaries', slug: 'salaries', type: 'salary' },
+  { name: 'Supplies', slug: 'office_supplies' },
+  { name: 'Transport', slug: 'travel' },
+  { name: 'Other', slug: 'miscellaneous' },
+];
+
+function isDuplicateCategoryError(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes('unique') || m.includes('duplicate') || m.includes('idx_expense_categories');
+}
+
+/** Idempotent: insert missing main categories (parent_id null) for a company. */
+export async function ensureDefaultExpenseCategories(
+  companyId: string,
+): Promise<{ created: number; error: string | null }> {
+  if (!isSupabaseConfigured) return { created: 0, error: 'App not configured.' };
+
+  const { data: list, error: loadErr } = await getExpenseCategories(companyId);
+  if (loadErr) return { created: 0, error: loadErr };
+
+  const existingSlugs = new Set(
+    (list || []).map((c) => (c.slug || nameToSlug(c.name)).toLowerCase()),
+  );
+
+  let created = 0;
+  let lastError: string | null = null;
+
+  for (const def of DEFAULT_EXPENSE_MAIN_CATEGORIES) {
+    if (existingSlugs.has(def.slug)) continue;
+
+    const { error } = await createExpenseCategory(companyId, {
+      name: def.name,
+      parent_id: null,
+      type: def.type,
+    });
+
+    if (error) {
+      if (isDuplicateCategoryError(error)) {
+        existingSlugs.add(def.slug);
+        continue;
+      }
+      lastError = error;
+      continue;
+    }
+
+    created += 1;
+    existingSlugs.add(def.slug);
+  }
+
+  return { created, error: lastError };
+}
+
+export async function createExpenseCategory(
+  companyId: string,
+  payload: {
+    name: string;
+    parent_id?: string | null;
+    type?: string;
+    color?: string;
+    icon?: string;
+    description?: string | null;
+  },
+): Promise<{ data: ExpenseCategoryRow | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const name = payload.name.trim();
+  if (!name) return { data: null, error: 'Name is required.' };
+  const { data, error } = await supabase
+    .from('expense_categories')
+    .insert({
+      company_id: companyId,
+      name,
+      slug: nameToSlug(name),
+      parent_id: payload.parent_id || null,
+      type: payload.type || 'general',
+      color: payload.color || 'gray',
+      icon: payload.icon || 'Other',
+      description: payload.description || null,
+    })
+    .select('id, company_id, name, slug, parent_id, type, color, icon, description')
+    .single();
+  if (error) return { data: null, error: error.message };
+  return { data: data as ExpenseCategoryRow, error: null };
+}
+
+export async function updateExpenseCategory(
+  id: string,
+  payload: {
+    name?: string;
+    parent_id?: string | null;
+    type?: string;
+    color?: string;
+    icon?: string;
+    description?: string | null;
+  },
+): Promise<{ data: ExpenseCategoryRow | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const updates: Record<string, unknown> = {};
+  if (payload.parent_id !== undefined) updates.parent_id = payload.parent_id;
+  if (payload.type !== undefined) updates.type = payload.type;
+  if (payload.color !== undefined) updates.color = payload.color;
+  if (payload.icon !== undefined) updates.icon = payload.icon;
+  if (payload.description !== undefined) updates.description = payload.description;
+  if (payload.name !== undefined) {
+    updates.name = payload.name.trim();
+    updates.slug = nameToSlug(payload.name);
+  }
+  const { data, error } = await supabase
+    .from('expense_categories')
+    .update(updates)
+    .eq('id', id)
+    .select('id, company_id, name, slug, parent_id, type, color, icon, description')
+    .single();
+  if (error) return { data: null, error: error.message };
+  return { data: data as ExpenseCategoryRow, error: null };
+}
+
+export async function deleteExpenseCategory(id: string): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { error } = await supabase.from('expense_categories').delete().eq('id', id);
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
+export type ExtraServiceClearingLine = {
+  sale_charge_id: string;
+  sale_id: string;
+  invoice_no: string;
+  charge_type: string;
+  amount: number;
+  charged_to_customer: boolean;
+  tailor_contact_id: string | null;
+  expense_category_id: string | null;
+  tailor_name: string | null;
+  open_balance: number;
+};
+
+/** Open 4120 balances per sale charge (for stitching/dyeing payout). */
+export async function getExtraServiceClearingLines(
+  companyId: string,
+  filters?: { tailorContactId?: string | null; expenseCategoryId?: string | null },
+): Promise<{ data: ExtraServiceClearingLine[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const rpcArgs: Record<string, unknown> = {
+    p_company_id: companyId,
+    p_tailor_contact_id: filters?.tailorContactId ?? null,
+  };
+  if (filters?.expenseCategoryId) {
+    rpcArgs.p_expense_category_id = filters.expenseCategoryId;
+  }
+  let { data, error } = await supabase.rpc('extra_service_clearing_lines', rpcArgs);
+  if (error && String(error.message).includes('p_expense_category_id')) {
+    const fallback = await supabase.rpc('extra_service_clearing_lines', {
+      p_company_id: companyId,
+      p_tailor_contact_id: filters?.tailorContactId ?? null,
+    });
+    data = fallback.data;
+    error = fallback.error;
+  }
+  if (error) {
+    if (error.code === '42883' || String(error.message).includes('does not exist')) {
+      return { data: [], error: null };
+    }
+    return { data: [], error: error.message };
+  }
+  return { data: (data ?? []) as ExtraServiceClearingLine[], error: null };
+}
+
 export async function createExpense(input: {
   companyId: string;
   branchId: string;
@@ -157,6 +338,11 @@ export async function createExpense(input: {
   paidToUserId?: string | null;
   /** Display / vendor line (maps to `vendor_name` when column exists). */
   payeeName?: string | null;
+  /** 4120 clearing: link payout to sale extra charge. */
+  saleId?: string | null;
+  saleChargeId?: string | null;
+  tailorContactId?: string | null;
+  expenseCategoryId?: string | null;
 }) {
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   let effectiveBranchId: string;
@@ -243,20 +429,39 @@ export async function createExpense(input: {
   if (paidUid) patch.paid_to_user_id = paidUid;
   const vendor = (input.payeeName ?? '').trim().slice(0, 255);
   if (vendor) patch.vendor_name = vendor;
+  const saleId = sanitizeUuid(input.saleId ?? null);
+  const saleChargeId = sanitizeUuid(input.saleChargeId ?? null);
+  const tailorId = sanitizeUuid(input.tailorContactId ?? null);
+  const expenseCategoryId = sanitizeUuid(input.expenseCategoryId ?? null);
+  if (saleId) patch.sale_id = saleId;
+  if (saleChargeId) patch.sale_charge_id = saleChargeId;
+  if (tailorId) patch.tailor_contact_id = tailorId;
+  if (expenseCategoryId) patch.expense_category_id = expenseCategoryId;
 
   if (expenseId && Object.keys(patch).length > 0) {
     let upd = await supabase.from('expenses').update(patch).eq('id', expenseId).eq('company_id', input.companyId);
     if (upd.error) {
       const msg = String(upd.error.message || '').toLowerCase();
-      if ((msg.includes('vendor_name') || msg.includes('schema cache')) && 'vendor_name' in patch) {
-        const { vendor_name: _drop, ...withoutVendor } = patch;
-        if (Object.keys(withoutVendor).length > 0) {
-          upd = await supabase
-            .from('expenses')
-            .update(withoutVendor)
-            .eq('id', expenseId)
-            .eq('company_id', input.companyId);
+      const dropKeys = [
+        'vendor_name',
+        'sale_id',
+        'sale_charge_id',
+        'tailor_contact_id',
+        'expense_category_id',
+      ] as const;
+      let slim = { ...patch };
+      for (const key of dropKeys) {
+        if (msg.includes(key) || msg.includes('schema cache')) {
+          const { [key]: _d, ...rest } = slim;
+          slim = rest;
         }
+      }
+      if (Object.keys(slim).length > 0 && upd.error) {
+        upd = await supabase
+          .from('expenses')
+          .update(slim)
+          .eq('id', expenseId)
+          .eq('company_id', input.companyId);
       }
       if (upd.error) {
         return {

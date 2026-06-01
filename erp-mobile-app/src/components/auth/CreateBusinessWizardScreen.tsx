@@ -212,7 +212,7 @@ export function CreateBusinessWizardScreen({ onCancel, onComplete }: CreateBusin
   };
 
   const header = (
-    <div className="sticky top-0 z-10 bg-[#111827] border-b border-[#374151] px-4 py-3 flex items-center gap-3">
+    <div className="sticky top-0 z-10 flow-screen-header bg-[#111827] border-b border-[#374151] px-4 py-3 flex items-center gap-3">
       <button type="button" onClick={onCancel} className="p-2 rounded-lg hover:bg-[#1F2937] text-white">
         <ArrowLeft className="w-5 h-5" />
       </button>

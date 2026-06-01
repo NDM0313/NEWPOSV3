@@ -3,9 +3,11 @@ import { createPortal } from 'react-dom';
 import { X, Upload, Loader2 } from 'lucide-react';
 import { ProductImage } from './ProductImage';
 import type { Product } from '../../api/products';
-import { uploadProductImages } from '../../utils/productImageUpload';
+import { primaryImageUrl, uploadProductImages } from '../../utils/productImageUpload';
 import * as productsApi from '../../api/products';
 import { MediaSourcePicker } from '../shared/MediaSourcePicker';
+import { normalizePickedImageFiles } from '../../lib/mediaPick';
+import { invalidateStorageDisplayUrl } from '../../utils/storageDisplayUrl';
 
 interface ProductImagePreviewSheetProps {
   open: boolean;
@@ -27,16 +29,27 @@ export function ProductImagePreviewSheet({
 
   if (!open || !product) return null;
 
-  const thumb = (product.imageUrls && product.imageUrls[0]) || null;
+  const thumb = primaryImageUrl(product.imageUrls);
   const hasImage = !!thumb;
 
-  const handlePick = async (file: File | undefined) => {
-    if (!file || !companyId) return;
+  const handlePick = async (picked: File[]) => {
+    if (!companyId) return;
+    const normalized = normalizePickedImageFiles(picked);
+    const file = normalized[0];
+    if (!file) {
+      setError('No valid image selected. Try gallery or retake the photo.');
+      return;
+    }
+    const oldThumb = thumb;
     setBusy(true);
     setError(null);
     try {
       const urls = await uploadProductImages(companyId, product.id, [file]);
-      const nextUrls = [...(product.imageUrls || []), ...urls];
+      if (urls.length === 0) {
+        setError('Image upload failed. Please try again.');
+        return;
+      }
+      const nextUrls = hasImage ? urls : [...(product.imageUrls || []), ...urls];
       const { data, error: updErr } = await productsApi.updateProduct(companyId, product.id, {
         existingImageUrls: nextUrls,
       });
@@ -44,6 +57,9 @@ export function ProductImagePreviewSheet({
         setError(updErr || 'Could not save image');
         return;
       }
+      if (oldThumb) invalidateStorageDisplayUrl(oldThumb);
+      const newThumb = primaryImageUrl(data.imageUrls);
+      if (newThumb) invalidateStorageDisplayUrl(newThumb);
       await productsApi.invalidateProductsListCache(companyId);
       onUpdated(data);
     } catch (e) {
@@ -63,7 +79,12 @@ export function ProductImagePreviewSheet({
       </div>
       <div className="flex-1 flex items-center justify-center p-6 min-h-0">
         {hasImage ? (
-          <ProductImage src={thumb} alt={product.name} className="max-w-full max-h-full object-contain rounded-lg" />
+          <ProductImage
+            key={thumb}
+            src={thumb}
+            alt={product.name}
+            className="max-w-full max-h-full object-contain rounded-lg"
+          />
         ) : (
           <p className="text-[#9CA3AF] text-center text-sm">No picture for this product.</p>
         )}
@@ -81,14 +102,14 @@ export function ProductImagePreviewSheet({
           accept="image/*"
           disabled={busy || !companyId}
           sheetTitle="Add product picture"
-          onFiles={(picked) => void handlePick(picked[0])}
+          onFiles={(files) => void handlePick(files)}
           onError={(msg) => setError(msg)}
         >
-          {(open) => (
+          {(openPicker) => (
         <button
           type="button"
           disabled={busy || !companyId}
-          onClick={open}
+          onClick={openPicker}
           className="flex-1 py-3 rounded-lg bg-[#3B82F6] text-white font-medium inline-flex items-center justify-center gap-2 disabled:opacity-50"
         >
           {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}

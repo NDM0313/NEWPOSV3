@@ -16,7 +16,9 @@ RLS is applied automatically as part of deploy.
 2. Run **`supabase-extract/migrations/RUN_THIS_FOR_STORAGE_RLS.sql`** payment-attachments, sale-attachments, and purchase-attachments.
 3. If **product image** uploads still fail, run **`RUN_PRODUCT_IMAGES_STORAGE_RLS.sql`** as well.
 
-Create the buckets in **Storage** first if they don’t exist: `payment-attachments`, `sale-attachments`, `purchase-attachments`, and `product-images` for product images.
+Create the buckets in **Storage** first if they don’t exist: `payment-attachments`, `sale-attachments`, `purchase-attachments`, `product-images`, and **`company-logos`** (web Settings company logo).
+
+For **company logo** upload errors (“bucket not found”), run [`migrations/20260601150000_company_logos_storage_bucket.sql`](../migrations/20260601150000_company_logos_storage_bucket.sql) or see [`docs/COMPANY_LOGOS_STORAGE.md`](COMPANY_LOGOS_STORAGE.md).
 
 ## Option 3: Local (npm script)
 
@@ -33,4 +35,5 @@ This applies `RUN_THIS_FOR_STORAGE_RLS.sql` (payment-, sale-, and purchase-attac
 
 ---
 
-See **docs/PRODUCT_IMAGES_STORAGE_RLS_FIX.md** for more detail on product-images bucket and auth.
+See **docs/PRODUCT_IMAGES_STORAGE_RLS_FIX.md** for more detail on product-images bucket and auth.  
+See **docs/COMPANY_LOGOS_STORAGE.md** for company logo bucket and Settings upload.

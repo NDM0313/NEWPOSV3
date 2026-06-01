@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ArrowLeft, Plus, BookOpen, Loader2, RefreshCw } from 'lucide-react';
 import * as accountsApi from '../../api/accounts';
+import { ensureDefaultAccounts } from '../../api/defaultAccounts';
+import { buildOperationalCoaDisplayRows } from '../../lib/coaTreeRows';
 
 interface ChartOfAccountsViewProps {
   onBack: () => void;
@@ -12,44 +14,48 @@ export function ChartOfAccountsView({ onBack, onAddAccount, companyId }: ChartOf
   const [accounts, setAccounts] = useState<accountsApi.AccountRow[]>([]);
   const [loading, setLoading] = useState(!!companyId);
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     if (!companyId) {
       setAccounts([]);
       setLoading(false);
       return;
     }
     setLoading(true);
-    accountsApi.getAccounts(companyId).then(({ data, error }) => {
-      setLoading(false);
-      setAccounts(error ? [] : data);
-    });
+    await ensureDefaultAccounts(companyId);
+    const { data, error } = await accountsApi.getAccounts(companyId);
+    setLoading(false);
+    setAccounts(error ? [] : data);
   }, [companyId]);
 
-  useEffect(load, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === 'visible') load();
+      if (document.visibilityState === 'visible') void load();
     };
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [load]);
 
+  const displayRows = useMemo(() => buildOperationalCoaDisplayRows(accounts), [accounts]);
+
   return (
     <div className="min-h-screen pb-24 bg-[#111827]">
-      <div className="bg-gradient-to-br from-[#F59E0B] to-[#D97706] p-4 sticky top-0 z-10">
+      <div className="bg-gradient-to-br from-[#F59E0B] to-[#D97706] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center justify-between gap-3">
           <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1">
             <h1 className="font-semibold text-white">Chart of Accounts</h1>
-            <p className="text-xs text-white/80">Manage accounts (same as Web ERP)</p>
+            <p className="text-xs text-white/80">Same hierarchy as Web ERP (operational)</p>
           </div>
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => load()}
+              onClick={() => void load()}
               disabled={loading || !companyId}
               className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white disabled:opacity-40"
               title="Refresh balances"
@@ -72,7 +78,7 @@ export function ChartOfAccountsView({ onBack, onAddAccount, companyId }: ChartOf
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 text-[#F59E0B] animate-spin" />
           </div>
-        ) : accounts.length === 0 ? (
+        ) : displayRows.length === 0 ? (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-8 text-center">
             <BookOpen className="w-12 h-12 text-[#6B7280] mx-auto mb-3" />
             <p className="text-[#9CA3AF] mb-4">No accounts yet. Add your first account.</p>
@@ -86,23 +92,37 @@ export function ChartOfAccountsView({ onBack, onAddAccount, companyId }: ChartOf
           </div>
         ) : (
           <div className="space-y-2">
-            {accounts.map((acc) => (
+            {displayRows.map(({ account: acc, depth }) => (
               <div
                 key={acc.id}
-                className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between"
+                className={`bg-[#1F2937] border border-[#374151] rounded-xl p-4 flex items-center justify-between ${
+                  acc.isGroup ? 'opacity-90' : ''
+                }`}
+                style={{ marginLeft: depth > 0 ? `${Math.min(depth, 6) * 12}px` : undefined }}
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-[#F59E0B]/20 rounded-lg flex items-center justify-center">
-                    <BookOpen className="w-5 h-5 text-[#F59E0B]" />
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                      acc.isGroup ? 'bg-[#374151]/60' : 'bg-[#F59E0B]/20'
+                    }`}
+                  >
+                    <BookOpen className={`w-5 h-5 ${acc.isGroup ? 'text-[#9CA3AF]' : 'text-[#F59E0B]'}`} />
                   </div>
-                  <div>
-                    <p className="font-medium text-white">{acc.name}</p>
+                  <div className="min-w-0">
+                    <p className={`font-medium truncate ${acc.isGroup ? 'text-[#9CA3AF] text-sm' : 'text-white'}`}>
+                      {acc.name}
+                    </p>
                     <p className="text-xs text-[#9CA3AF]">
                       {acc.code || '—'} · {acc.type}
+                      {acc.isGroup ? ' · group' : ''}
                     </p>
                   </div>
                 </div>
-                <p className="text-sm font-semibold text-white">Rs. {(acc.balance || 0).toLocaleString()}</p>
+                {!acc.isGroup ? (
+                  <p className="text-sm font-semibold text-white shrink-0 ml-2">
+                    Rs. {(acc.balance || 0).toLocaleString()}
+                  </p>
+                ) : null}
               </div>
             ))}
             <button

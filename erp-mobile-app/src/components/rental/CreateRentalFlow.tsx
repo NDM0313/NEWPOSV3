@@ -1,5 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { ArrowLeft, Loader2, Plus, Minus, Search, ChevronDown, FileText } from 'lucide-react';
+import { ProductImage } from '../products/ProductImage';
+import { DateInputField } from '../shared/DateTimePicker';
 import { CustomerPickerList } from '../shared/CustomerPickerList';
 import { AddContactFlow, type AddContactFormData } from '../contacts/AddContactFlow';
 import { getContactDisplayPhone } from '../../api/contacts';
@@ -13,13 +15,14 @@ import * as branchesApi from '../../api/branches';
 import * as accountsApi from '../../api/accounts';
 import * as usersApi from '../../api/users';
 import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
-import { CustomSelect, CustomSearchableSheet } from '../common';
+import { CustomSelect, CustomSearchableSheet, NumericInput } from '../common';
 import { localNowDateString, formatLocalDateTimeDisplay } from '../../utils/localDate';
 import type { User } from '../../types';
 import { useEffectiveWorkerId, useEffectiveWorkerProfileId, useEffectiveWorkerRole } from '../../context/CounterWorkerContext';
 import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
 import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 import { isRealBranchUuid } from '../../utils/branchId';
+import { useSubmitLock } from '../../contexts/LoadingContext';
 
 interface CreateRentalFlowProps {
   companyId: string | null;
@@ -64,6 +67,9 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const { canViewBalances } = usePermissions();
   const [step, setStep] = useState<Step>('customer');
   const [customers, setCustomers] = useState<RentalCustomer[]>([]);
+  const [defaultCustomer, setDefaultCustomer] = useState<RentalCustomer | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const walkingInitRef = useRef(false);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerPickView, setCustomerPickView] = useState<'pick' | 'addContact'>('pick');
@@ -88,7 +94,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const [securityDocImageUrl, setSecurityDocImageUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const { run: runSave, busy: saving } = useSubmitLock();
   const [error, setError] = useState('');
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
   /** Local calendar "today" for date pickers (not UTC). */
@@ -102,21 +108,44 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
   useEffect(() => {
     if (!companyId) return;
-    let c = false;
+    let cancelled = false;
     setCustomersLoading(true);
-    contactsApi.getContacts(companyId, 'customer', branchId ?? undefined).then(({ data }) => {
-      if (c) return;
+    void (async () => {
+      await contactsApi.ensureDefaultWalkingCustomerForCompany(companyId);
+      const [contactsRes, walkingRes] = await Promise.all([
+        contactsApi.getContacts(companyId, 'customer', branchId ?? undefined),
+        contactsApi.getWalkingCustomer(companyId),
+      ]);
+      if (cancelled) return;
       setCustomersLoading(false);
-      setCustomers(
-        (data || []).map((x) => ({
-          id: x.id,
-          name: x.name,
-          phone: getContactDisplayPhone(x) || '—',
-          balance: x.balance,
-        }))
-      );
-    });
-    return () => { c = true; };
+      const list = (contactsRes.data || []).map((x) => ({
+        id: x.id,
+        name: x.name,
+        phone: getContactDisplayPhone(x) || '—',
+        balance: x.balance,
+      }));
+      const walking = walkingRes.data
+        ? {
+            id: walkingRes.data.id,
+            name: walkingRes.data.name,
+            phone: getContactDisplayPhone(walkingRes.data) || '—',
+            balance: walkingRes.data.balance,
+          }
+        : null;
+      if (walking && !list.some((c) => c.id === walking.id)) {
+        setCustomers([walking, ...list]);
+      } else {
+        setCustomers(list);
+      }
+      setDefaultCustomer(walking);
+      if (walking && !walkingInitRef.current) {
+        walkingInitRef.current = true;
+        setSelectedCustomerId(walking.id);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [companyId, branchId]);
 
   const handleAddRentalCustomer = async (data: AddContactFormData) => {
@@ -160,11 +189,13 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     if (!companyId || step !== 'products') return;
     let c = false;
     setLoading(true);
-    productsApi.getRentalProducts(companyId).then(({ data }) => {
+    void (async () => {
+      await productsApi.invalidateProductsListCache(companyId);
+      const { data } = await productsApi.getRentalProducts(companyId);
       if (c) return;
       setLoading(false);
       setProducts(data || []);
-    });
+    })();
     return () => { c = true; };
   }, [companyId, step]);
 
@@ -298,7 +329,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       return;
     }
 
-    setSaving(true);
+    await runSave('Creating booking...', async () => {
     setError('');
     const items = selectedItems.map((item) => ({
       productId: item.product.id,
@@ -336,7 +367,6 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       items,
     });
 
-    setSaving(false);
     if (err) {
       setError(err);
       return;
@@ -356,6 +386,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       dateDisplay: formatLocalDateTimeDisplay(new Date()),
       branch: branchName ?? undefined,
       entityId: createResult?.id ?? null,
+    });
     });
   };
 
@@ -423,7 +454,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
     return (
       <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-10">
+        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-10 flow-screen-header">
           <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] px-4 pt-4 pb-3">
             <div className="flex items-center gap-3">
               <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg text-white">
@@ -459,6 +490,9 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             }}
             canViewBalances={canViewBalances}
             accent="purple"
+            defaultCustomer={defaultCustomer}
+            selectedCustomerId={selectedCustomerId}
+            onSelectedCustomerIdChange={setSelectedCustomerId}
             emptyMessage={customers.length === 0 && !customersLoading ? 'No customers. Add a customer below.' : 'No customers found'}
           />
         </div>
@@ -477,26 +511,16 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   // ─── Step 1: Product Selection ──────────────────────────────────────────
   if (step === 'products') {
     return (
-      <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setStep('customer')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div className="min-w-0">
-                <h1 className="text-lg font-semibold text-white">Select Products</h1>
-                <p className="text-xs text-white/80 truncate">{selectedCustomer?.name}</p>
-              </div>
+      <div className={`min-h-screen bg-[#111827] ${selectedItems.length > 0 ? 'pb-28' : 'pb-8'}`}>
+        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
+          <div className="flex items-center gap-3 min-w-0">
+            <button onClick={() => setStep('customer')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold text-white">Select Products</h1>
+              <p className="text-xs text-white/80 truncate">{selectedCustomer?.name}</p>
             </div>
-            {selectedItems.length > 0 && (
-              <button
-                onClick={() => setStep('duration')}
-                className="shrink-0 px-4 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow"
-              >
-                Next
-              </button>
-            )}
           </div>
         </div>
         <div className="p-4 space-y-4">
@@ -518,7 +542,14 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               {selectedItems.map((i) => (
                 <div key={i.key} className="flex items-center justify-between bg-[#1F2937] border border-[#374151] rounded-xl p-4">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-12 h-12 rounded-lg bg-[#374151] flex items-center justify-center text-[#9CA3AF] shrink-0">—</div>
+                    <div className="w-12 h-12 rounded-lg bg-[#374151] overflow-hidden shrink-0 flex items-center justify-center">
+                      <ProductImage
+                        src={i.product.imageUrls?.[0]}
+                        alt={i.product.name}
+                        variant="thumb"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                     <div className="min-w-0">
                       <p className="font-medium text-white truncate">{i.product.name}</p>
                       {i.variationLabel ? (
@@ -549,58 +580,56 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               ))}
             </div>
           )}
-          {/* Product list */}
-          <div>
-            <h2 className="text-sm font-medium text-[#9CA3AF] mb-2">Products</h2>
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="w-8 h-8 text-[#8B5CF6] animate-spin" />
-              </div>
-            ) : filteredProducts.length === 0 ? (
-              <p className="text-[#9CA3AF] text-sm">No rentable products found.</p>
-            ) : (
-              <div className="space-y-2">
-                {filteredProducts.map((p) => {
-                  const totalQty = selectedItems
-                    .filter((i) => i.product.id === p.id)
-                    .reduce((s, i) => s + i.quantity, 0);
-                  const hasVars = p.hasVariations && p.variations.length > 0;
-                  return (
-                    <div key={p.id} className="flex items-center justify-between bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-                      <div className="min-w-0">
-                        <p className="font-medium text-white truncate">{p.name}</p>
-                        <p className="text-sm text-[#6B7280]">
-                          SKU: {p.sku}
-                          {hasVars ? ` · ${p.variations.length} variation${p.variations.length === 1 ? '' : 's'}` : ''}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {hasVars ? (
-                          <button
-                            onClick={() => setVariationPickerProduct(p)}
-                            className="px-3 h-9 bg-[#374151] hover:bg-[#4B5563] rounded-lg text-white text-sm flex items-center gap-1"
-                          >
-                            {totalQty > 0 ? `${totalQty} selected` : 'Select variation'}
-                            <ChevronDown className="w-4 h-4" />
-                          </button>
-                        ) : (
-                          <>
-                            <button onClick={() => updateQty(itemKey(p.id, null), -1)} className="p-2 hover:bg-[#374151] rounded-lg text-white">
-                              <Minus className="w-4 h-4" />
-                            </button>
-                            <span className="text-white font-medium w-8 text-center">{totalQty}</span>
-                            <button onClick={() => addSimpleItem(p)} className="p-2 hover:bg-[#374151] rounded-lg text-white">
-                              <Plus className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                      </div>
+          <h2 className="text-sm font-medium text-[#9CA3AF]">Add from list</h2>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-8 h-8 text-[#8B5CF6] animate-spin" />
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <p className="text-[#9CA3AF] text-sm">No rentable products found.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {filteredProducts.map((p) => {
+                const totalQty = selectedItems
+                  .filter((i) => i.product.id === p.id)
+                  .reduce((s, i) => s + i.quantity, 0);
+                const hasVars = p.hasVariations && p.variations.length > 0;
+                const rentHint = p.rentPricePerDay ? `Rs. ${p.rentPricePerDay.toLocaleString()}/day` : 'Rent';
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => addSimpleItem(p)}
+                    className={`bg-[#1F2937] border rounded-xl p-3 text-left transition-all active:scale-95 ${
+                      totalQty > 0 ? 'border-[#8B5CF6] ring-1 ring-[#8B5CF6]/30' : 'border-[#374151] hover:border-[#8B5CF6]'
+                    }`}
+                  >
+                    <div className="w-full h-16 bg-[#111827] rounded-lg mb-2 overflow-hidden flex items-center justify-center">
+                      <ProductImage
+                        src={p.imageUrls?.[0]}
+                        alt={p.name}
+                        variant="thumb"
+                        deferUntilVisible
+                        className="w-full h-full object-cover"
+                      />
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                    <h4 className="font-medium text-sm text-white line-clamp-2 leading-tight mb-1">{p.name}</h4>
+                    <p className="text-[10px] text-[#6B7280] line-clamp-1">SKU: {p.sku}</p>
+                    <div className="flex items-center justify-between mt-2 gap-1">
+                      <span className="text-xs font-semibold text-[#8B5CF6]">{rentHint}</span>
+                      {totalQty > 0 ? (
+                        <span className="text-xs bg-[#8B5CF6]/20 text-[#C4B5FD] px-1.5 py-0.5 rounded">×{totalQty}</span>
+                      ) : hasVars ? (
+                        <ChevronDown className="w-4 h-4 text-[#9CA3AF] shrink-0" />
+                      ) : (
+                        <Plus className="w-4 h-4 text-[#8B5CF6] shrink-0" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
         {variationPickerProduct && (
           <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-4" onClick={() => setVariationPickerProduct(null)}>
@@ -617,17 +646,32 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
                   const key = itemKey(variationPickerProduct.id, v.id);
                   const qty = selectedItems.find((i) => i.key === key)?.quantity ?? 0;
                   return (
-                    <button
+                    <div
                       key={v.id}
-                      onClick={() => addVariation(variationPickerProduct, v)}
-                      className="w-full flex items-center justify-between bg-[#111827] border border-[#374151] hover:border-[#8B5CF6] rounded-xl p-3 text-left"
+                      className="flex items-center justify-between bg-[#111827] border border-[#374151] rounded-xl p-3"
                     >
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="text-white font-medium truncate">{v.label}</p>
                         <p className="text-xs text-[#6B7280]">SKU: {v.sku || '—'}</p>
                       </div>
-                      {qty > 0 ? <span className="text-[#8B5CF6] text-sm font-medium">× {qty}</span> : <Plus className="w-4 h-4 text-white" />}
-                    </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => updateQty(key, -1)}
+                          className="p-2 hover:bg-[#374151] rounded-lg text-white"
+                        >
+                          <Minus className="w-4 h-4" />
+                        </button>
+                        <span className="text-white font-medium w-6 text-center text-sm">{qty}</span>
+                        <button
+                          type="button"
+                          onClick={() => addVariation(variationPickerProduct, v)}
+                          className="p-2 hover:bg-[#374151] rounded-lg text-white"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
                   );
                 })}
                 {variationPickerProduct.variations.length === 0 && (
@@ -643,7 +687,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               onClick={() => setStep('duration')}
               className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
             >
-              Next: Duration →
+              Next ({selectedItems.length} item{selectedItems.length === 1 ? '' : 's'}) →
             </button>
           </div>
         )}
@@ -656,7 +700,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     const datesValid = pickupDate && returnDate && (!pickup || !ret || ret >= pickup);
     return (
       <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
+        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <button onClick={() => setStep('products')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
@@ -677,7 +721,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             )}
           </div>
         </div>
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 max-w-full min-w-0 w-full box-border overflow-x-hidden">
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <p className="text-sm text-[#9CA3AF] mb-2">Selected items</p>
             {selectedItems.map((i) => (
@@ -687,24 +731,30 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               </div>
             ))}
           </div>
-          <div>
-            <label className="block text-sm text-[#9CA3AF] mb-2">Pickup Date</label>
-            <input
-              type="date"
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <DateInputField
+              label="Pickup Date"
               value={pickupDate}
-              onChange={(e) => setPickupDate(e.target.value)}
               min={today}
-              className="w-full max-w-full min-w-0 h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white box-border"
+              accent="rental"
+              onChange={(value) => {
+                const v = value && value < today ? today : value;
+                setPickupDate(v);
+                if (returnDate && v && returnDate < v) setReturnDate(v);
+              }}
+              required
             />
-          </div>
-          <div>
-            <label className="block text-sm text-[#9CA3AF] mb-2">Return Date</label>
-            <input
-              type="date"
+            <DateInputField
+              label="Return Date"
               value={returnDate}
-              onChange={(e) => setReturnDate(e.target.value)}
               min={pickupDate || today}
-              className="w-full max-w-full min-w-0 h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white box-border"
+              accent="rental"
+              onChange={(value) => {
+                const minReturn = pickupDate || today;
+                const v = value && value < minReturn ? minReturn : value;
+                setReturnDate(v);
+              }}
+              required
             />
           </div>
           <p className="text-xs text-[#6B7280]">Dates are for booking period and availability. Rent amount is entered in the next step.</p>
@@ -728,7 +778,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     const canNext = customerRentTotal > 0;
     return (
       <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
+        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <button onClick={() => setStep('duration')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
@@ -767,15 +817,13 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
                     </p>
                     <p className="text-xs text-[#9CA3AF]">Qty: {item.quantity}</p>
                   </div>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    pattern="[0-9.]*"
-                    min="0"
-                    step="1"
+                  <NumericInput
                     value={lineRateMap[item.key] ?? String(item.product.rentPricePerDay || 0)}
-                    onChange={(e) => setLineRateMap((prev) => ({ ...prev, [item.key]: e.target.value }))}
-                    className="w-28 h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white text-sm"
+                    onChange={(v) => setLineRateMap((prev) => ({ ...prev, [item.key]: v }))}
+                    allowDecimal
+                    min={0}
+                    className="w-28 shrink-0"
+                    inputClassName="h-10 text-sm text-right"
                   />
                 </div>
                 <div className="flex justify-between text-xs mt-2">
@@ -822,7 +870,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     const commissionValid = commissionPct.trim() === '' || (Number.isFinite(commissionNum) && commissionNum >= 0 && commissionNum <= 100);
     return (
       <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
+        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <button onClick={() => setStep('rent')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
@@ -876,18 +924,14 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           </div>
           <div>
             <label className="block text-sm text-[#9CA3AF] mb-2">Commission %</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              pattern="[0-9.]*"
-              min="0"
-              max="100"
-              step="0.01"
+            <NumericInput
               value={commissionPct}
-              onChange={(e) => setCommissionPct(e.target.value)}
+              onChange={setCommissionPct}
+              allowDecimal
+              min={0}
+              max={100}
               placeholder="0"
               disabled={!salesmanId}
-              className="w-full h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white disabled:opacity-50"
             />
             {salesmanId && commissionNum > 0 && Number.isFinite(commissionNum) && (
               <p className="text-xs text-[#10B981] mt-1">
@@ -916,7 +960,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   if (step === 'advance') {
     return (
       <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
+        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <button onClick={() => setStep('salesman')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
@@ -944,15 +988,13 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           </div>
           <div>
             <label className="block text-sm text-[#9CA3AF] mb-2">Advance (Rs.) — optional</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              pattern="[0-9.]*"
-              min="0"
+            <NumericInput
               value={advancePaid}
-              onChange={(e) => setAdvancePaid(e.target.value)}
+              onChange={setAdvancePaid}
+              allowDecimal
+              min={0}
+              prefix="Rs."
               placeholder="0"
-              className="w-full max-w-full min-w-0 h-12 bg-[#1F2937] border border-[#374151] rounded-xl px-4 text-white box-border"
             />
           </div>
           {paidAmount > 0 && (
@@ -996,7 +1038,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   if (step === 'documents') {
     return (
       <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
+        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <button onClick={() => setStep('advance')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
@@ -1072,7 +1114,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     const canNext = !needAccount || advancePaymentAccountId;
     return (
       <div className="min-h-screen bg-[#111827] pb-24">
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
+        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <button onClick={() => setStep('advance')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
@@ -1139,7 +1181,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   // ─── Step 6: Final Confirmation ──────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#111827] pb-32">
-      <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
+      <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3">
           <button onClick={() => setStep('documents')} className="p-2 hover:bg-white/10 rounded-lg text-white">
             <ArrowLeft className="w-5 h-5" />

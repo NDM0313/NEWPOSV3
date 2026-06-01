@@ -85,3 +85,33 @@ Backup data is in tables with prefix `backup_cr_` in the same database (e.g. `ba
 - Reset was applied on the **live VPS** database (supabase-db).
 - Warnings “No Accounts Receivable account found for payment reversal” appeared during payment deletes (trigger logic); they did not affect the outcome.
 - A second pass deleted 7 `activity_logs` rows that were re-inserted by triggers during the reset; the final script now includes a final `activity_logs` delete pass for future runs.
+
+---
+
+## Selective / complete reset (Settings UI + RPC, 2026-06)
+
+**Migration:** `migrations/20260610120000_company_reset_selective_domains.sql`  
+**UI:** Settings → Data & backup → Company Reset (admin/owner only)  
+**Service:** `src/app/services/companyResetService.ts` — `preview_company_transaction_reset` / `execute_company_transaction_reset` with optional `p_options` JSONB.
+
+### Deploy (VPS)
+
+After merge, apply the migration on production Postgres (same path as other `migrations/` files), e.g. via your usual Supabase/migration runner on `dincouture-vps`. Until applied, the UI will error if `p_options` overload is missing.
+
+### Verify checklist
+
+1. **Transactional only** — Mode: Transaction reset. Preview shows transactional counts; preserved contacts/products/accounts unchanged. Confirm with `RESET`. After run: sales/purchases/journal = 0; contacts and products unchanged.
+2. **Custom** — Mode: Custom; uncheck all master domains → same as (1). Check only Products → preview master `products` > 0; confirm `RESET ALL`; products = 0, contacts remain.
+3. **Complete** — Mode: Complete (A–Z). Preview shows all master counts; confirm `RESET ALL`. After run: 0 sales, 0 contacts, 0 products; COA re-seeded via `defaultAccountsService.ensureDefaultAccounts`; branches, users, settings still present.
+4. **Audit** — Row in `company_reset_audit_logs` includes resolved `options` in `precheck_counts` and per-table `deleted` counts.
+
+### Confirmation phrases
+
+| Selection | Phrase |
+|-----------|--------|
+| Transactional only | `RESET` |
+| Any master domain or complete mode | `RESET ALL` |
+
+### Never deleted (all modes)
+
+`companies`, `branches`, `users`, company-scoped settings (`settings`, `module_configs`, `feature_flags`, `business_settings`, etc.).

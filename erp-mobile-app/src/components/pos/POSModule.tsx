@@ -7,6 +7,7 @@ import { isSharedCounterModeEnabled } from '../../lib/sharedCounterMode';
 import { useEffectiveWorkerId, useEffectiveWorkerProfileId, useEffectiveWorkerRole } from '../../context/CounterWorkerContext';
 import * as productsApi from '../../api/products';
 import * as salesApi from '../../api/sales';
+import * as contactsApi from '../../api/contacts';
 import { addPending } from '../../lib/offlineStore';
 import { PaymentDialog, type PaymentResult } from '../sales/PaymentDialog';
 import { BarcodeScanner } from '../../features/barcode';
@@ -64,7 +65,8 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
   const [loading, setLoading] = useState(!!companyId);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [customer] = useState('Walk-in Customer');
+  const [walkingCustomerId, setWalkingCustomerId] = useState<string | null>(null);
+  const [walkingCustomerName, setWalkingCustomerName] = useState('Walk-in Customer');
   const [showCart, setShowCart] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -80,6 +82,28 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
   useEffect(() => {
     if (companyId) void reloadSettings(companyId);
   }, [companyId, reloadSettings]);
+
+  useEffect(() => {
+    if (!companyId) {
+      setWalkingCustomerId(null);
+      setWalkingCustomerName('Walk-in Customer');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      await contactsApi.ensureDefaultWalkingCustomerForCompany(companyId);
+      const { data } = await contactsApi.getWalkingCustomer(companyId);
+      if (cancelled) return;
+      if (data) {
+        setWalkingCustomerId(data.id);
+        setWalkingCustomerName(data.name || 'Walk-in Customer');
+      } else {
+        setWalkingCustomerId(null);
+        setWalkingCustomerName('Walk-in Customer');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [companyId]);
 
   const effectiveAllowNegative = !settingsLoaded || negativeStockAllowed;
 
@@ -350,8 +374,8 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
     const salePayload = {
       companyId,
       branchId: effectiveBranchId,
-      customerId: null,
-      customerName: 'Walk-in',
+      customerId: walkingCustomerId,
+      customerName: walkingCustomerName,
       items,
       subtotal,
       discountAmount: 0,
@@ -392,7 +416,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
     void maybeAutoPrintAfterTransaction(companyId, {
       title: 'POS RECEIPT',
       transactionNo: data?.invoiceNo ?? null,
-      partyName: 'Walk-in',
+      partyName: walkingCustomerName,
       amount: total,
       date: invoiceDate,
     });
@@ -412,7 +436,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
           onClose={() => setShowSwitchUser(false)}
         />
       ) : null}
-      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
+      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
         <div className="flex items-center justify-between px-4 h-14">
           <div className="flex items-center gap-3">
             <button onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg text-white">
@@ -457,7 +481,7 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
         <div className="flex items-center gap-2 text-sm text-[#9CA3AF] mb-4">
           <UserIcon size={16} />
           <span>Customer:</span>
-          <span className="text-white font-medium">{customer}</span>
+          <span className="text-white font-medium">{walkingCustomerName}</span>
         </div>
 
         {scanMessage && (

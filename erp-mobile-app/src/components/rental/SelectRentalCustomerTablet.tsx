@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Search, Plus, Phone, X, Star } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Search, Plus, Phone, X, Star, UserRound } from 'lucide-react';
 import * as contactsApi from '../../api/contacts';
 import { getContactDisplayPhone } from '../../api/contacts';
 import { usePermissions } from '../../context/PermissionContext';
@@ -22,6 +22,9 @@ export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: Sele
   const { canViewBalances } = usePermissions();
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<RentalCustomer[]>([]);
+  const [defaultCustomer, setDefaultCustomer] = useState<RentalCustomer | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const walkingInitRef = useRef(false);
   const [loading, setLoading] = useState(!!companyId);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '' });
@@ -30,29 +33,64 @@ export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: Sele
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
-    contactsApi.getContacts(companyId, 'customer').then(({ data, error }) => {
+    setLoading(true);
+    void (async () => {
+      await contactsApi.ensureDefaultWalkingCustomerForCompany(companyId);
+      const [contactsRes, walkingRes] = await Promise.all([
+        contactsApi.getContacts(companyId, 'customer'),
+        contactsApi.getWalkingCustomer(companyId),
+      ]);
       if (cancelled) return;
       setLoading(false);
-      setCustomers(
-        error
-          ? []
-          : (data || []).map((c) => ({
-              id: c.id,
-              name: c.name,
-              phone: getContactDisplayPhone(c) || '—',
-              balance: c.balance || 0,
-            }))
-      );
-    });
-    return () => { cancelled = true; };
+      const list = contactsRes.error
+        ? []
+        : (contactsRes.data || []).map((c) => ({
+            id: c.id,
+            name: c.name,
+            phone: getContactDisplayPhone(c) || '—',
+            balance: c.balance || 0,
+          }));
+      const walking = walkingRes.data
+        ? {
+            id: walkingRes.data.id,
+            name: walkingRes.data.name,
+            phone: getContactDisplayPhone(walkingRes.data) || '—',
+            balance: walkingRes.data.balance || 0,
+          }
+        : null;
+      if (walking && !list.some((c) => c.id === walking.id)) {
+        setCustomers([walking, ...list]);
+      } else {
+        setCustomers(list);
+      }
+      setDefaultCustomer(walking);
+      if (walking && !walkingInitRef.current) {
+        walkingInitRef.current = true;
+        setSelectedCustomerId(walking.id);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [companyId]);
 
-  const filteredCustomers = customers.filter(
+  const listExcludingWalkIn = defaultCustomer
+    ? customers.filter((c) => c.id !== defaultCustomer.id)
+    : customers;
+  const filteredCustomers = listExcludingWalkIn.filter(
     (c) =>
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (c.phone !== '—' && c.phone.includes(searchQuery))
   );
-  const recentCustomers = customers.slice(0, 2);
+  const recentCustomers = !searchQuery.trim() ? listExcludingWalkIn.slice(0, 2) : [];
+
+  const handleCustomerClick = (customer: RentalCustomer) => {
+    if (selectedCustomerId === customer.id) {
+      onSelect(customer);
+    } else {
+      setSelectedCustomerId(customer.id);
+    }
+  };
 
   const handleAddNewCustomer = async () => {
     if (!newCustomer.name.trim() || !companyId) return;
@@ -88,7 +126,7 @@ export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: Sele
 
   return (
     <div className="min-h-screen bg-[#111827]">
-      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-10">
+      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-10 flow-screen-header">
         <div className="max-w-4xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -123,12 +161,31 @@ export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: Sele
               </div>
             ) : (
               <>
+                {!searchQuery && defaultCustomer && (
+                  <div>
+                    <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">WALK-IN</h2>
+                    <CustomerCard
+                      customer={defaultCustomer}
+                      onSelect={() => handleCustomerClick(defaultCustomer)}
+                      canViewBalances={canViewBalances}
+                      isWalkIn
+                      isSelected={selectedCustomerId === defaultCustomer.id}
+                    />
+                  </div>
+                )}
                 {!searchQuery && recentCustomers.length > 0 && (
                   <div>
                     <h2 className="text-sm font-medium text-[#9CA3AF] mb-3">RECENT CUSTOMERS</h2>
                     <div className="space-y-2">
                       {recentCustomers.map((c) => (
-                        <CustomerCard key={c.id} customer={c} onSelect={onSelect} isRecent canViewBalances={canViewBalances} />
+                        <CustomerCard
+                          key={c.id}
+                          customer={c}
+                          onSelect={() => handleCustomerClick(c)}
+                          isRecent
+                          canViewBalances={canViewBalances}
+                          isSelected={selectedCustomerId === c.id}
+                        />
                       ))}
                     </div>
                   </div>
@@ -139,7 +196,13 @@ export function SelectRentalCustomerTablet({ onBack, onSelect, companyId }: Sele
                   </h2>
                   <div className="space-y-2">
                     {filteredCustomers.map((c) => (
-                      <CustomerCard key={c.id} customer={c} onSelect={onSelect} canViewBalances={canViewBalances} />
+                      <CustomerCard
+                        key={c.id}
+                        customer={c}
+                        onSelect={() => handleCustomerClick(c)}
+                        canViewBalances={canViewBalances}
+                        isSelected={selectedCustomerId === c.id}
+                      />
                     ))}
                   </div>
                   {filteredCustomers.length === 0 && (
@@ -249,26 +312,34 @@ function CustomerCard({
   customer,
   onSelect,
   isRecent,
+  isWalkIn,
+  isSelected,
   canViewBalances,
 }: {
   customer: RentalCustomer;
-  onSelect: (c: RentalCustomer) => void;
+  onSelect: () => void;
   isRecent?: boolean;
+  isWalkIn?: boolean;
+  isSelected?: boolean;
   canViewBalances: boolean;
 }) {
   const balanceLabel = getPartyBalanceLabel(customer.balance, canViewBalances);
   return (
     <button
-      onClick={() => onSelect(customer)}
-      className="w-full bg-[#1F2937] border border-[#374151] rounded-lg p-3 hover:border-[#8B5CF6] transition-all text-left"
+      onClick={onSelect}
+      className={`w-full bg-[#1F2937] border rounded-lg p-3 hover:border-[#8B5CF6] transition-all text-left ${
+        isSelected ? 'border-[#8B5CF6] ring-2 ring-[#8B5CF6]/40' : 'border-[#374151]'
+      }`}
     >
       <div className="flex items-center gap-3">
         <div
           className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
-            isRecent ? 'bg-[#F59E0B]/10' : 'bg-[#8B5CF6]/10'
+            isWalkIn ? 'bg-[#10B981]/10' : isRecent ? 'bg-[#F59E0B]/10' : 'bg-[#8B5CF6]/10'
           }`}
         >
-          {isRecent ? (
+          {isWalkIn ? (
+            <UserRound className="w-4 h-4 text-[#10B981]" />
+          ) : isRecent ? (
             <Star className="w-4 h-4 text-[#F59E0B] fill-[#F59E0B]" />
           ) : (
             <span className="text-sm font-semibold text-[#8B5CF6]">{customer.name.charAt(0)}</span>

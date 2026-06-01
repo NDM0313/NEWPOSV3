@@ -18,15 +18,24 @@
 
 **Symptom:** https://studio.dincouture.pk returns **502 Bad Gateway**.
 
-**Root cause:** Traefik (e.g. `dokploy-traefik`) routes `studio.dincouture.pk` to `http://supabase-studio:3000`. Traefik was only on `dokploy-network`; **supabase-studio** runs on **supabase_default** only. So Traefik could not resolve or reach `supabase-studio:3000` → 502.
+**Root cause A (Traefik network):** Traefik routes `studio.dincouture.pk` to `http://supabase-studio:3000`. If Traefik is only on `dokploy-network` and **supabase-studio** is on **supabase_default** only, Traefik cannot resolve the hostname → 502.
 
-**Fix (already applied on VPS):** Connect Traefik to `supabase_default` so it can reach the Studio container:
+**Root cause B (Studio container stopped):** After deploy or `fix-supabase-storage-jwt.sh` (`--force-recreate studio`), **supabase-studio** can stay in **Created** / **Exited** while Kong/API stay healthy → same 502.
+
+**Permanent fix (repo + VPS cron):**
+
+1. **`deploy/ensure-supabase-studio.sh`** – starts studio, waits for healthy, connects Traefik network, verifies HTTPS. Runs at end of every deploy and after JWT recreate.
+2. **`deploy/studio-auto-repair-if-needed.sh`** – cron every 5 min; auto-runs ensure script if studio is down or URL returns 502.
 
 ```bash
-ssh dincouture-vps "docker network connect supabase_default dokploy-traefik"
+# Manual one-shot (VPS)
+ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/ensure-supabase-studio.sh"
+
+# Install cron (once on VPS)
+(crontab -l 2>/dev/null | grep -v studio-auto-repair; echo "*/5 * * * * /root/NEWPOSV3/deploy/studio-auto-repair-if-needed.sh") | crontab -
 ```
 
-**Persistent (after restart):** The deploy script runs `deploy/ensure-studio-traefik-network.sh`, which does the same connect. So after each full deploy, Studio should keep working. If you restart only Traefik or only Supabase, run once:
+**Traefik-only fix (if container is already running):**
 
 ```bash
 ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/ensure-studio-traefik-network.sh"
@@ -92,7 +101,8 @@ docker compose -f deploy/docker-compose.prod.yml up -d erp-frontend 2>/dev/null 
 | Check | Command / action |
 |-------|------------------|
 | **Studio reachable** | `curl -sI https://studio.dincouture.pk` → 200 or 307 |
-| **Studio 502** | Run `deploy/ensure-studio-traefik-network.sh` on VPS; confirm Traefik on `supabase_default`. |
+| **Studio 502** | `bash deploy/ensure-supabase-studio.sh` (starts container + Traefik network). Cron: `studio-auto-repair-if-needed.sh` every 5 min. |
+| **Studio 502 auto-heal in diagnostic** | `STUDIO_AUTO_HEAL=1 bash deploy/diagnose-live-platform.sh` |
 | **ERP session** | Login → wait 5s; if logged out, check browser console for `[AUTH]` and network for auth/rest 401/502. |
 | **Auth health** | `curl -sI -H "apikey: YOUR_ANON_KEY" https://supabase.dincouture.pk/auth/v1/health` → 200 |
 
@@ -101,7 +111,10 @@ docker compose -f deploy/docker-compose.prod.yml up -d erp-frontend 2>/dev/null 
 ## 5. Files changed (this fix)
 
 - **Studio 502:**  
-  - `deploy/ensure-studio-traefik-network.sh` – new script to connect Traefik to supabase_default.  
-  - `deploy/deploy.sh` – invokes the script after Studio/injector steps.
+  - `deploy/ensure-studio-traefik-network.sh` – connect Traefik to supabase_default.  
+  - `deploy/ensure-supabase-studio.sh` – ensure supabase-studio running + Traefik network + HTTPS verify.  
+  - `deploy/studio-auto-repair-if-needed.sh` – cron watchdog (every 5 min).  
+  - `deploy/deploy.sh` – invokes ensure-supabase-studio after deploy; fixes-only mode too.  
+  - `deploy/fix-supabase-storage-jwt.sh` – ensure studio after JWT force-recreate.
 - **ERP auto-logout:**  
   - `src/app/context/SupabaseContext.tsx` – on auth state change, when session is null and event ≠ SIGNED_OUT, call `getSession()` and keep state if session still valid.

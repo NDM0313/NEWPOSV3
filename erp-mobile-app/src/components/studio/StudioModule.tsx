@@ -756,7 +756,7 @@ export function StudioModule({
       <SwipeBackShell onBack={handleSwipeBack}>
       <div className="min-h-screen pb-24 bg-[#111827]">
         <OfflineBanner online={online} pendingCount={pendingCount} />
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
+        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
@@ -1243,7 +1243,7 @@ export function StudioModule({
     return (
       <>
       <div className="min-h-screen pb-24 bg-[#111827]">
-        <div className="bg-gradient-to-br from-[#10B981] to-[#059669] p-4 sticky top-0 z-10">
+        <div className="bg-gradient-to-br from-[#10B981] to-[#059669] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setView('order-detail')}
@@ -1587,7 +1587,7 @@ export function StudioModule({
   if (view === 'shipment' && selectedOrder) {
     return (
       <div className="min-h-screen pb-24 bg-[#111827]">
-        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
+        <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setView('order-detail')}

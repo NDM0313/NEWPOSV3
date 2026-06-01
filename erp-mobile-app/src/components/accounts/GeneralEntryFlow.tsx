@@ -4,6 +4,7 @@ import type { User } from '../../types';
 import { DateInputField } from '../shared/DateTimePicker';
 import { getAccounts, createJournalEntry } from '../../api/accounts';
 import { addPending } from '../../lib/offlineStore';
+import { useSubmitLock } from '../../contexts/LoadingContext';
 import { localNowDateString } from '../../utils/localDate';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceInline } from '../../utils/balancePrivacy';
@@ -32,7 +33,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
   const [step, setStep] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [accounts, setAccounts] = useState<{ id: string; name: string; type: string; balance: number }[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const { run: runSave, busy: submitting } = useSubmitLock();
   const [error, setError] = useState<string | null>(null);
   const [entryData, setEntryData] = useState<EntryData>({
     debitAccountId: '',
@@ -69,7 +70,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
   const handleSubmit = async () => {
     const amountNum = parseFloat(entryData.amount || '0');
     if (!companyId || !entryData.debitAccountId || !entryData.creditAccountId || amountNum <= 0 || !entryData.description.trim()) return;
-    setSubmitting(true);
+    await runSave('Saving entry...', async () => {
     setError(null);
     const payload = {
       companyId,
@@ -91,16 +92,15 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to save offline.');
       }
-      setSubmitting(false);
       return;
     }
     const { error: err } = await createJournalEntry(payload);
-    setSubmitting(false);
     if (err) {
       setError(err);
       return;
     }
     onComplete();
+    });
   };
 
   const canProceed = () => {
@@ -122,7 +122,7 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
 
   return (
     <div className="min-h-screen pb-40 bg-[#111827]">
-      <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10">
+      <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3 mb-4">
           <button onClick={step === 1 ? onBack : handlePreviousWithReset} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
             <ArrowLeft className="w-5 h-5" />

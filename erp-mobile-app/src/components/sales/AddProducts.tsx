@@ -21,7 +21,15 @@ import { useBarcodeScanner } from '../../features/barcode';
 import { ProductImage } from '../products/ProductImage';
 import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
 import { isBespokeGenericSku } from '../../lib/bespokeCartInjection';
+import { canPostStockForSaleStatus } from '../../lib/postingStatusGate';
+import { appendFabricToParent } from '../../lib/bespokeCartMobile';
+import { resolveFabricMaterialRetailPrice } from '../../lib/bespokeCartInjection';
 import { SaleCustomizeModal } from './SaleCustomizeModal';
+import { FabricProductGrid } from './FabricProductGrid';
+import { mapApiProductToFabricPicker, type FabricPickerProduct } from './fabricPickerTypes';
+import type { SaleData } from './SalesModule';
+import { NumericInput } from '../common/NumericInput';
+import { unitAllowsDecimal } from '../../lib/unitDecimal';
 
 function newCartLineId(): string {
   return `line-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -30,6 +38,7 @@ function newCartLineId(): string {
 interface AddProductsProps {
   companyId: string | null;
   branchId?: string | null;
+  saleDocumentStatus?: SaleData['documentStatus'];
   onBack: () => void;
   customer: Customer;
   initialProducts: Product[];
@@ -37,20 +46,7 @@ interface AddProductsProps {
   onNext: () => void;
 }
 
-type AvailableProduct = {
-  id: string;
-  name: string;
-  price: number;
-  wholesalePrice: number;
-  sku?: string;
-  barcode?: string;
-  unit: string;
-  hasVariations?: boolean;
-  variations?: ProductVariationRow[];
-  unitAllowDecimal?: boolean;
-  imageUrl?: string;
-  stock?: number;
-};
+type AvailableProduct = FabricPickerProduct;
 
 /** Resolve barcode/sku to a single product (base or first variation match). */
 function findProductByBarcode(available: AvailableProduct[], code: string): AvailableProduct | null {
@@ -66,23 +62,7 @@ function findProductByBarcode(available: AvailableProduct[], code: string): Avai
   return null;
 }
 
-/** Map API Product to AvailableProduct for cart/add modal. */
-function mapApiProductToAvailable(p: productsApi.Product): AvailableProduct {
-  return {
-    id: p.id,
-    name: p.name,
-    price: p.retailPrice ?? 0,
-    wholesalePrice: p.wholesalePrice ?? p.retailPrice ?? 0,
-    sku: p.sku,
-    barcode: p.barcode,
-    unit: p.unit ?? 'Piece',
-    hasVariations: p.hasVariations ?? false,
-    variations: p.variations,
-    unitAllowDecimal: p.unitAllowDecimal ?? false,
-    imageUrl: p.imageUrls?.[0],
-    stock: p.stock ?? 0,
-  };
-}
+const mapApiProductToAvailable = mapApiProductToFabricPicker;
 
 /** Add a product to cart with quantity 1 (or increment if same id+variation). */
 function addProductToCart(
@@ -122,6 +102,7 @@ function addProductToCart(
 export function AddProducts({
   companyId,
   branchId,
+  saleDocumentStatus = 'order',
   onBack,
   customer,
   initialProducts,
@@ -141,7 +122,8 @@ export function AddProducts({
   const [scannerInput, setScannerInput] = useState(''); // dedicated field for keyboard wedge (Speed-X, Sunmi, CS60)
   const [barcodeLookupLoading, setBarcodeLookupLoading] = useState(false);
   const [customizeLine, setCustomizeLine] = useState<Product | null>(null);
-  const [showCustomDressPicker, setShowCustomDressPicker] = useState(false);
+  const [fabricAttachParent, setFabricAttachParent] = useState<Product | null>(null);
+  const [fabricAttachMode, setFabricAttachMode] = useState(false);
   const scannerInputRef = useRef<HTMLInputElement>(null);
   const barcode = useBarcodeScanner();
   const { negativeStockAllowed, loaded: settingsLoaded, reload: reloadSettings } = useSettings();
@@ -151,13 +133,17 @@ export function AddProducts({
     if (companyId) void reloadSettings(companyId);
   }, [companyId, reloadSettings]);
 
+  const relaxStockForAdd = !canPostStockForSaleStatus(saleDocumentStatus);
   /** Do not block sales until company policy is loaded (avoids false "Out of stock" for staff). */
   const effectiveAllowNegative = !settingsLoaded || negativeStockAllowed;
+  const gateAllowNegative = effectiveAllowNegative || relaxStockForAdd;
 
   const isProductBlocked = useCallback(
     (product: AvailableProduct) =>
-      settingsLoaded && isSaleBlockedByStock(getTotalProductStock(product), negativeStockAllowed),
-    [settingsLoaded, negativeStockAllowed],
+      !relaxStockForAdd &&
+      settingsLoaded &&
+      isSaleBlockedByStock(getTotalProductStock(product), negativeStockAllowed),
+    [settingsLoaded, negativeStockAllowed, relaxStockForAdd],
   );
 
   useEffect(() => {
@@ -206,21 +192,26 @@ export function AddProducts({
   }, [barcodeMethod]);
 
   const searchLower = search.toLowerCase().trim();
-  const bespokeGenericProducts = useMemo(
-    () => available.filter((a) => isBespokeGenericSku(a.sku)),
-    [available],
+
+  const filtered = useMemo(() => {
+    return available.filter((a) => {
+      if (!searchLower) return true;
+      if (a.name.toLowerCase().includes(searchLower)) return true;
+      if (a.barcode?.toLowerCase() === searchLower || a.sku?.toLowerCase() === searchLower) return true;
+      if (a.variations?.some((v) => v.sku?.toLowerCase() === searchLower)) return true;
+      return false;
+    });
+  }, [available, searchLower]);
+
+  const filteredCustom = useMemo(
+    () => (bespokeEnabled ? filtered.filter((a) => isBespokeGenericSku(a.sku)) : []),
+    [filtered, bespokeEnabled],
   );
 
-  const filtered = available.filter((a) => {
-    if (showCustomDressPicker && bespokeEnabled) {
-      return isBespokeGenericSku(a.sku);
-    }
-    if (!searchLower) return true;
-    if (a.name.toLowerCase().includes(searchLower)) return true;
-    if (a.barcode?.toLowerCase() === searchLower || a.sku?.toLowerCase() === searchLower) return true;
-    if (a.variations?.some((v) => v.sku?.toLowerCase() === searchLower)) return true;
-    return false;
-  });
+  const filteredStock = useMemo(
+    () => filtered.filter((a) => !isBespokeGenericSku(a.sku)),
+    [filtered],
+  );
 
   useEffect(() => {
     if (!scanMessage) return;
@@ -315,11 +306,20 @@ export function AddProducts({
   };
   const subtotal = products.reduce((sum, p) => sum + p.total, 0);
 
-  const openAddModal = (item: AvailableProduct) => {
+  const openAddModal = (item: AvailableProduct, asFabricAttach = false) => {
     if (isProductBlocked(item)) return;
     setSelectedProduct(item);
     setEditingIndex(null);
+    setFabricAttachMode(asFabricAttach);
     setShowModal(true);
+  };
+
+  const handleProductGridClick = (item: AvailableProduct) => {
+    if (fabricAttachParent && !isBespokeGenericSku(item.sku)) {
+      openAddModal(item, true);
+      return;
+    }
+    openAddModal(item, false);
   };
 
   const openEditModal = (index: number) => {
@@ -333,6 +333,26 @@ export function AddProducts({
   };
 
   const handleSaveFromModal = (product: Product) => {
+    if (fabricAttachMode && fabricAttachParent) {
+      const material = {
+        product_id: product.id,
+        variation_id: product.variationId,
+        product_name: product.name,
+        sku: product.sku,
+        unit_code: 'm',
+        quantity: product.quantity,
+      };
+      const fabricUnitPrice = resolveFabricMaterialRetailPrice(material);
+      const next = appendFabricToParent(products, fabricAttachParent, material, fabricUnitPrice);
+      setProducts(next);
+      onProductsUpdate(next);
+      setFabricAttachParent(null);
+      setFabricAttachMode(false);
+      setShowModal(false);
+      setSelectedProduct(null);
+      return;
+    }
+
     if (editingIndex !== null) {
       const next = products.map((pr, i) => (i === editingIndex ? product : pr));
       setProducts(next);
@@ -358,6 +378,7 @@ export function AddProducts({
     setShowModal(false);
     setSelectedProduct(null);
     setEditingIndex(null);
+    setFabricAttachMode(false);
   };
 
   const remove = (index: number) => {
@@ -406,10 +427,14 @@ export function AddProducts({
             <p className="text-xs text-[#6B7280] py-2">No items yet. Search and add below.</p>
           ) : (
             <div className="space-y-2">
-              {products.map((p, i) => (
+              {products.map((p, i) => {
+                const isAttachTarget = fabricAttachParent === p;
+                return (
                 <div
-                  key={`${p.id}-${i}`}
-                  className="bg-[#111827] border border-[#374151] rounded-xl p-4"
+                  key={`${p.cartLineId ?? p.id}-${i}`}
+                  className={`bg-[#111827] border rounded-xl p-4 ${
+                    isAttachTarget ? 'border-[#10B981] ring-1 ring-[#10B981]/50' : 'border-[#374151]'
+                  }`}
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
@@ -425,13 +450,32 @@ export function AddProducts({
                     </div>
                     <div className="flex items-center gap-2">
                       {bespokeEnabled && isBespokeGenericSku(p.sku) && !p.isBespokeInjected && (
-                        <button
-                          type="button"
-                          onClick={() => setCustomizeLine(p)}
-                          className="px-2 py-1 text-xs rounded bg-[#7C3AED]/20 text-[#C4B5FD] border border-[#7C3AED]/40"
-                        >
-                          Customize
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFabricAttachParent(p);
+                              setCustomizeLine(null);
+                            }}
+                            className={`px-2 py-1 text-xs rounded border ${
+                              isAttachTarget
+                                ? 'bg-[#10B981]/20 text-[#6EE7B7] border-[#10B981]/50'
+                                : 'bg-[#059669]/10 text-[#6EE7B7] border-[#059669]/40'
+                            }`}
+                          >
+                            Add fabric
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomizeLine(p);
+                              setFabricAttachParent(null);
+                            }}
+                            className="px-2 py-1 text-xs rounded bg-[#7C3AED]/20 text-[#C4B5FD] border border-[#7C3AED]/40"
+                          >
+                            Customize
+                          </button>
+                        </>
                       )}
                       <button
                         onClick={() => openEditModal(i)}
@@ -456,26 +500,27 @@ export function AddProducts({
                     </div>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>
 
-        {bespokeEnabled && (
-          <div className="flex gap-2">
+        {relaxStockForAdd && (
+          <p className="text-xs text-[#9CA3AF] bg-[#1F2937] border border-[#374151] rounded-lg px-3 py-2">
+            Order / quotation / draft: stock is not deducted until the sale is Final.
+          </p>
+        )}
+
+        {fabricAttachParent && (
+          <div className="flex items-center justify-between gap-2 bg-[#064E3B]/40 border border-[#10B981]/40 rounded-lg px-3 py-2">
+            <p className="text-xs text-[#6EE7B7]">Tap a stock product below to attach as fabric.</p>
             <button
               type="button"
-              onClick={() => {
-                setShowCustomDressPicker((v) => !v);
-                setSearch('');
-              }}
-              className={`flex-1 h-10 rounded-lg text-sm font-medium border ${
-                showCustomDressPicker
-                  ? 'border-[#7C3AED] bg-[#7C3AED]/15 text-[#C4B5FD]'
-                  : 'border-[#374151] text-[#9CA3AF]'
-              }`}
+              onClick={() => setFabricAttachParent(null)}
+              className="text-xs text-[#9CA3AF] underline shrink-0"
             >
-              {showCustomDressPicker ? 'All products' : `Custom dress (${bespokeGenericProducts.length})`}
+              Cancel
             </button>
           </div>
         )}
@@ -535,7 +580,6 @@ export function AddProducts({
         )}
 
         {/* 3. PRODUCT GRID */}
-        <h2 className="text-sm font-medium text-[#9CA3AF]">AVAILABLE PRODUCTS</h2>
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-2 border-[#3B82F6] border-t-transparent rounded-full animate-spin" />
@@ -545,35 +589,54 @@ export function AddProducts({
             {search ? 'No products match your search.' : 'No products available.'}
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {filtered.map((item) => {
-              const totalStock = getTotalProductStock(item);
-              const blocked = isProductBlocked(item);
-              return (
-              <button
-                key={item.id}
-                onClick={() => openAddModal(item)}
-                disabled={blocked}
-                className={`bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#3B82F6] transition-all text-left ${blocked ? 'opacity-60 cursor-not-allowed' : ''}`}
-              >
-                <div className="w-full h-20 bg-[#111827] rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-                  <ProductImage src={item.imageUrl} alt={item.name} variant="thumb" deferUntilVisible />
+          <div className="space-y-4">
+            {bespokeEnabled && filteredCustom.length > 0 && (
+              <div>
+                <h2 className="text-sm font-medium text-[#C4B5FD] mb-2">Custom dress</h2>
+                <div className="grid grid-cols-2 gap-3">
+                  {filteredCustom.map((item) => {
+                    const totalStock = getTotalProductStock(item);
+                    const blocked = isProductBlocked(item);
+                    return (
+                      <button
+                        key={`custom-${item.id}`}
+                        type="button"
+                        onClick={() => handleProductGridClick(item)}
+                        disabled={blocked}
+                        className={`bg-[#1F2937] border border-[#7C3AED]/30 rounded-xl p-3 hover:border-[#7C3AED] transition-all text-left ${blocked ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >
+                        <div className="w-full h-20 bg-[#111827] rounded-lg mb-2 flex items-center justify-center overflow-hidden">
+                          <ProductImage src={item.imageUrl} alt={item.name} variant="thumb" deferUntilVisible />
+                        </div>
+                        <h3 className="font-medium text-sm text-[#F9FAFB] line-clamp-1 mb-1">{item.name}</h3>
+                        <p className="text-xs text-[#9CA3AF] mb-1">{item.sku}</p>
+                        <p className={`text-xs mb-2 ${stockLabelClassName(totalStock, gateAllowNegative)}`}>
+                          {formatStockLabel(totalStock, gateAllowNegative)}
+                        </p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-[#3B82F6]">
+                            Rs. {item.price.toLocaleString()}
+                          </span>
+                          <Plus className="w-4 h-4 text-[#10B981]" />
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                <h3 className="font-medium text-sm text-[#F9FAFB] line-clamp-1 mb-1">{item.name}</h3>
-                <p className="text-xs text-[#9CA3AF] mb-1">{item.unit}</p>
-                <p className={`text-xs mb-2 ${stockLabelClassName(totalStock, effectiveAllowNegative)}`}>
-                  {formatStockLabel(totalStock, effectiveAllowNegative)}
-                  {item.hasVariations && !blocked ? ' (options)' : ''}
-                </p>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-[#3B82F6]">
-                    Rs. {item.price.toLocaleString()}
-                  </span>
-                  <Plus className="w-4 h-4 text-[#10B981]" />
-                </div>
-              </button>
-              );
-            })}
+              </div>
+            )}
+            <div>
+              <h2 className="text-sm font-medium text-[#9CA3AF] mb-2">
+                {bespokeEnabled ? 'Stock / fabric products' : 'Available products'}
+              </h2>
+              <FabricProductGrid
+                items={filteredStock}
+                onSelect={handleProductGridClick}
+                allowNegativeStock={negativeStockAllowed}
+                settingsLoaded={settingsLoaded}
+                relaxStock={relaxStockForAdd}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -603,11 +666,12 @@ export function AddProducts({
         <AddToCartModal
           product={selectedProduct}
           existingProduct={editingIndex !== null ? products[editingIndex] : null}
-          allowNegativeStock={effectiveAllowNegative}
+          allowNegativeStock={gateAllowNegative}
           onClose={() => {
             setShowModal(false);
             setSelectedProduct(null);
             setEditingIndex(null);
+            setFabricAttachMode(false);
           }}
           onSave={handleSaveFromModal}
         />
@@ -619,6 +683,7 @@ export function AddProducts({
           branchId={branchId ?? null}
           parentLine={customizeLine}
           cartProducts={products}
+          relaxStock={relaxStockForAdd}
           onClose={() => setCustomizeLine(null)}
           onApply={(next) => {
             setProducts(next);
@@ -657,9 +722,8 @@ function AddToCartModal({
   const existingQty = existingProduct?.quantity || 1;
   const existingPacking = existingProduct?.packingDetails;
   const hasPackingMeters = (existingPacking?.total_meters ?? 0) > 0;
-  const [quantity, setQuantity] = useState(
-    hasPackingMeters ? (existingPacking!.total_meters ?? existingQty) : existingQty
-  );
+  const initialQty = hasPackingMeters ? (existingPacking!.total_meters ?? existingQty) : existingQty;
+  const [quantityInput, setQuantityInput] = useState(String(initialQty));
   const [price, setPrice] = useState(existingProduct?.price ?? product.price);
   const [packingDetails, setPackingDetails] = useState<PackingDetails | undefined>(
     existingPacking
@@ -672,19 +736,28 @@ function AddToCartModal({
   );
 
   const hasVariations = product.hasVariations && (product.variations?.length ?? 0) > 0;
-  const allowDecimal = product.unitAllowDecimal === true;
+  const allowDecimal = unitAllowsDecimal(product.unitAllowDecimal);
+  const usePackingQty = !!(packingDetails && (packingDetails.total_meters ?? 0) > 0);
+  const parsedQuantity = Number.parseFloat(quantityInput || '0');
+  const quantity = Number.isFinite(parsedQuantity) ? parsedQuantity : 0;
   const effectiveSku = selectedVariation ? selectedVariation.sku : product.sku;
   const total = price * quantity;
 
   const handleQtyChange = (raw: string) => {
+    if (raw === '') {
+      setQuantityInput('');
+      return;
+    }
     const parsed = parseFloat(raw);
-    const value = Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
-    if (!allowDecimal && value % 1 !== 0) return;
-    setQuantity(allowDecimal ? value : Math.round(value));
+    if (!Number.isFinite(parsed) || parsed < 0) return;
+    if (!allowDecimal && parsed % 1 !== 0) return;
+    setQuantityInput(raw);
   };
 
   const handleSave = () => {
-    if (quantity <= 0 || price <= 0) return;
+    const qty = Number.parseFloat(quantityInput || '0');
+    if (!Number.isFinite(qty) || qty <= 0 || price <= 0) return;
+    const finalQty = allowDecimal ? qty : Math.round(qty);
     if (hasVariations && !selectedVariation) return;
     onSave({
       id: product.id,
@@ -692,8 +765,8 @@ function AddToCartModal({
       name: product.name,
       sku: effectiveSku ?? product.sku,
       price,
-      quantity,
-      total: price * quantity,
+      quantity: finalQty,
+      total: price * finalQty,
       variation: selectedVariation ? formatVariationLabel(selectedVariation.attributes) : undefined,
       variationId: selectedVariation?.id,
       packingDetails,
@@ -786,41 +859,43 @@ function AddToCartModal({
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => {
-                    if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;
+                    if (usePackingQty) return;
+                    const current = Number.parseFloat(quantityInput || '0');
                     const step = allowDecimal ? 0.01 : 1;
-                    setQuantity((q) => Math.max(allowDecimal ? 0 : 1, q - step));
+                    const next = Math.max(allowDecimal ? 0.01 : 1, allowDecimal ? current - step : current - step);
+                    setQuantityInput(
+                      allowDecimal ? String(Number(next.toFixed(2))) : String(Math.round(next))
+                    );
                   }}
-                  disabled={!!(packingDetails && (packingDetails.total_meters ?? 0) > 0)}
+                  disabled={usePackingQty}
                   className="w-12 h-12 bg-[#111827] border border-[#374151] rounded-lg flex items-center justify-center hover:bg-[#374151] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Minus className="w-5 h-5 text-[#F9FAFB]" />
                 </button>
-                <input
-                  type="number"
-                  inputMode={allowDecimal ? 'decimal' : 'numeric'}
-                  pattern={allowDecimal ? '[0-9.]*' : '[0-9]*'}
-                  min={allowDecimal ? 0 : 1}
-                  step={packingDetails && (packingDetails.total_meters ?? 0) > 0 ? 0.1 : allowDecimal ? 0.01 : 1}
-                  value={quantity === 0 ? '' : quantity}
-                  onChange={(e) => {
-                    if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;
-                    handleQtyChange(e.target.value);
+                <NumericInput
+                  value={quantityInput}
+                  onChange={(raw) => {
+                    if (usePackingQty) return;
+                    handleQtyChange(raw);
                   }}
-                  onBlur={(e) => {
-                    if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;
-                    if (!e.target.value.trim()) setQuantity(0);
-                  }}
-                  readOnly={!!(packingDetails && (packingDetails.total_meters ?? 0) > 0)}
+                  allowDecimal={allowDecimal}
+                  maxDecimals={4}
+                  disabled={usePackingQty}
                   placeholder="0"
-                  className="flex-1 h-12 bg-[#111827] border border-[#374151] rounded-lg text-center text-lg font-semibold text-[#F9FAFB] focus:outline-none focus:border-[#3B82F6] disabled:opacity-70 disabled:cursor-not-allowed"
+                  className="flex-1 min-w-0"
+                  inputClassName="!h-12 !text-center !text-lg !font-semibold !bg-[#111827] !border-[#374151] !rounded-lg disabled:opacity-70"
                 />
                 <button
                   onClick={() => {
-                    if (packingDetails && (packingDetails.total_meters ?? 0) > 0) return;
+                    if (usePackingQty) return;
+                    const current = Number.parseFloat(quantityInput || '0');
                     const step = allowDecimal ? 0.01 : 1;
-                    setQuantity((q) => q + step);
+                    const next = allowDecimal ? current + step : current + step;
+                    setQuantityInput(
+                      allowDecimal ? String(Number(next.toFixed(2))) : String(Math.round(next))
+                    );
                   }}
-                  disabled={!!(packingDetails && (packingDetails.total_meters ?? 0) > 0)}
+                  disabled={usePackingQty}
                   className="w-12 h-12 bg-[#111827] border border-[#374151] rounded-lg flex items-center justify-center hover:bg-[#374151] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-5 h-5 text-[#F9FAFB]" />
@@ -886,7 +961,7 @@ function AddToCartModal({
         onSave={(d) => {
           setPackingDetails(d);
           const m = d.total_meters ?? 0;
-          if (m > 0) setQuantity(m);
+          if (m > 0) setQuantityInput(String(m));
           setShowPacking(false);
         }}
         initialData={packingDetails}

@@ -167,16 +167,30 @@ function parseBool(v: string): boolean {
   return t === 'yes' || t === '1' || t === 'true' || t === 'y';
 }
 
-/** Blank template: header row + one empty data row (Excel-friendly). */
+/** Shown in downloaded CSV row 2 (description only; skipped on import — no name). */
+export const PRODUCT_IMPORT_BRANCH_NOTE =
+  'BRANCH / OPENING STOCK: Assign stock to the branch selected in the ERP header (top bar) before import. ' +
+  'Use Main Branch or Stitch — not "All Branches" — if you want opening_stock on one location only. ' +
+  'This column is not read from CSV; delete this note row before filling products.';
+
+function buildBranchNoteRow(): string[] {
+  const row = PRODUCT_CANONICAL_HEADERS.map(() => '');
+  const descIdx = PRODUCT_CANONICAL_HEADERS.indexOf('description');
+  if (descIdx >= 0) row[descIdx] = PRODUCT_IMPORT_BRANCH_NOTE;
+  return row;
+}
+
+/** Blank template: header row + branch note + one empty data row (Excel-friendly). */
 export function buildProductsBlankTemplate(): string {
   const emptyRow = PRODUCT_CANONICAL_HEADERS.map(() => '');
-  return serializeCsvMatrix([[...PRODUCT_CANONICAL_HEADERS], emptyRow]);
+  return serializeCsvMatrix([[...PRODUCT_CANONICAL_HEADERS], buildBranchNoteRow(), emptyRow]);
 }
 
 /** Example rows — Matrix / Bespoke: 3 boutique scenarios (parent + 2 variants each). */
 export function buildProductsSampleTemplate(): string {
   return serializeCsvMatrix([
     [...PRODUCT_CANONICAL_HEADERS],
+    buildBranchNoteRow(),
     // Example 1: Lehenga / Maxi (Bridal)
     [
       'Design 2000 (Maxi)',

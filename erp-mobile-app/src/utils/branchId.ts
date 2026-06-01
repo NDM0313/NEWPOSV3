@@ -21,6 +21,26 @@ export function safeRpcBranchId(branchId: string | null | undefined): string | n
   return isRealBranchUuid(branchId) ? branchId.trim() : null;
 }
 
+/** Minimal PostgREST query shape for branch stock filters. */
+export type BranchStockFilterableQuery = {
+  eq: (column: string, value: string) => BranchStockFilterableQuery;
+  or: (filters: string) => BranchStockFilterableQuery;
+};
+
+/**
+ * Branch-scoped stock reads: branch rows + company-wide rows (branch_id null).
+ * Matches web ERP applyBranchStockMovementFilter.
+ * Uses assertion return to avoid Supabase PostgrestFilterBuilder deep instantiation (TS2589).
+ */
+export function applyBranchStockMovementFilter<T>(
+  query: T,
+  branchId?: string | null,
+): T {
+  if (!isRealBranchUuid(branchId)) return query;
+  const id = branchId.trim();
+  return (query as BranchStockFilterableQuery).or(`branch_id.eq.${id},branch_id.is.null`) as T;
+}
+
 /**
  * Resolve a branch UUID for writes (payments, expenses, sales, etc.).
  * Sentinels `all` / `default` → first branch for the company.

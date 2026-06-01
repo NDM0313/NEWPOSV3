@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Package, TrendingDown, DollarSign, AlertTriangle, 
   BarChart3, Search, Filter, Download, Warehouse, Loader2,
-  ExternalLink, SlidersHorizontal, FileDown, Printer, List, Layers, Upload, Info
+  ExternalLink, SlidersHorizontal, ArrowRightLeft, FileDown, Printer, List, Layers, Upload, Info
 } from 'lucide-react';
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -12,7 +12,8 @@ import { useSupabase } from '../../context/SupabaseContext';
 import { useSettings } from '../../context/SettingsContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { productService } from '../../services/productService';
-import { inventoryService, InventoryOverviewRow, InventoryMovementRow } from '../../services/inventoryService';
+import { inventoryService, createStockTransfer, InventoryOverviewRow, InventoryMovementRow } from '../../services/inventoryService';
+import { branchService } from '@/app/services/branchService';
 import { toast } from 'sonner';
 import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { FullStockLedgerView } from '../products/FullStockLedgerView';
@@ -82,6 +83,7 @@ export const InventoryDashboardNew = () => {
   // Ledger & Adjustment modals
   const [ledgerProduct, setLedgerProduct] = useState<InventoryOverviewRow | null>(null);
   const [adjustmentProduct, setAdjustmentProduct] = useState<InventoryOverviewRow | null>(null);
+  const [stockDrawerMode, setStockDrawerMode] = useState<'adjust' | 'transfer'>('adjust');
 
   // Analytics tab
   const [movements, setMovements] = useState<InventoryMovementRow[]>([]);
@@ -309,6 +311,7 @@ export const InventoryDashboardNew = () => {
 
   const handleAdjustSave = useCallback(async (data: {
     productId: string;
+    branchId: string;
     type: 'add' | 'subtract';
     quantity: number;
     reason: string;
@@ -322,7 +325,7 @@ export const InventoryDashboardNew = () => {
       const qty = data.type === 'add' ? data.quantity : -data.quantity;
       await productService.createStockMovement({
         company_id: companyId,
-        branch_id: branchId === 'all' ? undefined : branchId || undefined,
+        branch_id: data.branchId,
         product_id: data.productId,
         variation_id: data.variationId ?? undefined,
         movement_type: 'adjustment',
@@ -337,7 +340,44 @@ export const InventoryDashboardNew = () => {
     } catch (error: any) {
       toast.error('Adjustment failed: ' + (error.message || 'Unknown error'));
     }
-  }, [companyId, branchId, user?.id, loadOverview]);
+  }, [companyId, user?.id, loadOverview]);
+
+  const handleTransferSave = useCallback(async (data: {
+    productId: string;
+    fromBranchId: string;
+    toBranchId: string;
+    quantity: number;
+    notes: string;
+    variationId?: string | null;
+  }) => {
+    if (!companyId) return;
+    try {
+      const branchList = await branchService.getBranchesCached(companyId);
+      const fromName = branchList.find((b) => b.id === data.fromBranchId)?.name ?? null;
+      const toName = branchList.find((b) => b.id === data.toBranchId)?.name ?? null;
+      const { error } = await createStockTransfer({
+        companyId,
+        productId: data.productId,
+        variationId: data.variationId,
+        fromBranchId: data.fromBranchId,
+        toBranchId: data.toBranchId,
+        quantity: data.quantity,
+        notes: data.notes || null,
+        createdBy: user?.id,
+        fromBranchName: fromName,
+        toBranchName: toName,
+      });
+      if (error) {
+        toast.error('Transfer failed: ' + error);
+        return;
+      }
+      toast.success('Stock transferred successfully');
+      setAdjustmentProduct(null);
+      loadOverview();
+    } catch (error: unknown) {
+      toast.error('Transfer failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  }, [companyId, user?.id, loadOverview]);
 
   const exportOverviewCsv = useCallback(() => {
     const headers = enablePacking
@@ -842,8 +882,11 @@ export const InventoryDashboardNew = () => {
                                 <Button variant="ghost" size="sm" className="h-7 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 px-2" onClick={() => setLedgerProduct(product)}>
                                   <ExternalLink size={12} className="mr-1" /> Ledger
                                 </Button>
-                                <Button variant="ghost" size="sm" className="h-7 text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 px-2" onClick={() => setAdjustmentProduct(product)}>
+                                <Button variant="ghost" size="sm" className="h-7 text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 px-2" onClick={() => { setStockDrawerMode('adjust'); setAdjustmentProduct(product); }}>
                                   <SlidersHorizontal size={12} className="mr-1" /> Adjust
+                                </Button>
+                                <Button variant="ghost" size="sm" className="h-7 text-xs text-violet-400 hover:text-violet-300 hover:bg-violet-500/10 px-2" onClick={() => { setStockDrawerMode('transfer'); setAdjustmentProduct(product); }}>
+                                  <ArrowRightLeft size={12} className="mr-1" /> Transfer
                                 </Button>
                               </div>
                             </td>
@@ -1017,6 +1060,8 @@ export const InventoryDashboardNew = () => {
           })),
         } : null}
         onAdjust={handleAdjustSave}
+        onTransfer={handleTransferSave}
+        initialMode={stockDrawerMode}
       />
 
       {/* Import Inventory CSV modal */}

@@ -23,6 +23,8 @@ import {
 } from '@/app/utils/variationFieldMap';
 import { isPostgrestMissingColumnError } from '@/app/utils/postgrestSchemaError';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
+import { applyBranchStockMovementFilter } from '@/app/utils/branchScope';
+import { productService } from '@/app/services/productService';
 
 // Dedupe negative-stock warnings per product so console isn't flooded when multiple forms call getInventoryOverview
 const negativeStockWarnedIds = new Set<string>();
@@ -39,6 +41,18 @@ const PRODUCT_VARIATIONS_OVERVIEW_SELECT_LAYERS = [
 
 /** In-flight guard: reuse same promise for overlapping getInventoryOverview(companyId, branchId) to avoid duplicate timers. */
 const inventoryOverviewInFlight = new Map<string, Promise<InventoryOverviewRow[]>>();
+
+/** Drop in-flight overview promises so the next read reflects fresh stock_movements (e.g. after adjust). */
+export function clearInventoryOverviewCache(companyId?: string): void {
+  if (!companyId) {
+    inventoryOverviewInFlight.clear();
+    return;
+  }
+  const prefix = `${companyId}:`;
+  for (const key of [...inventoryOverviewInFlight.keys()]) {
+    if (key.startsWith(prefix)) inventoryOverviewInFlight.delete(key);
+  }
+}
 
 interface OverviewStockMaps {
   productStockMap: Record<string, number>;
@@ -117,13 +131,19 @@ async function fetchStockMovementsBatched(
         .select(select)
         .eq('company_id', companyId)
         .in('product_id', chunk);
-      if (branchId && branchId !== 'all') q = q.eq('branch_id', branchId);
+      q = applyBranchStockMovementFilter(q, branchId);
       const { data, error } = await q;
       if (error) throw error;
       return data || [];
     });
     return { rows, error: null };
   } catch (err: any) {
+    if (import.meta.env?.DEV) {
+      console.warn(
+        '[INVENTORY SERVICE] fetchStockMovementsBatched failed:',
+        { companyId, branchId: branchId ?? 'all', message: err?.message ?? err },
+      );
+    }
     return { rows: [], error: err };
   }
 }
@@ -138,9 +158,7 @@ async function companyHasStockMovements(
     .select('id', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .limit(1);
-  if (branchId && branchId !== 'all') {
-    q = q.eq('branch_id', branchId);
-  }
+  q = applyBranchStockMovementFilter(q, branchId);
   const { count, error } = await q;
   if (error) {
     console.warn('[INVENTORY SERVICE] stock_movements presence check failed:', error.message);
@@ -201,9 +219,7 @@ async function fetchOverviewStockMaps(
           .select('product_id, qty, boxes, pieces')
           .eq('company_id', companyId)
           .in('product_id', chunk);
-        if (branchId && branchId !== 'all') {
-          balanceQuery = balanceQuery.eq('branch_id', branchId);
-        }
+        balanceQuery = applyBranchStockMovementFilter(balanceQuery, branchId);
         const { data, error } = await balanceQuery;
         if (error) throw error;
         return (data || []) as { product_id: string; qty: number; boxes?: number; pieces?: number }[];
@@ -518,7 +534,14 @@ export const inventoryService = {
         totalBoxes = productBoxMap[p.id] || 0;
         totalPieces = productPieceMap[p.id] || 0;
       }
-      
+
+      // Authoritative on-hand from loaded movements (fixes variation_id / inactive-variation map gaps)
+      if (movRows != null) {
+        totalStock = (movRows as any[])
+          .filter((m) => m.product_id === p.id)
+          .reduce((sum, m) => sum + (Number(m.quantity) || 0), 0);
+      }
+
       // Negative stock = more out (sales) than in (purchases/production). UI still shows it; log only in dev to avoid console noise.
       if (totalStock < 0) {
         const alreadyWarned = negativeStockWarnedIds.has(p.id);
@@ -669,9 +692,7 @@ export const inventoryService = {
       .eq('company_id', companyId)
       .eq('product_id', productId)
       .not('variation_id', 'is', null);
-    if (branchId && branchId !== 'all') {
-      movementQuery = movementQuery.eq('branch_id', branchId);
-    }
+    movementQuery = applyBranchStockMovementFilter(movementQuery, branchId);
     const { data: movements } = await movementQuery;
     const stockByVariation: Record<string, number> = {};
     (movements || []).forEach((m: any) => {
@@ -726,7 +747,7 @@ export const inventoryService = {
       .limit(500);
 
     if (productId) query = query.eq('product_id', productId);
-    if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
+    query = applyBranchStockMovementFilter(query, branchId);
     if (movementType) query = query.eq('movement_type', movementType);
     if (dateFrom) query = query.gte('created_at', dateFrom);
     if (dateTo) query = query.lte('created_at', dateTo + 'T23:59:59.999Z');
@@ -776,9 +797,7 @@ export const inventoryService = {
     } else {
       q = q.is('variation_id', null);
     }
-    if (branchId && branchId !== 'all') {
-      q = q.eq('branch_id', branchId);
-    }
+    q = applyBranchStockMovementFilter(q, branchId);
     const { data, error } = await q;
     if (error) throw error;
     const total = (data || []).reduce((sum: number, row: any) => sum + (Number(row.quantity) || 0), 0);
@@ -1042,6 +1061,7 @@ export const inventoryService = {
       .single();
     if (!error && data?.id) {
       const movementId = data.id as string;
+      clearInventoryOverviewCache(companyId);
       if (!opts?.deferGlSync) {
         try {
           await openingBalanceJournalService.syncInventoryOpeningFromStockMovementId(movementId);
@@ -1081,9 +1101,7 @@ export const inventoryService = {
       .from('stock_movements')
       .select('product_id, variation_id, quantity, movement_type')
       .eq('company_id', companyId);
-    if (branchId && branchId !== 'all') {
-      query = query.eq('branch_id', branchId);
-    }
+    query = applyBranchStockMovementFilter(query, branchId);
     const { data: movements, error } = await query;
     if (error) {
       console.warn('[INVENTORY SERVICE] getMovementAggregates error:', error.message);
@@ -1118,3 +1136,89 @@ export const inventoryService = {
     return Array.from(map.values());
   },
 };
+
+export interface CreateStockTransferParams {
+  companyId: string;
+  productId: string;
+  variationId?: string | null;
+  fromBranchId: string;
+  toBranchId: string;
+  quantity: number;
+  notes?: string | null;
+  createdBy?: string | null;
+  fromBranchName?: string | null;
+  toBranchName?: string | null;
+}
+
+/** Branch-to-branch transfer: paired transfer_out at source and transfer_in at destination. */
+export async function createStockTransfer(
+  params: CreateStockTransferParams,
+): Promise<{ error: string | null; transferRefId?: string }> {
+  const {
+    companyId,
+    productId,
+    variationId,
+    fromBranchId,
+    toBranchId,
+    quantity,
+    notes,
+    createdBy,
+    fromBranchName,
+    toBranchName,
+  } = params;
+
+  const qty = Math.abs(Number(quantity));
+  if (!companyId || !productId || !fromBranchId || !toBranchId) {
+    return { error: 'Missing company, product, or branch.' };
+  }
+  if (qty <= 0) return { error: 'Quantity must be greater than zero.' };
+  if (fromBranchId === toBranchId) {
+    return { error: 'Source and destination branches must be different.' };
+  }
+
+  const transferRefId = crypto.randomUUID();
+  const noteParts = [
+    fromBranchName && toBranchName
+      ? `Transfer: ${fromBranchName} → ${toBranchName}`
+      : 'Branch transfer',
+  ];
+  if (notes?.trim()) noteParts.push(notes.trim());
+  const noteText = noteParts.join(' — ');
+
+  try {
+    await productService.createStockMovement({
+      company_id: companyId,
+      branch_id: fromBranchId,
+      product_id: productId,
+      variation_id: variationId ?? undefined,
+      movement_type: 'TRANSFER',
+      quantity: -qty,
+      reference_type: 'transfer',
+      reference_id: transferRefId,
+      notes: noteText,
+      created_by: createdBy ?? undefined,
+    });
+    await productService.createStockMovement({
+      company_id: companyId,
+      branch_id: toBranchId,
+      product_id: productId,
+      variation_id: variationId ?? undefined,
+      movement_type: 'TRANSFER',
+      quantity: qty,
+      reference_type: 'transfer',
+      reference_id: transferRefId,
+      notes: noteText,
+      created_by: createdBy ?? undefined,
+    });
+    clearInventoryOverviewCache(companyId);
+    return { error: null, transferRefId };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : 'Transfer failed.';
+    return {
+      error: msg.includes('transfer_in') || msg.includes('Transfer in')
+        ? msg
+        : `${msg} If stock left the source branch, review movements for reference ${transferRefId}.`,
+      transferRefId,
+    };
+  }
+}

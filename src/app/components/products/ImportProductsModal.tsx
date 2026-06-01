@@ -26,6 +26,7 @@ import { serializeCsvMatrix } from '@/app/modules/csv-workbench/serializeCsv';
 import { beginBulkImport, endBulkImport } from '@/app/lib/bulkImportSession';
 import { dispatchDataInvalidated } from '@/app/lib/dataInvalidationBus';
 import { notifyAccountingEntriesChanged } from '@/app/lib/accountingInvalidate';
+import { isRealBranchUuid } from '@/app/utils/branchScope';
 
 export type { ImportRowError, ImportSummary };
 
@@ -161,7 +162,7 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
     let shouldRefreshAfterImport = false;
     try {
       const catalog = await loadProductCatalogContext(companyId);
-      const branchIdOrNull = branchId && branchId !== 'all' ? branchId : null;
+      const branchIdOrNull = isRealBranchUuid(branchId) ? branchId.trim() : null;
       const result = await commitProductImport(parsedRows, {
         companyId,
         branchIdOrNull,
@@ -218,13 +219,13 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
       if (shouldRefreshAfterImport && companyId) {
         notifyAccountingEntriesChanged({
           companyId,
-          branchId: branchId && branchId !== 'all' ? branchId : null,
+          branchId: isRealBranchUuid(branchId) ? branchId.trim() : null,
           reason: 'product-csv-import-complete',
         });
         dispatchDataInvalidated({
           domain: 'inventory',
           companyId,
-          branchId: branchId && branchId !== 'all' ? branchId : null,
+          branchId: isRealBranchUuid(branchId) ? branchId.trim() : null,
           reason: 'product-csv-import-complete',
         });
       }
@@ -279,7 +280,12 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
               </div>
               <div>
                 <h2 className="text-lg font-bold text-white">Import Products</h2>
-                <p className="text-xs text-gray-400">CSV workbench — validate in preview, then import</p>
+                <p className="text-xs text-gray-400">
+                  CSV workbench — validate in preview, then import.
+                  {isRealBranchUuid(branchId)
+                    ? ' Opening stock is saved for the branch selected in the header.'
+                    : ' Select a branch in the header to assign opening stock to that location (otherwise company-wide).'}
+                </p>
               </div>
             </div>
             <button
@@ -328,6 +334,10 @@ export const ImportProductsModal = ({ isOpen, onClose, onSuccess }: ImportProduc
                   (e.g. <span className="font-mono">BRIDAL - 400 … /952</span> → SKU <span className="font-mono">BRD-952</span>).
                 </li>
                 <li>Enable auto-create catalog if sample categories, units, or brands are not in your system yet.</li>
+                <li>
+                  Downloaded templates include a <strong>branch note</strong> in row 2 (<strong>description</strong> column).
+                  <strong>opening_stock</strong> is saved to the branch selected in the ERP header — not from the CSV.
+                </li>
               </ul>
             </div>
 

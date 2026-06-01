@@ -124,7 +124,7 @@ export function SelectSupplier({ companyId, onBack, onSelect }: SelectSupplierPr
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">
-      <div className="bg-[#1F2937] border-b border-[#374151] px-4 py-3 sticky top-0 z-10">
+      <div className="bg-[#1F2937] border-b border-[#374151] px-4 py-3 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3 mb-3">
           <button onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg transition-colors text-[#F9FAFB]">
             <ArrowLeft className="w-5 h-5" />

@@ -11,6 +11,7 @@ import {
   type EnrolledCounterWorker,
 } from '../../lib/counterWorkerRegistry';
 import { setSharedCounterModeEnabled } from '../../lib/sharedCounterMode';
+import { PinNumericInput } from '../common/PinNumericInput';
 
 interface CounterPinEnrollModalProps {
   open: boolean;
@@ -325,24 +326,24 @@ export function CounterPinEnrollModal({
             ) : (
               <>
                 <label className="block text-xs text-[#9CA3AF] mb-1">4-digit PIN</label>
-                <input
+                <PinNumericInput
                   value={pinA}
-                  onChange={(e) => setPinA(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="w-full mb-3 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white"
-                  inputMode="numeric"
+                  onChange={(v) => setPinA(v.slice(0, 4))}
                   maxLength={4}
                   autoComplete="off"
+                  enterKeyHint="next"
                   placeholder="••••"
+                  className="w-full mb-3 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white text-center tracking-widest"
                 />
                 <label className="block text-xs text-[#9CA3AF] mb-1">Confirm PIN</label>
-                <input
+                <PinNumericInput
                   value={pinB}
-                  onChange={(e) => setPinB(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="w-full mb-4 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white"
-                  inputMode="numeric"
+                  onChange={(v) => setPinB(v.slice(0, 4))}
                   maxLength={4}
                   autoComplete="off"
+                  enterKeyHint="done"
                   placeholder="••••"
+                  className="w-full mb-4 rounded-lg bg-[#111827] border border-[#374151] px-3 py-2 text-white text-center tracking-widest"
                 />
               </>
             )}

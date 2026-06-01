@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Lock, Loader2 } from 'lucide-react';
 import * as authApi from '../../api/auth';
+import { PinNumericInput } from '../common/PinNumericInput';
 
 interface ChangePinModalProps {
   onClose: () => void;
@@ -116,15 +117,12 @@ export function ChangePinModal({ onClose, onSuccess }: ChangePinModalProps) {
         >
           {step === 'current' && (
             <>
-              <input
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
+              <PinNumericInput
                 autoComplete="off"
+                enterKeyHint="next"
                 placeholder="Current PIN"
                 value={currentPin}
-                onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ''))}
+                onChange={setCurrentPin}
                 className="w-full px-4 py-3 bg-[#111827] border border-[#374151] rounded-lg text-white placeholder-[#6B7280] focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]"
                 autoFocus
               />
@@ -132,15 +130,12 @@ export function ChangePinModal({ onClose, onSuccess }: ChangePinModalProps) {
           )}
           {step === 'new' && (
             <>
-              <input
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
+              <PinNumericInput
                 autoComplete="new-password"
+                enterKeyHint="next"
                 placeholder="New PIN (4–6 digits)"
                 value={newPin}
-                onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                onChange={setNewPin}
                 className="w-full px-4 py-3 bg-[#111827] border border-[#374151] rounded-lg text-white placeholder-[#6B7280] focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]"
                 autoFocus
               />
@@ -160,15 +155,12 @@ export function ChangePinModal({ onClose, onSuccess }: ChangePinModalProps) {
           )}
           {step === 'confirm' && (
             <>
-              <input
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
+              <PinNumericInput
                 autoComplete="new-password"
+                enterKeyHint="done"
                 placeholder="Confirm new PIN"
                 value={confirmPin}
-                onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+                onChange={setConfirmPin}
                 className="w-full px-4 py-3 bg-[#111827] border border-[#374151] rounded-lg text-white placeholder-[#6B7280] focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]"
                 autoFocus
               />

@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "jetro": {
+      "command": "C:\\Users\\ndm31\\.jetro\\runtime\\node-win32-x64.exe",
+      "args": [
+        "C:\\Users\\ndm31\\.jetro\\mcp-server\\index.js"
+      ],
+      "env": {
+        "JET_WORKSPACE": "c:\\Users\\ndm31\\dev\\Corusr\\NEW POSV3",
+        "JET_API_URL": "https://api.jetro.ai",
+        "PATH": "C:\\Users\\ndm31\\.jetro\\runtime;C:\\Program Files\\Microsoft\\jdk-17.0.17.10-hotspot\\bin;C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\bin;C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.1.8-hotspot\\bin;%SystemRoot%\\system32;%SystemRoot%;%SystemRoot%\\System32\\Wbem;%SYSTEMROOT%\\System32\\WindowsPowerShell\\v1.0\\;%SYSTEMROOT%\\System32\\OpenSSH\\;C:\\Program Files\\NVIDIA Corporation\\NVIDIA NvDLISR;C:\\Program Files\\Git\\cmd;C:\\Program Files\\CMake\\bin;C:\\Program Files\\dotnet\\;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\Android\\platform-tools;C:\\Program Files\\cursor\\resources\\app\\bin;C:\\Program Files\\nodejs\\;C:\\Program Files\\PostgreSQL\\18\\bin;;C:\\Android;c:\\Users\\ndm31\\AppData\\Local\\Programs\\Trae\\bin;C:\\Users\\ndm31\\.local\\bin;C:\\Users\\ndm31\\.tizen-extension-platform\\server\\sdktools\\data\\tools\\ide\\bin;C:\\Users\\ndm31\\.tizen-extension-platform\\server\\sdktools\\data;C:\\Users\\ndm31\\.tizen-extension-platform\\server\\sdktools\\dotnet;C:\\Program Files\\Microsoft\\jdk-17.0.17.10-hotspot\\bin;C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.17.10-hotspot\\bin;C:\\Program Files\\Eclipse Adoptium\\jdk-25.0.1.8-hotspot\\bin;C:\\Windows\\system32;C:\\Windows;C:\\Windows\\System32\\Wbem;C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\;C:\\Windows\\System32\\OpenSSH\\;C:\\Program Files\\NVIDIA Corporation\\NVIDIA NvDLISR;C:\\Program Files\\Git\\cmd;C:\\Program Files\\CMake\\bin;C:\\Program Files\\dotnet\\;C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\;C:\\Program Files\\Android\\platform-tools;C:\\Program Files\\cursor\\resources\\app\\bin;C:\\Program Files\\nodejs\\;C:\\Program Files\\PostgreSQL\\18\\bin;\\bin;C:\\Users\\ndm31\\AppData\\Local\\Programs\\Antigravity\\bin;C:\\Users\\ndm31\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\ndm31\\.dotnet\\tools;C:\\Users\\ndm31\\AppData\\Roaming\\npm;C:\\Users\\ndm31\\.tizen-extension-platform\\server\\sdktools\\data\\tools;C:\\Users\\ndm31\\.t;C:\\Users\\ndm31\\AppData\\Local\\PowerToys\\DSCModules\\;C:\\Program Files\\JetBrains\\WebStorm 2025.3.3\\bin;C:\\Users\\ndm31\\AppData\\Local\\Programs\\Ollama"
+      }
+    }
+  }
+}

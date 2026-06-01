@@ -112,10 +112,14 @@ phir dubara `kong-safe-repair.sh` chalao.
 
 **Lakshan:** https://studio.dincouture.pk returns **502 Bad Gateway** (Kong/API OK).
 
-**Cause:** Traefik cannot reach `supabase-studio:3000` (Studio on `supabase_default`, Traefik on `dokploy-network` only).
+**Cause A:** Traefik cannot reach `supabase-studio:3000` (network mismatch).
+
+**Cause B:** `supabase-studio` container not running (Created/Exited after deploy/JWT recreate).
 
 **Fix:**  
-`ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/ensure-studio-traefik-network.sh"`
+`ssh dincouture-vps "cd /root/NEWPOSV3 && bash deploy/ensure-supabase-studio.sh"`
+
+**Cron (permanent):** `*/5 * * * * /root/NEWPOSV3/deploy/studio-auto-repair-if-needed.sh`
 
 **Detail:** **`docs/STUDIO_502_AND_ERP_AUTOLOGOUT_RUNBOOK.md`**.
 
@@ -155,6 +159,6 @@ phir dubara `kong-safe-repair.sh` chalao.
 
 - **supabase.dincouture.pk pe sirf JSON dikhe** → Normal; data use karne ke liye **erp.dincouture.pk** use karein.  
 - **Console “Host validation” / “not supported”** → Browser extension; ignore.  
-- **502 (Kong/auth)** → `kong-safe-repair.sh` + **KONG_502_PERMANENT_FIX_RUNBOOK.md**. **502 (Studio only)** → `ensure-studio-traefik-network.sh`; **STUDIO_502_AND_ERP_AUTOLOGOUT_RUNBOOK.md**.  
+- **502 (Kong/auth)** → `kong-safe-repair.sh` + **KONG_502_PERMANENT_FIX_RUNBOOK.md**. **502 (Studio only)** → `ensure-supabase-studio.sh` + cron `studio-auto-repair-if-needed.sh`; **STUDIO_502_AND_ERP_AUTOLOGOUT_RUNBOOK.md**.  
 - **401** → Key sync + Kong key-auth; **LOGIN_401_RESULT.md**.  
 - **Office OK, ghar fail** → DNS / network; Section 6.

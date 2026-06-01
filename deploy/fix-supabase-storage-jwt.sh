@@ -64,6 +64,9 @@ if [ -f "$SUPABASE_DIR/docker-compose.yml" ] || [ -f "$SUPABASE_DIR/docker-compo
   (cd "$SUPABASE_DIR" && docker compose up -d kong studio storage functions --force-recreate 2>/dev/null) || true
   (cd "$SUPABASE_DIR" && docker compose restart auth rest 2>/dev/null) || true
   echo "[fix-jwt] Recreated Kong, Studio, Storage, Edge Functions (new anon key); restarted Auth, Rest."
+  if [ -f "$ROOT/deploy/ensure-supabase-studio.sh" ]; then
+    bash "$ROOT/deploy/ensure-supabase-studio.sh" || true
+  fi
 else
   echo "[fix-jwt] docker-compose not found; recreate Kong, Studio, Storage manually so they pick up new keys."
 fi

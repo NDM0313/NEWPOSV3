@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { calculateStockFromMovements } from '@/app/utils/stockCalculation';
 import type { StockMovement } from '@/app/utils/stockCalculation';
-import { inventoryService } from '@/app/services/inventoryService';
+import { inventoryService, clearInventoryOverviewCache } from '@/app/services/inventoryService';
 import {
   parseVariationAttributesRaw,
   publicVariationAttributes,
@@ -11,6 +11,7 @@ import {
   variationRetailFromApiRow,
 } from '@/app/utils/variationFieldMap';
 import { isPostgrestMissingColumnError } from '@/app/utils/postgrestSchemaError';
+import { resolveStockWriteBranchId } from '@/app/utils/branchScope';
 
 /** normal = catalog product; production = manufactured from studio (STD-PROD, inventory + cost). */
 export type ProductType = 'normal' | 'production';
@@ -905,19 +906,21 @@ export const productService = {
     box_change?: number; // Packing: net boxes (positive IN, negative OUT)
     piece_change?: number; // Packing: net pieces (positive IN, negative OUT)
   }) {
+    const resolvedBranchId = resolveStockWriteBranchId(data.branch_id, undefined);
+
     console.log('[CREATE STOCK MOVEMENT] Creating movement:', {
       product_id: data.product_id,
       movement_type: data.movement_type,
       quantity: data.quantity,
       company_id: data.company_id,
-      branch_id: data.branch_id,
+      branch_id: resolvedBranchId,
       timestamp: new Date().toISOString()
     });
 
     // Try with movement_type first (most common schema)
     let insertData: any = {
       company_id: data.company_id,
-      branch_id: data.branch_id || null,
+      branch_id: resolvedBranchId,
       product_id: data.product_id,
       variation_id: data.variation_id || null,
       quantity: data.quantity,
@@ -998,6 +1001,7 @@ export const productService = {
             quantity: retryMovement2.quantity
           });
           if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('inventory-updated'));
+          clearInventoryOverviewCache(data.company_id);
           await inventoryService.syncOpeningJournalIfApplicable(retryMovement2);
           return retryMovement2;
         }
@@ -1008,6 +1012,7 @@ export const productService = {
           quantity: retryMovement.quantity
         });
         if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('inventory-updated'));
+        clearInventoryOverviewCache(data.company_id);
         await inventoryService.syncOpeningJournalIfApplicable(retryMovement);
         return retryMovement;
       }
@@ -1034,6 +1039,7 @@ export const productService = {
       created_at: movement.created_at
     });
     if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('inventory-updated'));
+    clearInventoryOverviewCache(data.company_id);
     await inventoryService.syncOpeningJournalIfApplicable(movement);
     return movement;
   },

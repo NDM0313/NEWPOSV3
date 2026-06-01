@@ -8,9 +8,10 @@ import * as productsApi from '../../api/products';
 import * as branchesApi from '../../api/branches';
 import * as variationLibrary from '../../api/variationLibrary';
 import type { AttributeWithValues } from '../../api/variationLibrary';
-import { CustomSelect } from '../common';
+import { CustomSelect, FlowScreenHeader, FlowScreenRoot } from '../common';
 import { ProductImage } from './ProductImage';
 import { compressImageIfNeeded, formatBytes } from '../../utils/imageCompression';
+import { normalizePickedImageFiles } from '../../lib/mediaPick';
 import { MediaSourcePicker } from '../shared/MediaSourcePicker';
 
 export interface AddProductFlowSavePayload {
@@ -208,6 +209,33 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
     return () => { cancelled = true; };
   }, [companyId, formData.hasVariations]);
 
+  // Reset form when parent passes a fresh product (e.g. getProductById after list tap → Edit).
+  useEffect(() => {
+    if (!editProduct) return;
+    setFormData({
+      sku: editProduct.sku || '',
+      name: editProduct.name || '',
+      categoryId: editProduct.categoryId || '',
+      category: editProduct.category || '',
+      brandId: editProduct.brandId || '',
+      description: editProduct.description ?? '',
+      costPrice: String(editProduct.costPrice ?? ''),
+      retailPrice: String(editProduct.retailPrice ?? ''),
+      wholesalePrice: editProduct.wholesalePrice != null ? String(editProduct.wholesalePrice) : '',
+      stock: String(editProduct.stock ?? ''),
+      minStock: editProduct.minStock != null ? String(editProduct.minStock) : '',
+      unitId: editProduct.unitId || '',
+      unit: editProduct.unit || 'Piece',
+      barcode: editProduct.barcode ?? '',
+      status: (editProduct.status || 'active') as 'active' | 'inactive',
+      hasVariations: editProduct.hasVariations || false,
+    });
+    setExistingImageUrls(Array.isArray(editProduct.imageUrls) ? editProduct.imageUrls : []);
+    setImageFiles([]);
+    setImagePreviews([]);
+    setImagePickNotice(null);
+  }, [editProduct]);
+
   // Hydrate from editProduct when it has variations
   useEffect(() => {
     if (!editProduct?.hasVariations || !(editProduct as Product & { variations?: Array<{ attributes?: Record<string, string> }> }).variations?.length) return;
@@ -372,7 +400,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
         stock,
         unit: unitName,
         status: formData.status,
-        description: formData.description || undefined,
+        description: formData.description,
         barcode: formData.barcode || undefined,
         minStock,
         wholesalePrice,
@@ -426,8 +454,11 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
 
   const handleImagePick = async (files: FileList | File[] | null) => {
     if (!files || (Array.isArray(files) ? files.length === 0 : files.length === 0)) return;
-    const arr = Array.from(files as FileList | File[]).filter((f) => f.type.startsWith('image/'));
-    if (arr.length === 0) return;
+    const arr = normalizePickedImageFiles(Array.from(files as FileList | File[]));
+    if (arr.length === 0) {
+      setImagePickNotice('No valid image selected. Try gallery or retake the photo.');
+      return;
+    }
     setIsProcessingImages(true);
     setImagePickNotice(null);
     try {
@@ -492,21 +523,32 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
   };
 
   return (
-    <div className="fixed inset-0 bg-[#111827] z-50 overflow-y-auto pb-24">
-      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
-        <div className="flex items-center justify-between px-4 h-14">
-          <div className="flex items-center gap-3">
-            <button onClick={onClose} className="p-2 hover:bg-[#374151] rounded-lg transition-colors">
+    <FlowScreenRoot
+      className="fixed inset-0 bg-[#111827] z-50 overflow-y-auto pb-24"
+      blocking={saving}
+      blockingLabel={editProduct ? 'Updating product...' : 'Saving product...'}
+    >
+      <FlowScreenHeader innerClassName="justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (!saving) onClose();
+              }}
+              disabled={saving}
+              className="p-2 hover:bg-[#374151] rounded-lg transition-colors shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+            >
               <ArrowLeft className="w-5 h-5 text-white" />
             </button>
-            <div className="w-8 h-8 bg-[#3B82F6] rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-[#3B82F6] rounded-lg flex items-center justify-center shrink-0">
               <Package size={18} className="text-white" />
             </div>
-            <h1 className="text-white font-semibold text-base">
+            <h1 className="text-white font-semibold text-base truncate">
               {editProduct ? 'Edit Product' : 'Add New Product'}
             </h1>
           </div>
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={
               !formData.name.trim() ||
@@ -515,13 +557,12 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
               saving ||
               (formData.hasVariations && generatedVariations.length === 0)
             }
-            className="flex items-center gap-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] disabled:bg-[#374151] disabled:text-[#6B7280] text-white rounded-lg font-medium transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] disabled:bg-[#374151] disabled:text-[#6B7280] text-white rounded-lg font-medium transition-colors shrink-0"
           >
             <Save size={16} />
             Save
           </button>
-        </div>
-      </div>
+      </FlowScreenHeader>
 
       <div className="p-4 space-y-4">
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
@@ -1236,6 +1277,6 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
           {saving ? 'Saving...' : editProduct ? 'Update Product' : 'Add Product'}
         </button>
       </div>
-    </div>
+    </FlowScreenRoot>
   );
 }
