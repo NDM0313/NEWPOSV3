@@ -6,6 +6,8 @@ import {
   type SaleReturnCandidateItem,
 } from '../../api/sales';
 import { supabase } from '../../lib/supabase';
+import { useSubmitLock } from '../../contexts/LoadingContext';
+import { SaveBlockingOverlay } from '../common/SaveBlockingOverlay';
 
 interface SaleReturnModalProps {
   isOpen: boolean;
@@ -40,7 +42,7 @@ export function SaleReturnModal({
   const [notes, setNotes] = useState('');
   const [discount, setDiscount] = useState<string>('0');
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const { run: runSave, busy: saving } = useSubmitLock();
   const [error, setError] = useState<string | null>(null);
   const [originalSaleTotal, setOriginalSaleTotal] = useState<number>(0);
   const [priorReturnedTotal, setPriorReturnedTotal] = useState<number>(0);
@@ -119,7 +121,7 @@ export function SaleReturnModal({
       );
       return;
     }
-    setSaving(true);
+    await runSave('Processing return...', async () => {
     setError(null);
     const { data, error: submitErr } = await createAndFinalizeSaleReturn({
       companyId,
@@ -141,22 +143,26 @@ export function SaleReturnModal({
         unitPrice: i.unitPrice,
       })),
     });
-    setSaving(false);
     if (submitErr || !data) {
       setError(submitErr || 'Failed to create sale return.');
       return;
     }
     onSuccess(data);
+    });
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black/70 flex items-end sm:items-center justify-center" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[80] bg-black/70 flex items-end sm:items-center justify-center"
+      onClick={saving ? undefined : onClose}
+    >
       <div
-        className="bg-[#111827] border border-[#374151] rounded-t-2xl sm:rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden"
+        className="relative bg-[#111827] border border-[#374151] rounded-t-2xl sm:rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
+        <SaveBlockingOverlay active={saving} label="Processing return..." />
         <div className="p-4 border-b border-[#374151] flex items-center justify-between">
           <div>
             <h3 className="text-white font-semibold">Create Sale Return</h3>

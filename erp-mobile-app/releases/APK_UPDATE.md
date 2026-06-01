@@ -4,7 +4,310 @@ Copy a new block for every build. Keep the newest entry at the top.
 
 ---
 
-## Latest build — 1.0.5 (build 22) — 2026-05-31
+## Latest build — 1.0.5 (build 33) — 2026-06-01
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-06-01 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 33 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build33.apk` |
+
+### Changelog (user-facing) — build 33
+
+- **Fix:** Sale, purchase, payment, journal, and expense attachments use the same native-safe upload as product photos (`storageAttachmentPipeline.ts`).
+- **Fix:** Image attachment preview on APK uses native blob download for all buckets (not only product-images).
+- **Product photos:** Unchanged (build 32 pipeline locked).
+- **Company logo (web only):** Settings logo upload needs `company-logos` bucket on server — not fixed by APK; see [`docs/COMPANY_LOGOS_STORAGE.md`](../../docs/COMPANY_LOGOS_STORAGE.md).
+- Build locally: [`BUILD_AND_GRAPHIFY_COMMANDS.md`](BUILD_AND_GRAPHIFY_COMMANDS.md).
+
+### Install notes (build 33)
+
+1. `npm run android:apk:release:win` from `erp-mobile-app`.
+2. Install `releases/erp-mobile-1.0.5-build33.apk`.
+3. Re-attach or re-upload old broken attachment files (2-byte server objects).
+
+---
+
+## Previous build — 1.0.5 (build 32) — 2026-06-01
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-06-01 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 32 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build32.apk` |
+
+### Changelog (user-facing) — build 32
+
+- **Fix:** Native storage upload sends binary correctly (XHR + Blob, then fetch-Blob, then CapacitorHttp `dataType: base64`) — stops 2-byte corrupt files on server.
+- **All buckets** on APK use native upload first (product images, sale/purchase attachments, receipts).
+- **Product photos:** Try `File` upload via supabase-js before ArrayBuffer path; clearer Roman Urdu error if server file too small.
+- Build locally: [`BUILD_AND_GRAPHIFY_COMMANDS.md`](BUILD_AND_GRAPHIFY_COMMANDS.md).
+
+### Install notes (build 32)
+
+1. `npm run android:apk:release:win` from `erp-mobile-app`.
+2. Install `releases/erp-mobile-1.0.5-build32.apk`.
+3. Re-upload photos that failed with "file too small" on build 31.
+
+---
+
+## Previous build — 1.0.5 (build 31) — 2026-06-01
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-06-01 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 31 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build31.apk` |
+
+### Changelog (user-facing) — build 31
+
+- **Blob cache:** Stores `byteSize`; evicts cache hits under 256 bytes (no stale 2-byte blob URLs).
+- **Upload verify:** After native upload, re-downloads object; throws if server file is still tiny.
+- **Debug:** HTTP status + tiny-body preview in log (`{}` etc.).
+- Operator commands: [`BUILD_AND_GRAPHIFY_COMMANDS.md`](BUILD_AND_GRAPHIFY_COMMANDS.md).
+
+### Install notes (build 31)
+
+1. Build locally: `npm run android:apk:release:win` (see BUILD_AND_GRAPHIFY_COMMANDS.md).
+2. Install `releases/erp-mobile-1.0.5-build31.apk`.
+3. Re-upload broken product photos (old 2-byte server files stay broken until replaced).
+
+---
+
+## Previous build — 1.0.5 (build 30) — 2026-06-01
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-06-01 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 30 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build30.apk` |
+
+### Changelog (user-facing) — build 30
+
+- **Fix:** WebView `supabase.storage.download` often returned **2-byte junk** (not a real JPEG). APK now rejects tiny blobs and uses **native CapacitorHttp download** first for product images.
+- **Upload:** Product image upload uses **native upload first** on APK so new photos are full-size on server.
+- Re-upload photos that still show broken after install (old 2-byte objects may remain in storage).
+
+### Install notes (build 30)
+
+1. Uninstall build 29 or older.
+2. Install **`releases/erp-mobile-1.0.5-build30.apk`**.
+3. For broken thumbs: edit product → take/upload photo again → save.
+
+---
+
+## Previous build — 1.0.5 (build 29) — 2026-05-25
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-25 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 29 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build29.apk` |
+
+### Changelog (user-facing) — build 29
+
+- **In-app debug log (Developer Tools):** Settings → tap **App version** 7× → **Debug log** panel captures `[StorageUrl]` / product-image pipeline steps on device (no USB `adb` required). **Share** exports log text for support.
+- **Connection Debug** on APK when Developer Mode unlocked (runtime Supabase API URL).
+- Includes build 28 product-photo native download pipeline.
+
+### Install notes (build 29)
+
+1. Uninstall build 28 or older.
+2. Install **`releases/erp-mobile-1.0.5-build29.apk`**.
+3. To diagnose broken thumbs: Settings → App version ×7 → scroll **Debug log** → open Products → **Share** log.
+
+---
+
+## Previous build — 1.0.5 (build 28) — 2026-05-25
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-25 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 28 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build28.apk` |
+
+### Changelog (user-facing) — build 28
+
+- **Product photos (APK):** Images load via native **CapacitorHttp download** (same technique as upload) into blob URLs — WebView never loads broken HTTPS signed URLs.
+- Pipeline: supabase download → native authenticated GET → signed URL fetched natively → `blob:` for `<img>`.
+- Includes build 27 cache-bust + URL normalize.
+
+### Install notes (build 28)
+
+1. Uninstall build 27 or older.
+2. Install **`releases/erp-mobile-1.0.5-build28.apk`**.
+
+---
+
+## Previous build — 1.0.5 (build 27) — 2026-05-25
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-25 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 27 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build27.apk` |
+| **QA log** | [`MOBILE_QA_LOG.md`](MOBILE_QA_LOG.md) |
+
+### Changelog (user-facing) — build 27
+
+- **Product photos on APK:** Native display uses authenticated storage download (blob) first; signed URLs stay on `erp.dincouture.pk` (no broken WebView GET to direct Supabase host).
+- **After camera/gallery save:** Storage display cache busted so list/detail/edit thumbs refresh immediately.
+- **Legacy image URLs:** Normalized to `product-images/...` refs when loading product list.
+- Includes build 26 (rental thumbs, duration picker, inventory transfer).
+
+### Install notes (build 27)
+
+1. **Uninstall** ERP Mobile (build 26 or older).
+2. Install **`releases/erp-mobile-1.0.5-build27.apk`** only.
+3. Products → Add → camera → Save → **list thumb must appear** without reopening app.
+
+### Mobile test checklist (build 27)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | APK camera upload | New product + photo → Save → list thumb visible |
+| 2 | APK replace image | Edit → replace → thumb updates |
+| 3 | Broken product (- 55 -) | Detail/edit shows image or honest No photo |
+| 4 | Rental grid | Photo on card when `image_urls` exist |
+| 5 | Web `/m/` regression | Upload still works |
+
+### VPS deploy (web PWA)
+
+Push commits first, then:
+
+```bash
+ssh dincouture-vps "cd /root/NEWPOSV3 && git pull && bash deploy/add-kong-cors-erp-origin.sh"
+```
+
+APK images are Supabase Storage; VPS only affects web `/m/` bundle.
+
+---
+
+## Previous build — 1.0.5 (build 26) — 2026-05-25
+
+| Field | Value |
+|--------|--------|
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build26.apk` |
+
+Rental thumbs, duration picker, inventory `TRANSFER` fix.
+
+---
+
+## Latest build — 1.0.5 (build 25) — 2026-05-31
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-31 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 25 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build25.apk` |
+
+### Changelog (user-facing) — build 25
+
+- **Product photo upload (APK):** Camera/gallery preview now saves to server — storage upload uses native CapacitorHttp fallback when WebView fetch fails (PWA `/m/` unchanged).
+- Includes build 24 image update/replace fixes.
+
+### Install notes (build 25)
+
+1. **Uninstall** ERP Mobile (build 24 or older).
+2. Install **`releases/erp-mobile-1.0.5-build25.apk`** only.
+3. Add/Edit product with camera → Save → thumb must appear on list (not preview-only).
+
+### Mobile test checklist (build 25)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Camera save | New product + camera photo → list thumb after save |
+| 2 | Gallery save | Gallery pick → save → thumb on list |
+| 3 | Update image | Preview sheet → Update image → new thumb |
+| 4 | chrome://inspect | `POST .../storage/v1/object/product-images/...` **200** on APK |
+| 5 | PWA `/m/` | Upload still works (regression) |
+
+---
+
+## Previous build — 1.0.5 (build 24) — 2026-05-31
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-31 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 24 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build24.apk` |
+
+### Changelog (user-facing) — build 24
+
+- **Update product image:** Replacing a photo from the preview sheet or edit form now updates the visible thumb (`image_urls[0]`); no silent “success” with old picture still showing.
+- **Preview sheet:** Replace primary on Update; cache bust + merge product state after save.
+
+### Install notes (build 24)
+
+1. **Uninstall** ERP Mobile (build 23 or older).
+2. Install **`releases/erp-mobile-1.0.5-build24.apk`** only.
+3. Products → tap product thumb → **Update image** → new photo must appear in preview and list.
+
+### Mobile test checklist (build 24)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Update image | Preview sheet → Update image → thumb changes |
+| 2 | List thumb | Product row shows new image without stale cache |
+| 3 | Edit add photo | New pick becomes primary without deleting old manually |
+| 4 | Camera/gallery | Build 23 camera + gallery regression still OK |
+
+---
+
+## Previous build — 1.0.5 (build 23) — 2026-05-31
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-05-31 |
+| **versionName** | 1.0.5 |
+| **versionCode** | 23 |
+| **Configuration** | Release (signed) |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build23.apk` |
+
+### Changelog (user-facing) — build 23
+
+- **Product camera photos:** Take photo on Add/Edit product reads image via Capacitor Filesystem (Android-safe); preview and upload work like gallery picks.
+- **Errors:** Clear message if camera capture or image upload fails (product still saves when applicable).
+- **Stock (from build 22+):** Product list qty from `stock_movements` when company has movements.
+
+### Install notes (build 23)
+
+1. **Uninstall** ERP Mobile (build 22 or older).
+2. Install **`releases/erp-mobile-1.0.5-build23.apk`** only.
+3. **Products** → Add product → **Take photo** → confirm blue-ring preview → Save → list thumb visible.
+4. Regression: gallery pick and existing product thumbs still load.
+
+### Mobile test checklist (build 23)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Camera add | Add product → Take photo → preview → Save → thumb on list |
+| 2 | Camera edit | Edit product → Take photo → extra thumb after save |
+| 3 | Gallery regression | Choose from gallery still previews and uploads |
+| 4 | Products list | Existing photos still show after scroll |
+| 5 | Upload failure | If offline upload fails, error text shown (not silent) |
+
+---
+
+## Previous build — 1.0.5 (build 22) — 2026-05-31
 
 | Field | Value |
 |--------|--------|

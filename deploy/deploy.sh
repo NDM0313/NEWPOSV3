@@ -44,6 +44,9 @@ BEGIN
     INSERT INTO storage.buckets (id, name, public, created_at, updated_at)
     SELECT gen_random_uuid(), 'product-images', false, now(), now()
     WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'product-images');
+    INSERT INTO storage.buckets (id, name, public, created_at, updated_at)
+    SELECT gen_random_uuid(), 'company-logos', false, now(), now()
+    WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'company-logos');
   END IF;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
@@ -176,6 +179,7 @@ if [ -n "$DEPLOY_ONLY_FIXES" ]; then
   [ -f deploy/apply-enable-rls-public.sh ] && bash deploy/apply-enable-rls-public.sh || true
   [ -f deploy/fix-supabase-studio-settings-api.sh ] && bash deploy/fix-supabase-studio-settings-api.sh || true
   [ -f deploy/add-kong-backup-route.sh ] && bash deploy/add-kong-backup-route.sh || true
+  [ -f deploy/ensure-supabase-studio.sh ] && bash deploy/ensure-supabase-studio.sh || true
   echo "[deploy] Fixes applied. Run deploy/deploy.sh for full build+up."
   exit 0
 fi
@@ -264,8 +268,8 @@ $COMPOSE_CMD up -d backup-page 2>/dev/null || true
 $COMPOSE_CMD up -d studio-injector 2>/dev/null || true
 [ -f deploy/point-kong-dashboard-to-injector.sh ] && bash deploy/point-kong-dashboard-to-injector.sh || true
 
-# studio.dincouture.pk: Traefik must be on supabase_default to reach supabase-studio:3000 (avoid 502)
-[ -f deploy/ensure-studio-traefik-network.sh ] && bash deploy/ensure-studio-traefik-network.sh || true
+# studio.dincouture.pk: Traefik network + supabase-studio container must be up (avoid 502)
+[ -f deploy/ensure-supabase-studio.sh ] && bash deploy/ensure-supabase-studio.sh || true
 
 echo "ERP running. Configure Caddy/Nginx for https://erp.dincouture.pk"
 echo "Backup: https://supabase.dincouture.pk/backup (and under Studio Platform after injector)"

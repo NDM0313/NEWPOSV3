@@ -1,4 +1,3 @@
-import { Capacitor } from '@capacitor/core';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { invalidateSalesListCache, listCacheKeys } from '../lib/listCache';
 import { dispatchMobileInvalidated } from '../lib/dataInvalidationBus';
@@ -7,11 +6,12 @@ import { getNextDocumentNumber } from './documentNumber';
 import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 import { localNowDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite, isRealBranchUuid } from '../utils/branchId';
-import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
-import { storageUploadBody } from '../utils/storageUploadBody';
 import { classifyStorageUploadError } from '../utils/storageUploadErrors';
-import { nativeStorageObjectUpload } from '../utils/nativeStorageUpload';
+import {
+  ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
+  uploadStorageAttachmentFile,
+} from '../utils/storageAttachmentPipeline';
 
 export interface CreateSaleInput {
   companyId: string;
@@ -62,6 +62,16 @@ export interface CreateSaleInput {
   paymentDate?: string;
   /** Point of sale — PS- invoice sequence (web parity). */
   isPOS?: boolean;
+  /** Regular sale lifecycle (default order). Studio always order. POS always final. */
+  targetStatus?: 'draft' | 'quotation' | 'order' | 'final';
+  /** Document type for create_sale_document_header (default invoice). */
+  documentType?: 'invoice' | 'quotation';
+}
+
+export type SaleDocumentStatus = 'draft' | 'quotation' | 'order' | 'final' | 'cancelled';
+
+function isPostedSaleStatus(status: string | null | undefined): boolean {
+  return String(status ?? '').toLowerCase() === 'final';
 }
 
 const SALE_ATTACHMENTS_BUCKET = 'sale-attachments';
@@ -89,78 +99,30 @@ export async function uploadSaleAttachments(
     const path = `${prefix}_${i}_${safeName}`;
 
     try {
-      const { body, contentType } = await storageUploadBody(file);
-      const { error } = await withUploadTimeout(
-        supabase.storage.from(SALE_ATTACHMENTS_BUCKET).upload(path, body, {
+      const { ref } = await withUploadTimeout(
+        uploadStorageAttachmentFile({
+          bucket: SALE_ATTACHMENTS_BUCKET,
+          path,
+          file,
           upsert: true,
-          contentType,
+          logTag: 'sale-attachments',
         }),
         UPLOAD_TIMEOUT_MS,
         `Upload ${file.name}`,
       );
-      if (error) {
-        const classified = classifyStorageUploadError(error, file.name);
-        const fetchLike =
-          /failed to fetch|network error|load failed/i.test(classified.userMessage) ||
-          /failed to fetch|network error/i.test(String((error as { message?: string }).message ?? ''));
-        if (Capacitor.isNativePlatform() && fetchLike) {
-          const native = await nativeStorageObjectUpload(
-            SALE_ATTACHMENTS_BUCKET,
-            path,
-            body,
-            contentType,
-            true,
-          );
-          if (!native.error) {
-            uploaded.push({
-              url: storageRefForPersistence(SALE_ATTACHMENTS_BUCKET, path),
-              name: file.name,
-            });
-            continue;
-          }
-          return { data: uploaded, error: native.error };
-        }
-        const bucketMissing = classified.kind === 'bucket';
-        return {
-          data: uploaded,
-          error: bucketMissing
-            ? 'Storage bucket "sale-attachments" not found. Create it in Supabase Storage first.'
-            : classified.userMessage,
-        };
-      }
-      uploaded.push({ url: storageRefForPersistence(SALE_ATTACHMENTS_BUCKET, path), name: file.name });
+      uploaded.push({ url: ref, name: file.name });
     } catch (err) {
       console.warn('[uploadSaleAttachments]', (err as Error)?.message ?? err);
       const classified = classifyStorageUploadError(err, file.name);
-      const fetchLike = /failed to fetch|network error|load failed/i.test(classified.userMessage);
-      if (Capacitor.isNativePlatform() && fetchLike) {
-        try {
-          const { body, contentType } = await storageUploadBody(file);
-          const native = await nativeStorageObjectUpload(
-            SALE_ATTACHMENTS_BUCKET,
-            path,
-            body,
-            contentType,
-            true,
-          );
-          if (!native.error) {
-            uploaded.push({
-              url: storageRefForPersistence(SALE_ATTACHMENTS_BUCKET, path),
-              name: file.name,
-            });
-            continue;
-          }
-          return { data: uploaded, error: native.error };
-        } catch (nativeErr) {
-          return {
-            data: uploaded,
-            error: classifyStorageUploadError(nativeErr, file.name).userMessage,
-          };
-        }
+      if ((err as Error)?.message === ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG) {
+        return { data: uploaded, error: ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG };
       }
+      const bucketMissing = classified.kind === 'bucket';
       return {
         data: uploaded,
-        error: classified.userMessage,
+        error: bucketMissing
+          ? 'Storage bucket "sale-attachments" not found. Create it in Supabase Storage first.'
+          : classified.userMessage,
       };
     }
   }
@@ -185,6 +147,51 @@ export async function updateSaleAttachments(
     return { error: error.message };
   }
   return { error: null };
+}
+
+/** Change sale lifecycle status (draft / quotation / order / final / cancelled). */
+export async function updateSaleStatus(
+  saleId: string,
+  status: SaleDocumentStatus,
+): Promise<{ data: { id: string; status: string; invoice_no?: string | null } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const { data: prior } = await supabase.from('sales').select('status').eq('id', saleId).maybeSingle();
+  if (!prior) return { data: null, error: 'Sale not found.' };
+  const prev = String((prior as { status?: string }).status ?? '').toLowerCase();
+
+  const { data, error } = await supabase
+    .from('sales')
+    .update({ status })
+    .eq('id', saleId)
+    .select('id, status, invoice_no, order_no, quotation_no, draft_no')
+    .single();
+  if (error) return { data: null, error: error.message };
+
+  if (isPostedSaleStatus(status) && !isPostedSaleStatus(prev)) {
+    const stockErr = await ensureSaleStockPosted(saleId);
+    if (stockErr) {
+      await supabase.from('sales').update({ status: prev }).eq('id', saleId);
+      return { data: null, error: stockErr };
+    }
+    const { error: postErr } = await supabase.rpc('record_sale_with_accounting', { p_sale_id: saleId });
+    if (postErr) {
+      return { data: null, error: `Sale accounting failed: ${postErr.message}` };
+    }
+  }
+
+  return { data: data as { id: string; status: string; invoice_no?: string | null }, error: null };
+}
+
+async function ensureSaleStockPosted(saleId: string): Promise<string | null> {
+  const { data: stockRaw, error: movErr } = await supabase.rpc('ensure_sale_stock_movements', {
+    p_sale_id: saleId,
+  });
+  if (movErr) return `Inventory update failed: ${movErr.message}`;
+  const stockResult = stockRaw as { success?: boolean; error?: string } | null;
+  if (stockResult?.success === false) {
+    return `Inventory update failed: ${stockResult.error ?? 'Unknown error'}`;
+  }
+  return null;
 }
 
 export async function createSale(input: CreateSaleInput): Promise<{ data: { id: string; invoiceNo: string } | null; error: string | null }> {
@@ -217,6 +224,8 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     studioDesignName,
     paymentDate,
     isPOS,
+    targetStatus: targetStatusInput,
+    documentType,
   } = input;
 
   if (!companyId || !branchId || !userId) {
@@ -238,10 +247,28 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
   }
 
   const totalNum = Number(total) || 0;
+  const targetStatus: SaleDocumentStatus = isStudio
+    ? 'order'
+    : isPOS
+      ? 'final'
+      : (targetStatusInput ?? 'order');
+  const postStockAndAccounting = isPostedSaleStatus(targetStatus);
   const isCredit = String(paymentMethod || '').toLowerCase() === 'credit';
   const isSplit = paidAmount != null && dueAmount != null;
-  const paidNonStudio = isSplit ? Number(paidAmount) : (isCredit ? 0 : totalNum);
-  const dueNonStudio = isSplit ? Number(dueAmount) : (isCredit ? totalNum : 0);
+  const paidNonStudio = postStockAndAccounting
+    ? isSplit
+      ? Number(paidAmount)
+      : isCredit
+        ? 0
+        : totalNum
+    : 0;
+  const dueNonStudio = postStockAndAccounting
+    ? isSplit
+      ? Number(dueAmount)
+      : isCredit
+        ? totalNum
+        : 0
+    : totalNum;
   /** Web parity: new studio sale is customer order only — no payments, no GL/stock until finalize (Generate Bill). */
   const paid = isStudio ? 0 : paidNonStudio;
   const due = isStudio ? totalNum : dueNonStudio;
@@ -365,9 +392,9 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     };
     if (deadline != null && deadline !== '') salePayload.deadline = deadline;
 
-    salePayload.type = 'invoice';
-    salePayload.status = 'final';
-    salePayload.payment_status = headerPaymentStatus;
+    salePayload.type = documentType ?? 'invoice';
+    salePayload.status = targetStatus;
+    salePayload.payment_status = postStockAndAccounting ? headerPaymentStatus : 'unpaid';
     salePayload.payment_method = paymentMethod || 'Cash';
     salePayload.paid_amount = headerPaid;
     salePayload.due_amount = headerDue;
@@ -462,6 +489,15 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     if (item.packingDetails && (item.packingDetails.total_boxes != null || item.packingDetails.total_pieces != null)) {
       row.packing_details = item.packingDetails;
     }
+    if (item.customizationDetails != null) {
+      row.customization_details = item.customizationDetails;
+    }
+    if (item.bespokeParentItemId != null) {
+      row.bespoke_parent_item_id = item.bespokeParentItemId;
+    }
+    if (item.parentLineIndex != null) {
+      row.parent_line_index = item.parentLineIndex;
+    }
     return row;
   });
 
@@ -481,9 +517,8 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     return { data: null, error: `Failed to save items: ${itemsError.message}` };
   }
 
-  // Stock OUT via RPC (RLS-safe for salesman; reads sales_items + packing_details server-side).
-  // Studio orders stay non-final until Generate Bill / finalize; no stock OUT on create.
-  if (!isStudio) {
+  // Stock OUT only when status is final (order/quotation/draft defer — web + bespoke parity).
+  if (!isStudio && postStockAndAccounting) {
     const hasStockLines = items.some((item) => item.productId && item.quantity > 0);
     if (hasStockLines) {
       const { data: stockRaw, error: movErr } = await supabase.rpc('ensure_sale_stock_movements', {
@@ -504,8 +539,8 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     }
   }
 
-  // Accounting: sale JE must exist before payment RPC (web POS order).
-  if (!isStudio) {
+  // Accounting: sale JE only when final.
+  if (!isStudio && postStockAndAccounting) {
     const { data: postData, error: postErr } = await supabase.rpc(
       'record_sale_with_accounting',
       { p_sale_id: saleId },
@@ -519,8 +554,8 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     }
   }
 
-  // Post payment via RPC (web parity — RLS-safe + GL journal). Header stays unpaid until RPC succeeds.
-  if (paymentToRecord > 0) {
+  // Post payment via RPC when final and paid > 0.
+  if (postStockAndAccounting && paymentToRecord > 0) {
     if (!paymentAccountId) {
       return { data: null, error: 'Payment account required for accounting.' };
     }

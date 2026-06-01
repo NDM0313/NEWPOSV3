@@ -7,6 +7,17 @@ Do **not** change the behaviors below in drive-by refactors without explicit pro
 
 ---
 
+## Picture / file upload status (2026-06)
+
+| Surface | Client | Fix | Build / note |
+|---------|--------|-----|----------------|
+| Product photos | APK | Native binary upload + post-upload verify | build **32+** (Section A) |
+| Sale / purchase / payment / journal / expense attachments | APK | [`storageAttachmentPipeline.ts`](../../erp-mobile-app/src/utils/storageAttachmentPipeline.ts) + blob image preview | build **33+** (Section D) |
+| Company logo | Web ERP Settings | `company-logos` bucket + RLS | [`COMPANY_LOGOS_STORAGE.md`](../COMPANY_LOGOS_STORAGE.md), migration `20260601150000_company_logos_storage_bucket.sql` |
+| Corrupt ~2-byte files on server | Any | Re-upload file | Not auto-repaired |
+
+---
+
 ## Related docs
 
 | Doc | Role |
@@ -14,6 +25,7 @@ Do **not** change the behaviors below in drive-by refactors without explicit pro
 | [`AUTH_PRODUCTION_LOCKED.md`](AUTH_PRODUCTION_LOCKED.md) | Auth, Kong, ERP nginx `/auth` `/rest` |
 | [`MOBILE_APK_LOCKED_PATTERN.md`](MOBILE_APK_LOCKED_PATTERN.md) | Native Supabase URL (Capacitor) |
 | [`PRODUCT_IMAGES_STORAGE_RLS_FIX.md`](../PRODUCT_IMAGES_STORAGE_RLS_FIX.md) | Storage RLS + bucket setup |
+| [`COMPANY_LOGOS_STORAGE.md`](../COMPANY_LOGOS_STORAGE.md) | Web company logo bucket + deploy/SQL steps |
 | [`INVENTORY_MANAGEMENT_DESIGN.md`](../INVENTORY_MANAGEMENT_DESIGN.md) | Historical design; **UI display stock** follows Section B here |
 
 ---
@@ -43,7 +55,11 @@ After each ERP deploy:
 1. Hard refresh `https://erp.dincouture.pk` (Ctrl+Shift+R) or clear site data once; unregister old service worker if thumbs still wrong.
 2. **Sign:** DevTools → Network → Products → `POST .../storage/v1/object/sign/product-images/{companyId}/...` — exactly **one** `product-images/` in URL; response **JSON** (200), not HTML.
 3. **Upload:** Edit product → upload image → `POST .../storage/v1/object/product-images/{companyId}/.../....jpg` — response **JSON** (200/403), not nginx HTML 404.
-4. **APK:** Install only `erp-mobile-app/releases/erp-mobile-1.0.5-build22.apk` (or newer documented build); `chrome://inspect` → `storage/v1` download/sign **200**.
+4. **APK:** Install only `erp-mobile-app/releases/erp-mobile-1.0.5-build33.apk` (or newer documented build); build locally via [`erp-mobile-app/releases/BUILD_AND_GRAPHIFY_COMMANDS.md`](../../erp-mobile-app/releases/BUILD_AND_GRAPHIFY_COMMANDS.md).
+5. **APK camera:** Add/Edit product → **Take photo** → preview appears before save; after save, list thumb loads. Native capture must use `Filesystem.readFile` on `photo.path` ([`erp-mobile-app/src/lib/mediaPick.ts`](../../erp-mobile-app/src/lib/mediaPick.ts)) — not `fetch(webPath)` alone.
+6. **APK primary thumb:** List/preview use `image_urls[0]`. **Update image** replaces the array with the new upload; edit-form uploads **prepend** new paths. Do not append new uploads after old URLs only (UI would still show index 0).
+7. **APK product-image upload (build 32+ verified):** [`uploadProductImages`](../../erp-mobile-app/src/utils/productImageUpload.ts) must use [`uploadStorageObjectWithNativeFallback`](../../erp-mobile-app/src/utils/storageObjectUpload.ts) → [`nativeStorageObjectUpload`](../../erp-mobile-app/src/utils/nativeStorageUpload.ts). **Do not refactor** product path logic into attachment helpers without explicit approval.
+8. **APK debug log (broken thumbs):** Settings → **App version** tap **7×** → Developer Tools → **Debug log** → reproduce Products thumb → **Share** log. Uses [`erp-mobile-app/src/lib/mobileDebugLog.ts`](../../erp-mobile-app/src/lib/mobileDebugLog.ts) + [`MobileDebugLogSection.tsx`](../../erp-mobile-app/src/components/settings/MobileDebugLogSection.tsx). JWT/tokens redacted in exported text.
 
 ### Locked files (product photos)
 
@@ -54,6 +70,87 @@ After each ERP deploy:
 - `src/main.tsx` (SW registration)
 - `erp-mobile-app/src/utils/storageDisplayUrl.ts`
 - `erp-mobile-app/src/utils/productImageUpload.ts`
+- `erp-mobile-app/src/lib/mediaPick.ts` (native camera → File)
+- `erp-mobile-app/src/utils/storageObjectUpload.ts` (native storage upload fallback)
+- `erp-mobile-app/src/lib/mobileDebugLog.ts` (Developer Mode in-app log capture)
+- `erp-mobile-app/src/utils/nativeStorageDownload.ts` (native storage download for blobs)
+- `erp-mobile-app/src/utils/nativeStorageUpload.ts` (native storage upload binary)
+- `erp-mobile-app/src/utils/imageBlobValidation.ts` (reject 2-byte / JSON stub blobs)
+
+---
+
+## Section D — Mobile attachments (APK, build 33+)
+
+### Scope (all use one upload + display contract)
+
+| Module | Upload API | Bucket | Display |
+|--------|------------|--------|---------|
+| Sales | `uploadSaleAttachments` | `sale-attachments` | `AttachmentPreviewModal` → `getStorageDisplayUrl` |
+| Purchases | `uploadPurchaseAttachments` | `purchase-attachments` | same |
+| Payments (receive/pay, supplier/client) | `uploadPaymentAttachments` | `payment-attachments` | same |
+| Journal / account transfer / COA entries | `uploadJournalEntryAttachments` | `payment-attachments` (`journal-entries/...`) | same |
+| Expenses | `uploadExpenseReceipt` | `expense-receipts` | same |
+
+**Transactions list** (payments + journal rows) only **reads** `attachments` JSON — upload fixes above cover COA-related flows on mobile.
+
+### Non-negotiable rules
+
+1. **Upload** — All attachment uploads go through [`storageAttachmentPipeline.ts`](../../erp-mobile-app/src/utils/storageAttachmentPipeline.ts) (`uploadStorageAttachmentFile`). Do not add new direct `supabase.storage.upload(ArrayBuffer)` paths in API modules.
+2. **Native images** — On Capacitor, **image** paths (`.jpg`, `.png`, `.webp`, `.gif`) use blob download via [`shouldUseNativeBlobDisplay`](../../erp-mobile-app/src/utils/storageDisplayUrl.ts) in `getStorageDisplayUrl`. **PDF** stays signed URL.
+3. **Corrupt server objects** — Historic ~2 B files stay broken until **re-upload** (same as product photos).
+4. **Product photos** — Remain in [`productImageUpload.ts`](../../erp-mobile-app/src/utils/productImageUpload.ts); locked under Section A.
+
+### Verification checklist (build 33 APK)
+
+1. Sale → attach JPG → save → preview opens (debug log: `sale-attachments upload ok`, blob bytes >> 256).
+2. Purchase PO attachment (image).
+3. Payment sheet → attach receipt photo (customer/supplier payment).
+4. Accounts → transfer / journal → attach PDF + JPG.
+5. Expense → receipt photo.
+6. Old attachment with `bytes=2` in log → re-upload only.
+
+### Locked files (mobile attachments)
+
+- `erp-mobile-app/src/utils/storageAttachmentPipeline.ts`
+- `erp-mobile-app/src/api/sales.ts` (`uploadSaleAttachments`)
+- `erp-mobile-app/src/api/purchases.ts` (`uploadPurchaseAttachments`)
+- `erp-mobile-app/src/api/paymentAttachments.ts`
+- `erp-mobile-app/src/api/journalAttachments.ts`
+- `erp-mobile-app/src/api/expenses.ts` (`uploadExpenseReceipt`)
+- `erp-mobile-app/src/utils/storageDisplayUrl.ts` (`isStorageImagePath`, `shouldUseNativeBlobDisplay`, `bustStorageDisplayCache`)
+
+---
+
+## Section E — Bespoke / customization stock (web canonical)
+
+### Intended lifecycle (do not break)
+
+| Step | Stock |
+|------|--------|
+| Sale `draft` / `quotation` / `order` | **No** sale OUT |
+| Bespoke work order **complete** | Fabric OUT + custom parent IN via `complete_bespoke_work_order` |
+| Sale → `final` | OUT only for lines **not** deferred (see `filterSaleLinesForStockPosting`) |
+
+**Double OUT** historically came from `ensure_sale_stock_movements` posting CUSTOM/fabric lines while WO also posts — fixed in migration `20260602160000_ensure_sale_stock_bespoke_parity.sql` (parity with `handle_sale_final_stock_movement`).
+
+### Non-negotiable rules
+
+1. **Web** — Stock eligibility: [`src/app/lib/saleStockLineEligibility.ts`](../../src/app/lib/saleStockLineEligibility.ts); finalize path: [`SalesContext.tsx`](../../src/app/context/SalesContext.tsx).
+2. **DB** — `handle_sale_final_stock_movement`, `complete_bespoke_work_order`, `ensure_sale_stock_movements` (post-migration) must stay aligned.
+3. **Mobile** — **Never** insert `stock_movements` from the client; use RPCs only (`ensure_sale_stock_movements`, `complete_bespoke_work_order`, `updateSaleStatus` → final).
+4. **One parent line → one work order**; N custom lines → N WOs.
+
+### Locked files (bespoke)
+
+- `src/app/lib/saleStockLineEligibility.ts`
+- `src/app/services/bespokeWorkOrderService.ts`
+- `migrations/20260602120000_bespoke_defer_stock_to_work_order_complete.sql`
+- `migrations/20260602150000_bespoke_wo_parent_stock_in_sign.sql`
+- `migrations/20260602160000_ensure_sale_stock_bespoke_parity.sql`
+- `erp-mobile-app/src/api/bespokeWorkOrders.ts` (mobile RPC wrapper)
+- `erp-mobile-app/src/hooks/useBespokeEnabled.ts`
+
+Rollout: [`BESPOKE_MOBILE_ROLLOUT.md`](BESPOKE_MOBILE_ROLLOUT.md)
 
 ---
 
@@ -109,10 +206,21 @@ Ledger **lines** use `productService.getStockMovements()` (same underlying table
 
 A per-branch Products grid is a **feature change**, not a bug fix — do not “fix” mismatch by reverting to `inventory_balance`.
 
+### Mobile ERP (same rule)
+
+| Screen | Component | Stock API |
+|--------|-----------|-----------|
+| Products list | `ProductsModule` | `getProducts` → `fetchProductStockByKey` (movements-first) |
+| POS / sales pickers | `POSModule`, `AddProducts`, purchases | `getProducts` (same helper) |
+| Inventory module | `getInventory` in `api/inventory.ts` | Always `stock_movements` |
+
+**Locked:** `erp-mobile-app/src/utils/productStockFetch.ts` — must not prefer `inventory_balance` when `companyHasStockMovements` is true.
+
 ### Locked files (stock display)
 
 - `src/app/services/inventoryService.ts` (`fetchOverviewStockMaps`, `getInventoryOverview`)
-- Callers listed in the table above (do not bypass with balance table reads)
+- `erp-mobile-app/src/utils/productStockFetch.ts`
+- Callers listed in the tables above (do not bypass with balance table reads)
 
 ---
 
@@ -131,7 +239,7 @@ After deploy: hard refresh browser; verify Section A and B checklists once.
 
 ### Change policy
 
-Any PR that touches **locked files** in Section A or B must:
+Any PR that touches **locked files** in Section A, B, D, or E must:
 
 1. Update this document if behavior or verification steps change.
 2. Get explicit approval for production display / storage / inventory contract changes.

@@ -3,10 +3,12 @@ import { listCacheKeys } from '../lib/listCache';
 import { readThroughCache } from '../lib/offlineData';
 import { formatDocumentListDateTime, localNowDateString, toLocalDateString } from '../utils/localDate';
 import { resolveBranchUuidForWrite } from '../utils/branchId';
-import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
-import { storageUploadBody } from '../utils/storageUploadBody';
 import { classifyStorageUploadError } from '../utils/storageUploadErrors';
+import {
+  ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
+  uploadStorageAttachmentFile,
+} from '../utils/storageAttachmentPipeline';
 
 export type PurchaseStatus = 'draft' | 'ordered' | 'received' | 'final';
 
@@ -66,31 +68,30 @@ export async function uploadPurchaseAttachments(
     const path = `${prefix}_${i}_${safeName}`;
 
     try {
-      const { body, contentType } = await storageUploadBody(file);
-      const { error } = await withUploadTimeout(
-        supabase.storage.from(PURCHASE_ATTACHMENTS_BUCKET).upload(path, body, {
+      const { ref } = await withUploadTimeout(
+        uploadStorageAttachmentFile({
+          bucket: PURCHASE_ATTACHMENTS_BUCKET,
+          path,
+          file,
           upsert: true,
-          contentType,
+          logTag: 'purchase-attachments',
         }),
         UPLOAD_TIMEOUT_MS,
         `Upload ${file.name}`,
       );
-      if (error) {
-        const classified = classifyStorageUploadError(error, file.name);
-        const bucketMissing = classified.kind === 'bucket';
-        return {
-          data: uploaded,
-          error: bucketMissing
-            ? 'Storage bucket "purchase-attachments" not found. Create it in Supabase Storage first.'
-            : classified.userMessage,
-        };
-      }
-      uploaded.push({ url: storageRefForPersistence(PURCHASE_ATTACHMENTS_BUCKET, path), name: file.name });
+      uploaded.push({ url: ref, name: file.name });
     } catch (err) {
       console.warn('[uploadPurchaseAttachments]', (err as Error)?.message ?? err);
+      const classified = classifyStorageUploadError(err, file.name);
+      if ((err as Error)?.message === ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG) {
+        return { data: uploaded, error: ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG };
+      }
+      const bucketMissing = classified.kind === 'bucket';
       return {
         data: uploaded,
-        error: classifyStorageUploadError(err, file.name).userMessage,
+        error: bucketMissing
+          ? 'Storage bucket "purchase-attachments" not found. Create it in Supabase Storage first.'
+          : classified.userMessage,
       };
     }
   }

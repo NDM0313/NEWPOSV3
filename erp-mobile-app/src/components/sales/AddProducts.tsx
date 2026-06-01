@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ArrowLeft, Search, Plus, Minus, Package, Edit2, Trash2, Scan, Loader2 } from 'lucide-react';
 import type { Customer, Product } from './SalesModule';
 import type { PackingDetails } from '../transactions/PackingEntryModal';
 import { PackingEntryModal } from '../transactions/PackingEntryModal';
 import * as productsApi from '../../api/products';
+import { isRealBranchUuid } from '../../utils/branchId';
 import * as settingsApi from '../../api/settings';
 import { useSettings } from '../../context/SettingsContext';
 import {
@@ -18,6 +19,13 @@ import { BarcodeCameraModal } from './BarcodeCameraModal';
 import { MobileActionBar } from '../shared/MobileActionBar';
 import { useBarcodeScanner } from '../../features/barcode';
 import { ProductImage } from '../products/ProductImage';
+import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
+import { isBespokeGenericSku } from '../../lib/bespokeCartInjection';
+import { SaleCustomizeModal } from './SaleCustomizeModal';
+
+function newCartLineId(): string {
+  return `line-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
 
 interface AddProductsProps {
   companyId: string | null;
@@ -83,7 +91,11 @@ function addProductToCart(
   onUpdate: (next: Product[]) => void
 ): void {
   const existing = existingProducts.find(
-    (pr) => pr.id === product.id && (pr.variationId ?? '') === ''
+    (pr) =>
+      pr.id === product.id &&
+      (pr.variationId ?? '') === '' &&
+      !pr.isBespokeInjected &&
+      !pr.bespokeParentCartId,
   );
   if (existing) {
     const newQty = existing.quantity + 1;
@@ -96,6 +108,7 @@ function addProductToCart(
   } else {
     const line: Product = {
       id: product.id,
+      cartLineId: newCartLineId(),
       name: product.name,
       sku: product.sku,
       price: product.price,
@@ -127,9 +140,12 @@ export function AddProducts({
   const [scanMessage, setScanMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [scannerInput, setScannerInput] = useState(''); // dedicated field for keyboard wedge (Speed-X, Sunmi, CS60)
   const [barcodeLookupLoading, setBarcodeLookupLoading] = useState(false);
+  const [customizeLine, setCustomizeLine] = useState<Product | null>(null);
+  const [showCustomDressPicker, setShowCustomDressPicker] = useState(false);
   const scannerInputRef = useRef<HTMLInputElement>(null);
   const barcode = useBarcodeScanner();
   const { negativeStockAllowed, loaded: settingsLoaded, reload: reloadSettings } = useSettings();
+  const { enabled: bespokeEnabled } = useBespokeEnabled(companyId);
 
   useEffect(() => {
     if (companyId) void reloadSettings(companyId);
@@ -152,7 +168,8 @@ export function AddProducts({
     }
     let cancelled = false;
     setLoading(true);
-    productsApi.getProducts(companyId, { branchId: branchId ?? undefined }).then(({ data, error }) => {
+    const saleBranchId = isRealBranchUuid(branchId) ? branchId : undefined;
+    productsApi.getProducts(companyId, { branchId: saleBranchId }).then(({ data, error }) => {
       if (cancelled) return;
       setLoading(false);
       if (error || !data.length) setAvailable([]);
@@ -189,7 +206,15 @@ export function AddProducts({
   }, [barcodeMethod]);
 
   const searchLower = search.toLowerCase().trim();
+  const bespokeGenericProducts = useMemo(
+    () => available.filter((a) => isBespokeGenericSku(a.sku)),
+    [available],
+  );
+
   const filtered = available.filter((a) => {
+    if (showCustomDressPicker && bespokeEnabled) {
+      return isBespokeGenericSku(a.sku);
+    }
     if (!searchLower) return true;
     if (a.name.toLowerCase().includes(searchLower)) return true;
     if (a.barcode?.toLowerCase() === searchLower || a.sku?.toLowerCase() === searchLower) return true;
@@ -344,7 +369,7 @@ export function AddProducts({
   return (
     <div className="min-h-screen bg-[#111827] pb-32">
       {/* Header */}
-      <div className="bg-[#1F2937] border-b border-[#374151] px-4 py-3 sticky top-0 z-20">
+      <div className="bg-[#1F2937] border-b border-[#374151] px-4 py-3 sticky top-0 z-20 flow-screen-header">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <button onClick={onBack} className="p-2 hover:bg-[#374151] rounded-lg text-[#F9FAFB]">
@@ -399,6 +424,15 @@ export function AddProducts({
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      {bespokeEnabled && isBespokeGenericSku(p.sku) && !p.isBespokeInjected && (
+                        <button
+                          type="button"
+                          onClick={() => setCustomizeLine(p)}
+                          className="px-2 py-1 text-xs rounded bg-[#7C3AED]/20 text-[#C4B5FD] border border-[#7C3AED]/40"
+                        >
+                          Customize
+                        </button>
+                      )}
                       <button
                         onClick={() => openEditModal(i)}
                         className="p-2 hover:bg-[#374151] rounded-lg"
@@ -426,6 +460,25 @@ export function AddProducts({
             </div>
           )}
         </div>
+
+        {bespokeEnabled && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowCustomDressPicker((v) => !v);
+                setSearch('');
+              }}
+              className={`flex-1 h-10 rounded-lg text-sm font-medium border ${
+                showCustomDressPicker
+                  ? 'border-[#7C3AED] bg-[#7C3AED]/15 text-[#C4B5FD]'
+                  : 'border-[#374151] text-[#9CA3AF]'
+              }`}
+            >
+              {showCustomDressPicker ? 'All products' : `Custom dress (${bespokeGenericProducts.length})`}
+            </button>
+          </div>
+        )}
 
         {/* 2. SEARCH */}
         <div className="flex gap-2">
@@ -559,6 +612,21 @@ export function AddProducts({
           onSave={handleSaveFromModal}
         />
       )}
+
+      {customizeLine && companyId && (
+        <SaleCustomizeModal
+          companyId={companyId}
+          branchId={branchId ?? null}
+          parentLine={customizeLine}
+          cartProducts={products}
+          onClose={() => setCustomizeLine(null)}
+          onApply={(next) => {
+            setProducts(next);
+            onProductsUpdate(next);
+            setCustomizeLine(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -620,6 +688,7 @@ function AddToCartModal({
     if (hasVariations && !selectedVariation) return;
     onSave({
       id: product.id,
+      cartLineId: existingProduct?.cartLineId ?? newCartLineId(),
       name: product.name,
       sku: effectiveSku ?? product.sku,
       price,

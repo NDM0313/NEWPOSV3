@@ -228,7 +228,7 @@ export function PaymentDialog({
         </div>
       ) : null}
       {/* Header */}
-      <div className="bg-[#1F2937] border-b border-[#374151] px-4 py-3 sticky top-0 z-10">
+      <div className="bg-[#1F2937] border-b border-[#374151] px-4 py-3 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button

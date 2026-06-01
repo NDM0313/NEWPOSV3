@@ -20,8 +20,10 @@ import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/
 import { getEffectivePrinterSettings } from '../../api/settings';
 import { maybeAutoPrintAfterTransaction, manualPrintReceipt } from '../../services/printAfterTransaction';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
+import { useSubmitLock } from '../../contexts/LoadingContext';
 import { localNowDateString, formatLocalDateYYYYMMDD, getCurrentLocalTimestamp } from '../../utils/localDate';
 import { useSettings } from '../../context/SettingsContext';
+import { orderSaleLinesForPersist } from '../../lib/bespokeCartInjection';
 import { useEffectiveWorkerId, useEffectiveWorkerRole, useEffectiveWorkerProfileId } from '../../context/CounterWorkerContext';
 
 function localDatePlusDays(days: number): string {
@@ -41,6 +43,8 @@ export interface Customer {
 
 export interface Product {
   id: string;
+  /** Stable cart line id for bespoke parent/child linking (defaults from id+variation at save). */
+  cartLineId?: string;
   name: string;
   sku?: string;
   price: number;
@@ -51,6 +55,10 @@ export interface Product {
   variationId?: string;
   total: number;
   packingDetails?: PackingDetails;
+  customizationDetails?: Record<string, unknown> | null;
+  bespokeParentCartId?: string | number;
+  bespokeRole?: 'fabric';
+  isBespokeInjected?: boolean;
 }
 
 export interface SaleData {
@@ -72,6 +80,8 @@ export interface SaleData {
   deadlineDate?: string;
   studioProductName?: string;
   productionNotes?: string;
+  /** Regular sale only: draft / quotation / order / final (studio always order). */
+  documentStatus?: 'draft' | 'quotation' | 'order' | 'final';
 }
 
 interface SalesModuleProps {
@@ -116,7 +126,7 @@ export function SalesModule({
     initialSaleType === 'studio' && initialDocumentBranchId ? 'customer' : initialSaleType === 'studio' ? 'home' : 'home',
   );
   const [documentBranchId, setDocumentBranchId] = useState<string | null>(initialDocumentBranchId ?? null);
-  const [saving, setSaving] = useState(false);
+  const { run: runSave, busy: saving } = useSubmitLock();
   const [saveError, setSaveError] = useState<string | null>(null);
   const [createdInvoiceNo, setCreatedInvoiceNo] = useState<string | null>(null);
   const [createdSaleId, setCreatedSaleId] = useState<string | null>(null);
@@ -138,6 +148,7 @@ export function SalesModule({
     deadlineDate: localDatePlusDays(7),
     studioProductName: '',
     productionNotes: '',
+    documentStatus: 'order',
   });
 
   const { runWithBranch, modalProps: branchGateModalProps } = useDocumentBranchGate({
@@ -192,6 +203,7 @@ export function SalesModule({
       deadlineDate: localDatePlusDays(7),
       studioProductName: '',
       productionNotes: '',
+      documentStatus: saleType === 'studio' ? 'order' : 'order',
     });
   }, []);
 
@@ -259,6 +271,17 @@ export function SalesModule({
       setSaveError(branchSelectionError ?? 'Select a branch for this sale.');
       return;
     }
+    const status = saleData.saleType === 'studio' ? 'order' : (saleData.documentStatus ?? 'order');
+    if (status !== 'final') {
+      void handlePaymentComplete({
+        paymentMethod: 'Credit',
+        paidAmount: 0,
+        dueAmount: saleData.total,
+        paymentDate: saleData.saleDate || localNowDateString(),
+        accountId: null,
+      });
+      return;
+    }
     setStep('payment');
   };
   const handlePaymentComplete = async (result: PaymentResult) => {
@@ -272,9 +295,8 @@ export function SalesModule({
       setSaveError('Please select a payment account for accounting.');
       return;
     }
-    setSaving(true);
+    await runSave('Saving sale...', async () => {
     setSaveError(null);
-    try {
     if (!effectiveBranchId) {
       setSaveError(branchSelectionError ?? 'Select a branch for this sale.');
       return;
@@ -283,7 +305,8 @@ export function SalesModule({
       setSaveError('Studio product name is required.');
       return;
     }
-    const items = saleData.products.map((p) => ({
+    const cartLines = saleData.products.map((p, idx) => ({
+      id: p.cartLineId ?? `${p.id}-${p.variationId ?? 'base'}-${idx}`,
       productId: p.id,
       variationId: p.variationId,
       productName: p.name,
@@ -291,9 +314,24 @@ export function SalesModule({
       quantity: p.quantity,
       unitPrice: p.price,
       total: p.total,
+      customizationDetails: p.customizationDetails ?? null,
+      bespokeParentCartId: p.bespokeParentCartId,
+      parentLineIndex: undefined as number | undefined,
       packingDetails: p.packingDetails && (p.packingDetails.total_meters ?? 0) > 0
         ? { total_boxes: p.packingDetails.total_boxes, total_pieces: p.packingDetails.total_pieces }
         : undefined,
+    }));
+    const items = orderSaleLinesForPersist(cartLines).map((line) => ({
+      productId: String(line.productId),
+      variationId: line.variationId,
+      productName: line.productName,
+      sku: line.sku,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      total: line.total,
+      customizationDetails: line.customizationDetails ?? undefined,
+      parentLineIndex: line.parentLineIndex,
+      packingDetails: line.packingDetails,
     }));
     const salePayload = {
       companyId,
@@ -320,6 +358,10 @@ export function SalesModule({
         orderDate: saleData.orderDate || undefined,
         deadline: saleData.deadlineDate || undefined,
         studioDesignName: (saleData.studioProductName ?? '').trim() || undefined,
+      }),
+      ...(saleData.saleType === 'regular' && {
+        targetStatus: saleData.documentStatus ?? 'order',
+        documentType: saleData.documentStatus === 'quotation' ? 'quotation' as const : 'invoice' as const,
       }),
     };
 
@@ -386,9 +428,7 @@ export function SalesModule({
       },
       { mirrorFromCompany: user.role === 'admin' || user.role === 'owner' }
     );
-    } finally {
-      setSaving(false);
-    }
+    });
   });
   };
   const handleNewSaleFromConfirmation = () => {

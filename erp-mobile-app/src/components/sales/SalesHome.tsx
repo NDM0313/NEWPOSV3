@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2, Zap, Store } from 'lucide-react';
 import * as salesApi from '../../api/sales';
+import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
+import { SaleBespokeWorkOrders } from './SaleBespokeWorkOrders';
 import * as studioApi from '../../api/studio';
 import * as reportsApi from '../../api/reports';
 import * as contactsApi from '../../api/contacts';
@@ -436,6 +438,24 @@ export function SalesHome({
   const [returnSale, setReturnSale] = useState<SaleRecord | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [finalizingSaleId, setFinalizingSaleId] = useState<string | null>(null);
+  const { enabled: bespokeEnabled } = useBespokeEnabled(companyId);
+
+  const handleFinalizeSale = async (sale: SaleRecord) => {
+    const id = sale.raw.id as string;
+    if (!id) return;
+    setFinalizingSaleId(id);
+    setActionError(null);
+    const { error } = await salesApi.updateSaleStatus(id, 'final');
+    setFinalizingSaleId(null);
+    if (error) {
+      setActionError(error);
+      return;
+    }
+    setActionSuccess('Sale finalized.');
+    void refetchSales();
+    setSelectedSale(null);
+  };
 
   // In-app invoice preview (replaces VITE_APP_URL-dependent print/pdf navigation)
   const [previewSale, setPreviewSale] = useState<SaleRecord | null>(null);
@@ -1088,13 +1108,16 @@ export function SalesHome({
     const subtotal = Number(selectedSale.raw.subtotal ?? saleAmount);
     const discount = Number(selectedSale.raw.discount ?? 0);
     const isCancelled = selectedSale.raw.status === 'cancelled';
+    const saleLifecycleStatus = String(selectedSale.raw.status ?? '').toLowerCase();
+    const canFinalize =
+      !isCancelled && saleLifecycleStatus !== 'final' && saleLifecycleStatus !== 'cancelled';
     const hasStudio = (studioSummary?.has_studio ?? false) || studioCost > 0;
     const saleDocumentAttachments = normalizeAttachments(selectedSale.raw.attachments);
 
     return (
       <SwipeBackShell onBack={() => setSelectedSale(null)}>
       <div className="min-h-screen pb-24 bg-[#111827]">
-        <div className="bg-[#1F2937] border-b border-[#374151] p-4 sticky top-0 z-10">
+        <div className="bg-[#1F2937] border-b border-[#374151] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSelectedSale(null)}
@@ -1180,6 +1203,27 @@ export function SalesHome({
               ))}
             </div>
           </div>
+
+          {canFinalize && (
+            <button
+              type="button"
+              disabled={finalizingSaleId === (selectedSale.raw.id as string)}
+              onClick={() => void handleFinalizeSale(selectedSale)}
+              className="w-full h-11 rounded-xl bg-[#10B981] text-white font-medium disabled:opacity-50"
+            >
+              {finalizingSaleId === (selectedSale.raw.id as string) ? 'Finalizing…' : 'Convert to Final (invoice)'}
+            </button>
+          )}
+
+          {bespokeEnabled && companyId && branchId && effectiveUserId && typeof selectedSale.raw.id === 'string' && (
+            <SaleBespokeWorkOrders
+              companyId={companyId}
+              branchId={resolvePaymentBranchId(branchId, selectedSale.raw.branch_id as string) ?? branchId}
+              saleId={selectedSale.raw.id}
+              userId={effectiveUserId}
+              saleStatus={saleLifecycleStatus}
+            />
+          )}
 
           {companyId && branchId && effectiveUserId && (
             <SaleCargoSection
@@ -1362,7 +1406,7 @@ export function SalesHome({
     <SwipeBackShell onBack={onBack}>
     <div className="min-h-screen bg-[#111827] pb-24">
       <OfflineBanner online={online} pendingCount={pendingCount} />
-      <div className="bg-gradient-to-br from-[#1E3A8A] via-[#2563EB] to-[#3B82F6] p-4 sticky top-0 z-10 shadow-lg">
+      <div className="bg-gradient-to-br from-[#1E3A8A] via-[#2563EB] to-[#3B82F6] p-4 sticky top-0 z-10 flow-screen-header shadow-lg">
         <div className="flex items-center gap-3 mb-4">
           <button onClick={onBack} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white">
             <ArrowLeft className="w-5 h-5" />

@@ -1,6 +1,9 @@
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '../lib/supabase';
+import { debugLog, debugLogWarn } from '../lib/mobileDebugLog';
 import { resolveSupabaseApiUrl } from '../lib/resolveSupabaseApiUrl';
+import { isPlausibleImageBlob, MIN_IMAGE_BLOB_BYTES, tinyBlobHint, tinyBlobPreview } from './imageBlobValidation';
+import { nativeFetchUrlToBlob, nativeStorageObjectDownload } from './nativeStorageDownload';
 
 export const STORAGE_BUCKETS = [
   'product-images',
@@ -23,6 +26,16 @@ const env =
     : ({} as Record<string, string>);
 
 const isNativeCapacitor = Capacitor.isNativePlatform();
+
+/** Image attachment paths that use native blob download on Capacitor (all storage buckets). */
+export function isStorageImagePath(path: string): boolean {
+  return /\.(png|jpe?g|gif|webp)$/i.test(path);
+}
+
+export function shouldUseNativeBlobDisplay(ref: StorageRef): boolean {
+  return isNativeCapacitor && isStorageImagePath(ref.path);
+}
+
 const isDevBuild = Boolean(env.DEV);
 const isDevBrowser =
   isDevBuild && typeof window !== 'undefined' && !isNativeCapacitor;
@@ -36,10 +49,7 @@ const NATIVE_SIGN_MAX_CONCURRENT = 6;
 let nativeSignInFlight = 0;
 const nativeSignQueue: Array<() => void> = [];
 
-/** Direct storage host for native `<img>` GET (PWA parity; avoids ERP proxy sign GET issues). */
-const DIRECT_STORAGE_HOST = 'https://supabase.dincouture.pk';
-
-type BlobUrlCacheEntry = { blobUrl: string; expiresAt: number };
+type BlobUrlCacheEntry = { blobUrl: string; expiresAt: number; byteSize: number };
 const blobUrlCache = new Map<string, BlobUrlCacheEntry>();
 const BLOB_URL_POSITIVE_TTL_MS = 45 * 60 * 1000;
 
@@ -187,17 +197,9 @@ export function storageRefForPersistence(bucket: StorageBucket, path: string): s
   return `${bucket}/${path}`;
 }
 
-/**
- * Native display: use direct supabase host for signed URL GET in WebView (not ERP rewrite).
- * Sign POST still goes through erp.dincouture.pk via the Supabase client.
- */
+/** Keep signed URLs on ERP nginx proxy so Capacitor WebView GET gets correct CORS. */
 function signedUrlForNativeImgDisplay(signedUrl: string): string {
-  const trimmed = signedUrl.trim();
-  const erpBase = productionStorageBase().replace(/\/$/, '');
-  if (erpBase && trimmed.startsWith(erpBase)) {
-    return trimmed.replace(erpBase, DIRECT_STORAGE_HOST);
-  }
-  return trimmed;
+  return signedUrl.trim();
 }
 
 function revokeAllBlobUrls(): void {
@@ -211,13 +213,29 @@ function revokeAllBlobUrls(): void {
   blobUrlCache.clear();
 }
 
+async function acceptImageBlob(blob: Blob | null, source: string, path: string): Promise<Blob | null> {
+  if (!blob) return null;
+  if (await isPlausibleImageBlob(blob)) return blob;
+  const preview = blob.size <= 64 ? await tinyBlobPreview(blob) : tinyBlobHint(blob);
+  debugLogWarn('StorageUrl', `reject invalid blob from ${source}`, `${path} ${preview}`);
+  return null;
+}
+
 async function getStorageBlobDisplayUrl(ref: StorageRef): Promise<string | null> {
   if (!isNativeCapacitor) return null;
+
+  debugLog('StorageUrl', 'blob download start', { bucket: ref.bucket, path: ref.path });
 
   const cacheKey = `blob:${ref.bucket}/${ref.path}`;
   const cached = blobUrlCache.get(cacheKey);
   if (cached) {
-    if (cached.expiresAt > Date.now()) return cached.blobUrl;
+    if (cached.expiresAt > Date.now() && cached.byteSize >= MIN_IMAGE_BLOB_BYTES) {
+      debugLog('StorageUrl', 'blob cache hit', { path: ref.path, bytes: cached.byteSize });
+      return cached.blobUrl;
+    }
+    if (cached.expiresAt > Date.now() && cached.byteSize < MIN_IMAGE_BLOB_BYTES) {
+      debugLogWarn('StorageUrl', 'blob cache evicted (invalid byteSize)', `${ref.path} bytes=${cached.byteSize}`);
+    }
     try {
       URL.revokeObjectURL(cached.blobUrl);
     } catch {
@@ -226,19 +244,100 @@ async function getStorageBlobDisplayUrl(ref: StorageRef): Promise<string | null>
     blobUrlCache.delete(cacheKey);
   }
 
-  const token = await waitForAccessToken();
-  if (!token) return null;
+  const attemptDownload = async (): Promise<{ data: Blob | null; error: unknown }> => {
+    const { data, error } = await supabase.storage.from(ref.bucket).download(ref.path);
+    return { data: data ?? null, error: error ?? null };
+  };
 
-  const { data, error } = await supabase.storage.from(ref.bucket).download(ref.path);
-  if (error || !data) {
-    if (isDevBuild) {
+  let token = await waitForAccessToken();
+  if (!token) {
+    debugLogWarn('StorageUrl', 'blob: no access token', ref.path);
+    return null;
+  }
+
+  let data: Blob | null = null;
+  let error: unknown = null;
+
+  if (isNativeCapacitor) {
+    const nativeFirst = await nativeStorageObjectDownload(ref.bucket, ref.path);
+    if (nativeFirst.data) {
+      data = await acceptImageBlob(nativeFirst.data, 'native-first', ref.path);
+      if (data) {
+        debugLog('StorageUrl', 'nativeStorageObjectDownload ok (first)', { path: ref.path, bytes: data.size });
+      }
+    } else if (nativeFirst.error) {
+      debugLogWarn('StorageUrl', 'native-first download failed', `${ref.path} | ${nativeFirst.error}`);
+    }
+  }
+
+  if (!data) {
+    ({ data, error } = await attemptDownload());
+    if (data) {
+      debugLog('StorageUrl', 'supabase.storage.download response', { path: ref.path, bytes: data.size });
+      data = await acceptImageBlob(data, 'supabase-js', ref.path);
+    }
+    if ((error || !data) && isAuthError(error)) {
+      await new Promise((r) => setTimeout(r, SESSION_RETRY_MS));
+      token = await waitForAccessToken();
+      if (token) {
+        ({ data, error } = await attemptDownload());
+        if (data) {
+          data = await acceptImageBlob(data, 'supabase-js-retry', ref.path);
+        }
+      }
+    }
+  }
+
+  if (!data) {
+    const native = await nativeStorageObjectDownload(ref.bucket, ref.path);
+    if (native.data) {
+      data = await acceptImageBlob(native.data, 'native-fallback', ref.path);
+      if (data) {
+        debugLog('StorageUrl', 'nativeStorageObjectDownload ok', { path: ref.path, bytes: data.size });
+      }
+    } else if (native.error) {
+      debugLogWarn('StorageUrl', 'native CapacitorHttp download failed', `${ref.path} | ${native.error}`);
+      if (isDevBuild) console.warn('[StorageUrl] native CapacitorHttp download failed', ref.path, native.error);
+    }
+  }
+
+  if (!data) {
+    debugLog('StorageUrl', 'blob: trying signed URL fetch', { path: ref.path });
+    const { signedUrl, error: signErr, authMissing } = await createSignedUrlThrottled(
+      ref.bucket,
+      ref.path,
+      3600,
+    );
+    if (authMissing) debugLogWarn('StorageUrl', 'blob: sign skipped (auth missing)', ref.path);
+    if (!authMissing && !signErr && signedUrl) {
+      const blob = await nativeFetchUrlToBlob(signedUrl);
+      const accepted = await acceptImageBlob(blob, 'signed-url', ref.path);
+      if (accepted) {
+        data = accepted;
+        debugLog('StorageUrl', 'nativeFetchUrlToBlob ok', { path: ref.path, bytes: accepted.size });
+      } else {
+        debugLogWarn('StorageUrl', 'nativeFetchUrlToBlob failed or invalid', ref.path);
+      }
+    } else if (signErr) {
+      debugLogWarn('StorageUrl', 'blob sign for fetch failed', String((signErr as { message?: string })?.message ?? signErr));
+    }
+  }
+
+  if (!data) {
+    debugLogWarn('StorageUrl', 'blob download failed (all paths)', `${ref.bucket}/${ref.path}`);
+    if (isDevBuild && error) {
       console.warn('[StorageUrl] native download failed', ref.bucket, (error as { message?: string })?.message);
     }
     return null;
   }
 
   const blobUrl = URL.createObjectURL(data);
-  blobUrlCache.set(cacheKey, { blobUrl, expiresAt: Date.now() + BLOB_URL_POSITIVE_TTL_MS });
+  debugLog('StorageUrl', 'blob URL created', { path: ref.path });
+  blobUrlCache.set(cacheKey, {
+    blobUrl,
+    expiresAt: Date.now() + BLOB_URL_POSITIVE_TTL_MS,
+    byteSize: data.size,
+  });
   return blobUrl;
 }
 
@@ -325,9 +424,14 @@ export async function getStorageDisplayUrl(rawUrl: string): Promise<string | nul
     return rawUrl;
   }
 
+  debugLog('StorageUrl', 'resolve display URL', { bucket: ref.bucket, path: ref.path });
+
   const cacheKey = `${ref.bucket}/${ref.path}`;
   const cached = readCache(cacheKey);
-  if (cached) return cached.url;
+  if (cached) {
+    debugLog('StorageUrl', cached.url ? 'signed cache hit' : 'negative cache hit', cacheKey);
+    return cached.url;
+  }
 
   if (isDevBrowser && devStorageUpstreamUnavailable) {
     return null;
@@ -351,12 +455,18 @@ async function resolveStorageDisplayUrlNow(ref: StorageRef, cacheKey: string): P
   let upstreamUnavailable = false;
   let authError = false;
 
-  if (isNativeCapacitor && ref.bucket === 'product-images') {
+  if (shouldUseNativeBlobDisplay(ref)) {
     const blobUrl = await getStorageBlobDisplayUrl(ref);
     if (blobUrl) {
       writeCache(cacheKey, blobUrl, SIGNED_URL_POSITIVE_TTL_MS);
       return blobUrl;
     }
+    if (ref.bucket === 'product-images') {
+      debugLogWarn('StorageUrl', 'native product-image negative cache 60s', cacheKey);
+      writeCache(cacheKey, null, 60 * 1000);
+      return null;
+    }
+    debugLogWarn('StorageUrl', 'native image blob failed → signed URL', cacheKey);
   }
 
   try {
@@ -413,9 +523,11 @@ async function resolveStorageDisplayUrlNow(ref: StorageRef, cacheKey: string): P
   if (ref.bucket === 'product-images') {
     const rpcUrl = await tryProductImageRpc(ref.path, expiresSeconds, cacheKey);
     if (rpcUrl) {
+      debugLog('StorageUrl', 'product RPC sign ok', ref.path);
       writeCache(cacheKey, rpcUrl, SIGNED_URL_POSITIVE_TTL_MS);
       return rpcUrl;
     }
+    debugLogWarn('StorageUrl', 'product RPC sign failed', ref.path);
   }
 
   if (isNativeCapacitor) {
@@ -441,7 +553,32 @@ async function resolveStorageDisplayUrlNow(ref: StorageRef, cacheKey: string): P
 export function invalidateStorageDisplayUrl(rawUrl: string): void {
   const ref = resolveStorageRef(rawUrl);
   if (!ref) return;
-  signedUrlCache.delete(`${ref.bucket}/${ref.path}`);
+  const key = `${ref.bucket}/${ref.path}`;
+  signedUrlCache.delete(key);
+  const blobKey = `blob:${key}`;
+  const blobEntry = blobUrlCache.get(blobKey);
+  if (blobEntry) {
+    try {
+      URL.revokeObjectURL(blobEntry.blobUrl);
+    } catch {
+      /* ignore */
+    }
+    blobUrlCache.delete(blobKey);
+  }
+}
+
+/** After storage upload — drop cached signed/blob URLs for those persistence refs. */
+export function bustStorageDisplayCache(urls?: string[]): void {
+  if (urls?.length) {
+    for (const u of urls) invalidateStorageDisplayUrl(u);
+  } else {
+    clearStorageDisplayUrlCache();
+  }
+}
+
+/** After product image upload/save — drop negative cache for those paths. */
+export function bustProductImageDisplayCache(urls?: string[]): void {
+  bustStorageDisplayCache(urls);
 }
 
 /** Clear all signed URL cache (e.g. after login so negative cache does not stick). */
@@ -459,7 +596,10 @@ export function clearStorageDisplayUrlCache(): void {
 /** Native fallback when signed `<img>` GET fails — authenticated download → blob URL. */
 export async function getProductImageBlobDisplayUrl(rawUrl: string): Promise<string | null> {
   const ref = resolveStorageRef(rawUrl);
-  if (!ref || ref.bucket !== 'product-images') return null;
+  if (!ref || ref.bucket !== 'product-images') {
+    debugLogWarn('StorageUrl', 'getProductImageBlobDisplayUrl: invalid ref', rawUrl?.slice(0, 80) ?? '');
+    return null;
+  }
   return getStorageBlobDisplayUrl(ref);
 }
 

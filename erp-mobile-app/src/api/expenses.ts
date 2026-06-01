@@ -8,9 +8,11 @@ import {
   type StorageUploadErrorKind,
   storageErrorStatus,
 } from '../utils/storageUploadErrors';
-import { storageUploadBody } from '../utils/storageUploadBody';
-import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
+import {
+  ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
+  uploadStorageAttachmentFile,
+} from '../utils/storageAttachmentPipeline';
 
 /** DB / RPC expect cash | bank | card | other — wallet accounts must map to other. */
 function normalizeExpensePaymentMethodForDb(raw: string | undefined): string {
@@ -280,16 +282,6 @@ function isDevBuild(): boolean {
   );
 }
 
-function resolveReceiptContentType(file: File, fromBody: string): string {
-  if (fromBody?.trim()) return fromBody.trim();
-  const name = (file.name || '').toLowerCase();
-  if (/\.(jpe?g)$/.test(name)) return 'image/jpeg';
-  if (name.endsWith('.png')) return 'image/png';
-  if (name.endsWith('.webp')) return 'image/webp';
-  if (name.endsWith('.pdf')) return 'application/pdf';
-  return 'application/octet-stream';
-}
-
 async function ensureExpenseReceiptBucketExists(): Promise<{ ok: true } | { ok: false; error: string; kind: StorageUploadErrorKind }> {
   if (!expenseReceiptBucketPreflight) {
     expenseReceiptBucketPreflight = (async () => {
@@ -341,31 +333,24 @@ export async function uploadExpenseReceipt(
   const safeName = (file.name || 'receipt').replace(/[^a-zA-Z0-9.-]/g, '_');
   const path = `${companyId}/receipts/${Date.now()}_${safeName}`;
   try {
-    const { body, contentType: rawType } = await storageUploadBody(file);
-    const contentType = resolveReceiptContentType(file, rawType);
-    const { error } = await withUploadTimeout(
-      supabase.storage.from(EXPENSE_RECEIPT_BUCKET).upload(path, body, {
+    const { ref } = await withUploadTimeout(
+      uploadStorageAttachmentFile({
+        bucket: EXPENSE_RECEIPT_BUCKET,
+        path,
+        file,
         upsert: true,
-        contentType,
+        logTag: 'expense-receipts',
       }),
       UPLOAD_TIMEOUT_MS,
       `Upload ${file.name || 'receipt'}`,
     );
-    if (error) {
-      if (isDevBuild()) {
-        console.warn('[uploadExpenseReceipt]', {
-          status: storageErrorStatus(error),
-          message: error.message,
-          error,
-        });
-      }
-      const classified = classifyStorageUploadError(error, file.name || 'receipt');
-      return { url: null, error: classified.userMessage, kind: classified.kind };
-    }
-    return { url: storageRefForPersistence(EXPENSE_RECEIPT_BUCKET, path), error: null };
+    return { url: ref, error: null };
   } catch (err) {
     if (isDevBuild()) {
       console.warn('[uploadExpenseReceipt]', err);
+    }
+    if ((err as Error)?.message === ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG) {
+      return { url: null, error: ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG, kind: 'size' };
     }
     const classified = classifyStorageUploadError(err, file.name || 'receipt');
     return { url: null, error: classified.userMessage, kind: classified.kind };

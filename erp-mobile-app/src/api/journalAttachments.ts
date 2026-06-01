@@ -1,15 +1,14 @@
 /**
  * Journal entry attachments — same bucket/path as web uploadTransactionAttachments.
  */
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { storageRefForPersistence } from '../utils/storageDisplayUrl';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
-import { storageUploadBody } from '../utils/storageUploadBody';
 import {
   classifyStorageUploadError,
   type UploadFailure,
   type UploadWithFailuresResult,
 } from '../utils/storageUploadErrors';
+import { uploadStorageAttachmentFile } from '../utils/storageAttachmentPipeline';
 
 const BUCKET = 'payment-attachments';
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -43,24 +42,18 @@ export async function uploadJournalEntryAttachments(
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const path = `${prefix}_${i}_${safeName}`;
     try {
-      const { body, contentType } = await storageUploadBody(file);
-      const { error } = await withUploadTimeout(
-        supabase.storage.from(BUCKET).upload(path, body, {
+      const { ref } = await withUploadTimeout(
+        uploadStorageAttachmentFile({
+          bucket: BUCKET,
+          path,
+          file,
           upsert: true,
-          contentType,
+          logTag: 'journal-attachments',
         }),
         UPLOAD_TIMEOUT_MS,
         `Upload ${file.name}`,
       );
-      if (error) {
-        console.warn('[uploadJournalEntryAttachments]', file.name, error.message);
-        failures.push({
-          fileName: file.name,
-          ...classifyStorageUploadError(error, file.name),
-        });
-      } else {
-        results.push({ url: storageRefForPersistence(BUCKET, path), name: file.name });
-      }
+      results.push({ url: ref, name: file.name });
     } catch (err) {
       console.warn('[uploadJournalEntryAttachments]', (err as Error)?.message ?? err);
       failures.push({

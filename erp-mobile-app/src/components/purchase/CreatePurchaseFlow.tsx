@@ -17,6 +17,7 @@ import { MobileActionBar } from '../shared/MobileActionBar';
 import { createPortal } from 'react-dom';
 import { useSettings } from '../../context/SettingsContext';
 import { useSingleFlightAction } from '../../hooks/useSingleFlightAction';
+import { useSubmitLock } from '../../contexts/LoadingContext';
 import { localNowDateString, getCurrentLocalTimestamp } from '../../utils/localDate';
 import { formatStockLabel, getTotalProductStock, stockLabelClassName } from '../../utils/productStockGate';
 import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
@@ -82,11 +83,11 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   const [discount, setDiscount] = useState(0);
   const [notes, setNotes] = useState('');
   /** User-chosen purchase status at creation time. 'ordered' = stock not posted yet (just a PO/order). 'received' = goods in hand; posts stock + accounting. */
-  const [creationStatus, setCreationStatus] = useState<'ordered' | 'received'>('received');
+  const [creationStatus, setCreationStatus] = useState<'draft' | 'ordered' | 'received'>('received');
   const [search, setSearch] = useState('');
   const [products, setProducts] = useState<ProductForPurchase[]>([]);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const { run: runSave, busy: saving } = useSubmitLock();
   const [error, setError] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductForPurchase | null>(null);
@@ -211,12 +212,14 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   const handleSaveWithPayment = async (result: PaymentResult) => {
     await runSingleFlight(async () => {
       if (!vendor || items.length === 0) return;
-      setSaving(true);
+      await runSave('Saving purchase...', async () => {
       setError('');
       const paid = result.paidAmount ?? 0;
       // If user picked "Order" -> 'ordered' (ignore paid). Else: fully paid -> 'final'; partial/none -> 'received'.
-      let status: 'ordered' | 'received' | 'final';
-      if (creationStatus === 'ordered') {
+      let status: 'draft' | 'ordered' | 'received' | 'final';
+      if (creationStatus === 'draft') {
+        status = 'draft';
+      } else if (creationStatus === 'ordered') {
         status = 'ordered';
       } else if (paid > 0 && paid >= total - 0.005) {
         status = 'final';
@@ -229,7 +232,6 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
       if (attachments.length > 0) {
         const upload = await purchasesApi.uploadPurchaseAttachments(companyId, `${vendor.id}-${Date.now()}`, attachments);
         if (upload.error) {
-          setSaving(false);
           setAttachmentError(upload.error);
           return;
         }
@@ -296,12 +298,10 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
         } catch (e) {
           setError(e instanceof Error ? e.message : 'Failed to save offline.');
         }
-        setSaving(false);
         return;
       }
 
       const { data: createResult, error: createErr } = await purchasesApi.createPurchase(createInput);
-      setSaving(false);
       if (createErr) {
         setError(createErr);
         return;
@@ -318,6 +318,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
         date: getCurrentLocalTimestamp(),
         branch: branchName ?? undefined,
         entityId: createResult?.id ?? null,
+      });
       });
     });
   };
@@ -372,7 +373,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   if (step === 'items' && vendor) {
     return (
       <div className="min-h-screen bg-[#111827] pb-52">
-        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
+        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
           <div className="flex items-center gap-3 px-4 h-14">
             <button onClick={() => setStep('vendor')} className="p-2 hover:bg-[#374151] rounded-lg text-white">
               <ArrowLeft className="w-5 h-5" />
@@ -541,7 +542,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   if (step === 'summary' && vendor) {
     return (
       <div className="min-h-screen bg-[#111827] pb-32">
-        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40">
+        <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
           <div className="flex items-center gap-3 px-4 h-14">
             <button onClick={() => setStep('items')} className="p-2 hover:bg-[#374151] rounded-lg text-white">
               <ArrowLeft className="w-5 h-5" />
@@ -614,7 +615,19 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
 
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
             <label className="text-sm font-medium text-[#9CA3AF] mb-2 block">Purchase Type</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setCreationStatus('draft')}
+                className={`py-3 px-2 rounded-lg border text-sm font-medium transition-all ${
+                  creationStatus === 'draft'
+                    ? 'border-[#6B7280] bg-[#6B7280]/10 text-[#E5E7EB]'
+                    : 'border-[#374151] bg-[#111827] text-[#9CA3AF] hover:border-[#4B5563]'
+                }`}
+              >
+                Draft
+                <span className="block text-[10px] mt-0.5 opacity-80 font-normal">No PO number yet</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setCreationStatus('ordered')}
@@ -719,11 +732,19 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
           </div>
         </div>
         <MobileActionBar
-          buttonLabel={creationStatus === 'ordered' ? (saving ? 'Saving…' : 'Save Order') : 'Proceed to Payment →'}
+          buttonLabel={
+            creationStatus === 'draft' || creationStatus === 'ordered'
+              ? saving
+                ? 'Saving…'
+                : creationStatus === 'draft'
+                  ? 'Save Draft'
+                  : 'Save Order'
+              : 'Proceed to Payment →'
+          }
           onButtonClick={() => {
             setError('');
             if (saving || isSubmitRunning) return;
-            if (creationStatus === 'ordered') {
+            if (creationStatus === 'draft' || creationStatus === 'ordered') {
               void handleSaveWithPayment({ paidAmount: 0, paymentMethod: '', accountId: null });
             } else {
               setStep('payment');

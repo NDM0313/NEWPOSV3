@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Search, Plus, Phone, Star, ShoppingCart, Palette, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Search, Plus, Phone, Star, ShoppingCart, Palette, Loader2, UserRound } from 'lucide-react';
 import type { Customer } from './SalesModule';
 import type { AddContactFormData } from '../contacts/AddContactFlow';
 import { AddContactFlow } from '../contacts/AddContactFlow';
@@ -7,7 +7,6 @@ import { SwipeBackShell } from '../common';
 import * as contactsApi from '../../api/contacts';
 import { getContactDisplayPhone } from '../../api/contacts';
 import { usePermissions } from '../../context/PermissionContext';
-
 function contactToCustomer(c: contactsApi.Contact): Customer {
   return { id: c.id, name: c.name, phone: getContactDisplayPhone(c) || '—', balance: c.balance };
 }
@@ -24,12 +23,15 @@ interface SelectCustomerTabletProps {
 export function SelectCustomerTablet({ companyId, branchId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerTabletProps) {
   const { canViewBalances } = usePermissions();
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [defaultCustomer, setDefaultCustomer] = useState<Customer | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(!!companyId);
   const [searchQuery, setSearchQuery] = useState('');
   const [saleType, setSaleType] = useState<'regular' | 'studio'>(initialSaleType);
   const [view, setView] = useState<'pick' | 'addContact'>('pick');
   const [addError, setAddError] = useState('');
   const [addSaving, setAddSaving] = useState(false);
+  const walkingInitRef = useRef(false);
 
   useEffect(() => {
     setSaleType(initialSaleType);
@@ -41,23 +43,57 @@ export function SelectCustomerTablet({ companyId, branchId, onBack, onSelect, in
   };
 
   useEffect(() => {
-    if (!companyId) return;
+    walkingInitRef.current = false;
+    if (!companyId) {
+      setCustomers([]);
+      setDefaultCustomer(null);
+      setSelectedCustomerId(null);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
-    contactsApi.getContacts(companyId, 'customer', branchId ?? undefined).then(({ data, error }) => {
+    (async () => {
+      await contactsApi.ensureDefaultWalkingCustomerForCompany(companyId);
+      const [contactsRes, walkingRes] = await Promise.all([
+        contactsApi.getContacts(companyId, 'customer', branchId ?? undefined),
+        contactsApi.getWalkingCustomer(companyId),
+      ]);
       if (cancelled) return;
       setLoading(false);
-      setCustomers(error ? [] : (data || []).map(contactToCustomer));
-    });
+      const list = contactsRes.error ? [] : (contactsRes.data || []).map(contactToCustomer);
+      const walking = walkingRes.data ? contactToCustomer(walkingRes.data) : null;
+      if (walking && !list.some((c) => c.id === walking.id)) {
+        setCustomers([walking, ...list]);
+      } else {
+        setCustomers(list);
+      }
+      setDefaultCustomer(walking);
+      if (walking && !walkingInitRef.current) {
+        walkingInitRef.current = true;
+        setSelectedCustomerId(walking.id);
+      }
+    })();
     return () => { cancelled = true; };
   }, [companyId, branchId]);
 
+  const handleCustomerClick = (customer: Customer) => {
+    if (selectedCustomerId === customer.id) {
+      onSelect(customer, saleType);
+    } else {
+      setSelectedCustomerId(customer.id);
+    }
+  };
+
   const filteredCustomers = customers.filter(
     (c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.phone.includes(searchQuery)
+      (defaultCustomer ? c.id !== defaultCustomer.id : true) &&
+      (c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.phone.includes(searchQuery))
   );
-  const recentCustomers = customers.slice(0, 2);
+  const recentCustomers = !searchQuery
+    ? customers.filter((c) => defaultCustomer?.id !== c.id).slice(0, 2)
+    : [];
 
   const handleAddContactSubmit = async (data: AddContactFormData) => {
     if (!companyId) return;
@@ -85,6 +121,7 @@ export function SelectCustomerTablet({ companyId, branchId, onBack, onSelect, in
         const c = contactToCustomer(created);
         setCustomers([c, ...customers]);
         setView('pick');
+        setSelectedCustomerId(c.id);
         onSelect(c, saleType);
       }
     } finally {
@@ -120,7 +157,7 @@ export function SelectCustomerTablet({ companyId, branchId, onBack, onSelect, in
 
   return (
     <div className="min-h-screen bg-[#111827]">
-      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-10">
+      <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-10 flow-screen-header">
         <div className="max-w-4xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -129,7 +166,7 @@ export function SelectCustomerTablet({ companyId, branchId, onBack, onSelect, in
               </button>
               <div>
                 <h1 className="text-xl font-semibold text-white">Select Customer</h1>
-                <p className="text-xs text-[#6B7280]">Choose customer for sale</p>
+                <p className="text-xs text-[#6B7280]">Walk-in is selected by default — tap again to continue</p>
               </div>
             </div>
           </div>
@@ -188,6 +225,19 @@ export function SelectCustomerTablet({ companyId, branchId, onBack, onSelect, in
           </div>
         ) : (
           <>
+            {!searchQuery && defaultCustomer && (
+              <div className="mb-4">
+                <h2 className="text-xs font-medium text-[#9CA3AF] mb-2 uppercase">Walk-in</h2>
+                <CustomerCard
+                  customer={defaultCustomer}
+                  canViewBalances={canViewBalances}
+                  onSelect={() => handleCustomerClick(defaultCustomer)}
+                  isSelected={selectedCustomerId === defaultCustomer.id}
+                  isWalkIn
+                />
+              </div>
+            )}
+
             {!searchQuery && recentCustomers.length > 0 && (
               <div className="mb-4">
                 <h2 className="text-xs font-medium text-[#9CA3AF] mb-2 uppercase">Recent</h2>
@@ -197,8 +247,9 @@ export function SelectCustomerTablet({ companyId, branchId, onBack, onSelect, in
                       key={customer.id}
                       customer={customer}
                       canViewBalances={canViewBalances}
-                      onSelect={() => onSelect(customer, saleType)}
+                      onSelect={() => handleCustomerClick(customer)}
                       isRecent
+                      isSelected={selectedCustomerId === customer.id}
                     />
                   ))}
                 </div>
@@ -214,7 +265,8 @@ export function SelectCustomerTablet({ companyId, branchId, onBack, onSelect, in
                   key={customer.id}
                   customer={customer}
                   canViewBalances={canViewBalances}
-                  onSelect={() => onSelect(customer, saleType)}
+                  onSelect={() => handleCustomerClick(customer)}
+                  isSelected={selectedCustomerId === customer.id}
                 />
               ))}
               {filteredCustomers.length === 0 && (
@@ -241,24 +293,32 @@ function CustomerCard({
   canViewBalances,
   onSelect,
   isRecent,
+  isWalkIn,
+  isSelected,
 }: {
   customer: Customer;
   canViewBalances: boolean;
   onSelect: () => void;
   isRecent?: boolean;
+  isWalkIn?: boolean;
+  isSelected?: boolean;
 }) {
   return (
     <button
       onClick={onSelect}
-      className="w-full bg-[#1F2937] border border-[#374151] rounded-lg p-3 hover:border-[#3B82F6] transition-all text-left"
+      className={`w-full bg-[#1F2937] border rounded-lg p-3 hover:border-[#3B82F6] transition-all text-left ${
+        isSelected ? 'border-[#3B82F6] ring-2 ring-[#3B82F6]/40' : 'border-[#374151]'
+      }`}
     >
       <div className="flex items-center gap-3">
         <div
           className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
-            isRecent ? 'bg-[#F59E0B]/10' : 'bg-[#3B82F6]/10'
+            isWalkIn ? 'bg-[#10B981]/10' : isRecent ? 'bg-[#F59E0B]/10' : 'bg-[#3B82F6]/10'
           }`}
         >
-          {isRecent ? (
+          {isWalkIn ? (
+            <UserRound className="w-4 h-4 text-[#10B981]" />
+          ) : isRecent ? (
             <Star className="w-4 h-4 text-[#F59E0B] fill-[#F59E0B]" />
           ) : (
             <span className="text-sm font-semibold text-[#3B82F6]">{customer.name.charAt(0)}</span>

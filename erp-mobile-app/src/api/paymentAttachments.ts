@@ -3,15 +3,14 @@
  * and save URLs to payments.attachments. Same pattern as web UnifiedPaymentDialog.
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { storageRefForPersistence } from '../utils/storageDisplayUrl';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
-import { storageUploadBody } from '../utils/storageUploadBody';
 import {
   classifyStorageUploadError,
   isStorageSizeError,
   type UploadFailure,
   type UploadWithFailuresResult,
 } from '../utils/storageUploadErrors';
+import { uploadStorageAttachmentFile } from '../utils/storageAttachmentPipeline';
 
 const BUCKET = 'payment-attachments';
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -52,24 +51,18 @@ export async function uploadPaymentAttachments(
     const path = `${prefix}_${i}_${safeName}`;
 
     try {
-      const { body, contentType } = await storageUploadBody(file);
-      const { error } = await withUploadTimeout(
-        supabase.storage.from(BUCKET).upload(path, body, {
+      const { ref } = await withUploadTimeout(
+        uploadStorageAttachmentFile({
+          bucket: BUCKET,
+          path,
+          file,
           upsert: true,
-          contentType,
+          logTag: 'payment-attachments',
         }),
         UPLOAD_TIMEOUT_MS,
         `Upload ${file.name}`,
       );
-      if (error) {
-        console.warn('[uploadPaymentAttachments]', file.name, error.message);
-        failures.push({
-          fileName: file.name,
-          ...classifyStorageUploadError(error, file.name),
-        });
-      } else {
-        results.push({ url: storageRefForPersistence(BUCKET, path), name: file.name });
-      }
+      results.push({ url: ref, name: file.name });
     } catch (err) {
       console.warn('[uploadPaymentAttachments]', (err as Error)?.message ?? err);
       failures.push({
