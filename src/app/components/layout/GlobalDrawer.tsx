@@ -1,9 +1,5 @@
 import { toast } from "sonner";
-import { TransactionForm } from '../transactions/TransactionForm';
-import { PurchaseForm } from '../purchases/PurchaseForm';
-import { SaleForm } from '../sales/SaleForm';
-import { EnhancedProductForm } from '../products/EnhancedProductForm';
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { useNavigation } from '../../context/NavigationContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { contactService } from '../../services/contactService';
@@ -32,7 +28,12 @@ import {
 import { Textarea } from "../ui/textarea";
 import { Checkbox } from "../ui/checkbox";
 import { Switch } from "../ui/switch";
-import { PackingEntryModal } from '../transactions/PackingEntryModal';
+
+const TransactionForm = lazy(() => import('../transactions/TransactionForm').then(m => ({ default: m.TransactionForm })));
+const PurchaseForm = lazy(() => import('../purchases/PurchaseForm').then(m => ({ default: m.PurchaseForm })));
+const SaleForm = lazy(() => import('../sales/SaleForm').then(m => ({ default: m.SaleForm })));
+const EnhancedProductForm = lazy(() => import('../products/EnhancedProductForm').then(m => ({ default: m.EnhancedProductForm })));
+const PackingEntryModal = lazy(() => import('../transactions/PackingEntryModal').then(m => ({ default: m.PackingEntryModal })));
 
 export const GlobalDrawer = () => {
   const { activeDrawer, openDrawer, closeDrawer, drawerData, parentDrawer, setCreatedProduct, packingModalOpen, closePackingModal, packingModalData } = useNavigation();

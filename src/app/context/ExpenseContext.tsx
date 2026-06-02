@@ -111,6 +111,7 @@ export const useExpenses = () => {
     }
     throw new Error('useExpenses must be used within ExpenseProvider');
   }
+  (context as any).__activate?.();
   return context;
 };
 
@@ -208,14 +209,16 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [companyId, branchId, convertFromSupabaseExpense]);
 
-  // Load expenses from Supabase on mount
+  const activatedRef = React.useRef(false);
+  const [activated, setActivated] = React.useState(false);
+  const activate = useCallback(() => {
+    if (!activatedRef.current) { activatedRef.current = true; setActivated(true); }
+  }, []);
+
   useEffect(() => {
-    if (companyId) {
-      loadExpenses();
-    } else {
-      setLoading(false);
-    }
-  }, [companyId, loadExpenses]);
+    if (companyId && activated) loadExpenses();
+    else if (!companyId) setLoading(false);
+  }, [companyId, activated, loadExpenses]);
 
   // Get expense by ID
   const getExpenseById = (id: string): Expense | undefined => {
@@ -797,10 +800,11 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     getExpensesByStatus,
     getTotalByCategory,
     refreshExpenses: loadExpenses,
+    __activate: activate,
   }), [
     expenses, loading, getExpenseById, createExpense, updateExpense, deleteExpense,
     approveExpense, rejectExpense, markAsPaid, getExpensesByCategory,
-    getExpensesByStatus, getTotalByCategory, loadExpenses,
+    getExpensesByStatus, getTotalByCategory, loadExpenses, activate,
   ]);
 
   return (

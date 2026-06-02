@@ -2,27 +2,7 @@ import React, { lazy, Suspense, useEffect } from 'react';
 import { FeatureFlagProvider, useFeatureFlag } from './context/FeatureFlagContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { Layout } from './components/layout/Layout';
-const Dashboard = lazy(() => import('./components/dashboard/Dashboard').then(m => ({ default: m.Dashboard })));
-import { ProductList } from './components/products/ProductList';
-import { POS } from './components/pos/POS';
-import { SalesEntry } from './components/sales/SalesEntry';
-const StockDashboard = lazy(() => import('./components/dashboard/StockDashboard').then(m => ({ default: m.StockDashboard })));
-import { ExpensesDashboard } from './components/dashboard/ExpensesDashboard';
 import { GlobalDrawer } from './components/layout/GlobalDrawer';
-import { ContactList } from './components/contacts/ContactList';
-import { ContactsPage } from './components/contacts/ContactsPage';
-import { ProductsPage } from './components/products/ProductsPage';
-import { PurchaseList } from './components/purchases/PurchaseList';
-const AccountingDashboard = lazy(() => import('./components/accounting/AccountingDashboard').then(m => ({ default: m.AccountingDashboard })));
-const UserDashboard = lazy(() => import('./components/users/UserDashboard').then(m => ({ default: m.UserDashboard })));
-import { UserProfilePage } from './components/users/UserProfilePage';
-import { PurchasesPage } from './components/purchases/PurchasesPage';
-const SalesPage = lazy(() => import('./components/sales/SalesPage').then(m => ({ default: m.SalesPage })));
-const RentalDashboard = lazy(() => import('./components/rentals/RentalDashboard').then(m => ({ default: m.RentalDashboard })));
-import { NewRentalBooking } from './components/rentals/NewRentalBooking';
-import { PaymentFooterDemo } from './components/demo/PaymentFooterDemo';
-import { UXImprovementsDemo } from './components/demo/UXImprovementsDemo';
-import { InteractiveFeedbackDemo } from './components/demo/InteractiveFeedbackDemo';
 import { ThemeProvider } from 'next-themes';
 import { Toaster } from 'sonner';
 import { ModuleProvider } from './context/ModuleContext';
@@ -33,58 +13,6 @@ import { PurchaseProvider } from './context/PurchaseContext';
 import { RentalProvider } from './context/RentalContext';
 import { ExpenseProvider } from './context/ExpenseContext';
 import { ProductionProvider } from './context/ProductionContext';
-const ReportsDashboard = lazy(() => import('./components/reports/ReportsDashboard').then(m => ({ default: m.ReportsDashboard })));
-const ReportsDashboardEnhanced = lazy(() => import('./components/reports/ReportsDashboardEnhanced').then(m => ({ default: m.ReportsDashboardEnhanced })));
-import { ViewContactProfile } from './components/contacts/ViewContactProfile';
-import { ItemLifecycleReport } from './components/reports/ItemLifecycleReport';
-import { ProductionOrderDetail } from './components/production/ProductionOrderDetail';
-import { CustomerOrderTracking } from './components/tracking/CustomerOrderTracking';
-const InventoryDashboard = lazy(() => import('./components/inventory/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })));
-const InventoryDashboardNew = lazy(() => import('./components/inventory/InventoryDashboardNew').then(m => ({ default: m.InventoryDashboardNew })));
-const InventoryDesignTestPage = lazy(() => import('./components/inventory/InventoryDesignTestPage').then(m => ({ default: m.InventoryDesignTestPage })));
-const InventoryAnalyticsTestPage = lazy(() => import('./components/inventory/InventoryAnalyticsTestPage').then(m => ({ default: m.InventoryAnalyticsTestPage })));
-const StockReportPage = lazy(() => import('./components/reports/StockReportPage').then(m => ({ default: m.StockReportPage })));
-const StudioDashboardNew = lazy(() => import('./components/studio/StudioDashboardNew').then(m => ({ default: m.StudioDashboardNew })));
-const SettingsPageNew = lazy(() => import('./components/settings/SettingsPageNew').then(m => ({ default: m.SettingsPageNew })));
-const ErpPermissionArchitecturePage = lazy(() => import('./components/erp-permissions/ErpPermissionArchitecturePage').then(m => ({ default: m.ErpPermissionArchitecturePage })));
-import { StudioWorkflowPage } from './components/studio/StudioWorkflowPage';
-import { PackingEntryPage } from './components/packing/PackingEntryPage';
-import { StudioOrdersList } from './components/studio/StudioOrdersList';
-import { StudioJobCard } from './components/studio/StudioJobCard';
-import { StudioSalesList } from './components/studio/StudioSalesList';
-import { StudioSaleDetail } from './components/studio/StudioSaleDetail';
-const StudioSalesListNew = lazy(() => import('./components/studio/StudioSalesListNew').then(m => ({ default: m.StudioSalesListNew })));
-const StudioSaleDetailNew = lazy(() => import('./components/studio/StudioSaleDetailNew').then(m => ({ default: m.StudioSaleDetailNew })));
-import { WorkerDetailPage } from './components/studio/WorkerDetailPage';
-import { StudioProductionListPage } from './components/studio/StudioProductionListPage';
-import { StudioProductionDetailPage } from './components/studio/StudioProductionDetailPage';
-import { StudioProductionAddPage } from './components/studio/StudioProductionAddPage';
-const StudioPipelinePage = lazy(() => import('./components/studio/StudioPipelinePage').then(m => ({ default: m.StudioPipelinePage })));
-import { AccountingIntegrationDemo } from './components/accounting/AccountingIntegrationDemo';
-import { PurchaseListExample } from './components/purchases/PurchaseListExample';
-import { BespokeWorkOrdersPage } from './components/bespoke/BespokeWorkOrdersPage';
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import { KeyboardShortcutsModal } from './components/shared/KeyboardShortcutsModal';
-import { ContactSearchTestPage } from './components/demo/ContactSearchTestPage';
-import { SaleHeaderTestPage } from './components/test/SaleHeaderTestPage';
-import { PurchaseHeaderTestPage } from './components/test/PurchaseHeaderTestPage';
-import { TransactionHeaderTestPage } from './components/test/TransactionHeaderTestPage';
-import { UserManagementTestPage } from './components/test/UserManagementTestPage';
-import { BranchManagementTestPage } from './components/test/BranchManagementTestPage';
-import { AccountingChartTestPage } from './components/test/AccountingChartTestPage';
-import { LedgerDebugTestPage } from './components/test/LedgerDebugTestPage';
-import { RLSValidationPage } from './components/test/RLSValidationPage';
-import { Day4FullFlowCertificationPage } from './components/test/Day4FullFlowCertificationPage';
-import { ERPIntegrationTestBlockPage } from './components/test/ERPIntegrationTestBlockPage';
-import { CutoverPrepPage } from './components/test/CutoverPrepPage';
-import { ResponsiveTestPage } from './components/test/ResponsiveTestPage';
-import { AccountingTestPage } from './components/test/AccountingTestPage';
-import { SalesListDesignTestPage } from './components/test/SalesListDesignTestPage';
-const CustomerLedgerTestPage = lazy(() => import('./components/customer-ledger-test/CustomerLedgerTestPage').then(m => ({ default: m.CustomerLedgerTestPage })));
-import TestLedger from './TestLedger';
-const CustomerLedgerInteractiveTest = lazy(() =>
-  import('./components/customer-ledger-test/CustomerLedgerInteractiveTest').then((m) => ({ default: m.default }))
-);
 import { SupabaseProvider } from './context/SupabaseContext';
 import { WebRealtimeBridge } from './lib/WebRealtimeBridge';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -93,38 +21,90 @@ import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import { useSettings } from './context/SettingsContext';
 import { GlobalFilterProvider } from './context/GlobalFilterContext';
 import { LoadingProvider } from './context/LoadingContext';
-import { PermissionInspectorPage } from './components/admin/PermissionInspectorPage';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsModal } from './components/shared/KeyboardShortcutsModal';
 import { useCheckPermission } from './hooks/useCheckPermission';
-const AccountingIntegrityLabPage = lazy(() =>
-  import('./components/admin/AccountingIntegrityLabPage').then((m) => ({ default: m.default }))
-);
-const AccountingTestBenchPage = lazy(() =>
-  import('./components/admin/AccountingTestBenchPage').then((m) => ({ default: m.default }))
-);
-const ArApReconciliationCenterPage = lazy(() =>
-  import('./components/accounting/ArApReconciliationCenterPage').then((m) => ({ default: m.default }))
-);
-const AccountsHierarchyTestPage = lazy(() =>
-  import('./components/test/AccountsHierarchyTestPage').then((m) => ({ default: m.default }))
-);
-const ExpenseEditTraceTestPage = lazy(() =>
-  import('./components/test/ExpenseEditTraceTestPage').then((m) => ({ default: m.default }))
-);
-const AccountingEditTracePage = lazy(() =>
-  import('./components/test/AccountingEditTracePage').then((m) => ({ default: m.default }))
-);
-const SimpleCanonicalStatementPage = lazy(() =>
-  import('./components/test/SimpleCanonicalStatementPage').then((m) => ({ default: m.default }))
-);
-const ArApTruthLabPage = lazy(() =>
-  import('./components/test/ArApTruthLabPage').then((m) => ({ default: m.default }))
-);
-const EffectivePartyLedgerPage = lazy(() =>
-  import('./components/accounting/EffectivePartyLedgerPage').then((m) => ({ default: m.default }))
+
+const GlobalSuspenseFallback = () => (
+  <div className="flex items-center justify-center h-full min-h-[200px]">
+    <div className="flex flex-col items-center gap-3">
+      <div className="w-8 h-8 border-2 border-gray-600 border-t-blue-500 rounded-full animate-spin" />
+      <span className="text-sm text-gray-400">Loading…</span>
+    </div>
+  </div>
 );
 
-// v1.0.1 - Enhanced Product Form with SKU auto-generation and global access
-
+const Dashboard = lazy(() => import('./components/dashboard/Dashboard').then(m => ({ default: m.Dashboard })));
+const ProductsPage = lazy(() => import('./components/products/ProductsPage').then(m => ({ default: m.ProductsPage })));
+const POS = lazy(() => import('./components/pos/POS').then(m => ({ default: m.POS })));
+const SalesEntry = lazy(() => import('./components/sales/SalesEntry').then(m => ({ default: m.SalesEntry })));
+const StockDashboard = lazy(() => import('./components/dashboard/StockDashboard').then(m => ({ default: m.StockDashboard })));
+const ExpensesDashboard = lazy(() => import('./components/dashboard/ExpensesDashboard').then(m => ({ default: m.ExpensesDashboard })));
+const ContactList = lazy(() => import('./components/contacts/ContactList').then(m => ({ default: m.ContactList })));
+const ContactsPage = lazy(() => import('./components/contacts/ContactsPage').then(m => ({ default: m.ContactsPage })));
+const PurchaseList = lazy(() => import('./components/purchases/PurchaseList').then(m => ({ default: m.PurchaseList })));
+const AccountingDashboard = lazy(() => import('./components/accounting/AccountingDashboard').then(m => ({ default: m.AccountingDashboard })));
+const UserDashboard = lazy(() => import('./components/users/UserDashboard').then(m => ({ default: m.UserDashboard })));
+const UserProfilePage = lazy(() => import('./components/users/UserProfilePage').then(m => ({ default: m.UserProfilePage })));
+const PurchasesPage = lazy(() => import('./components/purchases/PurchasesPage').then(m => ({ default: m.PurchasesPage })));
+const SalesPage = lazy(() => import('./components/sales/SalesPage').then(m => ({ default: m.SalesPage })));
+const RentalDashboard = lazy(() => import('./components/rentals/RentalDashboard').then(m => ({ default: m.RentalDashboard })));
+const NewRentalBooking = lazy(() => import('./components/rentals/NewRentalBooking').then(m => ({ default: m.NewRentalBooking })));
+const ReportsDashboard = lazy(() => import('./components/reports/ReportsDashboard').then(m => ({ default: m.ReportsDashboard })));
+const ReportsDashboardEnhanced = lazy(() => import('./components/reports/ReportsDashboardEnhanced').then(m => ({ default: m.ReportsDashboardEnhanced })));
+const ViewContactProfile = lazy(() => import('./components/contacts/ViewContactProfile').then(m => ({ default: m.ViewContactProfile })));
+const ItemLifecycleReport = lazy(() => import('./components/reports/ItemLifecycleReport').then(m => ({ default: m.ItemLifecycleReport })));
+const ProductionOrderDetail = lazy(() => import('./components/production/ProductionOrderDetail').then(m => ({ default: m.ProductionOrderDetail })));
+const CustomerOrderTracking = lazy(() => import('./components/tracking/CustomerOrderTracking').then(m => ({ default: m.CustomerOrderTracking })));
+const InventoryDashboard = lazy(() => import('./components/inventory/InventoryDashboard').then(m => ({ default: m.InventoryDashboard })));
+const InventoryDashboardNew = lazy(() => import('./components/inventory/InventoryDashboardNew').then(m => ({ default: m.InventoryDashboardNew })));
+const InventoryDesignTestPage = lazy(() => import('./components/inventory/InventoryDesignTestPage').then(m => ({ default: m.InventoryDesignTestPage })));
+const InventoryAnalyticsTestPage = lazy(() => import('./components/inventory/InventoryAnalyticsTestPage').then(m => ({ default: m.InventoryAnalyticsTestPage })));
+const StockReportPage = lazy(() => import('./components/reports/StockReportPage').then(m => ({ default: m.StockReportPage })));
+const StudioDashboardNew = lazy(() => import('./components/studio/StudioDashboardNew').then(m => ({ default: m.StudioDashboardNew })));
+const SettingsPageNew = lazy(() => import('./components/settings/SettingsPageNew').then(m => ({ default: m.SettingsPageNew })));
+const ErpPermissionArchitecturePage = lazy(() => import('./components/erp-permissions/ErpPermissionArchitecturePage').then(m => ({ default: m.ErpPermissionArchitecturePage })));
+const StudioWorkflowPage = lazy(() => import('./components/studio/StudioWorkflowPage').then(m => ({ default: m.StudioWorkflowPage })));
+const PackingEntryPage = lazy(() => import('./components/packing/PackingEntryPage').then(m => ({ default: m.PackingEntryPage })));
+const StudioJobCard = lazy(() => import('./components/studio/StudioJobCard').then(m => ({ default: m.StudioJobCard })));
+const StudioSalesListNew = lazy(() => import('./components/studio/StudioSalesListNew').then(m => ({ default: m.StudioSalesListNew })));
+const StudioSaleDetailNew = lazy(() => import('./components/studio/StudioSaleDetailNew').then(m => ({ default: m.StudioSaleDetailNew })));
+const WorkerDetailPage = lazy(() => import('./components/studio/WorkerDetailPage').then(m => ({ default: m.WorkerDetailPage })));
+const StudioProductionListPage = lazy(() => import('./components/studio/StudioProductionListPage').then(m => ({ default: m.StudioProductionListPage })));
+const StudioProductionDetailPage = lazy(() => import('./components/studio/StudioProductionDetailPage').then(m => ({ default: m.StudioProductionDetailPage })));
+const StudioProductionAddPage = lazy(() => import('./components/studio/StudioProductionAddPage').then(m => ({ default: m.StudioProductionAddPage })));
+const StudioPipelinePage = lazy(() => import('./components/studio/StudioPipelinePage').then(m => ({ default: m.StudioPipelinePage })));
+const AccountingIntegrationDemo = lazy(() => import('./components/accounting/AccountingIntegrationDemo').then(m => ({ default: m.AccountingIntegrationDemo })));
+const PurchaseListExample = lazy(() => import('./components/purchases/PurchaseListExample').then(m => ({ default: m.PurchaseListExample })));
+const BespokeWorkOrdersPage = lazy(() => import('./components/bespoke/BespokeWorkOrdersPage').then(m => ({ default: m.BespokeWorkOrdersPage })));
+const ContactSearchTestPage = lazy(() => import('./components/demo/ContactSearchTestPage').then(m => ({ default: m.ContactSearchTestPage })));
+const SaleHeaderTestPage = lazy(() => import('./components/test/SaleHeaderTestPage').then(m => ({ default: m.SaleHeaderTestPage })));
+const PurchaseHeaderTestPage = lazy(() => import('./components/test/PurchaseHeaderTestPage').then(m => ({ default: m.PurchaseHeaderTestPage })));
+const TransactionHeaderTestPage = lazy(() => import('./components/test/TransactionHeaderTestPage').then(m => ({ default: m.TransactionHeaderTestPage })));
+const UserManagementTestPage = lazy(() => import('./components/test/UserManagementTestPage').then(m => ({ default: m.UserManagementTestPage })));
+const BranchManagementTestPage = lazy(() => import('./components/test/BranchManagementTestPage').then(m => ({ default: m.BranchManagementTestPage })));
+const AccountingChartTestPage = lazy(() => import('./components/test/AccountingChartTestPage').then(m => ({ default: m.AccountingChartTestPage })));
+const LedgerDebugTestPage = lazy(() => import('./components/test/LedgerDebugTestPage').then(m => ({ default: m.LedgerDebugTestPage })));
+const RLSValidationPage = lazy(() => import('./components/test/RLSValidationPage').then(m => ({ default: m.RLSValidationPage })));
+const Day4FullFlowCertificationPage = lazy(() => import('./components/test/Day4FullFlowCertificationPage').then(m => ({ default: m.Day4FullFlowCertificationPage })));
+const ERPIntegrationTestBlockPage = lazy(() => import('./components/test/ERPIntegrationTestBlockPage').then(m => ({ default: m.ERPIntegrationTestBlockPage })));
+const CutoverPrepPage = lazy(() => import('./components/test/CutoverPrepPage').then(m => ({ default: m.CutoverPrepPage })));
+const ResponsiveTestPage = lazy(() => import('./components/test/ResponsiveTestPage').then(m => ({ default: m.ResponsiveTestPage })));
+const AccountingTestPage = lazy(() => import('./components/test/AccountingTestPage').then(m => ({ default: m.AccountingTestPage })));
+const SalesListDesignTestPage = lazy(() => import('./components/test/SalesListDesignTestPage').then(m => ({ default: m.SalesListDesignTestPage })));
+const CustomerLedgerTestPage = lazy(() => import('./components/customer-ledger-test/CustomerLedgerTestPage').then(m => ({ default: m.CustomerLedgerTestPage })));
+const TestLedger = lazy(() => import('./TestLedger').then(m => ({ default: m.default })));
+const CustomerLedgerInteractiveTest = lazy(() => import('./components/customer-ledger-test/CustomerLedgerInteractiveTest').then(m => ({ default: m.default })));
+const PermissionInspectorPage = lazy(() => import('./components/admin/PermissionInspectorPage').then(m => ({ default: m.PermissionInspectorPage })));
+const AccountingIntegrityLabPage = lazy(() => import('./components/admin/AccountingIntegrityLabPage').then(m => ({ default: m.default })));
+const AccountingTestBenchPage = lazy(() => import('./components/admin/AccountingTestBenchPage').then(m => ({ default: m.default })));
+const ArApReconciliationCenterPage = lazy(() => import('./components/accounting/ArApReconciliationCenterPage').then(m => ({ default: m.default })));
+const AccountsHierarchyTestPage = lazy(() => import('./components/test/AccountsHierarchyTestPage').then(m => ({ default: m.default })));
+const ExpenseEditTraceTestPage = lazy(() => import('./components/test/ExpenseEditTraceTestPage').then(m => ({ default: m.default })));
+const AccountingEditTracePage = lazy(() => import('./components/test/AccountingEditTracePage').then(m => ({ default: m.default })));
+const SimpleCanonicalStatementPage = lazy(() => import('./components/test/SimpleCanonicalStatementPage').then(m => ({ default: m.default })));
+const ArApTruthLabPage = lazy(() => import('./components/test/ArApTruthLabPage').then(m => ({ default: m.default })));
+const EffectivePartyLedgerPage = lazy(() => import('./components/accounting/EffectivePartyLedgerPage').then(m => ({ default: m.default })));
 const StudioProductionV2Dashboard = lazy(() => import('./components/studio/StudioProductionV2Dashboard').then(m => ({ default: m.StudioProductionV2Dashboard })));
 const StudioProductionV2Pipeline = lazy(() => import('./components/studio/StudioProductionV2Pipeline').then(m => ({ default: m.StudioProductionV2Pipeline })));
 const StudioProductionV3Dashboard = lazy(() => import('./components/studio/StudioProductionV3Dashboard').then(m => ({ default: m.StudioProductionV3Dashboard })));
@@ -147,85 +127,30 @@ const AppContent = () => {
 
   // Dev UI: Accounting accounts hierarchy (route: /test/accounting-accounts-hierarchy)
   if (pathname === '/test/accounting-accounts-hierarchy') {
-    return (
-      <Layout>
-        <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading…</div>}>
-          <AccountsHierarchyTestPage />
-        </Suspense>
-        <GlobalDrawer />
-      </Layout>
-    );
+    return (<Layout><AccountsHierarchyTestPage /><GlobalDrawer /></Layout>);
   }
-
   if (pathname === '/test/expense-edit-trace') {
-    return (
-      <Layout>
-        <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading…</div>}>
-          <ExpenseEditTraceTestPage />
-        </Suspense>
-        <GlobalDrawer />
-      </Layout>
-    );
+    return (<Layout><ExpenseEditTraceTestPage /><GlobalDrawer /></Layout>);
   }
-
   if (pathname === '/test/accounting-edit-trace') {
-    return (
-      <Layout>
-        <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading…</div>}>
-          <AccountingEditTracePage />
-        </Suspense>
-        <GlobalDrawer />
-      </Layout>
-    );
+    return (<Layout><AccountingEditTracePage /><GlobalDrawer /></Layout>);
   }
-
   if (pathname === '/test/simple-canonical-statement') {
-    return (
-      <Layout>
-        <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading…</div>}>
-          <SimpleCanonicalStatementPage />
-        </Suspense>
-        <GlobalDrawer />
-      </Layout>
-    );
+    return (<Layout><SimpleCanonicalStatementPage /><GlobalDrawer /></Layout>);
   }
-
   if (pathname === '/test/ar-ap-truth-lab') {
-    return (
-      <Layout>
-        <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading…</div>}>
-          <ArApTruthLabPage />
-        </Suspense>
-        <GlobalDrawer />
-      </Layout>
-    );
+    return (<Layout><ArApTruthLabPage /><GlobalDrawer /></Layout>);
   }
-
-  // Admin-only Permission Inspector (route: /admin/permission-inspector)
   if (pathname === '/admin/permission-inspector' || currentView === 'permission-inspector') {
-    return (
-      <Layout>
-        <PermissionInspectorPage />
-        <GlobalDrawer />
-      </Layout>
-    );
+    return (<Layout><PermissionInspectorPage /><GlobalDrawer /></Layout>);
   }
-
-  // Developer Integrity Lab (routes: /admin/developer-integrity-lab | legacy /admin/accounting-test-bench)
   if (
     pathname === '/admin/developer-integrity-lab' ||
     pathname === '/admin/accounting-test-bench' ||
     currentView === 'developer-integrity-lab' ||
     currentView === 'accounting-test-bench'
   ) {
-    return (
-      <Layout>
-        <Suspense fallback={<div className="flex items-center justify-center p-12 text-gray-500">Loading Integrity Lab…</div>}>
-          <AccountingTestBenchPage />
-        </Suspense>
-        <GlobalDrawer />
-      </Layout>
-    );
+    return (<Layout><AccountingTestBenchPage /><GlobalDrawer /></Layout>);
   }
 
   // Route protection: module toggles are company-wide and apply to all users/roles (Admin, Manager, Staff).
@@ -336,141 +261,52 @@ const AppContent = () => {
   }
   if (currentView === 'pos') {
     return (
-      <>
+      <Suspense fallback={<GlobalSuspenseFallback />}>
         <POS />
         <GlobalDrawer />
-      </>
+      </Suspense>
     );
   }
 
   return (
     <Layout>
-      {currentView === 'dashboard' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <Dashboard />
-        </Suspense>
-      )}
+      {currentView === 'dashboard' && <Dashboard />}
       {currentView === 'products' && <ProductsPage />}
-      {currentView === 'sales' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <SalesPage />
-        </Suspense>
-      )}
+      {currentView === 'sales' && <SalesPage />}
       {currentView === 'bespoke-work-orders' && <BespokeWorkOrdersPage />}
-      {currentView === 'rentals' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <RentalDashboard />
-        </Suspense>
-      )}
+      {currentView === 'rentals' && <RentalDashboard />}
       {currentView === 'rental-booking' && <NewRentalBooking />}
-      {currentView === 'stock' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <StockDashboard />
-        </Suspense>
-      )}
-      {currentView === 'inventory' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <InventoryDesignTestPage />
-        </Suspense>
-      )}
-      {currentView === 'studio' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <StudioSalesListNew />
-        </Suspense>
-      )}
-      {currentView === 'studio-dashboard-new' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          {studioProductionV3 ? <StudioProductionV3Dashboard /> : studioProductionV2 ? <StudioProductionV2Dashboard /> : <StudioDashboardNew />}
-        </Suspense>
-      )}
-      {currentView === 'studio-sales-list-new' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <StudioSalesListNew />
-        </Suspense>
-      )}
-      {currentView === 'studio-pipeline' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          {studioProductionV3 ? <StudioProductionV3Pipeline /> : studioProductionV2 ? <StudioProductionV2Pipeline /> : <StudioPipelinePage />}
-        </Suspense>
-      )}
-      {currentView === 'studio-order-detail-v3' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <StudioProductionV3OrderDetail />
-        </Suspense>
-      )}
-      {currentView === 'studio-sale-detail' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <StudioSaleDetailNew />
-        </Suspense>
-      )}
-      {currentView === 'studio-sale-detail-new' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <StudioSaleDetailNew />
-        </Suspense>
-      )}
+      {currentView === 'stock' && <StockDashboard />}
+      {currentView === 'inventory' && <InventoryDesignTestPage />}
+      {currentView === 'studio' && <StudioSalesListNew />}
+      {currentView === 'studio-dashboard-new' && (studioProductionV3 ? <StudioProductionV3Dashboard /> : studioProductionV2 ? <StudioProductionV2Dashboard /> : <StudioDashboardNew />)}
+      {currentView === 'studio-sales-list-new' && <StudioSalesListNew />}
+      {currentView === 'studio-pipeline' && (studioProductionV3 ? <StudioProductionV3Pipeline /> : studioProductionV2 ? <StudioProductionV2Pipeline /> : <StudioPipelinePage />)}
+      {currentView === 'studio-order-detail-v3' && <StudioProductionV3OrderDetail />}
+      {currentView === 'studio-sale-detail' && <StudioSaleDetailNew />}
+      {currentView === 'studio-sale-detail-new' && <StudioSaleDetailNew />}
       {currentView === 'studio-job' && <StudioJobCard />}
       {currentView === 'studio-workflow' && <StudioWorkflowPage />}
-      {currentView === 'manufacturing-bom' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <BillOfMaterialsPage />
-        </Suspense>
-      )}
-      {currentView === 'manufacturing-orders' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <ProductionOrdersPage />
-        </Suspense>
-      )}
-      {currentView === 'manufacturing-workflow' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <ProductionWorkflow />
-        </Suspense>
-      )}
+      {currentView === 'manufacturing-bom' && <BillOfMaterialsPage />}
+      {currentView === 'manufacturing-orders' && <ProductionOrdersPage />}
+      {currentView === 'manufacturing-workflow' && <ProductionWorkflow />}
       {currentView === 'worker-detail' && <WorkerDetailPage />}
       {currentView === 'expenses' && <ExpensesDashboard />}
       {currentView === 'customers' && <ContactList />}
       {currentView === 'contacts' && <ContactsPage />}
       {currentView === 'purchases' && <PurchasesPage />}
       {currentView === 'purchase-example' && <PurchaseListExample />}
-      {currentView === 'accounting' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <AccountingDashboard />
-        </Suspense>
-      )}
+      {currentView === 'accounting' && <AccountingDashboard />}
       {currentView === 'accounting-demo' && <AccountingIntegrationDemo />}
-      {currentView === 'users' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <UserDashboard />
-        </Suspense>
-      )}
-      {/* Repointed: 'roles' now shows ERP Permissions (Roles tab lives there). Mock RolesDashboard removed from nav. */}
-      {currentView === 'roles' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <ErpPermissionArchitecturePage />
-        </Suspense>
-      )}
-      
-      {/* Placeholders for new modules */}
-      {currentView === 'reports' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <ReportsDashboardEnhanced />
-        </Suspense>
-      )}
+      {currentView === 'users' && <UserDashboard />}
+      {currentView === 'roles' && <ErpPermissionArchitecturePage />}
+      {currentView === 'reports' && <ReportsDashboardEnhanced />}
       {currentView === 'settings' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          {hasPermission('settings.view') ? (
-            <SettingsPageNew />
-          ) : (
-            <div className="p-8 text-center text-gray-300">
-              You do not have permission to access Settings.
-            </div>
-          )}
-        </Suspense>
+        hasPermission('settings.view') ? <SettingsPageNew /> : (
+          <div className="p-8 text-center text-gray-300">You do not have permission to access Settings.</div>
+        )
       )}
-      {currentView === 'erp-permissions' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <ErpPermissionArchitecturePage />
-        </Suspense>
-      )}
+      {currentView === 'erp-permissions' && <ErpPermissionArchitecturePage />}
       {currentView === 'user-profile' && <UserProfilePage />}
       {currentView === 'contact-profile' && <ViewContactProfile />}
       {currentView === 'item-report' && <ItemLifecycleReport />}
@@ -487,11 +323,7 @@ const AppContent = () => {
       {currentView === 'user-management-test' && <UserManagementTestPage />}
       {currentView === 'branch-management-test' && <BranchManagementTestPage />}
       {currentView === 'accounting-chart-test' && <AccountingChartTestPage />}
-      {currentView === 'customer-ledger-test' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <CustomerLedgerTestPage />
-        </Suspense>
-      )}
+      {currentView === 'customer-ledger-test' && <CustomerLedgerTestPage />}
       {currentView === 'ledger-debug-test' && <LedgerDebugTestPage />}
       {currentView === 'rls-validation' && <RLSValidationPage />}
       {currentView === 'day4-certification' && <Day4FullFlowCertificationPage />}
@@ -499,51 +331,25 @@ const AppContent = () => {
       {currentView === 'cutover-prep' && <CutoverPrepPage />}
       {currentView === 'responsive-test' && <ResponsiveTestPage />}
       {currentView === 'test-account-entry' && <AccountingTestPage />}
-      {currentView === 'accounting-integrity-lab' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading lab…</div></div>}>
-          <AccountingIntegrityLabPage />
-        </Suspense>
-      )}
-      {currentView === 'ar-ap-reconciliation-center' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading…</div></div>}>
-          <ArApReconciliationCenterPage />
-        </Suspense>
-      )}
+      {currentView === 'accounting-integrity-lab' && <AccountingIntegrityLabPage />}
+      {currentView === 'ar-ap-reconciliation-center' && <ArApReconciliationCenterPage />}
       {currentView === 'party-ledger' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading ledger…</div></div>}>
-          <EffectivePartyLedgerPage
-            contactId={partyLedgerParams?.contactId}
-            contactName={partyLedgerParams?.contactName}
-            contactType={partyLedgerParams?.contactType}
-            onClose={() => {
-              setPartyLedgerParams?.(null);
-              setCurrentView('contacts');
-            }}
-          />
-        </Suspense>
+        <EffectivePartyLedgerPage
+          contactId={partyLedgerParams?.contactId}
+          contactName={partyLedgerParams?.contactName}
+          contactType={partyLedgerParams?.contactType}
+          onClose={() => {
+            setPartyLedgerParams?.(null);
+            setCurrentView('contacts');
+          }}
+        />
       )}
       {currentView === 'test-ledger' && <TestLedger />}
-      {currentView === 'customer-ledger-interactive-test' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <CustomerLedgerInteractiveTest />
-        </Suspense>
-      )}
+      {currentView === 'customer-ledger-interactive-test' && <CustomerLedgerInteractiveTest />}
       {currentView === 'sales-list-design-test' && <SalesListDesignTestPage />}
-      {currentView === 'inventory-design-test' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <InventoryDesignTestPage />
-        </Suspense>
-      )}
-      {currentView === 'inventory-analytics-test' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <InventoryAnalyticsTestPage />
-        </Suspense>
-      )}
-      {currentView === 'stock-report' && (
-        <Suspense fallback={<div className="flex items-center justify-center p-12"><div className="animate-pulse text-gray-500">Loading...</div></div>}>
-          <StockReportPage />
-        </Suspense>
-      )}
+      {currentView === 'inventory-design-test' && <InventoryDesignTestPage />}
+      {currentView === 'inventory-analytics-test' && <InventoryAnalyticsTestPage />}
+      {currentView === 'stock-report' && <StockReportPage />}
 
       <GlobalDrawer />
     </Layout>
@@ -606,7 +412,9 @@ export default function App() {
                               <ProductionProvider>
                                 <LoadingProvider>
                                   <NavigationProvider>
-                                    <AppContent />
+                                    <Suspense fallback={<GlobalSuspenseFallback />}>
+                                      <AppContent />
+                                    </Suspense>
                                     <Toaster position="bottom-right" theme="dark" />
                                     <KeyboardShortcutsModal />
                                   </NavigationProvider>

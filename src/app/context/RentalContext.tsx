@@ -171,6 +171,7 @@ export const useRentals = () => {
     }
     throw new Error('useRentals must be used within RentalProvider');
   }
+  (ctx as any).__activate?.();
   return ctx;
 };
 
@@ -199,10 +200,16 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [companyId, branchId]);
 
+  const activatedRef = React.useRef(false);
+  const [activated, setActivated] = React.useState(false);
+  const activate = useCallback(() => {
+    if (!activatedRef.current) { activatedRef.current = true; setActivated(true); }
+  }, []);
+
   useEffect(() => {
-    if (companyId) loadRentals();
-    else setLoading(false);
-  }, [companyId, loadRentals]);
+    if (companyId && activated) loadRentals();
+    else if (!companyId) setLoading(false);
+  }, [companyId, activated, loadRentals]);
 
   // Real-time: reload rentals when rentals/rental_payments change (skip if disabled or when WS fails to avoid 403 spam)
   useEffect(() => {
@@ -569,10 +576,11 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     deletePayment,
     deleteRental,
     markAsPickedUp,
+    __activate: activate,
   }), [
     rentals, loading, getRentalById, loadRentals, createRental, updateRental,
     finalizeRental, receiveReturn, cancelRental, addPayment, deletePayment,
-    deleteRental, markAsPickedUp,
+    deleteRental, markAsPickedUp, activate,
   ]);
 
   return <RentalContext.Provider value={value}>{children}</RentalContext.Provider>;

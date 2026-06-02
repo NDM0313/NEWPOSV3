@@ -334,7 +334,6 @@ const SalesContext = createContext<SalesContextType | undefined>(undefined);
 export const useSales = () => {
   const context = useContext(SalesContext);
   if (!context) {
-    // During hot reload or initial mount, context might not be available; return safe default to prevent crashes
     if (import.meta.env.DEV) {
       const defaultError = () => { throw new Error('SalesProvider not available'); };
       return {
@@ -356,6 +355,7 @@ export const useSales = () => {
     }
     throw new Error('useSales must be used within SalesProvider');
   }
+  (context as any).__activate?.();
   return context;
 };
 
@@ -630,10 +630,16 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     setPageState(Math.max(0, p));
   }, []);
 
+  const activatedRef = React.useRef(false);
+  const [activated, setActivated] = React.useState(false);
+  const activate = useCallback(() => {
+    if (!activatedRef.current) { activatedRef.current = true; setActivated(true); }
+  }, []);
+
   useEffect(() => {
-    if (companyId) loadSales();
-    else setLoading(false);
-  }, [companyId, loadSales]);
+    if (companyId && activated) loadSales();
+    else if (!companyId) setLoading(false);
+  }, [companyId, activated, loadSales]);
 
   const patchSaleInList = useCallback(async (saleId: string) => {
     if (!companyId) return;
@@ -3038,9 +3044,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     updateShippingStatus,
     convertQuotationToInvoice,
     refreshSales: loadSales,
+    __activate: activate,
   }), [
     sales, loading, totalCount, page, pageSize, setPage, getSaleById, createSale, updateSale, deleteSale,
-    recordPayment, updateShippingStatus, convertQuotationToInvoice, loadSales,
+    recordPayment, updateShippingStatus, convertQuotationToInvoice, loadSales, activate,
   ]);
 
   return (

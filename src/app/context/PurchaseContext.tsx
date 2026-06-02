@@ -143,7 +143,6 @@ const PurchaseContext = createContext<PurchaseContextType | undefined>(undefined
 export const usePurchases = () => {
   const context = useContext(PurchaseContext);
   if (!context) {
-    // During hot reload or initial mount, context might not be available; return safe default to prevent crashes
     if (import.meta.env.DEV) {
       const defaultError = () => { throw new Error('PurchaseProvider not available'); };
       return {
@@ -163,6 +162,7 @@ export const usePurchases = () => {
     }
     throw new Error('usePurchases must be used within PurchaseProvider');
   }
+  (context as any).__activate?.();
   return context;
 };
 
@@ -299,10 +299,16 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     setPageState(Math.max(0, p));
   }, []);
 
+  const activatedRef = React.useRef(false);
+  const [activated, setActivated] = React.useState(false);
+  const activate = useCallback(() => {
+    if (!activatedRef.current) { activatedRef.current = true; setActivated(true); }
+  }, []);
+
   useEffect(() => {
-    if (companyId) loadPurchases();
-    else setLoading(false);
-  }, [companyId, loadPurchases]);
+    if (companyId && activated) loadPurchases();
+    else if (!companyId) setLoading(false);
+  }, [companyId, activated, loadPurchases]);
 
   // Get purchase by ID
   const getPurchaseById = (id: string): Purchase | undefined => {
@@ -1647,9 +1653,10 @@ export const PurchaseProvider = ({ children }: { children: ReactNode }) => {
     pageSize: PAGE_SIZE,
     setPage,
     refreshPurchases: loadPurchases,
+    __activate: activate,
   }), [
     purchases, loading, totalCount, page, setPage, getPurchaseById, createPurchase, updatePurchase,
-    deletePurchase, recordPayment, updateStatus, receiveStock, loadPurchases,
+    deletePurchase, recordPayment, updateStatus, receiveStock, loadPurchases, activate,
   ]);
 
   return (
