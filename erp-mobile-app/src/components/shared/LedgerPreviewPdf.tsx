@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Paperclip } from 'lucide-react';
 import { ReportBrandHeader } from './ReportBrandHeader';
 import type { CompanyBrand } from '../../api/reports';
 
@@ -9,6 +10,8 @@ export interface LedgerPreviewRow {
   debit: number;
   credit: number;
   balance: number;
+  /** Non-interactive hint in PDF description cell when row has attachments. */
+  hasAttachment?: boolean;
 }
 
 export interface LedgerPreviewPdfProps {
@@ -92,7 +95,20 @@ export function LedgerPreviewPdf({
               <tr key={i}>
                 <td style={{ width: 80 }}>{r.date}</td>
                 <td style={{ width: 90 }}>{r.reference}</td>
-                <td>{r.description}</td>
+                <td>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {r.description}
+                    {r.hasAttachment ? (
+                      <span
+                        title="Has attachment(s)"
+                        style={{ display: 'inline-flex', color: '#6b7280', flexShrink: 0 }}
+                        aria-label="Has attachments"
+                      >
+                        <Paperclip size={12} strokeWidth={2} />
+                      </span>
+                    ) : null}
+                  </span>
+                </td>
                 <td style={{ textAlign: 'right' }}>{r.debit ? fmt(r.debit) : '—'}</td>
                 <td style={{ textAlign: 'right' }}>{r.credit ? fmt(r.credit) : '—'}</td>
                 <td style={{ textAlign: 'right' }}>{fmt(r.balance)}</td>

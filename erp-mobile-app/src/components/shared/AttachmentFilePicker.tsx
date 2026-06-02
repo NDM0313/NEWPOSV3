@@ -11,6 +11,8 @@ export interface AttachmentFilePickerProps {
   onInfo?: (message: string) => void;
   label?: string;
   description?: string;
+  /** When 1, picker replaces the selection and disallows multi-select. */
+  maxFiles?: number;
 }
 
 export function AttachmentFilePicker({
@@ -20,18 +22,23 @@ export function AttachmentFilePicker({
   onInfo,
   label = 'Attachments (Optional)',
   description = 'PDF, PNG, JPG up to 10MB',
+  maxFiles,
 }: AttachmentFilePickerProps) {
   const [isProcessingFiles, setIsProcessingFiles] = useState(false);
+  const singleFile = maxFiles === 1;
 
   const processFiles = async (picked: File[]) => {
     if (!picked.length) return;
     setIsProcessingFiles(true);
     try {
+      const toProcess = singleFile ? picked.slice(0, 1) : picked;
       const { files: processed, compressionMessages, skippedMessages } =
-        await prepareAttachmentFilesForUpload(picked, MAX_FILE_SIZE_BYTES);
+        await prepareAttachmentFilesForUpload(toProcess, MAX_FILE_SIZE_BYTES);
       skippedMessages.forEach((msg) => onError?.(msg));
       compressionMessages.forEach((msg) => onInfo?.(msg));
-      if (processed.length > 0) onChange([...files, ...processed]);
+      if (processed.length > 0) {
+        onChange(singleFile ? processed : [...files, ...processed]);
+      }
     } finally {
       setIsProcessingFiles(false);
     }
@@ -46,7 +53,7 @@ export function AttachmentFilePicker({
       <label className="block text-xs font-medium text-[#9CA3AF] mb-1">{label}</label>
       <MediaSourcePicker
         accept={ACCEPT_TYPES}
-        multiple
+        multiple={!singleFile}
         disabled={isProcessingFiles}
         onFiles={(picked) => void processFiles(picked)}
         onError={onError}

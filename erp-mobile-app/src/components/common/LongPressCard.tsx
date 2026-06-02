@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Eye, Edit2, Trash2, Copy } from 'lucide-react';
 
-interface ActionMenuItem {
+export interface ActionMenuItem {
   label: string;
   icon: React.ReactNode;
   onClick: () => void;
@@ -15,6 +15,8 @@ interface LongPressCardProps {
   onEdit?: () => void;
   onDelete?: () => void;
   onDuplicate?: () => void;
+  /** Inserted after View, before Edit/Delete. */
+  customMenuItems?: ActionMenuItem[];
   canEdit?: boolean;
   canDelete?: boolean;
   children: React.ReactNode;
@@ -31,6 +33,7 @@ export function LongPressCard({
   onEdit,
   onDelete,
   onDuplicate,
+  customMenuItems = [],
   canEdit = true,
   canDelete = true,
   children,
@@ -94,6 +97,10 @@ export function LongPressCard({
       onClick: () => handleMenuAction(onView || onTap),
       show: true,
     },
+    ...customMenuItems.map((item) => ({
+      ...item,
+      onClick: () => handleMenuAction(item.onClick),
+    })),
     {
       label: 'Edit',
       icon: <Edit2 className="w-4 h-4" />,

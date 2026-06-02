@@ -14,6 +14,7 @@ import { getNextDocumentNumber } from './documentNumber';
 import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
 import { resolveBranchUuidForWrite, safeRpcBranchId } from '../utils/branchId';
 import { getCurrentLocalTimestamp, toLocalDateString } from '../utils/localDate';
+import { hasNormalizedAttachments } from '../lib/normalizeAttachments';
 
 export interface AccountRow {
   id: string;
@@ -259,6 +260,8 @@ export interface JournalEntryRow {
   posted_at?: string | null;
   created_at?: string | null;
   lines?: JournalEntryLineRow[];
+  attachments?: unknown;
+  hasAttachments?: boolean;
 }
 
 function normalizeJeLines(raw: unknown): JournalEntryLineRow[] {
@@ -288,7 +291,7 @@ export async function getJournalEntries(
     .from('journal_entries')
     .select(`
       id, entry_no, entry_date, description, reference_type, reference_id, payment_id,
-      posted_at, created_at,
+      posted_at, created_at, attachments,
       lines:journal_entry_lines(account_id, debit, credit, description, account:accounts(name, code))
     `)
     .eq('company_id', companyId)
@@ -309,10 +312,11 @@ export async function getJournalEntries(
   const paymentNotesById = new Map<string, string | null>();
   const paymentRefNoById = new Map<string, string | null>();
   const paymentTypeById = new Map<string, 'received' | 'paid' | null>();
+  const paymentAttachmentsById = new Map<string, unknown>();
   if (paymentIds.length > 0) {
     const { data: paymentRows } = await supabase
       .from('payments')
-      .select('id, notes, reference_number, payment_type')
+      .select('id, notes, reference_number, payment_type, attachments')
       .in('id', paymentIds);
     for (const row of paymentRows || []) {
       const id = String((row as Record<string, unknown>).id ?? '');
@@ -326,6 +330,7 @@ export async function getJournalEntries(
       );
       const pt = String((row as Record<string, unknown>).payment_type ?? '').trim().toLowerCase();
       paymentTypeById.set(id, pt === 'received' ? 'received' : pt === 'paid' ? 'paid' : null);
+      paymentAttachmentsById.set(id, (row as Record<string, unknown>).attachments);
     }
   }
   const rows = (data || []).map((e: Record<string, unknown>) => {
@@ -333,6 +338,10 @@ export async function getJournalEntries(
     const totalDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
     const paymentId = e.payment_id != null && e.payment_id !== '' ? String(e.payment_id) : null;
+    const jeAttachments = e.attachments;
+    const payAttachments = paymentId ? paymentAttachmentsById.get(paymentId) : null;
+    const hasAttachments =
+      hasNormalizedAttachments(jeAttachments) || hasNormalizedAttachments(payAttachments);
     return {
       id: String(e.id ?? ''),
       entry_no: String(e.entry_no ?? ''),
@@ -353,6 +362,8 @@ export async function getJournalEntries(
         ? String((e as { created_at?: string }).created_at)
         : null,
       lines,
+      attachments: jeAttachments,
+      hasAttachments,
     };
   });
   return { data: rows, error: null };
@@ -370,7 +381,7 @@ export async function getJournalEntryById(
     .select(
       `
       id, entry_no, entry_date, description, reference_type, reference_id, payment_id,
-      posted_at, created_at,
+      posted_at, created_at, attachments,
       lines:journal_entry_lines(account_id, debit, credit, description, account:accounts(name, code))
     `
     )
@@ -382,19 +393,21 @@ export async function getJournalEntryById(
   let paymentNotes: string | null = null;
   let paymentReferenceNumber: string | null = null;
   let paymentType: 'received' | 'paid' | null = null;
+  let paymentRow: Record<string, unknown> | null = null;
   const paymentIdRaw = e.payment_id != null && e.payment_id !== '' ? String(e.payment_id) : null;
   if (paymentIdRaw) {
-    const { data: paymentRow } = await supabase
+    const { data: payData } = await supabase
       .from('payments')
-      .select('notes, reference_number, payment_type')
+      .select('notes, reference_number, payment_type, attachments')
       .eq('id', paymentIdRaw)
       .maybeSingle();
-    const notesVal = (paymentRow as Record<string, unknown> | null)?.notes;
+    paymentRow = (payData as Record<string, unknown> | null) ?? null;
+    const notesVal = paymentRow?.notes;
     paymentNotes = notesVal != null && String(notesVal).trim() !== '' ? String(notesVal) : null;
-    const rnVal = (paymentRow as Record<string, unknown> | null)?.reference_number;
+    const rnVal = paymentRow?.reference_number;
     paymentReferenceNumber =
       rnVal != null && String(rnVal).trim() !== '' ? String(rnVal).trim() : null;
-    const ptVal = String((paymentRow as Record<string, unknown> | null)?.payment_type ?? '')
+    const ptVal = String(paymentRow?.payment_type ?? '')
       .trim()
       .toLowerCase();
     paymentType = ptVal === 'received' ? 'received' : ptVal === 'paid' ? 'paid' : null;
@@ -402,6 +415,10 @@ export async function getJournalEntryById(
   const lines = normalizeJeLines(e.lines);
   const totalDebit = lines.reduce((s, l) => s + Number(l.debit || 0), 0);
   const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+  const jeAttachments = (e as { attachments?: unknown }).attachments;
+  const payAttachments = paymentRow?.attachments ?? null;
+  const hasAttachments =
+    hasNormalizedAttachments(jeAttachments) || hasNormalizedAttachments(payAttachments);
   return {
     data: {
       id: String(e.id ?? ''),
@@ -419,6 +436,8 @@ export async function getJournalEntryById(
       posted_at: (e as { posted_at?: string }).posted_at ? String((e as { posted_at?: string }).posted_at) : null,
       created_at: (e as { created_at?: string }).created_at ? String((e as { created_at?: string }).created_at) : null,
       lines,
+      attachments: jeAttachments,
+      hasAttachments,
     },
     error: null,
   };
@@ -585,6 +604,8 @@ export interface JournalEntryEditRow {
   description: string;
   referenceType: string;
   referenceId: string | null;
+  paymentId: string | null;
+  attachments?: unknown;
   debitAccountId: string | null;
   creditAccountId: string | null;
   amount: number;
@@ -597,7 +618,7 @@ export async function getJournalEntryForEdit(
   if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
   const { data: je, error: jeErr } = await supabase
     .from('journal_entries')
-    .select('id, company_id, entry_no, entry_date, description, reference_type, reference_id')
+    .select('id, company_id, entry_no, entry_date, description, reference_type, reference_id, payment_id, attachments')
     .eq('company_id', companyId)
     .eq('id', journalEntryId)
     .maybeSingle();
@@ -622,6 +643,9 @@ export async function getJournalEntryForEdit(
       description: String(je.description ?? ''),
       referenceType: String(je.reference_type ?? ''),
       referenceId: je.reference_id ? String(je.reference_id) : null,
+      paymentId:
+        je.payment_id != null && String(je.payment_id).trim() !== '' ? String(je.payment_id) : null,
+      attachments: (je as { attachments?: unknown }).attachments,
       debitAccountId: debitLine?.account_id ? String(debitLine.account_id) : null,
       creditAccountId: creditLine?.account_id ? String(creditLine.account_id) : null,
       amount,

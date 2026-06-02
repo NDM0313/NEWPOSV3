@@ -32,12 +32,20 @@ import {
 import { cn } from "../ui/utils";
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { expenseCategoryService, type ExpenseCategoryTreeItem, type ExpenseCategoryRow, type ExpenseCategoryType } from '@/app/services/expenseCategoryService';
+import {
+  flattenParentPickerOptions,
+  getNodeDepth,
+  MAX_CATEGORY_DEPTH_MESSAGE,
+  MAX_EXPENSE_CATEGORY_DEPTH,
+} from '@/app/lib/expenseCategoryTreeUtils';
 import { toast } from 'sonner';
 
 interface AddCategoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   categoryToEdit?: ExpenseCategoryRow | null;
+  /** Pre-select parent when adding a sub-category from the tree panel. */
+  initialParentId?: string | null;
   onSuccess?: () => void;
 }
 
@@ -67,7 +75,13 @@ const ICONS = [
   { name: 'Other', icon: Wallet, slug: 'Other' },
 ];
 
-export const AddCategoryModal = ({ isOpen, onClose, categoryToEdit, onSuccess }: AddCategoryModalProps) => {
+export const AddCategoryModal = ({
+  isOpen,
+  onClose,
+  categoryToEdit,
+  initialParentId,
+  onSuccess,
+}: AddCategoryModalProps) => {
   const { companyId } = useSupabase();
   const [loading, setLoading] = useState(false);
   const [tree, setTree] = useState<ExpenseCategoryTreeItem[]>([]);
@@ -95,13 +109,13 @@ export const AddCategoryModal = ({ isOpen, onClose, categoryToEdit, onSuccess }:
       } else {
         setName('');
         setDescription('');
-        setParentId('');
+        setParentId(initialParentId || '');
         setSelectedColorSlug('blue');
         setSelectedIconSlug('Zap');
         setCategoryType('general');
       }
     }
-  }, [isOpen, categoryToEdit]);
+  }, [isOpen, categoryToEdit, initialParentId]);
 
   const handleSubmit = async () => {
     const trimmedName = name.trim();
@@ -112,6 +126,17 @@ export const AddCategoryModal = ({ isOpen, onClose, categoryToEdit, onSuccess }:
     if (!companyId) {
       toast.error('Company not found');
       return;
+    }
+    if (parentId) {
+      const parentDepth = getNodeDepth(tree, parentId);
+      if (parentDepth < 0) {
+        toast.error('Parent category not found');
+        return;
+      }
+      if (parentDepth >= MAX_EXPENSE_CATEGORY_DEPTH - 1) {
+        toast.error(MAX_CATEGORY_DEPTH_MESSAGE);
+        return;
+      }
     }
     setLoading(true);
     try {
@@ -148,6 +173,7 @@ export const AddCategoryModal = ({ isOpen, onClose, categoryToEdit, onSuccess }:
 
   const selectedColor = COLORS.find((c) => c.slug === selectedColorSlug) || COLORS[0];
   const selectedIcon = ICONS.find((i) => i.slug === selectedIconSlug) || ICONS[0];
+  const parentOptions = flattenParentPickerOptions(tree, categoryToEdit?.id);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -193,14 +219,14 @@ export const AddCategoryModal = ({ isOpen, onClose, categoryToEdit, onSuccess }:
                 <SelectItem value="none" className="focus:bg-gray-800 focus:text-white cursor-pointer">
                   None (Main Category)
                 </SelectItem>
-                {tree.map((main) => (
-                  <SelectItem key={main.id} value={main.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
-                    {main.name}
+                {parentOptions.map((opt) => (
+                  <SelectItem key={opt.id} value={opt.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                    {opt.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-gray-500">Select a parent to make this a sub-category.</p>
+            <p className="text-xs text-gray-500">Select a parent for sub or re-sub (max 3 levels).</p>
           </div>
 
           <div className="space-y-2">

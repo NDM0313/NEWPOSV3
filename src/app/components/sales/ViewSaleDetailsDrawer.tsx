@@ -59,6 +59,7 @@ import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import { AttachmentPreviewRow } from '@/app/components/shared/AttachmentPreviewRow';
 import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, canAddPaymentToSale } from '@/app/utils/statusHelpers';
 import { isSaleNonPostedCommercial } from '@/app/lib/postingStatusGate';
+import { formatSaleChargeDisplayLabel, formatSaleChargeLabel } from '@/app/lib/saleChargeDisplay';
 import { getStudioDeadlineFromNotes } from '@/app/utils/studioDeadlineNotes';
 import {
   Table,
@@ -138,14 +139,6 @@ interface SaleDetails {
   createdBy: string;
   createdAt: string;
   updatedAt?: string;
-}
-
-function formatSaleChargeLabel(type: string): string {
-  const t = String(type || 'other').toLowerCase();
-  if (t === 'stitching') return 'Stitching';
-  if (t === 'shipping') return 'Shipping';
-  if (t === 'other') return 'Other';
-  return t.charAt(0).toUpperCase() + t.slice(1).replace(/_/g, ' ');
 }
 
 interface ViewSaleDetailsDrawerProps {
@@ -1361,7 +1354,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
                         {extraRows.length > 0
                           ? extraRows.map((c, idx) => (
                               <div key={c.id || `extra-${idx}`} className="flex justify-between text-sm">
-                                <span className="text-gray-400">{formatSaleChargeLabel(c.charge_type || c.chargeType || 'other')}</span>
+                                <span className="text-gray-400">{formatSaleChargeDisplayLabel(c)}</span>
                                 <span className="text-white font-medium">{formatCurrency(Number(c.amount) || 0)}</span>
                               </div>
                             ))

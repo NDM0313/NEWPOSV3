@@ -35,6 +35,9 @@ import {
   type DateRangePreset,
   type DateRangeValue,
 } from './_shared/DateRangeBar';
+import { useAccountingAttachmentActions } from '../../../hooks/useAccountingAttachmentActions';
+import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
+import { LongPressCard } from '../../common/LongPressCard';
 
 interface TransactionsTimelineProps {
   onBack: () => void;
@@ -189,6 +192,7 @@ export function TransactionsTimeline({
   defaultDatePreset = 'month',
 }: TransactionsTimelineProps) {
   const preview = usePdfPreview(companyId);
+  const attachmentActions = useAccountingAttachmentActions(companyId, branchId);
   const [rows, setRows] = useState<TransactionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -411,31 +415,56 @@ export function TransactionsTimeline({
               <span className="text-xs text-[#6B7280]">{g.items.length} tx</span>
             </div>
             <ul className="space-y-2">
-              {g.items.map((t) => (
-                <TransactionRowCard
-                  key={t.id}
-                  tx={t}
-                  onClick={() =>
-                    setDetailId(
-                      t.id.startsWith('expense-') || t.id.startsWith('journal-')
-                        ? t.journalEntryId ?? t.paymentId ?? t.id.replace(/^journal-/, '')
-                        : t.id,
-                    )
-                  }
-                  onEdit={() => {
-                    if (readOnly || t.id.startsWith('expense-')) return;
-                    const source = t.id.startsWith('journal-') ? 'journal_entry' : 'payment_row';
-                    const check = canEditTransaction(t.referenceType, source);
-                    if (!check.editable) return;
-                    if (check.kind === 'journal' && !t.journalEntryId) return;
-                    setEditTarget({
-                      mode: check.kind === 'journal' ? 'journal' : 'payment',
-                      id: check.kind === 'journal' ? t.journalEntryId! : t.id,
-                    });
-                  }}
-                  readOnly={readOnly || t.id.startsWith('expense-')}
-                />
-              ))}
+              {g.items.map((t) => {
+                const rowReadOnly = readOnly || t.id.startsWith('expense-');
+                const source = t.id.startsWith('journal-') ? 'journal_entry' : 'payment_row';
+                const editability = canEditTransaction(t.referenceType, source);
+                const rowAttachParams = { transactionRow: t };
+                return (
+                  <LongPressCard
+                    key={t.id}
+                    onTap={() =>
+                      setDetailId(
+                        t.id.startsWith('expense-') || t.id.startsWith('journal-')
+                          ? t.journalEntryId ?? t.paymentId ?? t.id.replace(/^journal-/, '')
+                          : t.id,
+                      )
+                    }
+                    onEdit={
+                      !rowReadOnly && editability.editable
+                        ? () => {
+                            if (editability.kind === 'journal' && !t.journalEntryId) return;
+                            setEditTarget({
+                              mode: editability.kind === 'journal' ? 'journal' : 'payment',
+                              id: editability.kind === 'journal' ? t.journalEntryId! : t.id,
+                            });
+                          }
+                        : undefined
+                    }
+                    canEdit={!rowReadOnly && editability.editable}
+                    canDelete={false}
+                    customMenuItems={attachmentActions.buildLongPressMenuItems(rowAttachParams, {
+                      canAdd: !rowReadOnly && editability.editable,
+                    })}
+                  >
+                    <TransactionRowCard
+                      tx={t}
+                      showAttachmentIcon={attachmentActions.transactionShowsAttachmentIcon(t)}
+                      onAttachmentClick={() => void attachmentActions.previewAttachments(rowAttachParams)}
+                      readOnly={rowReadOnly}
+                      editability={editability}
+                      onEdit={() => {
+                        if (rowReadOnly || !editability.editable) return;
+                        if (editability.kind === 'journal' && !t.journalEntryId) return;
+                        setEditTarget({
+                          mode: editability.kind === 'journal' ? 'journal' : 'payment',
+                          id: editability.kind === 'journal' ? t.journalEntryId! : t.id,
+                        });
+                      }}
+                    />
+                  </LongPressCard>
+                );
+              })}
             </ul>
           </div>
         ))}
@@ -466,6 +495,10 @@ export function TransactionsTimeline({
           }}
         />
       )}
+
+      {attachmentActions.AttachmentPreviewPortal}
+      {attachmentActions.AddAttachmentSheetPortal}
+      {attachmentActions.ToastBanner}
 
       {preview.brand && (
         <PdfPreviewModal
@@ -538,14 +571,18 @@ function StatCard({ label, value, color }: { label: string; value: number; color
 
 function TransactionRowCard({
   tx,
-  onClick,
   onEdit,
   readOnly = false,
+  showAttachmentIcon = false,
+  onAttachmentClick,
+  editability,
 }: {
   tx: TransactionRow;
-  onClick: () => void;
   onEdit: () => void;
   readOnly?: boolean;
+  showAttachmentIcon?: boolean;
+  onAttachmentClick?: () => void;
+  editability: ReturnType<typeof canEditTransaction>;
 }) {
   const isReceived = tx.direction === 'received';
   const amountColor = isReceived ? 'text-[#10B981]' : 'text-[#EF4444]';
@@ -565,14 +602,10 @@ function TransactionRowCard({
       ? (tx.partyAccountName ?? tx.partyName ?? '—')
       : (tx.paymentAccountName ?? '—');
 
-  const editSource: 'payment_row' | 'journal_entry' = tx.id.startsWith('journal-')
-    ? 'journal_entry'
-    : 'payment_row';
-  const editability = canEditTransaction(tx.referenceType, editSource);
   return (
     <li>
       <div className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-3 transition-colors hover:border-[#4B5563]">
-        <button type="button" onClick={onClick} className="w-full text-left">
+        <div className="w-full text-left">
         <div className="flex items-start gap-3">
           <div className={`shrink-0 mt-0.5 w-9 h-9 rounded-full flex items-center justify-center ${pillBg}`}>
             <Icon className="w-4 h-4" />
@@ -592,7 +625,12 @@ function TransactionRowCard({
                 <p className={`text-sm font-bold ${amountColor}`}>
                   {isReceived ? '+' : '−'} Rs. {tx.amount.toLocaleString('en-PK', { minimumFractionDigits: 2 })}
                 </p>
-                <p className="text-[11px] text-[#9CA3AF]">{time}</p>
+                <div className="flex items-center justify-end gap-0.5">
+                  {showAttachmentIcon && onAttachmentClick ? (
+                    <AttachmentIndicatorButton onClick={() => onAttachmentClick()} size="sm" />
+                  ) : null}
+                  <p className="text-[11px] text-[#9CA3AF]">{time}</p>
+                </div>
               </div>
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-[11px] text-[#9CA3AF]">
@@ -614,7 +652,7 @@ function TransactionRowCard({
             </div>
           </div>
         </div>
-        </button>
+        </div>
         {!readOnly && (
           <div className="mt-2 flex justify-end">
             <button

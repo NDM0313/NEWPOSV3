@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, ArrowDownLeft, ArrowUpRight, Users, Search } from 'lucide-react';
+import { ChevronRight, Users, Search } from 'lucide-react';
 import type { User } from '../../../types';
 import { getContactSubAccountId, getAccountLedgerLines, type LedgerLine } from '../../../api/reports';
 import {
@@ -18,11 +18,14 @@ import {
 import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard, ReportSectionTitle } from './_shared/ReportShell';
-import { formatAmount, formatDate, dateRangeLabel } from './_shared/format';
+import { formatAmount, dateRangeLabel } from './_shared/format';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { LedgerPreviewPdf } from '../../shared/LedgerPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
 import { sortLedgerLinesAndRebuildRunningBalance } from '../../../lib/ledgerChronology';
+import { useAttachmentPreview } from '../../../hooks/useAttachmentPreview';
+import { LedgerActivityListRow } from './_shared/LedgerActivityListRow';
+import { loadMergedAttachmentsForJournalEntry } from '../../../lib/loadMergedAttachments';
 
 export type PartyLedgerKind = 'customer' | 'supplier' | 'worker';
 
@@ -74,6 +77,18 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
   const [manualLedgerRefresh, setManualLedgerRefresh] = useState(false);
   const [ledgerSourceHint, setLedgerSourceHint] = useState<string | null>(null);
   const preview = usePdfPreview(companyId);
+  const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
+
+  const handleLineAttachmentPreview = async (l: LedgerLine) => {
+    if (!companyId) return;
+    const items = await loadMergedAttachmentsForJournalEntry(companyId, {
+      journalEntryId: l.journalEntryId,
+      referenceType: l.referenceType,
+      referenceId: l.sourceReferenceId,
+      paymentId: l.paymentId,
+    });
+    if (items.length) openAttachmentPreview(items, 0);
+  };
 
   useEffect(() => {
     if (!companyId) {
@@ -421,37 +436,14 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
             right={`${lines.length} entries`}
           />
           <ul className="divide-y divide-[#374151]">
-            {lines.map((l) => {
-              const isDebit = l.debit > 0;
-              const amount = isDebit ? l.debit : l.credit;
-              return (
-                <li key={l.id} className="px-4 py-3">
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                        isDebit ? 'bg-[#F59E0B]/15 text-[#F59E0B]' : 'bg-[#10B981]/15 text-[#10B981]'
-                      }`}
-                    >
-                      {isDebit ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownLeft className="w-4 h-4" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-sm font-semibold text-white truncate">{l.description || '—'}</p>
-                      </div>
-                      <p className="text-[11px] text-[#9CA3AF] truncate">
-                        {formatDate(l.date)} · {displayEntryNo(l.entryNo, l.referenceType)}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className={`text-sm font-bold ${isDebit ? 'text-[#F59E0B]' : 'text-[#10B981]'}`}>
-                        {isDebit ? '+' : '−'} Rs. {formatAmount(amount, 0)}
-                      </p>
-                      <p className="text-[10px] text-[#9CA3AF]">Bal Rs. {formatAmount(l.runningBalance, 0)}</p>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
+            {lines.map((l) => (
+              <LedgerActivityListRow
+                key={l.id}
+                line={l}
+                displayReference={displayEntryNo}
+                onAttachmentClick={() => void handleLineAttachmentPreview(l)}
+              />
+            ))}
           </ul>
         </ReportCard>
       </ReportShell>
@@ -481,12 +473,14 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
               debit: l.debit,
               credit: l.credit,
               balance: l.runningBalance,
+              hasAttachment: l.hasAttachments,
             }))}
             generatedBy={user.name || user.email || 'User'}
             generatedAt={new Date().toLocaleString('en-PK')}
           />
         </PdfPreviewModal>
       )}
+      {AttachmentPreviewPortal}
     </div>
   );
 }

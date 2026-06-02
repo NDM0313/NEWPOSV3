@@ -35,6 +35,11 @@ import { useSupabase } from "@/app/context/SupabaseContext";
 import { branchService } from "@/app/services/branchService";
 import { accountService } from "@/app/services/accountService";
 import { expenseCategoryService, type ExpenseCategoryTreeItem } from "@/app/services/expenseCategoryService";
+import {
+  findPathToCategory,
+  levelIdsFromPath,
+  resolveExpenseCategoryIdFromLevels,
+} from "@/app/lib/expenseCategoryTreeUtils";
 import { userService } from "@/app/services/userService";
 import { toast } from "sonner";
 import type { ExpenseCategory } from "@/app/context/ExpenseContext";
@@ -59,6 +64,7 @@ interface AddExpenseDrawerProps {
     location?: string;
     status?: string;
     paymentAccountId?: string;
+    expense_category_id?: string;
   } | null;
 }
 
@@ -87,6 +93,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   const [categoryTree, setCategoryTree] = useState<ExpenseCategoryTreeItem[]>([]);
   const [mainCategoryId, setMainCategoryId] = useState("");
   const [subCategoryId, setSubCategoryId] = useState("");
+  const [leafCategoryId, setLeafCategoryId] = useState("");
   const [paidToUserId, setPaidToUserId] = useState("");
   const [salaryUsers, setSalaryUsers] = useState<Array<{ id: string; full_name: string; email?: string; role?: string }>>([]);
   const [salaryUserSearch, setSalaryUserSearch] = useState("");
@@ -149,6 +156,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
       setCategorySlug('');
       setMainCategoryId('');
       setSubCategoryId('');
+      setLeafCategoryId('');
       setPaidToUserId('');
       setSalaryUserSearch('');
       setPaidFromAccountId('');
@@ -159,8 +167,20 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
   const selectedMain = categoryTree.find((m) => m.id === mainCategoryId);
   const subOptions = selectedMain?.children ?? [];
   const selectedSub = subOptions.find((s) => s.id === subCategoryId);
-  const effectiveSlug = selectedSub?.slug ?? selectedMain?.slug ?? categorySlug;
-  const isSalaryCategory = effectiveSlug === 'salaries' || selectedMain?.type === 'salary' || selectedSub?.type === 'salary';
+  const leafOptions = selectedSub?.children ?? [];
+  const selectedLeaf = leafOptions.find((n) => n.id === leafCategoryId);
+  const deepestCategory = selectedLeaf ?? selectedSub ?? selectedMain;
+  const effectiveSlug = deepestCategory?.slug ?? categorySlug;
+  const isSalaryCategory =
+    effectiveSlug === 'salaries' ||
+    selectedMain?.type === 'salary' ||
+    selectedSub?.type === 'salary' ||
+    selectedLeaf?.type === 'salary';
+  const resolvedCategoryId = resolveExpenseCategoryIdFromLevels(
+    mainCategoryId,
+    subCategoryId,
+    leafCategoryId,
+  );
 
   useEffect(() => {
     if (isOpen && companyId && isSalaryCategory) {
@@ -189,20 +209,40 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
       if (accMatch) setPaidFromAccountId(accMatch.id);
     }
     if (isOpen && expenseToEdit && categoryTree.length > 0) {
-      const catName = String(expenseToEdit.category || '').toLowerCase();
-      for (const main of categoryTree) {
-        if ((main.name || '').toLowerCase() === catName || (main.slug || '').toLowerCase() === catName) {
-          setMainCategoryId(main.id);
-          setSubCategoryId('');
-          break;
-        }
-        const sub = main.children?.find((s: { name?: string; slug?: string }) => 
-          (s.name || '').toLowerCase() === catName || (s.slug || '').toLowerCase() === catName
-        );
-        if (sub) {
-          setMainCategoryId(main.id);
-          setSubCategoryId(sub.id);
-          break;
+      const catId = expenseToEdit.expense_category_id;
+      if (catId) {
+        const path = findPathToCategory(categoryTree, catId);
+        const levels = levelIdsFromPath(path);
+        setMainCategoryId(levels.level1Id);
+        setSubCategoryId(levels.level2Id);
+        setLeafCategoryId(levels.level3Id);
+      } else {
+        const catName = String(expenseToEdit.category || '').toLowerCase();
+        for (const main of categoryTree) {
+          if ((main.name || '').toLowerCase() === catName || (main.slug || '').toLowerCase() === catName) {
+            setMainCategoryId(main.id);
+            setSubCategoryId('');
+            setLeafCategoryId('');
+            break;
+          }
+          const walk = (nodes: ExpenseCategoryTreeItem[], trail: ExpenseCategoryTreeItem[]): boolean => {
+            for (const node of nodes) {
+              const next = [...trail, node];
+              if (
+                (node.name || '').toLowerCase() === catName ||
+                (node.slug || '').toLowerCase() === catName
+              ) {
+                const levels = levelIdsFromPath(next);
+                setMainCategoryId(levels.level1Id);
+                setSubCategoryId(levels.level2Id);
+                setLeafCategoryId(levels.level3Id);
+                return true;
+              }
+              if (node.children?.length && walk(node.children, next)) return true;
+            }
+            return false;
+          };
+          if (walk(main.children ?? [], [main])) break;
         }
       }
     }
@@ -237,6 +277,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
     setCategorySlug("");
     setMainCategoryId("");
     setSubCategoryId("");
+    setLeafCategoryId("");
     setPaidToUserId("");
     setSalaryUserSearch("");
     setPaidFromAccountId("");
@@ -276,7 +317,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
           paidFromAccountId && /^[0-9a-f-]{36}$/i.test(paidFromAccountId) ? paidFromAccountId : undefined;
         await updateExpense(expenseToEdit.id, {
           category: effectiveSlug,
-          description: description.trim() || (isSalaryCategory && selectedSalaryUser ? `${selectedSalaryUser.full_name} – Salary` : selectedSub?.name ?? selectedMain?.name ?? effectiveSlug),
+          description: description.trim() || (isSalaryCategory && selectedSalaryUser ? `${selectedSalaryUser.full_name} – Salary` : deepestCategory?.name ?? effectiveSlug),
           amount: amt,
           date: date ? format(date, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
           paymentMethod: paymentMethodName,
@@ -288,7 +329,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
         await createExpense(
           {
             category: effectiveSlug,
-            description: description.trim() || (isSalaryCategory && selectedSalaryUser ? `${selectedSalaryUser.full_name} – Salary` : selectedSub?.name ?? selectedMain?.name ?? effectiveSlug),
+            description: description.trim() || (isSalaryCategory && selectedSalaryUser ? `${selectedSalaryUser.full_name} – Salary` : deepestCategory?.name ?? effectiveSlug),
             amount: amt,
             date: date ? format(date, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
             paymentMethod: paymentMethodName,
@@ -302,7 +343,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
             branchId: effectiveBranchId,
             payment_account_id: paidFromAccountId && /^[0-9a-f-]{36}$/i.test(paidFromAccountId) ? paidFromAccountId : undefined,
             paidToUserId: isSalaryCategory && paidToUserId ? paidToUserId : undefined,
-            expense_category_id: subCategoryId || mainCategoryId || undefined,
+            expense_category_id: resolvedCategoryId || undefined,
           }
         );
       }
@@ -427,6 +468,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                     onValueChange={(v) => {
                       setMainCategoryId(v === '_none' ? '' : v);
                       setSubCategoryId('');
+                      setLeafCategoryId('');
                     }}
                   >
                     <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
@@ -442,7 +484,13 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                     </SelectContent>
                   </Select>
                   {subOptions.length > 0 && (
-                    <Select value={subCategoryId || '_main'} onValueChange={(v) => setSubCategoryId(v === '_main' ? '' : v)}>
+                    <Select
+                      value={subCategoryId || '_main'}
+                      onValueChange={(v) => {
+                        setSubCategoryId(v === '_main' ? '' : v);
+                        setLeafCategoryId('');
+                      }}
+                    >
                       <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
                         <SelectValue placeholder="Sub-category (optional)" />
                       </SelectTrigger>
@@ -453,6 +501,26 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
                         {subOptions.map((s) => (
                           <SelectItem key={s.id} value={s.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
                             {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {leafOptions.length > 0 && (
+                    <Select
+                      value={leafCategoryId || '_parent'}
+                      onValueChange={(v) => setLeafCategoryId(v === '_parent' ? '' : v)}
+                    >
+                      <SelectTrigger className="h-11 bg-gray-900 border-gray-700 text-white">
+                        <SelectValue placeholder="Re-sub (optional)" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-900 border-gray-800 text-white">
+                        <SelectItem value="_parent" className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                          — {selectedSub?.name ?? selectedMain?.name} (parent level)
+                        </SelectItem>
+                        {leafOptions.map((n) => (
+                          <SelectItem key={n.id} value={n.id} className="focus:bg-gray-800 focus:text-white cursor-pointer">
+                            {n.name}
                           </SelectItem>
                         ))}
                       </SelectContent>

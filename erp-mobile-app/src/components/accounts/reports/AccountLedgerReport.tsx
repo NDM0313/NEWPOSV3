@@ -17,6 +17,9 @@ import { usePdfPreview } from '../../shared/usePdfPreview';
 import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
 import type { TransactionReferenceType } from '../../../api/transactionDetail';
 import { sortLedgerLinesAndRebuildRunningBalance } from '../../../lib/ledgerChronology';
+import { useAttachmentPreview } from '../../../hooks/useAttachmentPreview';
+import { loadMergedAttachmentsForJournalEntry } from '../../../lib/loadMergedAttachments';
+import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
 import { formatEventDateGroupLabel, getTransactionEventDateKey } from '../../../utils/transactionDisplayDate';
 
 interface AccountLedgerReportProps {
@@ -54,6 +57,18 @@ export function AccountLedgerReport({
   /** Shown when party GL RPC fails and we fall back to raw sub-account lines. */
   const [ledgerFallbackNotice, setLedgerFallbackNotice] = useState<string | null>(null);
   const preview = usePdfPreview(companyId);
+  const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
+
+  const handleLineAttachmentPreview = async (l: LedgerLine) => {
+    if (!companyId) return;
+    const items = await loadMergedAttachmentsForJournalEntry(companyId, {
+      journalEntryId: l.journalEntryId,
+      referenceType: l.referenceType,
+      referenceId: l.sourceReferenceId,
+      paymentId: l.paymentId,
+    });
+    if (items.length) openAttachmentPreview(items, 0);
+  };
 
   useEffect(() => {
     if (!companyId) {
@@ -450,11 +465,19 @@ export function AccountLedgerReport({
                               </p>
                             </div>
                             <div className="text-right shrink-0">
-                              <span className={`inline-block text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded mb-0.5 ${
-                                isIn ? 'bg-[#10B981]/15 text-[#10B981]' : 'bg-[#EF4444]/15 text-[#EF4444]'
-                              }`}>
-                                {isIn ? 'IN' : 'OUT'}
-                              </span>
+                              <div className="flex items-center justify-end gap-0.5">
+                                {l.hasAttachments ? (
+                                  <AttachmentIndicatorButton
+                                    onClick={() => void handleLineAttachmentPreview(l)}
+                                    size="sm"
+                                  />
+                                ) : null}
+                                <span className={`inline-block text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded mb-0.5 ${
+                                  isIn ? 'bg-[#10B981]/15 text-[#10B981]' : 'bg-[#EF4444]/15 text-[#EF4444]'
+                                }`}>
+                                  {isIn ? 'IN' : 'OUT'}
+                                </span>
+                              </div>
                               <p className={`text-sm font-bold ${isIn ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
                                 {isIn ? '+' : '−'} Rs. {formatAmount(amount, 0)}
                               </p>
@@ -504,6 +527,7 @@ export function AccountLedgerReport({
               debit: l.debit,
               credit: l.credit,
               balance: l.runningBalance,
+              hasAttachment: l.hasAttachments,
             }))}
             generatedBy={user.name || user.email || 'User'}
             generatedAt={new Date().toLocaleString('en-PK')}
@@ -535,6 +559,8 @@ export function AccountLedgerReport({
           />
         );
       })()}
+
+      {AttachmentPreviewPortal}
     </div>
   );
 }

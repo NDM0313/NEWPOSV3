@@ -26,3 +26,7 @@ export function normalizeAttachments(raw: unknown): NormalizedAttachment[] {
   }
   return [];
 }
+
+export function hasNormalizedAttachments(raw: unknown): boolean {
+  return normalizeAttachments(raw).length > 0;
+}

@@ -2,12 +2,84 @@ import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import * as expensesApi from '../../api/expenses';
 import { TextInput } from '../common';
+import {
+  canAddSubcategory,
+  flattenParentPickerOptions,
+  findPathToCategory,
+  formatCategoryPathFromNodes,
+  getNodeDepth,
+  MAX_CATEGORY_DEPTH_MESSAGE,
+  MAX_EXPENSE_CATEGORY_DEPTH,
+} from '../../lib/expenseCategoryTreeUtils';
 
 interface ExpenseCategorySheetProps {
   companyId: string;
   open: boolean;
   onClose: () => void;
   onTreeChanged: () => void;
+}
+
+function CategoryTreeRows({
+  nodes,
+  tree,
+  depthStart,
+  onAddSubUnder,
+  onEdit,
+  onDelete,
+}: {
+  nodes: expensesApi.ExpenseCategoryTreeItem[];
+  tree: expensesApi.ExpenseCategoryTreeItem[];
+  depthStart: number;
+  onAddSubUnder: (node: expensesApi.ExpenseCategoryTreeItem, pathLabel: string) => void;
+  onEdit: (row: expensesApi.ExpenseCategoryRow) => void;
+  onDelete: (
+    row: expensesApi.ExpenseCategoryRow & { children?: expensesApi.ExpenseCategoryTreeItem[] },
+  ) => void;
+}) {
+  const renderNode = (node: expensesApi.ExpenseCategoryTreeItem, depth: number) => {
+    const path = findPathToCategory(tree, node.id) ?? [node];
+    const pathLabel = formatCategoryPathFromNodes(path);
+    const pl = 16 + depth * 16;
+    const showSub = canAddSubcategory(depth);
+
+    return (
+      <li key={node.id}>
+        <div className="flex items-center justify-between gap-2 py-2.5 border-b border-[#374151] last:border-b-0" style={{ paddingLeft: pl, paddingRight: 16 }}>
+          <span className="text-sm text-[#D1D5DB] min-w-0 truncate">
+            <span className="text-[#6B7280] mr-1.5">↳</span>
+            {pathLabel}
+          </span>
+          <div className="flex gap-1 shrink-0">
+            {showSub ? (
+              <button
+                type="button"
+                onClick={() => onAddSubUnder(node, pathLabel)}
+                className="px-2 py-1 text-xs text-[#93C5FD] hover:text-white rounded border border-[#374151]"
+              >
+                + Sub
+              </button>
+            ) : null}
+            <button type="button" onClick={() => onEdit(node)} className="p-1.5 text-[#9CA3AF] hover:text-white" aria-label="Edit">
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void onDelete({ ...node, children: node.children })}
+              className="p-1.5 text-[#9CA3AF] hover:text-[#EF4444]"
+              aria-label="Delete"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        {(node.children?.length ?? 0) > 0 ? (
+          <ul>{node.children!.map((child) => renderNode(child, depth + 1))}</ul>
+        ) : null}
+      </li>
+    );
+  };
+
+  return <ul className="divide-y divide-[#374151]">{nodes.map((node) => renderNode(node, depthStart))}</ul>;
 }
 
 export function ExpenseCategorySheet({
@@ -92,10 +164,21 @@ export function ExpenseCategorySheet({
     if (!trimmed) {
       setError(
         parentId
-          ? 'Enter tailor / dyer name (e.g. Ali, Zaid).'
-          : 'Enter main category name (e.g. Stitching, Dying).',
+          ? 'Enter sub or re-sub name (e.g. Dying, Ali).'
+          : 'Enter main category name (e.g. Service, Stitching).',
       );
       return;
+    }
+    if (parentId) {
+      const parentDepth = getNodeDepth(tree, parentId);
+      if (parentDepth < 0) {
+        setError('Parent category not found');
+        return;
+      }
+      if (parentDepth >= MAX_EXPENSE_CATEGORY_DEPTH - 1) {
+        setError(MAX_CATEGORY_DEPTH_MESSAGE);
+        return;
+      }
     }
     setSaving(true);
     setError(null);
@@ -132,7 +215,20 @@ export function ExpenseCategorySheet({
     setError(null);
   };
 
-  const handleDelete = async (row: expensesApi.ExpenseCategoryRow) => {
+  const handleAddSubUnder = (node: expensesApi.ExpenseCategoryTreeItem, _pathLabel: string) => {
+    setEditingId(null);
+    setName('');
+    setParentId(node.id);
+    setError(null);
+  };
+
+  const handleDelete = async (
+    row: expensesApi.ExpenseCategoryRow & { children?: expensesApi.ExpenseCategoryTreeItem[] },
+  ) => {
+    if ((row.children?.length ?? 0) > 0) {
+      setError(`Delete subcategories under "${row.name}" first.`);
+      return;
+    }
     if (!window.confirm(`Delete category "${row.name}"?`)) return;
     setSaving(true);
     const { error: err } = await expensesApi.deleteExpenseCategory(row.id);
@@ -148,7 +244,7 @@ export function ExpenseCategorySheet({
 
   if (!open) return null;
 
-  const mainOptions = tree.filter((m) => !m.parent_id);
+  const parentOptions = flattenParentPickerOptions(tree, editingId);
   const showApiError = loadError && !loading;
 
   return (
@@ -159,7 +255,7 @@ export function ExpenseCategorySheet({
         </button>
         <div className="flex-1">
           <h1 className="font-semibold text-white">Expense categories</h1>
-          <p className="text-xs text-white/80">Main categories + tailor names under Stitching / Dying</p>
+          <p className="text-xs text-white/80">Main → sub → re-sub (e.g. Service › Dying › Ali)</p>
         </div>
         <button type="button" onClick={onClose} className="p-2 text-white/80 hover:text-white">
           <X className="w-5 h-5" />
@@ -183,29 +279,23 @@ export function ExpenseCategorySheet({
           <p className="text-sm font-medium text-[#D1D5DB]">
             {editingId ? 'Edit category' : 'Add category'}
           </p>
-          <p className="text-xs text-[#6B7280] leading-relaxed">
-            Parent <span className="text-[#9CA3AF]">blank</span> = main category (Stitching, Rent). Parent{' '}
-            <span className="text-[#9CA3AF]">Stitching</span> + name Ali = tailor sub-category.
-          </p>
           <TextInput
             value={name}
             onChange={setName}
-            placeholder={parentId ? 'Tailor name (e.g. Ali)' : 'Main category (e.g. Stitching)'}
+            placeholder={parentId ? 'Sub or re-sub name' : 'Main category (e.g. Service)'}
           />
           <div>
-            <label className="block text-xs text-[#9CA3AF] mb-1">
-              Under category (tailor ke liye — optional)
-            </label>
+            <label className="block text-xs text-[#9CA3AF] mb-1">Parent (optional)</label>
             <select
               value={parentId}
               onChange={(e) => setParentId(e.target.value)}
-              disabled={mainOptions.length === 0 && !loading}
+              disabled={parentOptions.length === 0 && !loading}
               className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white disabled:opacity-50"
             >
-              <option value="">None — new main category (e.g. Stitching, Dying)</option>
-              {mainOptions.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
+              <option value="">None — new main category</option>
+              {parentOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
                 </option>
               ))}
             </select>
@@ -240,9 +330,18 @@ export function ExpenseCategorySheet({
           <div className="space-y-3">
             {tree.map((main) => (
               <div key={main.id} className="bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-[#374151]">
-                  <span className="text-sm font-semibold text-white">{main.name}</span>
-                  <div className="flex gap-1">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[#374151] gap-2">
+                  <span className="text-sm font-semibold text-white truncate">{main.name}</span>
+                  <div className="flex gap-1 shrink-0 flex-wrap justify-end">
+                    {canAddSubcategory(0) ? (
+                      <button
+                        type="button"
+                        onClick={() => handleAddSubUnder(main, main.name)}
+                        className="px-2 py-1 text-xs text-[#93C5FD] hover:text-white rounded border border-[#374151] hover:border-[#3B82F6]/50"
+                      >
+                        + Sub
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => handleEdit(main)}
@@ -253,7 +352,7 @@ export function ExpenseCategorySheet({
                     </button>
                     <button
                       type="button"
-                      onClick={() => void handleDelete(main)}
+                      onClick={() => void handleDelete({ ...main, children: main.children })}
                       className="p-1.5 text-[#9CA3AF] hover:text-[#EF4444]"
                       aria-label="Delete"
                     >
@@ -262,39 +361,25 @@ export function ExpenseCategorySheet({
                   </div>
                 </div>
                 {(main.children?.length ?? 0) > 0 ? (
-                  <ul className="divide-y divide-[#374151]">
-                    {main.children.map((sub) => (
-                      <li key={sub.id} className="flex items-center justify-between px-4 py-2.5">
-                        <span className="text-sm text-[#D1D5DB]">{sub.name}</span>
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleEdit(sub)}
-                            className="p-1.5 text-[#9CA3AF] hover:text-white"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleDelete(sub)}
-                            className="p-1.5 text-[#9CA3AF] hover:text-[#EF4444]"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                  <CategoryTreeRows
+                    nodes={main.children}
+                    tree={tree}
+                    depthStart={1}
+                    onAddSubUnder={handleAddSubUnder}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                  />
                 ) : (
-                  <p className="px-4 py-3 text-xs text-[#6B7280]">No subcategories — add tailor names here.</p>
+                  <p className="px-4 py-3 text-xs text-[#6B7280]">
+                    No subcategories — use + Sub to add types (e.g. Dying) or names under {main.name}.
+                  </p>
                 )}
               </div>
             ))}
             {tree.length === 0 && (
               <div className="text-center py-6 space-y-3">
                 <p className="text-sm text-[#9CA3AF]">
-                  No categories in database yet. Load defaults (Stitching, Dying, Rent, …) or add a main category
-                  above.
+                  No categories yet. Load defaults or add a main category above.
                 </p>
                 <button
                   type="button"

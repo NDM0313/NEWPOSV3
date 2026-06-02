@@ -1,7 +1,7 @@
 /**
  * Journal entry attachments — same bucket/path as web uploadTransactionAttachments.
  */
-import { isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout';
 import {
   classifyStorageUploadError,
@@ -63,4 +63,17 @@ export async function uploadJournalEntryAttachments(
     }
   }
   return { results, failures };
+}
+
+/** Persist merged attachment list on journal_entries.attachments. */
+export async function updateJournalEntryAttachments(
+  journalEntryId: string,
+  attachments: AttachmentResult[],
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { error } = await supabase
+    .from('journal_entries')
+    .update({ attachments: attachments.length ? attachments : null })
+    .eq('id', journalEntryId);
+  return { error: error?.message ?? null };
 }

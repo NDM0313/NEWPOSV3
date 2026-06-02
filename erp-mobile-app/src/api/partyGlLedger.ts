@@ -6,6 +6,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { safeRpcBranchId } from './contactBalancesRpc';
 import type { LedgerLine } from './reports';
+import { enrichLedgerLinesWithHasAttachments } from '../lib/loadMergedAttachments';
 
 type RpcPayload = { period_opening_balance?: number; rows?: Record<string, unknown>[] };
 
@@ -77,7 +78,10 @@ export async function getSupplierApGlLedgerLinesForContact(
 
   const opening = Number(payload.period_opening_balance ?? 0);
   const rawRows = Array.isArray(payload.rows) ? payload.rows : [];
-  const lines = rawRows.map((row, i) => mapRpcRowToLedgerLine(row as Record<string, unknown>, i));
+  const lines = await enrichLedgerLinesWithHasAttachments(
+    companyId,
+    rawRows.map((row, i) => mapRpcRowToLedgerLine(row as Record<string, unknown>, i)),
+  );
 
   return { openingBalance: opening, lines, error: null };
 }
@@ -116,7 +120,10 @@ export async function getCustomerArGlLedgerLinesForContact(
 
   const opening = Number(payload.period_opening_balance ?? 0);
   const rawRows = Array.isArray(payload.rows) ? payload.rows : [];
-  const lines = rawRows.map((row, i) => mapRpcRowToLedgerLine(row as Record<string, unknown>, i));
+  const lines = await enrichLedgerLinesWithHasAttachments(
+    companyId,
+    rawRows.map((row, i) => mapRpcRowToLedgerLine(row as Record<string, unknown>, i)),
+  );
 
   return { openingBalance: opening, lines, error: null };
 }

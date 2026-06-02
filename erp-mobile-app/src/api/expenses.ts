@@ -13,6 +13,7 @@ import {
   ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
   uploadStorageAttachmentFile,
 } from '../utils/storageAttachmentPipeline';
+import { filterClearingLinesByCategory } from '../lib/saleChargeDisplay';
 
 /** DB / RPC expect cash | bank | card | other — wallet accounts must map to other. */
 function normalizeExpensePaymentMethodForDb(raw: string | undefined): string {
@@ -90,7 +91,7 @@ async function fetchExpensesOnline(
 ) {
   let q = supabase
     .from('expenses')
-    .select('id, expense_no, expense_date, category, description, amount, payment_method, status, created_by, paid_to_user_id, branch_id, created_at')
+    .select('id, expense_no, expense_date, category, description, amount, payment_method, status, created_by, paid_to_user_id, branch_id, created_at, expense_category_id')
     .eq('company_id', companyId)
     .order('expense_date', { ascending: false })
     .order('created_at', { ascending: false })
@@ -100,7 +101,26 @@ async function fetchExpensesOnline(
   } else if (accessibleBranchIds?.length) {
     q = q.in('branch_id', accessibleBranchIds);
   }
-  const { data, error } = await q;
+  let { data, error } = await q;
+  if (error?.message?.includes('expense_category_id')) {
+    let q2 = supabase
+      .from('expenses')
+      .select(
+        'id, expense_no, expense_date, category, description, amount, payment_method, status, created_by, paid_to_user_id, branch_id, created_at',
+      )
+      .eq('company_id', companyId)
+      .order('expense_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (branchId && branchId !== 'all' && branchId !== 'default') {
+      q2 = q2.eq('branch_id', branchId);
+    } else if (accessibleBranchIds?.length) {
+      q2 = q2.in('branch_id', accessibleBranchIds);
+    }
+    const retry = await q2;
+    data = retry.data as typeof data;
+    error = retry.error;
+  }
   if (error) return { data: [], error: error.message };
   return { data: data || [], error: null };
 }
@@ -291,34 +311,81 @@ export type ExtraServiceClearingLine = {
 };
 
 /** Open 4120 balances per sale charge (for stitching/dyeing payout). */
+function normalizeClearingLineRow(row: Record<string, unknown>): ExtraServiceClearingLine {
+  return {
+    sale_charge_id: String(row.sale_charge_id ?? ''),
+    sale_id: String(row.sale_id ?? ''),
+    invoice_no: String(row.invoice_no ?? ''),
+    charge_type: String(row.charge_type ?? ''),
+    amount: Number(row.amount ?? 0),
+    charged_to_customer: Boolean(row.charged_to_customer ?? true),
+    tailor_contact_id: row.tailor_contact_id != null ? String(row.tailor_contact_id) : null,
+    expense_category_id: row.expense_category_id != null ? String(row.expense_category_id) : null,
+    tailor_name: row.tailor_name != null ? String(row.tailor_name) : null,
+    open_balance: Number(row.open_balance ?? 0),
+  };
+}
+
 export async function getExtraServiceClearingLines(
   companyId: string,
-  filters?: { tailorContactId?: string | null; expenseCategoryId?: string | null },
-): Promise<{ data: ExtraServiceClearingLine[]; error: string | null }> {
+  filters?: {
+    tailorContactId?: string | null;
+    expenseCategoryId?: string | null;
+    categorySlug?: string | null;
+    allowedCategoryIds?: string[];
+    categorySlugs?: string[];
+  },
+): Promise<{
+  data: ExtraServiceClearingLine[];
+  error: string | null;
+  filterWarning?: string | null;
+}> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
-  const rpcArgs: Record<string, unknown> = {
+
+  const twoArgRpc = {
     p_company_id: companyId,
     p_tailor_contact_id: filters?.tailorContactId ?? null,
   };
-  if (filters?.expenseCategoryId) {
-    rpcArgs.p_expense_category_id = filters.expenseCategoryId;
-  }
-  let { data, error } = await supabase.rpc('extra_service_clearing_lines', rpcArgs);
-  if (error && String(error.message).includes('p_expense_category_id')) {
-    const fallback = await supabase.rpc('extra_service_clearing_lines', {
-      p_company_id: companyId,
-      p_tailor_contact_id: filters?.tailorContactId ?? null,
-    });
-    data = fallback.data;
-    error = fallback.error;
-  }
+
+  const { data, error } = await supabase.rpc('extra_service_clearing_lines', twoArgRpc);
+
   if (error) {
     if (error.code === '42883' || String(error.message).includes('does not exist')) {
       return { data: [], error: null };
     }
     return { data: [], error: error.message };
   }
-  return { data: (data ?? []) as ExtraServiceClearingLine[], error: null };
+
+  const all = ((data ?? []) as Record<string, unknown>[]).map(normalizeClearingLineRow);
+  const categoryId = filters?.expenseCategoryId;
+  const categorySlug = filters?.categorySlug;
+  const allowedCategoryIds = filters?.allowedCategoryIds;
+  const categorySlugs = filters?.categorySlugs;
+  if (
+    !categoryId &&
+    !categorySlug &&
+    !(allowedCategoryIds?.length) &&
+    !(categorySlugs?.length)
+  ) {
+    return { data: all, error: null };
+  }
+
+  const { lines, usedFallback, noCategoryMatch } = filterClearingLinesByCategory(all, {
+    expenseCategoryId: categoryId,
+    categorySlug,
+    allowedCategoryIds,
+    categorySlugs,
+  });
+
+  let filterWarning: string | null = null;
+  if (noCategoryMatch && all.length > 0) {
+    filterWarning =
+      'No open balance matched this tailor category; showing all open extra-service lines.';
+  } else if (usedFallback && categoryId && lines.length > 0) {
+    filterWarning = 'Matched by charge type (sale may not have tailor category linked yet).';
+  }
+
+  return { data: lines, error: null, filterWarning };
 }
 
 export async function createExpense(input: {

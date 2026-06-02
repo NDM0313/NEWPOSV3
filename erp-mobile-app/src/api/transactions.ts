@@ -3,6 +3,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { getCurrentLocalTimestamp } from '../utils/localDate';
 import { fetchReferenceAttachments } from './transactionDetail';
 import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
+import { normalizeAttachments } from '../lib/normalizeAttachments';
 
 /**
  * A single payment transaction flattened for UI display.
@@ -95,8 +96,28 @@ type PaymentSupabaseRow = {
 type JournalEntryLite = {
   id: string;
   entry_no: string | null;
-  reference_id: string;
+  reference_id?: string | null;
+  payment_id?: string | null;
+  attachments?: unknown;
 };
+
+function mergeRowAttachments(
+  paymentAtt: unknown,
+  jeAtt: unknown,
+): Array<{ url: string; name?: string | null }> | null {
+  const merged = normalizeAttachments(paymentAtt);
+  const fromJe = normalizeAttachments(jeAtt);
+  if (!merged.length && !fromJe.length) return null;
+  const seen = new Set<string>();
+  const out: Array<{ url: string; name?: string | null }> = [];
+  for (const a of [...merged, ...fromJe]) {
+    const u = a.url.trim();
+    if (!u || seen.has(u)) continue;
+    seen.add(u);
+    out.push({ url: u, name: a.name });
+  }
+  return out.length ? out : null;
+}
 
 type JournalLineLite = {
   id: string;
@@ -207,15 +228,29 @@ export async function getPaymentTransactions(
 
   const paymentIds = rows.map((r) => r.id);
 
-  const { data: journalEntries } = await supabase
-    .from('journal_entries')
-    .select('id, entry_no, reference_id')
-    .eq('reference_type', 'payment')
-    .in('reference_id', paymentIds);
+  const [{ data: journalByRef }, { data: journalByPaymentId }] = await Promise.all([
+    supabase
+      .from('journal_entries')
+      .select('id, entry_no, reference_id, payment_id, attachments')
+      .eq('reference_type', 'payment')
+      .in('reference_id', paymentIds),
+    supabase
+      .from('journal_entries')
+      .select('id, entry_no, reference_id, payment_id, attachments')
+      .in('payment_id', paymentIds),
+  ]);
 
   const entryByPayment: Record<string, JournalEntryLite> = {};
-  ((journalEntries || []) as JournalEntryLite[]).forEach((e) => {
-    entryByPayment[String(e.reference_id)] = e;
+  const linkEntry = (paymentKey: string, e: JournalEntryLite) => {
+    if (!paymentKey) return;
+    entryByPayment[paymentKey] = e;
+  };
+  ((journalByRef || []) as JournalEntryLite[]).forEach((e) => {
+    linkEntry(String(e.reference_id ?? ''), e);
+  });
+  ((journalByPaymentId || []) as JournalEntryLite[]).forEach((e) => {
+    const pid = e.payment_id != null ? String(e.payment_id) : '';
+    if (pid) linkEntry(pid, e);
   });
   const entryIds = Object.values(entryByPayment).map((e) => e.id);
 
@@ -328,7 +363,7 @@ export async function getPaymentTransactions(
 
     const partyContact = partyId ? contactsById[partyId] ?? null : null;
 
-    const attachments = Array.isArray(row.attachments) ? (row.attachments as Array<{ url: string; name?: string | null }>) : null;
+    const attachments = mergeRowAttachments(row.attachments, entry?.attachments);
 
     return {
       id: row.id,

@@ -829,7 +829,11 @@ export const saleService = {
         product:products(id, name, sku, cost_price, retail_price, has_variations),
         variation:product_variations(id, product_id, sku, attributes)
       ),
-      sale_charges(*)
+      sale_charges(
+        *,
+        expense_category:expense_categories(name),
+        tailor:contacts(name)
+      )
     `;
     const { data, error } = await supabase
       .from('sales')

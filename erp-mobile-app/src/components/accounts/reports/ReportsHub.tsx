@@ -25,6 +25,10 @@ import { TransactionsTimeline } from './TransactionsTimeline';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
 import { formatAmount } from './_shared/format';
 import { formatPaymentDateTime } from '../../../utils/transactionDisplayDate';
+import { useAccountingAttachmentActions } from '../../../hooks/useAccountingAttachmentActions';
+import { AttachmentIndicatorButton } from '../../shared/AttachmentIndicatorButton';
+import { LongPressCard } from '../../common/LongPressCard';
+import { canEditTransaction } from '../../../api/transactions';
 
 export type LegacyReportKey =
   // party ledgers
@@ -82,6 +86,7 @@ export function ReportsHub({
   const [recentRows, setRecentRows] = useState<TransactionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const attachmentActions = useAccountingAttachmentActions(companyId, branchId);
 
   useEffect(() => {
     if (!companyId) {
@@ -188,9 +193,27 @@ export function ReportsHub({
                 </div>
               ) : (
                 <ul className="space-y-2">
-                  {recentRows.slice(0, 5).map((t) => (
-                    <MiniTxRow key={t.id} tx={t} onClick={() => setDetailId(t.id)} />
-                  ))}
+                  {recentRows.slice(0, 5).map((t) => {
+                    const editability = canEditTransaction(t.referenceType, 'payment_row');
+                    const rowAttachParams = { transactionRow: t };
+                    return (
+                      <LongPressCard
+                        key={t.id}
+                        onTap={() => setDetailId(t.id)}
+                        canEdit={false}
+                        canDelete={false}
+                        customMenuItems={attachmentActions.buildLongPressMenuItems(rowAttachParams, {
+                          canAdd: editability.editable,
+                        })}
+                      >
+                        <MiniTxRow
+                          tx={t}
+                          showAttachmentIcon={attachmentActions.transactionShowsAttachmentIcon(t)}
+                          onAttachmentClick={() => void attachmentActions.previewAttachments(rowAttachParams)}
+                        />
+                      </LongPressCard>
+                    );
+                  })}
                 </ul>
               )}
             </Section>
@@ -368,6 +391,10 @@ export function ReportsHub({
           }}
         />
       )}
+
+      {attachmentActions.AttachmentPreviewPortal}
+      {attachmentActions.AddAttachmentSheetPortal}
+      {attachmentActions.ToastBanner}
     </div>
   );
 }
@@ -409,7 +436,15 @@ function ReportTile({
   );
 }
 
-function MiniTxRow({ tx, onClick }: { tx: TransactionRow; onClick: () => void }) {
+function MiniTxRow({
+  tx,
+  showAttachmentIcon = false,
+  onAttachmentClick,
+}: {
+  tx: TransactionRow;
+  showAttachmentIcon?: boolean;
+  onAttachmentClick?: () => void;
+}) {
   const isReceived = tx.direction === 'received';
   const iconBg = isReceived ? 'bg-[#10B981]/20 text-[#10B981]' : 'bg-[#EF4444]/20 text-[#EF4444]';
   const Icon = isReceived ? ArrowDownLeft : ArrowUpRight;
@@ -417,10 +452,7 @@ function MiniTxRow({ tx, onClick }: { tx: TransactionRow; onClick: () => void })
   const time = formatPaymentDateTime(tx.paymentDate, tx.createdAt).time;
   return (
     <li>
-      <button
-        onClick={onClick}
-        className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-3 text-left hover:border-[#6366F1] transition-colors"
-      >
+      <div className="w-full bg-[#1F2937] border border-[#374151] rounded-xl p-3 text-left hover:border-[#6366F1] transition-colors">
         <div className="flex items-center gap-3">
           <div className={`w-9 h-9 rounded-full flex items-center justify-center ${iconBg}`}>
             <Icon className="w-4 h-4" />
@@ -432,13 +464,18 @@ function MiniTxRow({ tx, onClick }: { tx: TransactionRow; onClick: () => void })
             </p>
           </div>
           <div className="text-right shrink-0">
-            <p className={`text-sm font-bold ${amountColor}`}>
-              {isReceived ? '+' : '−'} Rs. {formatAmount(tx.amount, 0)}
-            </p>
+            <div className="flex items-center justify-end gap-0.5">
+              {showAttachmentIcon && onAttachmentClick ? (
+                <AttachmentIndicatorButton onClick={() => onAttachmentClick()} size="sm" />
+              ) : null}
+              <p className={`text-sm font-bold ${amountColor}`}>
+                {isReceived ? '+' : '−'} Rs. {formatAmount(tx.amount, 0)}
+              </p>
+            </div>
             <p className="text-[11px] text-[#9CA3AF]">{time}</p>
           </div>
         </div>
-      </button>
+      </div>
     </li>
   );
 }

@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { hasNormalizedAttachments } from '../lib/normalizeAttachments';
 import { getCompanyLogoDisplayUrl } from '../lib/companyLogoDisplay';
 import { getAllSales } from './sales';
 import { normalizeCompanyId } from './contactBalancesUtils';
@@ -92,6 +93,8 @@ export interface LedgerLine {
   debit: number;
   credit: number;
   runningBalance: number;
+  paymentId?: string | null;
+  hasAttachments?: boolean;
 }
 
 /** Fetch ledger lines for any account with optional date range and optional branch scope (web parity). */
@@ -134,7 +137,8 @@ export async function getAccountLedgerLines(
       `
       id, debit, credit, description,
       journal_entry:journal_entries!inner(
-        id, entry_no, entry_date, description, reference_type, reference_id, is_void, created_at, company_id, branch_id
+        id, entry_no, entry_date, description, reference_type, reference_id, is_void, created_at, company_id, branch_id,
+        attachments, payment_id
       )
     `,
     )
@@ -146,6 +150,31 @@ export async function getAccountLedgerLines(
     .order('entry_date', { ascending: true, foreignTable: 'journal_entries' })
     .order('created_at', { ascending: true, foreignTable: 'journal_entries' });
   if (error) return { openingBalance: opening, lines: [], error: error.message };
+
+  const paymentIds = Array.from(
+    new Set(
+      (data || [])
+        .map((r: Record<string, unknown>) => {
+          const je = r.journal_entry as Record<string, unknown> | Record<string, unknown>[] | null;
+          const j = Array.isArray(je) ? je[0] : je;
+          const pid = j?.payment_id;
+          return pid != null && String(pid).trim() !== '' ? String(pid) : '';
+        })
+        .filter((id) => id !== ''),
+    ),
+  );
+  const paymentAttachmentsById = new Map<string, unknown>();
+  if (paymentIds.length > 0) {
+    const { data: payRows } = await supabase
+      .from('payments')
+      .select('id, attachments')
+      .in('id', paymentIds);
+    for (const row of payRows || []) {
+      const id = String((row as Record<string, unknown>).id ?? '');
+      if (!id) continue;
+      paymentAttachmentsById.set(id, (row as Record<string, unknown>).attachments);
+    }
+  }
 
   const rows = (data || []) as Array<{
     id: string;
@@ -164,6 +193,14 @@ export async function getAccountLedgerLines(
     const debit = Number(r.debit || 0);
     const credit = Number(r.credit || 0);
     running += debit - credit;
+    const paymentId =
+      je.payment_id != null && String(je.payment_id).trim() !== ''
+        ? String(je.payment_id)
+        : null;
+    const jeAttachments = je.attachments;
+    const payAttachments = paymentId ? paymentAttachmentsById.get(paymentId) : null;
+    const hasAttachments =
+      hasNormalizedAttachments(jeAttachments) || hasNormalizedAttachments(payAttachments);
     lines.push({
       id: String(r.id ?? ''),
       journalEntryId: String(je.id ?? ''),
@@ -177,6 +214,8 @@ export async function getAccountLedgerLines(
       debit,
       credit,
       runningBalance: running,
+      paymentId,
+      hasAttachments,
     });
   }
   return { openingBalance: opening, lines, error: null };

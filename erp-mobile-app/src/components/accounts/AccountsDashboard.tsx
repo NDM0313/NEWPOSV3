@@ -30,6 +30,10 @@ import {
   sourceLabel,
 } from '../../lib/cashFlowDirection';
 import { usePermissions } from '../../context/PermissionContext';
+import { useAccountingAttachmentActions } from '../../hooks/useAccountingAttachmentActions';
+import { AttachmentIndicatorButton } from '../shared/AttachmentIndicatorButton';
+import { LongPressCard } from '../common/LongPressCard';
+import { allowsDayBookUnifiedEdit } from '../../lib/journalEntryEditPolicy';
 
 export type { EntrySourceKind };
 export { sourceLabel };
@@ -59,6 +63,7 @@ export interface AccountEntry {
   paymentNotes?: string | null;
   paymentType?: PaymentType | null;
   paymentReferenceNumber?: string | null;
+  hasAttachments?: boolean;
 }
 
 export type AccountsDashboardMode = 'full' | 'party';
@@ -232,6 +237,7 @@ export function AccountsDashboard({
 }: AccountsDashboardProps) {
   useResponsive();
   const { canViewBalances } = usePermissions();
+  const attachmentActions = useAccountingAttachmentActions(companyId ?? null, branchId);
   const isPartyMode = mode === 'party';
   const [searchQuery, setSearchQuery] = useState('');
   const [entries, setEntries] = useState<AccountEntry[]>([]);
@@ -293,6 +299,7 @@ export function AccountsDashboard({
           paymentNotes: e.payment_notes ?? null,
           paymentType: e.payment_type ?? null,
           paymentReferenceNumber: paymentRef,
+          hasAttachments: e.hasAttachments ?? false,
         };
       });
       setEntries(mapped);
@@ -498,13 +505,28 @@ export function AccountsDashboard({
                     minute: '2-digit',
                   })
                 : '';
+              const canAddAttachment = allowsDayBookUnifiedEdit(
+                entry.referenceType ?? '',
+                entry.paymentId ?? null,
+              );
+              const rowAttachParams = {
+                journalEntryId: entry.id,
+                paymentId: entry.paymentId,
+                referenceType: entry.referenceType,
+                referenceId: entry.referenceId,
+                hasAttachments: entry.hasAttachments,
+              };
               return (
-                <button
+                <LongPressCard
                   key={entry.id}
-                  type="button"
-                  onClick={() => onEntryClick(entry)}
-                  className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#8B5CF6] transition-all active:scale-[0.99] cursor-pointer"
+                  onTap={() => onEntryClick(entry)}
+                  customMenuItems={attachmentActions.buildLongPressMenuItems(rowAttachParams, {
+                    canAdd: canAddAttachment,
+                  })}
+                  canEdit={false}
+                  canDelete={false}
                 >
+                  <div className="w-full text-left bg-[#1F2937] border border-[#374151] rounded-xl p-3 hover:border-[#8B5CF6] transition-all active:scale-[0.99] cursor-pointer">
                   <div className="flex items-start gap-3">
                     <div className={`w-10 h-10 ${typeConfig.bg} rounded-lg flex items-center justify-center shrink-0`}>
                       <TypeIcon size={18} className={typeConfig.color} />
@@ -530,21 +552,34 @@ export function AccountsDashboard({
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className={`flex items-center gap-1 justify-end ${dirColor}`}>
-                        <DirIcon size={14} />
-                        <p className="text-base font-bold">Rs. {entry.amount.toLocaleString()}</p>
+                      <div className="flex items-center gap-1 justify-end">
+                        {entry.hasAttachments && companyId ? (
+                          <AttachmentIndicatorButton
+                            onClick={() => void attachmentActions.previewAttachments(rowAttachParams)}
+                            size="sm"
+                          />
+                        ) : null}
+                        <div className={`flex items-center gap-1 ${dirColor}`}>
+                          <DirIcon size={14} />
+                          <p className="text-base font-bold">Rs. {entry.amount.toLocaleString()}</p>
+                        </div>
                       </div>
                       <p className="text-[10px] text-[#6B7280] mt-0.5">
                         {cashFlowDirectionLabel(direction)}
                       </p>
                     </div>
                   </div>
-                </button>
+                  </div>
+                </LongPressCard>
               );
             })}
           </div>
         )}
       </div>
+
+      {attachmentActions.AttachmentPreviewPortal}
+      {attachmentActions.AddAttachmentSheetPortal}
+      {attachmentActions.ToastBanner}
     </div>
   );
 }

@@ -837,7 +837,14 @@ export async function getSaleEnrichedById(
   const withStudio = await enrichSalesWithStudioChargesBatch([row]);
   const withPayments = await enrichSalesWithPayments(companyId, withStudio);
   const enriched = await enrichSalesWithShipping(withPayments);
-  return { data: (enriched[0] as Record<string, unknown>) ?? null, error: null };
+  const base = (enriched[0] as Record<string, unknown>) ?? null;
+  if (!base) return { data: null, error: null };
+  const { getSaleChargesBySaleId } = await import('./saleCharges');
+  const { data: charges } = await getSaleChargesBySaleId(saleId);
+  if (charges.length > 0) {
+    return { data: { ...base, charges, sale_charges: charges }, error: null };
+  }
+  return { data: base, error: null };
 }
 
 /** Same as web saleService.getAllSales — studio worker cost from productions (RPC). */

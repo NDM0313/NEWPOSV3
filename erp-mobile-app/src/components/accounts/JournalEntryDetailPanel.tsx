@@ -13,6 +13,11 @@ import {
 } from './AccountsDashboard';
 import { EditTransactionSheet } from './reports/_shared/EditTransactionSheet';
 import { dispatchMobileAccountingInvalidated } from '../../lib/dataInvalidationBus';
+import { useAttachmentPreview } from '../../hooks/useAttachmentPreview';
+import { AttachmentIndicatorButton } from '../shared/AttachmentIndicatorButton';
+import { AttachmentsSection } from '../shared/AttachmentsSection';
+import { loadMergedAttachmentsForJournalEntry } from '../../lib/loadMergedAttachments';
+import type { NormalizedAttachment } from '../../lib/normalizeAttachments';
 
 interface Props {
   entry: AccountEntry;
@@ -33,6 +38,8 @@ export function JournalEntryDetailPanel({
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [showEditEntry, setShowEditEntry] = useState(false);
+  const [mergedAttachments, setMergedAttachments] = useState<NormalizedAttachment[]>([]);
+  const { openAttachmentPreview, AttachmentPreviewPortal } = useAttachmentPreview();
 
   useEffect(() => {
     let cancelled = false;
@@ -49,6 +56,35 @@ export function JournalEntryDetailPanel({
       cancelled = true;
     };
   }, [companyId, entry.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const items = await loadMergedAttachmentsForJournalEntry(companyId, {
+        journalEntryId: entry.id,
+        rowAttachments: detail?.attachments,
+        referenceType: entry.referenceType ?? detail?.reference_type,
+        referenceId: entry.referenceId ?? detail?.reference_id,
+        paymentId: entry.paymentId ?? detail?.payment_id,
+      });
+      if (!cancelled) setMergedAttachments(items);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    companyId,
+    entry.id,
+    entry.referenceType,
+    entry.referenceId,
+    entry.paymentId,
+    detail?.attachments,
+    detail?.reference_type,
+    detail?.reference_id,
+    detail?.payment_id,
+  ]);
+
+  const hasAttachments = mergedAttachments.length > 0;
 
   const typeConfig = getAccountEntryDisplayConfig(entry);
   const cashFlow = entryDirection(entry);
@@ -95,6 +131,11 @@ export function JournalEntryDetailPanel({
               <h1 className="font-semibold text-white truncate">{entry.entryNumber}</h1>
               <p className="text-xs text-white/80 truncate">{typeConfig.label}</p>
             </div>
+            {hasAttachments ? (
+              <AttachmentIndicatorButton
+                onClick={() => openAttachmentPreview(mergedAttachments, 0)}
+              />
+            ) : null}
           </div>
         </div>
 
@@ -153,6 +194,13 @@ export function JournalEntryDetailPanel({
               </div>
             </div>
           </div>
+
+          {hasAttachments ? (
+            <AttachmentsSection
+              items={mergedAttachments}
+              onOpenPreview={openAttachmentPreview}
+            />
+          ) : null}
 
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 overflow-x-auto">
             <h2 className="text-sm font-semibold text-white mb-3">Journal lines (double entry)</h2>
@@ -269,6 +317,8 @@ export function JournalEntryDetailPanel({
           }}
         />
       )}
+
+      {AttachmentPreviewPortal}
     </>
   );
 }

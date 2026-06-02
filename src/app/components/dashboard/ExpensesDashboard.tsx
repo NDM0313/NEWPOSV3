@@ -20,6 +20,8 @@ import { Button } from "../ui/button";
 import { cn } from "../ui/utils";
 import { AddExpenseDrawer } from './AddExpenseDrawer';
 import { AddCategoryModal } from './AddCategoryModal';
+import { ExpenseCategoryTreePanel } from './ExpenseCategoryTreePanel';
+import { expenseMatchesMainFilter } from '@/app/lib/expenseCategoryTreeUtils';
 import { Badge } from "../ui/badge";
 import {
   DropdownMenu,
@@ -83,15 +85,6 @@ const ICON_BY_SLUG: Record<string, React.ComponentType<{ size?: number }>> = {
   Other: Wallet,
 };
 
-function flattenCategories(tree: ExpenseCategoryTreeItem[]): ExpenseCategoryRow[] {
-  const out: ExpenseCategoryRow[] = [];
-  tree.forEach((node) => {
-    out.push(node);
-    node.children.forEach((child) => out.push(child));
-  });
-  return out;
-}
-
 export const ExpensesDashboard = () => {
   const { formatCurrency } = useFormatCurrency();
   const { companyId } = useSupabase();
@@ -100,7 +93,8 @@ export const ExpensesDashboard = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'list' | 'categories'>('overview');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<any>(null);
+  const [selectedCategory, setSelectedCategory] = useState<ExpenseCategoryRow | null>(null);
+  const [categoryModalParentId, setCategoryModalParentId] = useState<string | null>(null);
   const [categoriesFromDb, setCategoriesFromDb] = useState<ExpenseCategoryTreeItem[]>([]);
 
   const loadCategoriesFromDb = React.useCallback(() => {
@@ -184,15 +178,22 @@ export const ExpensesDashboard = () => {
     }
   };
 
-  const handleEditCategory = (category: any) => {
+  const handleEditCategory = (category: ExpenseCategoryRow) => {
     setSelectedCategory(category);
+    setCategoryModalParentId(null);
     setIsCategoryModalOpen(true);
   };
 
-  const handleDeleteCategory = async (category: any) => {
-    if (category.count > 0) {
+  const handleDeleteCategory = async (
+    category: ExpenseCategoryRow & { count?: number; children?: ExpenseCategoryTreeItem[] },
+  ) => {
+    if ((category.children?.length ?? 0) > 0) {
+      toast.error(`"${category.name}" has subcategories. Delete or move them first.`);
+      return;
+    }
+    if ((category.count ?? 0) > 0) {
       toast.error(`This category is used in ${category.count} records. Cannot delete.`, {
-        description: "Please reassign or delete the associated expenses first.",
+        description: 'Please reassign or delete the associated expenses first.',
         duration: 4000,
       });
       return;
@@ -212,6 +213,13 @@ export const ExpensesDashboard = () => {
 
   const handleAddCategory = () => {
     setSelectedCategory(null);
+    setCategoryModalParentId(null);
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleAddSubCategory = (parentId: string) => {
+    setSelectedCategory(null);
+    setCategoryModalParentId(parentId);
     setIsCategoryModalOpen(true);
   };
 
@@ -237,38 +245,23 @@ export const ExpensesDashboard = () => {
     [operationalExpenses]
   );
 
-  // Categories list: from expense_categories (DB) when available, else from expense counts
-  const categoriesList = useMemo(() => {
-    const flat = flattenCategories(categoriesFromDb);
-    if (flat.length > 0) {
-      return flat.map((cat) => ({
-        ...cat,
-        icon: ICON_BY_SLUG[cat.icon] || Receipt,
-        color: cat.color?.startsWith('bg-') ? cat.color : `bg-${cat.color || 'gray'}-500`,
-        count: operationalExpenses.filter((e) => (e.category || '') === cat.name).length,
-      }));
+  const categoryFilterOptions = useMemo(() => {
+    if (categoriesFromDb.length > 0) {
+      return categoriesFromDb.map((m) => ({ id: m.id, name: m.name }));
     }
-    const categoryCounts: Record<string, number> = {};
-    operationalExpenses.forEach(exp => {
-      const cat = exp.category || 'Other';
-      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
-    });
-    const iconMap: Record<string, any> = {
-      'Rent': Building2, 'Salaries': Users, 'Utilities': Zap, 'Stitching': ShoppingCart,
-      'Office Supplies': Briefcase, 'Food & Meals': Utensils,
-    };
-    const colorMap: Record<string, string> = {
-      'Rent': 'bg-blue-500', 'Salaries': 'bg-purple-500', 'Utilities': 'bg-orange-500',
-      'Stitching': 'bg-yellow-500', 'Office Supplies': 'bg-gray-500', 'Food & Meals': 'bg-red-500',
-    };
-    return Object.entries(categoryCounts).map(([name, count], index) => ({
-      id: String(index + 1),
-      name,
-      icon: iconMap[name] || Receipt,
-      color: colorMap[name] || 'bg-gray-500',
-      count,
-    }));
+    const names = new Set<string>();
+    operationalExpenses.forEach((exp) => names.add(exp.category || 'Other'));
+    return Array.from(names).map((name, index) => ({ id: String(index), name }));
   }, [operationalExpenses, categoriesFromDb]);
+
+  const operationalForCategoryCounts = useMemo(
+    () =>
+      operationalExpenses.map((e) => ({
+        category: e.category,
+        expense_category_id: (e as { expense_category_id?: string }).expense_category_id,
+      })),
+    [operationalExpenses],
+  );
 
   // Filtered expenses (search, category, account, date range)
   const filteredExpenses = useMemo(() => {
@@ -286,9 +279,17 @@ export const ExpensesDashboard = () => {
         if (!matchesSearch) filterReason = 'search_term_mismatch';
       }
 
-      // Category filter (exact match on display label — slug/category mismatch hides rows)
-      if (!filterReason && categoryFilter !== 'all' && (expense.category || '') !== categoryFilter) {
-        filterReason = `category_filter: list shows "${expense.category}" but filter is "${categoryFilter}"`;
+      // Category filter: main includes its sub-categories
+      if (!filterReason && categoryFilter !== 'all') {
+        const main = categoriesFromDb.find((m) => m.name === categoryFilter);
+        if (main) {
+          const catId = (expense as { expense_category_id?: string }).expense_category_id;
+          if (!expenseMatchesMainFilter(expense.category, catId, main, categoriesFromDb)) {
+            filterReason = `category_filter: not under "${categoryFilter}"`;
+          }
+        } else if ((expense.category || '') !== categoryFilter) {
+          filterReason = `category_filter: list shows "${expense.category}" but filter is "${categoryFilter}"`;
+        }
       }
 
       // Account filter
@@ -330,6 +331,7 @@ export const ExpensesDashboard = () => {
     operationalExpenses,
     searchTerm,
     categoryFilter,
+    categoriesFromDb,
     accountFilter,
     fromDate,
     toDate,
@@ -698,7 +700,7 @@ export const ExpensesDashboard = () => {
                         className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
                       >
                         <option value="all">All Categories</option>
-                        {categoriesList.map((cat) => (
+                        {categoryFilterOptions.map((cat) => (
                           <option key={cat.id} value={cat.name}>{cat.name}</option>
                         ))}
                       </select>
@@ -847,61 +849,19 @@ export const ExpensesDashboard = () => {
         </div>
         </div>
       ) : (
-        /* Categories Tab */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-in slide-in-from-bottom-2 duration-300">
-           {categoriesList.map((category) => (
-             <div 
-               key={category.id}
-               className="group relative bg-gray-900/50 border border-gray-800 rounded-xl p-5 transition-all hover:bg-gray-800/50 hover:border-gray-700 hover:shadow-lg hover:-translate-y-1"
-             >
-               {/* Color Dot */}
-               <div className={cn("absolute top-5 right-5 w-2 h-2 rounded-full", category.color)} />
-
-               <div className="flex flex-col h-full justify-between gap-4">
-                 <div className="flex items-start gap-4">
-                   <div className="p-3 bg-gray-950 rounded-lg border border-gray-800 text-gray-400 group-hover:text-white transition-colors">
-                     <category.icon size={24} />
-                   </div>
-                   <div>
-                     <h3 className="font-bold text-white text-lg">{category.name}</h3>
-                     <p className="text-sm text-gray-500">{category.count} Expenses</p>
-                   </div>
-                 </div>
-                 
-                 {/* Hover Actions */}
-                 <div className="pt-4 border-t border-gray-800/50 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => handleEditCategory(category)}
-                      className="flex-1 h-8 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs"
-                    >
-                      <Pencil size={12} className="mr-2" /> Edit
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => handleDeleteCategory(category)}
-                      className="h-8 bg-red-900/10 hover:bg-red-900/20 text-red-400 hover:text-red-300 px-3"
-                    >
-                      <Trash size={12} />
-                    </Button>
-                 </div>
-               </div>
-             </div>
-           ))}
-
-           {/* Add New Card (Empty State-ish) */}
-           <button 
-             onClick={handleAddCategory}
-             className="border border-dashed border-gray-800 rounded-xl p-5 flex flex-col items-center justify-center gap-3 text-gray-500 hover:text-white hover:border-gray-600 hover:bg-gray-900/30 transition-all min-h-[160px]"
-           >
-              <div className="w-12 h-12 rounded-full bg-gray-900 flex items-center justify-center">
-                <Plus size={24} />
-              </div>
-              <span className="font-medium">Add New Category</span>
-           </button>
-        </div>
+        <ExpenseCategoryTreePanel
+          tree={categoriesFromDb}
+          operationalExpenses={operationalForCategoryCounts}
+          iconBySlug={ICON_BY_SLUG}
+          defaultIcon={Receipt}
+          onAddMain={handleAddCategory}
+          onAddSub={(parentId) => handleAddSubCategory(parentId)}
+          onEdit={(row) => {
+            setCategoryModalParentId(null);
+            handleEditCategory(row);
+          }}
+          onDelete={(row) => void handleDeleteCategory(row)}
+        />
       )}
 
       <AddExpenseDrawer 
@@ -973,10 +933,14 @@ export const ExpensesDashboard = () => {
         </SheetContent>
       </Sheet>
       
-      <AddCategoryModal 
-        isOpen={isCategoryModalOpen} 
-        onClose={() => setIsCategoryModalOpen(false)} 
+      <AddCategoryModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => {
+          setIsCategoryModalOpen(false);
+          setCategoryModalParentId(null);
+        }}
         categoryToEdit={selectedCategory}
+        initialParentId={categoryModalParentId}
         onSuccess={loadCategoriesFromDb}
       />
 

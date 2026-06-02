@@ -3,6 +3,7 @@
  */
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { LedgerLine } from './reports';
+import { enrichLedgerLinesWithHasAttachments } from '../lib/loadMergedAttachments';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -81,7 +82,7 @@ export async function getWorkerPartyGlLedgerLines(
     const codeById = new Map(wpWa.map((a: { id: string; code?: string }) => [a.id, String(a.code || '').trim()]));
     const nameById = new Map(wpWa.map((a: { id: string; name?: string }) => [a.id, String(a.name || '')]));
 
-    const { data: lines, error } = await supabase
+    const { data: jelRows, error } = await supabase
       .from('journal_entry_lines')
       .select(
         `
@@ -103,7 +104,7 @@ export async function getWorkerPartyGlLedgerLines(
     }
 
     // Supabase types nest `journal_entry` incorrectly as an array; mirror web and use runtime shape.
-    const linesToUse = ((lines || []) as unknown as { journal_entry?: Record<string, unknown> | null }[]).filter(
+    const linesToUse = ((jelRows || []) as unknown as { journal_entry?: Record<string, unknown> | null }[]).filter(
       (l) => l.journal_entry && (l.journal_entry as { is_void?: boolean }).is_void !== true,
     ) as { journal_entry?: Record<string, unknown> | null; [k: string]: unknown }[];
 
@@ -214,7 +215,8 @@ export async function getWorkerPartyGlLedgerLines(
       };
     });
 
-    return { openingBalance: openingNet, lines: ledgerLines, error: null };
+    const enrichedLines = await enrichLedgerLinesWithHasAttachments(companyId, ledgerLines);
+    return { openingBalance: openingNet, lines: enrichedLines, error: null };
   } catch (e) {
     console.error('[workerPartyGlLedger]', e);
     return {

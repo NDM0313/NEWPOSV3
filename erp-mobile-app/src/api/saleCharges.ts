@@ -12,6 +12,64 @@ import { sumExtraExpenses, validateInclusiveExtraChargeCap } from '../lib/saleTo
 
 
 
+import {
+  formatSaleChargeDisplayLabel,
+  formatSaleChargeLabel,
+  type SaleChargeForDisplay,
+} from '../lib/saleChargeDisplay';
+
+export { formatSaleChargeDisplayLabel, formatSaleChargeLabel };
+
+export type SaleChargeDisplayRow = SaleChargeForDisplay & {
+  id?: string;
+  charge_type: string;
+  amount: number;
+};
+
+/** Line-level sale_charges for detail / receipt (parity with web ViewSaleDetailsDrawer). */
+export async function getSaleChargesBySaleId(
+  saleId: string,
+): Promise<{ data: SaleChargeDisplayRow[]; error: string | null }> {
+  if (!isSupabaseConfigured || !saleId) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from('sale_charges')
+    .select(
+      'id, charge_type, amount, expense_category_id, tailor_contact_id, expense_category:expense_categories(name), tailor:contacts(name)',
+    )
+    .eq('sale_id', saleId)
+    .order('charge_type');
+  if (error) {
+    const fallback = await supabase
+      .from('sale_charges')
+      .select('id, charge_type, amount, expense_category_id, tailor_contact_id')
+      .eq('sale_id', saleId)
+      .order('charge_type');
+    if (fallback.error) return { data: [], error: fallback.error.message };
+    return {
+      data: (fallback.data || []).map((row) => mapSaleChargeRow(row as Record<string, unknown>)),
+      error: null,
+    };
+  }
+  return {
+    data: (data || []).map((row) => mapSaleChargeRow(row as Record<string, unknown>)),
+    error: null,
+  };
+}
+
+function mapSaleChargeRow(row: Record<string, unknown>): SaleChargeDisplayRow {
+  const ec = row.expense_category as { name?: string } | null | undefined;
+  const tailor = row.tailor as { name?: string } | null | undefined;
+  return {
+    id: row.id as string | undefined,
+    charge_type: String(row.charge_type || 'other'),
+    amount: Number(row.amount) || 0,
+    expense_category_id: (row.expense_category_id as string) ?? null,
+    tailor_contact_id: (row.tailor_contact_id as string) ?? null,
+    expense_category: ec ?? null,
+    tailor: tailor ?? null,
+  };
+}
+
 export type SaleChargeRow = {
 
   charge_type: string;

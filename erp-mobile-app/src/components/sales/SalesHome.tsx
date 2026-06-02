@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ArrowLeft, Plus, Loader2, MoreVertical, Printer, RotateCcw, Ban, History, Search, ShoppingCart, Calendar, Paperclip, Briefcase, Share2, Download, FileText, AlertTriangle, SquarePen, X, Trash2, Zap, Store } from 'lucide-react';
 import * as salesApi from '../../api/sales';
+import * as saleChargesApi from '../../api/saleCharges';
 import { useBespokeEnabled } from '../../hooks/useBespokeEnabled';
 import { SaleBespokeWorkOrders } from './SaleBespokeWorkOrders';
 import * as studioApi from '../../api/studio';
@@ -212,6 +213,7 @@ export function SalesHome({
       attachments?: { url: string; name: string }[];
     }>
   >([]);
+  const [saleChargeLines, setSaleChargeLines] = useState<saleChargesApi.SaleChargeDisplayRow[]>([]);
   const [attachmentPreviewList, setAttachmentPreviewList] = useState<Array<{ url: string; name: string }> | null>(null);
   const [attachmentPreviewStart, setAttachmentPreviewStart] = useState(0);
   const [studioSummary, setStudioSummary] = useState<{
@@ -399,6 +401,38 @@ export function SalesHome({
       setPaymentHistory([]);
     }
   }, [selectedSale, loadPaymentHistory]);
+
+  useEffect(() => {
+    if (!selectedSale) {
+      setSaleChargeLines([]);
+      return;
+    }
+    const saleId = selectedSale.raw.id as string;
+    if (!saleId) {
+      setSaleChargeLines([]);
+      return;
+    }
+    const cached = (selectedSale.raw.charges ?? selectedSale.raw.sale_charges) as
+      | saleChargesApi.SaleChargeDisplayRow[]
+      | undefined;
+    if (Array.isArray(cached) && cached.length > 0) {
+      setSaleChargeLines(
+        cached.map((c) => ({
+          id: c.id,
+          charge_type: String(c.charge_type || 'other'),
+          amount: Number(c.amount) || 0,
+        })),
+      );
+      return;
+    }
+    let cancelled = false;
+    void saleChargesApi.getSaleChargesBySaleId(saleId).then(({ data }) => {
+      if (!cancelled) setSaleChargeLines(data || []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSale]);
 
   useEffect(() => {
     if (!selectedSale) {
@@ -1125,6 +1159,19 @@ export function SalesHome({
     const customerPhone = cust?.phone ?? (selectedSale.raw.contact_phone as string) ?? '—';
     const subtotal = Number(selectedSale.raw.subtotal ?? saleAmount);
     const discount = Number(selectedSale.raw.discount ?? 0);
+    const tax = Number(selectedSale.raw.tax ?? 0);
+    const shippingRows = saleChargeLines.filter((c) => c.charge_type === 'shipping');
+    const extraRows = saleChargeLines.filter(
+      (c) => c.charge_type !== 'discount' && c.charge_type !== 'shipping',
+    );
+    const extraFallback =
+      Number(selectedSale.raw.extra_expenses ?? selectedSale.raw.expenses ?? 0) || 0;
+    const shippingFallback = Number(selectedSale.raw.shipment_charges ?? 0) || 0;
+    const hasChargeBreakdown =
+      shippingRows.length > 0 ||
+      extraRows.length > 0 ||
+      extraFallback > 0 ||
+      shippingFallback > 0;
     const isCancelled = selectedSale.raw.status === 'cancelled';
     const saleLifecycleStatus = String(selectedSale.raw.status ?? '').toLowerCase();
     const canFinalize =
@@ -1271,8 +1318,42 @@ export function SalesHome({
                 <span className="text-[#EF4444]">- Rs. {discount.toLocaleString()}</span>
               </div>
             )}
+            {tax > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-[#9CA3AF]">Tax:</span>
+                <span className="text-white">Rs. {tax.toLocaleString()}</span>
+              </div>
+            )}
+            {shippingRows.length > 0
+              ? shippingRows.map((c, idx) => (
+                  <div key={c.id || `ship-${idx}`} className="flex justify-between text-sm">
+                    <span className="text-[#9CA3AF]">{saleChargesApi.formatSaleChargeLabel('shipping')}:</span>
+                    <span className="text-white">Rs. {c.amount.toLocaleString()}</span>
+                  </div>
+                ))
+              : shippingFallback > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#9CA3AF]">Shipping:</span>
+                    <span className="text-white">Rs. {shippingFallback.toLocaleString()}</span>
+                  </div>
+                ) : null}
+            {extraRows.length > 0
+              ? extraRows.map((c, idx) => (
+                  <div key={c.id || `extra-${idx}`} className="flex justify-between text-sm">
+                    <span className="text-[#9CA3AF]">
+                      {saleChargesApi.formatSaleChargeDisplayLabel(c)}:
+                    </span>
+                    <span className="text-white">Rs. {c.amount.toLocaleString()}</span>
+                  </div>
+                ))
+              : extraFallback > 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-[#9CA3AF]">Extra charges:</span>
+                    <span className="text-white">Rs. {extraFallback.toLocaleString()}</span>
+                  </div>
+                ) : null}
             <div className="flex justify-between text-lg font-bold pt-2 border-t border-[#374151]">
-              <span className="text-white">Sale Amount:</span>
+              <span className="text-white">{hasChargeBreakdown ? 'Grand Total:' : 'Sale Amount:'}</span>
               <span className="text-[#10B981]">Rs. {saleAmount.toLocaleString()}</span>
             </div>
           </div>

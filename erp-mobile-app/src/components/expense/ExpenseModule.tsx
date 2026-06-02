@@ -31,8 +31,16 @@ import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
 import { DocumentBranchGateModal } from '../shared/DocumentBranchGateModal';
 import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 import { useSubmitLock } from '../../contexts/LoadingContext';
-import { SaveBlockingOverlay } from '../common/SaveBlockingOverlay';
+import { formatSaleChargeDisplayLabel } from '../../lib/saleChargeDisplay';
 import { ExpenseCategorySheet } from './ExpenseCategorySheet';
+import {
+  categoryRequires4120Clearing,
+  collectCategoryIdsForClearingFilter,
+  collectClearingSlugsUnder,
+  displayLabelForCategoryId,
+  expenseMatchesMainFilter,
+  resolveExpenseCategoryIdFromLevels,
+} from '../../lib/expenseCategoryTreeUtils';
 
 const MAX_EXPENSE_RECEIPT_BYTES = 5 * 1024 * 1024;
 
@@ -138,6 +146,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       branch_id?: string | null;
       created_by?: string | null;
       paid_to_user_id?: string | null;
+      expense_category_id?: string | null;
     }[]
   >([]);
   const [loading, setLoading] = useState(!!companyId);
@@ -148,6 +157,14 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const [addAmount, setAddAmount] = useState('');
   const { run: runSave, busy: saving } = useSubmitLock();
   const [addError, setAddError] = useState<string | null>(null);
+  const [submitErrorModal, setSubmitErrorModal] = useState<string | null>(null);
+  const [clearingFilterWarning, setClearingFilterWarning] = useState<string | null>(null);
+  const [clearingLoadError, setClearingLoadError] = useState<string | null>(null);
+
+  const showExpenseError = useCallback((message: string) => {
+    setAddError(message);
+    setSubmitErrorModal(message);
+  }, []);
   const [filterCategory, setFilterCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   // Add form: account (Cash/Bank), category tree, attachment
@@ -156,6 +173,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const [addAccountId, setAddAccountId] = useState('');
   const [mainCategoryId, setMainCategoryId] = useState('');
   const [subCategoryId, setSubCategoryId] = useState('');
+  const [leafCategoryId, setLeafCategoryId] = useState('');
   const [addReceiptFile, setAddReceiptFile] = useState<File | null>(null);
   const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
   const [receiptNotice, setReceiptNotice] = useState<string | null>(null);
@@ -205,6 +223,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     setAddAccountId('');
     setMainCategoryId('');
     setSubCategoryId('');
+    setLeafCategoryId('');
     setPaidToUserId('');
     setAddReceiptFile(null);
     setAddExpenseDate(localNowDateString());
@@ -219,6 +238,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     addAccountId: string;
     mainCategoryId: string;
     subCategoryId: string;
+    leafCategoryId: string;
     paidToUserId: string;
     addExpenseDate: string;
     selectedClearingChargeId: string;
@@ -238,6 +258,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         addAccountId,
         mainCategoryId,
         subCategoryId,
+        leafCategoryId,
         paidToUserId,
         addExpenseDate,
         selectedClearingChargeId,
@@ -250,6 +271,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         setAddAccountId(d.addAccountId);
         setMainCategoryId(d.mainCategoryId);
         setSubCategoryId(d.subCategoryId);
+        setLeafCategoryId(d.leafCategoryId ?? '');
         setPaidToUserId(d.paidToUserId);
         setAddExpenseDate(d.addExpenseDate);
         setSelectedClearingChargeId(d.selectedClearingChargeId);
@@ -310,6 +332,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
               branch_id?: string | null;
               created_by?: string | null;
               paid_to_user_id?: string | null;
+              expense_category_id?: string | null;
             }) => ({
               id: r.id,
               expense_no: r.expense_no || '—',
@@ -321,6 +344,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
               branch_id: r.branch_id ?? null,
               created_by: r.created_by ?? null,
               paid_to_user_id: r.paid_to_user_id ?? null,
+              expense_category_id: r.expense_category_id ?? null,
             }),
           ),
         );
@@ -363,9 +387,17 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const selectedMain = categoryTree.find((m) => m.id === mainCategoryId);
   const subOptions = selectedMain?.children ?? [];
   const selectedSub = subOptions.find((s) => s.id === subCategoryId);
+  const leafOptions = selectedSub?.children ?? [];
+  const selectedLeaf = leafOptions.find((n) => n.id === leafCategoryId);
+  const deepestCategory = selectedLeaf ?? selectedSub ?? selectedMain;
+  const resolvedCategoryId = resolveExpenseCategoryIdFromLevels(
+    mainCategoryId,
+    subCategoryId,
+    leafCategoryId,
+  );
   const effectiveCategorySlug =
-    categoryTree.length > 0 && (mainCategoryId || subCategoryId)
-      ? (selectedSub?.slug ?? selectedMain?.slug ?? '')
+    categoryTree.length > 0 && resolvedCategoryId
+      ? (deepestCategory?.slug ?? '')
       : (CATEGORY_TO_SLUG[addCategory] ?? addCategory.toLowerCase().replace(/\s+/g, '_'));
 
   const slugLower = (effectiveCategorySlug || '').toLowerCase();
@@ -374,9 +406,13 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     slugLower === 'salary' ||
     slugLower === 'wages' ||
     selectedMain?.type === 'salary' ||
-    selectedSub?.type === 'salary';
+    selectedSub?.type === 'salary' ||
+    selectedLeaf?.type === 'salary';
 
-  const isClearingCategory = CLEARING_CATEGORY_SLUGS.has(slugLower);
+  const isClearingCategory =
+    categoryTree.length > 0 && selectedMain
+      ? categoryRequires4120Clearing(selectedMain)
+      : CLEARING_CATEGORY_SLUGS.has(slugLower);
 
   const selectedClearingLine = clearingLines.find(
     (l) => l.sale_charge_id === selectedClearingChargeId,
@@ -386,30 +422,62 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     if (!showAdd || !companyId || !isClearingCategory) {
       setClearingLines([]);
       setSelectedClearingChargeId('');
+      setClearingLoadError(null);
+      setClearingFilterWarning(null);
       return;
     }
     let cancelled = false;
     setClearingLinesLoading(true);
-    const categoryFilterId = subCategoryId || undefined;
+    setClearingLoadError(null);
+    setClearingFilterWarning(null);
+    const filterAnchor = deepestCategory ?? selectedMain;
+    const allowedCategoryIds = resolvedCategoryId
+      ? collectCategoryIdsForClearingFilter(categoryTree, resolvedCategoryId)
+      : undefined;
+    const categorySlugs =
+      filterAnchor && categoryTree.length > 0
+        ? collectClearingSlugsUnder(filterAnchor)
+        : effectiveCategorySlug
+          ? [effectiveCategorySlug]
+          : undefined;
     expensesApi
       .getExtraServiceClearingLines(companyId, {
-        expenseCategoryId: categoryFilterId,
+        expenseCategoryId: resolvedCategoryId || undefined,
+        categorySlug: effectiveCategorySlug || undefined,
+        allowedCategoryIds,
+        categorySlugs,
       })
-      .then(({ data, error }) => {
+      .then(({ data, error, filterWarning }) => {
         if (cancelled) return;
         setClearingLinesLoading(false);
-        if (!error) setClearingLines(data || []);
+        if (error) {
+          setClearingLoadError(error);
+          setClearingLines([]);
+          return;
+        }
+        setClearingLines(data || []);
+        setClearingFilterWarning(filterWarning ?? null);
       })
-      .catch(() => {
+      .catch((e) => {
         if (!cancelled) {
           setClearingLinesLoading(false);
           setClearingLines([]);
+          setClearingLoadError(e instanceof Error ? e.message : 'Failed to load open balances.');
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [showAdd, companyId, isClearingCategory, effectiveCategorySlug, subCategoryId]);
+  }, [
+    showAdd,
+    companyId,
+    isClearingCategory,
+    effectiveCategorySlug,
+    resolvedCategoryId,
+    categoryTree,
+    deepestCategory,
+    selectedMain,
+  ]);
 
   useEffect(() => {
     if (!isSalaryCategory) {
@@ -448,22 +516,23 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         : 'cash'
     : 'cash';
   const handleAdd = async () => {
+    setSubmitErrorModal(null);
     const amt = parseFloat(addAmount);
     if (!companyId || !writeBranchId || isNaN(amt) || amt <= 0) {
-      setAddError(
+      showExpenseError(
         needsWriteBranchPicker && !writeBranchId
           ? 'Select a branch for this expense.'
-          : 'Enter a valid amount greater than zero.'
+          : 'Enter a valid amount greater than zero.',
       );
       return;
     }
     if (!effectiveCategorySlug) {
-      setAddError('Please select a category.');
+      showExpenseError('Please select a category.');
       return;
     }
     const selectedSalaryUser = isSalaryCategory ? salaryUsers.find((u) => u.id === paidToUserId) : undefined;
     if (isSalaryCategory && !paidToUserId) {
-      setAddError('Please select the user to pay (Salary is for Staff / Salesman / Operator only).');
+      showExpenseError('Please select the user to pay (Salary is for Staff / Salesman / Operator only).');
       return;
     }
     const descriptionFinal =
@@ -472,15 +541,23 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         ? `${selectedSalaryUser.full_name} – Salary`
         : selectedSub?.name ?? selectedMain?.name ?? '');
     if (!descriptionFinal) {
-      setAddError('Enter a description or select a salary payee.');
+      showExpenseError('Enter a description or select a salary payee.');
       return;
     }
     if (paymentAccounts.length > 0 && !addAccountId) {
-      setAddError('Please select an account (Cash/Bank).');
+      showExpenseError('Please select an account (Cash/Bank).');
+      return;
+    }
+    if (isClearingCategory && clearingLoadError) {
+      showExpenseError(clearingLoadError);
       return;
     }
     if (isClearingCategory && !selectedClearingLine) {
-      setAddError('Select a sale extra charge to pay against (4120 clearing).');
+      showExpenseError(
+        clearingLines.length === 0
+          ? 'No open sale extra to pay against. Finalize a sale with stitching/dying extras first.'
+          : 'Select a sale extra charge to pay against (4120 clearing).',
+      );
       return;
     }
     if (
@@ -488,32 +565,33 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       selectedClearingLine &&
       amt > Number(selectedClearingLine.open_balance) + 0.005
     ) {
-      setAddError(
+      showExpenseError(
         `Amount cannot exceed open balance Rs. ${Number(selectedClearingLine.open_balance).toLocaleString()}.`,
       );
       return;
     }
     const session = await authApi.getSession();
     if (!session?.userId) {
-      setAddError('Session expired.');
+      showExpenseError('Session expired.');
       return;
     }
     const expenseUserId = effectiveUserId;
     await runSave('Saving expense...', async () => {
     setAddError(null);
+    setSubmitErrorModal(null);
     let receiptUrl: string | null = null;
     if (addReceiptFile && navigator.onLine) {
       const up = await expensesApi.uploadExpenseReceipt(companyId, addReceiptFile);
       if (up.error) {
         if (up.kind === 'bucket') {
           receiptUrl = null;
-          setAddError(up.error);
+          showExpenseError(up.error);
         } else {
-          setAddError(up.error);
+          showExpenseError(up.error);
           return;
         }
       } else if (!up.url) {
-        setAddError('Receipt could not be uploaded. Remove the file or try again.');
+        showExpenseError('Receipt could not be uploaded. Remove the file or try again.');
         return;
       } else {
         receiptUrl = up.url;
@@ -541,9 +619,11 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
           tailorContactId: selectedClearingLine?.tailor_contact_id ?? undefined,
           expenseCategoryId:
             selectedClearingLine?.expense_category_id ??
-            (subCategoryId || mainCategoryId || undefined),
+            (resolvedCategoryId || undefined),
         }, companyId, writeBranchId);
-        const displayCategory = selectedSub?.name ?? selectedMain?.name ?? addCategory;
+        const displayCategory = resolvedCategoryId
+          ? displayLabelForCategoryId(categoryTree, resolvedCategoryId, addCategory)
+          : addCategory;
         const tempId = `offline-${Date.now()}`;
         setList((prev) => [
           {
@@ -556,13 +636,15 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
             amount: amt,
             branch_id: writeBranchId,
             created_by: expenseUserId,
+            expense_category_id: resolvedCategoryId || null,
           },
           ...prev,
         ]);
         setAddError(null);
+        setSubmitErrorModal(null);
         resetAddFormAndDraft();
       } catch (e) {
-        setAddError(e instanceof Error ? e.message : 'Failed to save offline.');
+        showExpenseError(e instanceof Error ? e.message : 'Failed to save offline.');
       }
       return;
     }
@@ -585,13 +667,15 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       tailorContactId: selectedClearingLine?.tailor_contact_id ?? undefined,
       expenseCategoryId:
         selectedClearingLine?.expense_category_id ??
-        (subCategoryId || mainCategoryId || undefined),
+        (resolvedCategoryId || undefined),
     });
     if (error) {
-      setAddError(error);
+      showExpenseError(error);
       return;
     }
-    const displayCategory = selectedSub?.name ?? selectedMain?.name ?? addCategory;
+    const displayCategory = resolvedCategoryId
+      ? displayLabelForCategoryId(categoryTree, resolvedCategoryId, addCategory)
+      : addCategory;
     setList((prev) => [
       {
         id: data!.id,
@@ -599,6 +683,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         date: addExpenseDate,
         created_at: getCurrentLocalTimestamp(),
         category: displayCategory,
+        expense_category_id: resolvedCategoryId || null,
         description: descriptionFinal,
         amount: amt,
         branch_id: writeBranchId,
@@ -607,6 +692,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       ...prev,
     ]);
     setAddError(null);
+    setSubmitErrorModal(null);
     resetAddFormAndDraft();
     });
   };
@@ -627,27 +713,49 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     return rows;
   }, [list, listBranchScope, isolateWorkerData, effectiveUserId, effectiveProfileId]);
 
-  const filterCategoryNames = useMemo(() => {
-    if (filterCategory === 'all') return null;
-    const main = categoryTree.find(
-      (m) => m.name === filterCategory || m.slug === filterCategory.toLowerCase().replace(/\s+/g, '_'),
-    );
-    if (!main) return new Set([filterCategory]);
-    const names = new Set<string>([main.name, filterCategory]);
-    for (const child of main.children ?? []) {
-      if (child.name) names.add(child.name);
+  const filterChips = useMemo(() => {
+    const all = { value: 'all', label: 'All', icon: '📊' };
+    if (categoryTree.length > 0) {
+      return [
+        all,
+        ...categoryTree.map((m) => ({
+          value: m.name,
+          label: m.name,
+          icon: '📁',
+        })),
+      ];
     }
-    return names;
-  }, [filterCategory, categoryTree]);
+    return CATEGORIES;
+  }, [categoryTree]);
+
+  const categoryLabelForRow = useCallback(
+    (e: { category: string; expense_category_id?: string | null }) =>
+      categoryTree.length > 0
+        ? displayLabelForCategoryId(categoryTree, e.expense_category_id, e.category)
+        : e.category,
+    [categoryTree],
+  );
 
   const filtered = useMemo(() => {
     const rows = scopedList.filter((e) => {
       const matchCat =
         filterCategory === 'all' ||
-        e.category === filterCategory ||
-        (filterCategoryNames?.has(e.category) ?? false);
+        (() => {
+          const main = categoryTree.find((m) => m.name === filterCategory);
+          if (main) {
+            return expenseMatchesMainFilter(
+              e.category,
+              e.expense_category_id,
+              main,
+              categoryTree,
+            );
+          }
+          return e.category === filterCategory;
+        })();
+      const label = categoryLabelForRow(e);
       const matchSearch =
         e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        label.toLowerCase().includes(searchQuery.toLowerCase()) ||
         e.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
         e.expense_no.toLowerCase().includes(searchQuery.toLowerCase());
       return matchCat && matchSearch;
@@ -656,7 +764,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       documentDate: e.date,
       eventTimestamp: e.created_at ?? null,
     }));
-  }, [scopedList, filterCategory, filterCategoryNames, searchQuery]);
+  }, [scopedList, filterCategory, categoryTree, categoryLabelForRow, searchQuery]);
 
   const grouped = useMemo(() => {
     const acc = {} as Record<DateGroup, typeof list>;
@@ -676,7 +784,6 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     return (
       <SwipeBackShell onBack={saving ? () => {} : resetAddFormAndDraft}>
       <div className="relative min-h-screen bg-[#111827] pb-32">
-        <SaveBlockingOverlay active={saving} label="Saving expense..." />
         <div className="bg-gradient-to-br from-[#EF4444] to-[#DC2626] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center gap-3">
             <button onClick={resetAddFormAndDraft} disabled={saving} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white disabled:opacity-50">
@@ -735,6 +842,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                     onChange={(v) => {
                       setMainCategoryId(v);
                       setSubCategoryId('');
+                      setLeafCategoryId('');
                     }}
                     options={[
                       { value: '', label: 'Select main category' },
@@ -746,12 +854,27 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                   {subOptions.length > 0 && (
                     <CustomSelect
                       value={subCategoryId}
-                      onChange={setSubCategoryId}
+                      onChange={(v) => {
+                        setSubCategoryId(v);
+                        setLeafCategoryId('');
+                      }}
                       options={[
                         { value: '', label: `— ${selectedMain?.name ?? 'Category'} (main)` },
                         ...subOptions.map((s) => ({ value: s.id, label: s.name })),
                       ]}
-                      placeholder="Subcategory"
+                      placeholder="Subcategory (optional)"
+                      zIndexClass="z-[90]"
+                    />
+                  )}
+                  {leafOptions.length > 0 && (
+                    <CustomSelect
+                      value={leafCategoryId}
+                      onChange={setLeafCategoryId}
+                      options={[
+                        { value: '', label: `— ${selectedSub?.name ?? selectedMain?.name ?? 'Parent'} (sub)` },
+                        ...leafOptions.map((n) => ({ value: n.id, label: n.name })),
+                      ]}
+                      placeholder="Re-sub (optional — narrows sale extra)"
                       zIndexClass="z-[90]"
                     />
                   )}
@@ -775,31 +898,41 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                   <p className="text-sm text-[#9CA3AF] flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin shrink-0" /> Loading open balances…
                   </p>
+                ) : clearingLoadError ? (
+                  <p className="text-xs text-[#EF4444]">{clearingLoadError}</p>
                 ) : clearingLines.length === 0 ? (
                   <p className="text-xs text-[#9CA3AF]">
                     No open extra-service balance. Finalize a sale with stitching extras first.
                   </p>
                 ) : (
-                  <CustomSelect
-                    value={selectedClearingChargeId}
-                    onChange={(v) => {
-                      setSelectedClearingChargeId(v);
-                      const line = clearingLines.find((l) => l.sale_charge_id === v);
-                      if (line && !addAmount) {
-                        setAddAmount(String(line.open_balance));
-                      }
-                    }}
-                    options={[
-                      { value: '', label: 'Select invoice / tailor line' },
-                      ...clearingLines.map((l) => ({
-                        value: l.sale_charge_id,
-                        label: `${l.invoice_no} · ${l.charge_type} · ${l.tailor_name ?? 'Tailor'}`,
-                        subtitle: `Open Rs. ${Number(l.open_balance).toLocaleString()}`,
-                      })),
-                    ]}
-                    placeholder="Sale charge"
-                    zIndexClass="z-[90]"
-                  />
+                  <>
+                    {clearingFilterWarning ? (
+                      <p className="text-xs text-[#F59E0B] mb-2">{clearingFilterWarning}</p>
+                    ) : null}
+                    <CustomSelect
+                      value={selectedClearingChargeId}
+                      onChange={(v) => {
+                        setSelectedClearingChargeId(v);
+                        const line = clearingLines.find((l) => l.sale_charge_id === v);
+                        if (line && !addAmount) {
+                          setAddAmount(String(line.open_balance));
+                        }
+                      }}
+                      options={[
+                        { value: '', label: 'Select invoice / tailor line' },
+                        ...clearingLines.map((l) => ({
+                          value: l.sale_charge_id,
+                          label: `${l.invoice_no} · ${formatSaleChargeDisplayLabel({
+                            charge_type: l.charge_type,
+                            tailor_name: l.tailor_name,
+                          })}`,
+                          subtitle: `Open Rs. ${Number(l.open_balance).toLocaleString()}`,
+                        })),
+                      ]}
+                      placeholder="Sale charge"
+                      zIndexClass="z-[90]"
+                    />
+                  </>
                 )}
               </div>
             )}
@@ -938,6 +1071,28 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
             {saving ? 'Saving...' : 'Save Expense'}
           </button>
         </ActionBar>
+        {submitErrorModal ? (
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="expense-error-title"
+          >
+            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-5 max-w-sm w-full shadow-2xl">
+              <p id="expense-error-title" className="text-white font-semibold mb-2">
+                Could not save expense
+              </p>
+              <p className="text-sm text-[#D1D5DB] mb-4">{submitErrorModal}</p>
+              <button
+                type="button"
+                onClick={() => setSubmitErrorModal(null)}
+                className="w-full h-10 bg-[#EF4444] hover:bg-[#DC2626] rounded-lg text-white font-medium"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
       </SwipeBackShell>
     );
@@ -1027,7 +1182,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
               />
             </div>
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-              {CATEGORIES.map((cat) => (
+              {filterChips.map((cat) => (
                 <button
                   key={cat.value}
                   onClick={() => setFilterCategory(cat.value)}
@@ -1092,7 +1247,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                         <div className="flex items-start gap-3 flex-1 min-w-0">
                           <span className="text-2xl">{getCategoryIcon(e.category)}</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white mb-1">{e.category}</p>
+                            <p className="text-sm font-semibold text-white mb-1">{categoryLabelForRow(e)}</p>
                             <p className="text-xs text-[#9CA3AF] line-clamp-2">{e.description || e.expense_no}</p>
                           </div>
                         </div>
