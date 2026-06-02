@@ -4,7 +4,49 @@ Copy a new block for every build. Keep the newest entry at the top.
 
 ---
 
-## Latest build — 1.0.5 (build 33) — 2026-06-01
+## Latest build — 1.0.5 (build 10 iOS / versionCode 35 Android) — 2026-06-03
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-06-03 |
+| **versionName** | 1.0.5 |
+| **iOS build** | 10 (`CURRENT_PROJECT_VERSION`) |
+| **Android versionCode** | 35 |
+| **Git commit** | `e5dff50e` (+ local version bump) |
+| **VPS migrations** | `20260603100000_sale_charge_expense_category.sql`, `20260610120000_fix_extra_service_clearing_lines_returns.sql` — **applied** |
+| **iOS** | `cap:sync:ios:prod` + Archive/Export (Development signing, team NLNZN84GX4) |
+| **IPA path (local)** | `releases/erp-mobile-1.0.5-build10.ipa` (~4.1 MB) |
+| **Export folder** | `releases/ios-export-build10/` |
+| **Built on** | Mac — Xcode scheme **NDM ERP** |
+
+### Changelog (user-facing) — build 10
+
+- **Expense:** Save with main category only (sub/re-sub optional); 4120 clearing list filters by main + descendants.
+- **Fix:** `extra_service_clearing_lines` RPC return-type mismatch on server (42804) after VPS migration.
+- **Expense categories:** 3-level tree (main → sub → re-sub) on mobile + web.
+- **Sale detail:** Stitching/dying/lining extras with tailor names on mobile Sales home.
+- **Accounting:** Attachment append/preview on mobile ledger flows (with build 33 APK pipeline on Android when built separately).
+
+### Install notes — iOS (build 10)
+
+1. **Uninstall** previous NDM ERP app on iPhone if install fails (signature/profile change).
+2. Install via Xcode **Window → Devices and Simulators** → drag `releases/erp-mobile-1.0.5-build10.ipa`, or Apple Configurator.
+3. Device must be registered on Apple team **NLNZN84GX4** (Development / debugging export).
+4. **Settings → General → VPN & Device Management** → trust developer if prompted.
+5. API base: `https://erp.dincouture.pk` (from `.env.production` at sync time).
+
+### Mobile test checklist (build 10)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Expenses → Add | Main category only on Stitching/Service → clearing lines load, save succeeds |
+| 2 | Expenses | No “structure of query does not match function result type” |
+| 3 | Sales → sale detail | Extra lines show tailor/category labels |
+| 4 | Login | Email or counter PIN against live VPS |
+
+---
+
+## Previous build — 1.0.5 (build 33) — 2026-06-01
 
 | Field | Value |
 |--------|--------|
