@@ -117,6 +117,8 @@ export interface Sale {
   due_amount: number;
   return_due?: number;
   notes?: string;
+  /** Manual customer bill / REF # (not payment reference_number). */
+  customer_bill_ref?: string | null;
   /** Delivery/deadline date (YYYY-MM-DD) for studio sales. */
   deadline?: string;
   attachments?: { url: string; name: string }[] | null;
@@ -1121,6 +1123,19 @@ export const saleService = {
       .eq('id', id)
       .select()
       .single();
+
+    if (error && 'customer_bill_ref' in sanitized) {
+      const missingCol =
+        error.code === '42703' || String(error.message || '').toLowerCase().includes('customer_bill_ref');
+      if (missingCol) {
+        const { customer_bill_ref: _r, ...rest } = sanitized as Record<string, unknown>;
+        const retry = await supabase.from('sales').update(rest).eq('id', id).select().single();
+        if (!retry.error) {
+          data = retry.data;
+          error = null;
+        }
+      }
+    }
 
     if (error) throw error;
 

@@ -12,6 +12,7 @@ import { usePermissions } from '../../context/PermissionContext';
 interface SelectCustomerProps {
   companyId: string | null;
   branchId?: string | null;
+  sessionUserId?: string | null;
   onBack: () => void;
   onSelect: (customer: Customer, saleType: 'regular' | 'studio') => void;
   initialSaleType?: 'regular' | 'studio';
@@ -22,7 +23,7 @@ function contactToCustomer(c: contactsApi.Contact): Customer {
   return { id: c.id, name: c.name, phone: getContactDisplayPhone(c) || '—', balance: c.balance };
 }
 
-export function SelectCustomer({ companyId, branchId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerProps) {
+export function SelectCustomer({ companyId, branchId, sessionUserId, onBack, onSelect, initialSaleType = 'regular', onSaleTypeChange }: SelectCustomerProps) {
   const { canViewBalances } = usePermissions();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [defaultCustomer, setDefaultCustomer] = useState<Customer | null>(null);
@@ -133,6 +134,9 @@ export function SelectCustomer({ companyId, branchId, onBack, onSelect, initialS
           defaultRoles={['customer']}
           lockRoles
           title="Add New Customer"
+          companyId={companyId}
+          sessionUserId={sessionUserId}
+          draftId="sale-customer-add"
         />
         {addSaving && (
           <div className="fixed inset-0 z-[90] bg-black/50 flex items-center justify-center">

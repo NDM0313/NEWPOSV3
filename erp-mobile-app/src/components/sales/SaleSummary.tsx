@@ -49,6 +49,7 @@ export function SaleSummary({
     saleData.discount ? String(saleData.discount) : ''
   );
   const [notes, setNotes] = useState(saleData.notes || '');
+  const [billRef, setBillRef] = useState(saleData.billRef || '');
   const [attachments, setAttachments] = useState<File[]>(saleData.attachmentFiles ?? []);
   const [isProcessingAttachments, setIsProcessingAttachments] = useState(false);
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
@@ -59,6 +60,10 @@ export function SaleSummary({
   useEffect(() => {
     setNotes(saleData.notes || '');
   }, [saleData.notes]);
+
+  useEffect(() => {
+    setBillRef(saleData.billRef || '');
+  }, [saleData.billRef]);
 
   useEffect(() => {
     setAttachments(saleData.attachmentFiles ?? []);
@@ -89,6 +94,7 @@ export function SaleSummary({
     onUpdate({ discount: d });
   };
   const applyNotes = () => onUpdate({ notes });
+  const applyBillRef = () => onUpdate({ billRef });
 
   const extrasActive = saleExtrasPanelActive(saleData.saleType, saleData.documentStatus);
   const inclusiveBespoke = hasInclusiveBespokeParents(saleData.products);
@@ -230,6 +236,18 @@ export function SaleSummary({
           shippingCharge={shippingTotal}
           onShippingChargeChange={(shippingCharge) => onUpdate({ shippingCharge })}
         />
+
+        <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+          <h3 className="text-sm font-medium text-[#9CA3AF] mb-2">Bill number</h3>
+          <input
+            type="text"
+            value={billRef}
+            onChange={(e) => setBillRef(e.target.value)}
+            onBlur={applyBillRef}
+            placeholder="Customer bill / REF # (optional)"
+            className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-sm text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
+          />
+        </div>
 
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <h3 className="text-sm font-medium text-[#9CA3AF] mb-2">Notes</h3>

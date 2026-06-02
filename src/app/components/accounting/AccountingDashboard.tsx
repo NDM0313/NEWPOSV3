@@ -97,6 +97,7 @@ const AccountLedgerReportPage = lazy(() => import('@/app/components/reports/Acco
 const AccountingIntegrityTestLab = lazy(() => import('./AccountingIntegrityTestLab'));
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
+import { useSubmitLock } from '@/app/context/LoadingContext';
 import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import {
   DropdownMenu,
@@ -448,6 +449,14 @@ export const AccountingDashboard = () => {
   const { companyId, branchId } = useSupabase();
   const { setCurrentModule, startDate: globalStartDate, endDate: globalEndDate } = useGlobalFilter();
   const { formatCurrency } = useFormatCurrency();
+  const { run, busy } = useSubmitLock();
+
+  const runJournalMutation = useCallback(
+    (label: string, task: () => Promise<void>) => {
+      void run(label, task);
+    },
+    [run],
+  );
 
   const handleOpenJournalSourceDocument = useCallback(
     async (entry: AccountingEntry) => {
@@ -530,13 +539,15 @@ export const AccountingDashboard = () => {
   /** Account Statements tab: editable period (initialized from global filter; re-syncs when global dates change). */
   const [accountStatementStart, setAccountStatementStart] = useState(() => reportStartDate);
   const [accountStatementEnd, setAccountStatementEnd] = useState(() => reportEndDate);
+  /** Set from Accounts row ⋮ → Statement; pre-selects that GL account on Account Statements tab. */
+  const [accountStatementPreselectId, setAccountStatementPreselectId] = useState<string | null>(null);
   useEffect(() => {
     setAccountStatementStart(reportStartDate);
     setAccountStatementEnd(reportEndDate);
   }, [reportStartDate, reportEndDate]);
 
   const accountStatementBranchLabel =
-    !branchId || branchId === 'all' ? 'All branches' : 'Current session branch';
+    'All branches (per-row Branch column; header branch filter does not apply)';
   
   // UI-only view mode: Operational (day-to-day accounts) vs Professional (full Chart of Accounts)
   const [accountsViewMode, setAccountsViewMode] = useState<'operational' | 'professional'>('operational');
@@ -1392,6 +1403,7 @@ export const AccountingDashboard = () => {
                                 key={group.rootKey}
                                 className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
                                 onClick={() => {
+                                  if (busy) return;
                                   setTransactionDetailAutoEdit(false);
                                   setTransactionReference(referenceNumber);
                                   setSelectedGroupEntries(group.entries);
@@ -1416,13 +1428,16 @@ export const AccountingDashboard = () => {
                                 </td>
                                 <td className="px-4 py-3">
                                   <button
+                                    type="button"
+                                    disabled={busy}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      if (busy) return;
                                       setTransactionDetailAutoEdit(false);
                                       setTransactionReference(referenceNumber);
                                       setSelectedGroupEntries(group.entries);
                                     }}
-                                    className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium"
+                                    className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium disabled:opacity-40"
                                   >
                                     {referenceNumber}
                                     {adjustmentCount > 0 && (
@@ -1495,7 +1510,9 @@ export const AccountingDashboard = () => {
                                             variant="ghost"
                                             size="sm"
                                             className="h-8 text-gray-300 hover:text-white hover:bg-gray-800/80"
+                                            disabled={busy}
                                             onClick={() => {
+                                              if (busy) return;
                                               setSelectedGroupEntries(group.entries);
                                               setTransactionDetailAutoEdit(false);
                                               setTransactionReference(
@@ -1514,7 +1531,9 @@ export const AccountingDashboard = () => {
                                               variant="ghost"
                                               size="sm"
                                               className="h-8 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
+                                              disabled={busy}
                                               onClick={() => {
+                                                if (busy) return;
                                                 setSelectedGroupEntries(group.entries);
                                                 setTransactionDetailAutoEdit(true);
                                                 setTransactionReference(entry.id);
@@ -1529,7 +1548,12 @@ export const AccountingDashboard = () => {
                                               variant="ghost"
                                               size="sm"
                                               className="h-8 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
-                                              onClick={() => void handleOpenJournalSourceDocument(entry)}
+                                              disabled={busy}
+                                              onClick={() =>
+                                                runJournalMutation('Opening...', () =>
+                                                  handleOpenJournalSourceDocument(entry),
+                                                )
+                                              }
                                               title="Open sale, purchase, return, or rental in its module"
                                             >
                                               <ExternalLink className="w-4 h-4 mr-1" />
@@ -1540,7 +1564,8 @@ export const AccountingDashboard = () => {
                                             const chainPaymentId = entry.metadata?.paymentId || null;
                                             const chainMembers = entry.metadata?.paymentChainMemberCount ?? 0;
                                             const isMultiMemberChain = chainMembers > 1 && chainPaymentId;
-                                            const chainReverseDisabled = lockPaymentChainReverse || !allowJournalReversalUi;
+                                            const chainReverseDisabled =
+                                              lockPaymentChainReverse || !allowJournalReversalUi || busy;
                                             return (
                                               <>
                                                 {isMultiMemberChain ? (
@@ -1554,11 +1579,18 @@ export const AccountingDashboard = () => {
                                                         journalReverseBlockReason ||
                                                         'Undo last edit — voids the latest adjustment JE and restores previous payment state'
                                                       }
-                                                      onClick={() => {
-                                                        if (window.confirm('Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.')) {
-                                                          void accounting.undoLastPaymentMutation(chainPaymentId);
-                                                        }
-                                                      }}
+                                                      onClick={() =>
+                                                        runJournalMutation('Undoing edit...', async () => {
+                                                          if (
+                                                            !window.confirm(
+                                                              'Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.',
+                                                            )
+                                                          ) {
+                                                            return;
+                                                          }
+                                                          await accounting.undoLastPaymentMutation(chainPaymentId);
+                                                        })
+                                                      }
                                                     >
                                                       <Undo2 className="w-4 h-4 mr-1" />
                                                       Undo edit
@@ -1572,11 +1604,18 @@ export const AccountingDashboard = () => {
                                                         journalReverseBlockReason ||
                                                         'Cancel full payment — voids entire chain (all edits + original)'
                                                       }
-                                                      onClick={() => {
-                                                        if (window.confirm('Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.')) {
-                                                          void accounting.createReversalEntry(entry.id);
-                                                        }
-                                                      }}
+                                                      onClick={() =>
+                                                        runJournalMutation('Cancelling payment...', async () => {
+                                                          if (
+                                                            !window.confirm(
+                                                              'Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.',
+                                                            )
+                                                          ) {
+                                                            return;
+                                                          }
+                                                          await accounting.createReversalEntry(entry.id);
+                                                        })
+                                                      }
                                                     >
                                                       <RotateCcw className="w-4 h-4 mr-1" />
                                                       Cancel payment
@@ -1594,11 +1633,18 @@ export const AccountingDashboard = () => {
                                                         ? 'This row is not the latest payment journal line — reverse the Latest row instead.'
                                                         : 'Create reversal (manual correction)')
                                                     }
-                                                    onClick={() => {
-                                                      if (window.confirm('Create a reversal entry for this journal entry? This will post a new entry that offsets the original.')) {
-                                                        void accounting.createReversalEntry(entry.id);
-                                                      }
-                                                    }}
+                                                    onClick={() =>
+                                                      runJournalMutation('Reversing...', async () => {
+                                                        if (
+                                                          !window.confirm(
+                                                            'Create a reversal entry for this journal entry? This will post a new entry that offsets the original.',
+                                                          )
+                                                        ) {
+                                                          return;
+                                                        }
+                                                        await accounting.createReversalEntry(entry.id);
+                                                      })
+                                                    }
                                                   >
                                                     <RotateCcw className="w-4 h-4 mr-1" />
                                                     Reverse
@@ -1648,6 +1694,7 @@ export const AccountingDashboard = () => {
                                 key={entry.id}
                                 className="border-b border-gray-800 hover:bg-gray-800/30 transition-colors cursor-pointer"
                                 onClick={() => {
+                                  if (busy) return;
                                   setTransactionDetailAutoEdit(false);
                                   setTransactionReference(flatDetailRef);
                                   setSelectedGroupEntries(null);
@@ -1672,8 +1719,11 @@ export const AccountingDashboard = () => {
                                 </td>
                                 <td className="px-4 py-3">
                                   <button
+                                    type="button"
+                                    disabled={busy}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      if (busy) return;
                                       setTransactionDetailAutoEdit(false);
                                       setTransactionReference(flatDetailRef);
                                       setSelectedGroupEntries(null);
@@ -1746,7 +1796,9 @@ export const AccountingDashboard = () => {
                                             variant="ghost"
                                             size="sm"
                                             className="h-8 text-gray-300 hover:text-white hover:bg-gray-800/80"
+                                            disabled={busy}
                                             onClick={() => {
+                                              if (busy) return;
                                               setSelectedGroupEntries(null);
                                               setTransactionDetailAutoEdit(false);
                                               setTransactionReference(flatDetailRef);
@@ -1761,7 +1813,9 @@ export const AccountingDashboard = () => {
                                               variant="ghost"
                                               size="sm"
                                               className="h-8 text-sky-400 hover:text-sky-300 hover:bg-sky-500/10"
+                                              disabled={busy}
                                               onClick={() => {
+                                                if (busy) return;
                                                 setSelectedGroupEntries(null);
                                                 setTransactionDetailAutoEdit(true);
                                                 setTransactionReference(entry.id);
@@ -1776,7 +1830,12 @@ export const AccountingDashboard = () => {
                                               variant="ghost"
                                               size="sm"
                                               className="h-8 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
-                                              onClick={() => void handleOpenJournalSourceDocument(entry)}
+                                              disabled={busy}
+                                              onClick={() =>
+                                                runJournalMutation('Opening...', () =>
+                                                  handleOpenJournalSourceDocument(entry),
+                                                )
+                                              }
                                               title="Open sale, purchase, return, or rental in its module"
                                             >
                                               <ExternalLink className="w-4 h-4 mr-1" />
@@ -1788,7 +1847,7 @@ export const AccountingDashboard = () => {
                                             const flatChainMembers = entry.metadata?.paymentChainMemberCount ?? 0;
                                             const isFlatMultiChain = flatChainMembers > 1 && flatChainPaymentId;
                                             const flatChainReverseDisabled =
-                                              lockFlatPaymentChainReverse || !allowJournalReversalUiFlat;
+                                              lockFlatPaymentChainReverse || !allowJournalReversalUiFlat || busy;
                                             return isFlatMultiChain ? (
                                               <>
                                                 <Button
@@ -1800,11 +1859,18 @@ export const AccountingDashboard = () => {
                                                     journalReverseBlockReasonFlat ||
                                                     'Undo last edit — voids the latest adjustment JE and restores previous payment state'
                                                   }
-                                                  onClick={() => {
-                                                    if (window.confirm('Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.')) {
-                                                      void accounting.undoLastPaymentMutation(flatChainPaymentId);
-                                                    }
-                                                  }}
+                                                  onClick={() =>
+                                                    runJournalMutation('Undoing edit...', async () => {
+                                                      if (
+                                                        !window.confirm(
+                                                          'Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.',
+                                                        )
+                                                      ) {
+                                                        return;
+                                                      }
+                                                      await accounting.undoLastPaymentMutation(flatChainPaymentId);
+                                                    })
+                                                  }
                                                 >
                                                   <Undo2 className="w-4 h-4 mr-1" />
                                                   Undo edit
@@ -1818,11 +1884,18 @@ export const AccountingDashboard = () => {
                                                     journalReverseBlockReasonFlat ||
                                                     'Cancel full payment — voids entire chain (all edits + original)'
                                                   }
-                                                  onClick={() => {
-                                                    if (window.confirm('Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.')) {
-                                                      void accounting.createReversalEntry(entry.id);
-                                                    }
-                                                  }}
+                                                  onClick={() =>
+                                                    runJournalMutation('Cancelling payment...', async () => {
+                                                      if (
+                                                        !window.confirm(
+                                                          'Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.',
+                                                        )
+                                                      ) {
+                                                        return;
+                                                      }
+                                                      await accounting.createReversalEntry(entry.id);
+                                                    })
+                                                  }
                                                 >
                                                   <RotateCcw className="w-4 h-4 mr-1" />
                                                   Cancel payment
@@ -1840,11 +1913,18 @@ export const AccountingDashboard = () => {
                                                     ? 'This row is not the latest payment journal line — reverse the Latest row instead.'
                                                     : 'Create reversal (manual correction)')
                                                 }
-                                                onClick={() => {
-                                                  if (window.confirm('Create a reversal entry for this journal entry? This will post a new entry that offsets the original.')) {
-                                                    void accounting.createReversalEntry(entry.id);
-                                                  }
-                                                }}
+                                                onClick={() =>
+                                                  runJournalMutation('Reversing...', async () => {
+                                                    if (
+                                                      !window.confirm(
+                                                        'Create a reversal entry for this journal entry? This will post a new entry that offsets the original.',
+                                                      )
+                                                    ) {
+                                                      return;
+                                                    }
+                                                    await accounting.createReversalEntry(entry.id);
+                                                  })
+                                                }
                                               >
                                                 <RotateCcw className="w-4 h-4 mr-1" />
                                                 Reverse
@@ -2171,7 +2251,10 @@ export const AccountingDashboard = () => {
                     setEditingAccount={setEditingAccount}
                     setIsEditAccountOpen={setIsEditAccountOpen}
                     setCurrentView={setCurrentView}
-                    onOpenAccountStatements={() => setActiveTab('account_statements')}
+                    onOpenAccountStatements={(accountId) => {
+                      setAccountStatementPreselectId(accountId);
+                      setActiveTab('account_statements');
+                    }}
                   />
                 )}
               />
@@ -2401,7 +2484,7 @@ export const AccountingDashboard = () => {
                 />
               </div>
               <p className="text-xs text-gray-500 pb-2">
-                Global filter updates the defaults above; you can narrow the range here without changing the header.
+                Global filter updates the default dates above. Statements include <strong className="text-gray-400 font-medium">all branches</strong> — use the Branch column on each row to see HQ, BR-0002, etc. The header branch selector does not limit this report.
               </p>
             </div>
             <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
@@ -2410,6 +2493,7 @@ export const AccountingDashboard = () => {
                 endDate={accountStatementEnd}
                 branchId={branchId}
                 branchScopeLabel={accountStatementBranchLabel}
+                initialAccountId={accountStatementPreselectId}
               />
             </Suspense>
           </div>

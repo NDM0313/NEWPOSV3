@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { format, parseISO } from "date-fns";
 import { buildNotesWithStudioDeadline, parseStudioDeadlineFromNotes, getStudioDeadlineFromNotes } from "@/app/utils/studioDeadlineNotes";
+import { readSaleBillRef } from "@/app/utils/saleBillRef";
 import { cn, formatDateWithTimezone } from "../ui/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -1380,7 +1381,11 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             }
             setSavedSaleAttachments(Array.isArray((initialSale as any)?.attachments) ? (initialSale as any).attachments : []);
             setInvoiceNumber(initialSale.invoiceNo || '');
-            setRefNumber((initialSale as any).reference ?? (initialSale as any).ref_no ?? '');
+            const isStudioRow =
+              !!(initialSale as any).is_studio ||
+              !!(initialSale as any).isStudioSale ||
+              String((initialSale as any).order_no || '').startsWith('STD');
+            setRefNumber(readSaleBillRef(initialSale as Record<string, unknown>, { isStudio: isStudioRow }));
             // Load notes; for studio sales set studioDeadline and Studio Notes input (studioNotes) so full note shows
             const { deadline, notesWithoutDeadline } = parseStudioDeadlineFromNotes(initialSale.notes);
             const loadedNotes = notesWithoutDeadline || '';
@@ -2625,8 +2630,9 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 paymentMethod: (effectiveFinal && partialPayments.length > 0) ? partialPayments[0].method : 'cash',
                 shippingStatus: 'pending' as const,
                 notes: isStudioSale
-                    ? buildNotesWithStudioDeadline(studioDeadline, saleNotes || studioNotes || refNumber || '')
-                    : (saleNotes || studioNotes || refNumber || undefined),
+                    ? buildNotesWithStudioDeadline(studioDeadline, saleNotes || studioNotes || '')
+                    : (saleNotes || studioNotes || undefined),
+                customerBillRef: refNumber.trim() || undefined,
                 deadline: (() => {
                     const d = studioDeadlineRef.current ?? studioDeadline;
                     const value = isStudioSale && d ? d.toISOString().split('T')[0] : null;

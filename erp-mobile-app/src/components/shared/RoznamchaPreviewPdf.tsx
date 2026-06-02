@@ -1,0 +1,160 @@
+import { ReportBrandHeader } from './ReportBrandHeader';
+import type { CompanyBrand } from '../../api/reports';
+import type { RoznamchaRowWithBalance, RoznamchaSummary } from '../../api/roznamcha';
+
+export interface RoznamchaPreviewPdfProps {
+  brand: CompanyBrand;
+  title: string;
+  subtitle?: string;
+  summary: RoznamchaSummary;
+  rows: RoznamchaRowWithBalance[];
+  generatedBy: string;
+  generatedAt: string;
+}
+
+const fmt = (n: number): string =>
+  (Math.abs(n) < 0.005 ? 0 : n).toLocaleString('en-PK', { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+
+function rowDateTime(r: RoznamchaRowWithBalance): string {
+  const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '00:00:00';
+  try {
+    return new Date(`${r.date}T${t}`).toLocaleString('en-PK', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return `${r.date} ${r.time || ''}`.trim();
+  }
+}
+
+function rowDescription(r: RoznamchaRowWithBalance): string {
+  const meta = [r.referenceDisplay, r.partyLine, r.createdBy ? `by ${r.createdBy}` : ''].filter(Boolean).join(' · ');
+  return meta ? `${r.details}\n${meta}` : r.details;
+}
+
+/** HTML Roznamcha for PdfPreviewModal — Debit/Credit/In/Out/Balance (ledger-style cash book). */
+export function RoznamchaPreviewPdf({
+  brand,
+  title,
+  subtitle,
+  summary,
+  rows,
+  generatedBy,
+  generatedAt,
+}: RoznamchaPreviewPdfProps) {
+  const totalDebit = summary.cashIn;
+  const totalCredit = summary.cashOut;
+
+  return (
+    <div>
+      <ReportBrandHeader
+        brand={brand}
+        title={title}
+        subtitle={subtitle}
+        metaRows={[
+          { label: 'Generated', value: generatedAt },
+          { label: 'By', value: generatedBy },
+        ]}
+      />
+
+      <table style={{ marginBottom: 14, width: '100%' }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: 'right' }}>Opening</th>
+            <th style={{ textAlign: 'right' }}>Cash In</th>
+            <th style={{ textAlign: 'right' }}>Cash Out</th>
+            <th style={{ textAlign: 'right' }}>Closing</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style={{ textAlign: 'right' }}>{fmt(summary.openingBalance)}</td>
+            <td style={{ textAlign: 'right' }}>{fmt(summary.cashIn)}</td>
+            <td style={{ textAlign: 'right' }}>{fmt(summary.cashOut)}</td>
+            <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(summary.closingBalance)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table style={{ width: '100%', fontSize: 9 }}>
+        <thead>
+          <tr>
+            <th style={{ width: 88 }}>Date &amp; Time</th>
+            <th style={{ width: 72 }}>Ref</th>
+            <th>Details</th>
+            <th style={{ width: 56 }}>Account</th>
+            <th style={{ width: 48, textAlign: 'right' }}>Debit</th>
+            <th style={{ width: 48, textAlign: 'right' }}>Credit</th>
+            <th style={{ width: 44, textAlign: 'right' }}>In</th>
+            <th style={{ width: 44, textAlign: 'right' }}>Out</th>
+            <th style={{ width: 56, textAlign: 'right' }}>Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td colSpan={4} style={{ fontWeight: 600 }}>
+              Opening Balance
+            </td>
+            <td style={{ textAlign: 'right' }}>—</td>
+            <td style={{ textAlign: 'right' }}>—</td>
+            <td style={{ textAlign: 'right' }}>—</td>
+            <td style={{ textAlign: 'right' }}>—</td>
+            <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(summary.openingBalance)}</td>
+          </tr>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={9} style={{ textAlign: 'center', color: '#666', padding: 14 }}>
+                No transactions in this period.
+              </td>
+            </tr>
+          ) : (
+            rows.map((r, i) => (
+              <tr key={r.id || i}>
+                <td style={{ whiteSpace: 'nowrap' }}>{rowDateTime(r)}</td>
+                <td>
+                  {r.ref}
+                  {r.journalEntryNo ? <div style={{ fontSize: 8, color: '#555' }}>{r.journalEntryNo}</div> : null}
+                </td>
+                <td style={{ whiteSpace: 'pre-wrap' }}>{rowDescription(r)}</td>
+                <td>{r.accountLabel || '—'}</td>
+                <td style={{ textAlign: 'right' }}>{r.cashIn ? fmt(r.cashIn) : '—'}</td>
+                <td style={{ textAlign: 'right' }}>{r.cashOut ? fmt(r.cashOut) : '—'}</td>
+                <td style={{ textAlign: 'right' }}>{r.cashIn ? fmt(r.cashIn) : '—'}</td>
+                <td style={{ textAlign: 'right' }}>{r.cashOut ? fmt(r.cashOut) : '—'}</td>
+                <td style={{ textAlign: 'right' }}>{fmt(r.runningBalance)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={4} style={{ fontWeight: 600 }}>
+              Totals
+            </td>
+            <td style={{ textAlign: 'right' }}>{fmt(totalDebit)}</td>
+            <td style={{ textAlign: 'right' }}>{fmt(totalCredit)}</td>
+            <td style={{ textAlign: 'right' }}>{fmt(totalDebit)}</td>
+            <td style={{ textAlign: 'right' }}>{fmt(totalCredit)}</td>
+            <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(summary.closingBalance)}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div
+        style={{
+          marginTop: 20,
+          fontSize: 9,
+          color: '#555',
+          textAlign: 'center',
+          borderTop: '1px solid #e5e7eb',
+          paddingTop: 8,
+        }}
+      >
+        This is a computer-generated document — no signature required.
+      </div>
+    </div>
+  );
+}

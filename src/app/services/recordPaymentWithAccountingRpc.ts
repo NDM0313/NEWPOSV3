@@ -68,6 +68,12 @@ export interface RecordPaymentWithAccountingOk {
   referenceNumber: string;
 }
 
+/**
+ * Payment branch on sale/purchase/rental: business rule is document.branch_id.
+ * `record_payment_with_accounting` uses COALESCE(p_branch_id, document.branch_id) — when the UI
+ * passes a session branch as p_branch_id it can override the document branch. Prefer loading
+ * branch_id from the sale/purchase/rental row when posting document-linked payments.
+ */
 export async function resolveBranchIdForPaymentRpc(
   companyId: string,
   branchId: string | null | undefined

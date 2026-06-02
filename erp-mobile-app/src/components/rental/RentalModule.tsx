@@ -1,15 +1,58 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { ArrowLeft, Loader2, Plus, Search, Calendar, Truck, CornerDownLeft, DollarSign, LayoutList, Package, MoreVertical, Share2, Clock3 } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import {
+  ArrowLeft,
+  Loader2,
+  Plus,
+  Search,
+  Calendar,
+  Truck,
+  CornerDownLeft,
+  DollarSign,
+  LayoutList,
+  Package,
+  MoreVertical,
+  Share2,
+  Clock3,
+  Ban,
+  Trash2,
+  Edit3,
+} from 'lucide-react';
 import type { User, Branch } from '../../types';
 import * as rentalsApi from '../../api/rentals';
 import type { RentalListItem } from '../../api/rentals';
 import { CreateRentalFlow } from './CreateRentalFlow';
-import { ViewRentalDetails } from './ViewRentalDetails';
+import { RentalCalendarTab } from './RentalCalendarTab';
+import { ViewRentalDetails, type RentalDetailInitialAction } from './ViewRentalDetails';
+import { DateInputField } from '../shared/DateTimePicker';
 import { openWhatsAppShare } from '../../lib/phoneWhatsApp';
 import { formatDate } from '../accounts/reports/_shared/format';
 import { localNowDateString } from '../../utils/localDate';
+import { getRentalDateRange, type RentalDatePreset } from '../../utils/rentalDateRange';
+import { usePermissions } from '../../context/PermissionContext';
+import { shouldScopeRentalsToOwnOnly } from '../../api/permissions';
+import {
+  resolveCounterListBranchScope,
+  rowBelongsToRentalWorker,
+  shouldIsolateCounterWorkerData,
+} from '../../lib/counterDataIsolation';
+import { rowInListBranchScope } from '../../lib/listBranchScope';
+import {
+  useEffectiveWorkerId,
+  useEffectiveWorkerProfileId,
+  useEffectiveWorkerRole,
+} from '../../context/CounterWorkerContext';
 
-type RentalTab = 'list' | 'pickupToday' | 'returnToday' | 'collections';
+type RentalTab = 'list' | 'calendar' | 'pickupToday' | 'returnToday' | 'collections';
+
+function matchesRentalSearch(r: RentalListItem, q: string): boolean {
+  if (!q) return true;
+  return (
+    r.bookingNo.toLowerCase().includes(q) ||
+    r.documentNumber.toLowerCase().includes(q) ||
+    r.customer.toLowerCase().includes(q) ||
+    r.status.toLowerCase().includes(q)
+  );
+}
 
 interface RentalModuleProps {
   onBack: () => void;
@@ -28,6 +71,24 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 export function RentalModule({ onBack, user, companyId, branch }: RentalModuleProps) {
+  const effectiveUserId = useEffectiveWorkerId(user?.id ?? '');
+  const effectiveProfileId = useEffectiveWorkerProfileId();
+  const effectiveRole = useEffectiveWorkerRole(user?.role ?? 'admin');
+  const { branchIds, isAdminOrOwner, permissions, isPermissionLoaded } = usePermissions();
+  const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
+  const scopeRentalsToOwn = useMemo(
+    () =>
+      isPermissionLoaded
+        ? shouldScopeRentalsToOwnOnly(permissions, isAdminOrOwner)
+        : false,
+    [isPermissionLoaded, permissions, isAdminOrOwner],
+  );
+  const listBranchScope = useMemo(
+    () =>
+      resolveCounterListBranchScope(branch?.id, branchIds, isAdminOrOwner, isolateWorkerData),
+    [branch?.id, branchIds, isAdminOrOwner, isolateWorkerData],
+  );
+
   const [showCreate, setShowCreate] = useState(false);
   const [list, setList] = useState<RentalListItem[]>([]);
   const [loading, setLoading] = useState(!!companyId);
@@ -35,14 +96,76 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuRental, setMenuRental] = useState<RentalListItem | null>(null);
   const [activeTab, setActiveTab] = useState<RentalTab>('list');
+  const [datePreset, setDatePreset] = useState<RentalDatePreset>('30d');
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
+  const [detailAction, setDetailAction] = useState<RentalDetailInitialAction | null>(null);
+  const [metaEditRental, setMetaEditRental] = useState<RentalListItem | null>(null);
+  const [metaBillRef, setMetaBillRef] = useState('');
+  const [metaSaving, setMetaSaving] = useState(false);
   const wasInChildView = useRef(false);
 
-  const refreshList = () => {
+  const dateRange = useMemo(
+    () => getRentalDateRange(datePreset, { from: customDateFrom, to: customDateTo }),
+    [datePreset, customDateFrom, customDateTo]
+  );
+
+  const rentalFetchOpts = useMemo(() => {
+    const scopeToOwn =
+      scopeRentalsToOwn || isolateWorkerData
+        ? { authUserId: effectiveUserId, profileId: effectiveProfileId }
+        : undefined;
+    const base = {
+      dateFrom: dateRange.dateFrom,
+      dateTo: dateRange.dateTo,
+      scopeToOwn,
+    };
+    if (listBranchScope.mode === 'accessible') {
+      return { ...base, accessibleBranchIds: listBranchScope.branchIds };
+    }
+    return base;
+  }, [
+    dateRange.dateFrom,
+    dateRange.dateTo,
+    scopeRentalsToOwn,
+    isolateWorkerData,
+    effectiveUserId,
+    effectiveProfileId,
+    listBranchScope,
+  ]);
+
+  const apiBranchId =
+    listBranchScope.mode === 'single' ? listBranchScope.branchId : branch?.id ?? null;
+
+  const scopedList = useMemo(() => {
+    let rows = list.filter((r) =>
+      rowInListBranchScope({ branch_id: r.branchId }, listBranchScope),
+    );
+    if (scopeRentalsToOwn || isolateWorkerData) {
+      rows = rows.filter((r) =>
+        rowBelongsToRentalWorker(
+          { created_by: r.createdBy, salesman_id: r.salesmanId },
+          effectiveUserId,
+          effectiveProfileId,
+        ),
+      );
+    }
+    return rows;
+  }, [
+    list,
+    listBranchScope,
+    scopeRentalsToOwn,
+    isolateWorkerData,
+    effectiveUserId,
+    effectiveProfileId,
+  ]);
+
+  const refreshList = useCallback(() => {
     if (!companyId) return;
-    rentalsApi.getRentals(companyId, branch?.id).then(({ data, error }) => {
+    rentalsApi.getRentals(companyId, apiBranchId, rentalFetchOpts).then(({ data, error }) => {
       if (!error && data) setList(data);
     });
-  };
+  }, [companyId, apiBranchId, rentalFetchOpts]);
 
   useEffect(() => {
     if (!companyId) {
@@ -51,13 +174,15 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
     }
     let c = false;
     setLoading(true);
-    rentalsApi.getRentals(companyId, branch?.id).then(({ data, error }) => {
+    rentalsApi.getRentals(companyId, apiBranchId, rentalFetchOpts).then(({ data, error }) => {
       if (c) return;
       setLoading(false);
       if (!error && data) setList(data);
     });
-    return () => { c = true; };
-  }, [companyId, branch?.id]);
+    return () => {
+      c = true;
+    };
+  }, [companyId, apiBranchId, rentalFetchOpts]);
 
   // Refresh list when returning from detail or create so changes are visible
   useEffect(() => {
@@ -70,54 +195,69 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
 
   const today = localNowDateString();
 
+  const searchQ = search.trim().toLowerCase();
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return list;
-    const q = search.toLowerCase().trim();
-    return list.filter(
-      (r) =>
-        r.no.toLowerCase().includes(q) ||
-        r.customer.toLowerCase().includes(q) ||
-        r.status.toLowerCase().includes(q)
-    );
-  }, [list, search]);
+    if (!searchQ) return scopedList;
+    return scopedList.filter((r) => matchesRentalSearch(r, searchQ));
+  }, [scopedList, searchQ]);
+
+  const applySearch = useCallback(
+    (rows: RentalListItem[]) => {
+      if (!searchQ) return rows;
+      return rows.filter((r) => matchesRentalSearch(r, searchQ));
+    },
+    [searchQ]
+  );
 
   const summary = useMemo(() => {
-    const totalDue = list.reduce((s, r) => s + r.due, 0);
-    const active = list.filter((r) => r.status === 'rented').length;
-    const overdue = list.filter((r) => r.status === 'overdue').length;
-    const todayPickups = list.filter((r) => r.pickup === today && r.status === 'booked').length;
-    const todayReturns = list.filter(
+    const totalDue = scopedList.reduce((s, r) => s + r.due, 0);
+    const active = scopedList.filter((r) => r.status === 'rented').length;
+    const overdue = scopedList.filter((r) => r.status === 'overdue').length;
+    const todayPickups = scopedList.filter((r) => r.pickup === today && r.status === 'booked').length;
+    const todayReturns = scopedList.filter(
       (r) => (r.status === 'rented' || r.status === 'overdue') && r.return <= today
     ).length;
     return { totalDue, active, overdue, todayPickups, todayReturns };
-  }, [list, today]);
+  }, [scopedList, today]);
 
   const todayPickupsList = useMemo(
-    () => list.filter((r) => r.pickup === today && r.status === 'booked'),
-    [list, today]
+    () => applySearch(scopedList.filter((r) => r.pickup === today && r.status === 'booked')),
+    [scopedList, today, applySearch]
   );
 
   const todayReturnsList = useMemo(
     () =>
-      list
-        .filter((r) => (r.status === 'rented' || r.status === 'overdue') && r.return <= today)
-        .sort((a, b) => (a.return < b.return ? -1 : 1)),
-    [list, today]
+      applySearch(
+        scopedList
+          .filter((r) => (r.status === 'rented' || r.status === 'overdue') && r.return <= today)
+          .sort((a, b) => (a.return < b.return ? -1 : 1))
+      ),
+    [scopedList, today, applySearch]
   );
 
   const collectionsList = useMemo(
-    () => list.filter((r) => r.due > 0).sort((a, b) => b.due - a.due),
-    [list]
+    () => applySearch(scopedList.filter((r) => r.due > 0).sort((a, b) => b.due - a.due)),
+    [scopedList, applySearch]
   );
 
   const totalOutstanding = useMemo(() => collectionsList.reduce((s, r) => s + r.due, 0), [collectionsList]);
+
+  const calendarFetchOpts = useMemo(
+    () => ({
+      accessibleBranchIds:
+        listBranchScope.mode === 'accessible' ? listBranchScope.branchIds : undefined,
+      scopeToOwn: rentalFetchOpts.scopeToOwn,
+    }),
+    [listBranchScope, rentalFetchOpts.scopeToOwn],
+  );
 
   if (showCreate) {
     return (
       <CreateRentalFlow
         companyId={companyId}
         branchId={branch?.id ?? null}
-        userId={user?.id ?? null}
+        userId={effectiveUserId || null}
         userRole={user?.role}
         onBack={() => setShowCreate(false)}
         onSuccess={() => {
@@ -133,24 +273,74 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
       <ViewRentalDetails
         rentalId={selectedId}
         companyId={companyId}
-        userId={user?.id ?? null}
-        onBack={() => setSelectedId(null)}
+        userId={effectiveUserId || null}
+        initialAction={detailAction}
+        onConsumedInitialAction={() => setDetailAction(null)}
+        onBack={() => {
+          setSelectedId(null);
+          setDetailAction(null);
+        }}
         onRefresh={refreshList}
       />
     );
   }
 
+  const openMetaEdit = (r: RentalListItem) => {
+    setMenuRental(null);
+    setMetaEditRental(r);
+    setMetaBillRef(r.documentNumber || '');
+  };
+
+  const saveMetaEdit = async () => {
+    if (!metaEditRental) return;
+    setMetaSaving(true);
+    const { error: err } = await rentalsApi.updateRentalMeta(metaEditRental.id, {
+      documentNumber: metaBillRef,
+    });
+    setMetaSaving(false);
+    if (err) {
+      alert(err);
+      return;
+    }
+    setMetaEditRental(null);
+    refreshList();
+  };
+
   const tabButtons: { id: RentalTab; label: string; icon: React.ReactElement }[] = [
     { id: 'list', label: 'List', icon: <LayoutList className="w-4 h-4" /> },
+    { id: 'calendar', label: 'Calendar', icon: <Calendar className="w-4 h-4" /> },
     { id: 'pickupToday', label: 'Pickup Today', icon: <Truck className="w-4 h-4" /> },
     { id: 'returnToday', label: 'Return Today', icon: <CornerDownLeft className="w-4 h-4" /> },
     { id: 'collections', label: 'Collections', icon: <DollarSign className="w-4 h-4" /> },
   ];
 
+  const openDetailWithAction = (r: RentalListItem, action: RentalDetailInitialAction) => {
+    setMenuRental(null);
+    setDetailAction(action);
+    setSelectedId(r.id);
+  };
+
+  const handleCancelRental = async (r: RentalListItem) => {
+    if (!companyId || !window.confirm(`Cancel rental ${r.bookingNo}?`)) return;
+    setMenuRental(null);
+    const { error: err } = await rentalsApi.cancelRental(r.id, companyId);
+    if (err) alert(err);
+    else refreshList();
+  };
+
+  const handleDeleteRental = async (r: RentalListItem) => {
+    if (!companyId || !window.confirm(`Delete rental ${r.bookingNo}? This cannot be undone.`)) return;
+    setMenuRental(null);
+    const { error: err } = await rentalsApi.deleteRental(r.id, companyId);
+    if (err) alert(err);
+    else refreshList();
+  };
+
   const handleShareWhatsApp = (r: RentalListItem) => {
     setMenuRental(null);
     const text = [
-      `Rental: ${r.no}`,
+      `Rental: ${r.bookingNo}`,
+      r.documentNumber ? `Bill: ${r.documentNumber}` : '',
       `Customer: ${r.customer}`,
       `Pickup: ${formatDate(r.pickup)}`,
       `Return: ${formatDate(r.return)}`,
@@ -170,7 +360,10 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
         <button type="button" onClick={() => setSelectedId(r.id)} className="w-full text-left pr-10">
           <div className="flex justify-between items-start gap-3">
             <div>
-              <p className="font-medium text-white">{r.no}</p>
+              <p className="font-medium text-white">{r.bookingNo}</p>
+              {r.documentNumber ? (
+                <p className="text-xs text-[#8B5CF6]/90">Bill: {r.documentNumber}</p>
+              ) : null}
               <p className="text-sm text-[#9CA3AF]">{r.customer}</p>
               <div className="mt-1 flex flex-wrap gap-2">
                 <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-[#374151] text-[#D1D5DB]">
@@ -208,16 +401,42 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60" onClick={() => setMenuRental(null)}>
             <div className="bg-[#1F2937] border border-[#374151] rounded-2xl shadow-xl overflow-hidden w-full max-w-[280px]" onClick={(e) => e.stopPropagation()}>
               <div className="px-4 py-3 border-b border-[#374151]">
-                <p className="text-sm font-medium text-[#9CA3AF]">{r.no}</p>
+                <p className="text-sm font-medium text-[#9CA3AF]">{r.bookingNo}</p>
+                {r.documentNumber ? <p className="text-xs text-[#8B5CF6]">Bill: {r.documentNumber}</p> : null}
                 <p className="text-xs text-[#D1D5DB]">{r.customer}</p>
               </div>
               <div className="py-2">
                 <button onClick={() => { setMenuRental(null); setSelectedId(r.id); }} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
                   <LayoutList className="w-5 h-5 text-[#3B82F6]" /> View Details
                 </button>
+                {r.status === 'booked' && (
+                  <button onClick={() => openDetailWithAction(r, 'pickup')} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+                    <Truck className="w-5 h-5 text-blue-400" /> Mark Picked Up
+                  </button>
+                )}
+                {(r.status === 'rented' || r.status === 'overdue') && (
+                  <button onClick={() => openDetailWithAction(r, 'return')} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+                    <CornerDownLeft className="w-5 h-5 text-[#10B981]" /> Receive Return
+                  </button>
+                )}
                 {r.due > 0 && (
-                  <button onClick={() => { setMenuRental(null); setSelectedId(r.id); }} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+                  <button onClick={() => openDetailWithAction(r, 'payment')} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
                     <DollarSign className="w-5 h-5 text-[#10B981]" /> Add Payment
+                  </button>
+                )}
+                {(r.status === 'booked' || r.status === 'draft') && (
+                  <button onClick={() => openMetaEdit(r)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+                    <Edit3 className="w-5 h-5 text-amber-400" /> Edit Bill Ref
+                  </button>
+                )}
+                {(r.status === 'booked' || r.status === 'draft') && (
+                  <button onClick={() => void handleCancelRental(r)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+                    <Ban className="w-5 h-5 text-[#F59E0B]" /> Cancel
+                  </button>
+                )}
+                {(r.status === 'booked' || r.status === 'draft') && (
+                  <button onClick={() => void handleDeleteRental(r)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
+                    <Trash2 className="w-5 h-5 text-red-400" /> Delete
                   </button>
                 )}
                 <button onClick={() => handleShareWhatsApp(r)} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">
@@ -257,13 +476,13 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
         </div>
 
         {/* Tabs (web RentalDashboard style) */}
-        <div className="flex items-center gap-1 p-1 bg-white/10 rounded-xl border border-white/20 mb-3">
+        <div className="flex items-center gap-1 p-1 bg-white/10 rounded-xl border border-white/20 mb-3 overflow-x-auto scrollbar-hide">
           {tabButtons.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-1.5 min-w-0 py-2.5 px-2 rounded-lg text-sm font-medium transition-all ${
+              className={`flex-none flex items-center justify-center gap-1.5 min-w-0 py-2.5 px-3 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
                 activeTab === tab.id ? 'bg-white text-[#7C3AED] shadow' : 'text-white/80 hover:text-white hover:bg-white/10'
               }`}
             >
@@ -288,26 +507,56 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
           ))}
         </div>
 
-        {/* Search - only on List tab */}
-        {activeTab === 'list' && (
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/70" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by number, customer…"
-              className="w-full h-10 bg-white/10 border border-white/20 rounded-lg pl-10 pr-3 text-white placeholder-white/60 text-sm focus:outline-none focus:ring-2 focus:ring-white/30"
-            />
+        {/* Date range — list / pickup / return / collections */}
+        {activeTab !== 'calendar' && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {(
+            [
+              { id: 'today' as RentalDatePreset, label: 'Today' },
+              { id: '7d' as RentalDatePreset, label: '7 days' },
+              { id: '30d' as RentalDatePreset, label: '1 month' },
+              { id: 'custom' as RentalDatePreset, label: 'Custom' },
+            ] as const
+          ).map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setDatePreset(p.id)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium ${
+                datePreset === p.id ? 'bg-white text-[#7C3AED]' : 'bg-white/10 text-white/80'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        )}
+        {activeTab !== 'calendar' && datePreset === 'custom' && (
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <DateInputField label="From" value={customDateFrom} onChange={setCustomDateFrom} />
+            <DateInputField label="To" value={customDateTo} onChange={setCustomDateTo} />
           </div>
         )}
 
+        {activeTab !== 'calendar' && (
+        <div className="relative mb-3">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/70" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search booking, bill ref, customer…"
+            className="w-full h-10 bg-white/10 border border-white/20 rounded-lg pl-10 pr-3 text-white placeholder-white/60 text-sm focus:outline-none focus:ring-2 focus:ring-white/30"
+          />
+        </div>
+        )}
+
         {/* Summary cards - only on List tab (web-style) */}
-        {activeTab === 'list' && !loading && list.length > 0 && (
+        {activeTab === 'list' && !loading && scopedList.length > 0 && (
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
               <p className="text-xs text-white/70 mb-1">Total</p>
-              <p className="text-lg font-bold text-white">{list.length}</p>
+              <p className="text-lg font-bold text-white">{scopedList.length}</p>
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
               <p className="text-xs text-white/70 mb-1">Outstanding</p>
@@ -337,8 +586,20 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
         )}
       </div>
 
-      <div className="p-4 space-y-3">
-        {loading ? (
+      <div className={activeTab === 'calendar' ? 'px-3 pb-3 pt-0' : 'p-4 space-y-3'}>
+        {activeTab === 'calendar' ? (
+          <RentalCalendarTab
+            companyId={companyId}
+            apiBranchId={apiBranchId}
+            fetchOpts={calendarFetchOpts}
+            listBranchScope={listBranchScope}
+            scopeRentalsToOwn={scopeRentalsToOwn}
+            isolateWorkerData={isolateWorkerData}
+            effectiveUserId={effectiveUserId}
+            effectiveProfileId={effectiveProfileId ?? undefined}
+            onSelectRentalId={(id) => setSelectedId(id)}
+          />
+        ) : loading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 text-[#8B5CF6] animate-spin" />
           </div>
@@ -401,6 +662,39 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
           )
         )}
       </div>
+
+      {metaEditRental && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4 bg-black/60">
+          <div className="bg-[#1F2937] border border-[#374151] rounded-2xl w-full max-w-md p-4 space-y-3">
+            <h3 className="text-white font-medium">Edit bill reference</h3>
+            <p className="text-xs text-[#9CA3AF]">{metaEditRental.bookingNo}</p>
+            <input
+              type="text"
+              value={metaBillRef}
+              onChange={(e) => setMetaBillRef(e.target.value)}
+              placeholder="Manual bill / ref #"
+              className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white text-sm"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMetaEditRental(null)}
+                className="flex-1 py-2.5 border border-[#374151] rounded-lg text-[#9CA3AF]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={metaSaving}
+                onClick={() => void saveMetaEdit()}
+                className="flex-1 py-2.5 bg-[#8B5CF6] rounded-lg text-white font-medium disabled:opacity-50"
+              >
+                {metaSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

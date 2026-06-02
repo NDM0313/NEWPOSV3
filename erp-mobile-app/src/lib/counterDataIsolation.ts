@@ -70,7 +70,7 @@ function collectRowCreatorIds(row: Record<string, unknown>): Set<string> {
 
   const ids = new Set<string>();
 
-  for (const key of ['created_by_id', 'created_by', 'user_id', 'paid_to_user_id'] as const) {
+  for (const key of ['created_by_id', 'created_by', 'user_id', 'paid_to_user_id', 'salesman_id'] as const) {
 
     const normalized = normalizeId(row[key]);
 
@@ -126,5 +126,17 @@ export function rowBelongsToCounterWorker(
 
   return false;
 
+}
+
+/** Rental row visible to worker: created_by or salesman_id matches identity. */
+export function rowBelongsToRentalWorker(
+  row: Record<string, unknown>,
+  authUserId: string,
+  profileId?: string | null,
+): boolean {
+  if (rowBelongsToCounterWorker(row, authUserId, profileId)) return true;
+  const workerIds = collectWorkerIdentityIds(authUserId, profileId);
+  const salesman = normalizeId(row.salesman_id ?? row.salesmanId);
+  return salesman != null && workerIds.has(salesman);
 }
 

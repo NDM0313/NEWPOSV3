@@ -3,6 +3,8 @@ import { ArrowLeft, Plus, Calendar, DollarSign, Search, Loader2, Upload, X, User
 import { TextInput, NumericInput, ActionBar, CustomSelect, CustomSearchableSheet, PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
 import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
 import { useMainScrollRef } from '../../contexts/MainScrollContext';
+import { useFormDraft } from '../../hooks/useFormDraft';
+import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
 import type { User, Branch } from '../../types';
 import { SwitchUserPinOverlay } from '../auth/SwitchUserPinOverlay';
 import { isSharedCounterModeEnabled } from '../../lib/sharedCounterMode';
@@ -209,6 +211,56 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     setSelectedClearingChargeId('');
     setClearingLines([]);
   }, []);
+
+  type ExpenseCreateDraft = {
+    documentBranchId: string | null;
+    addDesc: string;
+    addAmount: string;
+    addAccountId: string;
+    mainCategoryId: string;
+    subCategoryId: string;
+    paidToUserId: string;
+    addExpenseDate: string;
+    selectedClearingChargeId: string;
+    addCategory: string;
+  };
+
+  const { showRestoredBanner: showExpenseDraftBanner, dismissRestoredBanner: dismissExpenseDraftBanner, clearDraft: clearExpenseDraft } =
+    useFormDraft<ExpenseCreateDraft>({
+      companyId,
+      ownerUserId: effectiveUserId,
+      draftId: 'expense-create',
+      enabled: showAdd,
+      getSnapshot: () => ({
+        documentBranchId,
+        addDesc,
+        addAmount,
+        addAccountId,
+        mainCategoryId,
+        subCategoryId,
+        paidToUserId,
+        addExpenseDate,
+        selectedClearingChargeId,
+        addCategory,
+      }),
+      applySnapshot: (d) => {
+        setDocumentBranchId(d.documentBranchId);
+        setAddDesc(d.addDesc);
+        setAddAmount(d.addAmount);
+        setAddAccountId(d.addAccountId);
+        setMainCategoryId(d.mainCategoryId);
+        setSubCategoryId(d.subCategoryId);
+        setPaidToUserId(d.paidToUserId);
+        setAddExpenseDate(d.addExpenseDate);
+        setSelectedClearingChargeId(d.selectedClearingChargeId);
+        setAddCategory(d.addCategory);
+      },
+    });
+
+  const resetAddFormAndDraft = useCallback(() => {
+    clearExpenseDraft();
+    resetAddForm();
+  }, [clearExpenseDraft, resetAddForm]);
 
   const handleOpenAdd = () => {
     if (!companyId || branchGateLoading) return;
@@ -508,7 +560,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
           ...prev,
         ]);
         setAddError(null);
-        resetAddForm();
+        resetAddFormAndDraft();
       } catch (e) {
         setAddError(e instanceof Error ? e.message : 'Failed to save offline.');
       }
@@ -555,7 +607,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       ...prev,
     ]);
     setAddError(null);
-    resetAddForm();
+    resetAddFormAndDraft();
     });
   };
 
@@ -622,12 +674,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
 
   if (showAdd) {
     return (
-      <SwipeBackShell onBack={saving ? () => {} : resetAddForm}>
+      <SwipeBackShell onBack={saving ? () => {} : resetAddFormAndDraft}>
       <div className="relative min-h-screen bg-[#111827] pb-32">
         <SaveBlockingOverlay active={saving} label="Saving expense..." />
         <div className="bg-gradient-to-br from-[#EF4444] to-[#DC2626] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center gap-3">
-            <button onClick={resetAddForm} disabled={saving} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white disabled:opacity-50">
+            <button onClick={resetAddFormAndDraft} disabled={saving} className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white disabled:opacity-50">
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
@@ -637,6 +689,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
           </div>
         </div>
         <div className="p-4">
+          <FormDraftRestoredBanner show={showExpenseDraftBanner} onDismiss={dismissExpenseDraftBanner} />
           {addError && (
             <div className="mb-4 p-3 bg-[#EF4444]/10 border border-[#EF4444]/50 rounded-xl text-[#EF4444] text-sm">{addError}</div>
           )}

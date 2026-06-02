@@ -183,6 +183,33 @@ export function classifyRoznamchaLiquidity(
   return { liquidity: null, shortLabel: '—' };
 }
 
+/** Map auth_user_id or users.id → display name for Roznamcha "by …" subtitle. */
+async function resolveUserDisplayNames(userIds: string[]): Promise<Map<string, string>> {
+  const nameByUserId = new Map<string, string>();
+  const unique = [...new Set(userIds.filter(Boolean))] as string[];
+  if (unique.length === 0) return nameByUserId;
+
+  const { data: usersByAuth } = await supabase
+    .from('users')
+    .select('auth_user_id, full_name, email')
+    .in('auth_user_id', unique);
+  (usersByAuth || []).forEach((u: { auth_user_id?: string; full_name?: string; email?: string }) => {
+    if (u?.auth_user_id) {
+      nameByUserId.set(u.auth_user_id, (u.full_name || u.email || '').trim());
+    }
+  });
+
+  const missing = unique.filter((id) => !nameByUserId.has(id));
+  if (missing.length > 0) {
+    const { data: usersById } = await supabase.from('users').select('id, full_name, email').in('id', missing);
+    (usersById || []).forEach((u: { id?: string; full_name?: string; email?: string }) => {
+      if (u?.id) nameByUserId.set(u.id, (u.full_name || u.email || '').trim());
+    });
+  }
+
+  return nameByUserId;
+}
+
 /**
  * Ref column for Roznamcha: expense rows show EXP-* (expense document / JE), not PAY-*.
  * Does not affect referenceDisplay (payment ref + by user stays as-is).
@@ -478,26 +505,22 @@ async function fetchPaymentRows(
   });
 
   // Resolve "by [user]" from created_by || received_by (sale = received_by, purchase = received_by, old rows may have created_by only)
-  const allUserIds = [...new Set(
-    paymentList.flatMap((p: any) => [(p as any).created_by, (p as any).received_by].filter(Boolean))
-  )] as string[];
+  const allUserIds = [
+    ...new Set(
+      paymentList.flatMap((p: { created_by?: string | null; received_by?: string | null }) =>
+        [p.created_by, p.received_by].filter(Boolean),
+      ),
+    ),
+  ] as string[];
   if (allUserIds.length > 0) {
-    const nameByUserId = new Map<string, string>();
-    const { data: usersByAuth } = await supabase.from('users').select('auth_user_id, full_name, email').in('auth_user_id', allUserIds);
-    (usersByAuth || []).forEach((u: any) => {
-      if (u?.auth_user_id) nameByUserId.set(u.auth_user_id, u.full_name || u.email || '');
-    });
-    const missing = allUserIds.filter((id) => !nameByUserId.has(id));
-    if (missing.length > 0) {
-      const { data: usersById } = await supabase.from('users').select('id, full_name, email').in('id', missing);
-      (usersById || []).forEach((u: any) => {
-        if (u?.id) nameByUserId.set(u.id, u.full_name || u.email || '');
-      });
-    }
+    const nameByUserId = await resolveUserDisplayNames(allUserIds);
     rows.forEach((r) => {
-      const p = paymentById.get(r.id) as any;
+      const p = paymentById.get(r.id) as { created_by?: string | null; received_by?: string | null } | undefined;
       const userId = p?.created_by || p?.received_by || null;
-      if (userId) r.createdBy = nameByUserId.get(userId) || null;
+      if (userId) {
+        const name = nameByUserId.get(userId);
+        r.createdBy = name && name.length > 0 ? name : null;
+      }
     });
   }
 
@@ -555,7 +578,9 @@ async function fetchRentalPaymentRows(
   // Note: live DB uses booking_no (not rental_no) on the rentals table
   let q = supabase
     .from('rental_payments')
-    .select('id, amount, method, payment_date, created_at, reference, payment_account_id, created_by, rentals!inner(id, booking_no, company_id, branch_id)')
+    .select(
+      'id, amount, method, payment_date, created_at, reference, payment_account_id, created_by, rentals!inner(id, booking_no, company_id, branch_id, created_by)',
+    )
     .eq('rentals.company_id', companyId)
     .gte('payment_date', dateFrom)
     .lte('payment_date', dateTo)
@@ -592,6 +617,7 @@ async function fetchRentalPaymentRows(
   }
 
   const rows: RoznamchaRow[] = [];
+  const userIdByRowId = new Map<string, string>();
   for (const rp of data as any[]) {
     const rental = (rp.rentals && !Array.isArray(rp.rentals)) ? rp.rentals : (Array.isArray(rp.rentals) ? rp.rentals[0] : null);
     if (!rental) continue;
@@ -615,9 +641,12 @@ async function fetchRentalPaymentRows(
     // live DB uses booking_no; rental_no may exist in newer schema variants
     const rentalNo: string = rental.booking_no || (rental as any).rental_no || rental.id || '';
     const refDisplay = String(rp.reference || rentalNo || '').trim();
+    const rowId = `rp-${rp.id}`;
+    const creatorId = rp.created_by || rental.created_by || null;
+    if (creatorId) userIdByRowId.set(rowId, String(creatorId));
 
     rows.push({
-      id: `rp-${rp.id}`,
+      id: rowId,
       date: dateStr,
       time: timeStr,
       ref: rentalNo || refDisplay || `rental-${String(rp.id).slice(0, 8)}`,
@@ -637,6 +666,17 @@ async function fetchRentalPaymentRows(
       type: 'Rental Payment',
     });
   }
+
+  if (userIdByRowId.size > 0) {
+    const nameByUserId = await resolveUserDisplayNames([...userIdByRowId.values()]);
+    for (const row of rows) {
+      const uid = userIdByRowId.get(row.id);
+      if (!uid) continue;
+      const name = nameByUserId.get(uid);
+      row.createdBy = name && name.length > 0 ? name : null;
+    }
+  }
+
   return rows;
 }
 

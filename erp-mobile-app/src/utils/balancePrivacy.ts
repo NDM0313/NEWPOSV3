@@ -1,4 +1,5 @@
 import { canViewFinancialBalances } from '../config/functionalRoles';
+import { rowBelongsToCounterWorker } from '../lib/counterDataIsolation';
 
 /** Format account or party balance for UI; hidden from worker/salesman roles. */
 export function formatBalanceAmount(
@@ -39,6 +40,16 @@ export function formatAccountBalanceInline(balance: number, canView: boolean): s
   if (!canView) return null;
   if (balance <= 0) return null;
   return `Balance: Rs. ${balance.toLocaleString()}`;
+}
+
+/** Show sale received/due amounts for admins/managers, or for the worker who owns the row. */
+export function canViewSaleBalances(
+  canViewAll: boolean,
+  saleRow: Record<string, unknown>,
+  authUserId: string,
+  profileId?: string | null,
+): boolean {
+  return canViewAll || rowBelongsToCounterWorker(saleRow, authUserId, profileId);
 }
 
 /** Mask a money amount for list/detail rows when the viewer cannot see balances. */

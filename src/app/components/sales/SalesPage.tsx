@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { readSaleBillRef } from '@/app/utils/saleBillRef';
 import { 
   Plus, ShoppingCart, DollarSign, TrendingUp, 
   MoreVertical, Eye, Edit, Trash2, FileText, Phone, MapPin,
@@ -78,7 +79,7 @@ import { SaleReturnPrintLayout } from '@/app/components/shared/SaleReturnPrintLa
 import { toast } from 'sonner';
 import { exportToCSV, exportToExcel, exportToPDF, type ExportData } from '@/app/utils/exportUtils';
 import { useCheckPermission } from '@/app/hooks/useCheckPermission';
-import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, DEFAULT_SALE_BADGE, isPaymentClosedForSale, canAddPaymentToSale } from '@/app/utils/statusHelpers';
+import { getEffectiveSaleStatus, getSaleStatusBadgeConfig, DEFAULT_SALE_BADGE, isPaymentClosedForSale, canAddPaymentToSale, saleLifecycleHidesPaymentColumns } from '@/app/utils/statusHelpers';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { getSaleDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { transitionSaleLifecycle, restoreSaleFromCancelled } from '@/app/lib/documentLifecycleActions';
@@ -1268,12 +1269,18 @@ export const SalesPage = () => {
         );
       }
 
-      case 'notes':
+      case 'notes': {
+        const billRef = readSaleBillRef(sale as Record<string, unknown>, {
+          isStudio: !!(sale as any).is_studio || !!(sale as any).isStudioSale,
+        });
+        const display = billRef || (sale as any).notes || '-';
+        const title = [billRef && `Bill: ${billRef}`, (sale as any).notes].filter(Boolean).join(' · ');
         return (
-          <div className="text-sm text-gray-400 truncate max-w-[120px]" title={(sale as any).notes || ''}>
-            {(sale as any).notes || '-'}
+          <div className="text-sm text-gray-400 truncate max-w-[120px]" title={title || ''}>
+            {display}
           </div>
         );
+      }
 
       case 'type':
         return getSourceBadge(sale);
@@ -1431,7 +1438,7 @@ export const SalesPage = () => {
       
       case 'paymentStatus': {
         const effectiveStatus = getEffectiveSaleStatus(sale);
-        if (effectiveStatus === 'draft' || effectiveStatus === 'quotation' || effectiveStatus === 'order') {
+        if (saleLifecycleHidesPaymentColumns(sale)) {
           return <span className="text-xs text-gray-500">—</span>;
         }
         const paymentClosed = isPaymentClosedForSale(sale);
@@ -1463,7 +1470,7 @@ export const SalesPage = () => {
       
       case 'paymentMethod': {
         const st = getEffectiveSaleStatus(sale);
-        if (st === 'draft' || st === 'quotation' || st === 'order') {
+        if (saleLifecycleHidesPaymentColumns(sale)) {
           return <span className="text-xs text-gray-500">—</span>;
         }
         return (
@@ -1480,7 +1487,7 @@ export const SalesPage = () => {
       
       case 'paid': {
         const effectiveStatusPaid = getEffectiveSaleStatus(sale);
-        if (effectiveStatusPaid === 'draft' || effectiveStatusPaid === 'quotation' || effectiveStatusPaid === 'order') {
+        if (saleLifecycleHidesPaymentColumns(sale)) {
           return <span className="text-sm text-gray-500">—</span>;
         }
         return (
@@ -1492,7 +1499,7 @@ export const SalesPage = () => {
       
       case 'due': {
         const effectiveStatusDue = getEffectiveSaleStatus(sale);
-        if (effectiveStatusDue === 'draft' || effectiveStatusDue === 'quotation' || effectiveStatusDue === 'order') {
+        if (saleLifecycleHidesPaymentColumns(sale)) {
           return <span className="text-sm text-gray-500">—</span>;
         }
         const effectiveDue = getEffectiveDueForDisplay(sale);
@@ -2537,7 +2544,7 @@ export const SalesPage = () => {
             payments: [], // Will be fetched dynamically in modal
             referenceType: 'sale',
             // When user can add payment (e.g. opened via Unpaid/Partial badge), ensure Add Payment shows in modal
-            status: canAddPaymentToSale(selectedSale, getEffectiveDue(selectedSale)) ? 'final' : selectedSale.status,
+            status: selectedSale.status,
           }}
           onAddPayment={() => {
             setViewPaymentsOpen(false);

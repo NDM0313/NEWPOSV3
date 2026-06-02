@@ -24,6 +24,9 @@ import { prepareAttachmentFilesForUpload } from '../../utils/imageCompression';
 import { MediaSourcePicker } from '../shared/MediaSourcePicker';
 import { NumericInput } from '../common/NumericInput';
 import { unitAllowsDecimal } from '../../lib/unitDecimal';
+import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
+import { useFormDraft } from '../../hooks/useFormDraft';
+import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
 
 const MAX_PURCHASE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
@@ -76,8 +79,19 @@ function paymentLabelToMethod(label: string): 'cash' | 'bank' | 'card' | 'other'
   return 'cash';
 }
 
+type PurchaseCreateDraft = {
+  step: 'vendor' | 'items' | 'summary' | 'payment';
+  vendor: Vendor | null;
+  items: PurchaseItem[];
+  discount: number;
+  notes: string;
+  creationStatus: 'draft' | 'ordered' | 'received';
+  poDate: string;
+};
+
 export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone }: CreatePurchaseFlowProps) {
   const responsive = useResponsive();
+  const effectiveUserId = useEffectiveWorkerId(userId);
   const { enablePacking } = useSettings();
   const [step, setStep] = useState<'vendor' | 'items' | 'summary' | 'payment'>('vendor');
   const [vendor, setVendor] = useState<Vendor | null>(null);
@@ -100,6 +114,35 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   const [poDate, setPoDate] = useState(() => localNowDateString());
   const lastItemRef = useRef<HTMLDivElement | null>(null);
   const { runSingleFlight, isRunning: isSubmitRunning } = useSingleFlightAction();
+
+  const {
+    showRestoredBanner: showPurchaseDraftBanner,
+    dismissRestoredBanner: dismissPurchaseDraftBanner,
+    clearDraft: clearPurchaseDraft,
+  } = useFormDraft<PurchaseCreateDraft>({
+    companyId,
+    ownerUserId: effectiveUserId,
+    draftId: 'purchase-create',
+    enabled: !confirmationData,
+    getSnapshot: () => ({
+      step,
+      vendor,
+      items,
+      discount,
+      notes,
+      creationStatus,
+      poDate,
+    }),
+    applySnapshot: (d) => {
+      setStep(d.step);
+      setVendor(d.vendor);
+      setItems(d.items);
+      setDiscount(d.discount);
+      setNotes(d.notes);
+      setCreationStatus(d.creationStatus);
+      setPoDate(d.poDate);
+    },
+  });
 
   useEffect(() => {
     if (step === 'items' && vendor) {
@@ -287,6 +330,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
           } catch {
             /* offline — branch label optional */
           }
+          clearPurchaseDraft();
           setConfirmationData({
             type: 'purchase',
             title: 'Purchase Saved Successfully',
@@ -311,6 +355,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
       let branchName: string | null = null;
       const { data: branches } = await getBranches(companyId);
       branchName = branches?.find((b) => b.id === branchId)?.name ?? null;
+      clearPurchaseDraft();
       setConfirmationData({
         type: 'purchase',
         title: 'Purchase Saved Successfully',
@@ -327,6 +372,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
 
   const closePurchaseSuccessModal = () => {
     const createdId = confirmationData?.entityId ?? null;
+    clearPurchaseDraft();
     setConfirmationData(null);
     onDone(createdId);
   };
@@ -375,6 +421,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   if (step === 'items' && vendor) {
     return (
       <div className="min-h-screen bg-[#111827] pb-52">
+        <FormDraftRestoredBanner show={showPurchaseDraftBanner} onDismiss={dismissPurchaseDraftBanner} />
         <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
           <div className="flex items-center gap-3 px-4 h-14">
             <button onClick={() => setStep('vendor')} className="p-2 hover:bg-[#374151] rounded-lg text-white">
@@ -544,6 +591,7 @@ export function CreatePurchaseFlow({ companyId, branchId, userId, onBack, onDone
   if (step === 'summary' && vendor) {
     return (
       <div className="min-h-screen bg-[#111827] pb-32">
+        <FormDraftRestoredBanner show={showPurchaseDraftBanner} onDismiss={dismissPurchaseDraftBanner} />
         <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-40 flow-screen-header">
           <div className="flex items-center gap-3 px-4 h-14">
             <button onClick={() => setStep('items')} className="p-2 hover:bg-[#374151] rounded-lg text-white">

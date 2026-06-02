@@ -50,6 +50,8 @@ export interface CreateSaleInput {
   /** Account ID for payment (required when paidAmount > 0, for accounting) */
   paymentAccountId?: string | null;
   notes?: string;
+  /** Customer bill book / REF # — `sales.customer_bill_ref` (separate from notes). */
+  billRef?: string | null;
   isStudio: boolean;
   userId: string;
   /** Document / invoice date (YYYY-MM-DD, local). Regular + studio `sales.invoice_date`. */
@@ -82,6 +84,31 @@ export type SaleDocumentStatus = 'draft' | 'quotation' | 'order' | 'final' | 'ca
 
 function isPostedSaleStatus(status: string | null | undefined): boolean {
   return String(status ?? '').toLowerCase() === 'final';
+}
+
+export { readSaleBillRef } from '../utils/saleBillRef';
+
+/** Persist customer bill ref; tries customer_bill_ref then legacy column names. */
+export async function patchSaleBillRef(
+  saleId: string,
+  billRef: string | null | undefined,
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const v = billRef != null ? String(billRef).trim() : '';
+  const payload = v ? v : null;
+  const attempts: Record<string, string | null>[] = [
+    { customer_bill_ref: payload },
+    { reference: payload },
+    { ref_no: payload },
+  ];
+  for (const upd of attempts) {
+    const { error } = await supabase.from('sales').update(upd).eq('id', saleId);
+    if (!error) return { error: null };
+    if (error.code !== '42703' && !String(error.message || '').toLowerCase().includes('column')) {
+      return { error: error.message };
+    }
+  }
+  return { error: null };
 }
 
 const SALE_ATTACHMENTS_BUCKET = 'sale-attachments';
@@ -223,6 +250,7 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     total,
     paymentMethod,
     notes,
+    billRef,
     isStudio,
     userId,
     paidAmount,
@@ -488,6 +516,13 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
 
   if (!saleId) {
     return { data: null, error: 'Failed to create sale document.' };
+  }
+
+  if (billRef != null && String(billRef).trim() !== '') {
+    const billErr = await patchSaleBillRef(saleId, billRef);
+    if (billErr.error) {
+      return { data: null, error: billErr.error };
+    }
   }
 
   const itemsWithSaleId = items.map((item) => {
@@ -1182,6 +1217,105 @@ export async function recordCustomerPayment(params: {
     return { data: { payment_id: res.payment_id, reference_number: res.reference_number }, error: null };
   }
   return { data: null, error: res?.error ?? 'Payment failed.' };
+}
+
+function mapPaymentMethodToRpc(paymentMethod: string): 'cash' | 'bank' | 'card' | 'other' {
+  const normalized = String(paymentMethod || 'cash').toLowerCase();
+  const methodMap: Record<string, 'cash' | 'bank' | 'card' | 'other'> = {
+    cash: 'cash',
+    bank: 'bank',
+    card: 'card',
+    cheque: 'other',
+    'mobile wallet': 'other',
+    mobile_wallet: 'other',
+    wallet: 'other',
+  };
+  return methodMap[normalized] || 'cash';
+}
+
+function composePaymentNotes(notes?: string | null, bankTraceId?: string | null): string {
+  const refTrim = bankTraceId != null ? String(bankTraceId).trim() : '';
+  const baseNotes = notes?.trim() ?? '';
+  return refTrim ? `${baseNotes ? `${baseNotes} | ` : ''}Bank Trace ID: ${refTrim}` : baseNotes;
+}
+
+/**
+ * On-account customer receipt (no invoice): Dr Cash/Bank, Cr AR sub-ledger.
+ * Same contract as web saleService.recordOnAccountPayment.
+ */
+export async function recordOnAccountCustomerPayment(params: {
+  companyId: string;
+  branchId: string | null;
+  contactId: string;
+  contactName: string;
+  amount: number;
+  accountId: string;
+  paymentMethod: string;
+  paymentDate: string;
+  notes?: string | null;
+  bankTraceId?: string | null;
+  createdBy?: string | null;
+}): Promise<{ data: { payment_id: string; reference_number?: string } | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+  const {
+    companyId,
+    branchId,
+    contactId,
+    contactName,
+    amount,
+    accountId,
+    paymentMethod,
+    paymentDate,
+    notes,
+    bankTraceId,
+    createdBy,
+  } = params;
+  if (!companyId || !contactId?.trim() || amount <= 0 || !accountId) {
+    return { data: null, error: 'Company, customer, amount and account are required.' };
+  }
+  let branchResolved: string;
+  try {
+    branchResolved = await resolveBranchUuidForWrite(companyId, branchId, 'Branch required for payment.');
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : 'Branch required for payment.' };
+  }
+  const dateVal = paymentDate || localNowDateString();
+  const composedNotes = composePaymentNotes(notes, bankTraceId);
+  const enumMethod = mapPaymentMethodToRpc(paymentMethod);
+  const { data, error } = await supabase.rpc('record_payment_with_accounting', {
+    p_company_id: companyId,
+    p_branch_id: branchResolved,
+    p_payment_type: 'received',
+    p_reference_type: 'on_account',
+    p_reference_id: contactId.trim(),
+    p_amount: amount,
+    p_payment_method: enumMethod,
+    p_payment_date: dateVal,
+    p_payment_account_id: accountId,
+    p_reference_number: null,
+    p_notes: composedNotes || null,
+    p_created_by: createdBy ?? null,
+    p_worker_stage_id: null,
+  });
+  if (error) return { data: null, error: error.message };
+  const res = data as { success?: boolean; payment_id?: string; reference_number?: string; error?: string } | null;
+  if (!res?.success || !res.payment_id) {
+    return { data: null, error: res?.error ?? 'Payment failed.' };
+  }
+  const paymentId = res.payment_id;
+  const patch: Record<string, unknown> = {
+    contact_id: contactId.trim(),
+    contact_name: contactName.trim(),
+    received_by: createdBy ?? null,
+  };
+  let upd = await supabase.from('payments').update(patch).eq('id', paymentId);
+  if (upd.error) {
+    console.warn('[recordOnAccountCustomerPayment] payments patch:', upd.error.message);
+  }
+  return {
+    data: { payment_id: paymentId, reference_number: res.reference_number },
+    error: null,
+  };
 }
 
 export type PaymentAttachment = { url: string; name: string };

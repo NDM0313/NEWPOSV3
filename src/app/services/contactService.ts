@@ -213,10 +213,17 @@ export const contactService = {
         await syncOpeningGlForContact((data as { id?: string })?.id);
         const newId = (data as { id?: string; type?: string })?.id;
         if (newId) {
-          import('./partySubledgerAccountService')
-            .then(({ ensurePartySubledgersForContact }) =>
-              ensurePartySubledgersForContact(companyIdStr, newId, String((data as { type?: string }).type || payload.type))
-            )
+          supabase
+            .rpc('ensure_party_subledgers_for_contact', { p_contact_id: newId })
+            .then(({ error: rpcErr }) => {
+              if (rpcErr) {
+                import('./partySubledgerAccountService')
+                  .then(({ ensurePartySubledgersForContact }) =>
+                    ensurePartySubledgersForContact(companyIdStr, newId, String((data as { type?: string }).type || payload.type))
+                  )
+                  .catch(() => {});
+              }
+            })
             .catch(() => {});
         }
         return data;
@@ -496,9 +503,15 @@ export const contactService = {
   async resolveCustomerContactIdFromSubledgerAccountName(companyId: string, accountName: string): Promise<string | null> {
     const raw = String(accountName || '').trim();
     if (!raw) return null;
+    const strippedReceivable = raw.replace(/^receivable\s*[—–-]\s*/i, '').trim();
     const candidates = [
       ...new Set(
-        [raw, raw.replace(/\s*-\s*AR\s*$/i, '').trim(), raw.replace(/\s*\(AR\)\s*$/i, '').trim()].filter(Boolean)
+        [
+          raw,
+          strippedReceivable,
+          raw.replace(/\s*-\s*AR\s*$/i, '').trim(),
+          raw.replace(/\s*\(AR\)\s*$/i, '').trim(),
+        ].filter(Boolean)
       ),
     ];
     for (const name of candidates) {
@@ -513,6 +526,30 @@ export const contactService = {
       if (data.length === 1) return (data[0] as { id: string }).id;
     }
     return null;
+  },
+
+  /** Assign CUS/SUP/WRK when contacts.code is empty (mobile backfill / manual). */
+  async assignContactReferenceNumber(
+    contactId: string,
+  ): Promise<{ success: boolean; code?: string; error?: string; alreadyAssigned?: boolean }> {
+    const { data, error } = await supabase.rpc('assign_contact_reference_number', {
+      p_contact_id: contactId,
+    });
+    if (error) {
+      return { success: false, error: error.message || 'Could not assign reference number' };
+    }
+    const result = data as {
+      success?: boolean;
+      code?: string;
+      error?: string;
+      already_assigned?: boolean;
+    };
+    return {
+      success: !!result?.success,
+      code: result?.code,
+      error: result?.error,
+      alreadyAssigned: !!result?.already_assigned,
+    };
   },
 
   /** Assign CUS/SUP/WRK code and mark public-form lead as Approved. */

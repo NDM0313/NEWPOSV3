@@ -1,6 +1,6 @@
 import { getContactWhatsAppPhone } from './contacts';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { localNowDateString } from '../utils/localDate';
+import { formatLocalDateYYYYMMDD, localNowDateString } from '../utils/localDate';
 import {
   linkRentalPaymentJournalEntry,
   postRentalAdvanceJournalMobile,
@@ -27,6 +27,11 @@ export function mapRentalStatus(dbStatus: string): string {
 
 export interface RentalListItem {
   id: string;
+  /** System booking number (RNT-…). */
+  bookingNo: string;
+  /** Manual bill book / customer ref (`rentals.document_number`). */
+  documentNumber: string;
+  /** @deprecated Use bookingNo — kept for minimal churn */
   no: string;
   customer: string;
   customerPhone?: string;
@@ -36,6 +41,11 @@ export interface RentalListItem {
   total: number;
   paid: number;
   due: number;
+  /** Booking date YYYY-MM-DD for date-range filters */
+  bookingDate: string;
+  createdBy?: string | null;
+  salesmanId?: string | null;
+  branchId?: string | null;
 }
 
 export interface RentalItemRow {
@@ -60,6 +70,8 @@ export interface RentalPaymentRow {
 export interface RentalDetail {
   id: string;
   bookingNo: string;
+  /** Manual bill book ref — same as web list `document_number`. */
+  documentNumber: string | null;
   customerId: string | null;
   customerName: string;
   customerPhone?: string;
@@ -73,8 +85,74 @@ export interface RentalDetail {
   paidAmount: number;
   dueAmount: number;
   notes: string | null;
+  securityDocumentType: string | null;
+  securityDocumentNumber: string | null;
+  securityDocumentImageUrl: string | null;
+  securityStatus: string | null;
+  /** Pickup-held ID (CNIC etc.) — `document_type` / `document_number` on rental */
+  pickupDocumentType: string | null;
+  pickupDocumentNumber: string | null;
   items: RentalItemRow[];
   payments: RentalPaymentRow[];
+}
+
+export interface GetRentalsOptions {
+  dateFrom?: string;
+  dateTo?: string;
+  /** When set, filter to these branch UUIDs (worker / accessible-branch mode). */
+  accessibleBranchIds?: string[];
+  /** Restrict to rows created by or assigned to this worker. */
+  scopeToOwn?: { authUserId: string; profileId?: string | null };
+}
+
+/** One line item on the availability calendar grid. */
+export interface RentalCalendarItemRow {
+  productId: string;
+  productName: string;
+}
+
+/** Rental row for calendar (items + date span). */
+export interface RentalCalendarRental {
+  id: string;
+  bookingNo: string;
+  customerName: string;
+  status: string;
+  start: string;
+  end: string;
+  createdBy?: string | null;
+  salesmanId?: string | null;
+  branchId?: string | null;
+  items: RentalCalendarItemRow[];
+}
+
+function rentalDateToYmd(val: unknown): string {
+  if (val == null || val === '') return '';
+  const s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return '';
+  return formatLocalDateYYYYMMDD(d);
+}
+
+function applyRentalOwnScope(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query: any,
+  authUserId: string,
+  profileId?: string | null,
+) {
+  const uid = authUserId?.trim();
+  if (!uid) return query;
+  const pid = profileId?.trim();
+  const parts = [`created_by.eq.${uid}`, `salesman_id.eq.${uid}`];
+  if (pid && pid !== uid) {
+    parts.push(`created_by.eq.${pid}`, `salesman_id.eq.${pid}`);
+  }
+  return query.or(parts.join(','));
+}
+
+export interface UpdateRentalMetaInput {
+  documentNumber?: string | null;
+  notes?: string | null;
 }
 
 /** Payment method for advance: maps to Dr Cash/Bank/Other in accounting (Cr Rental Advance). */
@@ -97,6 +175,8 @@ export interface CreateBookingInput {
   /** Account ID from chart (accounts table). Validated; method derived from account type. Overrides advancePaymentMethod when set. */
   advancePaymentAccountId?: string | null;
   notes?: string | null;
+  /** Manual bill book ref → `rentals.document_number` (not booking_no). */
+  documentNumber?: string | null;
   /** Optional salesman + commission (mirrors sales commission). Persisted on rentals.salesman_id / commission_*. */
   salesmanId?: string | null;
   commissionPercent?: number | null;
@@ -137,6 +217,7 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     advancePaymentMethod = 'cash',
     advancePaymentAccountId,
     notes = null,
+    documentNumber = null,
     salesmanId = null,
     commissionPercent = null,
     securityDocumentType = null,
@@ -209,6 +290,8 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     due_amount: dueAmount,
     notes,
   };
+  const docNumTrim = documentNumber != null ? String(documentNumber).trim() : '';
+  if (docNumTrim) rentalPayload.document_number = docNumTrim;
   if (salesmanId) rentalPayload.salesman_id = salesmanId;
   if (commissionPct != null && salesmanId) {
     rentalPayload.commission_percent = commissionPct;
@@ -274,6 +357,16 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
   }
 
   const rentalData = { id: rpc.rental_id, booking_no: rpc.booking_no ?? null };
+
+  if (docNumTrim) {
+    const { error: docPatchErr } = await supabase
+      .from('rentals')
+      .update({ document_number: docNumTrim })
+      .eq('id', rentalData.id);
+    if (docPatchErr) {
+      console.warn('[rentals.createBooking] document_number patch:', docPatchErr.message);
+    }
+  }
 
   const bookingNoDisplay = rentalData.booking_no || `RNT-${rentalData.id.slice(0, 8)}`;
 
@@ -388,24 +481,49 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
   return { data: { id: rentalData.id, booking_no: bookingNoDisplay }, error: null };
 }
 
-export async function getRentals(companyId: string, branchId?: string | null): Promise<{ data: RentalListItem[]; error: string | null }> {
+export async function getRentals(
+  companyId: string,
+  branchId?: string | null,
+  opts?: GetRentalsOptions
+): Promise<{ data: RentalListItem[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   let q = supabase
     .from('rentals')
-    .select('id, booking_no, document_number, customer_name, customer_id, pickup_date, return_date, status, total_amount, paid_amount, due_amount, customer:contacts(phone, mobile)')
+    .select(
+      'id, booking_no, document_number, booking_date, customer_name, customer_id, pickup_date, return_date, status, total_amount, paid_amount, due_amount, branch_id, created_by, salesman_id, customer:contacts(phone, mobile)'
+    )
     .eq('company_id', companyId)
     .order('booking_date', { ascending: false })
     .limit(500);
-  if (branchId && branchId !== 'all' && branchId !== 'default') q = q.eq('branch_id', branchId);
+  const branchIds = opts?.accessibleBranchIds?.filter(Boolean) ?? [];
+  if (branchIds.length > 0) {
+    q = q.in('branch_id', branchIds);
+  } else if (branchId && branchId !== 'all' && branchId !== 'default') {
+    q = q.eq('branch_id', branchId);
+  }
+  if (opts?.scopeToOwn?.authUserId) {
+    q = applyRentalOwnScope(q, opts.scopeToOwn.authUserId, opts.scopeToOwn.profileId);
+  }
+  if (opts?.dateFrom) q = q.gte('booking_date', opts.dateFrom);
+  if (opts?.dateTo) q = q.lte('booking_date', opts.dateTo);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
   return {
     data: (data || []).map((r: Record<string, unknown>) => {
       const customer = r.customer as { phone?: string | null; mobile?: string | null } | null;
       const customerPhone = customer ? getContactWhatsAppPhone(customer) : '';
+      const bookingNo = String(r.booking_no || `RNT-${String(r.id ?? '').slice(0, 8)}`);
+      const documentNumber = r.document_number != null ? String(r.document_number).trim() : '';
+      const bookingDate = r.booking_date
+        ? new Date(r.booking_date as string).toISOString().slice(0, 10)
+        : r.pickup_date
+          ? new Date(r.pickup_date as string).toISOString().slice(0, 10)
+          : '';
       return {
         id: String(r.id ?? ''),
-        no: String(r.booking_no || r.document_number || `RNT-${String(r.id ?? '').slice(0, 8)}`),
+        bookingNo,
+        documentNumber,
+        no: bookingNo,
         customer: String(r.customer_name ?? '—'),
         customerPhone: customerPhone || undefined,
         pickup: r.pickup_date ? new Date(r.pickup_date as string).toISOString().slice(0, 10) : '—',
@@ -414,10 +532,95 @@ export async function getRentals(companyId: string, branchId?: string | null): P
         total: Number(r.total_amount) || 0,
         paid: Number(r.paid_amount) || 0,
         due: Number(r.due_amount) || 0,
+        bookingDate,
+        createdBy: r.created_by != null ? String(r.created_by) : null,
+        salesmanId: r.salesman_id != null ? String(r.salesman_id) : null,
+        branchId: r.branch_id != null ? String(r.branch_id) : null,
       };
     }),
     error: null,
   };
+}
+
+/** Calendar availability: rentals with line items; no booking_date range (overlap filtered in UI). */
+export async function getRentalsForCalendar(
+  companyId: string,
+  branchId?: string | null,
+  opts?: Pick<GetRentalsOptions, 'accessibleBranchIds' | 'scopeToOwn'>,
+): Promise<{ data: RentalCalendarRental[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  // Match list query columns only (production uses pickup_date/return_date; start_date may not exist).
+  let q = supabase
+    .from('rentals')
+    .select(
+      `id, booking_no, customer_name, status,
+      booking_date, pickup_date, return_date,
+      branch_id, created_by, salesman_id,
+      items:rental_items(id, product_id, product_name)`,
+    )
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(500);
+  const branchIds = opts?.accessibleBranchIds?.filter(Boolean) ?? [];
+  if (branchIds.length > 0) {
+    q = q.in('branch_id', branchIds);
+  } else if (branchId && branchId !== 'all' && branchId !== 'default') {
+    q = q.eq('branch_id', branchId);
+  }
+  if (opts?.scopeToOwn?.authUserId) {
+    q = applyRentalOwnScope(q, opts.scopeToOwn.authUserId, opts.scopeToOwn.profileId);
+  }
+  const { data, error } = await q;
+  if (error) return { data: [], error: error.message };
+  return {
+    data: (data || []).map((r: Record<string, unknown>) => {
+      const bookingNo = String(r.booking_no || `RNT-${String(r.id ?? '').slice(0, 8)}`);
+      const start =
+        rentalDateToYmd(r.pickup_date) ||
+        rentalDateToYmd(r.booking_date);
+      const end = rentalDateToYmd(r.return_date);
+      const rawItems = (r.items as Array<Record<string, unknown>>) || [];
+      return {
+        id: String(r.id ?? ''),
+        bookingNo,
+        customerName: String(r.customer_name ?? ''),
+        status: mapRentalStatus(String(r.status ?? '')),
+        start,
+        end,
+        createdBy: r.created_by != null ? String(r.created_by) : null,
+        salesmanId: r.salesman_id != null ? String(r.salesman_id) : null,
+        branchId: r.branch_id != null ? String(r.branch_id) : null,
+        items: rawItems.map((i) => ({
+          productId: String(i.product_id ?? ''),
+          productName: String(i.product_name ?? ''),
+        })),
+      };
+    }),
+    error: null,
+  };
+}
+
+/** Patch manual bill ref / notes on draft or booked rentals only. */
+export async function updateRentalMeta(
+  rentalId: string,
+  patch: UpdateRentalMetaInput
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const { data: row, error: fetchErr } = await supabase.from('rentals').select('status').eq('id', rentalId).maybeSingle();
+  if (fetchErr || !row) return { error: fetchErr?.message ?? 'Rental not found.' };
+  const st = String((row as { status?: string }).status ?? '').toLowerCase();
+  if (!['draft', 'booked'].includes(st)) {
+    return { error: 'Bill ref and notes can only be edited on draft or booked rentals.' };
+  }
+  const upd: Record<string, unknown> = {};
+  if (patch.documentNumber !== undefined) {
+    const v = patch.documentNumber != null ? String(patch.documentNumber).trim() : '';
+    upd.document_number = v || null;
+  }
+  if (patch.notes !== undefined) upd.notes = patch.notes;
+  if (Object.keys(upd).length === 0) return { error: null };
+  const { error } = await supabase.from('rentals').update(upd).eq('id', rentalId);
+  return { error: error?.message ?? null };
 }
 
 export async function getRentalById(rentalId: string): Promise<{ data: RentalDetail | null; error: string | null }> {
@@ -449,10 +652,17 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
   const itemList = (items || []) as Array<Record<string, unknown>>;
   const paymentList = (payments || []) as Array<Record<string, unknown>>;
 
+  const bookingNo = String(r.booking_no || `RNT-${String(r.id).slice(0, 8)}`);
+  const documentNumber =
+    r.document_number != null && String(r.document_number).trim() !== ''
+      ? String(r.document_number).trim()
+      : null;
+
   return {
     data: {
       id: String(r.id),
-      bookingNo: String(r.booking_no || r.document_number || ''),
+      bookingNo,
+      documentNumber,
       customerId: r.customer_id ? String(r.customer_id) : null,
       customerName: String(r.customer_name ?? ''),
       customerPhone: customer ? getContactWhatsAppPhone(customer) : undefined,
@@ -466,6 +676,12 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       paidAmount: Number(r.paid_amount) ?? 0,
       dueAmount: Number(r.due_amount) ?? 0,
       notes: (r.notes as string) ?? null,
+      securityDocumentType: (r.security_document_type as string) ?? null,
+      securityDocumentNumber: (r.security_document_number as string) ?? null,
+      securityDocumentImageUrl: (r.security_document_image_url as string) ?? null,
+      securityStatus: (r.security_status as string) ?? null,
+      pickupDocumentType: (r.document_type as string) ?? null,
+      pickupDocumentNumber: (r.document_number as string) ?? null,
       items: itemList.map((i) => ({
         id: String(i.id),
         productId: String(i.product_id),

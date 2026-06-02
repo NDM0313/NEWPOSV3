@@ -28,6 +28,7 @@ import {
 } from '@/app/lib/postingStatusGate';
 import { getSaleDisplayNumber, isPreFinalSaleDocumentNo } from '@/app/lib/documentDisplayNumbers';
 import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
+import { readSaleBillRef } from '@/app/utils/saleBillRef';
 import {
   parseCustomizationDetails,
   deriveBaseUnitPriceFromStored,
@@ -274,6 +275,8 @@ export interface Sale {
   /** First shipment id (from sale_shipments) for this sale; used for ledger and history. */
   firstShipmentId?: string;
   notes?: string;
+  /** Manual customer bill / REF # (sales.customer_bill_ref). */
+  customerBillRef?: string;
   /** Delivery/deadline date (YYYY-MM-DD) for studio sales. */
   deadline?: string;
   attachments?: { url: string; name: string }[] | null; // Sale attachments
@@ -560,6 +563,9 @@ export const convertFromSupabaseSale = (supabaseSale: any): Sale => {
       hasShipment: !!supabaseSale.first_shipment_id,
       firstShipmentId: supabaseSale.first_shipment_id || undefined,
       notes: supabaseSale.notes,
+      customerBillRef: readSaleBillRef(supabaseSale, {
+        isStudio: !!supabaseSale.is_studio || String(supabaseSale.order_no || '').startsWith('STD'),
+      }) || undefined,
       deadline: supabaseSale.deadline || undefined,
       // CRITICAL FIX: Preserve attachments from database
       attachments: supabaseSale.attachments || null,
@@ -875,6 +881,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         due_amount: saleData.due || 0,
         return_due: saleData.returnDue || 0,
         notes: saleData.notes,
+        customer_bill_ref: (saleData as Sale).customerBillRef?.trim() || null,
         deadline: (saleData as any).deadline ?? null,
         created_by: createdByAuthId,
         salesman_id: salesmanIdVal,
@@ -1507,6 +1514,10 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         supabaseUpdates.branch_id = updates.location;
       }
       if (updates.notes !== undefined) supabaseUpdates.notes = updates.notes;
+      if ((updates as any).customerBillRef !== undefined) {
+        const refTrim = String((updates as any).customerBillRef ?? '').trim();
+        supabaseUpdates.customer_bill_ref = refTrim || null;
+      }
       if ((updates as any).deadline !== undefined) supabaseUpdates.deadline = (updates as any).deadline;
       if (updates.shippingStatus !== undefined) supabaseUpdates.shipping_status = updates.shippingStatus;
       if (updates.paymentMethod !== undefined) {

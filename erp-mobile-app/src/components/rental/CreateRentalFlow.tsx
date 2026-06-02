@@ -23,6 +23,8 @@ import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
 import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 import { isRealBranchUuid } from '../../utils/branchId';
 import { useSubmitLock } from '../../contexts/LoadingContext';
+import { useFormDraft } from '../../hooks/useFormDraft';
+import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
 
 interface CreateRentalFlowProps {
   companyId: string | null;
@@ -45,6 +47,25 @@ interface SelectedRentalItem {
 }
 
 const SECURITY_DOC_TYPES = ['CNIC', 'Passport', 'Driver License', 'Other'] as const;
+
+type RentalCreateDraft = {
+  step: Step;
+  selectedCustomerId: string | null;
+  selectedItems: SelectedRentalItem[];
+  lineRateMap: Record<string, string>;
+  pickupDate: string;
+  returnDate: string;
+  advancePaid: string;
+  advancePaymentAccountId: string | null;
+  salesmanId: string | null;
+  commissionPct: string;
+  securityDocType: string;
+  securityDocNumber: string;
+  securityDocImageUrl: string;
+  notes: string;
+  documentNumber: string;
+  pickedBranchId: string;
+};
 
 export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack, onSuccess }: CreateRentalFlowProps) {
   const responsive = useResponsive();
@@ -93,12 +114,61 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   const [securityDocNumber, setSecurityDocNumber] = useState('');
   const [securityDocImageUrl, setSecurityDocImageUrl] = useState('');
   const [notes, setNotes] = useState('');
+  const [documentNumber, setDocumentNumber] = useState('');
   const [loading, setLoading] = useState(false);
+  const canPickSalesman = effectiveRole === 'admin' || effectiveRole === 'owner';
   const { run: runSave, busy: saving } = useSubmitLock();
   const [error, setError] = useState('');
   const [confirmationData, setConfirmationData] = useState<TransactionSuccessData | null>(null);
   /** Local calendar "today" for date pickers (not UTC). */
   const today = localNowDateString();
+
+  const {
+    showRestoredBanner: showRentalDraftBanner,
+    dismissRestoredBanner: dismissRentalDraftBanner,
+    clearDraft: clearRentalDraft,
+  } = useFormDraft<RentalCreateDraft>({
+    companyId,
+    ownerUserId: effectiveUserId,
+    draftId: 'rental-create',
+    enabled: !confirmationData,
+    getSnapshot: () => ({
+      step,
+      selectedCustomerId,
+      selectedItems,
+      lineRateMap,
+      pickupDate,
+      returnDate,
+      advancePaid,
+      advancePaymentAccountId,
+      salesmanId,
+      commissionPct,
+      securityDocType,
+      securityDocNumber,
+      securityDocImageUrl,
+      notes,
+      documentNumber,
+      pickedBranchId: pickedBranchId ?? '',
+    }),
+    applySnapshot: (d) => {
+      setStep(d.step);
+      setSelectedCustomerId(d.selectedCustomerId);
+      setSelectedItems(d.selectedItems);
+      setLineRateMap(d.lineRateMap);
+      setPickupDate(d.pickupDate);
+      setReturnDate(d.returnDate);
+      setAdvancePaid(d.advancePaid);
+      setAdvancePaymentAccountId(d.advancePaymentAccountId);
+      setSalesmanId(d.salesmanId);
+      setCommissionPct(d.commissionPct);
+      setSecurityDocType(d.securityDocType);
+      setSecurityDocNumber(d.securityDocNumber);
+      setSecurityDocImageUrl(d.securityDocImageUrl);
+      setNotes(d.notes);
+      setDocumentNumber(d.documentNumber);
+      if (d.pickedBranchId) setPickedBranchId(d.pickedBranchId);
+    },
+  });
 
   const filteredProducts = useMemo(() => {
     if (!productSearch.trim()) return products;
@@ -211,25 +281,31 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   }, [companyId, step, advancePaymentAccountId]);
 
   useEffect(() => {
-    if (!companyId || step !== 'salesman' || salesmen.length > 0) return;
+    if (!companyId || salesmen.length > 0) return;
     let c = false;
     usersApi.getSalesmen(companyId).then(({ data }) => {
       if (c) return;
       setSalesmen(data || []);
     });
-    return () => { c = true; };
-  }, [companyId, step, salesmen.length]);
+    return () => {
+      c = true;
+    };
+  }, [companyId, salesmen.length]);
 
   useEffect(() => {
-    if (step !== 'salesman') return;
-    if (salesmanId) return;
-    if (!userId || userRole === 'admin' || userRole === 'owner') return;
-    const me = salesmen.find((s) => s.id === userId);
+    if (canPickSalesman || salesmanId) return;
+    if (!effectiveUserId) return;
+    const me = salesmen.find((s) => s.id === effectiveUserId);
     if (!me) return;
     setSalesmanId(me.id);
     const defPct = me.rentalCommissionPercent ?? me.defaultCommissionPercent ?? null;
     if (defPct != null) setCommissionPct(String(defPct));
-  }, [step, salesmanId, userId, userRole, salesmen]);
+  }, [canPickSalesman, salesmanId, effectiveUserId, salesmen]);
+
+  const goFromRent = () => {
+    if (canPickSalesman) setStep('salesman');
+    else setStep('advance');
+  };
 
   const itemKey = (productId: string, variationId?: string | null) =>
     variationId ? `${productId}:${variationId}` : productId;
@@ -347,7 +423,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     const { data: createResult, error: err } = await rentalsApi.createBooking({
       companyId,
       branchId: writeBranchId,
-      userId,
+      userId: effectiveUserId || null,
       customerId: selectedCustomer.id,
       customerName: selectedCustomer.name,
       bookingDate: localNowDateString(),
@@ -359,6 +435,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       notes: [notes.trim()]
         .filter(Boolean)
         .join(' | ') || null,
+      documentNumber: documentNumber.trim() || null,
       salesmanId: salesmanId || null,
       commissionPercent: Number.isFinite(commissionPctNum) ? commissionPctNum : null,
       securityDocumentType: securityDocType || null,
@@ -376,6 +453,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
       const { data: branchList } = await branchesApi.getBranches(companyId);
       branchName = branchList?.find((b) => b.id === writeBranchId)?.name ?? null;
     }
+    clearRentalDraft();
     setConfirmationData({
       type: 'rental',
       title: 'Booking Saved Successfully',
@@ -399,6 +477,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   };
 
   const closeRentalSuccessModal = () => {
+    clearRentalDraft();
     setConfirmationData(null);
     onSuccess();
   };
@@ -453,7 +532,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     }
 
     return (
-      <div className="min-h-screen bg-[#111827] pb-24">
+      <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
+        <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
         <div className="bg-[#1F2937] border-b border-[#374151] sticky top-0 z-10 flow-screen-header">
           <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] px-4 pt-4 pb-3">
             <div className="flex items-center gap-3">
@@ -511,7 +591,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   // ─── Step 1: Product Selection ──────────────────────────────────────────
   if (step === 'products') {
     return (
-      <div className={`min-h-screen bg-[#111827] ${selectedItems.length > 0 ? 'pb-28' : 'pb-8'}`}>
+      <div className={`flex flex-col min-h-0 w-full bg-[#111827] ${selectedItems.length > 0 ? 'pb-28' : 'pb-8'}`}>
+        <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center gap-3 min-w-0">
             <button onClick={() => setStep('customer')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
@@ -699,7 +780,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   if (step === 'duration') {
     const datesValid = pickupDate && returnDate && (!pickup || !ret || ret >= pickup);
     return (
-      <div className="min-h-screen bg-[#111827] pb-24">
+      <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
+        <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -777,7 +859,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   if (step === 'rent') {
     const canNext = customerRentTotal > 0;
     return (
-      <div className="min-h-screen bg-[#111827] pb-24">
+      <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
+        <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -791,7 +874,7 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
             </div>
             {canNext && (
               <button
-                onClick={() => setStep('salesman')}
+                onClick={goFromRent}
                 className="shrink-0 px-4 py-2.5 bg-white text-[#7C3AED] hover:bg-white/90 rounded-lg font-medium text-sm shadow"
               >
                 Next
@@ -849,14 +932,24 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
               <span className="text-[#10B981] font-semibold">Rs. {customerRentTotal.toLocaleString()}</span>
             </div>
           </div>
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <label className="block text-sm font-medium text-[#9CA3AF] mb-2">Bill / manual ref # (optional)</label>
+            <input
+              type="text"
+              value={documentNumber}
+              onChange={(e) => setDocumentNumber(e.target.value)}
+              placeholder="e.g. A 109"
+              className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white text-sm"
+            />
+          </div>
         </div>
         {canNext && (
           <div className="fixed left-0 right-0 bottom-0 bg-[#1F2937] border-t border-[#374151] p-4 z-40 pb-[calc(1rem+env(safe-area-inset-bottom,0))]">
             <button
-              onClick={() => setStep('salesman')}
+              onClick={goFromRent}
               className="w-full h-12 bg-[#8B5CF6] hover:bg-[#7C3AED] rounded-lg font-medium text-white"
             >
-              Next: Salesman →
+              {canPickSalesman ? 'Next: Salesman →' : 'Next: Advance →'}
             </button>
           </div>
         )}
@@ -864,12 +957,13 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     );
   }
 
-  // ─── Step: Salesman + Commission ─────────────────────────────────────────
-  if (step === 'salesman') {
+  // ─── Step: Salesman + Commission (admin/owner only) ─────────────────────
+  if (step === 'salesman' && canPickSalesman) {
     const commissionNum = parseFloat(commissionPct);
     const commissionValid = commissionPct.trim() === '' || (Number.isFinite(commissionNum) && commissionNum >= 0 && commissionNum <= 100);
     return (
-      <div className="min-h-screen bg-[#111827] pb-24">
+      <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
+        <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -959,11 +1053,15 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   // ─── Step 4: Advance Entry ───────────────────────────────────────────────
   if (step === 'advance') {
     return (
-      <div className="min-h-screen bg-[#111827] pb-24">
+      <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
+        <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setStep('salesman')} className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0">
+              <button
+                onClick={() => setStep(canPickSalesman ? 'salesman' : 'rent')}
+                className="p-2 hover:bg-white/10 rounded-lg text-white shrink-0"
+              >
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">
@@ -1037,7 +1135,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
   // ─── Step: Documents (NSC security doc) ──────────────────────────────────
   if (step === 'documents') {
     return (
-      <div className="min-h-screen bg-[#111827] pb-24">
+      <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
+        <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -1113,7 +1212,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
     const needAccount = paidAmount > 0;
     const canNext = !needAccount || advancePaymentAccountId;
     return (
-      <div className="min-h-screen bg-[#111827] pb-24">
+      <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-24">
+        <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
         <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -1180,7 +1280,8 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
 
   // ─── Step 6: Final Confirmation ──────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#111827] pb-32">
+    <div className="flex flex-col min-h-0 w-full bg-[#111827] pb-32">
+      <FormDraftRestoredBanner show={showRentalDraftBanner} onDismiss={dismissRentalDraftBanner} />
       <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3">
           <button onClick={() => setStep('documents')} className="p-2 hover:bg-white/10 rounded-lg text-white">
@@ -1214,6 +1315,12 @@ export function CreateRentalFlow({ companyId, branchId, userId, userRole, onBack
           <p className="font-medium text-white">{pickupDate} → {returnDate}</p>
           <p className="text-xs text-[#6B7280]">{durationDays} days</p>
         </div>
+        {documentNumber.trim() && (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <p className="text-sm text-[#9CA3AF]">Bill / manual ref #</p>
+            <p className="font-medium text-white">{documentNumber.trim()}</p>
+          </div>
+        )}
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <p className="text-sm text-[#9CA3AF] mb-2">Selected items</p>
           {selectedItems.map((i) => (

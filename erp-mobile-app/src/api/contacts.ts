@@ -1,4 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getNextContactReferenceCode } from './documentNumber';
+import { ensurePartySubledgersForContact } from './partySubledger';
 import { isBrowserOffline, listCacheGet, listCacheKeys, listCacheSet } from '../lib/listCache';
 import { normalizeCompanyId } from './contactBalancesUtils';
 import type { ContactBalancesRow } from './contactBalancesRpc';
@@ -18,6 +20,7 @@ export interface ContactRow {
   company_id: string;
   type: string;
   name: string;
+  code?: string | null;
   phone?: string | null;
   mobile?: string | null;
   email?: string | null;
@@ -28,6 +31,10 @@ export interface ContactRow {
   worker_role?: string | null;
   current_balance?: number | null;
   is_active?: boolean;
+  referral_code?: string | null;
+  lead_source?: string | null;
+  lead_status?: string | null;
+  created_from?: string | null;
 }
 
 export interface Contact {
@@ -249,6 +256,32 @@ export interface CreateContactInput {
   workerRate?: number;
 }
 
+function isContactCodeUniqueViolation(err: { code?: string; message?: string } | null): boolean {
+  if (!err || err.code !== '23505') return false;
+  const m = String(err.message || '').toLowerCase();
+  return m.includes('idx_contacts_company_code_unique') || (m.includes('code') && m.includes('duplicate'));
+}
+
+function mapContactRow(row: ContactRow & { worker_role?: string }): Contact {
+  return {
+    id: row.id,
+    name: row.name,
+    roles: typeToRoles(row.type || 'customer'),
+    phone: (row.phone ?? '').trim(),
+    mobile: (row.mobile ?? '').trim() || undefined,
+    email: row.email ?? undefined,
+    city: row.city ?? undefined,
+    address: row.address ?? undefined,
+    balance: Number(row.opening_balance ?? 0),
+    status: row.is_active === false ? 'inactive' : 'active',
+    code: row.code ?? null,
+    referralCode: row.referral_code ?? null,
+    leadSource: row.lead_source ?? null,
+    leadStatus: row.lead_status ?? null,
+    createdFrom: row.created_from ?? null,
+  };
+}
+
 export async function createContact(
   companyId: string,
   c: CreateContactInput
@@ -269,24 +302,37 @@ export async function createContact(
     is_active: true,
   };
   if (c.workerType) payload.worker_role = c.workerType;
-  const { data, error } = await supabase.from('contacts').insert(payload).select().single();
-  if (error) return { data: null, error: error.message };
-  const row = data as ContactRow & { worker_role?: string };
-  return {
-    data: {
-      id: row.id,
-      name: row.name,
-      roles: typeToRoles(row.type || 'customer'),
-      phone: (row.phone ?? '').trim(),
-      mobile: (row.mobile ?? '').trim() || undefined,
-      email: row.email ?? undefined,
-      city: row.city ?? undefined,
-      address: row.address ?? undefined,
-      balance: Number(row.opening_balance ?? 0),
-      status: 'active',
-    },
-    error: null,
-  };
+
+  const { code: initialCode, error: codeErr } = await getNextContactReferenceCode(companyId, type);
+  if (codeErr || !initialCode) {
+    return { data: null, error: codeErr || 'Could not generate contact reference number.' };
+  }
+  payload.code = initialCode;
+
+  const MAX_CODE_RETRIES = 3;
+  let lastError: { code?: string; message?: string } | null = null;
+  for (let attempt = 0; attempt < MAX_CODE_RETRIES; attempt++) {
+    const { data, error } = await supabase.from('contacts').insert(payload).select().single();
+    if (!error && data) {
+      const row = data as ContactRow & { worker_role?: string };
+      const { error: subErr } = await ensurePartySubledgersForContact(row.id);
+      if (subErr) {
+        console.warn('[createContact] party subledger ensure failed:', subErr);
+      }
+      return { data: mapContactRow(row), error: null };
+    }
+    lastError = error;
+    if (isContactCodeUniqueViolation(error) && payload.code) {
+      const { code: nextCode, error: retryErr } = await getNextContactReferenceCode(companyId, type);
+      if (retryErr || !nextCode) {
+        return { data: null, error: retryErr || 'Reference number conflict. Please try again.' };
+      }
+      payload.code = nextCode;
+      continue;
+    }
+    break;
+  }
+  return { data: null, error: lastError?.message || 'Failed to create contact.' };
 }
 
 export interface UpdateContactInput {

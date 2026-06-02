@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Check, ChevronsUpDown, Plus } from 'lucide-react';
 import { cn } from './utils';
 import { Button } from './button';
@@ -61,6 +61,20 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [popoverWidth, setPopoverWidth] = useState<number | undefined>();
+
+  const syncPopoverWidth = () => {
+    const w = containerRef.current?.getBoundingClientRect().width ?? 0;
+    if (w > 0) setPopoverWidth(w);
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    syncPopoverWidth();
+    window.addEventListener('resize', syncPopoverWidth);
+    return () => window.removeEventListener('resize', syncPopoverWidth);
+  }, [open]);
 
   const selectedOption = options.find((opt) => opt.id === value);
 
@@ -84,6 +98,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   };
 
   return (
+    <div ref={containerRef} className="w-full min-w-0 max-w-[750px]">
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
@@ -91,7 +106,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           role="combobox"
           aria-expanded={open}
           className={cn(
-            'w-full max-w-[750px] justify-between bg-gray-950 border-gray-700 text-white hover:bg-gray-900 h-10',
+            'w-full justify-between bg-gray-950 border-gray-700 text-white hover:bg-gray-900 h-10',
             className
           )}
         >
@@ -116,11 +131,16 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           <ChevronsUpDown className="ml-2 h-3 w-3 opacity-50 shrink-0" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent 
-        className="w-[300px] p-0 bg-gray-950 border-gray-800 text-white overflow-visible z-[200]"
+      <PopoverContent
+        className="!w-auto p-0 bg-gray-950 border-gray-800 text-white overflow-hidden z-[200]"
         align="start"
         side="bottom"
         sideOffset={4}
+        style={
+          popoverWidth
+            ? { width: popoverWidth, minWidth: popoverWidth, maxWidth: popoverWidth }
+            : undefined
+        }
         onWheel={(e) => {
           // Prevent wheel events from propagating to parent
           e.stopPropagation();
@@ -137,8 +157,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
             value={searchTerm}
             onValueChange={setSearchTerm}
           />
-          <CommandList 
-            className="max-h-[280px] overflow-y-auto overscroll-behavior-contain"
+          <CommandList
+            className="max-h-[280px] overflow-y-auto overflow-x-auto overscroll-behavior-contain"
             onWheel={(e) => {
               // Ensure wheel events work in the list
               e.stopPropagation();
@@ -179,8 +199,10 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                         value === option.id ? 'opacity-100' : 'opacity-0'
                       )}
                     />
-                    <div className="flex flex-1 items-center justify-between gap-2 min-w-0">
-                      <span className="truncate">{renderOption ? renderOption(option) : option.name}</span>
+                    <div className="flex flex-1 items-center justify-between gap-2 min-w-0 w-full">
+                      <span className="text-left whitespace-nowrap">
+                        {renderOption ? renderOption(option) : option.name}
+                      </span>
                       {option.dueBalance != null && Number(option.dueBalance) > 0 && (
                         <span
                           className={cn(
@@ -202,5 +224,6 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         </Command>
       </PopoverContent>
     </Popover>
+    </div>
   );
 };

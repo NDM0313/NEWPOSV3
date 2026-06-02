@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
+import { useFormDraft } from '../../hooks/useFormDraft';
+import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
 import { ArrowLeft, User, Phone, Smartphone, Mail, MapPin, DollarSign, Briefcase } from 'lucide-react';
 import { CustomSelect } from '../common';
 import type { ContactRole } from '../../api/contacts';
@@ -26,6 +29,10 @@ interface AddContactFlowProps {
   /** Hide role picker and keep defaultRoles only. */
   lockRoles?: boolean;
   title?: string;
+  companyId?: string | null;
+  /** Session user id for draft scoping (counter worker resolved inside). */
+  sessionUserId?: string | null;
+  draftId?: string;
 }
 
 export function AddContactFlow({
@@ -35,7 +42,11 @@ export function AddContactFlow({
   defaultRoles = [],
   lockRoles = false,
   title = 'Add New Contact',
+  companyId = null,
+  sessionUserId = null,
+  draftId = 'contact-add',
 }: AddContactFlowProps) {
+  const effectiveUserId = useEffectiveWorkerId(sessionUserId ?? '');
   const [formData, setFormData] = useState<AddContactFormData>({
     name: '',
     roles: defaultRoles.length ? [...defaultRoles] : [],
@@ -51,6 +62,15 @@ export function AddContactFlow({
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const { showRestoredBanner, dismissRestoredBanner, clearDraft } = useFormDraft<AddContactFormData>({
+    companyId,
+    ownerUserId: effectiveUserId,
+    draftId,
+    enabled: Boolean(companyId && effectiveUserId),
+    getSnapshot: () => formData,
+    applySnapshot: (d) => setFormData(d),
+  });
 
   const toggleRole = (role: ContactRole) => {
     if (formData.roles.includes(role)) {
@@ -75,6 +95,7 @@ export function AddContactFlow({
 
   const handleSubmit = () => {
     if (!validate()) return;
+    clearDraft();
     onSubmit(formData);
   };
 
@@ -93,6 +114,7 @@ export function AddContactFlow({
       </div>
 
       <div className="px-4 py-6 space-y-6">
+        <FormDraftRestoredBanner show={showRestoredBanner} onDismiss={dismissRestoredBanner} />
         {error && (
           <div className="p-3 bg-[#EF4444]/20 border border-[#EF4444] rounded-lg text-sm text-[#FCA5A5]">
             {error}

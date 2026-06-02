@@ -90,3 +90,43 @@ export async function getNextDocumentNumber(
   if (typeof data === 'string' && data) return data;
   return `${FALLBACK_PREFIX[documentType]}${String(Date.now()).slice(-4)}`;
 }
+
+/** Global contact reference types — same as web contactService (get_next_document_number_global). */
+export type GlobalContactCodeType = 'CUS' | 'SUP' | 'WRK';
+
+export function contactCodeTypeForBackendType(
+  type: 'customer' | 'supplier' | 'worker' | 'both',
+): GlobalContactCodeType | null {
+  if (type === 'supplier') return 'SUP';
+  if (type === 'worker') return 'WRK';
+  if (type === 'customer' || type === 'both') return 'CUS';
+  return null;
+}
+
+/**
+ * Next CUS/SUP/WRK code for contacts.code — must match web ERP global sequence.
+ */
+export async function getNextContactReferenceCode(
+  companyId: string,
+  backendType: 'customer' | 'supplier' | 'worker' | 'both',
+): Promise<{ code: string | null; error: string | null }> {
+  const codeType = contactCodeTypeForBackendType(backendType);
+  if (!codeType) return { code: null, error: 'Invalid contact type for reference number.' };
+  if (!isSupabaseConfigured) {
+    return { code: null, error: 'App not configured.' };
+  }
+
+  const { data, error } = await supabase.rpc('get_next_document_number_global', {
+    p_company_id: companyId,
+    p_type: codeType,
+  });
+
+  if (error) {
+    console.error(`[DOCUMENT NUMBER] get_next_document_number_global(${codeType}) failed:`, error);
+    return { code: null, error: error.message || 'Failed to get next contact reference number.' };
+  }
+  if (typeof data !== 'string' || !data.trim()) {
+    return { code: null, error: 'Invalid contact reference number from database.' };
+  }
+  return { code: data.trim(), error: null };
+}

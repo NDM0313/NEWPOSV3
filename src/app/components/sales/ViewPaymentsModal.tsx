@@ -56,6 +56,7 @@ import {
   type PaymentHistoryRowLike,
 } from '@/app/lib/paymentRowEditRouting';
 import { supabase } from '@/lib/supabase';
+import { saleInvoiceStatusAllowsAddPayment } from '@/app/utils/statusHelpers';
 
 // ============================================
 // TYPES
@@ -84,7 +85,7 @@ export interface InvoiceDetails {
   payments?: Payment[];
   // 🔒 UUID ARCHITECTURE: Use referenceType instead of parsing invoiceNo
   referenceType?: 'sale' | 'purchase' | 'rental'; // Entity type (preferred over pattern matching)
-  /** Sale lifecycle: only 'final' allows payments. 'cancelled' disables Add Payment. Omit for purchase/rental. */
+  /** Sale lifecycle: 'order' and 'final' allow payments; 'cancelled' disables Add Payment. Omit for purchase/rental. */
   status?: 'draft' | 'quotation' | 'order' | 'final' | 'cancelled';
 }
 
@@ -496,7 +497,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   <h3 className="text-sm font-semibold text-white">Payment History</h3>
                   <Badge className="bg-gray-700 text-gray-300 text-xs">{payments.length}</Badge>
                 </div>
-                {displayedDue > 0 && invoice.status !== 'cancelled' && (invoice.status === undefined || invoice.status === 'final') && (
+                {displayedDue > 0 && invoice.status !== 'cancelled' && saleInvoiceStatusAllowsAddPayment(invoice.status) && (
                   <Button
                     size="sm"
                     onClick={onAddPayment}
@@ -520,7 +521,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   </div>
                   <p className="text-gray-400 text-sm mb-1">No payments recorded yet</p>
                   <p className="text-gray-500 text-xs mb-4">Click "Add Payment" to record a payment</p>
-                  {displayedDue > 0 && invoice.status !== 'cancelled' && (invoice.status === undefined || invoice.status === 'final') && (
+                  {displayedDue > 0 && invoice.status !== 'cancelled' && saleInvoiceStatusAllowsAddPayment(invoice.status) && (
                     <Button
                       size="sm"
                       onClick={onAddPayment}
@@ -675,7 +676,7 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
               {invoice.due > 0 && invoice.status === 'cancelled' && (
                 <p className="text-xs text-amber-400 mt-1">Cannot add payment to a cancelled invoice.</p>
               )}
-              {invoice.due > 0 && invoice.status !== 'cancelled' && (invoice.status === undefined || invoice.status === 'final') && (
+              {invoice.due > 0 && invoice.status !== 'cancelled' && saleInvoiceStatusAllowsAddPayment(invoice.status) && (
                 <Button
                   onClick={onAddPayment}
                   className="bg-green-600 hover:bg-green-500 text-white"
@@ -684,8 +685,13 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                   Add Payment
                 </Button>
               )}
-              {invoice.due > 0 && invoice.status != null && invoice.status !== 'final' && invoice.status !== 'cancelled' && (
-                <p className="text-xs text-amber-400 mt-1">Payments allowed only for final invoices. Convert to Final first.</p>
+              {invoice.due > 0 &&
+                invoice.status != null &&
+                invoice.status !== 'cancelled' &&
+                !saleInvoiceStatusAllowsAddPayment(invoice.status) && (
+                <p className="text-xs text-amber-400 mt-1">
+                  Payments allowed for order or final sales. Move out of draft/quotation first.
+                </p>
               )}
             </div>
           </div>

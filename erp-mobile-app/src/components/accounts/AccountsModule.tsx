@@ -6,6 +6,7 @@ import { AccountsDashboard, type AccountEntry } from './AccountsDashboard';
 import { GeneralEntryFlow } from './GeneralEntryFlow';
 import { AccountTransferFlow } from './AccountTransferFlow';
 import { SupplierPaymentFlow } from './SupplierPaymentFlow';
+import { CustomerPaymentFlow } from './CustomerPaymentFlow';
 import { WorkerPaymentFlow } from './WorkerPaymentFlow';
 import { ExpenseEntryFlow } from './ExpenseEntryFlow';
 import { ChartOfAccountsView } from './ChartOfAccountsView';
@@ -51,6 +52,7 @@ type View =
   | 'general-entry'
   | 'account-transfer'
   | 'supplier-payment'
+  | 'client-payment'
   | 'worker-payment'
   | 'expense-entry'
   | 'reports'
@@ -214,6 +216,7 @@ export function AccountsModule({
             onGeneralEntry={() => setView('general-entry')}
             onAccountTransfer={() => setView('account-transfer')}
             onSupplierPayment={() => setView('supplier-payment')}
+            onClientPayment={() => setView('client-payment')}
             onWorkerPayment={() => setView('worker-payment')}
             onExpenseEntry={() => setView('expense-entry')}
             onViewReports={() => setView('reports')}
@@ -242,6 +245,11 @@ export function AccountsModule({
   if (view === 'supplier-payment') {
     return (
       <SupplierPaymentFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id} />
+    );
+  }
+  if (view === 'client-payment') {
+    return (
+      <CustomerPaymentFlow onBack={() => setView('dashboard')} onComplete={() => setView('dashboard')} user={user} companyId={companyId} branchId={branch?.id ?? null} />
     );
   }
   if (view === 'worker-payment') {

@@ -72,7 +72,7 @@ import { getEffectivePrinterSettings } from '../../api/settings';
 import { AttachmentsSection } from '../shared/AttachmentsSection';
 import { normalizeAttachments } from '../../lib/normalizeAttachments';
 import { usePermissions } from '../../context/PermissionContext';
-import { maskMoney } from '../../utils/balancePrivacy';
+import { canViewSaleBalances, maskMoney } from '../../utils/balancePrivacy';
 import {
   isLikelyPosSaleRow,
   isStudioSaleRow,
@@ -108,6 +108,7 @@ type SaleRecord = {
   raw: Record<string, unknown>;
   id: string;
   customer: string;
+  billRef?: string;
   amount: number;
   total_received: number;
   balance_due: number;
@@ -140,6 +141,7 @@ function mapEnrichedRowToSaleRecord(s: Record<string, unknown>): SaleRecord {
     raw: s,
     id: saleDocumentDisplayNo(s) || (s.id as string) || '—',
     customer: (cust?.name as string) || (s.customer_name as string) || 'Walk-in',
+    billRef: salesApi.readSaleBillRef(s) || undefined,
     amount: totalAmount,
     total_received: totalReceived,
     balance_due: balanceDue,
@@ -335,10 +337,14 @@ export function SalesHome({
     const q = searchQuery.trim().toLowerCase();
     const byType = scopedRecentSales.filter((sale) => matchesSaleListTypeFilter(sale.raw, saleTypeFilter));
     const searched = q
-      ? byType.filter(
-          (sale) =>
-            sale.id.toLowerCase().includes(q) || sale.customer.toLowerCase().includes(q)
-        )
+      ? byType.filter((sale) => {
+          const billRef = salesApi.readSaleBillRef(sale.raw).toLowerCase();
+          return (
+            sale.id.toLowerCase().includes(q) ||
+            sale.customer.toLowerCase().includes(q) ||
+            billRef.includes(q)
+          );
+        })
       : byType;
     const sorted = sortByDocumentDateTimeDesc(searched, (sale) => ({
       documentDate: (sale.raw.invoice_date as string) || null,
@@ -478,6 +484,7 @@ export function SalesHome({
   const [editLinesLoading, setEditLinesLoading] = useState(false);
   const [editDate, setEditDate] = useState<string>('');
   const [editNotes, setEditNotes] = useState<string>('');
+  const [editBillRef, setEditBillRef] = useState<string>('');
   const [editCustomerId, setEditCustomerId] = useState<string | null>(null);
   const [editCustomerName, setEditCustomerName] = useState<string>('');
   const [editCustomerOptions, setEditCustomerOptions] = useState<Array<{ id: string; name: string }>>([]);
@@ -658,6 +665,7 @@ export function SalesHome({
     ).slice(0, 10);
     setEditDate(currentDate);
     setEditNotes(String((sale.raw.notes as string) || ''));
+    setEditBillRef(salesApi.readSaleBillRef(sale.raw));
     setEditCustomerId((sale.raw.customer_id as string) || null);
     setEditCustomerName(String((sale.raw.customer_name as string) || ''));
     setEditDiscount(String(Number(sale.raw.discount_amount ?? 0) || 0));
@@ -786,6 +794,11 @@ export function SalesHome({
         const { error } = await supabase.from('sales').update(updates).eq('id', raw.id as string);
         if (error) setActionError(error.message);
         else {
+          const billPatch = await salesApi.patchSaleBillRef(String(raw.id), editBillRef);
+          if (billPatch.error) {
+            setActionError(billPatch.error);
+            return;
+          }
           const oldSnap = saleAccountingSnapshotFromRow(raw);
           const newSnap: typeof oldSnap = {
             total: totalHdr,
@@ -856,6 +869,11 @@ export function SalesHome({
       });
       if (rpcErr.error) {
         setActionError(rpcErr.error);
+        return;
+      }
+      const billPatchLines = await salesApi.patchSaleBillRef(String(raw.id), editBillRef);
+      if (billPatchLines.error) {
+        setActionError(billPatchLines.error);
         return;
       }
       const newTotal = Math.max(0, lineSubtotal - discount + tax + shipmentFrozen + extra + studio);
@@ -1113,6 +1131,12 @@ export function SalesHome({
       !isCancelled && saleLifecycleStatus !== 'final' && saleLifecycleStatus !== 'cancelled';
     const hasStudio = (studioSummary?.has_studio ?? false) || studioCost > 0;
     const saleDocumentAttachments = normalizeAttachments(selectedSale.raw.attachments);
+    const showSelectedSaleBalances = canViewSaleBalances(
+      canViewBalances,
+      selectedSale.raw,
+      effectiveUserId,
+      effectiveProfileId,
+    );
 
     return (
       <SwipeBackShell onBack={() => setSelectedSale(null)}>
@@ -1337,12 +1361,12 @@ export function SalesHome({
             <div className="pt-2 border-t border-[#3B82F6]/30 space-y-1">
               <div className="flex justify-between text-sm">
                 <span className="text-[#9CA3AF]">Customer Payments:</span>
-                <span className="text-[#10B981]">{maskMoney(paidAmount, canViewBalances)}</span>
+                <span className="text-[#10B981]">{maskMoney(paidAmount, showSelectedSaleBalances)}</span>
               </div>
               <div className="flex justify-between text-lg font-bold">
                 <span className="text-white">Balance Due:</span>
                 <span className={getPaymentStatusColor(paymentStatus)}>
-                  {maskMoney(dueAmount, canViewBalances)}
+                  {maskMoney(dueAmount, showSelectedSaleBalances)}
                 </span>
               </div>
             </div>
@@ -1495,6 +1519,12 @@ export function SalesHome({
         <>
           <div className="p-4 pt-4 space-y-3">
             {filteredSales.map((sale) => {
+              const showSaleBalances = canViewSaleBalances(
+                canViewBalances,
+                sale.raw,
+                effectiveUserId,
+                effectiveProfileId,
+              );
               const isCancelled = sale.raw.status === 'cancelled';
               const overpaid = sale.credit_balance > 0;
               const paid = !overpaid && sale.balance_due <= 0;
@@ -1515,6 +1545,9 @@ export function SalesHome({
                     </span>
                   </div>
                   <p className="text-sm text-[#D1D5DB] truncate">{sale.customer}</p>
+                  {sale.billRef ? (
+                    <p className="text-xs text-[#8B5CF6]/90 mt-0.5">Bill: {sale.billRef}</p>
+                  ) : null}
                   <div className="mt-1">{saleTypeBadge(sale)}</div>
                   {sale.shipment_status && (
                     <span className="inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded bg-[#3B82F6]/20 text-[#93C5FD] border border-[#3B82F6]/30">
@@ -1547,14 +1580,14 @@ export function SalesHome({
                     )}
                     <div className="flex justify-between">
                       <span className="text-[#9CA3AF]">Received:</span>
-                      <span className="text-[#10B981]">{maskMoney(sale.total_received, canViewBalances)}</span>
+                      <span className="text-[#10B981]">{maskMoney(sale.total_received, showSaleBalances)}</span>
                     </div>
                     <div className="flex justify-between items-center gap-2">
                       <span className="text-[#9CA3AF]">
                         {overpaid ? 'Credit Balance:' : 'Balance:'}
                       </span>
                       <span className={`font-medium shrink-0 ${overpaid ? 'text-[#10B981]' : 'text-white'}`}>
-                        {maskMoney(overpaid ? sale.credit_balance : sale.balance_due, canViewBalances)}
+                        {maskMoney(overpaid ? sale.credit_balance : sale.balance_due, showSaleBalances)}
                       </span>
                     </div>
                   </div>
@@ -1866,6 +1899,17 @@ export function SalesHome({
                   Add extras
                 </button>
               )}
+
+              <div>
+                <label className="block text-xs text-[#9CA3AF] mb-1">Bill number</label>
+                <input
+                  type="text"
+                  value={editBillRef}
+                  onChange={(e) => setEditBillRef(e.target.value)}
+                  placeholder="Customer bill / REF #"
+                  className="w-full h-10 rounded-lg bg-[#111827] border border-[#374151] text-white px-3 text-sm"
+                />
+              </div>
 
               <div>
                 <label className="block text-xs text-[#9CA3AF] mb-1">Notes</label>

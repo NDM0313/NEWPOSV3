@@ -148,13 +148,32 @@ export function isPaymentClosedForPurchase(purchase: PurchaseLike | null | undef
   return effective === 'cancelled' || effective === 'returned';
 }
 
-/** Allow Add Payment only when not closed and (for sale: final; for purchase: final/received) and balance > 0. */
-export function canAddPaymentToSale(sale: SaleLike | null | undefined, due: number): boolean {
-  if (due <= 0) return false;
+/** Draft/quotation: payment columns show "—" on sales list (no customer receipts yet). */
+export function saleLifecycleHidesPaymentColumns(sale: SaleLike | null | undefined): boolean {
+  const effective = getEffectiveSaleStatus(sale);
+  return effective === 'draft' || effective === 'quotation';
+}
+
+/** Order and final (and partial return with balance) may record customer receipts. */
+export function saleAllowsCustomerPayment(sale: SaleLike | null | undefined): boolean {
   const effective = getEffectiveSaleStatus(sale);
   if (effective === 'cancelled' || effective === 'returned') return false;
-  if (effective === 'partially_returned') return true; // balance > 0 already ensured
-  return effective === 'final';
+  return effective === 'order' || effective === 'final' || effective === 'partially_returned';
+}
+
+/** View Payments modal: sale lifecycle status allows Add Payment (omit status for purchase/rental). */
+export function saleInvoiceStatusAllowsAddPayment(
+  status: string | undefined,
+): boolean {
+  if (status === undefined) return true;
+  if (status === 'cancelled') return false;
+  return status === 'order' || status === 'final';
+}
+
+/** Allow Add Payment when not closed, lifecycle is order/final (or partial return), and balance > 0. */
+export function canAddPaymentToSale(sale: SaleLike | null | undefined, due: number): boolean {
+  if (due <= 0) return false;
+  return saleAllowsCustomerPayment(sale);
 }
 
 export function canAddPaymentToPurchase(purchase: PurchaseLike | null | undefined, due: number): boolean {

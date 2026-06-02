@@ -35,7 +35,7 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const initialLockSettings = getPinLockSettings();
-  const [requireOnResume, setRequireOnResume] = useState(initialLockSettings.enabled);
+  const [requireOnResume, setRequireOnResume] = useState(initialLockSettings.lockOnBackground);
   const [confirmCounterEnroll, setConfirmCounterEnroll] = useState(false);
   const [savedDevicePin, setSavedDevicePin] = useState<string | null>(null);
 
@@ -69,7 +69,10 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
         branchId,
         email: user.email,
       });
-      setPinLockSettings({ enabled: requireOnResume, timeoutMs: getDevicePinMaxAgeMs() });
+      setPinLockSettings({
+        lockOnBackground: requireOnResume,
+        sessionMaxAgeMs: getDevicePinMaxAgeMs(),
+      });
 
       if (shouldOfferCounterPinSync(pin, user.role, companyId, branchId)) {
         try {
@@ -204,8 +207,8 @@ export function SetPinModal({ onClose, onSuccess, user, companyId, branchId }: S
               />
             </label>
             <p className="text-xs text-[#6B7280] -mt-1 mb-2">
-              Re-lock timing follows <strong className="text-[#9CA3AF]">PIN session freshness</strong> in Settings
-              Counter ({policyLabel()}). Switching apps briefly will not ask PIN again until that window passes.
+              When on, leaving the app (home or another app) requires PIN again. Long session limit follows Settings
+              Counter ({policyLabel()}). Idle lock can be set under Security in Settings.
             </p>
           </div>
 

@@ -31,7 +31,8 @@ import { SyncStatusBar } from './components/SyncStatusBar';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { MainScrollContext } from './contexts/MainScrollContext';
 import { runSync, getUnsyncedCount } from './lib/syncEngine';
-import { markUnlocked, clearUnlockMark, shouldRelock, markBackgrounded } from './lib/pinLock';
+import { markUnlocked, clearUnlockMark, shouldRelock, markBackgrounded, touchPinActivity } from './lib/pinLock';
+import { isMediaCaptureActive, wasMediaCaptureRecent } from './lib/mediaCaptureSession';
 import { dispatchMobileInvalidated } from './lib/dataInvalidationBus';
 import { subscribeMobileRealtime } from './lib/realtimeSubscriptions';
 import { mobileRealtimeHealth } from './lib/supabase';
@@ -192,6 +193,10 @@ export default function App() {
       if (cancelled) return;
       if (document.visibilityState !== 'visible') return;
       if (isPinLocked || isCounterLocked) return;
+      if (isMediaCaptureActive() || wasMediaCaptureRecent()) {
+        touchPinActivity();
+        return;
+      }
       if (!shouldRelock()) return;
       const useCounter = await safeShouldActivateCounterLockScreen(companyId);
       if (cancelled) return;
@@ -205,10 +210,14 @@ export default function App() {
     };
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        markBackgrounded();
+        if (!isMediaCaptureActive()) markBackgrounded();
         return;
       }
       if (document.visibilityState === 'visible') {
+        if (isMediaCaptureActive() || wasMediaCaptureRecent()) {
+          touchPinActivity();
+          return;
+        }
         void checkLock();
       }
     };
@@ -219,7 +228,11 @@ export default function App() {
       .then(({ App }) =>
         App.addListener('appStateChange', ({ isActive }) => {
           if (!isActive) {
-            markBackgrounded();
+            if (!isMediaCaptureActive()) markBackgrounded();
+            return;
+          }
+          if (isMediaCaptureActive() || wasMediaCaptureRecent()) {
+            touchPinActivity();
             return;
           }
           void checkLock();
@@ -230,9 +243,17 @@ export default function App() {
       })
       .catch(() => {});
 
+    const onActivity = () => {
+      if (!isPinLocked && !isCounterLocked) touchPinActivity();
+    };
+    document.addEventListener('pointerdown', onActivity);
+    document.addEventListener('keydown', onActivity);
+
     return () => {
       cancelled = true;
       document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('pointerdown', onActivity);
+      document.removeEventListener('keydown', onActivity);
       appStateListener?.remove();
     };
   }, [user?.id, companyId, isPinLocked, isCounterLocked, requestCounterLock]);
@@ -659,16 +680,6 @@ export default function App() {
     );
   }
 
-  if (isCounterLocked && user) {
-    return (
-      <POSLockScreen
-        companyId={companyId}
-        showPermanentSignOut={isAdminOrOwner}
-        onUseFullLogin={() => void handleLogoutFull()}
-      />
-    );
-  }
-
   if (currentScreen === 'login' && !user && showCreateBusiness) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
@@ -694,22 +705,6 @@ export default function App() {
     );
   }
 
-  if (isPinLocked && user) {
-    return (
-      <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
-        <LoginScreen
-          onLogin={handleLogin}
-          pinUnlockUser={user}
-          pinUnlockCompanyId={companyId}
-          onUnlock={() => {
-            markUnlocked();
-            setIsPinLocked(false);
-          }}
-        />
-      </div>
-    );
-  }
-
   if (currentScreen === 'branch-selection' && user) {
     return (
       <div className="min-h-screen bg-[#111827] text-[#F9FAFB]">
@@ -718,7 +713,55 @@ export default function App() {
     );
   }
 
+  const workerShellKey =
+    user && companyId
+      ? `${companyId}:${effectiveProfile?.userId ?? user.id}`
+      : 'guest';
+  const lockOverlayActive = Boolean(user && (isCounterLocked || isPinLocked));
+
+  const lockOverlays = user ? (
+    <>
+      {isCounterLocked && (
+        <div
+          className="fixed inset-0 z-[100] bg-[#111827]"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Counter lock"
+        >
+          <POSLockScreen
+            companyId={companyId}
+            showPermanentSignOut={isAdminOrOwner}
+            onUseFullLogin={() => void handleLogoutFull()}
+          />
+        </div>
+      )}
+      {isPinLocked && !isCounterLocked && (
+        <div
+          className="fixed inset-0 z-[100] bg-[#111827] text-[#F9FAFB]"
+          role="dialog"
+          aria-modal="true"
+          aria-label="PIN unlock"
+        >
+          <LoginScreen
+            onLogin={handleLogin}
+            pinUnlockUser={user}
+            pinUnlockCompanyId={companyId}
+            onUnlock={() => {
+              markUnlocked();
+              setIsPinLocked(false);
+            }}
+          />
+        </div>
+      )}
+    </>
+  ) : null;
+
   const content = (
+    <div
+      key={workerShellKey}
+      className={lockOverlayActive ? 'pointer-events-none select-none' : undefined}
+      aria-hidden={lockOverlayActive || undefined}
+    >
     <Suspense fallback={<ModuleLoadingFallback />}>
     <>
       {currentScreen === 'home' && user && selectedBranch && (
@@ -917,6 +960,7 @@ export default function App() {
       )}
     </>
     </Suspense>
+    </div>
   );
 
   const syncBar = user && selectedBranch ? (
@@ -965,6 +1009,7 @@ export default function App() {
             </div>
           </MainScrollContext.Provider>
         </div>
+        {lockOverlays}
       </div>
     );
   }
@@ -974,10 +1019,11 @@ export default function App() {
       {permissionBar}
       {syncBar}
       {content}
-      {showBottomNav && (
+      {lockOverlays}
+      {showBottomNav && !lockOverlayActive && (
         <BottomNav activeTab={activeBottomTab} onTabChange={handleBottomNavChange} />
       )}
-      {showModuleGrid && user && !responsive.isTablet && (
+      {showModuleGrid && user && !responsive.isTablet && !lockOverlayActive && (
         <ModuleGrid
           onClose={() => setShowModuleGrid(false)}
           onModuleSelect={navigateToModule}

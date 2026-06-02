@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { acceptAllowsCamera, capturePhotoWithNativeCamera } from '../../lib/mediaPick';
+import { beginMediaCapture, endMediaCapture } from '../../lib/mediaCaptureSession';
 import { MediaSourceActionSheet } from './MediaSourceActionSheet';
 
 export interface MediaSourcePickerProps {
@@ -44,18 +45,31 @@ export function MediaSourcePicker({
   );
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    endMediaCapture();
     const selected = e.target.files;
     if (selected?.length) emitFiles(Array.from(selected));
     e.target.value = '';
   };
 
+  const armPickerEndOnFocus = () => {
+    const endOnce = () => {
+      endMediaCapture();
+      window.removeEventListener('focus', endOnce);
+    };
+    window.addEventListener('focus', endOnce);
+    window.setTimeout(endOnce, 90_000);
+  };
+
   const openGallery = () => {
     if (disabled) return;
+    beginMediaCapture();
+    armPickerEndOnFocus();
     galleryRef.current?.click();
   };
 
   const openCamera = () => {
     if (disabled) return;
+    beginMediaCapture();
     void (async () => {
       try {
         if (useNativeCamera) {
@@ -67,9 +81,12 @@ export function MediaSourcePicker({
           onError?.('No photo captured. Try again or choose from gallery.');
           return;
         }
+        armPickerEndOnFocus();
         cameraWebRef.current?.click();
       } catch (err) {
         onError?.(err instanceof Error ? err.message : 'Could not open camera.');
+      } finally {
+        endMediaCapture();
       }
     })();
   };

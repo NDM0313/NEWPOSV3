@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowLeft, Phone, Mail, MapPin, DollarSign, Edit2, User as UserIcon, Clock, Briefcase, UserCheck, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Phone, Mail, MapPin, DollarSign, Edit2, User as UserIcon, Clock, Briefcase, UserCheck, Loader2, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import {
   approvePublicLead,
   getContactDisplayPhone,
@@ -9,6 +9,9 @@ import {
   type Contact,
   type ContactRole,
 } from '../../api/contacts';
+import { getPurchasesBySupplier, recordSupplierPayment } from '../../api/accounts';
+import { useRecordOnAccountCustomerPayment } from '../../hooks/useRecordOnAccountCustomerPayment';
+import { MobilePaymentSheet, type MobilePaymentSheetSubmitPayload } from '../shared/MobilePaymentSheet';
 import type { User } from '../../types';
 
 interface ContactDetailViewProps {
@@ -16,12 +19,32 @@ interface ContactDetailViewProps {
   onBack: () => void;
   onEdit: (contact: Contact) => void;
   onApproved?: (contact: Contact) => void;
+  onBalanceChanged?: () => void;
   user: User;
+  companyId: string | null;
+  branchId?: string | null;
 }
 
-export function ContactDetailView({ contact, onBack, onEdit, onApproved, user }: ContactDetailViewProps) {
+type PaymentSheetKind = 'receive' | 'pay-supplier' | null;
+
+export function ContactDetailView({
+  contact,
+  onBack,
+  onEdit,
+  onApproved,
+  onBalanceChanged,
+  user,
+  companyId,
+  branchId,
+}: ContactDetailViewProps) {
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState('');
+  const [paymentSheet, setPaymentSheet] = useState<PaymentSheetKind>(null);
+  const [supplierPurchaseId, setSupplierPurchaseId] = useState<string | null>(null);
+  const [supplierPayable, setSupplierPayable] = useState(0);
+  const [paymentPrepError, setPaymentPrepError] = useState('');
+  const [paymentPrepLoading, setPaymentPrepLoading] = useState(false);
+  const { submit: submitOnAccount } = useRecordOnAccountCustomerPayment();
   const getRoleBadgeColor = (role: ContactRole) => {
     switch (role) {
       case 'customer':
@@ -47,6 +70,122 @@ export function ContactDetailView({ contact, onBack, onEdit, onApproved, user }:
     (user.role === 'admin' || user.role === 'manager' || user.role === 'owner') &&
     isPendingPublicLead(contact);
   const displayRef = getContactDisplayRef(contact);
+  const isCustomer = contact.roles.includes('customer');
+  const isSupplier = contact.roles.includes('supplier');
+  const customerReceivable = isCustomer ? Math.max(0, contact.balance) : 0;
+  const supplierPayableDisplay = isSupplier ? Math.max(0, contact.balance < 0 ? Math.abs(contact.balance) : 0) : 0;
+
+  useEffect(() => {
+    if (paymentSheet !== 'pay-supplier' || !companyId || !isSupplier) return;
+    let cancelled = false;
+    setPaymentPrepLoading(true);
+    setPaymentPrepError('');
+    getPurchasesBySupplier(companyId, contact.id).then(({ data, error }) => {
+      if (cancelled) return;
+      setPaymentPrepLoading(false);
+      if (error) {
+        setPaymentPrepError(error);
+        setSupplierPurchaseId(null);
+        return;
+      }
+      const first = data?.[0];
+      if (!first) {
+        setPaymentPrepError('No outstanding purchase for this supplier.');
+        setSupplierPurchaseId(null);
+        setSupplierPayable(0);
+        return;
+      }
+      setSupplierPurchaseId(first.id);
+      setSupplierPayable(first.due_amount);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [paymentSheet, companyId, contact.id, isSupplier]);
+
+  const openReceivePayment = () => {
+    if (!companyId) {
+      setPaymentPrepError('Company not selected.');
+      return;
+    }
+    setPaymentPrepError('');
+    setPaymentSheet('receive');
+  };
+
+  const openMakePayment = () => {
+    if (!companyId) {
+      setPaymentPrepError('Company not selected.');
+      return;
+    }
+    if (!branchId) {
+      setPaymentPrepError('Select a branch to record supplier payment.');
+      return;
+    }
+    setPaymentPrepError('');
+    setPaymentSheet('pay-supplier');
+  };
+
+  const handleReceiveSubmit = async (payload: MobilePaymentSheetSubmitPayload) => {
+    if (!companyId) return { success: false, error: 'Company not selected.' };
+    const { success, error, paymentId, referenceNumber } = await submitOnAccount({
+      companyId,
+      branchId: branchId ?? null,
+      contactId: contact.id,
+      contactName: contact.name,
+      amount: payload.amount,
+      accountId: payload.accountId,
+      paymentMethod: payload.method === 'wallet' ? 'wallet' : payload.method,
+      paymentDate: payload.paymentDate,
+      notes: payload.notes || null,
+      bankTraceId: payload.reference?.trim() || null,
+      createdBy: user.id ?? null,
+    });
+    return {
+      success,
+      error: error ?? null,
+      paymentId: paymentId ?? null,
+      referenceNumber: referenceNumber ?? null,
+      partyAccountName: contact.name ? `Receivable — ${contact.name}` : null,
+    };
+  };
+
+  const handleSupplierSubmit = async (payload: MobilePaymentSheetSubmitPayload) => {
+    if (!companyId || !branchId || !supplierPurchaseId) {
+      return { success: false, error: paymentPrepError || 'No purchase to pay against.' };
+    }
+    const methodForRpc: 'cash' | 'bank' | 'card' | 'other' =
+      payload.method === 'wallet' ? 'other' : payload.method;
+    const { data, error } = await recordSupplierPayment({
+      companyId,
+      branchId,
+      purchaseId: supplierPurchaseId,
+      amount: payload.amount,
+      paymentDate: payload.paymentDate,
+      paymentAccountId: payload.accountId,
+      paymentMethod: methodForRpc,
+      reference: payload.reference || undefined,
+      notes: payload.notes || undefined,
+      userId: user.id,
+    });
+    return {
+      success: !error && !!data?.payment_id,
+      error: error ?? null,
+      paymentId: data?.payment_id ?? null,
+      referenceNumber: data?.reference_number ?? null,
+      partyAccountName: contact.name ? `Payable — ${contact.name}` : null,
+    };
+  };
+
+  const closePaymentSheet = () => {
+    setPaymentSheet(null);
+    setSupplierPurchaseId(null);
+    setPaymentPrepError('');
+  };
+
+  const handlePaymentSuccess = () => {
+    closePaymentSheet();
+    onBalanceChanged?.();
+  };
 
   const handleApprove = async () => {
     setApproveError('');
@@ -224,6 +363,33 @@ export function ContactDetailView({ contact, onBack, onEdit, onApproved, user }:
                 </div>
               )}
             </div>
+            {(isCustomer || isSupplier) && companyId && (
+              <div className="mt-4 flex flex-col gap-2">
+                {isCustomer && (
+                  <button
+                    type="button"
+                    onClick={openReceivePayment}
+                    className="w-full h-11 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-white font-medium inline-flex items-center justify-center gap-2"
+                  >
+                    <ArrowDownLeft className="w-4 h-4" />
+                    Receive Payment
+                  </button>
+                )}
+                {isSupplier && (
+                  <button
+                    type="button"
+                    onClick={openMakePayment}
+                    className="w-full h-11 rounded-lg bg-[#F59E0B] hover:bg-[#D97706] text-white font-medium inline-flex items-center justify-center gap-2"
+                  >
+                    <ArrowUpRight className="w-4 h-4" />
+                    Make Payment
+                  </button>
+                )}
+                {paymentPrepError && !paymentSheet && (
+                  <p className="text-xs text-red-400 text-center">{paymentPrepError}</p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -256,6 +422,65 @@ export function ContactDetailView({ contact, onBack, onEdit, onApproved, user }:
           </div>
         )}
       </div>
+
+      {paymentSheet === 'receive' && companyId && (
+        <MobilePaymentSheet
+          mode="receive"
+          companyId={companyId}
+          branchId={branchId ?? null}
+          userId={user.id}
+          partyName={contact.name}
+          partyPhone={getContactDisplayPhone(contact) || null}
+          outstandingAmount={customerReceivable}
+          initialAmount={customerReceivable || undefined}
+          allowOverpayment
+          title="Receive Payment from Customer"
+          subtitle="On-account receipt (updates customer AR)"
+          partyKindLabel="CUSTOMER"
+          submitLabel="Receive Payment"
+          onClose={closePaymentSheet}
+          onSuccess={handlePaymentSuccess}
+          onSubmit={handleReceiveSubmit}
+        />
+      )}
+
+      {paymentSheet === 'pay-supplier' && companyId && branchId && (
+        paymentPrepLoading ? (
+          <div className="fixed inset-0 z-50 bg-[#111827]/90 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-[#F59E0B] animate-spin" />
+          </div>
+        ) : paymentPrepError || !supplierPurchaseId ? (
+          <div className="fixed inset-0 z-50 bg-black/60 flex items-end">
+            <div className="w-full bg-[#1F2937] border-t border-[#374151] rounded-t-2xl p-6">
+              <p className="text-sm text-[#FCA5A5] mb-4">{paymentPrepError || 'Cannot pay supplier.'}</p>
+              <button
+                type="button"
+                onClick={closePaymentSheet}
+                className="w-full h-11 rounded-lg bg-[#374151] text-white font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        ) : (
+          <MobilePaymentSheet
+            mode="pay-supplier"
+            companyId={companyId}
+            branchId={branchId}
+            userId={user.id}
+            partyName={contact.name}
+            partyPhone={getContactDisplayPhone(contact) || null}
+            outstandingAmount={supplierPayable || supplierPayableDisplay}
+            initialAmount={supplierPayable || supplierPayableDisplay || undefined}
+            title="Pay Supplier"
+            partyKindLabel="SUPPLIER"
+            submitLabel="Pay Supplier"
+            onClose={closePaymentSheet}
+            onSuccess={handlePaymentSuccess}
+            onSubmit={handleSupplierSubmit}
+          />
+        )
+      )}
     </div>
   );
 }

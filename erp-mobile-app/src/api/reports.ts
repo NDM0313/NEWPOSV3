@@ -400,7 +400,7 @@ export interface DayBookJournalEntry {
   lines: { accountCode: string; accountName: string; accountType: string; debit: number; credit: number; description: string }[];
 }
 
-/** `mode='cash'` limits to Roznamcha-style entries (any line touching cash/bank/wallet). */
+/** `mode='cash'` limits to JEs touching cash/bank/wallet (legacy/debug). Roznamcha UI uses `getRoznamcha` in api/roznamcha.ts. */
 export async function getDayBook(
   companyId: string,
   from: string,

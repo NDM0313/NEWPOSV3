@@ -350,6 +350,17 @@ export function shouldScopeStudioToOwnOnly(
   return hasModuleAction(perms, 'studio', 'view_own');
 }
 
+/** Rental list: restrict to bookings user created or is assigned salesman on. */
+export function shouldScopeRentalsToOwnOnly(
+  perms: RolePermissionRow[],
+  isAdminOrOwner: boolean
+): boolean {
+  if (isAdminOrOwner) return false;
+  if (hasModuleAction(perms, 'rentals', 'view_company')) return false;
+  if (hasModuleAction(perms, 'rentals', 'view_branch')) return false;
+  return hasModuleAction(perms, 'rentals', 'view_own');
+}
+
 /** Set one role permission (admin/owner only by RLS). */
 export async function setRolePermission(
   role: EngineRole,

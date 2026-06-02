@@ -20,6 +20,7 @@ import { UnifiedPaymentDialog, type PaymentDialogProps } from '@/app/components/
 import { getSaleDisplayNumber, getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
 import { contactService } from '@/app/services/contactService';
 import { useAccounting } from '@/app/context/AccountingContext';
+import { useSubmitLock } from '@/app/context/LoadingContext';
 import {
   resolveUnifiedJournalEdit,
   inferTransactionKind,
@@ -205,10 +206,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const { companyId, branchId } = useSupabase();
   const { openDrawer, setCurrentView } = useNavigation();
   const accounting = useAccounting();
+  const { run, busy } = useSubmitLock();
   const [transaction, setTransaction] = useState<any>(null);
   /** Active PF-07 reversal child exists for loaded header — locks edit/reverse like Journal list. */
   const [txnHasActiveCorrectionReversal, setTxnHasActiveCorrectionReversal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const actionLocked = busy || loading;
   const [selectedAttachment, setSelectedAttachment] = useState<string | null>(null);
   const [journalQuickEditOpen, setJournalQuickEditOpen] = useState(false);
   const [editEntryDate, setEditEntryDate] = useState('');
@@ -891,7 +894,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         size="sm"
                         variant="secondary"
                         className="gap-1"
-                        onClick={() => void runUnifiedEdit()}
+                        disabled={actionLocked}
+                        onClick={() => run('Opening editor...', () => runUnifiedEdit())}
                       >
                         <Pencil size={14} />
                         {unifiedEditButtonLabel(r)}
@@ -905,6 +909,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       size="sm"
                       variant="outline"
                       className="gap-1 border-sky-600/40 text-sky-300"
+                      disabled={actionLocked}
                       onClick={() => setPaymentTraceOpen(true)}
                     >
                       Full payment trace
@@ -919,9 +924,9 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         size="sm"
                         variant="outline"
                         className="gap-1 border-amber-500/40 text-amber-300"
-                        disabled={!!paymentChainBlockReason}
+                        disabled={actionLocked || !!paymentChainBlockReason}
                         title={paymentChainBlockReason || 'Create offsetting correction_reversal JE'}
-                        onClick={() => void handleReverseJournal()}
+                        onClick={() => run('Reversing...', () => handleReverseJournal())}
                       >
                         <RotateCcw size={14} />
                         Reverse
@@ -934,7 +939,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       size="sm"
                       variant="outline"
                       className="gap-1 border-red-500/40 text-red-300"
-                      onClick={() => void handleVoidJournal()}
+                      disabled={actionLocked}
+                      onClick={() => run('Voiding...', () => handleVoidJournal())}
                     >
                       <Trash2 size={14} />
                       Void / Cancel
@@ -951,6 +957,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         size="sm"
                         variant="outline"
                         className="gap-1 border-blue-500/40 text-blue-300"
+                        disabled={actionLocked}
                         onClick={() => void handleLoadAccountsForEdit()}
                       >
                         <ArrowLeftRight size={14} />
@@ -960,10 +967,24 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   })()}
                   {editingAccounts && (
                     <>
-                      <Button size="sm" className="gap-1 bg-blue-600" onClick={() => void handleSaveAccountEdits()} disabled={Object.keys(editLineChanges).length === 0 && Object.keys(editAmountChanges).length === 0}>
+                      <Button
+                        size="sm"
+                        className="gap-1 bg-blue-600"
+                        onClick={() => run('Saving changes...', () => handleSaveAccountEdits())}
+                        disabled={
+                          actionLocked ||
+                          (Object.keys(editLineChanges).length === 0 && Object.keys(editAmountChanges).length === 0)
+                        }
+                      >
                         Save Changes
                       </Button>
-                      <Button size="sm" variant="outline" className="gap-1" onClick={() => { setEditingAccounts(false); setEditLineChanges({}); }}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1"
+                        disabled={actionLocked}
+                        onClick={() => { setEditingAccounts(false); setEditLineChanges({}); }}
+                      >
                         Cancel Edit
                       </Button>
                     </>

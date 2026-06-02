@@ -54,7 +54,7 @@ type Props = {
   setEditingAccount: (a: unknown) => void;
   setIsEditAccountOpen: (o: boolean) => void;
   setCurrentView: (v: 'contacts' | 'ar-ap-reconciliation-center') => void;
-  onOpenAccountStatements: () => void;
+  onOpenAccountStatements: (accountId: string) => void;
 };
 
 export function AccountingDashboardAccountRowMenu({
@@ -115,8 +115,8 @@ export function AccountingDashboardAccountRowMenu({
         <DropdownMenuItem
           className="gap-2 focus:bg-gray-800 cursor-pointer"
           onClick={() => {
-            onOpenAccountStatements();
-            toast.info('Account Statements tab — filter or select this account in the report if available.');
+            if (!account.id) return;
+            onOpenAccountStatements(account.id);
           }}
         >
           <BarChart3 size={14} className="shrink-0" /> Statement

@@ -230,6 +230,7 @@ export const ContactsPage = () => {
   const [leadFilter, setLeadFilter] = useState<'all' | 'pending'>('all');
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [approvingLead, setApprovingLead] = useState(false);
+  const [assigningReferenceId, setAssigningReferenceId] = useState<string | null>(null);
   const filterRef = useRef<HTMLDivElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
   /** Throttle accounting-domain invalidations (journal storms) so Contacts does not refetch on every JE reload. */
@@ -372,6 +373,29 @@ export const ContactsPage = () => {
       toast.error((e as { message?: string })?.message || 'Could not approve lead');
     } finally {
       setApprovingLead(false);
+    }
+  };
+
+  const handleAssignReference = async (contact: Contact) => {
+    const contactUuid = contact.uuid || String(contact.id);
+    if (!contactUuid || contactUuid === 'undefined') return;
+    setAssigningReferenceId(contactUuid);
+    try {
+      const result = await contactService.assignContactReferenceNumber(contactUuid);
+      if (result.success) {
+        toast.success(
+          result.alreadyAssigned
+            ? `Reference already set — ${result.code}`
+            : `Reference assigned — ${result.code}`,
+        );
+        await refreshContacts();
+      } else {
+        toast.error(result.error || 'Could not assign reference number');
+      }
+    } catch (e: unknown) {
+      toast.error((e as { message?: string })?.message || 'Could not assign reference number');
+    } finally {
+      setAssigningReferenceId(null);
     }
   };
 
@@ -2196,6 +2220,22 @@ export const ContactsPage = () => {
                                 >
                                   <UserCheck size={14} className="mr-2" />
                                   Approve lead
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator className="bg-gray-700" />
+                              </>
+                            )}
+                            {getContactDisplayRef(contact) === '—' &&
+                              !(contact.is_system_generated && contact.system_type === 'walking_customer') && (
+                              <>
+                                <DropdownMenuItem
+                                  disabled={assigningReferenceId === (contact.uuid || String(contact.id))}
+                                  onClick={() => void handleAssignReference(contact)}
+                                  className="hover:bg-gray-800 cursor-pointer text-violet-300"
+                                >
+                                  <FileText size={14} className="mr-2" />
+                                  {assigningReferenceId === (contact.uuid || String(contact.id))
+                                    ? 'Assigning reference…'
+                                    : 'Assign reference'}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-gray-700" />
                               </>

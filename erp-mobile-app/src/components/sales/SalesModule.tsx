@@ -25,6 +25,8 @@ import { localNowDateString, formatLocalDateYYYYMMDD, getCurrentLocalTimestamp }
 import { useSettings } from '../../context/SettingsContext';
 import { orderSaleLinesForPersist } from '../../lib/bespokeCartInjection';
 import { useEffectiveWorkerId, useEffectiveWorkerRole, useEffectiveWorkerProfileId } from '../../context/CounterWorkerContext';
+import { useFormDraft } from '../../hooks/useFormDraft';
+import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
 import type { ExtraExpense } from '../../types/saleExtras';
 import {
   computeBillableSubtotal,
@@ -74,6 +76,13 @@ function localDatePlusDays(days: number): string {
 
 export type SalesStep = 'home' | 'customer' | 'products' | 'studioDetails' | 'summary' | 'payment' | 'confirmation';
 
+type SaleCreateDraft = {
+  step: SalesStep;
+  documentBranchId: string | null;
+  pickedBranchId: string;
+  saleData: Omit<SaleData, 'attachmentFiles'>;
+};
+
 export interface Customer {
   id: string;
   name: string;
@@ -110,6 +119,8 @@ export interface SaleData {
   tax: number;
   total: number;
   notes: string;
+  /** Customer bill book / REF # (separate from notes). */
+  billRef?: string;
   /** In-memory files chosen on Sale Summary; uploaded after sale is created. */
   attachmentFiles?: File[];
   /** Calendar date for invoice (YYYY-MM-DD, local). */
@@ -187,6 +198,7 @@ export function SalesModule({
     tax: 0,
     total: 0,
     notes: '',
+    billRef: '',
     attachmentFiles: [],
     saleDate: localNowDateString(),
     saleType: initialSaleType === 'studio' ? 'studio' : 'regular',
@@ -225,6 +237,33 @@ export function SalesModule({
     userRole: effectiveRole,
     authUserId: effectiveUserId,
     profileId: effectiveProfileId,
+  });
+
+  const {
+    showRestoredBanner: showSaleDraftBanner,
+    dismissRestoredBanner: dismissSaleDraftBanner,
+    clearDraft: clearSaleDraft,
+  } = useFormDraft<SaleCreateDraft>({
+    companyId,
+    ownerUserId: effectiveUserId,
+    draftId: 'sale-create',
+    enabled: step !== 'home' && !confirmationData,
+    getSnapshot: () => {
+      if (step === 'home' || step === 'confirmation') return null;
+      const { attachmentFiles: _omit, ...saleRest } = saleData;
+      return {
+        step,
+        documentBranchId,
+        pickedBranchId,
+        saleData: saleRest,
+      };
+    },
+    applySnapshot: (d) => {
+      setStep(d.step);
+      setDocumentBranchId(d.documentBranchId);
+      setPickedBranchId(d.pickedBranchId);
+      setSaleData({ ...d.saleData, attachmentFiles: [] });
+    },
   });
 
   useEffect(() => {
@@ -410,6 +449,7 @@ export function SalesModule({
       dueAmount: result.dueAmount,
       paymentAccountId: result.accountId ?? undefined,
       notes: saleData.saleType === 'studio' ? (saleData.productionNotes || saleData.notes || undefined) : (saleData.notes || undefined),
+      billRef: saleData.billRef?.trim() || null,
       isStudio: saleData.saleType === 'studio',
       userId: effectiveUserId,
       invoiceDate: saleData.saleDate || localNowDateString(),
@@ -433,6 +473,7 @@ export function SalesModule({
     if (!navigator.onLine) {
       try {
         await addPending('sale', salePayload, companyId, effectiveBranchId);
+        clearSaleDraft();
         setCreatedInvoiceNo('Pending sync');
         setStep('confirmation');
       } catch (e) {
@@ -466,6 +507,7 @@ export function SalesModule({
     if (effectiveBranchId) {
       branchName = accessibleBranches.find((b) => b.id === effectiveBranchId)?.name ?? null;
     }
+    clearSaleDraft();
     setConfirmationData({
       type: 'sale',
       title: 'Sale Saved Successfully',
@@ -546,6 +588,7 @@ export function SalesModule({
   const closeSuccessModal = () => {
     const wasStudio = saleData.saleType === 'studio';
     const studioSaleId = createdSaleId;
+    clearSaleDraft();
     setConfirmationData(null);
     setCreatedSaleId(null);
     setCreatedInvoiceNo(null);
@@ -584,6 +627,7 @@ export function SalesModule({
 
   return (
     <>
+      <FormDraftRestoredBanner show={showSaleDraftBanner} onDismiss={dismissSaleDraftBanner} />
       {step === 'home' && (
         <SalesHome
           onBack={onBack}
@@ -610,6 +654,7 @@ export function SalesModule({
         <SelectCustomer
           companyId={companyId}
           branchId={documentBranchId ?? effectiveBranchId}
+          sessionUserId={user?.id ?? null}
           onBack={handleStepBack}
           onSelect={handleCustomerSelect}
           initialSaleType={saleData.saleType}

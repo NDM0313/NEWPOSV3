@@ -71,6 +71,7 @@ interface AccountsDashboardProps {
   onGeneralEntry: () => void;
   onAccountTransfer: () => void;
   onSupplierPayment: () => void;
+  onClientPayment: () => void;
   onWorkerPayment: () => void;
   onExpenseEntry: () => void;
   onViewReports: () => void;
@@ -221,6 +222,7 @@ export function AccountsDashboard({
   onGeneralEntry,
   onAccountTransfer,
   onSupplierPayment,
+  onClientPayment,
   onWorkerPayment,
   onExpenseEntry,
   onViewReports,
@@ -446,6 +448,7 @@ export function AccountsDashboard({
           <ActionButton icon={BookOpen} label="General Entry" color="from-[#8B5CF6] to-[#7C3AED]" onClick={onGeneralEntry} />
           <ActionButton icon={ArrowLeftRight} label="Account Transfer" color="from-[#3B82F6] to-[#2563EB]" onClick={onAccountTransfer} />
           <ActionButton icon={Users} label="Supplier Payment" color="from-[#F59E0B] to-[#D97706]" onClick={onSupplierPayment} />
+          <ActionButton icon={ArrowDownLeft} label="Client Payment" color="from-[#3B82F6] to-[#2563EB]" onClick={onClientPayment} />
           <ActionButton icon={Wrench} label="Worker Payment" color="from-[#10B981] to-[#059669]" onClick={onWorkerPayment} />
           <ActionButton icon={Receipt} label="Expense Entry" color="from-[#EF4444] to-[#DC2626]" onClick={onExpenseEntry} />
           <ActionButton icon={BookMarked} label="Chart" color="from-[#F59E0B] to-[#D97706]" onClick={onChartOfAccounts} />

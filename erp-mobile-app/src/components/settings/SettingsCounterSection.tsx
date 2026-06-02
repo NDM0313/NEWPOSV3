@@ -226,7 +226,7 @@ export function SettingsCounterSection({
 
               setCounterSessionPolicyState(id);
 
-              setPinLockSettings({ timeoutMs: getDevicePinMaxAgeMs() });
+              setPinLockSettings({ sessionMaxAgeMs: getDevicePinMaxAgeMs() });
 
             }}
 

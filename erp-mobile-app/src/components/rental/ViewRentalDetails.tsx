@@ -16,6 +16,8 @@ import {
   Truck,
   Trash2,
   Ban,
+  FileText,
+  Pencil,
 } from 'lucide-react';
 import type { RentalDetail } from '../../api/rentals';
 import * as rentalsApi from '../../api/rentals';
@@ -23,11 +25,16 @@ import { RentalReturnModal } from './RentalReturnModal';
 import { RentalAddPaymentModal } from './RentalAddPaymentModal';
 import { RentalPickupModal } from './RentalPickupModal';
 import { formatDate } from '../accounts/reports/_shared/format';
+import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
+
+export type RentalDetailInitialAction = 'pickup' | 'return' | 'payment';
 
 interface ViewRentalDetailsProps {
   rentalId: string;
   companyId: string | null;
   userId: string | null;
+  initialAction?: RentalDetailInitialAction | null;
+  onConsumedInitialAction?: () => void;
   onBack: () => void;
   onRefresh: () => void;
 }
@@ -41,7 +48,16 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: 'bg-[#6B7280]/30 text-[#9CA3AF]',
 };
 
-export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefresh }: ViewRentalDetailsProps) {
+export function ViewRentalDetails({
+  rentalId,
+  companyId,
+  userId,
+  initialAction,
+  onConsumedInitialAction,
+  onBack,
+  onRefresh,
+}: ViewRentalDetailsProps) {
+  const effectiveUserId = useEffectiveWorkerId(userId ?? '');
   const [rental, setRental] = useState<RentalDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +65,9 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [pickupOpen, setPickupOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [billRefEdit, setBillRefEdit] = useState(false);
+  const [billRefDraft, setBillRefDraft] = useState('');
+  const [metaSaving, setMetaSaving] = useState(false);
 
   const load = () => {
     if (!rentalId) return;
@@ -63,6 +82,30 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
 
   useEffect(() => load(), [rentalId]);
 
+  useEffect(() => {
+    if (!rental || !initialAction) return;
+    if (initialAction === 'pickup' && rental.status === 'booked') setPickupOpen(true);
+    if (initialAction === 'return' && ['rented', 'overdue'].includes(rental.status)) setReturnOpen(true);
+    if (initialAction === 'payment' && rental.dueAmount > 0) setPaymentOpen(true);
+    onConsumedInitialAction?.();
+  }, [rental, initialAction, onConsumedInitialAction]);
+
+  const saveBillRef = async () => {
+    if (!rental) return;
+    setMetaSaving(true);
+    const { error: err } = await rentalsApi.updateRentalMeta(rental.id, {
+      documentNumber: billRefDraft,
+    });
+    setMetaSaving(false);
+    if (err) {
+      alert(err);
+      return;
+    }
+    setBillRefEdit(false);
+    load();
+    onRefresh();
+  };
+
   const handleReturn = async (payload: {
     actualReturnDate: string;
     notes?: string;
@@ -75,7 +118,7 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
   }) => {
     if (!companyId) return;
     setActionLoading(true);
-    const { error: err } = await rentalsApi.receiveReturn(rentalId, companyId, payload, userId);
+    const { error: err } = await rentalsApi.receiveReturn(rentalId, companyId, payload, effectiveUserId || null);
     setActionLoading(false);
     if (err) {
       alert(err);
@@ -103,7 +146,7 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
   }) => {
     if (!companyId) return;
     setActionLoading(true);
-    const { error: err } = await rentalsApi.markRentalPickedUp(rentalId, companyId, payload, userId);
+    const { error: err } = await rentalsApi.markRentalPickedUp(rentalId, companyId, payload, effectiveUserId || null);
     setActionLoading(false);
     if (err) {
       alert(err);
@@ -164,6 +207,9 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
   const canPickup = rental.status === 'booked';
   const canDelete = ['draft', 'booked'].includes(rental.status);
   const canCancel = ['draft', 'booked'].includes(rental.status);
+  const canEditBillRef = ['draft', 'booked'].includes(rental.status);
+  const hasSecurityDoc =
+    !!(rental.securityDocumentType || rental.securityDocumentNumber || rental.securityDocumentImageUrl);
 
   return (
     <div className="min-h-screen bg-[#111827] pb-32">
@@ -172,12 +218,66 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
           <button onClick={onBack} className="p-2 text-[#F9FAFB] hover:bg-[#374151] rounded-lg">
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <span className="font-semibold text-white">{rental.bookingNo}</span>
+          <span className="font-semibold text-white truncate">{rental.bookingNo}</span>
           <div className="w-9" />
         </div>
+        {rental.documentNumber && !billRefEdit && (
+          <p className="text-xs text-[#8B5CF6] mt-1 px-1">Bill: {rental.documentNumber}</p>
+        )}
       </div>
 
       <div className="p-4 space-y-4">
+        {canEditBillRef && (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-[#9CA3AF]">Bill / manual ref #</h3>
+              {!billRefEdit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBillRefDraft(rental.documentNumber ?? '');
+                    setBillRefEdit(true);
+                  }}
+                  className="p-1.5 text-[#9CA3AF] hover:text-white"
+                  aria-label="Edit bill reference"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            {billRefEdit ? (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={billRefDraft}
+                  onChange={(e) => setBillRefDraft(e.target.value)}
+                  className="w-full h-10 bg-[#111827] border border-[#374151] rounded-lg px-3 text-white text-sm"
+                  placeholder="e.g. A 109"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBillRefEdit(false)}
+                    className="flex-1 py-2 border border-[#374151] rounded-lg text-sm text-[#9CA3AF]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={metaSaving}
+                    onClick={() => void saveBillRef()}
+                    className="flex-1 py-2 bg-[#8B5CF6] rounded-lg text-sm text-white font-medium disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-white text-sm">{rental.documentNumber || '—'}</p>
+            )}
+          </div>
+        )}
+
         <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <span className={`px-2 py-1 rounded-lg text-xs font-medium capitalize ${statusColor}`}>
@@ -233,6 +333,37 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
             <span className="text-[#F59E0B]">Rs. {rental.dueAmount.toLocaleString()}</span>
           </div>
         </div>
+
+        {hasSecurityDoc && (
+          <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
+            <h3 className="text-sm font-medium text-[#9CA3AF] mb-2 flex items-center gap-2">
+              <FileText className="w-4 h-4" /> Documents received
+            </h3>
+            {rental.securityDocumentType && (
+              <p className="text-sm text-white">
+                Type: <span className="text-[#D1D5DB]">{rental.securityDocumentType}</span>
+              </p>
+            )}
+            {rental.securityDocumentNumber && (
+              <p className="text-sm text-white mt-1">
+                Number: <span className="text-[#D1D5DB]">{rental.securityDocumentNumber}</span>
+              </p>
+            )}
+            {rental.securityStatus && (
+              <p className="text-xs text-[#6B7280] mt-1 capitalize">Status: {rental.securityStatus}</p>
+            )}
+            {rental.securityDocumentImageUrl && (
+              <a
+                href={rental.securityDocumentImageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-2 text-xs text-[#3B82F6] underline"
+              >
+                View document image
+              </a>
+            )}
+          </div>
+        )}
 
         {rental.payments.length > 0 && (
           <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
@@ -314,7 +445,7 @@ export function ViewRentalDetails({ rentalId, companyId, userId, onBack, onRefre
           rentalId={rentalId}
           companyId={companyId}
           branchId={rental.branchId ?? null}
-          userId={userId}
+          userId={effectiveUserId || null}
           bookingNo={rental.bookingNo}
           customerName={rental.customerName}
           customerPhone={rental.customerPhone ?? null}

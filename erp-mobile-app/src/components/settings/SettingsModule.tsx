@@ -28,6 +28,11 @@ import * as settingsApi from '../../api/settings';
 import { runSync } from '../../lib/syncEngine';
 import { getUnsyncedCount, clearAllPending } from '../../lib/offlineStore';
 import { ChangePinModal } from './ChangePinModal';
+import {
+  getPinLockSettings,
+  setPinLockSettings,
+  type PinIdleTimeoutId,
+} from '../../lib/pinLock';
 import { ChangeCounterPinModal } from './ChangeCounterPinModal';
 import { SetPinModal } from './SetPinModal';
 import { ConnectionDebug } from '../dev/ConnectionDebug';
@@ -80,6 +85,65 @@ interface SettingsModuleProps {
   onChangeBranch: () => void;
   onLogout: () => void;
   onSyncTriggered?: () => void;
+}
+
+const IDLE_LOCK_OPTIONS: { id: PinIdleTimeoutId; label: string }[] = [
+  { id: 'off', label: 'Off' },
+  { id: '1m', label: '1 minute' },
+  { id: '2m', label: '2 minutes' },
+];
+
+function PinLockPolicyRows() {
+  const [lockOnBackground, setLockOnBackground] = useState(
+    () => getPinLockSettings().lockOnBackground,
+  );
+  const [idleTimeout, setIdleTimeout] = useState<PinIdleTimeoutId>(
+    () => getPinLockSettings().idleTimeout,
+  );
+
+  const apply = (patch: Partial<{ lockOnBackground: boolean; idleTimeout: PinIdleTimeoutId }>) => {
+    setPinLockSettings(patch);
+    if (patch.lockOnBackground !== undefined) setLockOnBackground(patch.lockOnBackground);
+    if (patch.idleTimeout !== undefined) setIdleTimeout(patch.idleTimeout);
+  };
+
+  return (
+    <>
+      <div className="px-4 py-3 border-b border-[#374151]/60">
+        <label className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm text-white font-medium">Lock on app switch</p>
+            <p className="text-xs text-[#6B7280] mt-0.5">PIN when returning from home or another app</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={lockOnBackground}
+            onChange={(e) => apply({ lockOnBackground: e.target.checked })}
+            className="w-5 h-5 rounded border-[#374151] bg-[#111827] text-[#3B82F6]"
+          />
+        </label>
+      </div>
+      <div className="px-4 py-3 border-b border-[#374151]/60">
+        <p className="text-sm text-white font-medium mb-2">Idle lock</p>
+        <div className="flex gap-2">
+          {IDLE_LOCK_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => apply({ idleTimeout: opt.id })}
+              className={`flex-1 py-2 rounded-lg text-xs font-medium border ${
+                idleTimeout === opt.id
+                  ? 'border-[#3B82F6] bg-[#3B82F6]/15 text-white'
+                  : 'border-[#374151] text-[#9CA3AF]'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
 }
 
 export function SettingsModule({
@@ -605,6 +669,7 @@ export function SettingsModule({
                   subtitle="Update your 4–6 digit PIN"
                   onClick={() => setShowChangePin(true)}
                 />
+                <PinLockPolicyRows />
                 <SettingsRow
                   icon={Lock}
                   iconColor="bg-amber-500/20"

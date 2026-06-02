@@ -60,6 +60,17 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
     else onBack();
   }, [view, onBack]);
 
+  const refreshContactDetail = useCallback(async () => {
+    if (!companyId) return;
+    const { data, error } = await contactsApi.getContacts(companyId, undefined, branchId);
+    if (error || !data) return;
+    setContacts(data);
+    setSelected((prev) => {
+      if (!prev) return prev;
+      return data.find((c) => c.id === prev.id) ?? prev;
+    });
+  }, [companyId, branchId]);
+
   const loadContacts = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (!companyId) {
@@ -167,6 +178,9 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
         onBack={() => { setAddError(''); setView('list'); }}
         onSubmit={handleAdd}
         error={addError}
+        companyId={companyId}
+        sessionUserId={user.id}
+        draftId="contact-add"
       />
       </SwipeBackShell>
     );
@@ -196,7 +210,10 @@ export function ContactsModule({ onBack, user, companyId, branchId = null }: Con
           setSelected(updated);
           setContacts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
         }}
+        onBalanceChanged={() => void refreshContactDetail()}
         user={user}
+        companyId={companyId}
+        branchId={branchId}
       />
       </SwipeBackShell>
     );

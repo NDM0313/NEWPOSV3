@@ -92,6 +92,7 @@ import { PublicContactForm } from './components/public/PublicContactForm';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import { useSettings } from './context/SettingsContext';
 import { GlobalFilterProvider } from './context/GlobalFilterContext';
+import { LoadingProvider } from './context/LoadingContext';
 import { PermissionInspectorPage } from './components/admin/PermissionInspectorPage';
 import { useCheckPermission } from './hooks/useCheckPermission';
 const AccountingIntegrityLabPage = lazy(() =>
@@ -603,11 +604,13 @@ export default function App() {
                           <RentalProvider>
                             <ExpenseProvider>
                               <ProductionProvider>
-                                <NavigationProvider>
-                                  <AppContent />
-                                  <Toaster position="bottom-right" theme="dark" />
-                                  <KeyboardShortcutsModal />
-                                </NavigationProvider>
+                                <LoadingProvider>
+                                  <NavigationProvider>
+                                    <AppContent />
+                                    <Toaster position="bottom-right" theme="dark" />
+                                    <KeyboardShortcutsModal />
+                                  </NavigationProvider>
+                                </LoadingProvider>
                               </ProductionProvider>
                             </ExpenseProvider>
                           </RentalProvider>

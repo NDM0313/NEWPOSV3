@@ -165,6 +165,37 @@ export async function getCustomersWithBalance(
   return { data: list, error: null };
 }
 
+/** All customer/both contacts with receivable balance (includes Rs. 0 for advance receipts). */
+export async function getAllCustomersWithBalance(
+  companyId: string,
+  branchId?: string | null,
+): Promise<{ data: CustomerWithBalance[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
+  const company = normalizeCompanyId(companyId);
+  if (!company) return { data: [], error: 'Missing company.' };
+
+  const { data: contacts, error: contactsErr } = await supabase
+    .from('contacts')
+    .select('id, name, phone')
+    .eq('company_id', company)
+    .in('type', ['customer', 'both'])
+    .order('name');
+  if (contactsErr) return { data: [], error: contactsErr.message };
+  if (!contacts?.length) return { data: [], error: null };
+
+  const { map, error: rpcErr } = await fetchContactBalancesSummary(company, branchId);
+  if (rpcErr) return { data: [], error: rpcErr };
+
+  const list: CustomerWithBalance[] = (contacts || []).map((c: { id: string; name: string; phone: string | null }) => ({
+    id: c.id,
+    name: c.name || '',
+    phone: c.phone ?? null,
+    balance: receivableFromBalanceMap(map, c.id),
+  }));
+
+  return { data: list, error: null };
+}
+
 export async function getCustomerLastTransactions(
   companyId: string,
   customerId: string,

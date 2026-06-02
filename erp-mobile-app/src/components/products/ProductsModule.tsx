@@ -33,6 +33,7 @@ import { formatQty } from '../../utils/quantity';
 import { getCompanyName } from '../../api/reports';
 import * as branchesApi from '../../api/branches';
 import { useSubmitLock } from '../../contexts/LoadingContext';
+import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
 
 /** Total stock: sum of variation stocks when hasVariations, else product stock */
 function getDisplayStock(p: productsApi.Product): number {
@@ -67,6 +68,7 @@ interface ProductsModuleProps {
 export type Product = productsApi.Product;
 
 export function ProductsModule({ onBack, user: _user, companyId, branchId }: ProductsModuleProps) {
+  const effectiveUserId = useEffectiveWorkerId(_user.id);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(!!companyId);
   const [search, setSearch] = useState('');
@@ -319,6 +321,7 @@ export function ProductsModule({ onBack, user: _user, companyId, branchId }: Pro
         <AddProductFlow
           companyId={companyId}
           branchId={branchId ?? null}
+          sessionUserId={effectiveUserId}
           onClose={() => setView('list')}
           onSave={handleAddEditSave}
           product={editingProduct}

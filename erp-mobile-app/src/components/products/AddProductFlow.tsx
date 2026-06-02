@@ -13,6 +13,9 @@ import { ProductImage } from './ProductImage';
 import { compressImageIfNeeded, formatBytes } from '../../utils/imageCompression';
 import { normalizePickedImageFiles } from '../../lib/mediaPick';
 import { MediaSourcePicker } from '../shared/MediaSourcePicker';
+import { useEffectiveWorkerId } from '../../context/CounterWorkerContext';
+import { useFormDraft } from '../../hooks/useFormDraft';
+import { FormDraftRestoredBanner } from '../shared/FormDraftRestoredBanner';
 
 export interface AddProductFlowSavePayload {
   id?: string;
@@ -44,19 +47,56 @@ export interface AddProductFlowSavePayload {
   branchIds?: string[] | null;
 }
 
+type ProductFormSnapshot = {
+  sku: string;
+  name: string;
+  categoryId: string;
+  category: string;
+  brandId: string;
+  description: string;
+  costPrice: string;
+  retailPrice: string;
+  wholesalePrice: string;
+  stock: string;
+  minStock: string;
+  unitId: string;
+  unit: string;
+  barcode: string;
+  status: 'active' | 'inactive';
+  hasVariations: boolean;
+};
+
+type ProductAddDraft = {
+  formData: ProductFormSnapshot;
+  isCombo: boolean;
+  comboItems: Array<{ productId: string; variationId?: string | null; name: string; quantity: number; unitPrice: number }>;
+  variantAttributes: Array<{ name: string; values: string[] }>;
+  generatedVariations: Array<{
+    combination: Record<string, string>;
+    sku: string;
+    price: number;
+    stock: number;
+    barcode: string;
+  }>;
+  existingImageUrls: string[];
+  selectedBranchIds: string[];
+};
+
 interface AddProductFlowProps {
   onClose: () => void;
   onSave: (payload: AddProductFlowSavePayload) => void;
   product?: Product | null;
   companyId?: string | null;
   branchId?: string | null;
+  sessionUserId?: string | null;
   saving?: boolean;
   error?: string;
 }
 
 const FALLBACK_UNITS = ['Piece', 'Meter', 'Yard', 'Set', 'Pair', 'Dozen'];
 
-export function AddProductFlow({ onClose, onSave, product: editProduct, companyId, branchId, saving, error }: AddProductFlowProps) {
+export function AddProductFlow({ onClose, onSave, product: editProduct, companyId, branchId, sessionUserId, saving, error }: AddProductFlowProps) {
+  const effectiveUserId = useEffectiveWorkerId(sessionUserId ?? '');
   const [categories, setCategories] = useState<productCategoriesApi.ProductCategory[]>([]);
   const [brands, setBrands] = useState<brandsApi.Brand[]>([]);
   const [units, setUnits] = useState<unitsApi.Unit[]>([]);
@@ -140,6 +180,31 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
   }>>([]);
   const [productsWithVariations, setProductsWithVariations] = useState<Array<{ id: string; name: string; variations?: Array<{ attributes?: Record<string, string> }> }>>([]);
   const [attrCopySelectNonce, setAttrCopySelectNonce] = useState(0);
+
+  const { showRestoredBanner, dismissRestoredBanner, clearDraft: clearProductDraft } = useFormDraft<ProductAddDraft>({
+    companyId: companyId ?? null,
+    ownerUserId: effectiveUserId,
+    draftId: 'product-add',
+    enabled: Boolean(companyId && effectiveUserId && !editProduct),
+    getSnapshot: () => ({
+      formData,
+      isCombo,
+      comboItems,
+      variantAttributes,
+      generatedVariations,
+      existingImageUrls,
+      selectedBranchIds,
+    }),
+    applySnapshot: (d) => {
+      setFormData(d.formData);
+      setIsCombo(d.isCombo);
+      setComboItems(d.comboItems);
+      setVariantAttributes(d.variantAttributes);
+      setGeneratedVariations(d.generatedVariations);
+      setExistingImageUrls(d.existingImageUrls);
+      setSelectedBranchIds(d.selectedBranchIds);
+    },
+  });
 
   useEffect(() => {
     if (!companyId) return;
@@ -376,6 +441,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
   const handleSubmit = () => {
     if (!formData.name.trim()) return;
     if (!formData.retailPrice || parseFloat(formData.retailPrice) <= 0) return;
+    if (!editProduct) clearProductDraft();
 
     const costPrice = parseFloat(formData.costPrice) || 0;
     const retailPrice = parseFloat(formData.retailPrice);
@@ -528,6 +594,7 @@ export function AddProductFlow({ onClose, onSave, product: editProduct, companyI
       blocking={saving}
       blockingLabel={editProduct ? 'Updating product...' : 'Saving product...'}
     >
+      <FormDraftRestoredBanner show={showRestoredBanner} onDismiss={dismissRestoredBanner} />
       <FlowScreenHeader innerClassName="justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
             <button

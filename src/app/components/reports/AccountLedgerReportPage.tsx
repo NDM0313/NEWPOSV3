@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Loader2, FileText, FileSpreadsheet, Filter, RotateCcw, Eye, Pencil } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -16,7 +16,7 @@ import {
   accountingStatementModeLabel,
   type AccountingStatementMode,
 } from '@/app/lib/accounting/statementEngineTypes';
-import { nearestPartyControlAncestorId } from '@/app/lib/partyControlAccounts';
+import { isPartySubledgerLeaf, nearestPartyControlAncestorId } from '@/app/lib/partyControlAccounts';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
 import {
   journalEntryPresentationFromHeader,
@@ -25,6 +25,7 @@ import {
 } from '@/app/lib/journalLinePresentation';
 import { Switch } from '@/app/components/ui/switch';
 import { Label } from '@/app/components/ui/label';
+import { SearchableSelect } from '@/app/components/ui/searchable-select';
 import { cn } from '@/app/components/ui/utils';
 import { isDebugErpEnabled } from '@/app/lib/debugErp';
 import {
@@ -35,6 +36,12 @@ import {
 
 /** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
 const PARTY_BAL_EPS = 0.005;
+
+/** Statements ignore header/session branch; every row shows its branch in the Branch column. */
+const STATEMENT_ALL_BRANCHES_SCOPE = undefined;
+
+const STATEMENT_BRANCH_SCOPE_LABEL =
+  'All branches (per-row Branch column; header branch filter does not apply)';
 
 type PartyBalanceAttention = 'none' | 'customer_ar_credit' | 'supplier_ap_credit';
 
@@ -353,13 +360,16 @@ export const AccountLedgerReportPage: React.FC<{
   branchId?: string | null;
   /** Human-readable branch line for the scope banner (e.g. “All branches” or a name). */
   branchScopeLabel?: string;
-}> = ({ startDate, endDate, branchId, branchScopeLabel }) => {
+  /** Pre-select this account when opened from Chart of Accounts ⋮ → Statement. */
+  initialAccountId?: string | null;
+}> = ({ startDate, endDate, branchId, branchScopeLabel, initialAccountId }) => {
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const [accounts, setAccounts] = useState<
     { id: string; name: string; code?: string; type?: string; linked_contact_id?: string | null; parent_id?: string | null }[]
   >([]);
-  const [contacts, setContacts] = useState<{ id: string; name: string; contact_type?: string }[]>([]);
+  const [contacts, setContacts] = useState<{ id: string; name: string; contact_type?: string; code?: string }[]>([]);
+  const partySubledgerEnsureAttemptedRef = useRef<Set<string>>(new Set());
   const [statementType, setStatementType] = useState<StatementType>('gl');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
@@ -439,13 +449,32 @@ export const AccountLedgerReportPage: React.FC<{
             parent_id: a.parent_id ?? null,
           }))
         );
-        if (active.length > 0 && !selectedAccountId) {
-          setSelectedAccountId(active[0].id);
-          setApplied((prev) => ({ ...prev, selectedAccountId: active[0].id }));
+        if (active.length > 0) {
+          const pre = initialAccountId?.trim();
+          const preValid = pre && active.some((a) => a.id === pre) ? pre : null;
+          const nextId =
+            preValid ||
+            (selectedAccountId && active.some((a) => a.id === selectedAccountId)
+              ? selectedAccountId
+              : active[0].id);
+          setSelectedAccountId(nextId);
+          setApplied((prev) => ({ ...prev, selectedAccountId: nextId }));
         }
       })
       .finally(() => setLoadingAccounts(false));
-  }, [companyId, branchId, journalRefreshTick]);
+  }, [companyId, branchId, journalRefreshTick, initialAccountId]);
+
+  useEffect(() => {
+    const pre = initialAccountId?.trim();
+    if (!pre || !accounts.some((a) => a.id === pre)) return;
+    setStatementType('gl');
+    setSelectedAccountId(pre);
+    setApplied((prev) => ({
+      ...prev,
+      statementType: 'gl',
+      selectedAccountId: pre,
+    }));
+  }, [initialAccountId, accounts]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -459,11 +488,41 @@ export const AccountLedgerReportPage: React.FC<{
             name: c.name,
             // Contacts schema uses `type` as canonical column.
             contact_type: c.contact_type || c.type || '',
+            code: c.code || '',
           }));
         setContacts(normalized);
       })
       .catch(() => setContacts([]));
   }, [companyId]);
+
+  /** Mobile-created contacts may lack AR/AP subledger rows until ensured — refresh accounts when fixed. */
+  useEffect(() => {
+    if (!companyId || contacts.length === 0) return;
+    const linkedContactIds = new Set(
+      accounts.map((a) => (a.linked_contact_id ? String(a.linked_contact_id) : '')).filter(Boolean)
+    );
+    const pending = contacts.filter((c) => {
+      if (partySubledgerEnsureAttemptedRef.current.has(c.id)) return false;
+      const t = normalizeLower(c.contact_type);
+      const needsAr = t.includes('customer') || t.includes('both');
+      const needsAp = t.includes('supplier') || t.includes('both');
+      if (!needsAr && !needsAp) return false;
+      return !linkedContactIds.has(c.id);
+    });
+    if (pending.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const c of pending.slice(0, 40)) {
+        if (cancelled) return;
+        partySubledgerEnsureAttemptedRef.current.add(c.id);
+        await supabase.rpc('ensure_party_subledgers_for_contact', { p_contact_id: c.id });
+      }
+      if (!cancelled) setJournalRefreshTick((n) => n + 1);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, contacts, accounts]);
 
   useEffect(() => {
     if (!companyId) {
@@ -514,7 +573,7 @@ export const AccountLedgerReportPage: React.FC<{
           loaded = await accountingService.getCustomerLedger(
             applied.selectedContactId,
             companyId,
-            branchId,
+            STATEMENT_ALL_BRANCHES_SCOPE,
             startDate,
             endDate
           );
@@ -526,7 +585,7 @@ export const AccountLedgerReportPage: React.FC<{
           loaded = await accountingService.getSupplierApGlJournalLedger(
             applied.selectedContactId,
             companyId,
-            branchId || undefined,
+            STATEMENT_ALL_BRANCHES_SCOPE,
             startDate,
             endDate
           );
@@ -538,7 +597,7 @@ export const AccountLedgerReportPage: React.FC<{
           loaded = await accountingService.getWorkerPartyGlJournalLedger(
             applied.selectedWorkerId,
             companyId,
-            branchId || undefined,
+            STATEMENT_ALL_BRANCHES_SCOPE,
             startDate,
             endDate
           );
@@ -575,23 +634,25 @@ export const AccountLedgerReportPage: React.FC<{
               loaded = await accountingService.getSupplierApGlJournalLedger(
                 lc,
                 companyId,
-                branchId || undefined,
+                STATEMENT_ALL_BRANCHES_SCOPE,
                 startDate,
                 endDate
               );
             } else if (ctrlCode === '1100') {
-              loaded = await accountingService.getCustomerArGlJournalLedger(
+              loaded = await accountingService.getCustomerLedger(
                 lc,
                 companyId,
-                branchId || undefined,
+                STATEMENT_ALL_BRANCHES_SCOPE,
                 startDate,
-                endDate
+                endDate,
+                undefined,
+                'default'
               );
             } else {
               loaded = await accountingService.getWorkerPartyGlJournalLedger(
                 lc,
                 companyId,
-                branchId || undefined,
+                STATEMENT_ALL_BRANCHES_SCOPE,
                 startDate,
                 endDate
               );
@@ -602,7 +663,7 @@ export const AccountLedgerReportPage: React.FC<{
               companyId,
               startDate,
               endDate,
-              branchId || undefined
+              STATEMENT_ALL_BRANCHES_SCOPE
             );
           }
         }
@@ -627,7 +688,7 @@ export const AccountLedgerReportPage: React.FC<{
         setLoading(false);
       }
     })();
-  }, [companyId, applied, startDate, endDate, branchId, accounts, journalRefreshTick]);
+  }, [companyId, applied, startDate, endDate, accounts, journalRefreshTick]);
 
   useEffect(() => {
     const paymentIds = [...new Set(entries.map((e) => e.payment_id).filter(Boolean))] as string[];
@@ -843,23 +904,36 @@ export const AccountLedgerReportPage: React.FC<{
     return m;
   }, [accounts]);
 
-  const groupedAccounts = useMemo(() => {
+  const contactNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    contacts.forEach((c) => m.set(c.id, c.name));
+    return m;
+  }, [contacts]);
+
+  const accountSelectOptions = useMemo(() => {
     const filtered = accounts.filter((a) => {
       const cat = classifyAccountCategory(a);
       if (selectedCategory !== 'all' && cat !== selectedCategory) return false;
       if (statementType === 'cash_bank') return cat === 'Cash / Bank / Wallet';
       return true;
     });
-    const out: Record<string, { id: string; name: string; code?: string; type?: string }[]> = {};
-    ACCOUNT_CATEGORY_ORDER.forEach((k) => { out[k] = []; });
-    filtered.forEach((a) => {
-      const cat = classifyAccountCategory(a);
-      if (!out[cat]) out[cat] = [];
-      out[cat].push(a);
-    });
-    Object.keys(out).forEach((k) => out[k].sort((a, b) => `${a.code || ''}${a.name}`.localeCompare(`${b.code || ''}${b.name}`)));
-    return out;
-  }, [accounts, selectedCategory, statementType]);
+    return filtered
+      .slice()
+      .sort((a, b) => `${a.code || ''}${a.name}`.localeCompare(`${b.code || ''}${b.name}`))
+      .map((a) => {
+        const code = String(a.code || '').trim();
+        const name = String(a.name || '').trim();
+        const linkedName = a.linked_contact_id ? contactNameById.get(a.linked_contact_id) : undefined;
+        const label = code ? `${code} - ${name}` : name;
+        return {
+          id: a.id,
+          name: label,
+          accountName: name,
+          accountCode: code,
+          linkedContactName: linkedName || '',
+        };
+      });
+  }, [accounts, selectedCategory, statementType, contactNameById]);
 
   const visibleContacts = useMemo(() => {
     if (statementType === 'customer') return contacts.filter((c) => normalizeLower(c.contact_type).includes('customer') || normalizeLower(c.contact_type).includes('both'));
@@ -867,6 +941,19 @@ export const AccountLedgerReportPage: React.FC<{
     if (selectedContactType === 'all') return contacts;
     return contacts.filter((c) => normalizeLower(c.contact_type).includes(selectedContactType) || normalizeLower(c.contact_type).includes('both'));
   }, [contacts, statementType, selectedContactType]);
+
+  const contactSelectOptions = useMemo(
+    () =>
+      visibleContacts
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((c) => {
+          const code = String(c.code || '').trim();
+          const label = code ? `${code} - ${c.name}` : c.name;
+          return { id: c.id, name: label, contactName: c.name, contactCode: code };
+        }),
+    [visibleContacts]
+  );
 
   useEffect(() => {
     if (statementType === 'customer') {
@@ -917,11 +1004,52 @@ export const AccountLedgerReportPage: React.FC<{
 
   const selectedAccount = accountById.get(applied.selectedAccountId || selectedAccountId);
 
-  const branchScopeResolved =
-    branchScopeLabel ||
-    (!branchId || branchId === 'all'
-      ? 'All branches (global COA rows included; journal lines use service branch rules)'
-      : 'Branch filter applied (current session branch)');
+  const branchScopeResolved = STATEMENT_BRANCH_SCOPE_LABEL;
+
+  const emptyPeriodMessage = useMemo(() => {
+    const acc =
+      selectedAccount ||
+      (applied.selectedAccountId ? accountById.get(applied.selectedAccountId) : undefined);
+    const accLabel = acc
+      ? `${acc.code || ''} ${acc.name}`.trim()
+      : applied.statementType === 'customer' || applied.statementType === 'supplier'
+        ? selectedPartyName || 'selected contact'
+        : '';
+    const isCashBank =
+      acc && classifyAccountCategory(acc) === 'Cash / Bank / Wallet';
+    const accountsByIdMap = new Map(accounts.map((a) => [a.id, a]));
+    const partyCtrlId = acc ? nearestPartyControlAncestorId(acc, accountsByIdMap as any) : null;
+    const partyCtrlCode = partyCtrlId
+      ? String(accountsByIdMap.get(partyCtrlId)?.code || '').trim()
+      : '';
+    const isPartyAr =
+      !!acc &&
+      partyCtrlCode === '1100' &&
+      isPartySubledgerLeaf(
+        { parent_id: acc.parent_id, linked_contact_id: acc.linked_contact_id },
+        accountsByIdMap as Map<string, { parent_id?: string | null; code?: string }>
+      );
+
+    if (isPartyAr) {
+      return `No rows for ${accLabel || 'this account'} between ${startDate} and ${endDate}. Try Customer Statement for the same contact, or widen dates. Payments post per document branch (see Branch column when rows exist).`;
+    }
+    if (isCashBank) {
+      return `No journal lines on ${accLabel || 'this cash/bank account'} between ${startDate} and ${endDate}. Widen the statement dates, or open Chart of Accounts → View Ledger. Activity may be on another cash account; when rows appear, each line shows its branch in the Branch column.`;
+    }
+    if (accLabel) {
+      return `No transactions for ${accLabel} between ${startDate} and ${endDate}. Widen the date range above.`;
+    }
+    return `No transactions in this period (${startDate} → ${endDate}). Widen the date range or change the statement type / account.`;
+  }, [
+    selectedAccount,
+    applied.selectedAccountId,
+    applied.statementType,
+    selectedPartyName,
+    accounts,
+    startDate,
+    endDate,
+    accountById,
+  ]);
 
   const openStatementTransaction = (referenceNumber: string, autoLaunchUnifiedEdit: boolean) => {
     if (typeof window === 'undefined' || !referenceNumber) return;
@@ -1325,27 +1453,25 @@ export const AccountLedgerReportPage: React.FC<{
           </div>
           {(statementType === 'gl' || statementType === 'cash_bank' || statementType === 'account_contact') && (
             <div className="lg:col-span-2">
-              <label className="text-xs text-gray-400">Account (grouped)</label>
-              <select
+              <label className="text-xs text-gray-400">Account</label>
+              <SearchableSelect
                 value={selectedAccountId}
-                onChange={(e) => setSelectedAccountId(e.target.value)}
-                className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white"
-              >
-                <option value="">Select account</option>
-                {ACCOUNT_CATEGORY_ORDER.map((cat) => {
-                  const list = groupedAccounts[cat] || [];
-                  if (!list.length) return null;
-                  return (
-                    <optgroup key={cat} label={cat}>
-                      {list.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.code ? `${a.code} - ` : ''}{a.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  );
-                })}
-              </select>
+                onValueChange={setSelectedAccountId}
+                options={accountSelectOptions}
+                placeholder="Select account"
+                searchPlaceholder="Search accounts by name or code..."
+                emptyText={accountSelectOptions.length === 0 ? 'No accounts in this category.' : 'No account found.'}
+                className="mt-1 bg-gray-800 border-gray-700"
+                filterFn={(option, search) => {
+                  const q = search.trim().toLowerCase();
+                  if (!q) return true;
+                  const name = String(option.accountName || option.name || '').toLowerCase();
+                  const code = String(option.accountCode || '').toLowerCase();
+                  const label = String(option.name || '').toLowerCase();
+                  const party = String(option.linkedContactName || '').toLowerCase();
+                  return name.includes(q) || code.includes(q) || label.includes(q) || party.includes(q);
+                }}
+              />
             </div>
           )}
           {(statementType === 'customer' || statementType === 'supplier' || statementType === 'account_contact') && (
@@ -1363,18 +1489,25 @@ export const AccountLedgerReportPage: React.FC<{
                   <option value="supplier">Supplier</option>
                 </select>
               </div>
-              <div>
+              <div className="lg:col-span-2">
                 <label className="text-xs text-gray-400">Contact</label>
-                <select
+                <SearchableSelect
                   value={selectedContactId}
-                  onChange={(e) => setSelectedContactId(e.target.value)}
-                  className="mt-1 w-full bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm text-white"
-                >
-                  <option value="">Select contact</option>
-                  {visibleContacts.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                  onValueChange={setSelectedContactId}
+                  options={contactSelectOptions}
+                  placeholder="Select contact"
+                  searchPlaceholder="Search by name or reference (e.g. Haseeb, CUS-)..."
+                  emptyText={contactSelectOptions.length === 0 ? 'No contacts loaded.' : 'No contact found.'}
+                  className="mt-1 bg-gray-800 border-gray-700"
+                  filterFn={(option, search) => {
+                    const q = search.trim().toLowerCase();
+                    if (!q) return true;
+                    const name = String(option.contactName || '').toLowerCase();
+                    const code = String(option.contactCode || '').toLowerCase();
+                    const label = String(option.name || '').toLowerCase();
+                    return name.includes(q) || code.includes(q) || label.includes(q);
+                  }}
+                />
               </div>
             </>
           )}
@@ -1571,8 +1704,8 @@ export const AccountLedgerReportPage: React.FC<{
             <tbody className="divide-y divide-gray-800">
               {presentedEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={18} className="p-6 text-center text-gray-500">
-                    No transactions in this period.
+                  <td colSpan={18} className="p-6 text-center text-gray-500 max-w-3xl mx-auto text-sm leading-relaxed">
+                    {emptyPeriodMessage}
                   </td>
                 </tr>
               ) : (

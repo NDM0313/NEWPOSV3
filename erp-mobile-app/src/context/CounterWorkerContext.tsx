@@ -8,6 +8,7 @@ import {
   type CounterWorkerProfile,
 } from '../lib/counterWorkerRegistry';
 import { markUnlocked } from '../lib/pinLock';
+import { clearFormDraftsExcept } from '../lib/formDraftStore';
 import { usePermissions } from './PermissionContext';
 
 export type { CounterWorkerProfile } from '../lib/counterWorkerRegistry';
@@ -51,7 +52,13 @@ export function CounterWorkerProvider({ children }: { children: React.ReactNode 
   const [isCounterLocked, setIsCounterLocked] = useState(false);
 
   const activateWorker = useCallback((profile: CounterWorkerProfile) => {
-    setActiveCounterWorkerProfile(profile);
+    setActiveCounterWorkerProfile((prev) => {
+      const companyId = profile.companyId || prev?.companyId || '';
+      if (companyId && prev?.userId && prev.userId !== profile.userId) {
+        void clearFormDraftsExcept(companyId, profile.userId);
+      }
+      return profile;
+    });
     setIsCounterLocked(false);
   }, []);
 
