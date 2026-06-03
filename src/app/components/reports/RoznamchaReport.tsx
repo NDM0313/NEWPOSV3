@@ -32,6 +32,11 @@ import { DateTimeDisplay } from '../ui/DateTimeDisplay';
 import { Loader2, BookOpen, Wallet, Building2, CreditCard, Smartphone } from 'lucide-react';
 import { cn } from '../ui/utils';
 import { format, parseISO } from 'date-fns';
+import { journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
+
+function roznamchaDetailsForDisplay(r: RoznamchaRowWithBalance): string {
+  return journalDescriptionForDisplay(r.details, r.type || 'Payment');
+}
 
 function rowSortTimestamp(r: RoznamchaRowWithBalance): number {
   const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '00:00:00';
@@ -230,7 +235,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
             return [
             rowDateTime(r),
             r.journalEntryNo ? `${r.ref}\n${r.journalEntryNo}` : r.ref,
-            meta ? `${r.details}\n${meta}` : r.details,
+            meta ? `${roznamchaDetailsForDisplay(r)}\n${meta}` : roznamchaDetailsForDisplay(r),
             r.accountLabel || '—',
             r.cashIn || '',
             r.cashOut || '',
@@ -590,11 +595,11 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                         ) : null}
                       </td>
                       <td className="px-4 py-3 max-w-xs">
-                        <div className="font-medium text-white">{r.details}</div>
+                        <div className="font-medium text-white">{roznamchaDetailsForDisplay(r)}</div>
                         {(r.referenceDisplay || r.partyLine || r.createdBy) && (
                           <div className="text-xs text-gray-400 mt-0.5 leading-snug">
                             {[
-                              r.referenceDisplay,
+                              journalDescriptionForDisplay(r.referenceDisplay, ''),
                               r.partyLine,
                               r.createdBy ? `by ${r.createdBy}` : '',
                             ]

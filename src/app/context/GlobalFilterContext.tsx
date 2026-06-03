@@ -9,6 +9,7 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useEf
 import { useSupabase } from './SupabaseContext';
 import { safeLocalStorageGetItem, safeLocalStorageSetItem } from '@/app/lib/safeBrowserStorage';
 import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
+import { getThisBusinessWeekRange } from '@/app/utils/businessWeek';
 import { dispatchDataInvalidated, type InvalidationDomain } from '@/app/lib/dataInvalidationBus';
 
 const STORAGE_KEY = 'erp-global-filters';
@@ -83,11 +84,8 @@ function getDateRangeForType(type: GlobalDateRangeType, customStart?: string | n
       s.setDate(today.getDate() - 89);
       return { startDate: s, endDate };
     }
-    case 'thisWeek': {
-      const s = new Date(today);
-      s.setDate(today.getDate() - today.getDay());
-      return { startDate: s, endDate };
-    }
+    case 'thisWeek':
+      return getThisBusinessWeekRange(today);
     case 'thisMonth': {
       const s = new Date(today.getFullYear(), today.getMonth(), 1);
       return { startDate: s, endDate };
@@ -276,7 +274,7 @@ export const GlobalFilterProvider: React.FC<{ children: ReactNode }> = ({ childr
       last15days: 'Last 15 Days',
       last30days: 'Last 30 Days',
       last90days: 'Last 90 Days',
-      thisWeek: 'This Week',
+      thisWeek: 'This Week (Sat–Fri)',
       thisMonth: 'This Month',
       thisYear: 'This Year',
       customRange: 'Custom Range',

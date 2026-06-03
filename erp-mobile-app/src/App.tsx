@@ -964,7 +964,7 @@ export default function App() {
   );
 
   const syncBar = user && selectedBranch ? (
-    <div className="flex justify-end p-2 border-b border-[#374151]/50 bg-[#111827]">
+    <div className="flex justify-end p-2 border-b border-[#374151]/50 bg-[#111827] safe-area-inset-top">
       <SyncStatusBar
         status={status}
         onSyncClick={() => {

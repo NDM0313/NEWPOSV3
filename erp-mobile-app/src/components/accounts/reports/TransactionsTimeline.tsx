@@ -26,9 +26,14 @@ import { TimelinePreviewPdf } from '../../shared/TimelinePreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
 import {
   formatPaymentDateTime,
+  formatPaymentDateTimeLine,
   formatEventDateGroupLabel,
   getTransactionEventDateKey,
 } from '../../../utils/transactionDisplayDate';
+import {
+  transactionPrimaryTitle,
+  transactionFromToLabels,
+} from '../../../lib/transactionRowDisplay';
 import {
   DateRangeBar,
   makeInitialRange,
@@ -91,7 +96,10 @@ function expenseToTransactionRow(ex: {
   referenceType: string;
   createdBy?: string | null;
   createdByName?: string | null;
+  expenseId?: string | null;
+  categoryLabel?: string | null;
 }): TransactionRow {
+  const categoryLabel = ex.categoryLabel?.trim() || null;
   return {
     id: `expense-${ex.id}`,
     paymentId: ex.id,
@@ -99,7 +107,7 @@ function expenseToTransactionRow(ex: {
     paymentDate: ex.entryDate,
     direction: 'paid',
     referenceType: ex.referenceType || 'expense',
-    referenceId: ex.id,
+    referenceId: ex.expenseId || ex.id,
     referenceNumber: ex.entryNo,
     amount: ex.amount,
     method: 'other',
@@ -108,7 +116,7 @@ function expenseToTransactionRow(ex: {
     partyAccountId: null,
     partyAccountName: null,
     partyId: null,
-    partyName: ex.description || 'Expense',
+    partyName: categoryLabel || ex.description || 'Expense',
     branchId: null,
     branchName: null,
     notes: ex.description,
@@ -117,6 +125,7 @@ function expenseToTransactionRow(ex: {
     createdBy: ex.createdBy ?? null,
     createdByName: ex.createdByName ?? null,
     attachments: null,
+    expenseCategoryLabel: categoryLabel,
   };
 }
 
@@ -164,6 +173,7 @@ function matchesTransactionSearch(tx: TransactionRow, query: string): boolean {
     tx.partyName,
     tx.partyAccountName,
     tx.paymentAccountName,
+    tx.expenseCategoryLabel,
     tx.referenceNumber,
     tx.entryNo,
     tx.notes,
@@ -588,19 +598,10 @@ function TransactionRowCard({
   const amountColor = isReceived ? 'text-[#10B981]' : 'text-[#EF4444]';
   const pillBg = isReceived ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30' : 'bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/30';
   const Icon = isReceived ? ArrowDownLeft : ArrowUpRight;
-  const { date, time } = formatPaymentDateTime(tx.paymentDate, tx.createdAt);
+  const dateTimeLine = formatPaymentDateTimeLine(tx.paymentDate, tx.createdAt);
   const isTransferLike =
     tx.referenceType === 'transfer' || tx.referenceType === 'general' || tx.id.startsWith('journal-');
-  const from = isTransferLike
-    ? (tx.paymentAccountName ?? '—')
-    : isReceived
-      ? (tx.paymentAccountName ?? '—')
-      : (tx.partyAccountName ?? tx.partyName ?? '—');
-  const to = isTransferLike
-    ? (tx.partyAccountName ?? '—')
-    : isReceived
-      ? (tx.partyAccountName ?? tx.partyName ?? '—')
-      : (tx.paymentAccountName ?? '—');
+  const { from, to } = transactionFromToLabels(tx, isReceived, isTransferLike);
 
   return (
     <li>
@@ -614,7 +615,7 @@ function TransactionRowCard({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-white truncate">
-                  {tx.partyName || tx.partyAccountName || tx.referenceType}
+                  {transactionPrimaryTitle(tx)}
                 </p>
                 <p className="text-xs text-[#9CA3AF] truncate">
                   {displayReference(tx)}
@@ -629,7 +630,7 @@ function TransactionRowCard({
                   {showAttachmentIcon && onAttachmentClick ? (
                     <AttachmentIndicatorButton onClick={() => onAttachmentClick()} size="sm" />
                   ) : null}
-                  <p className="text-[11px] text-[#9CA3AF]">{time}</p>
+                  <p className="text-xs text-[#9CA3AF] whitespace-nowrap">{dateTimeLine}</p>
                 </div>
               </div>
             </div>
@@ -640,9 +641,8 @@ function TransactionRowCard({
             </div>
             <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-[#6B7280]">
               <span className="truncate">
-                {date}
                 {tx.createdByName ? (
-                  <span className="text-[#9CA3AF]"> · Created by {tx.createdByName}</span>
+                  <span className="text-[#9CA3AF]">Created by {tx.createdByName}</span>
                 ) : null}
               </span>
               <span className="shrink-0 flex items-center gap-1.5">

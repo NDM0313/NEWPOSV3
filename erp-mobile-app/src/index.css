@@ -85,17 +85,20 @@ input[type="number"] {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
-/* Keep flow toolbars (Back, Save) below OS status bar on phones / notched devices. */
-:root {
-  --flow-header-safe-top: max(env(safe-area-inset-top, 0px), 28px);
+/* Status bar inset: shell/sync bar only (no 28px min on full page). */
+.safe-area-inset-top {
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
-.safe-area-top {
-  padding-top: var(--flow-header-safe-top);
-}
-
+/* Flow toolbars (Back, Save, report headers) — clear status bar on phone, minimal on tablet/desktop. */
 .flow-screen-header {
-  padding-top: var(--flow-header-safe-top);
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+}
+
+@media (min-width: 768px) {
+  .flow-screen-header {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
 }
 
 .flow-screen-root {

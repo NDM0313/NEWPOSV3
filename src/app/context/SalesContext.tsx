@@ -355,7 +355,10 @@ export const useSales = () => {
     }
     throw new Error('useSales must be used within SalesProvider');
   }
-  (context as any).__activate?.();
+  const activate = (context as SalesContextType & { __activate?: () => void }).__activate;
+  useEffect(() => {
+    activate?.();
+  }, [activate]);
   return context;
 };
 
@@ -596,7 +599,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const [pageSize] = useState(DEFAULT_PAGE_SIZE);
   const { generateDocumentNumber, incrementNextNumber, getNumberingConfig } = useDocumentNumbering();
   const accounting = useAccountingOptional();
-  const { companyId, branchId, user } = useSupabase();
+  const { companyId, branchId, user, userRole } = useSupabase();
   const { modules, inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
 
@@ -852,6 +855,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
                 : docType === 'studio'
                   ? (saleData.status as any) ?? 'order'
                   : (saleData.status ?? (saleData.type === 'invoice' ? 'final' : 'quotation'));
+      const isCreateFinal = canPostStockForSaleStatus(rowStatus);
       const draft_no = docType === 'draft' ? invoiceNo : undefined;
       const quotation_no = docType === 'quotation' ? invoiceNo : undefined;
       const order_no = docType === 'order' || docType === 'studio' ? invoiceNo : undefined;
@@ -890,12 +894,15 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         customer_bill_ref: (saleData as Sale).customerBillRef?.trim() || null,
         deadline: (saleData as any).deadline ?? null,
         created_by: createdByAuthId,
-        salesman_id: salesmanIdVal,
-        commission_amount: commissionAmountVal,
-        commission_eligible_amount: saleData.subtotal ?? null,
-        commission_status: 'pending',
+        salesman_id: isCreateFinal ? salesmanIdVal : null,
+        commission_amount: isCreateFinal ? commissionAmountVal : 0,
+        commission_eligible_amount: isCreateFinal ? (saleData.subtotal ?? null) : null,
+        commission_status: isCreateFinal && salesmanIdVal && commissionAmountVal > 0 ? 'pending' : null,
         commission_batch_id: null,
-        commission_percent: (saleData as any).commissionPercent != null ? Number((saleData as any).commissionPercent) : null,
+        commission_percent:
+          isCreateFinal && (saleData as any).commissionPercent != null
+            ? Number((saleData as any).commissionPercent)
+            : null,
         // Do not send is_studio in insert – column may not exist yet; set via update after create
       };
 
@@ -2685,6 +2692,69 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         }
       } catch (z1Err) {
         console.warn('[SALES CONTEXT] Z1 stock sync (update) failed:', z1Err);
+      }
+
+      // Commission on final: pending row until Commission Report batch post
+      try {
+        const rowForCommission = await saleService.getSaleById(id);
+        const st = String((rowForCommission as { status?: string }).status ?? '').toLowerCase();
+        const isFinalNow = canPostAccountingForSaleStatus(st);
+        if (isFinalNow && sale) {
+          const wasFinal = canPostAccountingForSaleStatus(sale.status);
+          const becameFinal = !wasFinal;
+          const commissionTouched =
+            (updates as { salesmanId?: unknown }).salesmanId !== undefined ||
+            (updates as { commissionPercent?: unknown }).commissionPercent !== undefined ||
+            (updates as { commissionAmount?: unknown }).commissionAmount !== undefined;
+          const subtotalChanged = updates.subtotal !== undefined;
+          const rowSalesman = (rowForCommission as { salesman_id?: string | null }).salesman_id;
+          const needsCommission =
+            becameFinal ||
+            commissionTouched ||
+            (wasFinal && subtotalChanged) ||
+            (becameFinal && !rowSalesman);
+
+          if (needsCommission) {
+            const { supabase: sb } = await import('@/lib/supabase');
+            let profileUserId: string | null = null;
+            if (user?.id) {
+              const { data: prof } = await sb
+                .from('users')
+                .select('id')
+                .or(`id.eq.${user.id},auth_user_id.eq.${user.id}`)
+                .maybeSingle();
+              profileUserId = (prof as { id?: string } | null)?.id ?? null;
+            }
+            const subtotal =
+              Number(updates.subtotal ?? (rowForCommission as { subtotal?: number }).subtotal) || 0;
+            let explicitSid: string | null | undefined;
+            if ((updates as { salesmanId?: string }).salesmanId !== undefined) {
+              const sid = (updates as { salesmanId?: string }).salesmanId;
+              explicitSid = sid === '' || sid === 'none' || sid === '1' ? null : sid;
+            } else {
+              explicitSid = rowSalesman ?? undefined;
+            }
+            const { resolveSaleCommissionFields, applySaleCommissionPatch } = await import(
+              '@/app/lib/saleCommission'
+            );
+            const patch = await resolveSaleCommissionFields({
+              profileUserId,
+              subtotal,
+              actorRole: userRole,
+              explicitSalesmanId: explicitSid,
+              explicitCommissionPercent:
+                (updates as { commissionPercent?: number | null }).commissionPercent !== undefined
+                  ? (updates as { commissionPercent?: number | null }).commissionPercent
+                  : (rowForCommission as { commission_percent?: number | null }).commission_percent,
+            });
+            if (patch) {
+              const commErr = await applySaleCommissionPatch(id, patch);
+              if (commErr) console.warn('[SALES CONTEXT] Commission patch:', commErr);
+            }
+          }
+        }
+      } catch (commEx) {
+        console.warn('[SALES CONTEXT] Commission on final failed:', commEx);
       }
 
       // CRITICAL FIX: Reload sale from database to get fresh data

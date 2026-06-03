@@ -40,9 +40,10 @@ Audit date: 2026-03-30. Repo folder: `erp-mobile-app/`. Phase 1: documentation o
 | Screen | Path | Calls | Backend |
 |--------|------|-------|---------|
 | Accounts dashboard | `components/accounts/AccountsDashboard.tsx` | `getJournalEntries`, `getAccounts` from `api/accounts.ts` | `journal_entries`, `journal_entry_lines`, `accounts` |
-| General journal | `components/accounts/GeneralEntryFlow.tsx` | `getAccounts`, `createJournalEntry` | `accounts`, `journal_entries`, `journal_entry_lines` |
-| Account transfer / supplier / expense flows | `AccountTransferFlow.tsx`, `SupplierPaymentFlow.tsx`, `ExpenseEntryFlow.tsx` | Same API file patterns | Mix of **direct JE** and **RPC** where used |
-| Chart of accounts | `ChartOfAccountsView.tsx`, `AddAccountForm.tsx` | `getAccounts`, `createAccount` | `accounts` |
+| General journal | `components/accounts/GeneralEntryFlow.tsx` | `getAccounts` (active posting rows only), `createJournalEntry`, `uploadJournalEntryAttachments` | **Auto-composed** `description` (`Journal entry · From-Dr … · To-Cr … · By …` + add-on + reference); **no inline branch picker** — uses app-header branch UUID when set, else company-level JE (`branch_id` omitted); attachments on step 3 |
+| Account transfer | `AccountTransferFlow.tsx` | `getPaymentAccounts`, `createJournalEntry`, `uploadJournalEntryAttachments` | Payment accounts only; same **auto-composed** JE `description` and **header-only branch** rule as General Entry (no inline branch picker) |
+| Supplier / expense flows | `SupplierPaymentFlow.tsx`, `ExpenseEntryFlow.tsx` | Same API file patterns | Mix of **direct JE** and **RPC** where used |
+| Chart of accounts | `ChartOfAccountsView.tsx`, `AddAccountForm.tsx` | `getAccounts`, `createAccount` | `accounts` | Operational tree via `coaTreeRows.ts` (includes **1170**, **1171–1187**, **3003**, **3005**); **collapsed by default** — expand with row chevron (parity with web Accounts tab). |
 | Account ledger report | `components/accounts/AccountLedgerReport.tsx` | `getAccountLedger` | `journal_entry_lines`, `journal_entries` |
 | Day book (from accounts) | `components/reports/DayBookReport.tsx` | `getDayBookEntries` in `api/reports.ts` | `journal_entries`, `journal_entry_lines` |
 | Cash / bank summaries | `CashSummaryReport.tsx`, `BankSummaryReport.tsx` | Account-type filtered reads via API | `accounts` (+ journals where implemented in file) |

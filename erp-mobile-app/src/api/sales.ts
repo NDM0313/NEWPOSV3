@@ -10,6 +10,7 @@ import { UPLOAD_TIMEOUT_MS, withUploadTimeout } from '../utils/uploadWithTimeout
 import { classifyStorageUploadError } from '../utils/storageUploadErrors';
 import type { ExtraExpense } from '../types/saleExtras';
 import { persistSaleChargesAfterCreate } from './saleCharges';
+import { resolveSaleCommissionFields, applySaleCommissionPatch } from '../lib/saleCommission';
 import {
   ATTACHMENT_UPLOAD_VERIFY_FAIL_MSG,
   uploadStorageAttachmentFile,
@@ -54,6 +55,11 @@ export interface CreateSaleInput {
   billRef?: string | null;
   isStudio: boolean;
   userId: string;
+  /** public.users.id — for salesman commission auto-assign (not auth UUID). */
+  profileUserId?: string | null;
+  actorRole?: string | null;
+  salesmanId?: string | null;
+  commissionPercent?: number | null;
   /** Document / invoice date (YYYY-MM-DD, local). Regular + studio `sales.invoice_date`. */
   invoiceDate?: string;
   /** Studio: order date (YYYY-MM-DD) */
@@ -214,6 +220,39 @@ export async function updateSaleStatus(
     if (postErr) {
       return { data: null, error: `Sale accounting failed: ${postErr.message}` };
     }
+
+    const { data: saleRow } = await supabase
+      .from('sales')
+      .select('subtotal, salesman_id, commission_percent, created_by')
+      .eq('id', saleId)
+      .maybeSingle();
+    if (saleRow) {
+      const subtotal = Number((saleRow as { subtotal?: number }).subtotal) || 0;
+      const existingSalesman = (saleRow as { salesman_id?: string | null }).salesman_id;
+      let profileUserId: string | null = null;
+      let actorRole: string | null = null;
+      const createdBy = (saleRow as { created_by?: string | null }).created_by;
+      if (createdBy) {
+        const { data: prof } = await supabase
+          .from('users')
+          .select('id, role')
+          .or(`id.eq.${createdBy},auth_user_id.eq.${createdBy}`)
+          .maybeSingle();
+        profileUserId = (prof as { id?: string } | null)?.id ?? null;
+        actorRole = (prof as { role?: string } | null)?.role ?? null;
+      }
+      const commissionPatch = await resolveSaleCommissionFields({
+        profileUserId,
+        subtotal,
+        actorRole,
+        explicitSalesmanId: existingSalesman ?? undefined,
+        explicitCommissionPercent: (saleRow as { commission_percent?: number | null }).commission_percent,
+      });
+      const commissionErr = await applySaleCommissionPatch(saleId, commissionPatch);
+      if (commissionErr) {
+        console.warn('[sales] Commission patch on finalize:', commissionErr);
+      }
+    }
   }
 
   return { data: data as { id: string; status: string; invoice_no?: string | null }, error: null };
@@ -253,6 +292,10 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
     billRef,
     isStudio,
     userId,
+    profileUserId,
+    actorRole,
+    salesmanId: explicitSalesmanId,
+    commissionPercent: explicitCommissionPercent,
     paidAmount,
     dueAmount,
     paymentAccountId,
@@ -567,6 +610,21 @@ export async function createSale(input: CreateSaleInput): Promise<{ data: { id: 
   if (itemsError) {
     await supabase.from('sales').delete().eq('id', saleId);
     return { data: null, error: `Failed to save items: ${itemsError.message}` };
+  }
+
+  if (postStockAndAccounting) {
+    const commissionPatch = await resolveSaleCommissionFields({
+      profileUserId,
+      subtotal: Number(subtotal) || 0,
+      actorRole,
+      explicitSalesmanId,
+      explicitCommissionPercent,
+    });
+    const commissionErr = await applySaleCommissionPatch(saleId, commissionPatch);
+    if (commissionErr) {
+      await supabase.from('sales').delete().eq('id', saleId);
+      return { data: null, error: `Failed to save commission: ${commissionErr}` };
+    }
   }
 
   const shipCharge = Number(shippingCharge) || 0;

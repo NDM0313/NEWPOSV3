@@ -90,6 +90,10 @@ export interface AddEntryV2Props {
   initialSupplierContactId?: string;
   /** Pre-fill amount (e.g. outstanding due). */
   initialAmount?: number;
+  /** Internal transfer: pre-select from account (e.g. COA row menu). */
+  initialFromAccountId?: string;
+  /** Internal transfer: pre-select to account. */
+  initialToAccountId?: string;
   /** Called only after a successful save, before `onClose`. */
   onRecorded?: () => void | Promise<void>;
 }
@@ -102,6 +106,8 @@ export function AddEntryV2({
   initialCustomerContactId,
   initialSupplierContactId,
   initialAmount,
+  initialFromAccountId,
+  initialToAccountId,
   onRecorded,
 }: AddEntryV2Props) {
   const { companyId, branchId, user } = useSupabase();
@@ -118,6 +124,7 @@ export function AddEntryV2({
   }, [initialEntryType]);
 
   const [accounts, setAccounts] = useState<{ id: string; name: string; code?: string }[]>([]);
+  const [transferAccountsList, setTransferAccountsList] = useState<{ id: string; name: string; code?: string }[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string; dueGl: number; dueOp: number }[]>([]);
   const [customers, setCustomers] = useState<{ id: string; name: string; dueGl: number; dueOp: number }[]>([]);
   const [workers, setWorkers] = useState<{ id: string; name: string; dueGl: number; dueOp: number }[]>([]);
@@ -197,6 +204,10 @@ export function AddEntryV2({
 
       const accList = (acc || []).map((a: any) => ({ id: a.id, name: (a.code ? `${a.code} – ` : '') + (a.name || ''), code: a.code }));
       setAccounts(accList);
+      const transferList = (acc || [])
+        .filter((a: any) => a.is_active !== false && a.is_group !== true)
+        .map((a: any) => ({ id: a.id, name: (a.code ? `${a.code} – ` : '') + (a.name || ''), code: a.code }));
+      setTransferAccountsList(transferList);
       const payList = (payAcc || []).map((a: any) => ({ id: a.id, name: a.name || a.code || '' }));
       setPaymentAccountsList(payList);
 
@@ -248,8 +259,15 @@ export function AddEntryV2({
 
       setExpenseCategories(expCats || []);
       setPaymentAccountId((prev) => prev || (payList[0]?.id ?? ''));
-      setFromAccountId((prev) => prev || payList[0]?.id || '');
-      setToAccountId((prev) => prev || payList[1]?.id || payList[0]?.id || '');
+      const transferIds = new Set(transferList.map((a) => a.id));
+      setFromAccountId((prev) => {
+        if (prev && transferIds.has(prev)) return prev;
+        return transferList[0]?.id || payList[0]?.id || '';
+      });
+      setToAccountId((prev) => {
+        if (prev && transferIds.has(prev)) return prev;
+        return transferList[1]?.id || transferList[0]?.id || payList[1]?.id || payList[0]?.id || '';
+      });
       setDebitAccountId((prev) => prev || accList[0]?.id || '');
       setCreditAccountId((prev) => prev || accList[accList.length - 1]?.id || accList[0]?.id || '');
       setExpenseCategorySlug((prev) => prev || (expCats || [])[0]?.slug || '');
@@ -273,7 +291,7 @@ export function AddEntryV2({
 
   useEffect(() => {
     initialPropsAppliedRef.current = false;
-  }, [initialCustomerContactId, initialSupplierContactId, initialAmount]);
+  }, [initialCustomerContactId, initialSupplierContactId, initialAmount, initialFromAccountId, initialToAccountId]);
 
   useEffect(() => {
     if (loading || initialPropsAppliedRef.current) return;
@@ -294,8 +312,30 @@ export function AddEntryV2({
     if (initialAmount != null && Number.isFinite(Number(initialAmount))) {
       setAmount(Math.max(0, Number(initialAmount)));
     }
+    const transferIds = new Set(transferAccountsList.map((a) => a.id));
+    if (initialFromAccountId && transferIds.has(initialFromAccountId)) {
+      setFromAccountId(initialFromAccountId);
+      if (initialToAccountId && transferIds.has(initialToAccountId)) {
+        setToAccountId(initialToAccountId);
+      } else {
+        const other = transferAccountsList.find((a) => a.id !== initialFromAccountId);
+        if (other) setToAccountId(other.id);
+      }
+    } else if (initialToAccountId && transferIds.has(initialToAccountId)) {
+      setToAccountId(initialToAccountId);
+    }
     initialPropsAppliedRef.current = true;
-  }, [loading, customers, suppliers, initialCustomerContactId, initialSupplierContactId, initialAmount]);
+  }, [
+    loading,
+    customers,
+    suppliers,
+    transferAccountsList,
+    initialCustomerContactId,
+    initialSupplierContactId,
+    initialAmount,
+    initialFromAccountId,
+    initialToAccountId,
+  ]);
 
   const isExpenseSalary = expenseCategorySlug === 'salaries' || expenseCategorySlug === 'salary';
   useEffect(() => {
@@ -306,6 +346,11 @@ export function AddEntryV2({
   }, [companyId, isExpenseSalary]);
 
   const paymentAccounts = useMemo(() => paymentAccountsList.length > 0 ? paymentAccountsList.map((a) => ({ id: a.id, name: a.name })) : accounts.filter((a) => /cash|bank|wallet/.test((a.name || '').toLowerCase())), [paymentAccountsList, accounts]);
+
+  const transferEligibleAccounts = useMemo(
+    () => (transferAccountsList.length > 0 ? transferAccountsList : accounts),
+    [transferAccountsList, accounts]
+  );
 
   /** COA balance from AccountingContext (journal merge) — same source as UnifiedPaymentDialog. */
   const glBalanceByAccountId = useMemo(() => {
@@ -606,6 +651,10 @@ export function AddEntryV2({
         case 'internal_transfer': {
           if (!fromAccountId || !toAccountId || amount <= 0) {
             toast.error('Select from/to accounts and amount');
+            return;
+          }
+          if (fromAccountId === toAccountId) {
+            toast.error('From and To accounts must be different');
             return;
           }
           await createInternalTransferEntry({
@@ -1179,7 +1228,7 @@ export function AddEntryV2({
                             <Label className={labelClass}>From account (Cr)</Label>
                             <div className="relative mb-4">
                               <select value={fromAccountId} onChange={(e) => setFromAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
-                                {paymentAccounts.map((a) => {
+                                {transferEligibleAccounts.map((a) => {
                                   const bal = glBalanceByAccountId.get(a.id) ?? 0;
                                   return (
                                     <option key={a.id} value={a.id}>
@@ -1193,7 +1242,7 @@ export function AddEntryV2({
                             <Label className={labelClass}>To account (Dr)</Label>
                             <div className="relative">
                               <select value={toAccountId} onChange={(e) => setToAccountId(e.target.value)} className={`${inputClass} appearance-none pr-10`}>
-                                {paymentAccounts.map((a) => {
+                                {transferEligibleAccounts.map((a) => {
                                   const bal = glBalanceByAccountId.get(a.id) ?? 0;
                                   return (
                                     <option key={a.id} value={a.id}>

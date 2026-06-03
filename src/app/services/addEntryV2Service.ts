@@ -20,6 +20,7 @@ import {
   resolveWorkerPayablePostingAccountId,
 } from '@/app/services/partySubledgerAccountService';
 import { logPaymentCreated } from '@/app/services/auditLogService';
+import { ensurePaymentsForLiquidityJournal } from '@/app/services/journalLiquidityPaymentService';
 
 const PAYMENT_METHOD_MAP: Record<string, string> = {
   cash: 'cash', Cash: 'cash', bank: 'bank', Bank: 'bank', 'mobile wallet': 'other', 'Mobile Wallet': 'other',
@@ -131,7 +132,22 @@ export async function createPureJournalEntry(params: CreatePureJournalParams): P
     { account_id: creditAccountId, debit: 0, credit: amount, description: description || undefined },
   ];
   const saved = await accountingService.createEntry(journalEntry, lines);
-  return { journalEntryId: (saved as { id: string }).id };
+  const journalEntryId = (saved as { id: string }).id;
+  await ensurePaymentsForLiquidityJournal({
+    companyId,
+    branchId: branch,
+    journalEntryId,
+    entryNo,
+    entryDate,
+    description: description || 'Journal entry',
+    lines: lines.map((l) => ({
+      accountId: l.account_id,
+      debit: l.debit,
+      credit: l.credit,
+    })),
+    createdBy: createdBy ?? null,
+  });
+  return { journalEntryId };
 }
 
 // ─── 2. Customer Receipt ───────────────────────────────────────────────────
@@ -520,7 +536,21 @@ export async function createInternalTransferEntry(params: CreateInternalTransfer
     { account_id: fromAccountId, debit: 0, credit: amount, description: desc },
   ];
   const saved = await accountingService.createEntry(journalEntry, lines);
-  return { journalEntryId: (saved as { id: string }).id };
+  const journalEntryId = (saved as { id: string }).id;
+  await ensurePaymentsForLiquidityJournal({
+    companyId,
+    branchId: branch,
+    journalEntryId,
+    entryNo,
+    entryDate,
+    description: desc,
+    lines: [
+      { accountId: toAccountId, debit: amount, credit: 0 },
+      { accountId: fromAccountId, debit: 0, credit: amount },
+    ],
+    createdBy: createdBy ?? null,
+  });
+  return { journalEntryId };
 }
 
 // ─── 7. Courier Payment ────────────────────────────────────────────────────

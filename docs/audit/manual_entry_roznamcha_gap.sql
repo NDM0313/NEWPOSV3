@@ -1,8 +1,10 @@
 -- ============================================================================
 -- Manual Entry Roznamcha Gap (Phase-3)
 -- Company: eb71d817-b87e-4195-964b-7b5321b480f5
--- Finds manual journal entries that involve a payment account (Cash/Bank/Wallet)
--- but have no linked payments row (so they do not appear in Roznamcha).
+-- Finds journal entries that involve a liquidity account (Cash/Bank/Wallet/sub-accounts)
+-- but have no linked payments row.
+-- Note: Roznamcha UI also merges payment_id-null JEs via roznamchaService.fetchJournalLiquidityRows;
+-- this audit still flags rows that lack payments for backfill / Layer-B write path.
 -- ============================================================================
 
 -- Payment account codes: 1000 Cash, 1010 Bank, 1020 Mobile Wallet
@@ -19,7 +21,11 @@ manual_jes AS (
   SELECT je.id, je.entry_no, je.entry_date, je.description, je.reference_type, je.payment_id, je.created_at
   FROM journal_entries je
   WHERE je.company_id = 'eb71d817-b87e-4195-964b-7b5321b480f5'
-    AND LOWER(COALESCE(je.reference_type, '')) IN ('manual', 'manual_receipt', 'manual_payment')
+    AND LOWER(COALESCE(je.reference_type, '')) IN (
+      'manual', 'manual_receipt', 'manual_payment',
+      'general', 'transfer', 'journal', 'manual_journal'
+    )
+    AND COALESCE(je.is_void, false) = false
 ),
 manual_je_lines AS (
   SELECT jel.journal_entry_id, jel.account_id, jel.debit, jel.credit

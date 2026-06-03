@@ -59,7 +59,7 @@
 | **Journal Entries** | `AccountingContext` / `accountingService` → `journal_entries` | **Yes** | Grouped vs audit mode documented in UI; **Account** column uses **`debitAccountDisplay` / `creditAccountDisplay`** (leaf **name (code)** + party on AP/AR when payment/purchase enrichment exists — G-SUP-01). |
 | **Day Book** | `DayBookReport` → `journal_entries` + lines + `accounts` | **Yes** | Export title corrected (see fix report) |
 | **Roznamcha** | `RoznamchaReport` → `payments` + `accounts` | **Yes** | Table copy is **English**; tab title may stay “Roznamcha” |
-| **Accounts (COA)** | `AccountingContext.accounts` → `accounts` | **Yes** | Operational vs Professional modes; roll-up in `useAccountsHierarchyModel` |
+| **Accounts (COA)** | `AccountingContext.accounts` → `accounts` | **Yes** | Operational vs Professional modes; roll-up in `useAccountsHierarchyModel`. **Operational** includes extended codes **1170** (group), **1171–1187** (committee/dasti leaves; **1180** excluded), **3003** / **3005** via `isOperationalExtendedCoaCode` in `accountHierarchy.ts`. **Accounts tab** loads with **all parent rows collapsed** (`AccountingDashboard` seeds `collapsedGroupIds` from `parentIdsWithChildren` on tab entry). |
 | **Ledger** | `LedgerHub` + `customerLedgerApi` / contacts / workers + `GenericLedgerView` | **Yes** | Worker uses **`worker_ledger_entries`**, not `ledger_entries` |
 | **Receivables / Payables** | Customer ledger + supplier flows (canonical services) | **Yes** | Label worker vs supplier in UI where combined |
 | **Account Statements** | `AccountLedgerReportPage` + related | **Yes** | Verify branch filters per environment; **customer/supplier/worker** party modes use `getCustomerLedger` / supplier / worker GL — **`correction_reversal`** rows included when they reverse a party-linked original (G-REV-01). |
@@ -104,6 +104,24 @@
 | **Control drill-down** | `ControlAccountBreakdownDrawer` + `fetchControlAccountBreakdown` align to canonical GL + worker rows where coded |
 
 **Signoff:** Hierarchy logic is **consistent with code**; **full numeric signoff** against production data requires **manual QA** (see gap doc).
+
+### 4.1 Committees / partner equity rows missing in UI
+
+| Check | Action |
+|-------|--------|
+| **Operational** tab, rows still absent | Confirm migration [`migrations/20260613140000_committees_dasti_equity_opening_coa.sql`](../migrations/20260613140000_committees_dasti_equity_opening_coa.sql) applied for the **logged-in** `company_id` (target tenant in migration: `597a5292-14c8-4cd8-96bd-c61b5a0d8c92`). |
+| **Professional** tab, rows absent | Data issue (not operational filter): run SQL below or `accountService.getAllAccounts` error path. |
+| **Professional** shows rows, **Operational** does not (pre-fix) | Fixed by `OPERATIONAL_EXTENDED_COA_CODES` / `isOperationalExtendedCoaCode`. |
+
+```sql
+SELECT code, name, type, is_group, is_active
+FROM accounts
+WHERE company_id = '<your_company_uuid>'
+  AND (code IN ('1170','3003','3005') OR code BETWEEN '1171' AND '1187')
+ORDER BY code;
+```
+
+Expect **17** account rows after migration (16 leaves + group **1170**).
 
 ---
 

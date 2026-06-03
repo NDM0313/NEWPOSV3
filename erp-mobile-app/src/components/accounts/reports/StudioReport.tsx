@@ -15,6 +15,7 @@ interface StudioReportProps {
   onBack: () => void;
   companyId: string | null;
   user: User;
+  reportRefreshEpoch?: number;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -26,7 +27,7 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: 'text-[#EF4444] bg-[#EF4444]/10 border-[#EF4444]/40',
 };
 
-export function StudioReport({ onBack, companyId, user }: StudioReportProps) {
+export function StudioReport({ onBack, companyId, user, reportRefreshEpoch = 0 }: StudioReportProps) {
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('year'));
   const [rows, setRows] = useState<StudioProductionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +52,7 @@ export function StudioReport({ onBack, companyId, user }: StudioReportProps) {
     return () => {
       cancelled = true;
     };
-  }, [companyId, range.from, range.to]);
+  }, [companyId, range.from, range.to, reportRefreshEpoch]);
 
   const totals = useMemo(() => {
     const units = rows.reduce((s, r) => s + r.quantity, 0);

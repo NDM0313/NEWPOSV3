@@ -15,6 +15,7 @@ interface RentalReportProps {
   onBack: () => void;
   companyId: string | null;
   user: User;
+  reportRefreshEpoch?: number;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -28,7 +29,7 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: 'text-[#EF4444] bg-[#EF4444]/10 border-[#EF4444]/40',
 };
 
-export function RentalReport({ onBack, companyId, user }: RentalReportProps) {
+export function RentalReport({ onBack, companyId, user, reportRefreshEpoch = 0 }: RentalReportProps) {
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('year'));
   const [rows, setRows] = useState<RentalReportRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +54,7 @@ export function RentalReport({ onBack, companyId, user }: RentalReportProps) {
     return () => {
       cancelled = true;
     };
-  }, [companyId, range.from, range.to]);
+  }, [companyId, range.from, range.to, reportRefreshEpoch]);
 
   const totals = useMemo(() => {
     const total = rows.reduce((s, r) => s + r.total, 0);

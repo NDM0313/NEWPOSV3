@@ -7,10 +7,28 @@ export type CoaDisplayRow = {
 
 const PARTY_CONTROL_CODES = new Set(['1100', '2000', '2010', '1180']);
 
+const EQUITY_PARTNER_CODES = ['3003', '3005'] as const;
+
+/** Committees & Dasti + partner equity (aligned with web accountHierarchy.ts). */
+export function isOperationalExtendedCoaCode(code: string | null | undefined): boolean {
+  const c = String(code ?? '').trim();
+  if (!c) return false;
+  if (c === '1170') return true;
+  if ((EQUITY_PARTNER_CODES as readonly string[]).includes(c)) return true;
+  const n = Number.parseInt(c, 10);
+  if (!Number.isFinite(n)) return false;
+  if (n >= 1171 && n <= 1177) return true;
+  if (n >= 1181 && n <= 1187) return true;
+  return false;
+}
+
 function matchesOperationalView(acc: AccountRow): boolean {
+  const code = (acc.code || '').trim();
+  if (isOperationalExtendedCoaCode(code)) {
+    return code === '1170' || !acc.isGroup;
+  }
   if (acc.isGroup) return false;
   const t = (acc.type || '').toLowerCase();
-  const code = (acc.code || '').trim();
   return (
     t.includes('cash') ||
     t.includes('bank') ||
@@ -37,6 +55,44 @@ function isPartyLeaf(acc: AccountRow, byId: Map<string, AccountRow>): boolean {
     pid = p?.parentId ?? null;
   }
   return false;
+}
+
+/** Account ids that have at least one child in the operational display list. */
+export function getCoaParentIdsWithChildren(
+  displayRows: CoaDisplayRow[],
+  accounts: AccountRow[]
+): Set<string> {
+  const childParentIds = new Set<string>();
+  displayRows.forEach(({ account }) => {
+    if (account.parentId) childParentIds.add(account.parentId);
+  });
+  const inDisplay = new Set(displayRows.map((r) => r.account.id));
+  const parents = new Set<string>();
+  childParentIds.forEach((pid) => {
+    if (inDisplay.has(pid) || accounts.some((a) => a.id === pid)) {
+      parents.add(pid);
+    }
+  });
+  return parents;
+}
+
+/** Hide rows under collapsed ancestors (id in set = collapsed). */
+export function filterCoaRowsByCollapse(
+  displayRows: CoaDisplayRow[],
+  collapsedParentIds: Set<string>,
+  accounts: AccountRow[]
+): CoaDisplayRow[] {
+  if (collapsedParentIds.size === 0) return displayRows;
+  const byId = new Map(accounts.map((a) => [a.id, a]));
+  return displayRows.filter(({ account }) => {
+    let pid: string | null | undefined = account.parentId;
+    let guard = 0;
+    while (pid && guard++ < 40) {
+      if (collapsedParentIds.has(pid)) return false;
+      pid = byId.get(pid)?.parentId ?? null;
+    }
+    return true;
+  });
 }
 
 /** Flatten operational COA tree (same pool + walk as web useAccountsHierarchyModel). */

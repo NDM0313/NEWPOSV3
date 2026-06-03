@@ -583,6 +583,29 @@ export async function createJournalEntry(params: {
     });
     if (lineErr) return { data: null, error: lineErr.message };
   }
+
+  const effectiveBranch =
+    branchId && branchId !== 'all' && branchId !== 'default' ? branchId : null;
+  try {
+    const { ensurePaymentsForLiquidityJournal } = await import('../lib/journalLiquidityPayment');
+    await ensurePaymentsForLiquidityJournal({
+      companyId,
+      branchId: effectiveBranch,
+      journalEntryId: entry.id,
+      entryNo: entry.entry_no,
+      entryDate,
+      description,
+      lines: lines.map((l) => ({
+        accountId: l.accountId,
+        debit: l.debit,
+        credit: l.credit,
+      })),
+      createdBy: userId ?? null,
+    });
+  } catch {
+    /* Roznamcha read path still picks up journal liquidity legs if payment insert fails */
+  }
+
   return { data: { id: entry.id, entry_no: entry.entry_no }, error: null };
 }
 

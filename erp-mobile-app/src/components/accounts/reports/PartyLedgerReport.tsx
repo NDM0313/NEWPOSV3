@@ -36,6 +36,7 @@ interface PartyLedgerReportProps {
   /** Same branch semantics as other reports (RPC balances); null = company-wide. */
   branchId?: string | null;
   user: User;
+  reportRefreshEpoch?: number;
 }
 
 interface LocalParty {
@@ -59,7 +60,7 @@ const displayEntryNo = (value: string, fallbackType?: string) => {
   return v;
 };
 
-export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: PartyLedgerReportProps) {
+export function PartyLedgerReport({ onBack, kind, companyId, branchId, user, reportRefreshEpoch = 0 }: PartyLedgerReportProps) {
   const cfg = KIND_LABELS[kind];
   const [parties, setParties] = useState<LocalParty[]>([]);
   const [loading, setLoading] = useState(!!companyId);
@@ -150,7 +151,12 @@ export function PartyLedgerReport({ onBack, kind, companyId, branchId, user }: P
     return () => {
       cancelled = true;
     };
-  }, [companyId, kind, branchId, listRefreshNonce]);
+  }, [companyId, kind, branchId, listRefreshNonce, reportRefreshEpoch]);
+
+  useEffect(() => {
+    if (reportRefreshEpoch === 0) return;
+    setLedgerRefreshNonce((n) => n + 1);
+  }, [reportRefreshEpoch]);
 
   useEffect(() => {
     if (!companyId || !selected) {

@@ -14,7 +14,7 @@ Legend: **Live** = `accounts`, `journal_entries`, `journal_entry_lines`, `paymen
 | GL / party queries | `src/app/services/accountingService.ts` | Journal CRUD, customer/supplier/worker party views from GL lines | `journal_entries`, `journal_entry_lines`, `accounts`, `payments`, RPCs `get_customer_ledger_payments`, `get_customer_ledger_sales`, `get_customer_ledger_rentals` |
 | COA CRUD / payment account pickers | `src/app/services/accountService.ts` | Account list and filters | `accounts` |
 | “Chart” UI model (maps to same table) | `src/app/services/chartAccountService.ts` | Create/update mapped to `accounts` row shape | `accounts` (not `chart_accounts`) |
-| Hierarchy / control codes | `src/app/components/accounting/useAccountsHierarchyModel.ts`, `AccountsHierarchyList.tsx`, `ChartOfAccountsPartyDropdown.tsx` | Operational vs professional COA display | In-memory over `accounts` + journal-derived activity; party breakdown via `controlAccountBreakdownService` |
+| Hierarchy / control codes | `src/app/components/accounting/useAccountsHierarchyModel.ts`, `AccountsHierarchyList.tsx`, `ChartOfAccountsPartyDropdown.tsx` | Operational vs professional COA display | In-memory over `accounts` + journal-derived activity; party breakdown via `controlAccountBreakdownService`. **Operational** whitelist + `isOperationalExtendedCoaCode` (**1170**, **1171–1187**, **3003**, **3005**). **Accounts** tab: parents start **collapsed** (`collapsedGroupIds` seeded on tab entry). |
 | Posting guard strings | `src/app/services/accountingCanonicalGuard.ts` | Warns on disallowed table names in queries | References `chart_accounts`, `account_transactions` as **disallowed** (not queried) |
 
 ---
@@ -29,7 +29,7 @@ Legend: **Live** = `accounts`, `journal_entries`, `journal_entry_lines`, `paymen
 | Journal entries | Table + `TransactionDetailModal` | `AccountingContext` / `accountingService.getAllEntries` | `journal_entries`, `journal_entry_lines`, joins to `accounts`, `payments` where implemented | **Live** | Grouped vs audit modes |
 | Day Book | Lazy `DayBookReport` | Report component (see reports) | Typically `journal_entries` / lines | **Live** | |
 | Roznamcha | Lazy `RoznamchaReport` | `roznamchaService` | `payments`, `accounts`, `journal_entries` | **Live** | |
-| Accounts (COA) | `AccountsHierarchyList`, drawers | `accountService`, `chartAccountService`, `fetchControlAccountBreakdown` | `accounts`; RPC `get_contact_party_gl_balances` in breakdown path | **Live** | |
+| Accounts (COA) | `AccountsHierarchyList`, drawers | `accountService`, `chartAccountService`, `fetchControlAccountBreakdown` | `accounts`; RPC `get_contact_party_gl_balances` in breakdown path | **Live** | Row ⋮ **Transfer Balance** → `AddEntryV2` `internal_transfer` → `createInternalTransferEntry` (`reference_type: transfer`). |
 | Party statements (ledger) | Full-screen `LedgerHub` | See below | Mixed | **Live + auxiliary** | |
 | Receivables list | Filter `sales.sales` | `useSales()` | **Document state** on sales loaded in `SalesContext` / `saleService` — not `get_contact_balances_summary` here | **MISMATCH risk** vs Contacts RPC / customer ledger | Invoice-level `due > 0` |
 | Payables list | Filter `purchases.purchases` | `usePurchases()` | **Document state** on purchases | **MISMATCH risk** vs supplier GL | Caption mentions courier; list is purchase rows |

@@ -1,6 +1,6 @@
 import { CheckCircle2, Share2, FileText, Plus, Home, Printer, List, ArrowLeft } from 'lucide-react';
 
-export type TransactionSuccessType = 'sale' | 'purchase' | 'payment' | 'rental' | 'return' | 'product';
+export type TransactionSuccessType = 'sale' | 'purchase' | 'payment' | 'rental' | 'return' | 'product' | 'journal';
 
 export interface TransactionSuccessData {
   type: TransactionSuccessType;
@@ -142,7 +142,15 @@ export function TransactionSuccessModal({
             )}
             {data.partyName && (
               <div className="flex justify-between text-sm">
-                <span className="text-[#9CA3AF]">{data.type === 'purchase' ? 'Supplier' : data.type === 'payment' ? 'Party' : 'Customer'}</span>
+                <span className="text-[#9CA3AF]">
+                  {data.type === 'purchase'
+                    ? 'Supplier'
+                    : data.type === 'payment'
+                      ? 'Party'
+                      : data.type === 'journal'
+                        ? 'Accounts'
+                        : 'Customer'}
+                </span>
                 <span className="text-white">{data.partyName}</span>
               </div>
             )}
@@ -308,7 +316,7 @@ export function TransactionSuccessModal({
               </>
             )}
 
-            {data.type === 'product' && (
+            {(data.type === 'product' || data.type === 'journal') && (
               onOk && (
                 <button
                   onClick={() => handleAction(onOk)}

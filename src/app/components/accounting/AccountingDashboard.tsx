@@ -163,6 +163,17 @@ function refTypeBadgeLabel(rt: string): string {
   return rt.replace(/_/g, ' ').replace(/opening balance /g, 'OB ');
 }
 
+/** Voucher column label: show JE-xx for standalone accounting rows even when list referenceNo is operational. */
+function journalVoucherLabel(entry: AccountingEntry): string {
+  const meta = entry.metadata as { documentNo?: string; journalEntryNo?: string; referenceType?: string } | undefined;
+  const rt = String(meta?.referenceType || '').toLowerCase();
+  const standalone =
+    entry.module === 'Accounting' ||
+    ['manual', 'general', 'transfer', 'pure_journal', 'internal_transfer'].includes(rt);
+  if (standalone && meta?.journalEntryNo) return meta.journalEntryNo;
+  return meta?.documentNo || entry.referenceNo || 'N/A';
+}
+
 function normalizeSearchValue(value: unknown): string {
   if (value === null || value === undefined) return '';
   return String(value).trim().toLowerCase();
@@ -560,6 +571,7 @@ export const AccountingDashboard = () => {
   // 🎯 Add Entry flow (type selector + modals, same as Accounting Test page)
   const [addEntryFlowOpen, setAddEntryFlowOpen] = useState(false);
   const [addEntryInitialType, setAddEntryInitialType] = useState<import('./AddEntryV2').AddEntryV2Type | undefined>(undefined);
+  const [transferFromAccountId, setTransferFromAccountId] = useState<string | null>(null);
   // Legacy manual-entry-only dialog (kept for any direct use)
   const [manualEntryOpen, setManualEntryOpen] = useState(false);
   
@@ -568,7 +580,7 @@ export const AccountingDashboard = () => {
   const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<any>(null);
   const [payCourierOpen, setPayCourierOpen] = useState(false);
-  /** Parent row id → collapsed (children hidden). Empty = all groups expanded. */
+  /** Parent row id → collapsed (children hidden). Seeded when Accounts tab opens (all collapsed). */
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(new Set());
 
   // 🎯 Ledger & Transaction State
@@ -738,7 +750,7 @@ export const AccountingDashboard = () => {
     [linkedPartiesControlId, accounting.accounts]
   );
 
-  const { hierarchyRows } = useAccountsHierarchyModel(
+  const { hierarchyRows, parentIdsWithChildren } = useAccountsHierarchyModel(
     accounting.accounts,
     transactions,
     accountsViewMode,
@@ -748,6 +760,16 @@ export const AccountingDashboard = () => {
     partyGlByContactId,
     accountsViewMode === 'operational'
   );
+
+  const parentCollapseKey = useMemo(
+    () => [...parentIdsWithChildren].sort().join(','),
+    [parentIdsWithChildren]
+  );
+
+  useEffect(() => {
+    if (activeTab !== 'accounts') return;
+    setCollapsedGroupIds(new Set(parentIdsWithChildren));
+  }, [activeTab, parentCollapseKey, accountsViewMode, showSubAccounts]);
 
   useEffect(() => {
     if (!coaPartyPanelAccountId || !companyId) {
@@ -1373,7 +1395,7 @@ export const AccountingDashboard = () => {
                       {journalViewMode === 'grouped'
                         ? (paginatedJournalEntries as JournalGroup[]).map((group) => {
                             const entry = group.primary;
-                            const referenceNumber = entry.referenceNo || (entry.metadata as any)?.paymentId?.substring(0, 8) || entry.id?.substring(0, 8) || 'N/A';
+                            const voucherLabel = journalVoucherLabel(entry);
                             const module = entry.module || 'Accounting';
                             const amount = groupedDocumentDisplayAmount(group);
                             const paymentMethod = (entry.metadata as any)?.paymentMethod || 'N/A';
@@ -1405,7 +1427,7 @@ export const AccountingDashboard = () => {
                                 onClick={() => {
                                   if (busy) return;
                                   setTransactionDetailAutoEdit(false);
-                                  setTransactionReference(referenceNumber);
+                                  setTransactionReference(entry.id);
                                   setSelectedGroupEntries(group.entries);
                                 }}
                               >
@@ -1434,12 +1456,12 @@ export const AccountingDashboard = () => {
                                       e.stopPropagation();
                                       if (busy) return;
                                       setTransactionDetailAutoEdit(false);
-                                      setTransactionReference(referenceNumber);
+                                      setTransactionReference(entry.id);
                                       setSelectedGroupEntries(group.entries);
                                     }}
                                     className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium disabled:opacity-40"
                                   >
-                                    {referenceNumber}
+                                    {voucherLabel}
                                     {adjustmentCount > 0 && (
                                       <span className="ml-1.5 text-gray-500 font-normal">(+{adjustmentCount})</span>
                                     )}
@@ -1515,11 +1537,7 @@ export const AccountingDashboard = () => {
                                               if (busy) return;
                                               setSelectedGroupEntries(group.entries);
                                               setTransactionDetailAutoEdit(false);
-                                              setTransactionReference(
-                                                lockPaymentChainReverse
-                                                  ? chainTailEntry?.referenceNo || entry.referenceNo || entry.id
-                                                  : entry.referenceNo || entry.id
-                                              );
+                                              setTransactionReference(entry.id);
                                             }}
                                             title="Open journal detail (read-only)"
                                           >
@@ -1662,7 +1680,7 @@ export const AccountingDashboard = () => {
                             );
                           })
                         : (paginatedJournalEntries as AccountingEntry[]).map((entry) => {
-                            const referenceNumber = entry.referenceNo || (entry.metadata as any)?.paymentId?.substring(0, 8) || entry.id?.substring(0, 8) || 'N/A';
+                            const voucherLabel = journalVoucherLabel(entry);
                             const module = entry.module || 'Accounting';
                             const amount = entry.amount || 0;
                             const paymentMethod = (entry.metadata as any)?.paymentMethod || 'N/A';
@@ -1671,12 +1689,6 @@ export const AccountingDashboard = () => {
                             const acFlat = journalEntryAccountPair(entry);
                             const allowUnifiedEditFlat = allowsGenericAccountingUnifiedEdit(entry);
                             const sourceOpenFlat = getJournalEntrySourceDocumentOpenTarget(entry);
-                            const flatTailJournalId = entry.metadata?.paymentChainTailJournalId ?? null;
-                            const lockFlatPaymentChainReverse = Boolean(entry.metadata?.paymentChainIsHistorical);
-                            const flatDetailRef =
-                              lockFlatPaymentChainReverse && flatTailJournalId
-                                ? flatTailJournalId
-                                : entry.referenceNo || entry.id;
                             const journalReverseBlockReasonFlat = journalReversalBlockedReason(
                               {
                                 reference_type: entry.metadata?.referenceType,
@@ -1689,6 +1701,7 @@ export const AccountingDashboard = () => {
                               undefined
                             );
                             const allowJournalReversalUiFlat = !journalReverseBlockReasonFlat;
+                            const lockFlatPaymentChainReverse = Boolean(entry.metadata?.paymentChainIsHistorical);
                             return (
                               <tr
                                 key={entry.id}
@@ -1696,7 +1709,7 @@ export const AccountingDashboard = () => {
                                 onClick={() => {
                                   if (busy) return;
                                   setTransactionDetailAutoEdit(false);
-                                  setTransactionReference(flatDetailRef);
+                                  setTransactionReference(entry.id);
                                   setSelectedGroupEntries(null);
                                 }}
                               >
@@ -1725,12 +1738,12 @@ export const AccountingDashboard = () => {
                                       e.stopPropagation();
                                       if (busy) return;
                                       setTransactionDetailAutoEdit(false);
-                                      setTransactionReference(flatDetailRef);
+                                      setTransactionReference(entry.id);
                                       setSelectedGroupEntries(null);
                                     }}
                                     className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium"
                                   >
-                                    {referenceNumber}
+                                    {voucherLabel}
                                   </button>
                                 </td>
                                 <td className="px-4 py-3">
@@ -1801,7 +1814,7 @@ export const AccountingDashboard = () => {
                                               if (busy) return;
                                               setSelectedGroupEntries(null);
                                               setTransactionDetailAutoEdit(false);
-                                              setTransactionReference(flatDetailRef);
+                                              setTransactionReference(entry.id);
                                             }}
                                             title="Open journal detail (read-only)"
                                           >
@@ -2040,7 +2053,7 @@ export const AccountingDashboard = () => {
                 <h3 className="text-lg font-bold text-white">Accounts</h3>
                 <p className="text-sm text-gray-400">
                   {accountsViewMode === 'operational'
-                    ? 'Operational View: Cash, Bank, Wallet, expense/income, AR/AP, worker payables & advances — party names on sub-accounts'
+                    ? 'Operational View: Cash, Bank, Wallet, expense/income, AR/AP, worker payables & advances, Committees & Dasti (1170), partner equity (3003/3005) — expand rows with the chevron'
                     : 'Professional View: Full Chart of Accounts'}
                 </p>
               </div>
@@ -2251,6 +2264,12 @@ export const AccountingDashboard = () => {
                     setEditingAccount={setEditingAccount}
                     setIsEditAccountOpen={setIsEditAccountOpen}
                     setCurrentView={setCurrentView}
+                    canPostAccounting={canPostAccounting}
+                    onTransferBalance={(accountId) => {
+                      setTransferFromAccountId(accountId);
+                      setAddEntryInitialType('internal_transfer');
+                      setAddEntryFlowOpen(true);
+                    }}
                     onOpenAccountStatements={(accountId) => {
                       setAccountStatementPreselectId(accountId);
                       setActiveTab('account_statements');
@@ -2517,9 +2536,11 @@ export const AccountingDashboard = () => {
       {addEntryFlowOpen && USE_ADD_ENTRY_V2 && (
         <AddEntryV2
           initialEntryType={addEntryInitialType}
+          initialFromAccountId={transferFromAccountId ?? undefined}
           onClose={() => {
             setAddEntryFlowOpen(false);
             setAddEntryInitialType(undefined);
+            setTransferFromAccountId(null);
             accounting.refreshEntries();
           }}
         />

@@ -223,6 +223,8 @@ async function loadJournalEntryForDetail(
     jeQuery = jeQuery
       .eq('reference_id', referenceId)
       .in('reference_type', ['stock_adjustment', 'inventory', 'stock_movement']);
+  } else if (referenceType === 'payment' || referenceType === 'expense_payment') {
+    jeQuery = jeQuery.eq('payment_id', referenceId);
   } else {
     jeQuery = jeQuery.eq('reference_id', referenceId);
   }
@@ -318,20 +320,27 @@ export async function getTransactionDetail(
         if (ru) sourceAttachments = [{ url: ru, name: 'Receipt' }];
       }
     } else if (referenceType === 'payment' || referenceType === 'expense_payment') {
-      const { data } = await supabase
+      const { data, error: payErr } = await supabase
         .from('payments')
-        .select('payment_no, amount, payment_method, reference_number, payment_date, notes, status, attachments')
+        .select(
+          'amount, payment_method, payment_type, reference_type, reference_number, payment_date, notes, attachments, contact_id, voided_at',
+        )
         .eq('id', referenceId)
         .maybeSingle();
+      if (payErr && import.meta.env.DEV) {
+        console.warn('[transactionDetail] payments header query failed:', payErr.message);
+      }
       if (data) {
+        const refNo = String(data.reference_number ?? '').trim();
         headerMeta = {
-          'Payment #': String(data.payment_no ?? ''),
+          'Payment #': refNo || '—',
           Amount: Number(data.amount) || 0,
           Method: String(data.payment_method ?? ''),
-          Reference: String(data.reference_number ?? ''),
+          Type: String(data.payment_type ?? ''),
+          'Doc type': String(data.reference_type ?? '').replace(/_/g, ' '),
           Date: data.payment_date ? String(data.payment_date).slice(0, 10) : '',
           Notes: String(data.notes ?? ''),
-          Status: String(data.status ?? ''),
+          Status: data.voided_at ? 'Voided' : 'Active',
         };
         const att = normalizeAttachments((data as { attachments?: unknown }).attachments);
         if (att.length) sourceAttachments = att;

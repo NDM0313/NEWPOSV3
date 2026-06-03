@@ -263,7 +263,14 @@ export function AccountsModule({
     );
   }
   if (view === 'chart') {
-    return <ChartOfAccountsView key={`chart-${reportRefreshEpoch}`} onBack={() => setView('dashboard')} onAddAccount={() => setView('add-account')} companyId={companyId ?? null} />;
+    return (
+      <ChartOfAccountsView
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={() => setView('dashboard')}
+        onAddAccount={() => setView('add-account')}
+        companyId={companyId ?? null}
+      />
+    );
   }
   if (view === 'add-account') {
     return <AddAccountForm companyId={companyId ?? null} onBack={() => setView('chart')} onSuccess={() => setView('chart')} />;
@@ -300,7 +307,7 @@ export function AccountsModule({
   if (view === 'account-ledger') {
     return (
       <AccountLedgerReport
-        key={`account-ledger-${reportRefreshEpoch}`}
+        reportRefreshEpoch={reportRefreshEpoch}
         onBack={() => {
           setLedgerInitialAccountId(null);
           backToReports();
@@ -315,7 +322,7 @@ export function AccountsModule({
   if (view === 'customer-ledger') {
     return (
       <PartyLedgerReport
-        key={`customer-ledger-${reportRefreshEpoch}`}
+        reportRefreshEpoch={reportRefreshEpoch}
         onBack={backFromPartyLedger}
         kind="customer"
         companyId={companyId ?? null}
@@ -327,7 +334,7 @@ export function AccountsModule({
   if (view === 'supplier-ledger') {
     return (
       <PartyLedgerReport
-        key={`supplier-ledger-${reportRefreshEpoch}`}
+        reportRefreshEpoch={reportRefreshEpoch}
         onBack={backToReports}
         kind="supplier"
         companyId={companyId ?? null}
@@ -339,7 +346,7 @@ export function AccountsModule({
   if (view === 'worker-ledger') {
     return (
       <PartyLedgerReport
-        key={`worker-ledger-${reportRefreshEpoch}`}
+        reportRefreshEpoch={reportRefreshEpoch}
         onBack={backToReports}
         kind="worker"
         companyId={companyId ?? null}
@@ -349,12 +356,20 @@ export function AccountsModule({
     );
   }
   if (view === 'daybook') {
-    return <DayBookReport key={`daybook-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+    return (
+      <DayBookReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        user={user}
+      />
+    );
   }
   if (view === 'cash-summary') {
     return (
       <AccountSummaryReport
-        key={`cash-summary-${reportRefreshEpoch}`}
+        reportRefreshEpoch={reportRefreshEpoch}
         onBack={backToReports}
         companyId={companyId ?? null}
         user={user}
@@ -367,7 +382,7 @@ export function AccountsModule({
   if (view === 'bank-summary') {
     return (
       <AccountSummaryReport
-        key={`bank-summary-${reportRefreshEpoch}`}
+        reportRefreshEpoch={reportRefreshEpoch}
         onBack={backToReports}
         companyId={companyId ?? null}
         user={user}
@@ -380,7 +395,7 @@ export function AccountsModule({
   if (view === 'wallet-summary') {
     return (
       <AccountSummaryReport
-        key={`wallet-summary-${reportRefreshEpoch}`}
+        reportRefreshEpoch={reportRefreshEpoch}
         onBack={backToReports}
         companyId={companyId ?? null}
         user={user}
@@ -393,7 +408,7 @@ export function AccountsModule({
   if (view === 'payables') {
     return (
       <AgingReport
-        key={`payables-${reportRefreshEpoch}`}
+        reportRefreshEpoch={reportRefreshEpoch}
         onBack={backFromPartyReport}
         kind="payables"
         companyId={companyId ?? null}
@@ -405,7 +420,7 @@ export function AccountsModule({
   if (view === 'receivables') {
     return (
       <AgingReport
-        key={`receivables-${reportRefreshEpoch}`}
+        reportRefreshEpoch={reportRefreshEpoch}
         onBack={backFromPartyReport}
         kind="receivables"
         companyId={companyId ?? null}
@@ -415,30 +430,69 @@ export function AccountsModule({
     );
   }
   if (view === 'sales-report') {
-    return <SalesReport key={`sales-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+    return (
+      <SalesReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        user={user}
+      />
+    );
   }
   if (view === 'studio-sales') {
-    return <SalesReport key={`studio-sales-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} isStudio />;
+    return (
+      <SalesReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        user={user}
+        isStudio
+      />
+    );
   }
   if (view === 'purchase-report') {
-    return <PurchaseReport key={`purchase-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+    return (
+      <PurchaseReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        user={user}
+      />
+    );
   }
   if (view === 'expense-report') {
-    return <ExpenseReport key={`expense-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} branchId={branch?.id ?? null} user={user} />;
+    return (
+      <ExpenseReport
+        reportRefreshEpoch={reportRefreshEpoch}
+        onBack={backToReports}
+        companyId={companyId ?? null}
+        branchId={branch?.id ?? null}
+        user={user}
+      />
+    );
   }
   if (view === 'studio-report') {
-    return <StudioReport key={`studio-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} user={user} />;
+    return (
+      <StudioReport reportRefreshEpoch={reportRefreshEpoch} onBack={backToReports} companyId={companyId ?? null} user={user} />
+    );
   }
   if (view === 'rental-report') {
-    return <RentalReport key={`rental-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} user={user} />;
+    return (
+      <RentalReport reportRefreshEpoch={reportRefreshEpoch} onBack={backToReports} companyId={companyId ?? null} user={user} />
+    );
   }
   if (view === 'inventory-report') {
-    return <InventoryReport key={`inventory-report-${reportRefreshEpoch}`} onBack={backToReports} companyId={companyId ?? null} user={user} />;
+    return (
+      <InventoryReport reportRefreshEpoch={reportRefreshEpoch} onBack={backToReports} companyId={companyId ?? null} user={user} />
+    );
   }
   if (view === 'courier-shipments') {
     return (
       <CourierShipmentsReport
-        key={`courier-shipments-${reportRefreshEpoch}`}
+        reportRefreshEpoch={reportRefreshEpoch}
         onBack={backToReports}
         companyId={companyId ?? null}
         branchId={branch?.id ?? null}

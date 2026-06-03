@@ -48,6 +48,29 @@ export type OperationalLedgerRole =
   | 'receivable'
   | 'payable';
 
+/**
+ * Operational COA extensions (company-specific running ledgers seeded via migration).
+ * Keeps Operational view focused — not all asset/equity rows.
+ * @see migrations/20260613140000_committees_dasti_equity_opening_coa.sql
+ */
+export const OPERATIONAL_EXTENDED_COA_CODES = {
+  committeeGroup: '1170',
+  equityPartner: ['3003', '3005'] as const,
+} as const;
+
+/** Committees & Dasti group + leaves 1171–1177, 1181–1187 (1180 = Worker Advance elsewhere). */
+export function isOperationalExtendedCoaCode(code: string | null | undefined): boolean {
+  const c = String(code ?? '').trim();
+  if (!c) return false;
+  if (c === OPERATIONAL_EXTENDED_COA_CODES.committeeGroup) return true;
+  if ((OPERATIONAL_EXTENDED_COA_CODES.equityPartner as readonly string[]).includes(c)) return true;
+  const n = Number.parseInt(c, 10);
+  if (!Number.isFinite(n)) return false;
+  if (n >= 1171 && n <= 1177) return true;
+  if (n >= 1181 && n <= 1187) return true;
+  return false;
+}
+
 export interface AccountRow {
   id: string;
   company_id?: string;

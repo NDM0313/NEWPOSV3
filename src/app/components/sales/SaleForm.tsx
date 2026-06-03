@@ -43,6 +43,7 @@ import {
 import { format, parseISO } from "date-fns";
 import { buildNotesWithStudioDeadline, parseStudioDeadlineFromNotes, getStudioDeadlineFromNotes } from "@/app/utils/studioDeadlineNotes";
 import { readSaleBillRef } from "@/app/utils/saleBillRef";
+import { canAssignSaleCommission } from '@/app/lib/executiveDashboardAccess';
 import { cn, formatDateWithTimezone } from "../ui/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -250,6 +251,23 @@ function mergeOverviewStockIntoSaleProducts(
   });
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function savedBranchFromSale(sale: Sale | undefined): string {
+  if (!sale) return '';
+  const loc = (sale as { location?: string; branchId?: string }).location
+    ?? (sale as { branchId?: string }).branchId;
+  const s = loc != null ? String(loc).trim() : '';
+  return s && s !== 'all' && UUID_RE.test(s) ? s : '';
+}
+
+function savedSalesmanFromSale(sale: Sale | undefined): string {
+  if (!sale) return '1';
+  const sid = (sale as { salesmanId?: string | null }).salesmanId;
+  if (!sid || sid === 'none' || sid === '1') return 'none';
+  return String(sid);
+}
+
 export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFormProps) => {
     useEffect(() => {
         if (!initialSale?.id || !convertToFinal) return;
@@ -293,6 +311,38 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
 
     // Permission-based: settings access allows branch selection and full branch list (was role === 'admin')
     const isAdmin = canManageSettings;
+    const canAssignCommission = canAssignSaleCommission(userRole);
+    const [erpUserId, setErpUserId] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!user?.id || !companyId) {
+            setErpUserId(null);
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            try {
+                const { supabase } = await import('@/lib/supabase');
+                const { data: byAuth } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('auth_user_id', user.id)
+                    .maybeSingle();
+                if (cancelled) return;
+                if (byAuth?.id) {
+                    setErpUserId(String(byAuth.id));
+                    return;
+                }
+                const { data: byId } = await supabase.from('users').select('id').eq('id', user.id).maybeSingle();
+                if (!cancelled && byId?.id) setErpUserId(String(byId.id));
+            } catch {
+                if (!cancelled) setErpUserId(null);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [user?.id, companyId]);
     
     // Data State
     const [customers, setCustomers] = useState<Array<{ id: number | string; name: string; dueBalance: number }>>([]);
@@ -348,7 +398,12 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     const [invoiceNumber, setInvoiceNumber] = useState("");
     
     // Branch State - Locked for regular users, open for admin
-    const [branchId, setBranchId] = useState<string>(contextBranchId || '');
+    const [branchId, setBranchId] = useState<string>(() => {
+      const saved = savedBranchFromSale(initialSale);
+      if (saved) return saved;
+      const ctx = contextBranchId || '';
+      return ctx && ctx !== 'all' ? ctx : '';
+    });
     const [branches, setBranches] = useState<Branch[]>([]);
 
     // Legacy picker used synthetic id "walk-in"; resolve to real `contacts` row (matches Contacts page)
@@ -459,32 +514,29 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
     // For normal users: auto-assign to logged-in user
     // For admin: allow selection
     const [salesmanId, setSalesmanId] = useState<string>(() => {
-      // TASK 4 FIX - Auto-assign to logged-in user if not admin
-      if (!isAdmin && user) {
-        // Find user in salesmen list or add them
-        const userSalesman = salesmen.find(s => s.name === user.email || s.name === (user.user_metadata?.full_name || ''));
-        return userSalesman ? userSalesman.id.toString() : "1"; // Default to "No Salesman" if not found
-      }
-      return "1"; // Default to "No Salesman" for admin
+      if (initialSale?.id) return savedSalesmanFromSale(initialSale);
+      return '1';
     });
     const [commissionType, setCommissionType] = useState<'percentage' | 'fixed'>('percentage');
     const [commissionValue, setCommissionValue] = useState<number>(0);
     
-    // TASK 4 FIX - Auto-assign salesman for non-admin when creating sale: match by user id first, then by name
+    // Auto-assign salesman for workers: match public.users.id (erp profile), then name fallback
     useEffect(() => {
-      if (!isAdmin && user && (salesmanId === "1" || salesmanId === "none")) {
-        const byId = salesmen.find(s => s.id === (user as any).id);
-        const byName = !byId && salesmen.find(s =>
-          s.name === (user as any).email ||
-          s.name === ((user as any).user_metadata?.full_name || '') ||
-          s.name === ((user as any).user_metadata?.name || '')
+      if (canAssignCommission || initialSale?.id) return;
+      if (salesmanId !== "1" && salesmanId !== "none") return;
+      const byProfile = erpUserId ? salesmen.find((s) => s.id === erpUserId) : undefined;
+      const byName =
+        !byProfile &&
+        user &&
+        salesmen.find(
+          (s) =>
+            s.name === (user as { email?: string }).email ||
+            s.name === ((user as { user_metadata?: { full_name?: string; name?: string } }).user_metadata?.full_name || '') ||
+            s.name === ((user as { user_metadata?: { full_name?: string; name?: string } }).user_metadata?.name || ''),
         );
-        const userSalesman = byId || byName;
-        if (userSalesman) {
-          setSalesmanId(userSalesman.id.toString());
-        }
-      }
-    }, [isAdmin, user, salesmanId, salesmen]);
+      const match = byProfile || byName;
+      if (match) setSalesmanId(match.id.toString());
+    }, [canAssignCommission, initialSale?.id, erpUserId, user, salesmanId, salesmen]);
 
     // When a salesman is selected on a NEW sale, auto-fill commission from their default % (admin can override per invoice)
     // On edit we do not overwrite: saved commission stays until user changes it
@@ -997,7 +1049,17 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
         if (!branches.length) return;
         const ids = isAdmin ? branches.map((b: Branch) => String(b.id)) : accessibleBranchIds.map((id: string) => String(id));
         const filtered = branches.filter((b: Branch) => ids.includes(String(b.id)));
+        const savedEditBranch = initialSale?.id ? savedBranchFromSale(initialSale) : '';
         setBranchId((prev) => {
+            if (initialSale?.id && savedEditBranch && ids.includes(String(savedEditBranch))) {
+                return savedEditBranch;
+            }
+            if (initialSale?.id && prev && prev !== 'all' && UUID_RE.test(String(prev)) && ids.includes(String(prev))) {
+                return prev;
+            }
+            if (initialSale?.id) {
+                return prev;
+            }
             if (filtered.length === 1) return filtered[0].id;
             if (contextBranchId && contextBranchId !== 'all' && ids.includes(String(contextBranchId))) return contextBranchId;
             if (!prev || prev === 'all') {
@@ -1007,7 +1069,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
             if (ids.length && !ids.includes(String(prev))) return ids[0]; // current selection not in accessible, pick first
             return prev;
         });
-    }, [branches, accessibleBranchIds, isAdmin, contextBranchId]);
+    }, [branches, accessibleBranchIds, isAdmin, contextBranchId, initialSale?.id]);
 
     // Refresh product stock when branch changes (after initial bootstrap)
     useEffect(() => {
@@ -1584,6 +1646,31 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             setPaymentsLoading(false);
                         }
                         paymentsHydratedRef.current = true;
+
+                        const fullBranchId = (full as { branch_id?: string }).branch_id;
+                        if (fullBranchId && UUID_RE.test(String(fullBranchId))) {
+                            setBranchId(String(fullBranchId));
+                        }
+                        const fullSalesmanId = (full as { salesman_id?: string | null }).salesman_id;
+                        setSalesmanId(
+                            fullSalesmanId && fullSalesmanId !== 'none' && fullSalesmanId !== '1'
+                                ? String(fullSalesmanId)
+                                : 'none',
+                        );
+                        const fullSubtotal = Number((full as { subtotal?: number }).subtotal) || Number(initialSale?.subtotal) || 0;
+                        const fullPct = (full as { commission_percent?: number | null }).commission_percent;
+                        const fullCommAmt = Number((full as { commission_amount?: number }).commission_amount) || 0;
+                        if (fullPct != null && Number.isFinite(Number(fullPct))) {
+                            setCommissionType('percentage');
+                            setCommissionValue(Number(fullPct));
+                        } else if (fullCommAmt > 0 && fullSubtotal > 0) {
+                            setCommissionType('percentage');
+                            setCommissionValue(Math.round((fullCommAmt / fullSubtotal) * 10000) / 100);
+                        } else if (fullCommAmt > 0) {
+                            setCommissionType('fixed');
+                            setCommissionValue(fullCommAmt);
+                        }
+
                         if (import.meta.env?.DEV) {
                             const sampleItem = full.items?.[0];
                             const cd = sampleItem?.customization_details ?? sampleItem?.customizationDetails;
@@ -2647,6 +2734,7 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                 replaceSaleCharges: true,
                 shippingCharges: effectiveShippingCharges,
                 commissionAmount: commissionAmount,
+                commissionEligibleAmount: subtotal,
                 salesmanId: (salesmanId && salesmanId !== "1" && salesmanId !== "none") ? salesmanId : null,
                 commissionPercent: commissionType === 'percentage' ? commissionValue : null,
                 // CRITICAL FIX: Pass partialPayments array for splitting into separate payment records
@@ -2982,8 +3070,8 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                             </PopoverContent>
                         </Popover>
 
-                        {/* Salesman: only admin sees selector; salesman sees read-only label */}
-                        {isAdmin ? (
+                        {/* Salesman: admin/owner picker; workers auto-assigned read-only */}
+                        {canAssignCommission ? (
                             <Popover open={salesmanDropdownOpen} onOpenChange={setSalesmanDropdownOpen}>
                                 <PopoverTrigger asChild>
                                     <button
@@ -3816,7 +3904,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                     <Select
                                                         value={commissionType}
                                                         onValueChange={(v: any) => setCommissionType(v)}
-                                                        disabled={!!(salesmanId && salesmanId !== '1' && salesmanId !== 'none')}
+                                                        disabled={
+                                                          !canAssignCommission &&
+                                                          !!(salesmanId && salesmanId !== '1' && salesmanId !== 'none')
+                                                        }
                                                     >
                                                         <SelectTrigger className="w-12 h-6 bg-gray-950 border-gray-700 text-white text-[10px] px-1">
                                                             <SelectValue />
@@ -3833,7 +3924,10 @@ export const SaleForm = ({ sale: initialSale, convertToFinal, onClose }: SaleFor
                                                         className="w-16 h-6 bg-gray-950 border-gray-700 text-white text-xs text-right px-2"
                                                         value={commissionValue === 0 ? 0 : commissionValue}
                                                         onChange={(e) => setCommissionValue(parseFloat(e.target.value) || 0)}
-                                                        disabled={!!(salesmanId && salesmanId !== '1' && salesmanId !== 'none')}
+                                                        disabled={
+                                                          !canAssignCommission &&
+                                                          !!(salesmanId && salesmanId !== '1' && salesmanId !== 'none')
+                                                        }
                                                     />
                                                 </div>
                                             </div>

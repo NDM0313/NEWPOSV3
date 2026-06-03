@@ -12,6 +12,9 @@ import { useSettings } from '../../context/SettingsContext';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { getDashboardMetrics, type FinancialDashboardMetrics } from '../../services/financialDashboardService';
 import { getBusinessAlerts, type BusinessAlert } from '../../services/businessAlertsService';
+import { canViewExecutiveDashboard } from '@/app/lib/executiveDashboardAccess';
+import { productService } from '@/app/services/productService';
+import { safeRpcBranchId } from '@/app/lib/safeRpcBranchId';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 import { businessService } from '../../services/businessService';
 
@@ -190,6 +193,7 @@ export const Dashboard = () => {
   const accounting = useAccountingOptional();
   const {
     user,
+    userRole,
     companyId,
     signOut,
     profileLoadComplete,
@@ -204,6 +208,7 @@ export const Dashboard = () => {
   const { formatCurrency } = useFormatCurrency();
   const globalFilter = useGlobalFilter();
   const { startDate, endDate, startDateObj, endDateObj, setCurrentModule } = globalFilter;
+  const canExecutive = canViewExecutiveDashboard(userRole);
 
   useEffect(() => {
     setCurrentModule('dashboard');
@@ -221,10 +226,12 @@ export const Dashboard = () => {
     getBusinessAlerts(companyId).then(setAlerts).catch(() => setAlerts([]));
   }, [companyId]);
 
-  // Consolidated dashboard: 1 RPC (get_dashboard_metrics) → metrics + sales_by_category + low_stock; fallback to separate calls
+  // Executive dashboard RPC — admin/owner only
   useEffect(() => {
-    if (!companyId) {
-      setLoading(false);
+    if (!companyId || !canExecutive) {
+      setFinancialMetrics(null);
+      setSalesByCategory([]);
+      if (!canExecutive) setLoading(false);
       return;
     }
     setLoading(true);
@@ -251,7 +258,27 @@ export const Dashboard = () => {
         setLowStockProducts([]);
       })
       .finally(() => setLoading(false));
-  }, [companyId, startDate, endDate, globalFilter.branchId]);
+  }, [companyId, startDate, endDate, globalFilter.branchId, canExecutive]);
+
+  // Low stock for non-executive roles (no get_dashboard_metrics)
+  useEffect(() => {
+    if (!companyId || canExecutive) return;
+    const branchId = safeRpcBranchId(globalFilter.branchId ?? null);
+    productService
+      .getLowStockProducts(companyId, branchId)
+      .then((rows) =>
+        setLowStockProducts(
+          (rows || []).slice(0, 5).map((p: { id: string; name?: string; sku?: string; current_stock?: number; min_stock?: number }) => ({
+            id: p.id,
+            name: p.name,
+            sku: p.sku,
+            current_stock: p.current_stock,
+            min_stock: p.min_stock,
+          }))
+        )
+      )
+      .catch(() => setLowStockProducts([]));
+  }, [companyId, globalFilter.branchId, canExecutive]);
 
   // Filter data by global date range
   const filterByDateRange = useCallback((dateStr: string | undefined): boolean => {
@@ -571,7 +598,15 @@ export const Dashboard = () => {
         </div>
       )}
 
-      {/* Executive financial summary (Phase-2 Intelligence) */}
+      {!canExecutive && (
+        <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
+          <p className="text-sm text-[#9CA3AF]">
+            Executive financial dashboard (company sales, cash/bank, GL receivables/payables) is available to Admin and Owner only.
+          </p>
+        </div>
+      )}
+
+      {canExecutive && (
       <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
         <h3 className="text-lg font-bold text-white mb-1">Executive summary</h3>
         <p className="text-xs text-[#9CA3AF] mb-4">
@@ -655,6 +690,7 @@ export const Dashboard = () => {
           </>
         )}
       </div>
+      )}
 
       {/* Quick access: module cards (same visibility as sidebar, including POS) */}
       <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
@@ -678,7 +714,7 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      {/* Same source as executive summary (displayMetrics): GL-party AR/AP from get_contact_party_gl_balances roll-up; profit/revenue from period context — not canonical P&L */}
+      {canExecutive && (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <StatCard 
           title="Receivables (operational)" 
@@ -713,6 +749,7 @@ export const Dashboard = () => {
           iconColor="text-[#8B5CF6]"
         />
       </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
@@ -773,6 +810,7 @@ export const Dashboard = () => {
             )}
           </div>
 
+          {canExecutive && (
           <div className="bg-[#111827]/50 border border-[#374151] p-6 rounded-xl">
              <h3 className="text-lg font-bold text-white mb-6">Sales by Category</h3>
              {loading ? (
@@ -805,6 +843,7 @@ export const Dashboard = () => {
                </div>
              )}
           </div>
+          )}
         </div>
       </div>
     </div>

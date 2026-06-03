@@ -6,7 +6,6 @@ import {
   Plus, 
   TrendingUp, 
   TrendingDown, 
-  DollarSign, 
   MoreVertical,
   Eye,
   Pencil,
@@ -21,7 +20,8 @@ import { cn } from "../ui/utils";
 import { AddExpenseDrawer } from './AddExpenseDrawer';
 import { AddCategoryModal } from './AddCategoryModal';
 import { ExpenseCategoryTreePanel } from './ExpenseCategoryTreePanel';
-import { expenseMatchesMainFilter } from '@/app/lib/expenseCategoryTreeUtils';
+import { ExpenseDetailSheet } from './ExpenseDetailSheet';
+import { expenseMatchesMainFilter, findPathToCategory, formatCategoryPathFromNodes } from '@/app/lib/expenseCategoryTreeUtils';
 import { Badge } from "../ui/badge";
 import {
   DropdownMenu,
@@ -30,7 +30,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import { Sheet, SheetContent } from "../ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,6 +58,17 @@ import {
   logExpenseListTrace,
   setExpenseListDiagnosticsEnabled,
 } from '@/app/lib/expenseListDiagnostics';
+
+function isInCurrentCalendarMonth(dateStr: string): boolean {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+
+function paymentDisplayForExpense(expense: { paymentAccountDisplay?: string; paymentMethod?: string }): string {
+  return expense.paymentAccountDisplay || expense.paymentMethod || '—';
+}
 
 const getCategoryBadgeStyle = (category: string) => {
   switch (category) {
@@ -143,6 +153,71 @@ export const ExpensesDashboard = () => {
     return expenses.filter((e) => !reversedExpenseIds.has(e.id));
   }, [expenses, reversedExpenseIds, showReversedExpenses]);
 
+  const monthExpenses = useMemo(
+    () => operationalExpenses.filter((e) => isInCurrentCalendarMonth(e.date)),
+    [operationalExpenses],
+  );
+
+  const accountFilterOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    operationalExpenses.forEach((e) => {
+      const id = e.paymentAccountId;
+      if (id) {
+        const acc = accounts.find((a) => a.id === id);
+        byId.set(id, e.paymentAccountDisplay || (acc ? `${acc.code} — ${acc.name}` : id));
+      }
+    });
+    return [...byId.entries()]
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [operationalExpenses, accounts]);
+
+  const monthCategoryBreakdown = useMemo(() => {
+    const map = new Map<string, { label: string; count: number; amount: number; categoryFilter: string }>();
+    monthExpenses.forEach((e) => {
+      const catId = (e as { expense_category_id?: string }).expense_category_id;
+      const pathNodes = catId ? findPathToCategory(categoriesFromDb, catId) : null;
+      const label = pathNodes?.length
+        ? formatCategoryPathFromNodes(pathNodes)
+        : (e.category || 'Other');
+      const key = catId || label;
+      const existing = map.get(key) || {
+        label,
+        count: 0,
+        amount: 0,
+        categoryFilter: pathNodes?.[0]?.name || e.category || 'Other',
+      };
+      existing.count += 1;
+      existing.amount += e.amount || 0;
+      map.set(key, existing);
+    });
+    return [...map.values()].sort((a, b) => b.amount - a.amount);
+  }, [monthExpenses, categoriesFromDb]);
+
+  const priorMonthTotal = useMemo(() => {
+    const now = new Date();
+    const priorMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+    const priorYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    return operationalExpenses
+      .filter((e) => {
+        const d = new Date(e.date);
+        return d.getFullYear() === priorYear && d.getMonth() === priorMonth;
+      })
+      .reduce((s, e) => s + (e.amount || 0), 0);
+  }, [operationalExpenses]);
+
+  const monthTotal = useMemo(
+    () => monthExpenses.reduce((sum, e) => sum + (e.amount || 0), 0),
+    [monthExpenses],
+  );
+
+  const selectedExpenseCategoryPath = useMemo(() => {
+    if (!selectedExpense) return undefined;
+    const catId = (selectedExpense as { expense_category_id?: string }).expense_category_id;
+    const path = catId ? findPathToCategory(categoriesFromDb, catId) : null;
+    return path?.length ? formatCategoryPathFromNodes(path) : undefined;
+  }, [selectedExpense, categoriesFromDb]);
+
   // 🎯 NEW: Action Handlers
   const handleExpenseAction = (expense: any, action: string) => {
     setSelectedExpense(expense);
@@ -223,26 +298,32 @@ export const ExpensesDashboard = () => {
     setIsCategoryModalOpen(true);
   };
 
-  // Calculate chart data from real expenses
+  // Calculate chart data from this month's expenses
   const chartData = useMemo(() => {
     const categoryTotals: Record<string, number> = {};
-    operationalExpenses.forEach(exp => {
-      const cat = exp.category || 'Other';
+    monthExpenses.forEach(exp => {
+      const catId = (exp as { expense_category_id?: string }).expense_category_id;
+      const pathNodes = catId ? findPathToCategory(categoriesFromDb, catId) : null;
+      const cat = pathNodes?.length
+        ? formatCategoryPathFromNodes(pathNodes)
+        : (exp.category || 'Other');
       categoryTotals[cat] = (categoryTotals[cat] || 0) + (exp.amount || 0);
     });
     
     const colors = ['#3B82F6', '#8B5CF6', '#F97316', '#9CA3AF', '#10B981', '#EF4444'];
-    return Object.entries(categoryTotals).map(([name, value], index) => ({
-      name,
-      value,
-      color: colors[index % colors.length],
-    }));
-  }, [operationalExpenses]);
+    return Object.entries(categoryTotals)
+      .map(([name, value], index) => ({
+        name,
+        value,
+        color: colors[index % colors.length],
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [monthExpenses, categoriesFromDb]);
 
-  // Total expense amount for Expense Breakdown center display (from real DB)
+  // Total expense amount for Expense Breakdown center display (this month)
   const totalExpenseAmount = useMemo(
-    () => operationalExpenses.reduce((sum, e) => sum + (e.amount || 0), 0),
-    [operationalExpenses]
+    () => monthTotal,
+    [monthTotal]
   );
 
   const categoryFilterOptions = useMemo(() => {
@@ -256,11 +337,12 @@ export const ExpensesDashboard = () => {
 
   const operationalForCategoryCounts = useMemo(
     () =>
-      operationalExpenses.map((e) => ({
+      monthExpenses.map((e) => ({
         category: e.category,
         expense_category_id: (e as { expense_category_id?: string }).expense_category_id,
+        amount: e.amount,
       })),
-    [operationalExpenses],
+    [monthExpenses],
   );
 
   // Filtered expenses (search, category, account, date range)
@@ -292,9 +374,10 @@ export const ExpensesDashboard = () => {
         }
       }
 
-      // Account filter
-      if (!filterReason && accountFilter !== 'all' && (expense.paymentMethod || '') !== accountFilter) {
-        filterReason = 'account_filter_mismatch';
+      // Account filter (by payment_account_id)
+      if (!filterReason && accountFilter !== 'all') {
+        const payId = expense.paymentAccountId;
+        if (payId !== accountFilter) filterReason = 'account_filter_mismatch';
       }
 
       // Date filter (From Date – To Date)
@@ -395,7 +478,7 @@ export const ExpensesDashboard = () => {
       e.expenseNo || '—',
       e.category,
       e.description,
-      e.paymentMethod,
+      paymentDisplayForExpense(e),
       e.amount ?? 0,
       e.status ?? '',
     ]),
@@ -498,7 +581,7 @@ export const ExpensesDashboard = () => {
                 <div>
                   <p className="text-gray-400 text-sm font-medium">Total Monthly Expense</p>
                   <h3 className="text-2xl font-bold text-white mt-2">
-                    {formatCurrency(operationalExpenses.reduce((sum, e) => sum + (e.amount || 0), 0))}
+                    {formatCurrency(monthTotal)}
                   </h3>
                 </div>
                 <div className="bg-red-500/10 p-2 rounded-lg">
@@ -506,7 +589,7 @@ export const ExpensesDashboard = () => {
                 </div>
               </div>
               <div className="mt-4 flex items-center gap-2 text-xs">
-                <span className="text-gray-500">{operationalExpenses.length} expenses this month</span>
+                <span className="text-gray-500">{monthExpenses.length} expenses this month</span>
               </div>
             </div>
 
@@ -515,7 +598,7 @@ export const ExpensesDashboard = () => {
                 <div>
                   <p className="text-gray-400 text-sm font-medium">Pending Expenses</p>
                   <h3 className="text-2xl font-bold text-white mt-2">
-                    {expenses.filter(e => e.status === 'pending').length}
+                    {monthExpenses.filter(e => e.status === 'pending' || e.status === 'submitted').length}
                   </h3>
                 </div>
                 <div className="bg-yellow-500/10 p-2 rounded-lg">
@@ -530,13 +613,19 @@ export const ExpensesDashboard = () => {
             <div className="bg-gray-900/50 border border-gray-800 p-6 rounded-xl flex flex-col justify-between">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-gray-400 text-sm font-medium">Highest Category</p>
+                  <p className="text-gray-400 text-sm font-medium">vs Prior Month</p>
                   <h3 className="text-2xl font-bold text-white mt-2">
-                    {chartData.length > 0 ? chartData[0].name : 'N/A'}
+                    {priorMonthTotal > 0
+                      ? `${monthTotal >= priorMonthTotal ? '+' : ''}${(((monthTotal - priorMonthTotal) / priorMonthTotal) * 100).toFixed(0)}%`
+                      : monthTotal > 0 ? 'New' : '—'}
                   </h3>
                 </div>
                 <div className="bg-blue-500/10 p-2 rounded-lg">
-                  <DollarSign className="text-blue-500" size={20} />
+                  {monthTotal >= priorMonthTotal ? (
+                    <TrendingUp className="text-blue-500" size={20} />
+                  ) : (
+                    <TrendingDown className="text-emerald-500" size={20} />
+                  )}
                 </div>
               </div>
               <div className="mt-4">
@@ -546,7 +635,7 @@ export const ExpensesDashboard = () => {
                         <div className="bg-blue-500 h-full rounded-full" style={{ width: `${(chartData[0].value / totalExpenseAmount) * 100}%` }}></div>
                      </div>
                      <p className="text-gray-500 text-xs mt-2">
-                       {((chartData[0].value / totalExpenseAmount) * 100).toFixed(1)}% of total expenses
+                       Top: {chartData[0].name} · {formatCurrency(priorMonthTotal)} prior month
                      </p>
                    </>
                  )}
@@ -554,9 +643,50 @@ export const ExpensesDashboard = () => {
             </div>
           </div>
 
+          {monthCategoryBreakdown.length > 0 ? (
+            <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-white">This month by category</h3>
+                <span className="text-xs text-gray-500">{new Date().toLocaleString('en-PK', { month: 'long', year: 'numeric' })}</span>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="text-xs text-gray-500 uppercase bg-gray-950/50">
+                  <tr>
+                    <th className="px-6 py-3 text-left font-medium">Category</th>
+                    <th className="px-6 py-3 text-right font-medium">Count</th>
+                    <th className="px-6 py-3 text-right font-medium">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800">
+                  {monthCategoryBreakdown.map((row) => (
+                    <tr
+                      key={row.label}
+                      className="hover:bg-gray-800/30 cursor-pointer"
+                      onClick={() => {
+                        setCategoryFilter(row.categoryFilter);
+                        setActiveTab('list');
+                      }}
+                    >
+                      <td className="px-6 py-3 text-white">{row.label}</td>
+                      <td className="px-6 py-3 text-right text-gray-400">{row.count}</td>
+                      <td className="px-6 py-3 text-right font-medium text-red-400">-{formatCurrency(row.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-gray-800 bg-gray-950/50">
+                    <td className="px-6 py-3 font-medium text-gray-400">Total</td>
+                    <td className="px-6 py-3 text-right text-gray-400">{monthExpenses.length}</td>
+                    <td className="px-6 py-3 text-right font-bold text-white">-{formatCurrency(monthTotal)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : null}
+
           {/* Donut Chart Section */}
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-8 flex flex-col items-center justify-center min-h-[400px]">
-            <h3 className="text-lg font-bold text-white mb-2 self-start">Expense Breakdown</h3>
+            <h3 className="text-lg font-bold text-white mb-2 self-start">Expense Breakdown (this month)</h3>
             <div className="h-[300px] w-full max-w-lg relative min-h-[300px] shrink-0">
               <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={300}>
                 <PieChart>
@@ -717,9 +847,9 @@ export const ExpensesDashboard = () => {
                         className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
                       >
                         <option value="all">All Accounts</option>
-                        <option value="Meezan Bank">Meezan Bank</option>
-                        <option value="Cash Drawer">Cash Drawer</option>
-                        <option value="JazzCash">JazzCash</option>
+                        {accountFilterOptions.map((opt) => (
+                          <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        ))}
                       </select>
                     </div>
 
@@ -795,7 +925,7 @@ export const ExpensesDashboard = () => {
                              {expense.description}
                           </td>
                           <td className="px-6 py-4 text-gray-400">
-                             {expense.paymentMethod}
+                             {paymentDisplayForExpense(expense)}
                           </td>
                           <td className="px-6 py-4 text-right font-bold text-red-500">
                              -{formatCurrency(expense.amount)}
@@ -852,6 +982,7 @@ export const ExpensesDashboard = () => {
         <ExpenseCategoryTreePanel
           tree={categoriesFromDb}
           operationalExpenses={operationalForCategoryCounts}
+          scopedExpenses={operationalForCategoryCounts}
           iconBySlug={ICON_BY_SLUG}
           defaultIcon={Receipt}
           onAddMain={handleAddCategory}
@@ -871,67 +1002,23 @@ export const ExpensesDashboard = () => {
         onSuccess={refreshExpenses}
       />
       
-      {/* View Expense Details Sheet */}
-      <Sheet open={viewDetailsOpen} onOpenChange={(open) => { if (!open) { setViewDetailsOpen(false); setSelectedExpense(null); } }}>
-        <SheetContent side="right" className="w-full max-w-full sm:max-w-md bg-[#111827] border-l border-gray-800 text-white overflow-y-auto">
-          {selectedExpense && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-bold text-white">Expense Details</h2>
-                <p className="text-sm text-gray-400 mt-1">{selectedExpense.expenseNo || selectedExpense.id}</p>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-medium">Date</p>
-                  <p className="text-white mt-1">{new Date(selectedExpense.date).toLocaleDateString()}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-medium">Category</p>
-                  <p className="text-white mt-1">{selectedExpense.category}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-medium">Description</p>
-                  <p className="text-white mt-1">{selectedExpense.description || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-medium">Amount</p>
-                  <p className="text-red-400 font-bold text-lg mt-1">-{formatCurrency(selectedExpense.amount)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-medium">Payment Method</p>
-                  <p className="text-white mt-1">{selectedExpense.paymentMethod || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-medium">Payee</p>
-                  <p className="text-white mt-1">{selectedExpense.payeeName || '—'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-medium">Status</p>
-                  <Badge className={cn("mt-1", getStatusBadgeStyle(selectedExpense.status))}>
-                    {selectedExpense.status}
-                  </Badge>
-                </div>
-              </div>
-              <div className="flex gap-2 pt-4">
-                <Button 
-                  variant="outline" 
-                  className="flex-1 border-gray-700 text-gray-300"
-                  onClick={() => { setViewDetailsOpen(false); setSelectedExpense(null); }}
-                >
-                  Close
-                </Button>
-                <Button 
-                  className="flex-1 bg-blue-600 hover:bg-blue-500"
-                  onClick={() => { setViewDetailsOpen(false); setSelectedExpense(selectedExpense); setIsDrawerOpen(true); }}
-                >
-                  <Pencil size={16} className="mr-2" />
-                  Edit
-                </Button>
-              </div>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
+      <ExpenseDetailSheet
+        open={viewDetailsOpen}
+        expense={selectedExpense}
+        categoryPath={selectedExpenseCategoryPath}
+        onClose={() => { setViewDetailsOpen(false); setSelectedExpense(null); }}
+        onEdit={(exp) => {
+          setViewDetailsOpen(false);
+          setSelectedExpense(exp);
+          setIsDrawerOpen(true);
+        }}
+        onDelete={(exp) => {
+          setViewDetailsOpen(false);
+          setSelectedExpense(exp);
+          setDeleteAlertOpen(true);
+        }}
+        getStatusBadgeStyle={getStatusBadgeStyle}
+      />
       
       <AddCategoryModal
         isOpen={isCategoryModalOpen}

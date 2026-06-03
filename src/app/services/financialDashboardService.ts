@@ -6,6 +6,7 @@
 import { supabase } from '@/lib/supabase';
 import { accountingReportsService } from '@/app/services/accountingReportsService';
 import { PURCHASE_POSTED_ACCOUNTING_STATUSES } from '@/app/lib/documentStatusConstants';
+import { safeRpcBranchId } from '@/app/lib/safeRpcBranchId';
 
 export interface FinancialDashboardMetrics {
   today_sales: number;
@@ -43,11 +44,9 @@ export async function getFinancialDashboardMetrics(
   }
 
   try {
-    const pBranch =
-      branchId && branchId !== 'all' && branchId !== 'default' ? String(branchId).trim() : null;
     const { data, error } = await supabase.rpc('get_financial_dashboard_metrics', {
       p_company_id: companyId,
-      p_branch_id: pBranch && /^[0-9a-f]{8}-/i.test(pBranch) ? pBranch : null,
+      p_branch_id: safeRpcBranchId(branchId),
     });
 
     if (error) {
@@ -259,7 +258,7 @@ export async function getDashboardMetrics(
   try {
     const { data, error } = await supabase.rpc('get_dashboard_metrics', {
       p_company_id: companyId,
-      p_branch_id: branchId || null,
+      p_branch_id: safeRpcBranchId(branchId),
       p_start_date: startDate ? startDate.slice(0, 10) : null,
       p_end_date: endDate ? endDate.slice(0, 10) : null,
     });

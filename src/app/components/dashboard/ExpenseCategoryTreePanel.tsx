@@ -1,4 +1,5 @@
-import { Plus, Pencil, Trash } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, Pencil, Trash, ChevronRight } from 'lucide-react';
 import { Button } from '../ui/button';
 import { cn } from '../ui/utils';
 import type { ExpenseCategoryRow, ExpenseCategoryTreeItem } from '@/app/services/expenseCategoryService';
@@ -11,7 +12,9 @@ import {
 
 export interface ExpenseCategoryTreePanelProps {
   tree: ExpenseCategoryTreeItem[];
-  operationalExpenses: Array<{ category?: string | null; expense_category_id?: string | null }>;
+  operationalExpenses: Array<{ category?: string | null; expense_category_id?: string | null; amount?: number }>;
+  /** When set, node counts and amounts use this subset (e.g. current month). */
+  scopedExpenses?: Array<{ category?: string | null; expense_category_id?: string | null; amount?: number }>;
   iconBySlug: Record<string, React.ComponentType<{ size?: number }>>;
   defaultIcon: React.ComponentType<{ size?: number }>;
   onAddMain: () => void;
@@ -20,11 +23,27 @@ export interface ExpenseCategoryTreePanelProps {
   onDelete: (row: ExpenseCategoryRow & { count?: number; children?: ExpenseCategoryTreeItem[] }) => void;
 }
 
+function sumAmountForNode(
+  expenses: ExpenseCategoryTreePanelProps['operationalExpenses'],
+  node: ExpenseCategoryTreeItem,
+): number {
+  return expenses
+    .filter((e) => {
+      const id = String(e.expense_category_id || '').trim();
+      if (id && id === node.id) return true;
+      return (e.category || '').trim() === node.name;
+    })
+    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+}
+
 function CategoryTreeRows({
   nodes,
   tree,
   depthStart,
-  operationalExpenses,
+  countExpenses,
+  sumAmount,
+  expandedIds,
+  onToggleExpand,
   onAddSub,
   onEdit,
   onDelete,
@@ -32,7 +51,10 @@ function CategoryTreeRows({
   nodes: ExpenseCategoryTreeItem[];
   tree: ExpenseCategoryTreeItem[];
   depthStart: number;
-  operationalExpenses: ExpenseCategoryTreePanelProps['operationalExpenses'];
+  countExpenses: ExpenseCategoryTreePanelProps['operationalExpenses'];
+  sumAmount: (node: ExpenseCategoryTreeItem) => number;
+  expandedIds: Set<string>;
+  onToggleExpand: (id: string) => void;
   onAddSub: ExpenseCategoryTreePanelProps['onAddSub'];
   onEdit: ExpenseCategoryTreePanelProps['onEdit'];
   onDelete: ExpenseCategoryTreePanelProps['onDelete'];
@@ -40,8 +62,10 @@ function CategoryTreeRows({
   const renderNode = (node: ExpenseCategoryTreeItem, depth: number) => {
     const path = findPathToCategory(tree, node.id) ?? [node];
     const pathLabel = formatCategoryPathFromNodes(path);
-    const nodeCount = countExpensesForNode(operationalExpenses, node);
+    const nodeCount = countExpensesForNode(countExpenses, node);
+    const nodeAmount = sumAmount(node);
     const hasChildren = (node.children?.length ?? 0) > 0;
+    const expanded = expandedIds.has(node.id);
     const showSubBtn = canAddSubcategory(depth);
     const pl = 20 + depth * 20;
 
@@ -51,16 +75,34 @@ function CategoryTreeRows({
           className="flex items-center justify-between gap-3 py-3 border-b border-gray-800/60 last:border-b-0"
           style={{ paddingLeft: pl, paddingRight: 20 }}
         >
-          <div className="min-w-0">
-            <p className="text-sm text-gray-200">
-              {depth > 0 ? <span className="text-gray-500 mr-2">↳</span> : null}
-              {pathLabel}
-            </p>
-            <p className="text-xs text-gray-500" style={{ marginLeft: depth > 0 ? 20 : 0 }}>
-              {nodeCount} expense{nodeCount === 1 ? '' : 's'}
-            </p>
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {hasChildren ? (
+              <button
+                type="button"
+                onClick={() => onToggleExpand(node.id)}
+                className="shrink-0 p-0.5 text-gray-500 hover:text-white"
+                aria-label={expanded ? 'Collapse' : 'Expand'}
+              >
+                <ChevronRight
+                  size={16}
+                  className={cn('transition-transform', expanded && 'rotate-90')}
+                />
+              </button>
+            ) : (
+              <span className="w-5 shrink-0" />
+            )}
+            <div className="min-w-0">
+              <p className="text-sm text-gray-200">
+                {depth > 0 ? <span className="text-gray-500 mr-2">↳</span> : null}
+                {pathLabel}
+              </p>
+              <p className="text-xs text-gray-500" style={{ marginLeft: depth > 0 ? 20 : 0 }}>
+                {nodeCount} expense{nodeCount === 1 ? '' : 's'}
+                {nodeAmount > 0 ? ` · Rs. ${nodeAmount.toLocaleString()}` : ''}
+              </p>
+            </div>
           </div>
-          <div className="flex gap-1 shrink-0">
+          <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
             {showSubBtn ? (
               <Button
                 variant="ghost"
@@ -90,7 +132,9 @@ function CategoryTreeRows({
             </Button>
           </div>
         </div>
-        {hasChildren ? <ul>{node.children.map((child) => renderNode(child, depth + 1))}</ul> : null}
+        {hasChildren && expanded ? (
+          <ul>{node.children.map((child) => renderNode(child, depth + 1))}</ul>
+        ) : null}
       </li>
     );
   };
@@ -105,6 +149,7 @@ function CategoryTreeRows({
 export function ExpenseCategoryTreePanel({
   tree,
   operationalExpenses,
+  scopedExpenses,
   iconBySlug,
   defaultIcon,
   onAddMain,
@@ -112,6 +157,18 @@ export function ExpenseCategoryTreePanel({
   onEdit,
   onDelete,
 }: ExpenseCategoryTreePanelProps) {
+  const countExpenses = scopedExpenses ?? operationalExpenses;
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   if (tree.length === 0) {
     return (
       <button
@@ -135,6 +192,9 @@ export function ExpenseCategoryTreePanel({
           ? main.color
           : `bg-${main.color || 'gray'}-500`;
         const hasChildren = (main.children?.length ?? 0) > 0;
+        const mainExpanded = expandedIds.has(main.id);
+        const mainCount = countExpensesForNode(countExpenses, main);
+        const mainAmount = sumAmountForNode(countExpenses, main);
 
         return (
           <div
@@ -142,7 +202,20 @@ export function ExpenseCategoryTreePanel({
             className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden hover:border-gray-700 transition-colors"
           >
             <div className="flex items-start justify-between gap-3 p-5 border-b border-gray-800/80">
-              <div className="flex items-start gap-4 min-w-0">
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                {hasChildren ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand(main.id)}
+                    className="mt-1 shrink-0 p-1 text-gray-500 hover:text-white"
+                    aria-label={mainExpanded ? 'Collapse' : 'Expand'}
+                  >
+                    <ChevronRight
+                      size={18}
+                      className={cn('transition-transform', mainExpanded && 'rotate-90')}
+                    />
+                  </button>
+                ) : null}
                 <div className="p-3 bg-gray-950 rounded-lg border border-gray-800 text-gray-400 shrink-0">
                   <Icon size={24} />
                 </div>
@@ -151,10 +224,13 @@ export function ExpenseCategoryTreePanel({
                     <h3 className="font-bold text-white text-lg truncate">{main.name}</h3>
                     <div className={cn('w-2 h-2 rounded-full shrink-0', colorClass)} />
                   </div>
-                  <p className="text-sm text-gray-500">Main category</p>
+                  <p className="text-sm text-gray-500">
+                    Main category · {mainCount} this month
+                    {mainAmount > 0 ? ` · Rs. ${mainAmount.toLocaleString()}` : ''}
+                  </p>
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-row gap-1 shrink-0">
+              <div className="flex flex-col sm:flex-row gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                 {canAddSubcategory(0) ? (
                   <Button
                     variant="ghost"
@@ -186,16 +262,23 @@ export function ExpenseCategoryTreePanel({
               </div>
             </div>
 
-            {hasChildren ? (
+            {hasChildren && mainExpanded ? (
               <CategoryTreeRows
                 nodes={main.children}
                 tree={tree}
                 depthStart={1}
-                operationalExpenses={operationalExpenses}
+                countExpenses={countExpenses}
+                sumAmount={(node) => sumAmountForNode(countExpenses, node)}
+                expandedIds={expandedIds}
+                onToggleExpand={toggleExpand}
                 onAddSub={onAddSub}
                 onEdit={onEdit}
                 onDelete={onDelete}
               />
+            ) : hasChildren ? (
+              <p className="px-5 py-3 text-xs text-gray-500">
+                {main.children.length} subcategories — expand to view
+              </p>
             ) : (
               <p className="px-5 py-3 text-xs text-gray-500">
                 No subcategories — use Subcategory to add types (e.g. Dying) or tailor names under{' '}

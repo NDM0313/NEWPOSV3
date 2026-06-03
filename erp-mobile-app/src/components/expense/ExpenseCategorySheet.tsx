@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowLeft, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Loader2, Pencil, Plus, Trash2, X, ChevronRight } from 'lucide-react';
 import * as expensesApi from '../../api/expenses';
 import { TextInput } from '../common';
 import {
@@ -23,6 +23,8 @@ function CategoryTreeRows({
   nodes,
   tree,
   depthStart,
+  expandedIds,
+  onToggleExpand,
   onAddSubUnder,
   onEdit,
   onDelete,
@@ -30,6 +32,8 @@ function CategoryTreeRows({
   nodes: expensesApi.ExpenseCategoryTreeItem[];
   tree: expensesApi.ExpenseCategoryTreeItem[];
   depthStart: number;
+  expandedIds: Set<string>;
+  onToggleExpand: (id: string) => void;
   onAddSubUnder: (node: expensesApi.ExpenseCategoryTreeItem, pathLabel: string) => void;
   onEdit: (row: expensesApi.ExpenseCategoryRow) => void;
   onDelete: (
@@ -41,14 +45,30 @@ function CategoryTreeRows({
     const pathLabel = formatCategoryPathFromNodes(path);
     const pl = 16 + depth * 16;
     const showSub = canAddSubcategory(depth);
+    const hasChildren = (node.children?.length ?? 0) > 0;
+    const expanded = expandedIds.has(node.id);
 
     return (
       <li key={node.id}>
         <div className="flex items-center justify-between gap-2 py-2.5 border-b border-[#374151] last:border-b-0" style={{ paddingLeft: pl, paddingRight: 16 }}>
-          <span className="text-sm text-[#D1D5DB] min-w-0 truncate">
-            <span className="text-[#6B7280] mr-1.5">↳</span>
-            {pathLabel}
-          </span>
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            {hasChildren ? (
+              <button
+                type="button"
+                onClick={() => onToggleExpand(node.id)}
+                className="shrink-0 p-0.5 text-[#6B7280]"
+                aria-label={expanded ? 'Collapse' : 'Expand'}
+              >
+                <ChevronRight className={`w-4 h-4 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+              </button>
+            ) : (
+              <span className="w-5 shrink-0" />
+            )}
+            <span className="text-sm text-[#D1D5DB] min-w-0 truncate">
+              {depth > 0 ? <span className="text-[#6B7280] mr-1.5">↳</span> : null}
+              {pathLabel}
+            </span>
+          </div>
           <div className="flex gap-1 shrink-0">
             {showSub ? (
               <button
@@ -72,7 +92,7 @@ function CategoryTreeRows({
             </button>
           </div>
         </div>
-        {(node.children?.length ?? 0) > 0 ? (
+        {(node.children?.length ?? 0) > 0 && expanded ? (
           <ul>{node.children!.map((child) => renderNode(child, depth + 1))}</ul>
         ) : null}
       </li>
@@ -97,6 +117,16 @@ export function ExpenseCategorySheet({
   const [parentId, setParentId] = useState('');
   const [saving, setSaving] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const loadTree = useCallback(
     async (options?: { tryAutoSeed?: boolean }) => {
@@ -328,10 +358,25 @@ export function ExpenseCategorySheet({
           </div>
         ) : showApiError ? null : (
           <div className="space-y-3">
-            {tree.map((main) => (
+            {tree.map((main) => {
+              const mainExpanded = expandedIds.has(main.id);
+              const hasChildren = (main.children?.length ?? 0) > 0;
+              return (
               <div key={main.id} className="bg-[#1F2937] border border-[#374151] rounded-xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-[#374151] gap-2">
-                  <span className="text-sm font-semibold text-white truncate">{main.name}</span>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {hasChildren ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(main.id)}
+                        className="shrink-0 p-0.5 text-[#6B7280]"
+                        aria-label={mainExpanded ? 'Collapse' : 'Expand'}
+                      >
+                        <ChevronRight className={`w-4 h-4 transition-transform ${mainExpanded ? 'rotate-90' : ''}`} />
+                      </button>
+                    ) : null}
+                    <span className="text-sm font-semibold text-white truncate">{main.name}</span>
+                  </div>
                   <div className="flex gap-1 shrink-0 flex-wrap justify-end">
                     {canAddSubcategory(0) ? (
                       <button
@@ -360,22 +405,26 @@ export function ExpenseCategorySheet({
                     </button>
                   </div>
                 </div>
-                {(main.children?.length ?? 0) > 0 ? (
+                {(main.children?.length ?? 0) > 0 && mainExpanded ? (
                   <CategoryTreeRows
                     nodes={main.children}
                     tree={tree}
                     depthStart={1}
+                    expandedIds={expandedIds}
+                    onToggleExpand={toggleExpand}
                     onAddSubUnder={handleAddSubUnder}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                   />
+                ) : hasChildren ? (
+                  <p className="px-4 py-3 text-xs text-[#6B7280]">Expand to view subcategories</p>
                 ) : (
                   <p className="px-4 py-3 text-xs text-[#6B7280]">
                     No subcategories — use + Sub to add types (e.g. Dying) or names under {main.name}.
                   </p>
                 )}
               </div>
-            ))}
+            );})}
             {tree.length === 0 && (
               <div className="text-center py-6 space-y-3">
                 <p className="text-sm text-[#9CA3AF]">

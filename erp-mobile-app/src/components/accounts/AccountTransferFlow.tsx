@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, ArrowRight, Check, Search, ArrowLeftRight, Paperclip } from 'lucide-react';
 import type { User } from '../../types';
 import { DateInputField } from '../shared/DateTimePicker';
@@ -7,11 +7,16 @@ import { addPending } from '../../lib/offlineStore';
 import { localNowDateString } from '../../utils/localDate';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceInline } from '../../utils/balancePrivacy';
-import { useWriteBranchSelection } from '../../hooks/useWriteBranchSelection';
-import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
+import { isRealBranchUuid } from '../../utils/branchId';
 import { AttachmentFilePicker } from '../shared/AttachmentFilePicker';
 import { uploadJournalEntryAttachments } from '../../api/journalAttachments';
 import { useSubmitLock } from '../../contexts/LoadingContext';
+import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
+import { JournalDescriptionFields } from './JournalDescriptionFields';
+import {
+  buildTransferAutoDescription,
+  composeJournalEntryDescription,
+} from '../../utils/journalEntryDescription';
 
 interface AccountTransferFlowProps {
   onBack: () => void;
@@ -24,6 +29,7 @@ interface AccountTransferFlowProps {
 interface AccountRow {
   id: string;
   name: string;
+  code: string;
   balance: number;
   type: string;
 }
@@ -48,25 +54,13 @@ const getAccountIcon = (type: string) => {
 
 export function AccountTransferFlow({ onBack, onComplete, user, companyId, branchId }: AccountTransferFlowProps) {
   const { canViewBalances } = usePermissions();
-  const {
-    effectiveBranchId,
-    needsPicker,
-    pickerBranches,
-    pickedBranchId,
-    setPickedBranchId,
-    error: branchSelectionError,
-  } = useWriteBranchSelection({
-    companyId,
-    globalBranchId: branchId,
-    userRole: user.role,
-    authUserId: user.id,
-    profileId: user.profileId,
-  });
+  const effectiveBranchId = isRealBranchUuid(branchId) ? branchId.trim() : null;
   const [step, setStep] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentAccounts, setPaymentAccounts] = useState<AccountRow[]>([]);
   const { run: runSave, busy: submitting } = useSubmitLock();
   const [error, setError] = useState<string | null>(null);
+  const [successData, setSuccessData] = useState<TransactionSuccessData | null>(null);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [transferData, setTransferData] = useState<TransferData>({
     fromAccountId: '',
@@ -82,12 +76,39 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
   useEffect(() => {
     if (!companyId) return;
     getPaymentAccounts(companyId).then((r) => {
-      if (r.data?.length) setPaymentAccounts(r.data.map((a) => ({ id: a.id, name: a.name, balance: a.balance, type: a.type })));
+      if (r.data?.length) {
+        setPaymentAccounts(
+          r.data.map((a) => ({
+            id: a.id,
+            name: a.name,
+            code: a.code,
+            balance: a.balance,
+            type: a.type,
+          }))
+        );
+      }
     });
   }, [companyId]);
 
   const getAccount = (id: string) => paymentAccounts.find((a) => a.id === id);
   const filteredAccounts = paymentAccounts.filter((a) => a.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const autoDescription = useMemo(() => {
+    if (!transferData.fromAccountId || !transferData.toAccountId || transferData.amount <= 0) {
+      return 'Complete amount and accounts to generate description.';
+    }
+    const from = getAccount(transferData.fromAccountId);
+    const to = getAccount(transferData.toAccountId);
+    return buildTransferAutoDescription({
+      amount: transferData.amount,
+      fromName: transferData.fromAccountName,
+      fromCode: from?.code,
+      toName: transferData.toAccountName,
+      toCode: to?.code,
+      date: transferData.date,
+      addedByName: user.name,
+    });
+  }, [transferData, paymentAccounts, user.name]);
 
   const handleStepChange = (newStep: number) => {
     setStep(newStep);
@@ -104,13 +125,13 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
 
   const handleSubmit = async () => {
     if (!companyId || !transferData.fromAccountId || !transferData.toAccountId || transferData.amount <= 0) return;
-    if (!effectiveBranchId) {
-      setError(branchSelectionError ?? 'Select a branch for this transfer.');
-      return;
-    }
     await runSave('Saving transfer...', async () => {
     setError(null);
-    const desc = transferData.notes?.trim() || `Transfer from ${transferData.fromAccountName} to ${transferData.toAccountName}`;
+    const desc = composeJournalEntryDescription({
+      auto: autoDescription,
+      userNotes: transferData.notes,
+      reference: transferData.reference,
+    });
     let attachments: { url: string; name: string }[] | undefined;
     if (attachmentFiles.length > 0) {
       const { results, failures } = await uploadJournalEntryAttachments(companyId, attachmentFiles);
@@ -133,24 +154,42 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
     };
     if (!navigator.onLine) {
       try {
-        await addPending('journal_entry', payload, companyId, effectiveBranchId);
-        onComplete();
+        await addPending('journal_entry', payload, companyId, effectiveBranchId ?? '');
+        setSuccessData({
+          type: 'journal',
+          title: 'Transfer completed',
+          transactionNo: null,
+          amount: transferData.amount,
+          partyName: `${transferData.fromAccountName} → ${transferData.toAccountName}`,
+          date: transferData.date,
+        });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to save offline.');
       }
       return;
     }
-    const { error: err } = await createJournalEntry({ ...payload, attachments });
+    const { data, error: err } = await createJournalEntry({ ...payload, attachments });
     if (err) {
       setError(err);
       return;
     }
-    onComplete();
+    setSuccessData({
+      type: 'journal',
+      title: 'Transfer completed',
+      transactionNo: data?.entry_no ?? null,
+      amount: transferData.amount,
+      partyName: `${transferData.fromAccountName} → ${transferData.toAccountName}`,
+      date: transferData.date,
+    });
     });
   };
 
+  const closeSuccess = () => {
+    setSuccessData(null);
+    onComplete();
+  };
+
   const canProceed = () => {
-    if (needsPicker && !effectiveBranchId) return false;
     switch (step) {
       case 1:
         return transferData.fromAccountId !== '';
@@ -164,6 +203,7 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
   };
 
   return (
+    <>
     <div className="min-h-screen pb-40 bg-[#111827]">
       <div className="bg-gradient-to-br from-[#3B82F6] to-[#2563EB] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3 mb-4">
@@ -184,19 +224,6 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
       </div>
 
       <div className="p-4">
-        {needsPicker && step === 1 && (
-          <WriteBranchPickerField
-            branches={pickerBranches}
-            value={pickedBranchId}
-            onChange={setPickedBranchId}
-            helperText="Transfer will post under the selected branch."
-          />
-        )}
-        {branchSelectionError && (
-          <div className="mb-4 p-3 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-xl text-sm text-[#FCA5A5]">
-            {branchSelectionError}
-          </div>
-        )}
         {step === 1 && (
           <div className="space-y-4">
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 mb-4">
@@ -351,27 +378,13 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
 
             <DateInputField label="Transfer Date" value={transferData.date} onChange={(date) => setTransferData({ ...transferData, date })} pickerLabel="SELECT TRANSFER DATE" />
 
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Reference # (Optional)</label>
-              <input
-                type="text"
-                value={transferData.reference}
-                onChange={(e) => setTransferData({ ...transferData, reference: e.target.value })}
-                placeholder="e.g., TRF-001, Cheque #123"
-                className="w-full px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6]"
-              />
-            </div>
-
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Notes (Optional)</label>
-              <textarea
-                value={transferData.notes}
-                onChange={(e) => setTransferData({ ...transferData, notes: e.target.value })}
-                placeholder="Additional notes..."
-                rows={3}
-                className="w-full px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white placeholder-[#6B7280] focus:outline-none focus:border-[#3B82F6] resize-none"
-              />
-            </div>
+            <JournalDescriptionFields
+              autoDescription={autoDescription}
+              userNotes={transferData.notes}
+              onUserNotesChange={(notes) => setTransferData({ ...transferData, notes })}
+              reference={transferData.reference}
+              onReferenceChange={(reference) => setTransferData({ ...transferData, reference })}
+            />
 
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -422,5 +435,12 @@ export function AccountTransferFlow({ onBack, onComplete, user, companyId, branc
         </button>
       </div>
     </div>
+    <TransactionSuccessModal
+      isOpen={!!successData}
+      data={successData}
+      onClose={closeSuccess}
+      onOk={closeSuccess}
+    />
+    </>
   );
 }

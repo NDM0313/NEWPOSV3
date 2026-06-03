@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { formatLocalDateYYYYMMDD, localNowDateString } from '../../../../utils/localDate';
+import { getThisBusinessWeekRange } from '../../../../utils/businessWeek';
 
 export type DateRangePreset = 'today' | 'last7' | 'last15' | 'week' | 'month' | 'quarter' | 'year' | 'all' | 'custom';
 
@@ -40,9 +41,8 @@ function buildRange(preset: DateRangePreset): DateRangeValue {
       return { from: toIso(from), to, preset };
     }
     case 'week': {
-      const day = from.getDay();
-      from.setDate(from.getDate() - day);
-      return { from: toIso(from), to, preset };
+      const { startDate } = getThisBusinessWeekRange(today);
+      return { from: toIso(startDate), to, preset };
     }
     case 'month':
       from.setDate(1);

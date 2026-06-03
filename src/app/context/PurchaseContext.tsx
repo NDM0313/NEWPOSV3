@@ -162,7 +162,10 @@ export const usePurchases = () => {
     }
     throw new Error('usePurchases must be used within PurchaseProvider');
   }
-  (context as any).__activate?.();
+  const activate = (context as PurchaseContextType & { __activate?: () => void }).__activate;
+  useEffect(() => {
+    activate?.();
+  }, [activate]);
   return context;
 };
 

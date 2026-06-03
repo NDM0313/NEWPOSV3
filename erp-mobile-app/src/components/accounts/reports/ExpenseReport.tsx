@@ -16,9 +16,10 @@ interface ExpenseReportProps {
   companyId: string | null;
   branchId?: string | null;
   user: User;
+  reportRefreshEpoch?: number;
 }
 
-export function ExpenseReport({ onBack, companyId, branchId, user }: ExpenseReportProps) {
+export function ExpenseReport({ onBack, companyId, branchId, user, reportRefreshEpoch = 0 }: ExpenseReportProps) {
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
   const [rows, setRows] = useState<ExpenseReportRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +42,7 @@ export function ExpenseReport({ onBack, companyId, branchId, user }: ExpenseRepo
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId, range.from, range.to]);
+  }, [companyId, branchId, range.from, range.to, reportRefreshEpoch]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();

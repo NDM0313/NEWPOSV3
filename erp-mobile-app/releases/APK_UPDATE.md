@@ -4,6 +4,18 @@ Copy a new block for every build. Keep the newest entry at the top.
 
 ---
 
+## Sales list: APK vs localhost dev (troubleshooting)
+
+| Symptom | Likely cause | What to do |
+|---------|----------------|------------|
+| More sales on `npm run dev` than on installed APK | **Counter PIN login** isolates list to that worker’s `created_by` ([`SalesHome` scopedRecentSales](erp-mobile-app/src/components/sales/SalesHome.tsx)); admin email on dev shows all | Compare login mode on both; use same user/role |
+| APK missing new sales after code deploy | APK baked **old** `dist` / env at last `npx cap sync android` | `cd erp-mobile-app && npm run build` then `npx cap sync android` and reinstall (bump versionCode) |
+| Both miss sales | Backend / branch filter | Confirm branch header; check web `erp.dincouture.pk`; deploy VPS if web also wrong |
+
+API base for production APK: `https://erp.dincouture.pk` from `.env.production` at sync time (not localhost).
+
+---
+
 ## Latest build — 1.0.5 (build 10 iOS / versionCode 35 Android) — 2026-06-03
 
 | Field | Value |

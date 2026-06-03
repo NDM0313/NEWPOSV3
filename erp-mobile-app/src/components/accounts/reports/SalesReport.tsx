@@ -17,6 +17,7 @@ interface SalesReportProps {
   branchId?: string | null;
   user: User;
   isStudio?: boolean;
+  reportRefreshEpoch?: number;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -25,7 +26,7 @@ const STATUS_COLOR: Record<string, string> = {
   unpaid: 'text-[#EF4444] bg-[#EF4444]/10 border-[#EF4444]/40',
 };
 
-export function SalesReport({ onBack, companyId, branchId, user, isStudio }: SalesReportProps) {
+export function SalesReport({ onBack, companyId, branchId, user, isStudio, reportRefreshEpoch = 0 }: SalesReportProps) {
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
   const [rows, setRows] = useState<SalesReportRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +50,7 @@ export function SalesReport({ onBack, companyId, branchId, user, isStudio }: Sal
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId, range.from, range.to, isStudio]);
+  }, [companyId, branchId, range.from, range.to, isStudio, reportRefreshEpoch]);
 
   const totals = useMemo(() => {
     const total = rows.reduce((s, r) => s + r.total, 0);

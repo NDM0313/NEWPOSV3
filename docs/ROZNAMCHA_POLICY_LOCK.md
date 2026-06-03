@@ -50,18 +50,18 @@ The following must **not** appear in Roznamcha (no `payments` row; journal only)
 
 ## 4. Mapping to Database
 
-### 4.1 Source of truth: `payments` table
+### 4.1 Primary source: `payments` (+ journal liquidity merge)
 
-- Roznamcha **reads only from `payments`** (filtered by company, branch, date range).
-- Each row in `payments` represents one money-movement event and appears as one line in Roznamcha.
-- Columns used: `payment_date`, `amount`, `payment_type` (received/paid), `payment_method`, `reference_type`, `reference_number`, `payment_account_id`, etc.
+- Roznamcha **primarily reads from `payments`** (and `rental_payments`), filtered by company, branch, date range.
+- Each `payments` row is one money-movement line in Roznamcha.
+- **Additionally:** journal entries with `payment_id IS NULL` that touch **cash/bank/wallet** (including sub-accounts) contribute **one Roznamcha row per liquidity line** (e.g. General Entry Dr Committee / Cr Bank → bank OUT only). Implemented in `roznamchaService.fetchJournalLiquidityRows` (web + mobile `api/roznamcha.ts`).
+- JEs already backfilled with synthetic payments (`payments.reference_id` = journal entry id) are excluded from the journal merge to avoid duplicates.
 
 ### 4.2 Journal entries
 
 - Every payment that creates money movement should have a **linked** journal entry (`journal_entries.payment_id` = that payment’s id).
-- The journal entry records the double-entry (e.g. Dr AP, Cr Cash). Roznamcha does **not** read from `journal_entries` for its list; it reads from `payments`.
-- Manual **payment/receipt** entries: one `payments` row + one journal entry with `payment_id` set.  
-- Manual **journal-only** entries: one journal entry only; no `payments` row.
+- New **general / transfer / pure journal** entries that touch liquidity: `journalLiquidityPaymentService.ensurePaymentsForLiquidityJournal` creates `manual_receipt` / `manual_payment` rows (one per liquidity leg; single-leg entries also set `journal_entries.payment_id`).
+- Manual **journal-only** entries (both sides non-liquidity): one journal entry only; no `payments` row; not in Roznamcha.
 
 ### 4.3 Manual entry classification
 
@@ -74,8 +74,14 @@ The following must **not** appear in Roznamcha (no `payments` row; journal only)
 
 ## 5. Implementation
 
-- **Service:** `roznamchaService.ts` — `getRoznamcha()` (or equivalent) fetches from `payments` only (company, branch, date range). No filter by `reference_type` that would exclude valid payment types.
-- **Labels:** `getTypeLabel(reference_type)` maps each `reference_type` to a display label (e.g. worker_payment → "Worker Payment", manual_receipt → "Manual Receipt", on_account → "On-Account Supplier Payment").
+- **Service:** `roznamchaService.ts` — `getRoznamcha()` merges `payments`, `rental_payments`, and journal liquidity legs (`payment_id` null). Mobile: `erp-mobile-app/src/api/roznamcha.ts` (keep in sync).
+- **Details column (primary line):**
+  - **Expense** (`reference_type = expense`): prefer expense category path (`Main › Sub › …` from `expense_category_id`), else legacy `category`, else description, else `"Shop Expense"`.
+  - **Customer receipts** (`on_account`, `manual_receipt`, `payment` with `payment_type = received`): **customer name** from `payments.contact_id` / `contact_name` (resolved via `contacts` when needed).
+  - **Supplier payments** (`on_account`, `manual_payment` with `payment_type = paid`): **supplier name** from the same contact fields.
+  - Other types: `getTypeLabel(reference_type)` (e.g. worker_payment → "Worker Payment", sale → "Cash Sale").
+- **Details subtitle:** `reference_number`, `notes`, and type-specific context (invoice/PO, expense description/vendor) combined without duplication; `"by {user}"` from `received_by` / `created_by`.
+- **On-account labels:** direction-based — received → customer receipt story; paid → supplier payment story (not a single static “supplier” label for all `on_account` rows).
 - **Day Book** continues to read from `journal_entries` + `journal_entry_lines` (all entries). Roznamcha and Day Book are different: Day Book = full journal; Roznamcha = payments only.
 
 ---

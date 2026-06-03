@@ -31,6 +31,7 @@ interface AccountLedgerReportProps {
   branchId?: string | null;
   filterTypes?: ('cash' | 'bank' | 'mobile_wallet' | 'asset' | 'liability' | 'equity' | 'income' | 'expense')[];
   titleOverride?: string;
+  reportRefreshEpoch?: number;
 }
 
 export function AccountLedgerReport({
@@ -41,6 +42,7 @@ export function AccountLedgerReport({
   branchId,
   filterTypes,
   titleOverride,
+  reportRefreshEpoch = 0,
 }: AccountLedgerReportProps) {
   const [accounts, setAccounts] = useState<accountsApi.AccountRow[]>([]);
   const [loading, setLoading] = useState(!!companyId);
@@ -90,7 +92,12 @@ export function AccountLedgerReport({
     return () => {
       cancelled = true;
     };
-  }, [companyId, initialAccountId, filterTypes]);
+  }, [companyId, initialAccountId, filterTypes, reportRefreshEpoch]);
+
+  useEffect(() => {
+    if (reportRefreshEpoch === 0) return;
+    setLedgerRefreshNonce((n) => n + 1);
+  }, [reportRefreshEpoch]);
 
   useEffect(() => {
     if (!companyId || !selected) {

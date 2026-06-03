@@ -23,6 +23,8 @@ interface LongPressCardProps {
   className?: string;
 }
 
+const TAP_MOVE_THRESHOLD_PX = 10;
+
 /**
  * Long Press Card – Tap opens detail, long press shows action menu
  * Use across Sales, Purchase, Rental, Expense lists
@@ -43,12 +45,26 @@ export function LongPressCard({
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
+  const touchHandledRef = useRef(false);
+  const touchMovedRef = useRef(false);
+  const touchStartRef = useRef({ x: 0, y: 0 });
+
+  const clearPressTimer = () => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
 
   const handleTouchStart = (e: React.TouchEvent) => {
     longPressTriggered.current = false;
+    touchHandledRef.current = false;
+    touchMovedRef.current = false;
     const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
 
     pressTimer.current = setTimeout(() => {
+      if (touchMovedRef.current) return;
       longPressTriggered.current = true;
       if (navigator.vibrate) {
         navigator.vibrate(50);
@@ -59,17 +75,29 @@ export function LongPressCard({
   };
 
   const handleTouchEnd = () => {
-    if (pressTimer.current) {
-      clearTimeout(pressTimer.current);
-    }
-    if (!longPressTriggered.current) {
+    clearPressTimer();
+    if (!longPressTriggered.current && !touchMovedRef.current) {
+      touchHandledRef.current = true;
       onTap();
     }
   };
 
-  const handleTouchMove = () => {
-    if (pressTimer.current) {
-      clearTimeout(pressTimer.current);
+  const handleClick = () => {
+    if (longPressTriggered.current) return;
+    if (touchHandledRef.current) {
+      touchHandledRef.current = false;
+      return;
+    }
+    onTap();
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    const dx = Math.abs(touch.clientX - touchStartRef.current.x);
+    const dy = Math.abs(touch.clientY - touchStartRef.current.y);
+    if (dx > TAP_MOVE_THRESHOLD_PX || dy > TAP_MOVE_THRESHOLD_PX) {
+      touchMovedRef.current = true;
+      clearPressTimer();
     }
   };
 
@@ -127,11 +155,13 @@ export function LongPressCard({
   return (
     <>
       <div
-        className={`relative ${className}`}
+        className={`relative touch-pan-y ${className}`}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
         onTouchMove={handleTouchMove}
+        onTouchCancel={clearPressTimer}
         onMouseDown={handleMouseDown}
+        onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
         {children}

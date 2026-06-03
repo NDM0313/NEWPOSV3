@@ -21,6 +21,7 @@ interface AccountSummaryReportProps {
   onViewLedger?: (accountId: string) => void;
   /** Ledger movements scoped like web account ledger (includes NULL branch_id JEs). */
   branchId?: string | null;
+  reportRefreshEpoch?: number;
 }
 
 const KIND_CONFIG: Record<AccountKind, { title: string; subtitle: string; types: string[]; gradient: 'indigo' | 'emerald' | 'amber' | 'slate' | 'rose'; icon: typeof Wallet }> = {
@@ -29,7 +30,15 @@ const KIND_CONFIG: Record<AccountKind, { title: string; subtitle: string; types:
   wallet: { title: 'Wallet Summary', subtitle: 'Mobile wallet activity', types: ['mobile_wallet'], gradient: 'amber', icon: Smartphone },
 };
 
-export function AccountSummaryReport({ onBack, companyId, user, kind, onViewLedger, branchId }: AccountSummaryReportProps) {
+export function AccountSummaryReport({
+  onBack,
+  companyId,
+  user,
+  kind,
+  onViewLedger,
+  branchId,
+  reportRefreshEpoch = 0,
+}: AccountSummaryReportProps) {
   const cfg = KIND_CONFIG[kind];
   const Icon = cfg.icon;
   const [accounts, setAccounts] = useState<accountsApi.AccountRow[]>([]);
@@ -56,7 +65,12 @@ export function AccountSummaryReport({ onBack, companyId, user, kind, onViewLedg
     return () => {
       cancelled = true;
     };
-  }, [companyId, kind]);
+  }, [companyId, kind, reportRefreshEpoch]);
+
+  useEffect(() => {
+    if (reportRefreshEpoch === 0) return;
+    setMovementsRefreshNonce((n) => n + 1);
+  }, [reportRefreshEpoch]);
 
   useEffect(() => {
     if (!companyId || accounts.length === 0) {

@@ -452,6 +452,8 @@ export function SalesModule({
       billRef: saleData.billRef?.trim() || null,
       isStudio: saleData.saleType === 'studio',
       userId: effectiveUserId,
+      profileUserId: effectiveProfileId,
+      actorRole: user.role,
       invoiceDate: saleData.saleDate || localNowDateString(),
       paymentDate: result.paymentDate || localNowDateString(),
       ...(saleData.saleType === 'studio' && {

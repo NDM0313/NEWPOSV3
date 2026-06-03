@@ -25,6 +25,12 @@ import {
   pushExpenseEditTrace,
 } from '@/app/lib/expenseEditTrace';
 import { supabase } from '@/lib/supabase';
+import { formatPaymentAccountLabel } from '@/app/lib/paymentAccountDisplay';
+import {
+  isLiquidityPaymentAccount,
+  postedPaymentAccountIdFromRow,
+  postedPaymentDisplayFromRow,
+} from '@/app/lib/resolveExpensePaymentAccount';
 import { toast } from 'sonner';
 
 // ============================================
@@ -46,10 +52,14 @@ export interface Expense {
   id: string;
   expenseNo: string;
   category: ExpenseCategory | string;
+  /** FK to expense_categories when used */
+  expense_category_id?: string;
   description: string;
   amount: number;
   date: string;
   paymentMethod: string;
+  /** Human-readable payment account (code — name) for display */
+  paymentAccountDisplay?: string;
   /** Chart payment account UUID when stored on the expense row */
   paymentAccountId?: string;
   payeeName: string;
@@ -60,6 +70,7 @@ export interface Expense {
   approvedBy?: string;
   approvedDate?: string;
   receiptAttached: boolean;
+  receiptUrl?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -111,7 +122,10 @@ export const useExpenses = () => {
     }
     throw new Error('useExpenses must be used within ExpenseProvider');
   }
-  (context as any).__activate?.();
+  const activate = (context as ExpenseContextType & { __activate?: () => void }).__activate;
+  useEffect(() => {
+    activate?.();
+  }, [activate]);
   return context;
 };
 
@@ -165,15 +179,46 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     const categoryRaw = supabaseExpense.category
       || supabaseExpense.expense_category?.name
       || supabaseExpense.expense_category?.slug;
+    const paymentAccountFromJoin = supabaseExpense.payment_account;
+    const paymentAccountFromContext =
+      supabaseExpense.payment_account_id && accounting?.accounts
+        ? accounting.accounts.find((a) => a.id === supabaseExpense.payment_account_id)
+        : undefined;
+    const postedAccount = supabaseExpense.posted_payment_account as
+      | { code?: string; name?: string; type?: string }
+      | null
+      | undefined;
+    const postedAccountId =
+      supabaseExpense.posted_payment_account_id as string | undefined;
+    const usePosted =
+      postedAccountId &&
+      (postedAccount ? isLiquidityPaymentAccount(postedAccount) : true);
+    const paymentAccountDisplay = usePosted
+      ? formatPaymentAccountLabel({
+          paymentAccount: postedAccount || null,
+          paymentMethod: supabaseExpense.payment_method,
+        })
+      : postedPaymentDisplayFromRow(supabaseExpense);
+    const resolvedPaymentAccountId =
+      postedPaymentAccountIdFromRow(supabaseExpense) ||
+      (usePosted ? postedAccountId : undefined) ||
+      (paymentAccountFromJoin && isLiquidityPaymentAccount(paymentAccountFromJoin)
+        ? supabaseExpense.payment_account_id
+        : paymentAccountFromContext && isLiquidityPaymentAccount(paymentAccountFromContext)
+          ? supabaseExpense.payment_account_id
+          : undefined);
+    const receiptUrl = supabaseExpense.receipt_url || undefined;
     return {
       id,
       expenseNo,
       category: mapCategoryFromSupabase(categoryRaw),
+      expense_category_id: supabaseExpense.expense_category_id || undefined,
       description: supabaseExpense.description || '',
       amount: supabaseExpense.amount || 0,
       date: supabaseExpense.expense_date || localNowDateString(),
       paymentMethod: supabaseExpense.payment_method || 'Cash',
-      paymentAccountId: supabaseExpense.payment_account_id || undefined,
+      paymentAccountDisplay,
+      paymentAccountId: resolvedPaymentAccountId || undefined,
       payeeName:
         supabaseExpense.vendor_name ||
         supabaseExpense.supplier_name ||
@@ -185,12 +230,13 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
       submittedBy: supabaseExpense.created_by_user?.full_name || supabaseExpense.created_by || '',
       approvedBy: supabaseExpense.approved_by_user?.full_name || supabaseExpense.approved_by,
       approvedDate: supabaseExpense.approved_at,
-      receiptAttached: false, // TODO: Add receipt field to schema
+      receiptAttached: Boolean(receiptUrl),
+      receiptUrl,
       notes: supabaseExpense.notes,
       createdAt: supabaseExpense.created_at || getCurrentLocalTimestamp(),
       updatedAt: supabaseExpense.updated_at || getCurrentLocalTimestamp(),
     };
-  }, []);
+  }, [accounting?.accounts]);
 
   // Load expenses from database
   const loadExpenses = useCallback(async () => {
@@ -283,6 +329,7 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
           paymentMethod: newExpense.paymentMethod,
           date: newExpense.date,
           description: newExpense.description,
+          creditAccountId: options?.payment_account_id,
         });
       }
 

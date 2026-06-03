@@ -1,5 +1,54 @@
 import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localDate';
 import { supabase } from '@/lib/supabase';
+import { enrichExpenseRowsWithPostedPaymentAccount } from '@/app/lib/resolveExpensePaymentAccount';
+
+/** Enrich expenses with creator full_name. expenses.created_by = auth.users.id; resolve via users.auth_user_id. */
+async function enrichExpenseRowsWithCreatorNames(expenses: any[]): Promise<void> {
+  const ids = [...new Set((expenses || []).map((e: any) => e.created_by).filter(Boolean))] as string[];
+  if (ids.length === 0) return;
+  const nameByCreatedBy = new Map<string, string>();
+  const { data: usersByAuth } = await supabase.from('users').select('auth_user_id, full_name, email').in('auth_user_id', ids);
+  (usersByAuth || []).forEach((u: any) => {
+    if (u?.auth_user_id) nameByCreatedBy.set(u.auth_user_id, u.full_name || u.email || '');
+  });
+  const missing = ids.filter((id) => !nameByCreatedBy.has(id));
+  if (missing.length > 0) {
+    const { data: usersById } = await supabase.from('users').select('id, full_name, email').in('id', missing);
+    (usersById || []).forEach((u: any) => {
+      if (u?.id) nameByCreatedBy.set(u.id, u.full_name || u.email || '');
+    });
+  }
+  expenses.forEach((e: any) => {
+    const uid = e.created_by;
+    if (uid && typeof uid === 'string') {
+      const name = nameByCreatedBy.get(uid) || null;
+      e.created_by_user = { full_name: name, email: null };
+    }
+  });
+}
+
+/** Fill payment_account join when FK join failed but payment_account_id is set. */
+async function enrichExpenseRowsWithPaymentAccounts(expenses: any[]): Promise<void> {
+  const missingIds = [
+    ...new Set(
+      (expenses || [])
+        .filter((e: any) => e.payment_account_id && !e.payment_account?.name && !e.payment_account?.code)
+        .map((e: any) => e.payment_account_id),
+    ),
+  ] as string[];
+  if (missingIds.length === 0) return;
+  const { data: accounts } = await supabase
+    .from('accounts')
+    .select('id, code, name, type')
+    .in('id', missingIds);
+  const byId = new Map((accounts || []).map((a: any) => [a.id, a]));
+  expenses.forEach((e: any) => {
+    if (e.payment_account_id && !e.payment_account?.name) {
+      const acc = byId.get(e.payment_account_id);
+      if (acc) e.payment_account = acc;
+    }
+  });
+}
 
 export interface Expense {
   id?: string;
@@ -39,14 +88,16 @@ export const expenseService = {
     return data;
   },
 
-  // Get all expenses (join expense_categories for category name when expense_category_id is used)
+  // Get all expenses (join expense_categories + payment account)
   async getAllExpenses(companyId: string, branchId?: string) {
+    const richSelect = `
+        *,
+        expense_category:expense_categories(name, slug),
+        payment_account:accounts(id, code, name, type)
+      `;
     let query = supabase
       .from('expenses')
-      .select(`
-        *,
-        expense_category:expense_categories(name, slug)
-      `)
+      .select(richSelect)
       .eq('company_id', companyId)
       .order('expense_date', { ascending: false });
 
@@ -55,6 +106,19 @@ export const expenseService = {
     }
 
     let { data, error } = await query;
+
+    // Fallback: category join only
+    if (error && (error.code === 'PGRST200' || String(error.message || '').includes('accounts'))) {
+      let fallback = supabase
+        .from('expenses')
+        .select(`*, expense_category:expense_categories(name, slug)`)
+        .eq('company_id', companyId)
+        .order('expense_date', { ascending: false });
+      if (branchId) fallback = fallback.eq('branch_id', branchId);
+      const res = await fallback;
+      data = res.data;
+      error = res.error;
+    }
 
     // Fallback to plain select if join fails (e.g. expense_categories missing)
     if (error && (error.code === 'PGRST200' || error.message?.includes('expense_categories'))) {
@@ -95,18 +159,38 @@ export const expenseService = {
     }
     
     if (error) throw error;
-    return data;
+
+    const rows = data || [];
+    await enrichExpenseRowsWithCreatorNames(rows);
+    await enrichExpenseRowsWithPaymentAccounts(rows);
+    await enrichExpenseRowsWithPostedPaymentAccount(rows, companyId);
+    return rows;
   },
 
   // Get single expense
   async getExpense(id: string) {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('expenses')
-      .select('*')
+      .select(`
+        *,
+        expense_category:expense_categories(name, slug),
+        payment_account:accounts(id, code, name, type)
+      `)
       .eq('id', id)
       .single();
 
+    if (error) {
+      const plain = await supabase.from('expenses').select('*').eq('id', id).single();
+      data = plain.data;
+      error = plain.error;
+    }
+
     if (error) throw error;
+    if (data) {
+      await enrichExpenseRowsWithCreatorNames([data]);
+      await enrichExpenseRowsWithPaymentAccounts([data]);
+      await enrichExpenseRowsWithPostedPaymentAccount([data], (data as { company_id?: string }).company_id);
+    }
     return data;
   },
 

@@ -19,9 +19,18 @@ interface AgingReportProps {
   branchId?: string | null;
   user: User;
   onOpenParty?: (partyId: string, partyName: string) => void;
+  reportRefreshEpoch?: number;
 }
 
-export function AgingReport({ onBack, kind, companyId, branchId, user, onOpenParty }: AgingReportProps) {
+export function AgingReport({
+  onBack,
+  kind,
+  companyId,
+  branchId,
+  user,
+  onOpenParty,
+  reportRefreshEpoch = 0,
+}: AgingReportProps) {
   const [data, setData] = useState<AgingData | null>(null);
   const [loading, setLoading] = useState(true);
   const preview = usePdfPreview(companyId);
@@ -42,7 +51,7 @@ export function AgingReport({ onBack, kind, companyId, branchId, user, onOpenPar
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId, kind]);
+  }, [companyId, branchId, kind, reportRefreshEpoch]);
 
   const title = kind === 'payables' ? 'Payables' : 'Receivables';
   const subtitle = kind === 'payables' ? 'What you owe suppliers' : 'What customers owe you';

@@ -11,13 +11,14 @@ interface CourierShipmentsReportProps {
   companyId: string | null;
   branchId?: string | null;
   onOpenSale?: (saleId: string) => void;
+  reportRefreshEpoch?: number;
 }
 
 type Row =
   | { kind: 'courier'; id: string; label: string; tracking: string; cost: number; status: string; saleId?: string }
   | { kind: 'sale'; id: string; label: string; tracking: string; cost: number; status: string; saleId: string };
 
-export function CourierShipmentsReport({ onBack, companyId, onOpenSale }: CourierShipmentsReportProps) {
+export function CourierShipmentsReport({ onBack, companyId, onOpenSale, reportRefreshEpoch = 0 }: CourierShipmentsReportProps) {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(!!companyId);
 
@@ -65,7 +66,7 @@ export function CourierShipmentsReport({ onBack, companyId, onOpenSale }: Courie
     return () => {
       cancelled = true;
     };
-  }, [companyId]);
+  }, [companyId, reportRefreshEpoch]);
 
   return (
     <div className="min-h-screen bg-[#111827] pb-24">

@@ -171,7 +171,10 @@ export const useRentals = () => {
     }
     throw new Error('useRentals must be used within RentalProvider');
   }
-  (ctx as any).__activate?.();
+  const activate = (ctx as RentalContextType & { __activate?: () => void }).__activate;
+  useEffect(() => {
+    activate?.();
+  }, [activate]);
   return ctx;
 };
 

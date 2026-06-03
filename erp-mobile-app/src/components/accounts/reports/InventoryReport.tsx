@@ -16,6 +16,7 @@ interface InventoryReportProps {
   onBack: () => void;
   companyId: string | null;
   user: User;
+  reportRefreshEpoch?: number;
 }
 
 function variationLabel(v: { attributes: Record<string, string>; sku: string }): string {
@@ -23,7 +24,7 @@ function variationLabel(v: { attributes: Record<string, string>; sku: string }):
   return parts.length ? parts.join(' · ') : v.sku;
 }
 
-export function InventoryReport({ onBack, companyId, user }: InventoryReportProps) {
+export function InventoryReport({ onBack, companyId, user, reportRefreshEpoch = 0 }: InventoryReportProps) {
   // Default to 'year' so users see data even when last-30-day window is empty.
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('year'));
   const [rows, setRows] = useState<StockMovementRow[]>([]);
@@ -41,7 +42,7 @@ export function InventoryReport({ onBack, companyId, user }: InventoryReportProp
   useEffect(() => {
     if (!companyId) return;
     getProducts(companyId).then(({ data }) => setProducts(data));
-  }, [companyId]);
+  }, [companyId, reportRefreshEpoch]);
 
   useEffect(() => {
     if (!companyId) {
@@ -66,7 +67,7 @@ export function InventoryReport({ onBack, companyId, user }: InventoryReportProp
     return () => {
       cancelled = true;
     };
-  }, [companyId, range.from, range.to, selectedProduct?.id, selectedVariationId]);
+  }, [companyId, range.from, range.to, selectedProduct?.id, selectedVariationId, reportRefreshEpoch]);
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {

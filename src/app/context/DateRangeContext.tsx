@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
+import { getThisBusinessWeekRange } from '@/app/utils/businessWeek';
 
 export type DateRangeType = 'fromStart' | 'today' | 'last7days' | 'last15days' | 'last30days' | 'week' | 'month' | 'lastQuarter' | 'thisYear' | 'lastYear' | 'custom';
 
@@ -63,9 +64,7 @@ export const DateRangeProvider: React.FC<{ children: ReactNode }> = ({ children 
         return { startDate: last30Start, endDate };
 
       case 'week':
-        const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
-        return { startDate: weekStart, endDate };
+        return getThisBusinessWeekRange(today);
 
       case 'month':
         const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);

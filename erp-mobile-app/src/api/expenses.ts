@@ -1,7 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { listCacheKeys } from '../lib/listCache';
 import { readThroughCache } from '../lib/offlineData';
-import { localNowDateString } from '../utils/localDate';
+import { localNowDateString, getCurrentLocalTimestamp } from '../utils/localDate';
 import { resolveBranchUuidForWrite } from '../utils/branchId';
 import {
   classifyStorageUploadError,
@@ -14,6 +14,11 @@ import {
   uploadStorageAttachmentFile,
 } from '../utils/storageAttachmentPipeline';
 import { filterClearingLinesByCategory } from '../lib/saleChargeDisplay';
+import {
+  enrichExpenseRowsWithPostedPaymentAccount,
+  postedPaymentAccountIdFromRow,
+  postedPaymentDisplayFromRow,
+} from '../lib/resolveExpensePaymentAccount';
 
 /** DB / RPC expect cash | bank | card | other — wallet accounts must map to other. */
 function normalizeExpensePaymentMethodForDb(raw: string | undefined): string {
@@ -40,9 +45,17 @@ export interface ExpenseRow {
   description: string;
   amount: number;
   payment_method: string;
+  payment_account_id?: string | null;
+  payment_account_display?: string;
+  receipt_url?: string | null;
   status: string;
   created_by?: string | null;
+  created_by_name?: string | null;
   paid_to_user_id?: string | null;
+  expense_category_id?: string | null;
+  vendor_name?: string | null;
+  branch_id?: string | null;
+  created_at?: string;
 }
 
 /** Expense category from DB (optional table); supports parent/child. */
@@ -84,6 +97,75 @@ export async function getExpenses(
   return { data: cached.data, error: cached.error };
 }
 
+async function enrichExpenseRowsWithCreatorNames(rows: Record<string, unknown>[]): Promise<void> {
+  const ids = [...new Set(rows.map((e) => e.created_by).filter(Boolean))] as string[];
+  if (ids.length === 0) return;
+  const nameByCreatedBy = new Map<string, string>();
+  const { data: usersByAuth } = await supabase.from('users').select('auth_user_id, full_name, email').in('auth_user_id', ids);
+  (usersByAuth || []).forEach((u: { auth_user_id?: string; full_name?: string; email?: string }) => {
+    if (u?.auth_user_id) nameByCreatedBy.set(u.auth_user_id, u.full_name || u.email || '');
+  });
+  const missing = ids.filter((id) => !nameByCreatedBy.has(id));
+  if (missing.length > 0) {
+    const { data: usersById } = await supabase.from('users').select('id, full_name, email').in('id', missing);
+    (usersById || []).forEach((u: { id?: string; full_name?: string; email?: string }) => {
+      if (u?.id) nameByCreatedBy.set(u.id, u.full_name || u.email || '');
+    });
+  }
+  rows.forEach((e) => {
+    const uid = e.created_by;
+    if (uid && typeof uid === 'string') {
+      e.created_by_name = nameByCreatedBy.get(uid) || null;
+    }
+  });
+}
+
+function mapExpenseRow(raw: Record<string, unknown>): ExpenseRow {
+  const paymentAccount = raw.payment_account as { code?: string; name?: string; type?: string } | null | undefined;
+  const postedAccount = raw.posted_payment_account as { code?: string; name?: string; type?: string } | null | undefined;
+  const display = postedPaymentDisplayFromRow({
+    payment_account: paymentAccount,
+    payment_account_id: raw.payment_account_id != null ? String(raw.payment_account_id) : null,
+    payment_method: raw.payment_method != null ? String(raw.payment_method) : null,
+    posted_payment_account: postedAccount,
+    posted_payment_account_id: raw.posted_payment_account_id != null ? String(raw.posted_payment_account_id) : null,
+    posted_payment_display: raw.posted_payment_display != null ? String(raw.posted_payment_display) : undefined,
+  });
+  const resolvedPayId = postedPaymentAccountIdFromRow({
+    payment_account_id: raw.payment_account_id != null ? String(raw.payment_account_id) : null,
+    payment_account: paymentAccount,
+    posted_payment_account_id: raw.posted_payment_account_id != null ? String(raw.posted_payment_account_id) : null,
+    posted_payment_account: postedAccount,
+  });
+  return {
+    id: String(raw.id ?? ''),
+    expense_no: raw.expense_no != null ? String(raw.expense_no) : undefined,
+    expense_date: String(raw.expense_date ?? ''),
+    category: String(raw.category ?? ''),
+    description: String(raw.description ?? ''),
+    amount: Number(raw.amount ?? 0),
+    payment_method: String(raw.payment_method ?? 'cash'),
+    payment_account_id: resolvedPayId ?? (raw.payment_account_id != null ? String(raw.payment_account_id) : null),
+    payment_account_display: display,
+    receipt_url: raw.receipt_url != null ? String(raw.receipt_url) : null,
+    status: String(raw.status ?? ''),
+    created_by: raw.created_by != null ? String(raw.created_by) : null,
+    created_by_name: raw.created_by_name != null ? String(raw.created_by_name) : null,
+    paid_to_user_id: raw.paid_to_user_id != null ? String(raw.paid_to_user_id) : null,
+    expense_category_id: raw.expense_category_id != null ? String(raw.expense_category_id) : null,
+    vendor_name: raw.vendor_name != null ? String(raw.vendor_name) : null,
+    branch_id: raw.branch_id != null ? String(raw.branch_id) : null,
+    created_at: raw.created_at != null ? String(raw.created_at) : undefined,
+  };
+}
+
+const EXPENSE_LIST_SELECT = `
+  id, expense_no, expense_date, category, description, amount, payment_method,
+  payment_account_id, receipt_url, status, created_by, paid_to_user_id, branch_id,
+  created_at, expense_category_id, vendor_name,
+  payment_account:accounts(code, name, type)
+`;
+
 async function fetchExpensesOnline(
   companyId: string,
   branchId?: string | null,
@@ -91,7 +173,7 @@ async function fetchExpensesOnline(
 ) {
   let q = supabase
     .from('expenses')
-    .select('id, expense_no, expense_date, category, description, amount, payment_method, status, created_by, paid_to_user_id, branch_id, created_at, expense_category_id')
+    .select(EXPENSE_LIST_SELECT)
     .eq('company_id', companyId)
     .order('expense_date', { ascending: false })
     .order('created_at', { ascending: false })
@@ -102,11 +184,12 @@ async function fetchExpensesOnline(
     q = q.in('branch_id', accessibleBranchIds);
   }
   let { data, error } = await q;
-  if (error?.message?.includes('expense_category_id')) {
+
+  if (error?.message?.includes('accounts') || error?.message?.includes('payment_account')) {
     let q2 = supabase
       .from('expenses')
       .select(
-        'id, expense_no, expense_date, category, description, amount, payment_method, status, created_by, paid_to_user_id, branch_id, created_at',
+        'id, expense_no, expense_date, category, description, amount, payment_method, payment_account_id, receipt_url, status, created_by, paid_to_user_id, branch_id, created_at, expense_category_id, vendor_name',
       )
       .eq('company_id', companyId)
       .order('expense_date', { ascending: false })
@@ -121,8 +204,96 @@ async function fetchExpensesOnline(
     data = retry.data as typeof data;
     error = retry.error;
   }
+
+  if (error?.message?.includes('expense_category_id') || error?.message?.includes('receipt_url') || error?.message?.includes('payment_account_id')) {
+    let q3 = supabase
+      .from('expenses')
+      .select(
+        'id, expense_no, expense_date, category, description, amount, payment_method, status, created_by, paid_to_user_id, branch_id, created_at',
+      )
+      .eq('company_id', companyId)
+      .order('expense_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (branchId && branchId !== 'all' && branchId !== 'default') {
+      q3 = q3.eq('branch_id', branchId);
+    } else if (accessibleBranchIds?.length) {
+      q3 = q3.in('branch_id', accessibleBranchIds);
+    }
+    const retry = await q3;
+    data = retry.data as typeof data;
+    error = retry.error;
+  }
+
   if (error) return { data: [], error: error.message };
-  return { data: data || [], error: null };
+
+  const rows = (data || []) as Record<string, unknown>[];
+  await enrichExpenseRowsWithCreatorNames(rows);
+  await enrichExpenseRowsWithPostedPaymentAccount(rows, companyId);
+  return { data: rows.map(mapExpenseRow), error: null };
+}
+
+/** Fetch one expense with joins for detail sheet. */
+export async function getExpenseById(
+  companyId: string,
+  id: string,
+): Promise<{ data: ExpenseRow | null; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: 'App not configured.' };
+
+  let { data, error } = await supabase
+    .from('expenses')
+    .select(EXPENSE_LIST_SELECT)
+    .eq('company_id', companyId)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error?.message?.includes('accounts') || error?.message?.includes('payment_account')) {
+    const plain = await supabase
+      .from('expenses')
+      .select(
+        'id, expense_no, expense_date, category, description, amount, payment_method, payment_account_id, receipt_url, status, created_by, paid_to_user_id, expense_category_id, vendor_name',
+      )
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .maybeSingle();
+    data = plain.data as typeof data;
+    error = plain.error;
+  }
+
+  if (error) return { data: null, error: error.message };
+  if (!data) return { data: null, error: 'Expense not found.' };
+
+  const row = data as Record<string, unknown>;
+  await enrichExpenseRowsWithCreatorNames([row]);
+  await enrichExpenseRowsWithPostedPaymentAccount([row], companyId);
+  return { data: mapExpenseRow(row), error: null };
+}
+
+/** Delete expense — void JEs + payments, then delete row (matches web expenseService.deleteExpense). */
+export async function deleteExpense(
+  id: string,
+  companyId: string,
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured) return { error: 'App not configured.' };
+  const now = getCurrentLocalTimestamp();
+
+  await supabase
+    .from('journal_entries')
+    .update({ is_void: true, void_reason: 'expense_deleted', voided_at: now })
+    .eq('reference_type', 'expense')
+    .eq('reference_id', id)
+    .eq('company_id', companyId);
+
+  await supabase
+    .from('payments')
+    .update({ voided_at: now, voided_reason: 'expense_deleted' })
+    .eq('reference_type', 'expense')
+    .eq('reference_id', id)
+    .eq('company_id', companyId);
+
+  const { error } = await supabase.from('expenses').delete().eq('id', id).eq('company_id', companyId);
+  if (error) return { error: error.message };
+  return { error: null };
 }
 
 /** Get expense categories (flat). Returns [] if table does not exist. */

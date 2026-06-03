@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Calendar, ChevronDown, X } from 'lucide-react';
+import { getThisBusinessWeekRange } from '@/app/utils/businessWeek';
 
 interface ModernDateFilterProps {
   dateRange: { from: string; to: string };
@@ -43,10 +44,11 @@ export function ModernDateFilter({ dateRange, onApply }: ModernDateFilterProps) 
       case 'last30days':
         fromDate.setDate(today.getDate() - 30);
         break;
-      case 'thisWeek':
-        const dayOfWeek = today.getDay();
-        fromDate.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+      case 'thisWeek': {
+        const { startDate } = getThisBusinessWeekRange(today);
+        fromDate = new Date(startDate);
         break;
+      }
       case 'lastWeek':
         const lastWeekStart = new Date(today);
         const lastWeekEnd = new Date(today);

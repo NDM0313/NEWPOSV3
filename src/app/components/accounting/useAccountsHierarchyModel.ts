@@ -4,6 +4,7 @@ import {
   COA_SECTION_LABEL,
   coaStatementSection,
   compareCoaSection,
+  isOperationalExtendedCoaCode,
   type CoaStatementSection,
 } from '@/app/lib/accountHierarchy';
 import type { ContactPartyGlBalancesSlice } from '@/app/services/contactService';
@@ -89,9 +90,12 @@ export function useAccountsHierarchyModel(
   hideOperationalPartySubledgerRows?: boolean
 ): { hierarchyRows: AccountsHierarchyRowModel[]; parentIdsWithChildren: Set<string> } {
   const matchesOperationalAccountView = useCallback((acc: { type?: string; accountType?: string; code?: string; is_group?: boolean }) => {
+    const code = String(acc.code || '').trim();
+    if (isOperationalExtendedCoaCode(code)) {
+      return code === '1170' || !acc.is_group;
+    }
     if (acc.is_group) return false;
     const t = String(acc.type || acc.accountType || '').toLowerCase();
-    const code = String(acc.code || '').trim();
     return (
       t.includes('cash') ||
       t.includes('bank') ||

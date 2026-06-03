@@ -45,6 +45,10 @@ export function registerAllSyncHandlers(): void {
       notes?: string;
       isStudio: boolean;
       userId: string;
+      profileUserId?: string | null;
+      actorRole?: string | null;
+      salesmanId?: string | null;
+      commissionPercent?: number | null;
       invoiceDate?: string;
       paymentDate?: string;
       orderDate?: string;
@@ -83,6 +87,10 @@ export function registerAllSyncHandlers(): void {
       notes: p.notes,
       isStudio: !!p.isStudio,
       userId: p.userId,
+      profileUserId: p.profileUserId,
+      actorRole: p.actorRole,
+      salesmanId: p.salesmanId,
+      commissionPercent: p.commissionPercent,
       invoiceDate: p.invoiceDate,
       paymentDate: p.paymentDate,
       orderDate: p.orderDate,

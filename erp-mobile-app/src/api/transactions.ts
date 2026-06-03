@@ -35,6 +35,8 @@ export interface TransactionRow {
   createdBy: string | null;
   createdByName?: string | null;
   attachments: Array<{ url: string; name?: string | null }> | null;
+  /** Parent › sub expense category when reference is expense. */
+  expenseCategoryLabel?: string | null;
 }
 
 async function enrichTransactionCreatorNames(rows: TransactionRow[]): Promise<TransactionRow[]> {
@@ -339,6 +341,15 @@ export async function getPaymentTransactions(
     });
   }
 
+  const expenseRefIds = rows
+    .filter((r) => r.reference_type === 'expense' && r.reference_id)
+    .map((r) => r.reference_id);
+  const { loadExpenseCategoryPathsForIds } = await import('../lib/expenseCategoryPath');
+  const expenseCategoryById =
+    expenseRefIds.length > 0
+      ? await loadExpenseCategoryPathsForIds(filters.companyId, expenseRefIds)
+      : new Map<string, string>();
+
   const out: TransactionRow[] = rows.map((row) => {
     const direction = (row.payment_type === 'received' ? 'received' : 'paid') as 'received' | 'paid';
     const entry = entryByPayment[row.id];
@@ -389,6 +400,10 @@ export async function getPaymentTransactions(
       entryNo: entry?.entry_no ?? null,
       createdBy: row.created_by,
       attachments,
+      expenseCategoryLabel:
+        row.reference_type === 'expense' && row.reference_id
+          ? expenseCategoryById.get(row.reference_id) ?? null
+          : null,
     };
   });
 
@@ -400,6 +415,7 @@ export async function getPaymentTransactions(
         (t.partyName || '').toLowerCase().includes(q) ||
         (t.partyAccountName || '').toLowerCase().includes(q) ||
         (t.paymentAccountName || '').toLowerCase().includes(q) ||
+        (t.expenseCategoryLabel || '').toLowerCase().includes(q) ||
         (t.referenceNumber || '').toLowerCase().includes(q) ||
         (t.entryNo || '').toLowerCase().includes(q) ||
         (t.notes || '').toLowerCase().includes(q),

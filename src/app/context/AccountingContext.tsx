@@ -138,6 +138,8 @@ export interface AccountingEntry {
     /** When set, JE is settlement / payment — exclude from by-document purchase/sale principal totals. */
     paymentId?: string;
     journalEntryId?: string;
+    /** Auto voucher (JE-0005) — use for display when operational documentNo differs. */
+    journalEntryNo?: string;
     paymentMethod?: string;
     customerId?: string;
     customerName?: string;
@@ -359,6 +361,8 @@ export interface ExpenseParams {
   description: string;
   /** Expense document date for journal/payment posting (yyyy-MM-dd). */
   date?: string;
+  /** Explicit liquidity GL account for credit leg (from expenses.payment_account_id). */
+  creditAccountId?: string;
 }
 
 export interface PurchaseParams {
@@ -639,6 +643,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const metadata: AccountingEntry['metadata'] = {
       journalEntryId: journalEntry.id,
+      journalEntryNo: journalEntry.entry_no ?? undefined,
       referenceId: journalEntry.reference_id,
       referenceType: journalEntry.reference_type,
       paymentId: journalEntry.payment_id,
@@ -2697,7 +2702,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   // ============================================
 
   const recordExpense = async (params: ExpenseParams): Promise<boolean> => {
-    const { expenseId, category, amount, paymentMethod, description, date } = params;
+    const { expenseId, category, amount, paymentMethod, description, date, creditAccountId } = params;
 
     // Map expense category to specific GL account code
     const catLower = String(category || '').toLowerCase();
@@ -2745,6 +2750,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         expenseId,
         ...(date ? { postingDate: date.slice(0, 10) } : {}),
         ...(resolvedDebitAccountId ? { debitAccountId: resolvedDebitAccountId } : {}),
+        ...(creditAccountId ? { creditAccountId } : {}),
       },
     });
   };

@@ -10,6 +10,7 @@ import { Button } from '../ui/button';
 import { Loader2, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown, Pencil } from 'lucide-react';
 import { cn } from '../ui/utils';
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
+import { stripJournalEditAuditSuffix } from '@/app/utils/journalDescriptionDisplay';
 import { allowsDayBookUnifiedEdit } from '@/app/lib/journalEntryEditPolicy';
 import {
   journalEntryPresentationFromHeader,
@@ -203,7 +204,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         const presentationKind = journalEntryPresentationFromHeader(refType, fp);
         const payId = je.payment_id != null && String(je.payment_id).trim() ? String(je.payment_id) : null;
         const descSuffix = refType === 'sale_adjustment' ? ' (sale edit)' : refType === 'payment_adjustment' ? ' (payment edit)' : '';
-        const desc = String(je.description ?? '') + descSuffix;
+        const desc = stripJournalEditAuditSuffix(String(je.description ?? '')) + descSuffix;
         const type = refTypeToDisplayType(refType);
 
         type Fmt = { lineId: string; debit: number; credit: number; accountStr: string; lineDesc: string };

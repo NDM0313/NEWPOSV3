@@ -19,12 +19,14 @@ import { RoznamchaPreviewPdf } from '../../shared/RoznamchaPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
 import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
 import { formatLocalDateYYYYMMDD, localNowDateString } from '../../../utils/localDate';
+import { roznamchaMetaSubline } from '../../../lib/roznamchaRowDescription';
 
 interface DayBookReportProps {
   onBack: () => void;
   companyId: string | null;
   branchId?: string | null;
   user: User;
+  reportRefreshEpoch?: number;
 }
 
 type ReportMode = 'cash' | 'all';
@@ -65,7 +67,7 @@ function applyQuickRange(days: number, single: boolean): DateRangeValue {
   return { from: formatLocalDateYYYYMMDD(from), to, preset: 'custom' };
 }
 
-export function DayBookReport({ onBack, companyId, branchId, user }: DayBookReportProps) {
+export function DayBookReport({ onBack, companyId, branchId, user, reportRefreshEpoch = 0 }: DayBookReportProps) {
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('today'));
   const [mode, setMode] = useState<ReportMode>('cash');
   const [branchScope, setBranchScope] = useState<BranchScope>('all');
@@ -165,6 +167,7 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
     paymentLedgerAccountId,
     dateFrom,
     dateTo,
+    reportRefreshEpoch,
   ]);
 
   const orderedRozRows = useMemo(() => {
@@ -478,9 +481,7 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
                         return r.time;
                       }
                     })();
-                    const meta = [r.referenceDisplay, r.partyLine, r.createdBy ? `by ${r.createdBy}` : '']
-                      .filter(Boolean)
-                      .join(' · ');
+                    const meta = roznamchaMetaSubline(r);
                     const clickable = !r.id.startsWith('rp-');
                     return (
                       <li key={r.id}>
@@ -503,7 +504,9 @@ export function DayBookReport({ onBack, companyId, branchId, user }: DayBookRepo
                                 {r.journalEntryNo ? ` · ${r.journalEntryNo}` : ''}
                               </p>
                               {meta && <p className="text-[10px] text-[#6B7280] truncate mt-0.5">{meta}</p>}
-                              <p className="text-[10px] text-[#9CA3AF] mt-0.5">{r.accountLabel}</p>
+                              <p className="text-[11px] text-[#9CA3AF] mt-0.5">
+                                {r.accountName?.trim() || r.accountLabel || '—'}
+                              </p>
                             </div>
                             <div className="text-right shrink-0">
                               <span

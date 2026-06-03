@@ -388,6 +388,8 @@ export function POSModule({ onBack, user, companyId, branchId, onRequestCounterL
       paymentAccountId: result.accountId ?? null,
       isStudio: false,
       userId: effectiveUserId,
+      profileUserId: effectiveProfileId,
+      actorRole: user.role,
       invoiceDate,
       paymentDate: result.paymentDate || invoiceDate,
       isPOS: true,

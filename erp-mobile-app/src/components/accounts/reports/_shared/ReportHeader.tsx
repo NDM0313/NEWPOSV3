@@ -39,7 +39,7 @@ const GRADIENTS: Record<NonNullable<ReportHeaderProps['gradient']>, string> = {
 export function ReportHeader(props: ReportHeaderProps) {
   const gradient = GRADIENTS[props.gradient ?? 'indigo'];
   return (
-    <div className={`bg-gradient-to-br ${gradient} p-4 sticky top-0 z-10 flow-screen-header`}>
+    <div className={`bg-gradient-to-br ${gradient} p-4 sticky top-0 z-20 flow-screen-header`}>
       <div className="flex items-center gap-3 mb-3">
         <button
           onClick={props.onBack}

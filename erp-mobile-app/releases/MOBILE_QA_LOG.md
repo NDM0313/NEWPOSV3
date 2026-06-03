@@ -16,6 +16,17 @@ Append-only. **Newest entry at the top.** Use when testing APK builds or reporti
 
 ---
 
+## 2026-06-03 — Sales APK vs localhost scope
+
+| Field | Value |
+|--------|--------|
+| **Area** | Sales home list |
+| **Expected** | Same sales visible when same company, branch, and login identity (admin vs counter worker) |
+| **Actual** | Localhost dev may show all company sales; APK after counter PIN shows only that worker’s rows |
+| **Status** | documented — see **Sales list: APK vs localhost dev** in [`APK_UPDATE.md`](APK_UPDATE.md); rebuild APK after `cap sync` with `.env.production` |
+
+---
+
 ## 2026-06-02 — build 34 (bespoke + sale document status)
 
 | Field | Value |

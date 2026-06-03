@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, ArrowRight, Check, Search } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { ArrowLeft, ArrowRight, Check, Search, Paperclip } from 'lucide-react';
 import type { User } from '../../types';
 import { DateInputField } from '../shared/DateTimePicker';
 import { getAccounts, createJournalEntry } from '../../api/accounts';
@@ -8,6 +8,15 @@ import { useSubmitLock } from '../../contexts/LoadingContext';
 import { localNowDateString } from '../../utils/localDate';
 import { usePermissions } from '../../context/PermissionContext';
 import { formatAccountBalanceInline } from '../../utils/balancePrivacy';
+import { isRealBranchUuid } from '../../utils/branchId';
+import { AttachmentFilePicker } from '../shared/AttachmentFilePicker';
+import { uploadJournalEntryAttachments } from '../../api/journalAttachments';
+import { TransactionSuccessModal, type TransactionSuccessData } from '../shared/TransactionSuccessModal';
+import { JournalDescriptionFields } from './JournalDescriptionFields';
+import {
+  buildGeneralJournalAutoDescription,
+  composeJournalEntryDescription,
+} from '../../utils/journalEntryDescription';
 
 interface GeneralEntryFlowProps {
   onBack: () => void;
@@ -17,41 +26,85 @@ interface GeneralEntryFlowProps {
   branchId?: string | null;
 }
 
+interface AccountRow {
+  id: string;
+  name: string;
+  code: string;
+  type: string;
+  balance: number;
+}
+
 interface EntryData {
   debitAccountId: string;
   debitAccountName: string;
   creditAccountId: string;
   creditAccountName: string;
-  amount: string;
+  amount: number;
   date: string;
-  description: string;
-  reference?: string;
+  userNotes: string;
+  reference: string;
+}
+
+function isPostingAccount(a: { isGroup?: boolean }): boolean {
+  return a.isGroup !== true;
 }
 
 export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId }: GeneralEntryFlowProps) {
   const { canViewBalances } = usePermissions();
+  const effectiveBranchId = isRealBranchUuid(branchId) ? branchId.trim() : null;
   const [step, setStep] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
-  const [accounts, setAccounts] = useState<{ id: string; name: string; type: string; balance: number }[]>([]);
+  const [accounts, setAccounts] = useState<AccountRow[]>([]);
   const { run: runSave, busy: submitting } = useSubmitLock();
   const [error, setError] = useState<string | null>(null);
+  const [successData, setSuccessData] = useState<TransactionSuccessData | null>(null);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [entryData, setEntryData] = useState<EntryData>({
     debitAccountId: '',
     debitAccountName: '',
     creditAccountId: '',
     creditAccountName: '',
-    amount: '',
+    amount: 0,
     date: localNowDateString(),
-    description: '',
+    userNotes: '',
     reference: '',
   });
 
   useEffect(() => {
     if (!companyId) return;
     getAccounts(companyId).then((r) => {
-      if (r.data?.length) setAccounts(r.data.map((a) => ({ id: a.id, name: a.name, type: a.type, balance: a.balance })));
+      if (r.data?.length) {
+        setAccounts(
+          r.data
+            .filter(isPostingAccount)
+            .map((a) => ({
+              id: a.id,
+              name: a.name,
+              code: a.code,
+              type: a.type,
+              balance: a.balance,
+            }))
+        );
+      }
     });
   }, [companyId]);
+
+  const getAccount = (id: string) => accounts.find((a) => a.id === id);
+
+  const autoDescription = useMemo(() => {
+    if (!entryData.debitAccountId || !entryData.creditAccountId || entryData.amount <= 0) {
+      return 'Complete amount and accounts to generate description.';
+    }
+    const debit = getAccount(entryData.debitAccountId);
+    const credit = getAccount(entryData.creditAccountId);
+    return buildGeneralJournalAutoDescription({
+      debitName: entryData.debitAccountName,
+      debitCode: debit?.code,
+      creditName: entryData.creditAccountName,
+      creditCode: credit?.code,
+      addedByName: user.name,
+    });
+  }, [entryData, accounts, user.name]);
 
   const handleNextWithReset = () => {
     if (step < 3) {
@@ -68,39 +121,69 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
   };
 
   const handleSubmit = async () => {
-    const amountNum = parseFloat(entryData.amount || '0');
-    if (!companyId || !entryData.debitAccountId || !entryData.creditAccountId || amountNum <= 0 || !entryData.description.trim()) return;
+    if (!companyId || !entryData.debitAccountId || !entryData.creditAccountId || entryData.amount <= 0) return;
     await runSave('Saving entry...', async () => {
-    setError(null);
-    const payload = {
-      companyId,
-      branchId: branchId ?? undefined,
-      entryDate: entryData.date,
-      description: entryData.description.trim(),
-      referenceType: 'general',
-      lines: [
-        { accountId: entryData.debitAccountId, debit: amountNum, credit: 0 },
-        { accountId: entryData.creditAccountId, debit: 0, credit: amountNum },
-      ],
-      userId: user.id,
-    };
-    if (!navigator.onLine) {
-      const effectiveBranchId = branchId ?? '';
-      try {
-        await addPending('journal_entry', payload, companyId, effectiveBranchId);
-        onComplete();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to save offline.');
+      setError(null);
+      const desc = composeJournalEntryDescription({
+        auto: autoDescription,
+        userNotes: entryData.userNotes,
+        reference: entryData.reference,
+      });
+      let attachments: { url: string; name: string }[] | undefined;
+      if (attachmentFiles.length > 0) {
+        const { results, failures } = await uploadJournalEntryAttachments(companyId, attachmentFiles);
+        attachments = results.length > 0 ? results : undefined;
+        if (failures.length > 0 && results.length < attachmentFiles.length) {
+          setError(failures[0]?.userMessage ?? 'Some attachments did not upload.');
+        }
       }
-      return;
-    }
-    const { error: err } = await createJournalEntry(payload);
-    if (err) {
-      setError(err);
-      return;
-    }
-    onComplete();
+      const payload = {
+        companyId,
+        branchId: effectiveBranchId,
+        entryDate: entryData.date,
+        description: desc,
+        referenceType: 'general',
+        lines: [
+          { accountId: entryData.debitAccountId, debit: entryData.amount, credit: 0 },
+          { accountId: entryData.creditAccountId, debit: 0, credit: entryData.amount },
+        ],
+        userId: user.id,
+      };
+      if (!navigator.onLine) {
+        try {
+          await addPending('journal_entry', payload, companyId, effectiveBranchId ?? '');
+          setSuccessData({
+            type: 'journal',
+            title: 'Entry saved',
+            transactionNo: null,
+            amount: entryData.amount,
+            partyName: `${entryData.debitAccountName} → ${entryData.creditAccountName}`,
+            date: entryData.date,
+          });
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Failed to save offline.');
+        }
+        return;
+      }
+      const { data, error: err } = await createJournalEntry({ ...payload, attachments });
+      if (err) {
+        setError(err);
+        return;
+      }
+      setSuccessData({
+        type: 'journal',
+        title: 'Entry saved',
+        transactionNo: data?.entry_no ?? null,
+        amount: entryData.amount,
+        partyName: `${entryData.debitAccountName} → ${entryData.creditAccountName}`,
+        date: entryData.date,
+      });
     });
+  };
+
+  const closeSuccess = () => {
+    setSuccessData(null);
+    onComplete();
   };
 
   const canProceed = () => {
@@ -110,17 +193,21 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
       case 2:
         return entryData.creditAccountId !== '' && entryData.creditAccountId !== entryData.debitAccountId;
       case 3:
-        return parseFloat(entryData.amount || '0') > 0 && entryData.description.trim() !== '';
+        return entryData.amount > 0;
       default:
         return false;
     }
   };
 
   const filteredAccounts = accounts.filter(
-    (a) => a.name.toLowerCase().includes(searchQuery.toLowerCase()) || a.type.toLowerCase().includes(searchQuery.toLowerCase())
+    (a) =>
+      a.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      a.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      a.code.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
+    <>
     <div className="min-h-screen pb-40 bg-[#111827]">
       <div className="bg-gradient-to-br from-[#8B5CF6] to-[#7C3AED] p-4 sticky top-0 z-10 flow-screen-header">
         <div className="flex items-center gap-3 mb-4">
@@ -170,7 +257,9 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-semibold text-white">{account.name}</p>
-                        <p className="text-xs text-[#9CA3AF]">{account.type}</p>
+                        <p className="text-xs text-[#9CA3AF]">
+                          {account.code} · {account.type}
+                        </p>
                         {formatAccountBalanceInline(account.balance, canViewBalances) && (
                           <p className="text-xs text-[#6B7280] mt-1">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
                         )}
@@ -225,10 +314,12 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm font-semibold text-white">{account.name}</p>
-                          <p className="text-xs text-[#9CA3AF]">{account.type}</p>
+                          <p className="text-xs text-[#9CA3AF]">
+                            {account.code} · {account.type}
+                          </p>
                           {formatAccountBalanceInline(account.balance, canViewBalances) && (
-                          <p className="text-xs text-[#6B7280] mt-1">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
-                        )}
+                            <p className="text-xs text-[#6B7280] mt-1">{formatAccountBalanceInline(account.balance, canViewBalances)}</p>
+                          )}
                         </div>
                         {entryData.creditAccountId === account.id && <Check className="text-[#10B981]" size={20} />}
                       </div>
@@ -263,44 +354,40 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
               <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Amount (Rs.) *</label>
               <input
-                type="text"
+                type="number"
                 inputMode="decimal"
                 pattern="[0-9.]*"
                 min="0"
                 step="0.01"
-                value={entryData.amount}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  if (raw === '' || /^[0-9]*\.?[0-9]*$/.test(raw)) {
-                    setEntryData({ ...entryData, amount: raw });
-                  }
-                }}
+                value={entryData.amount || ''}
+                onChange={(e) => setEntryData({ ...entryData, amount: parseFloat(e.target.value) || 0 })}
                 placeholder="0.00"
                 className="w-full max-w-full min-w-0 px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white text-lg font-semibold placeholder-[#6B7280] focus:outline-none focus:border-[#8B5CF6] box-border"
               />
             </div>
 
-            <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Description *</label>
-              <textarea
-                value={entryData.description}
-                onChange={(e) => setEntryData({ ...entryData, description: e.target.value })}
-                placeholder="Enter entry description..."
-                rows={4}
-                className="w-full px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white placeholder-[#6B7280] focus:outline-none focus:border-[#8B5CF6] resize-none"
-              />
-            </div>
-
             <DateInputField label="Entry Date" value={entryData.date} onChange={(date) => setEntryData({ ...entryData, date })} pickerLabel="SELECT ENTRY DATE" />
 
+            <JournalDescriptionFields
+              autoDescription={autoDescription}
+              userNotes={entryData.userNotes}
+              onUserNotesChange={(userNotes) => setEntryData({ ...entryData, userNotes })}
+              reference={entryData.reference}
+              onReferenceChange={(reference) => setEntryData({ ...entryData, reference })}
+              referenceLabel="Reference / Voucher # (Optional)"
+              referencePlaceholder="e.g., Invoice #123, Receipt #456"
+              focusBorderClass="focus:border-[#8B5CF6]"
+            />
+
             <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
-              <label className="block text-sm font-medium text-[#D1D5DB] mb-2">Reference / Voucher # (Optional)</label>
-              <input
-                type="text"
-                value={entryData.reference}
-                onChange={(e) => setEntryData({ ...entryData, reference: e.target.value })}
-                placeholder="e.g., Invoice #123, Receipt #456"
-                className="w-full px-4 py-3 bg-[#374151] border border-[#4B5563] rounded-lg text-white placeholder-[#6B7280] focus:outline-none focus:border-[#8B5CF6]"
+              <div className="flex items-center gap-2 mb-2">
+                <Paperclip className="w-4 h-4 text-[#9CA3AF]" />
+                <span className="block text-sm font-medium text-[#D1D5DB]">Attachment (Optional)</span>
+              </div>
+              <AttachmentFilePicker
+                files={attachmentFiles}
+                onChange={setAttachmentFiles}
+                onError={(message) => setError(message)}
               />
             </div>
 
@@ -341,5 +428,12 @@ export function GeneralEntryFlow({ onBack, onComplete, user, companyId, branchId
         </button>
       </div>
     </div>
+    <TransactionSuccessModal
+      isOpen={!!successData}
+      data={successData}
+      onClose={closeSuccess}
+      onOk={closeSuccess}
+    />
+    </>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { X, FileText, Paperclip, Image as ImageIcon, File, Pencil, RotateCcw, Trash2, ArrowLeftRight } from 'lucide-react';
+import { X, FileText, Paperclip, Image as ImageIcon, File, Pencil, RotateCcw, Trash2, ArrowLeftRight, Clock } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
@@ -36,6 +36,8 @@ import {
   buildPaymentPostingExpectedVsActual,
   type PaymentDeepTrace,
 } from '@/app/services/truthLabTraceWorkbenchService';
+import { activityLogService } from '@/app/services/activityLogService';
+import { stripJournalEditAuditSuffix, journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 
 function rowMethodToPaymentMethod(m: unknown): PaymentMethod {
   const x = String(m || '').toLowerCase();
@@ -249,6 +251,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const [editLineChanges, setEditLineChanges] = useState<Record<string, string>>({});
   const [editAmountChanges, setEditAmountChanges] = useState<Record<string, { debit: number; credit: number }>>({});
   const [accountSearch, setAccountSearch] = useState<Record<string, string>>({});
+  const [activityLogs, setActivityLogs] = useState<Awaited<ReturnType<typeof activityLogService.getEntityActivityLogs>>>([]);
+  const [loadingActivityLogs, setLoadingActivityLogs] = useState(false);
 
   const loadPaymentTrace = useCallback(async () => {
     if (!companyId || !transaction?.id) return;
@@ -263,6 +267,30 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       setPaymentTraceLoading(false);
     }
   }, [companyId, transaction?.id]);
+
+  const loadActivityLogs = useCallback(async () => {
+    if (!companyId || !transaction?.id) {
+      setActivityLogs([]);
+      return;
+    }
+    setLoadingActivityLogs(true);
+    try {
+      const logs = await activityLogService.getEntityActivityLogs(
+        companyId,
+        'accounting',
+        String(transaction.id),
+      );
+      setActivityLogs(logs);
+    } catch {
+      setActivityLogs([]);
+    } finally {
+      setLoadingActivityLogs(false);
+    }
+  }, [companyId, transaction?.id]);
+
+  useEffect(() => {
+    if (isOpen && transaction?.id && companyId) void loadActivityLogs();
+  }, [isOpen, transaction?.id, companyId, loadActivityLogs]);
 
   useEffect(() => {
     if (paymentTraceOpen && companyId && transaction?.id) {
@@ -600,19 +628,28 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       });
 
       let data = null;
-      
-      // PRIORITY 1: If it looks like entry_no (JE-0058), use reference lookup first
-      if (looksLikeEntryNo) {
+
+      // PRIORITY 0: Grouped journal row — load the clicked / primary entry by UUID
+      if (groupEntries?.length && companyId) {
+        const primary =
+          groupEntries.find((e) => e.id === referenceNumber) ??
+          groupEntries.find((e) => e.metadata?.journalEntryId === referenceNumber) ??
+          groupEntries[0];
+        if (primary?.id) {
+          data = await accountingService.getEntryById(primary.id, companyId);
+        }
+      }
+
+      // PRIORITY 1: UUID from journal table (most reliable)
+      if (!data && isUUID) {
+        data = await accountingService.getEntryById(referenceNumber, companyId);
+      }
+
+      // PRIORITY 2: If it looks like entry_no (JE-0058), use reference lookup
+      if (!data && looksLikeEntryNo) {
         console.log('[TRANSACTION DETAIL] Looks like entry_no, using reference lookup first...');
         data = await accountingService.getEntryByReference(referenceNumber, companyId);
         console.log('[TRANSACTION DETAIL] Reference lookup result:', data ? 'FOUND' : 'NOT FOUND');
-      }
-      
-      // PRIORITY 2: If UUID, try ID-based lookup
-      if (!data && isUUID) {
-        console.log('[TRANSACTION DETAIL] Looks like UUID, using ID lookup...');
-        data = await accountingService.getEntryById(referenceNumber, companyId);
-        console.log('[TRANSACTION DETAIL] ID lookup result:', data ? 'FOUND' : 'NOT FOUND');
       }
       
       // PRIORITY 3: Fallback to reference lookup (for any other format)
@@ -747,12 +784,29 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         if (error) throw error;
       }
 
-      // Append edit history to JE description
-      if (editLog.length > 0) {
+      if (editLog.length > 0 && companyId) {
         const oldDesc = transaction.description || '';
+        const cleanDesc = stripJournalEditAuditSuffix(oldDesc);
+        await supabase
+          .from('journal_entries')
+          .update({ description: cleanDesc.slice(0, 500) })
+          .eq('id', transaction.id);
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         const timestamp = new Date().toLocaleString('en-PK', { dateStyle: 'short', timeStyle: 'short' });
-        const newDesc = `${oldDesc} [Edited ${timestamp}: ${editLog.join('; ')}]`;
-        await supabase.from('journal_entries').update({ description: newDesc.slice(0, 500) }).eq('id', transaction.id);
+        const summary = editLog.join('; ');
+        await activityLogService.logActivity({
+          companyId,
+          module: 'accounting',
+          entityId: String(transaction.id),
+          entityReference: String(transaction.entry_no || referenceNumber),
+          action: 'update',
+          description: `[Edited ${timestamp}] ${summary}`,
+          notes: summary,
+          performedBy: user?.id ?? undefined,
+        });
       }
 
       toast.success(`Entry updated — ${editLog.length} change(s) saved`);
@@ -760,6 +814,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       setEditLineChanges({});
       setEditAmountChanges({});
       await loadTransaction();
+      await loadActivityLogs();
       dispatchAccountingEditCommitted();
       accounting.refreshEntries?.();
     } catch (e: any) {
@@ -1067,7 +1122,9 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 )}
                 <div className="col-span-2">
                   <span className="text-gray-400">Description:</span>
-                  <p className="text-white">{transaction.description || 'No description'}</p>
+                  <p className="text-white">
+                    {journalDescriptionForDisplay(transaction.description, 'No description')}
+                  </p>
                 </div>
               </div>
             </div>
@@ -1445,6 +1502,32 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 </div>
               )}
               <p className="text-xs text-gray-400 mt-3">Double-entry: total debit must equal total credit.</p>
+            </div>
+
+            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+              <h3 className="text-sm font-semibold text-gray-300 mb-3">Activity</h3>
+              {loadingActivityLogs ? (
+                <p className="text-sm text-gray-500">Loading activity…</p>
+              ) : activityLogs.length > 0 ? (
+                <div className="space-y-3 max-h-48 overflow-y-auto">
+                  {activityLogs.map((log, index) => (
+                    <div key={log.id || index} className="flex gap-3 text-sm">
+                      <Clock className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-white">
+                          {log.description || activityLogService.formatActivityLog(log)}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {log.created_at ? format(new Date(log.created_at), 'dd MMM yyyy, h:mm a') : ''}
+                          {log.performed_by_name ? ` · ${log.performed_by_name}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No activity recorded for this entry yet.</p>
+              )}
             </div>
 
             {/* SECTION D: EXTRA CONTEXT (if applicable) */}

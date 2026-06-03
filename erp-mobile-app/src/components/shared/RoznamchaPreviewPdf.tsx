@@ -1,6 +1,7 @@
 import { ReportBrandHeader } from './ReportBrandHeader';
 import type { CompanyBrand } from '../../api/reports';
 import type { RoznamchaRowWithBalance, RoznamchaSummary } from '../../api/roznamcha';
+import { formatRoznamchaRowDescription } from '../../lib/roznamchaRowDescription';
 
 export interface RoznamchaPreviewPdfProps {
   brand: CompanyBrand;
@@ -15,27 +16,24 @@ export interface RoznamchaPreviewPdfProps {
 const fmt = (n: number): string =>
   (Math.abs(n) < 0.005 ? 0 : n).toLocaleString('en-PK', { maximumFractionDigits: 2, minimumFractionDigits: 0 });
 
-function rowDateTime(r: RoznamchaRowWithBalance): string {
+function rowDateTimeLines(r: RoznamchaRowWithBalance): { date: string; time: string } {
   const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '00:00:00';
   try {
-    return new Date(`${r.date}T${t}`).toLocaleString('en-PK', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const d = new Date(`${r.date}T${t}`);
+    return {
+      date: d.toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' }),
+      time: d.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' }),
+    };
   } catch {
-    return `${r.date} ${r.time || ''}`.trim();
+    return { date: r.date, time: r.time || '' };
   }
 }
 
-function rowDescription(r: RoznamchaRowWithBalance): string {
-  const meta = [r.referenceDisplay, r.partyLine, r.createdBy ? `by ${r.createdBy}` : ''].filter(Boolean).join(' · ');
-  return meta ? `${r.details}\n${meta}` : r.details;
+function accountDisplay(r: RoznamchaRowWithBalance): string {
+  return r.accountName?.trim() || r.accountLabel || '—';
 }
 
-/** HTML Roznamcha for PdfPreviewModal — Debit/Credit/In/Out/Balance (ledger-style cash book). */
+/** HTML Roznamcha for PdfPreviewModal — In/Out/Balance (ledger-style cash book). */
 export function RoznamchaPreviewPdf({
   brand,
   title,
@@ -45,8 +43,8 @@ export function RoznamchaPreviewPdf({
   generatedBy,
   generatedAt,
 }: RoznamchaPreviewPdfProps) {
-  const totalDebit = summary.cashIn;
-  const totalCredit = summary.cashOut;
+  const totalIn = summary.cashIn;
+  const totalOut = summary.cashOut;
 
   return (
     <div>
@@ -85,9 +83,7 @@ export function RoznamchaPreviewPdf({
             <th style={{ width: 88 }}>Date &amp; Time</th>
             <th style={{ width: 72 }}>Ref</th>
             <th>Details</th>
-            <th style={{ width: 56 }}>Account</th>
-            <th style={{ width: 48, textAlign: 'right' }}>Debit</th>
-            <th style={{ width: 48, textAlign: 'right' }}>Credit</th>
+            <th style={{ width: 72 }}>Account</th>
             <th style={{ width: 44, textAlign: 'right' }}>In</th>
             <th style={{ width: 44, textAlign: 'right' }}>Out</th>
             <th style={{ width: 56, textAlign: 'right' }}>Balance</th>
@@ -100,33 +96,37 @@ export function RoznamchaPreviewPdf({
             </td>
             <td style={{ textAlign: 'right' }}>—</td>
             <td style={{ textAlign: 'right' }}>—</td>
-            <td style={{ textAlign: 'right' }}>—</td>
-            <td style={{ textAlign: 'right' }}>—</td>
             <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(summary.openingBalance)}</td>
           </tr>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={9} style={{ textAlign: 'center', color: '#666', padding: 14 }}>
+              <td colSpan={7} style={{ textAlign: 'center', color: '#666', padding: 14 }}>
                 No transactions in this period.
               </td>
             </tr>
           ) : (
-            rows.map((r, i) => (
+            rows.map((r, i) => {
+              const { date: dateLine, time: timeLine } = rowDateTimeLines(r);
+              return (
               <tr key={r.id || i}>
-                <td style={{ whiteSpace: 'nowrap' }}>{rowDateTime(r)}</td>
+                <td>
+                  <div>{dateLine}</div>
+                  {timeLine ? (
+                    <div style={{ fontSize: 8, color: '#555', marginTop: 2 }}>{timeLine}</div>
+                  ) : null}
+                </td>
                 <td>
                   {r.ref}
                   {r.journalEntryNo ? <div style={{ fontSize: 8, color: '#555' }}>{r.journalEntryNo}</div> : null}
                 </td>
-                <td style={{ whiteSpace: 'pre-wrap' }}>{rowDescription(r)}</td>
-                <td>{r.accountLabel || '—'}</td>
-                <td style={{ textAlign: 'right' }}>{r.cashIn ? fmt(r.cashIn) : '—'}</td>
-                <td style={{ textAlign: 'right' }}>{r.cashOut ? fmt(r.cashOut) : '—'}</td>
+                <td style={{ whiteSpace: 'pre-wrap' }}>{formatRoznamchaRowDescription(r)}</td>
+                <td>{accountDisplay(r)}</td>
                 <td style={{ textAlign: 'right' }}>{r.cashIn ? fmt(r.cashIn) : '—'}</td>
                 <td style={{ textAlign: 'right' }}>{r.cashOut ? fmt(r.cashOut) : '—'}</td>
                 <td style={{ textAlign: 'right' }}>{fmt(r.runningBalance)}</td>
               </tr>
-            ))
+            );
+            })
           )}
         </tbody>
         <tfoot>
@@ -134,10 +134,8 @@ export function RoznamchaPreviewPdf({
             <td colSpan={4} style={{ fontWeight: 600 }}>
               Totals
             </td>
-            <td style={{ textAlign: 'right' }}>{fmt(totalDebit)}</td>
-            <td style={{ textAlign: 'right' }}>{fmt(totalCredit)}</td>
-            <td style={{ textAlign: 'right' }}>{fmt(totalDebit)}</td>
-            <td style={{ textAlign: 'right' }}>{fmt(totalCredit)}</td>
+            <td style={{ textAlign: 'right' }}>{fmt(totalIn)}</td>
+            <td style={{ textAlign: 'right' }}>{fmt(totalOut)}</td>
             <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmt(summary.closingBalance)}</td>
           </tr>
         </tfoot>

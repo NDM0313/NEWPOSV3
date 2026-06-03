@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ArrowLeft, Plus, Calendar, DollarSign, Search, Loader2, Upload, X, Users } from 'lucide-react';
 import { TextInput, NumericInput, ActionBar, CustomSelect, CustomSearchableSheet, PullToRefresh, OfflineBanner, SwipeBackShell } from '../common';
+import { LongPressCard } from '../common/LongPressCard';
 import { useOfflineListMeta } from '../../hooks/useOfflineListMeta';
 import { useMainScrollRef } from '../../contexts/MainScrollContext';
 import { useFormDraft } from '../../hooks/useFormDraft';
@@ -33,6 +34,7 @@ import { WriteBranchPickerField } from '../shared/WriteBranchPickerField';
 import { useSubmitLock } from '../../contexts/LoadingContext';
 import { formatSaleChargeDisplayLabel } from '../../lib/saleChargeDisplay';
 import { ExpenseCategorySheet } from './ExpenseCategorySheet';
+import { ExpenseDetailSheet } from './ExpenseDetailSheet';
 import {
   categoryRequires4120Clearing,
   collectCategoryIdsForClearingFilter,
@@ -147,11 +149,21 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       created_by?: string | null;
       paid_to_user_id?: string | null;
       expense_category_id?: string | null;
+      payment_account_display?: string;
+      payment_account_id?: string | null;
+      payment_method?: string;
+      receipt_url?: string | null;
+      status?: string;
+      created_by_name?: string | null;
+      vendor_name?: string | null;
     }[]
   >([]);
   const [loading, setLoading] = useState(!!companyId);
   const [showAdd, setShowAdd] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
+  const [detailExpenseId, setDetailExpenseId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<expensesApi.ExpenseRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [addCategory, setAddCategory] = useState(CATEGORY_OPTIONS[0]);
   const [addDesc, setAddDesc] = useState('');
   const [addAmount, setAddAmount] = useState('');
@@ -320,33 +332,26 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       setLoading(false);
       if (!error && data) {
         setList(
-          data.map(
-            (r: {
-              id: string;
-              expense_no?: string;
-              expense_date: string;
-              created_at?: string;
-              category: string;
-              description?: string;
-              amount: number;
-              branch_id?: string | null;
-              created_by?: string | null;
-              paid_to_user_id?: string | null;
-              expense_category_id?: string | null;
-            }) => ({
-              id: r.id,
-              expense_no: r.expense_no || '—',
-              date: r.expense_date,
-              created_at: r.created_at,
-              category: r.category,
-              description: r.description || '',
-              amount: r.amount,
-              branch_id: r.branch_id ?? null,
-              created_by: r.created_by ?? null,
-              paid_to_user_id: r.paid_to_user_id ?? null,
-              expense_category_id: r.expense_category_id ?? null,
-            }),
-          ),
+          data.map((r) => ({
+            id: r.id,
+            expense_no: r.expense_no || '—',
+            date: r.expense_date,
+            created_at: r.created_at,
+            category: r.category,
+            description: r.description || '',
+            amount: r.amount,
+            branch_id: r.branch_id ?? null,
+            created_by: r.created_by ?? null,
+            paid_to_user_id: r.paid_to_user_id ?? null,
+            expense_category_id: r.expense_category_id ?? null,
+            payment_account_display: r.payment_account_display,
+            payment_account_id: r.payment_account_id ?? null,
+            payment_method: r.payment_method,
+            receipt_url: r.receipt_url ?? null,
+            status: r.status,
+            created_by_name: r.created_by_name ?? null,
+            vendor_name: r.vendor_name ?? null,
+          })),
         );
       }
     },
@@ -735,6 +740,52 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         : e.category,
     [categoryTree],
   );
+
+  const prefillEditFromRow = useCallback(
+    (row: (typeof list)[number]) => {
+      setAddDesc(row.description);
+      setAddAmount(String(row.amount));
+      setAddExpenseDate(row.date);
+      setAddCategory(row.category);
+      if (row.payment_account_id) setAddAccountId(row.payment_account_id);
+      if (row.expense_category_id && categoryTree.length > 0) {
+        const path = categoryTree.flatMap((m) => [m, ...(m.children ?? [])]);
+        const node = path.find((n) => n.id === row.expense_category_id);
+        if (node?.parent_id) {
+          const parent = path.find((n) => n.id === node.parent_id);
+          if (parent?.parent_id) {
+            setMainCategoryId(parent.parent_id);
+            setSubCategoryId(parent.id);
+            setLeafCategoryId(node.id);
+          } else if (parent) {
+            setMainCategoryId(parent.id);
+            setSubCategoryId(node.id);
+            setLeafCategoryId('');
+          }
+        } else if (node) {
+          setMainCategoryId(node.id);
+          setSubCategoryId('');
+          setLeafCategoryId('');
+        }
+      }
+      setShowAdd(true);
+    },
+    [categoryTree],
+  );
+
+  const handleDeleteExpense = useCallback(async () => {
+    if (!deleteTarget || !companyId) return;
+    setDeleting(true);
+    const { error } = await expensesApi.deleteExpense(deleteTarget.id, companyId);
+    setDeleting(false);
+    if (error) {
+      showExpenseError(error);
+      return;
+    }
+    setList((prev) => prev.filter((e) => e.id !== deleteTarget.id));
+    setDeleteTarget(null);
+    setDetailExpenseId(null);
+  }, [deleteTarget, companyId, showExpenseError]);
 
   const filtered = useMemo(() => {
     const rows = scopedList.filter((e) => {
@@ -1242,7 +1293,29 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                 </div>
                 <div className="space-y-2">
                   {items.map((e) => (
-                    <div key={e.id} className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#EF4444]/50 transition-all">
+                    <LongPressCard
+                      key={e.id}
+                      onTap={() => setDetailExpenseId(e.id)}
+                      onEdit={() => prefillEditFromRow(e)}
+                      onDelete={() => setDeleteTarget({
+                        id: e.id,
+                        expense_date: e.date,
+                        category: e.category,
+                        description: e.description,
+                        amount: e.amount,
+                        payment_method: e.payment_method || 'cash',
+                        payment_account_display: e.payment_account_display,
+                        payment_account_id: e.payment_account_id,
+                        receipt_url: e.receipt_url,
+                        status: e.status || 'paid',
+                        expense_category_id: e.expense_category_id,
+                        vendor_name: e.vendor_name,
+                        expense_no: e.expense_no,
+                      })}
+                      canEdit={!e.id.startsWith('offline-')}
+                      canDelete={!e.id.startsWith('offline-')}
+                    >
+                    <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4 hover:border-[#EF4444]/50 transition-all">
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-start gap-3 flex-1 min-w-0">
                           <span className="text-2xl">{getCategoryIcon(e.category)}</span>
@@ -1256,10 +1329,13 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                         </div>
                       </div>
                       <div className="flex items-center justify-between pt-3 border-t border-[#374151]">
-                        <span className="text-xs text-[#6B7280]">Cash</span>
+                        <span className="text-xs text-[#6B7280] truncate max-w-[60%]">
+                          {e.payment_account_display || e.payment_method || '—'}
+                        </span>
                         <span className="text-xs text-[#6B7280]">{formatDate(e.date)}</span>
                       </div>
                     </div>
+                    </LongPressCard>
                   ))}
                 </div>
               </div>
@@ -1289,6 +1365,60 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         onClose={() => setShowCategories(false)}
         onTreeChanged={reloadCategoryTree}
       />
+    ) : null}
+    {companyId && detailExpenseId ? (
+      <ExpenseDetailSheet
+        expenseId={detailExpenseId}
+        companyId={companyId}
+        categoryTree={categoryTree}
+        onClose={() => setDetailExpenseId(null)}
+        onEdit={(exp) => {
+          setDetailExpenseId(null);
+          prefillEditFromRow({
+            id: exp.id,
+            expense_no: exp.expense_no || '—',
+            date: exp.expense_date,
+            category: exp.category,
+            description: exp.description,
+            amount: exp.amount,
+            expense_category_id: exp.expense_category_id,
+            payment_account_id: exp.payment_account_id,
+            payment_method: exp.payment_method,
+          });
+        }}
+        onDelete={(exp) => {
+          setDetailExpenseId(null);
+          setDeleteTarget(exp);
+        }}
+      />
+    ) : null}
+    {deleteTarget ? (
+      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4">
+        <div className="w-full max-w-sm bg-[#1F2937] border border-[#374151] rounded-xl p-5 space-y-4">
+          <h3 className="text-lg font-semibold text-white">Delete expense?</h3>
+          <p className="text-sm text-[#9CA3AF]">
+            This voids the payment and journal entry, then removes the expense record.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+              className="flex-1 h-10 border border-[#374151] rounded-lg text-[#9CA3AF] text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDeleteExpense()}
+              disabled={deleting}
+              className="flex-1 h-10 bg-[#EF4444] hover:bg-[#DC2626] disabled:opacity-50 rounded-lg text-white text-sm font-medium"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
+        </div>
+      </div>
     ) : null}
   </>
   );

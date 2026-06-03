@@ -16,6 +16,7 @@ interface PurchaseReportProps {
   companyId: string | null;
   branchId?: string | null;
   user: User;
+  reportRefreshEpoch?: number;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -24,7 +25,7 @@ const STATUS_COLOR: Record<string, string> = {
   unpaid: 'text-[#EF4444] bg-[#EF4444]/10 border-[#EF4444]/40',
 };
 
-export function PurchaseReport({ onBack, companyId, branchId, user }: PurchaseReportProps) {
+export function PurchaseReport({ onBack, companyId, branchId, user, reportRefreshEpoch = 0 }: PurchaseReportProps) {
   const [range, setRange] = useState<DateRangeValue>(() => makeInitialRange('month'));
   const [rows, setRows] = useState<PurchaseReportRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +47,7 @@ export function PurchaseReport({ onBack, companyId, branchId, user }: PurchaseRe
     return () => {
       cancelled = true;
     };
-  }, [companyId, branchId, range.from, range.to]);
+  }, [companyId, branchId, range.from, range.to, reportRefreshEpoch]);
 
   const totals = useMemo(() => {
     const total = rows.reduce((s, r) => s + r.total, 0);

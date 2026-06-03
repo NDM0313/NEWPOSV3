@@ -55,6 +55,8 @@ type Props = {
   setIsEditAccountOpen: (o: boolean) => void;
   setCurrentView: (v: 'contacts' | 'ar-ap-reconciliation-center') => void;
   onOpenAccountStatements: (accountId: string) => void;
+  canPostAccounting?: boolean;
+  onTransferBalance?: (accountId: string) => void;
 };
 
 export function AccountingDashboardAccountRowMenu({
@@ -67,6 +69,8 @@ export function AccountingDashboardAccountRowMenu({
   setIsEditAccountOpen,
   setCurrentView,
   onOpenAccountStatements,
+  canPostAccounting = false,
+  onTransferBalance,
 }: Props) {
   const account = row.account;
   const code = (account as { code?: string }).code;
@@ -122,7 +126,20 @@ export function AccountingDashboardAccountRowMenu({
           <BarChart3 size={14} className="shrink-0" /> Statement
         </DropdownMenuItem>
         <DropdownMenuSeparator className="bg-gray-800" />
-        <DropdownMenuItem className="gap-2 focus:bg-gray-800 cursor-pointer" onClick={() => toast.info('Transfer balance — coming soon')}>
+        <DropdownMenuItem
+          className="gap-2 focus:bg-gray-800 cursor-pointer"
+          onClick={() => {
+            if (!canPostAccounting) {
+              toast.error('Transfer requires Manager or Admin posting permission.');
+              return;
+            }
+            if ((account as { is_group?: boolean }).is_group || !account.id) {
+              toast.error('Select a posting account, not a group header.');
+              return;
+            }
+            onTransferBalance?.(account.id);
+          }}
+        >
           <ArrowLeftRight size={14} className="shrink-0" /> Transfer Balance
         </DropdownMenuItem>
         <DropdownMenuItem

@@ -13,6 +13,8 @@ export interface MyExpenseEntryRow {
   referenceType: string;
   createdBy: string | null;
   createdByName?: string | null;
+  expenseId?: string | null;
+  categoryLabel?: string | null;
 }
 
 const EXPENSE_REF_TYPES = ['expense', 'expense_payment'];
@@ -28,7 +30,7 @@ export async function getMyExpenseJournalEntries(
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
   let q = supabase
     .from('journal_entries')
-    .select('id, entry_no, entry_date, description, reference_type, total_debit, total_credit, created_by')
+    .select('id, entry_no, entry_date, description, reference_type, reference_id, total_debit, total_credit, created_by')
     .eq('company_id', companyId)
     .in('reference_type', EXPENSE_REF_TYPES);
   if (profileId && profileId !== authUserId) {
@@ -54,8 +56,20 @@ export async function getMyExpenseJournalEntries(
     amount: Number(r.total_debit || r.total_credit || 0),
     referenceType: String(r.reference_type || 'expense'),
     createdBy: (r.created_by as string | null) ?? null,
+    expenseId: (r.reference_id as string | null) ?? null,
+    categoryLabel: null as string | null,
   }));
   if (!rows.length) return { data: rows, error: null };
+
+  const expenseIds = rows.map((r) => r.expenseId).filter((id): id is string => !!id);
+  if (expenseIds.length) {
+    const { loadExpenseCategoryPathsForIds } = await import('../lib/expenseCategoryPath');
+    const pathById = await loadExpenseCategoryPathsForIds(companyId, expenseIds);
+    rows.forEach((r) => {
+      if (r.expenseId) r.categoryLabel = pathById.get(r.expenseId) ?? null;
+    });
+  }
+
   const mutable: Array<Record<string, unknown>> = rows.map((r) => ({ created_by: r.createdBy }));
   await enrichRowsWithCreatorNames(mutable);
   const enriched = rows.map((r, i) => ({

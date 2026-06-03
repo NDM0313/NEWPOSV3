@@ -103,8 +103,6 @@ import {
 const SALE_LIST_FETCH_CAP = 100;
 const SALE_LIST_DISPLAY_CAP = 50;
 
-const SALE_TYPE_FILTERS: SaleListTypeFilter[] = ['all', 'studio', 'pos', 'regular'];
-
 type SaleRecord = {
   raw: Record<string, unknown>;
   id: string;
@@ -183,7 +181,14 @@ export function SalesHome({
   const effectiveProfileId = useEffectiveWorkerProfileId() ?? userProfileId ?? null;
   const effectiveRole = useEffectiveWorkerRole(sessionRole ?? 'admin');
   const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
-  const { canViewBalances, branchIds, isAdminOrOwner } = usePermissions();
+  const { canViewBalances, branchIds, isAdminOrOwner, isModuleEnabled } = usePermissions();
+  const studioModuleOn = isModuleEnabled('studio');
+  const saleTypeFilterTabs = useMemo((): SaleListTypeFilter[] => {
+    const tabs: SaleListTypeFilter[] = ['all'];
+    if (studioModuleOn) tabs.push('studio');
+    tabs.push('pos', 'regular');
+    return tabs;
+  }, [studioModuleOn]);
 
   const listBranchScope = useMemo(
     (): ListBranchScope =>
@@ -198,6 +203,13 @@ export function SalesHome({
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [saleTypeFilter, setSaleTypeFilter] = useState<SaleListTypeFilter>('all');
+
+  useEffect(() => {
+    if (!studioModuleOn && saleTypeFilter === 'studio') {
+      setSaleTypeFilter('all');
+    }
+  }, [studioModuleOn, saleTypeFilter]);
+
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
   const [menuSale, setMenuSale] = useState<SaleRecord | null>(null);
   const [activitySale, setActivitySale] = useState<SaleRecord | null>(null);
@@ -1548,8 +1560,12 @@ export function SalesHome({
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-1.5 mb-3">
-          {SALE_TYPE_FILTERS.map((tab) => {
+        <div
+          className={`grid gap-1.5 mb-3 ${
+            saleTypeFilterTabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4'
+          }`}
+        >
+          {saleTypeFilterTabs.map((tab) => {
             const active = saleTypeFilter === tab;
             const label = tab === 'all' ? 'All' : saleListTypeLabel(tab);
             return (
