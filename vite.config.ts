@@ -43,23 +43,7 @@ export default defineConfig({
             if (id.includes('xlsx') || id.includes('exceljs')) return 'vendor-excel';
             if (id.includes('react-beautiful-dnd') || id.includes('@dnd-kit')) return 'vendor-dnd';
           }
-          if (id.includes('/src/app/services/saleService') || id.includes('/src/app/services/saleAccountingService') || id.includes('/src/app/services/saleReturnService')) return 'svc-sales';
-          if (id.includes('/src/app/services/purchaseService')) return 'svc-purchases';
-          if (id.includes('/src/app/services/accountingService') || id.includes('/src/app/services/journalService') || id.includes('/src/app/services/accountingReportsService')) return 'svc-accounting';
-          if (id.includes('/src/app/services/accountingIntegrityLabService') || id.includes('/src/app/services/developerAccountingDiagnosticsService') || id.includes('/src/app/services/partyBalanceTieOutService')) return 'svc-diagnostics';
-          if (id.includes('/src/app/services/studioProductionService') || id.includes('/src/app/services/studioCostsService')) return 'svc-studio';
-          if (id.includes('/src/app/services/customerLedgerApi')) return 'svc-ledger';
-          if (id.includes('/src/app/services/')) return 'svc-core';
-          if (id.includes('/src/app/context/SalesContext')) return 'ctx-sales';
-          if (id.includes('/src/app/context/AccountingContext')) return 'ctx-accounting';
-          if (id.includes('/src/app/context/PurchaseContext')) return 'ctx-purchases';
-          if (id.includes('/src/app/context/RentalContext')) return 'ctx-rentals';
-          if (id.includes('/src/app/context/ExpenseContext')) return 'ctx-expenses';
-          if (id.includes('/src/app/context/ProductionContext')) return 'ctx-production';
-          if (id.includes('/src/app/context/SettingsContext') || id.includes('/src/app/context/ModuleContext')) return 'ctx-settings';
-          if (id.includes('/src/app/context/')) return 'ctx-core';
-          if (id.includes('/src/app/lib/') || id.includes('/src/app/hooks/') || id.includes('/src/app/utils/')) return 'app-core';
-          if (id.includes('/src/app/components/shared/')) return 'app-shared';
+          // App services/contexts: Rollup default chunking (avoids circular svc/ctx chunks + boot TDZ).
         },
         chunkFileNames: 'assets/[name]-[hash].js',
       },
@@ -86,6 +70,7 @@ export default defineConfig({
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
+        cleanupOutdatedCaches: true,
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024, // 8 MiB (main chunk ~4 MB; Workbox default 2 MiB too low)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [

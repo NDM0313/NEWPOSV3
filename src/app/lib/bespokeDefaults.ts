@@ -1,9 +1,17 @@
 /**
- * Bespoke form defaults — no service/context imports (safe for eager boot + manualChunks).
- * @see businessSettingsService, SettingsContext
+ * Bespoke form config + defaults — zero imports (safe for eager boot).
+ * @see businessSettingsService, SettingsContext, types/bespoke
  */
 
-import type { BespokeFormConfig } from '@/app/types/bespoke';
+/** Which fields appear in the bespoke customization modal (company-configurable). */
+export interface BespokeFormConfig {
+  show_measurements: boolean;
+  show_fabric: boolean;
+  show_color_code: boolean;
+  show_image_upload: boolean;
+  show_delivery_date: boolean;
+  show_customization_charges: boolean;
+}
 
 export const DEFAULT_BESPOKE_FORM_CONFIG: BespokeFormConfig = {
   show_measurements: true,

@@ -1,12 +1,4 @@
-/** Which fields appear in the bespoke customization modal (company-configurable). */
-export interface BespokeFormConfig {
-  show_measurements: boolean;
-  show_fabric: boolean;
-  show_color_code: boolean;
-  show_image_upload: boolean;
-  show_delivery_date: boolean;
-  show_customization_charges: boolean;
-}
+import type { BespokeFormConfig } from '@/app/lib/bespokeDefaults';
 
 /** Metadata-only fields stored on parent generic SKU line (no fabric/charges in JSON). */
 export interface BespokeMetadata {
@@ -324,4 +316,5 @@ export function getBespokeInstructionBullets(raw: unknown): BespokeInstructionBu
   return bullets;
 }
 
+export type { BespokeFormConfig } from '@/app/lib/bespokeDefaults';
 export { DEFAULT_BESPOKE_FORM_CONFIG, normalizeBespokeFormConfig } from '@/app/lib/bespokeDefaults';

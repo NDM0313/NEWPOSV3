@@ -77,12 +77,10 @@ Largest chunks after optimization (loaded on demand, not on dashboard):
 | `vendor-pdf` | `jspdf`, `html2canvas` |
 | `vendor-ui` | `sonner`, `next-themes`, `cmdk` |
 | `vendor-state` | `zod`, `zustand` |
-| `svc-sales`, `svc-purchases`, `svc-accounting`, … | Large service modules |
-| `ctx-sales`, `ctx-accounting`, … | Context providers |
-| `app-core` | `lib/`, `hooks/`, `utils/` |
-| `app-shared` | Shared UI under `components/shared/` |
 
-`chunkSizeWarningLimit: 600` — build fails the warning threshold if any chunk exceeds 600 KB minified.
+**2026-06-04 boot stability:** Removed `svc-*`, `ctx-*`, `app-core`, and `app-shared` manual chunks — they caused circular chunk graphs and blank-screen TDZ errors on production. App code uses Rollup default chunking; lazy routes still defer page loads. Main `index-*.js` is larger (~1.2 MB minified); vendor chunks still cache separately.
+
+`chunkSizeWarningLimit: 600` — may warn on main entry after stability change; vendor splits unchanged.
 
 ---
 

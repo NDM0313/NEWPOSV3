@@ -7,15 +7,13 @@ import { permissionService } from '@/app/services/permissionService';
 import type { EngineRole } from '@/app/services/permissionService';
 import { permissionEngine } from '@/app/services/permissionEngine';
 import { accountService } from '@/app/services/accountService';
-import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { isDebugErpEnabled } from '@/app/lib/debugErp';
 import type { ModuleToggles } from '@/app/config/companyBootstrapRegistry';
 import { defaultModuleToggles } from '@/app/config/companyBootstrapRegistry';
 import { businessSettingsService, type BusinessSettings } from '@/app/services/businessSettingsService';
-import { DEFAULT_BESPOKE_FORM_CONFIG } from '@/app/lib/bespokeDefaults';
-import type { BespokeFormConfig } from '@/app/types/bespoke';
+import { DEFAULT_BESPOKE_FORM_CONFIG, type BespokeFormConfig } from '@/app/lib/bespokeDefaults';
 import { buildModuleTogglesFromConfigRows, moduleTogglePatchesToDb } from '@/app/config/moduleConfigSemantics';
 import {
   mapAppRoleToEngineRole,
@@ -725,6 +723,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       let studioNext = getNext('studio').next;
       if (studioNext === 1 && !erpMap.has('studio') && !sequencesMap.get('studio')) {
         try {
+          const { saleService } = await import('@/app/services/saleService');
           studioNext = await saleService.getNextStudioInvoiceNumber(companyId);
         } catch {
           studioNext = 1;
