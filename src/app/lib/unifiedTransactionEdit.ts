@@ -66,6 +66,12 @@ function normPayment(p: unknown): PaymentRowLike | null {
   return x;
 }
 
+/** Legacy rows use reference_type=manual; Add Entry V2 uses journal — both are pure manual JEs. */
+export function isPureManualJournalReferenceType(referenceType: string | null | undefined): boolean {
+  const rt = String(referenceType || '').toLowerCase();
+  return rt === 'journal' || rt === 'manual';
+}
+
 export function inferTransactionKind(transaction: JournalTransactionLike, paymentObj: unknown): TransactionKind {
   const rt = String(transaction.reference_type || '').toLowerCase();
   const desc = String(transaction.description || '').toLowerCase();
@@ -73,7 +79,7 @@ export function inferTransactionKind(transaction: JournalTransactionLike, paymen
   const prt = String(payment?.reference_type || '').toLowerCase();
   const payJeId = String(transaction.payment_id || '').trim();
 
-  if (rt === 'journal') return 'manual_journal';
+  if (isPureManualJournalReferenceType(rt)) return 'manual_journal';
   if (rt === 'transfer') return 'transfer';
   /** Source documents — unified edit is blocked in resolveUnifiedJournalEdit; never treat as payment. */
   if (rt === 'sale_return' || rt === 'purchase_return') return 'generic_adjustment';
