@@ -10,7 +10,7 @@
 import { supabase } from '@/lib/supabase';
 import { canPostAccountingForPurchaseStatus, canPostAccountingForSaleStatus } from '@/app/lib/postingStatusGate';
 import { saleAccountingService, listActiveCanonicalSaleDocumentJournalEntryIds } from './saleAccountingService';
-import { findUnbalancedJournalEntries } from './accountingIntegrityLabService';
+import { findUnbalancedJournalEntries } from './journalUnbalanceCheck';
 import {
   createPurchaseJournalEntry,
   listActiveCanonicalPurchaseDocumentJournalEntryIds,

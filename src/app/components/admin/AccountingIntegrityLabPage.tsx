@@ -32,6 +32,7 @@ import { saleService } from '@/app/services/saleService';
 import { purchaseService } from '@/app/services/purchaseService';
 import { studioProductionService } from '@/app/services/studioProductionService';
 import { restoreSaleFromCancelled, restorePurchaseFromCancelled } from '@/app/lib/documentLifecycleActions';
+import { INTEGRITY_LAB_SESSION_KEY } from '@/app/lib/integrityLabConstants';
 import { accountService } from '@/app/services/accountService';
 import {
   buildExtendedLabSnapshot,
@@ -42,7 +43,6 @@ import {
   scanRentalDevaluationMismatches,
   previewRentalDevaluationFixes,
   applyRentalDevaluationFixes,
-  INTEGRITY_LAB_SESSION_KEY,
   type LabCheckResult,
   type LabCheckCategory,
   type LabNavAction,
