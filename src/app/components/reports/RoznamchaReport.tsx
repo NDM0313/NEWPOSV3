@@ -253,11 +253,11 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   return (
     <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
       <p className="text-xs text-gray-500 border border-gray-800/80 rounded-lg px-3 py-2 bg-gray-950/40 max-w-3xl">
-        One row per <strong className="text-gray-400">payments</strong> record. Account changes (PF-14 transfer JEs) update the
-        payment row; they do not create a second cash-book receipt — use Journal Day Book with Presentation column to see
-        transfer vouchers.{' '}
+        Cash / bank / wallet receive &amp; pay only — from <strong className="text-gray-400">payments</strong> and{' '}
+        <strong className="text-gray-400">rental_payments</strong> (not rental journal vouchers). One row per actual
+        movement. Rental receipts show as <strong className="text-gray-400">REN-*-PAY</strong>, not JE.{' '}
         <span className="text-gray-600">
-          Use filters for a specific ledger account (Cash/Bank/Wallet GL), liquidity bucket, date order, and rows per page.
+          Match header date range to payment_date; use All Branches and All accounts if a line is missing.
         </span>
       </p>
       <ReportActions
