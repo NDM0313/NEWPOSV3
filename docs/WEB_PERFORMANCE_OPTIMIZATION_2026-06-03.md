@@ -163,7 +163,7 @@ Docs-only commits do **not** require redeploy.
 | File | Change |
 |------|--------|
 | `src/app/App.tsx` | Lazy imports, global Suspense |
-| `vite.config.ts` | `manualChunks`, 600 KB limit |
+| `vite.config.ts` | `manualChunks`, 600 KB limit, `vendor-react` + `resolve.dedupe` |
 | `src/app/components/layout/GlobalDrawer.tsx` | Lazy drawer forms |
 | `src/app/context/SalesContext.tsx` | Activate-on-first-use |
 | `src/app/context/PurchaseContext.tsx` | Activate-on-first-use |
