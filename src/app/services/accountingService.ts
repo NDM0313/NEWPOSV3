@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
 import { fetchCustomerLedgerSalesForRange, ledgerSalesRpcBranchId } from '@/app/services/customerLedgerApi';
+import { formatRentalPaymentRef } from '@/app/lib/rentalPaymentRef';
 
 export interface JournalEntry {
   id?: string;
@@ -1765,6 +1766,83 @@ export const accountingService = {
       }
     }
 
+    // STEP 2.5: Rental payment voucher (REN-*-PAY) → linked journal entry
+    if (!data && (!error || error.code === 'PGRST116') && /^REN-.+-PAY$/i.test(cleanRef)) {
+      error = null;
+      let rentalJeId: string | null = null;
+      let rentalPaymentRef: string | null = null;
+
+      const { data: rpByRef } = await supabase
+        .from('rental_payments')
+        .select('id, journal_entry_id, reference, rentals!inner(company_id, booking_no)')
+        .eq('rentals.company_id', companyId)
+        .ilike('reference', cleanRef)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (rpByRef) {
+        rentalJeId = (rpByRef as { journal_entry_id?: string | null }).journal_entry_id ?? null;
+        const rentalsJoin = (rpByRef as { rentals?: { booking_no?: string } | { booking_no?: string }[] }).rentals;
+        const rentalMeta = Array.isArray(rentalsJoin) ? rentalsJoin[0] : rentalsJoin;
+        rentalPaymentRef =
+          String((rpByRef as { reference?: string }).reference || '').trim() ||
+          formatRentalPaymentRef(String(rentalMeta?.booking_no || cleanRef.replace(/-PAY$/i, '')));
+      } else {
+        const bookingNo = cleanRef.replace(/-PAY$/i, '');
+        const { data: rentalRow } = await supabase
+          .from('rentals')
+          .select('id, booking_no')
+          .eq('company_id', companyId)
+          .ilike('booking_no', bookingNo)
+          .maybeSingle();
+        if (rentalRow?.id) {
+          const { data: rpRow } = await supabase
+            .from('rental_payments')
+            .select('id, journal_entry_id, reference')
+            .eq('rental_id', rentalRow.id)
+            .order('payment_date', { ascending: true })
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          if (rpRow) {
+            rentalJeId = (rpRow as { journal_entry_id?: string | null }).journal_entry_id ?? null;
+            rentalPaymentRef =
+              String((rpRow as { reference?: string }).reference || '').trim() ||
+              formatRentalPaymentRef(String(rentalRow.booking_no || bookingNo));
+          }
+        }
+      }
+
+      if (rentalJeId) {
+        const stepRp = await supabase
+          .from('journal_entries')
+          .select(`
+            *,
+            lines:journal_entry_lines(
+              *,
+              account:accounts(id, name, code, type)
+            ),
+            payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+            branch:branches(id, name, code)
+          `)
+          .eq('company_id', companyId)
+          .eq('id', rentalJeId)
+          .limit(1);
+
+        if (stepRp.error) {
+          error = stepRp.error;
+        } else {
+          data = pickPreferredJournalEntryRow(stepRp.data as any[]) ?? null;
+          if (data) {
+            (data as { rental_payment_ref?: string }).rental_payment_ref =
+              rentalPaymentRef || cleanRef;
+          }
+          error = data ? null : ({ code: 'PGRST116' } as any);
+        }
+      }
+    }
+
     // STEP 3: If still not found, try invoice_no (for sales)
     if (!data && (!error || error.code === 'PGRST116')) {
       error = null;
@@ -2523,7 +2601,7 @@ export const accountingService = {
           // Fallback: direct query if RPC missing
           const { data: directRentals } = await supabase
             .from('rentals')
-            .select('id, booking_no, booking_date, pickup_date, return_date, total_amount, paid_amount, due_amount, status, created_at')
+            .select('id, booking_no, booking_date, pickup_date, return_date, total_amount, paid_amount, due_amount, status, created_at, branch_id')
             .eq('company_id', companyId)
             .eq('customer_id', customerId);
           customerRentals = directRentals ?? [];
@@ -2540,6 +2618,30 @@ export const accountingService = {
         console.warn('[ACCOUNTING SERVICE] getCustomerLedger - Rental fetch failed (non-critical):', e);
       }
       const rentalsMap = new Map(customerRentals.map((r: any) => [r.id, r]));
+      const branchNameById = new Map<string, string>();
+      const rentalBranchIds = [
+        ...new Set(customerRentals.map((r: any) => r.branch_id).filter(Boolean)),
+      ] as string[];
+      if (rentalBranchIds.length > 0) {
+        const { data: branchRows } = await supabase
+          .from('branches')
+          .select('id, name, code')
+          .in('id', rentalBranchIds);
+        (branchRows || []).forEach((b: any) => {
+          if (!b?.id) return;
+          const label = b.code ? `${b.code} | ${b.name}` : String(b.name || '');
+          branchNameById.set(String(b.id), label);
+        });
+      }
+      const rentalLedgerBranch = (rentalId?: string) => {
+        if (!rentalId) return { branch_id: undefined as string | undefined, branch_name: null as string | null };
+        const rental = rentalsMap.get(rentalId);
+        const bid = rental?.branch_id != null ? String(rental.branch_id) : undefined;
+        return {
+          branch_id: bid,
+          branch_name: bid ? branchNameById.get(bid) ?? null : null,
+        };
+      };
       const rentalIdsForParty = new Set(
         customerRentals.map((r: any) => (r?.id != null ? String(r.id) : '')).filter(Boolean)
       );
@@ -2895,6 +2997,7 @@ export const accountingService = {
         let runBal = 0;
         const syntheticEntries: AccountLedgerEntry[] = items.map((item) => {
           runBal += item.debit - item.credit;
+          const branchFields = item.rental_id ? rentalLedgerBranch(item.rental_id) : {};
           return {
             date: item.date,
             reference_number: item.reference_number,
@@ -2911,6 +3014,7 @@ export const accountingService = {
             sale_id: item.sale_id,
             payment_id: item.payment_id,
             rental_id: item.rental_id,
+            ...branchFields,
           };
         });
         const withOpening: AccountLedgerEntry[] = startDate
@@ -3020,6 +3124,7 @@ export const accountingService = {
             sale_id: item.sale_id,
             payment_id: item.payment_id,
             rental_id: item.rental_id,
+            ...(item.rental_id ? rentalLedgerBranch(item.rental_id) : {}),
           }));
           const combined = [...ledgerEntriesFromRange, ...syntheticMissing].sort((a, b) => a.date.localeCompare(b.date) || 0);
           let runBal = openingBalance;
@@ -3745,7 +3850,7 @@ export const accountingService = {
   },
 
   /**
-   * Pure manual journal (reference_type = journal): update header and/or replace lines. Does not touch created_at.
+   * Pure manual journal (reference_type = journal or legacy manual): update header and/or replace lines.
    */
   async updateManualJournalEntry(
     companyId: string,
@@ -3767,7 +3872,7 @@ export const accountingService = {
     if (!row) return { ok: false, error: 'Journal not found' };
     if ((row as { is_void?: boolean }).is_void) return { ok: false, error: 'Void journal cannot be edited' };
     const rt = String((row as { reference_type?: string }).reference_type || '').toLowerCase();
-    if (rt !== 'journal') {
+    if (rt !== 'journal' && rt !== 'manual') {
       return { ok: false, error: 'Only manual (journal) entries can be edited here; use Edit source for posted documents.' };
     }
 

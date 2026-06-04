@@ -47,6 +47,7 @@ import { ViewPaymentsModal } from '@/app/components/sales/ViewPaymentsModal';
 import { PickupModal } from '@/app/components/rentals/PickupModal';
 import { cn } from '@/app/components/ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { resolveRentalPaymentDisplay } from '@/app/lib/rentalPaymentRef';
 
 interface ViewRentalDetailsDrawerProps {
   isOpen: boolean;
@@ -92,19 +93,26 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
   const [pickupModalOpen, setPickupModalOpen] = useState(false);
   const [financialBreakdownOpen, setFinancialBreakdownOpen] = useState(false);
 
-  const loadPayments = useCallback(async (rentalId: string) => {
+  const loadPayments = useCallback(async (rentalId: string, bookingNo?: string) => {
     setLoadingPayments(true);
     try {
       const fetched = await rentalService.getRentalPayments(rentalId);
       setPayments(
-        (fetched || []).map((p: any) => ({
-          id: p.id,
-          date: p.payment_date || p.created_at?.split('T')[0] || '',
-          amount: p.amount,
-          method: p.method,
-          referenceNo: p.reference || '',
-          paymentType: String(p.payment_type || '').toLowerCase(),
-        }))
+        (fetched || []).map((p: any) => {
+          const { referenceNo, subtitle } = resolveRentalPaymentDisplay({
+            bookingNo: bookingNo || fullRental?.rentalNo || rental?.rentalNo,
+            storedReference: p.reference,
+          });
+          return {
+            id: p.id,
+            date: p.payment_date || p.created_at?.split('T')[0] || '',
+            amount: p.amount,
+            method: p.method,
+            referenceNo,
+            referenceSubtitle: subtitle,
+            paymentType: String(p.payment_type || '').toLowerCase(),
+          };
+        })
       );
     } catch {
       setPayments([]);
@@ -183,7 +191,7 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
               commissionStatus: data.commission_status ?? null,
             } as RentalUI);
           }
-          loadPayments(rental.id);
+          loadPayments(rental.id, rental.rentalNo);
           loadActivityLogs(rental.id);
         })
         .catch(() => setFullRental(rental))
@@ -651,6 +659,11 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
                                 {p.referenceNo}
                               </p>
                             )}
+                            {(p as { referenceSubtitle?: string }).referenceSubtitle && (
+                              <p className="text-xs text-gray-600 mt-0.5 truncate">
+                                {(p as { referenceSubtitle?: string }).referenceSubtitle}
+                              </p>
+                            )}
                           </div>
                           <div className="flex flex-col items-end gap-1 shrink-0">
                             {p.paymentType === 'penalty' && (
@@ -747,12 +760,12 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
           onDeletePayment={async (paymentId) => {
             if (r) {
               await rentalService.deletePayment(paymentId, r.id, companyId!);
-              await loadPayments(r.id);
+              await loadPayments(r.id, r.rentalNo);
               await onRefresh?.();
             }
           }}
           onRefresh={async () => {
-            await loadPayments(r.id);
+            await loadPayments(r.id, r.rentalNo);
             await onRefresh?.();
           }}
         />

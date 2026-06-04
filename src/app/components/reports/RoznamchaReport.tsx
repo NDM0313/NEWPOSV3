@@ -21,6 +21,8 @@ import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
 import {
   getRoznamcha,
+  roznamchaJournalSubtitle,
+  roznamchaRefDisplay,
   type AccountFilter,
   type RoznamchaResult,
   type RoznamchaRowWithBalance,
@@ -232,11 +234,13 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
           ['Opening', '—', 'Opening Balance', '—', '', '', data.summary.openingBalance],
           ...orderedRows.map((r: RoznamchaRowWithBalance) => {
             const meta = [r.referenceDisplay, r.partyLine, r.createdBy ? `by ${r.createdBy}` : ''].filter(Boolean).join(' • ');
+            const jeSub = roznamchaJournalSubtitle(r);
+            const refCol = jeSub ? `${roznamchaRefDisplay(r)}\n${jeSub}` : roznamchaRefDisplay(r);
             return [
             rowDateTime(r),
-            r.journalEntryNo ? `${r.ref}\n${r.journalEntryNo}` : r.ref,
+            refCol,
             meta ? `${roznamchaDetailsForDisplay(r)}\n${meta}` : roznamchaDetailsForDisplay(r),
-            r.accountLabel || '—',
+            (r.accountName ?? r.accountLabel) || '—',
             r.cashIn || '',
             r.cashOut || '',
             r.runningBalance,
@@ -589,9 +593,9 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                         )}
                       </td>
                       <td className="px-4 py-3 align-top min-w-[7rem]">
-                        <div className="font-mono text-gray-300">{r.ref}</div>
-                        {r.journalEntryNo ? (
-                          <div className="text-xs text-gray-500 mt-0.5 font-sans">{r.journalEntryNo}</div>
+                        <div className="font-mono text-gray-300">{roznamchaRefDisplay(r)}</div>
+                        {roznamchaJournalSubtitle(r) ? (
+                          <div className="text-xs text-gray-500 mt-0.5 font-sans">{roznamchaJournalSubtitle(r)}</div>
                         ) : null}
                       </td>
                       <td className="px-4 py-3 max-w-xs">
@@ -693,7 +697,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         <div className="text-center py-16 rounded-xl border border-gray-800 bg-gray-900/30">
           <BookOpen className="w-16 h-16 mx-auto mb-4 text-gray-600" />
           <p className="text-gray-400">No cash transactions in this period</p>
-          <p className="text-sm text-gray-500 mt-1">Roznamcha shows Cash In / Cash Out only (not journal entries).</p>
+          <p className="text-sm text-gray-500 mt-1">Cash / Bank / Wallet receive &amp; pay only — one row per actual payment (not invoice totals).</p>
         </div>
       )}
       </div>

@@ -1720,7 +1720,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         ...(entry.source === 'Manual' ? { document_no: entryNo } : {}),
         entry_date: entryDate,
         description: descriptionToSave || undefined,
-        reference_type: manualRefType || (isWorkerPayment ? 'worker_payment' : entry.source.toLowerCase()),
+        reference_type: manualRefType || (isWorkerPayment ? 'worker_payment' : entry.source === 'Manual' ? 'journal' : entry.source.toLowerCase()),
         reference_id: isWorkerPayment
           ? entry.metadata.workerId
           : manualRefType === 'manual_receipt' && (entry.metadata as { customerId?: string })?.customerId
@@ -2279,7 +2279,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         });
         if (rentalPaymentId && journalEntryId) {
           const { rentalService } = await import('@/app/services/rentalService');
-          await rentalService.linkJournalEntryToRentalPayment(rentalPaymentId, journalEntryId).catch(() => {});
+          await rentalService.syncRentalPaymentGlLink(rentalPaymentId, journalEntryId);
         }
       } catch (e) {
         console.warn('[AccountingContext] Party AR rental advance failed, falling back to 2020:', e);
@@ -2409,7 +2409,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         });
         if (rentalPaymentId && journalEntryId) {
           const { rentalService } = await import('@/app/services/rentalService');
-          await rentalService.linkJournalEntryToRentalPayment(rentalPaymentId, journalEntryId).catch(() => {});
+          await rentalService.syncRentalPaymentGlLink(rentalPaymentId, journalEntryId);
         }
       } catch (e) {
         console.warn('[AccountingContext] Party AR rental payment failed, falling back to Cr Income:', e);

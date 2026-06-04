@@ -10,6 +10,10 @@ import { activityLogService } from '@/app/services/activityLogService';
 import { settingsService } from '@/app/services/settingsService';
 import { checkRentalAvailabilityForItems } from '@/app/services/rentalAvailabilityService';
 import { syncJournalEntryDateByDocumentRefs } from '@/app/services/journalTransactionDateSyncService';
+import { formatRentalPaymentRef } from '@/app/lib/rentalPaymentRef';
+import { isLiquidityPaymentAccount } from '@/app/lib/liquidityPaymentAccount';
+import { voidJournalEntries } from '@/app/services/accountingIntegrityService';
+import { voidPaymentAfterJournalReversal } from '@/app/services/paymentLifecycleService';
 
 /** RPC requires a real branch UUID; map sentinel "default" to first company branch. */
 async function resolveBranchIdForRental(companyId: string, branchId: string): Promise<string> {
@@ -226,7 +230,9 @@ export const rentalService = {
       ratePerDay: number;
       durationDays: number;
       total: number;
+      variationId?: string | null;
     }>;
+    skipAvailabilityCheck?: boolean;
   }): Promise<{ id: string; booking_no: string }> {
     const {
       companyId,
@@ -248,6 +254,7 @@ export const rentalService = {
       commissionPercent = null,
       commissionEligibleAmount = null,
       items,
+      skipAvailabilityCheck = false,
     } = params;
 
     if (!items?.length) throw new Error('At least one item is required');
@@ -262,15 +269,21 @@ export const rentalService = {
 
     const effectiveBranchId = await resolveBranchIdForRental(companyId, branchId);
 
-    const availability = await checkRentalAvailabilityForItems({
-      companyId,
-      items: items.map((i) => ({ productId: i.productId })),
-      startDate: pickupDate,
-      endDate: returnDate,
-      branchId: effectiveBranchId,
-    });
-    if (!availability.available) {
-      throw new Error(availability.message || 'Selected dates conflict with an existing booking');
+    if (!skipAvailabilityCheck) {
+      const availability = await checkRentalAvailabilityForItems({
+        companyId,
+        items: items.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          variationId: i.variationId,
+        })),
+        startDate: pickupDate,
+        endDate: returnDate,
+        branchId: effectiveBranchId,
+      });
+      if (!availability.available) {
+        throw new Error(availability.message || 'Selected dates conflict with an existing booking');
+      }
     }
 
     const durationDays = Math.ceil((ret.getTime() - pickup.getTime()) / (1000 * 60 * 60 * 24)) || 1;
@@ -401,7 +414,7 @@ export const rentalService = {
               rental_id: rentalData.id,
               amount: effectivePaid,
               method: 'cash',
-              reference: `Advance - ${bookingNo}`,
+              reference: formatRentalPaymentRef(bookingNo),
               payment_date: bookingDate,
               created_by: createdBy || null,
               ...(advancePaymentAccountId ? { payment_account_id: advancePaymentAccountId } : {}),
@@ -430,7 +443,7 @@ export const rentalService = {
               description: `Rental booking advance — ${bookingNo}`,
             });
             if (journalEntryId) {
-              await supabase.from('rental_payments').update({ journal_entry_id: journalEntryId }).eq('id', payId);
+              await rentalService.linkJournalEntryToRentalPayment(payId, journalEntryId);
             }
           }
         }
@@ -442,7 +455,7 @@ export const rentalService = {
         rental_id: rentalData.id,
         amount: effectivePaid,
         method: 'cash',
-        reference: `Advance - ${bookingNo}`,
+        reference: formatRentalPaymentRef(bookingNo),
         payment_date: bookingDate,
         created_by: createdBy || null,
       });
@@ -546,7 +559,11 @@ export const rentalService = {
 
     const availability = await checkRentalAvailabilityForItems({
       companyId,
-      items: items.map((i: any) => ({ productId: i.productId })),
+      items: items.map((i: { productId: string; quantity?: number; variationId?: string | null }) => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        variationId: i.variationId,
+      })),
       startDate: pickupDate,
       endDate: returnDate,
       excludeRentalId: id,
@@ -1062,12 +1079,16 @@ export const rentalService = {
     const payType = options?.paymentType ?? 'remaining';
     const payDay = (options?.paymentDate || new Date().toISOString()).split('T')[0];
     const isPenalty = payType === 'penalty';
+    const bookingNo = String(r.booking_no || '').trim();
+    const canonicalRef = bookingNo ? formatRentalPaymentRef(bookingNo) : '';
 
     const insertPayload: Record<string, unknown> = {
       rental_id: rentalId,
       amount,
       method: normalizePaymentMethod(method),
-      reference: reference || (isPenalty ? options?.penaltyReferenceNote || 'Rental penalty / damage' : null),
+      reference: isPenalty
+        ? options?.penaltyReferenceNote || reference || 'Rental penalty / damage'
+        : canonicalRef || reference || null,
       payment_date: payDay,
       created_by: performedBy || null,
     };
@@ -1130,14 +1151,57 @@ export const rentalService = {
     return payment as RentalPayment;
   },
 
-  async linkJournalEntryToRentalPayment(rentalPaymentId: string, journalEntryId: string): Promise<void> {
-    const { error } = await supabase
-      .from('rental_payments')
-      .update({ journal_entry_id: journalEntryId })
-      .eq('id', rentalPaymentId);
-    if (error && !String(error.message || '').toLowerCase().includes('journal_entry')) {
-      console.warn('[rentalService] linkJournalEntryToRentalPayment:', error.message);
+  /** Cash/bank/wallet debit leg on a posted rental JE (for Roznamcha + payment_account_id backfill). */
+  async resolveLiquidityAccountFromJournal(journalEntryId: string): Promise<string | null> {
+    const { data: lines } = await supabase
+      .from('journal_entry_lines')
+      .select('account_id, debit, account:accounts(id, name, type, code)')
+      .eq('journal_entry_id', journalEntryId);
+    for (const line of lines || []) {
+      const rawAcc = (line as any).account;
+      const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
+      if (!acc || !isLiquidityPaymentAccount(acc)) continue;
+      const debit = Number((line as any).debit) || 0;
+      if (debit <= 0) continue;
+      return String((line as any).account_id || acc.id || '');
     }
+    return null;
+  },
+
+  /** Link JE + backfill payment_account_id and canonical REN-*-PAY reference when missing. */
+  async syncRentalPaymentGlLink(rentalPaymentId: string, journalEntryId: string): Promise<void> {
+    const liquidityAccountId = await this.resolveLiquidityAccountFromJournal(journalEntryId);
+    const { data: rp } = await supabase
+      .from('rental_payments')
+      .select('reference, rental_id, payment_account_id')
+      .eq('id', rentalPaymentId)
+      .maybeSingle();
+
+    let canonicalRef: string | null = null;
+    const rentalId = (rp as { rental_id?: string } | null)?.rental_id;
+    if (rentalId) {
+      const { data: rental } = await supabase.from('rentals').select('booking_no').eq('id', rentalId).maybeSingle();
+      const bookingNo = String((rental as { booking_no?: string } | null)?.booking_no || '').trim();
+      if (bookingNo) canonicalRef = formatRentalPaymentRef(bookingNo);
+    }
+
+    const storedRef = String((rp as { reference?: string } | null)?.reference || '').trim();
+    const patch: Record<string, unknown> = { journal_entry_id: journalEntryId };
+    if (liquidityAccountId && !(rp as { payment_account_id?: string } | null)?.payment_account_id) {
+      patch.payment_account_id = liquidityAccountId;
+    }
+    if (canonicalRef && (!storedRef || !/^REN-.+-PAY$/i.test(storedRef))) {
+      patch.reference = canonicalRef;
+    }
+
+    const { error } = await supabase.from('rental_payments').update(patch).eq('id', rentalPaymentId);
+    if (error && !String(error.message || '').toLowerCase().includes('journal_entry')) {
+      console.warn('[rentalService] syncRentalPaymentGlLink:', error.message);
+    }
+  },
+
+  async linkJournalEntryToRentalPayment(rentalPaymentId: string, journalEntryId: string): Promise<void> {
+    await this.syncRentalPaymentGlLink(rentalPaymentId, journalEntryId);
   },
 
   /** Resolve the JE created for this rental payment (link row after posting). */
@@ -1296,26 +1360,67 @@ export const rentalService = {
   ): Promise<void> {
     const { data: payment, error: payErr } = await supabase
       .from('rental_payments')
-      .select('id, amount')
+      .select('id, amount, journal_entry_id, payment_date, voided_at')
       .eq('id', paymentId)
       .eq('rental_id', rentalId)
       .single();
 
     if (payErr || !payment) throw new Error('Payment not found');
-    const paymentAmount = Number((payment as any).amount);
+    if ((payment as any).voided_at) throw new Error('Payment already voided');
 
-    const { data: rentalRow } = await supabase.from('rentals').select('booking_no, paid_amount, total_amount').eq('id', rentalId).single();
+    const paymentAmount = Number((payment as any).amount);
+    const journalEntryId = (payment as any).journal_entry_id as string | null | undefined;
+    const payDay = String((payment as any).payment_date || '').slice(0, 10);
+
+    const { data: rentalRow } = await supabase
+      .from('rentals')
+      .select('booking_no, paid_amount, total_amount')
+      .eq('id', rentalId)
+      .single();
     const rentalNo = (rentalRow as any)?.booking_no;
 
-    const { error: delErr } = await supabase.from('rental_payments').delete().eq('id', paymentId);
-    if (delErr) throw delErr;
+    if (journalEntryId) {
+      await voidJournalEntries(companyId, [journalEntryId], 'Rental payment deleted');
+    }
 
-    if (rentalRow) {
-      const r = rentalRow as any;
-      const newPaid = Math.max(0, (r.paid_amount ?? 0) - paymentAmount);
-      const total = r.total_amount ?? 0;
-      const newDue = Math.max(0, total - newPaid);
-      await supabase.from('rentals').update({ paid_amount: newPaid, due_amount: newDue }).eq('id', rentalId);
+    if (payDay) {
+      const { data: orphanPayments } = await supabase
+        .from('payments')
+        .select('id, amount')
+        .eq('company_id', companyId)
+        .eq('reference_id', rentalId)
+        .eq('payment_date', payDay)
+        .is('voided_at', null);
+      for (const row of orphanPayments || []) {
+        if (Math.abs(Number((row as any).amount) - paymentAmount) >= 0.02) continue;
+        try {
+          await voidPaymentAfterJournalReversal({ companyId, paymentId: String((row as any).id) });
+        } catch (e) {
+          console.warn('[rentalService] deletePayment void orphan payments row:', e);
+        }
+      }
+    }
+
+    const voidedAt = new Date().toISOString();
+    const { error: voidErr } = await supabase
+      .from('rental_payments')
+      .update({ voided_at: voidedAt })
+      .eq('id', paymentId);
+    if (voidErr) {
+      const msg = String(voidErr.message || '').toLowerCase();
+      if (msg.includes('voided') || String(voidErr.code || '') === '42703') {
+        const { error: delErr } = await supabase.from('rental_payments').delete().eq('id', paymentId);
+        if (delErr) throw delErr;
+      } else {
+        throw voidErr;
+      }
+    }
+
+    await recomputeRentalPaidDueFromActivePayments(rentalId);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
+      window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
     }
 
     await activityLogService.logActivity({
@@ -1326,7 +1431,7 @@ export const rentalService = {
       action: 'payment_deleted',
       amount: paymentAmount,
       performedBy: performedBy || undefined,
-      description: `Payment ${paymentAmount} deleted from rental`,
+      description: `Payment ${paymentAmount} voided on rental (linked JE voided)`,
     }).catch(() => {});
   },
 

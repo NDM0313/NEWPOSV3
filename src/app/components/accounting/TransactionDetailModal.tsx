@@ -26,6 +26,7 @@ import {
   inferTransactionKind,
   unifiedEditButtonLabel,
   dispatchAccountingEditCommitted,
+  isPureManualJournalReferenceType,
 } from '@/app/lib/unifiedTransactionEdit';
 import { journalReversalBlockedReason } from '@/app/lib/journalEntryEditPolicy';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
@@ -38,6 +39,7 @@ import {
 } from '@/app/services/truthLabTraceWorkbenchService';
 import { activityLogService } from '@/app/services/activityLogService';
 import { stripJournalEditAuditSuffix, journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
+import { resolveRentalPaymentDisplay } from '@/app/lib/rentalPaymentRef';
 
 function rowMethodToPaymentMethod(m: unknown): PaymentMethod {
   const x = String(m || '').toLowerCase();
@@ -564,18 +566,31 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           setCurrentView('accounting');
           onClose();
           return;
-        case 'adjustment_editor':
+        case 'adjustment_editor': {
+          const rtAdj = String(transaction.reference_type || '').toLowerCase();
+          if (isPureManualJournalReferenceType(rtAdj)) {
+            openJournalQuickEdit();
+            return;
+          }
           if (resolution.sourceType === 'expense' && resolution.sourceId) {
             setCurrentView('expenses');
             onClose();
             toast.info(`Open expense ${resolution.sourceId.slice(0, 8)}… to edit this component.`);
             return;
           }
-          // Component/adjustment rows should not open full sale/purchase editor.
-          // Keep edits scoped to the adjustment transaction itself.
-          openJournalQuickEdit();
-          toast.info('Editing adjustment header (date/notes). Use Reverse for amount/account correction flow where needed.');
+          if (resolution.sourceType === 'sale' && resolution.sourceId) {
+            toast.message('Sale adjustments follow the invoice. Open the sale from Sales to change amounts.');
+            return;
+          }
+          if (resolution.sourceType === 'purchase' && resolution.sourceId) {
+            toast.message('Purchase adjustments follow the PO. Open the purchase from Purchases to change amounts.');
+            return;
+          }
+          toast.message(
+            'This adjustment is source-controlled. Open the original document from its module, or use Reverse to correct amounts.'
+          );
           return;
+        }
       }
     } catch (e: any) {
       toast.error(e?.message || 'Could not open editor');
@@ -667,6 +682,31 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         }
       }
 
+      if (data?.id && data?.reference_type === 'rental') {
+        try {
+          const { supabase } = await import('@/lib/supabase');
+          const { data: rp } = await supabase
+            .from('rental_payments')
+            .select('reference, rentals(booking_no)')
+            .eq('journal_entry_id', data.id)
+            .maybeSingle();
+          if (rp) {
+            const rentalJoin = (rp as { rentals?: { booking_no?: string } | { booking_no?: string }[] }).rentals;
+            const rentalMeta = Array.isArray(rentalJoin) ? rentalJoin[0] : rentalJoin;
+            const { referenceNo } = resolveRentalPaymentDisplay({
+              bookingNo: rentalMeta?.booking_no,
+              storedReference: (rp as { reference?: string }).reference,
+            });
+            if (referenceNo) (data as { rental_payment_ref?: string }).rental_payment_ref = referenceNo;
+          }
+        } catch {
+          /* best-effort enrichment */
+        }
+      }
+      if (data && !(data as { rental_payment_ref?: string }).rental_payment_ref && /^REN-.+-PAY$/i.test(referenceNumber.trim())) {
+        (data as { rental_payment_ref?: string }).rental_payment_ref = referenceNumber.trim();
+      }
+
       let hasActiveRev = false;
       if (data?.id) {
         const revId = await accountingService.findActiveCorrectionReversalJournalId(companyId, data.id);
@@ -747,41 +787,77 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   };
 
   const handleSaveAccountEdits = async () => {
-    if (!transaction?.id) return;
+    if (!transaction?.id || !companyId) return;
     const hasAccountChanges = Object.keys(editLineChanges).length > 0;
     const hasAmountChanges = Object.keys(editAmountChanges).length > 0;
     if (!hasAccountChanges && !hasAmountChanges) return;
+    const isPureManual = isPureManualJournalReferenceType(transaction.reference_type);
     try {
       const { supabase } = await import('@/lib/supabase');
 
       // Build edit history log
       const editLog: string[] = [];
 
-      // Apply account changes
-      for (const [lineId, newAccountId] of Object.entries(editLineChanges)) {
-        const oldAcct = journalLines.find((l: any) => l.id === lineId);
-        const oldName = oldAcct?.account?.name || 'Unknown';
-        const newName = accountsList.find(a => a.id === newAccountId)?.name || 'Unknown';
-        editLog.push(`Account: ${oldName} → ${newName}`);
-        const { error } = await supabase
-          .from('journal_entry_lines')
-          .update({ account_id: newAccountId })
-          .eq('id', lineId);
-        if (error) throw error;
-      }
+      if (isPureManual) {
+        for (const [lineId, newAccountId] of Object.entries(editLineChanges)) {
+          const oldAcct = journalLines.find((l: any) => l.id === lineId);
+          const oldName = oldAcct?.account?.name || 'Unknown';
+          const newName = accountsList.find((a) => a.id === newAccountId)?.name || 'Unknown';
+          editLog.push(`Account: ${oldName} → ${newName}`);
+        }
+        for (const [lineId, amounts] of Object.entries(editAmountChanges)) {
+          const oldLine = journalLines.find((l: any) => l.id === lineId);
+          const oldDr = Number(oldLine?.debit) || 0;
+          const oldCr = Number(oldLine?.credit) || 0;
+          if (amounts.debit !== oldDr) editLog.push(`Debit: Rs ${oldDr.toLocaleString()} → Rs ${amounts.debit.toLocaleString()}`);
+          if (amounts.credit !== oldCr) editLog.push(`Credit: Rs ${oldCr.toLocaleString()} → Rs ${amounts.credit.toLocaleString()}`);
+        }
+        const lines = journalLines.map((line: any) => {
+          const lineId = String(line.id || '');
+          const amountPatch = editAmountChanges[lineId];
+          const accountId =
+            editLineChanges[lineId] ||
+            line.account_id ||
+            (Array.isArray(line.account) ? line.account[0]?.id : line.account?.id);
+          return {
+            account_id: String(accountId),
+            debit: amountPatch?.debit ?? (Number(line.debit) || 0),
+            credit: amountPatch?.credit ?? (Number(line.credit) || 0),
+            description: line.description ?? null,
+          };
+        });
+        const res = await accountingService.updateManualJournalEntry(companyId, transaction.id, { lines });
+        if (!res.ok) {
+          toast.error(res.error || 'Could not save journal lines');
+          return;
+        }
+      } else {
+        // Apply account changes (source-controlled / payment-linked rows)
+        for (const [lineId, newAccountId] of Object.entries(editLineChanges)) {
+          const oldAcct = journalLines.find((l: any) => l.id === lineId);
+          const oldName = oldAcct?.account?.name || 'Unknown';
+          const newName = accountsList.find((a) => a.id === newAccountId)?.name || 'Unknown';
+          editLog.push(`Account: ${oldName} → ${newName}`);
+          const { error } = await supabase
+            .from('journal_entry_lines')
+            .update({ account_id: newAccountId })
+            .eq('id', lineId);
+          if (error) throw error;
+        }
 
-      // Apply amount changes
-      for (const [lineId, amounts] of Object.entries(editAmountChanges)) {
-        const oldLine = journalLines.find((l: any) => l.id === lineId);
-        const oldDr = Number(oldLine?.debit) || 0;
-        const oldCr = Number(oldLine?.credit) || 0;
-        if (amounts.debit !== oldDr) editLog.push(`Debit: Rs ${oldDr.toLocaleString()} → Rs ${amounts.debit.toLocaleString()}`);
-        if (amounts.credit !== oldCr) editLog.push(`Credit: Rs ${oldCr.toLocaleString()} → Rs ${amounts.credit.toLocaleString()}`);
-        const { error } = await supabase
-          .from('journal_entry_lines')
-          .update({ debit: amounts.debit, credit: amounts.credit })
-          .eq('id', lineId);
-        if (error) throw error;
+        // Apply amount changes
+        for (const [lineId, amounts] of Object.entries(editAmountChanges)) {
+          const oldLine = journalLines.find((l: any) => l.id === lineId);
+          const oldDr = Number(oldLine?.debit) || 0;
+          const oldCr = Number(oldLine?.credit) || 0;
+          if (amounts.debit !== oldDr) editLog.push(`Debit: Rs ${oldDr.toLocaleString()} → Rs ${amounts.debit.toLocaleString()}`);
+          if (amounts.credit !== oldCr) editLog.push(`Credit: Rs ${oldCr.toLocaleString()} → Rs ${amounts.credit.toLocaleString()}`);
+          const { error } = await supabase
+            .from('journal_entry_lines')
+            .update({ debit: amounts.debit, credit: amounts.credit })
+            .eq('id', lineId);
+          if (error) throw error;
+        }
       }
 
       if (editLog.length > 0 && companyId) {
@@ -840,6 +916,13 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const payment = Array.isArray(transaction?.payment)
     ? transaction.payment[0] 
     : transaction?.payment;
+  const rentalPaymentVoucherRef = String(
+    (transaction as { rental_payment_ref?: string })?.rental_payment_ref || ''
+  ).trim();
+  const voucherDisplayRef =
+    rentalPaymentVoucherRef ||
+    (/^REN-.+-PAY$/i.test(referenceNumber.trim()) ? referenceNumber.trim() : '') ||
+    String(transaction?.entry_no || referenceNumber || '').trim();
   const paymentNotesDisplay = (() => {
     const rawNotes = String(payment?.notes || '').trim();
     if (!rawNotes) return '';
@@ -864,7 +947,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           <DialogTitle className="text-white flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold">Transaction Details</h2>
-              <p className="text-sm text-gray-400 mt-1">Reference: {referenceNumber}</p>
+              <p className="text-sm text-gray-400 mt-1">Reference: {voucherDisplayRef}</p>
+              {rentalPaymentVoucherRef && transaction?.entry_no && (
+                <p className="text-xs text-gray-500 mt-0.5">Journal: {transaction.entry_no}</p>
+              )}
             </div>
             <Button
               variant="ghost"
@@ -1049,7 +1135,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-400">Reference Number:</span>
-                  <p className="text-white font-medium">{transaction.entry_no || referenceNumber}</p>
+                  <p className="text-white font-medium">{voucherDisplayRef}</p>
+                  {rentalPaymentVoucherRef && transaction?.entry_no && (
+                    <p className="text-xs text-gray-500 mt-0.5">Journal: {transaction.entry_no}</p>
+                  )}
                 </div>
                 <div>
                   <span className="text-gray-400">Transaction date:</span>
@@ -1586,7 +1675,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           <DialogContent className="max-w-md bg-gray-900 border-gray-800 text-white">
             <DialogHeader>
               <DialogTitle>Edit manual journal</DialogTitle>
-              <p className="text-xs text-gray-400 font-normal">Updates transaction date and description only. Line-level changes use accounting adjustments.</p>
+              <p className="text-xs text-gray-400 font-normal">
+                Updates transaction date and description only. To change debit/credit amounts or accounts, close this dialog and use{' '}
+                <strong className="text-gray-300">Edit Accounts</strong> on the transaction detail screen.
+              </p>
             </DialogHeader>
             <div className="space-y-3 pt-2">
               <div>

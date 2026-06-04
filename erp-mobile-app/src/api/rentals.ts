@@ -8,6 +8,169 @@ import {
   postRentalPartyRevenueJournalMobile,
 } from './rentalBookingAccounting';
 import { isRealBranchUuid, resolveBranchUuidForWrite } from '../utils/branchId';
+import { fetchProductStockByKey } from '../utils/productStockFetch';
+import { formatRentalPaymentRef } from '../utils/rentalPaymentRef';
+
+const BLOCKING_RENTAL_STATUSES = ['booked', 'picked_up', 'active', 'overdue'] as const;
+
+export interface RentalAvailabilityConflict {
+  rentalId: string;
+  bookingNo: string;
+  customerName: string;
+  pickupDate: string;
+  returnDate: string;
+  status: string;
+}
+
+export interface RentalAvailabilityResult {
+  available: boolean;
+  conflicts: RentalAvailabilityConflict[];
+  message?: string;
+  requiresConfirmation?: boolean;
+}
+
+function matchesRentalLineVariation(
+  lineVariationId: string | null | undefined,
+  requestedVariationId?: string | null,
+): boolean {
+  if (requestedVariationId) return lineVariationId === requestedVariationId;
+  return !lineVariationId;
+}
+
+async function getRentalProductStock(
+  companyId: string,
+  productId: string,
+  variationId: string | null | undefined,
+  branchId?: string | null,
+): Promise<number> {
+  const map = await fetchProductStockByKey(
+    companyId,
+    [productId],
+    variationId ? [] : [productId],
+    variationId ? [productId] : [],
+    branchId,
+  );
+  const key = variationId ? `${productId}_${variationId}` : productId;
+  return map[key] ?? 0;
+}
+
+/** Check one product for overlapping booked/active rentals (quantity-aware vs stock). */
+export async function checkRentalAvailability(params: {
+  companyId: string;
+  productId: string;
+  startDate: string;
+  endDate: string;
+  requestedQuantity?: number;
+  variationId?: string | null;
+  excludeRentalId?: string;
+  branchId?: string | null;
+}): Promise<RentalAvailabilityResult> {
+  const {
+    companyId,
+    productId,
+    startDate,
+    endDate,
+    requestedQuantity = 1,
+    variationId,
+    excludeRentalId,
+    branchId,
+  } = params;
+  if (!isSupabaseConfigured) return { available: false, conflicts: [], message: 'App not configured.' };
+
+  let query = supabase
+    .from('rentals')
+    .select('id, booking_no, customer_name, pickup_date, return_date, status')
+    .eq('company_id', companyId)
+    .in('status', [...BLOCKING_RENTAL_STATUSES])
+    .lt('pickup_date', endDate)
+    .gte('return_date', startDate);
+
+  if (branchId && branchId !== 'all') query = query.eq('branch_id', branchId);
+  if (excludeRentalId) query = query.neq('id', excludeRentalId);
+
+  const { data: rentals, error } = await query;
+  if (error) {
+    console.error('[rentals.checkRentalAvailability]', error);
+    return { available: false, conflicts: [], message: 'Failed to check availability' };
+  }
+
+  const rentalIds = (rentals || []).map((r) => r.id as string);
+  if (rentalIds.length === 0) return { available: true, conflicts: [] };
+
+  const { data: items, error: itemsErr } = await supabase
+    .from('rental_items')
+    .select('rental_id, product_id, variation_id, quantity')
+    .in('rental_id', rentalIds)
+    .eq('product_id', productId);
+
+  if (itemsErr) {
+    console.error('[rentals.checkRentalAvailability] rental_items', itemsErr);
+    return { available: false, conflicts: [], message: 'Failed to check availability' };
+  }
+
+  const matchingLines = (items || []).filter((i) =>
+    matchesRentalLineVariation(i.variation_id as string | null | undefined, variationId),
+  );
+
+  if (matchingLines.length === 0) return { available: true, conflicts: [] };
+
+  const conflictRentalIds = new Set(matchingLines.map((i) => i.rental_id as string));
+  const conflicts: RentalAvailabilityConflict[] = (rentals || [])
+    .filter((r) => conflictRentalIds.has(r.id as string))
+    .map((r) => ({
+      rentalId: r.id as string,
+      bookingNo: String(r.booking_no || ''),
+      customerName: String(r.customer_name || ''),
+      pickupDate: String(r.pickup_date || ''),
+      returnDate: String(r.return_date || ''),
+      status: String(r.status || ''),
+    }));
+
+  const alreadyBookedQty = matchingLines.reduce(
+    (sum, i) => sum + (Number(i.quantity) || 0),
+    0,
+  );
+  const stock = await getRentalProductStock(companyId, productId, variationId, branchId);
+  const requestedQty = Math.max(0, Number(requestedQuantity) || 0);
+
+  if (stock >= alreadyBookedQty + requestedQty) {
+    return { available: true, conflicts: [] };
+  }
+
+  if (conflicts.length === 0) return { available: true, conflicts: [] };
+
+  const first = conflicts[0];
+  return {
+    available: false,
+    conflicts,
+    requiresConfirmation: true,
+    message: `Product is already booked from ${first.pickupDate} to ${first.returnDate} (${first.bookingNo || first.rentalId} - ${first.customerName})`,
+  };
+}
+
+export async function checkRentalAvailabilityForItems(params: {
+  companyId: string;
+  items: Array<{ productId: string; quantity?: number; variationId?: string | null }>;
+  startDate: string;
+  endDate: string;
+  excludeRentalId?: string;
+  branchId?: string | null;
+}): Promise<RentalAvailabilityResult> {
+  for (const item of params.items) {
+    const result = await checkRentalAvailability({
+      companyId: params.companyId,
+      productId: item.productId,
+      startDate: params.startDate,
+      endDate: params.endDate,
+      requestedQuantity: item.quantity ?? 1,
+      variationId: item.variationId,
+      excludeRentalId: params.excludeRentalId,
+      branchId: params.branchId,
+    });
+    if (!result.available) return result;
+  }
+  return { available: true, conflicts: [] };
+}
 
 /** UI status: map DB status (picked_up, active, closed) to web-like labels */
 export function mapRentalStatus(dbStatus: string): string {
@@ -198,6 +361,8 @@ export interface CreateBookingInput {
     /** Optional human-readable variation label (e.g. "Red / Large") — stored in notes for display. */
     variationLabel?: string | null;
   }>;
+  /** Skip overlap check after user confirmed "Book anyway?" */
+  skipAvailabilityCheck?: boolean;
 }
 
 export async function createBooking(input: CreateBookingInput): Promise<{ data: { id: string; booking_no: string } | null; error: string | null }> {
@@ -225,6 +390,7 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     securityDocumentImageUrl = null,
     expenses = [],
     items,
+    skipAvailabilityCheck = false,
   } = input;
 
   if (!companyId || !branchId || branchId === 'all') return { data: null, error: 'Company and branch required.' };
@@ -273,6 +439,26 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
     );
   } catch (err) {
     return { data: null, error: (err as Error).message ?? 'Failed to resolve branch.' };
+  }
+
+  if (!skipAvailabilityCheck) {
+    const availability = await checkRentalAvailabilityForItems({
+      companyId,
+      items: items.map((i) => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        variationId: i.variationId,
+      })),
+      startDate: pickupDate,
+      endDate: returnDate,
+      branchId: effectiveBranchId,
+    });
+    if (!availability.available) {
+      return {
+        data: null,
+        error: availability.message || 'Selected dates conflict with an existing booking.',
+      };
+    }
   }
 
   const rentalPayload: Record<string, unknown> = {
@@ -398,9 +584,10 @@ export async function createBooking(input: CreateBookingInput): Promise<{ data: 
         rental_id: rentalData.id,
         amount: paidAmount,
         method,
-        reference: 'Advance at booking',
+        reference: formatRentalPaymentRef(bookingNoDisplay),
         payment_date: bookingDate,
         payment_type: 'advance',
+        payment_account_id: advancePaymentAccountId,
         created_by: userId,
       })
       .select('id')
@@ -883,6 +1070,9 @@ export async function addRentalPayment(
   const normalizedMethod = normalizePaymentMethod(params.method);
   const paymentDate = params.paymentDate ?? localNowDateString();
   const rawBranchId = params.branchId ?? (r.branch_id as string | null) ?? null;
+  const bookingNo = String(r.booking_no || '').trim();
+  const rentalPaymentRef =
+    String(params.reference || '').trim() || (bookingNo ? formatRentalPaymentRef(bookingNo) : null);
   let paymentId: string | null = null;
   let referenceNumber: string | null = null;
 
@@ -939,9 +1129,10 @@ export async function addRentalPayment(
         rental_id: params.rentalId,
         amount: params.amount,
         method: normalizedMethod,
-        reference: params.reference ?? null,
+        reference: rentalPaymentRef,
         payment_date: paymentDate,
         payment_type: 'remaining',
+        payment_account_id: params.paymentAccountId ?? null,
         created_by: params.userId ?? null,
       });
     } catch {
@@ -955,9 +1146,10 @@ export async function addRentalPayment(
     rental_id: params.rentalId,
     amount: params.amount,
     method: normalizedMethod,
-    reference: params.reference ?? null,
+    reference: rentalPaymentRef,
     payment_date: paymentDate,
     payment_type: 'remaining',
+    payment_account_id: params.paymentAccountId ?? null,
     created_by: params.userId ?? null,
   });
 

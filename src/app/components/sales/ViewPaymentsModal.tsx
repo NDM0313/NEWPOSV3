@@ -57,6 +57,7 @@ import {
 } from '@/app/lib/paymentRowEditRouting';
 import { supabase } from '@/lib/supabase';
 import { saleInvoiceStatusAllowsAddPayment } from '@/app/utils/statusHelpers';
+import { resolveRentalPaymentDisplay } from '@/app/lib/rentalPaymentRef';
 
 // ============================================
 // TYPES
@@ -70,6 +71,8 @@ export interface Payment extends PaymentHistoryRowLike {
   allocationOrder?: number;
   /** Rental: advance vs remaining */
   rentalPaymentKind?: 'advance' | 'remaining';
+  /** Human note when reference was generic (e.g. "Advance at booking") */
+  referenceSubtitle?: string;
 }
 
 export interface InvoiceDetails {
@@ -254,19 +257,26 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                 (accs || []).forEach((a: any) => nameById.set(String(a.id), String(a.name || '').trim() || 'Account'));
               }
               setPayments(
-                raw.map((p: any) => ({
-                  id: p.id,
-                  date: p.payment_date || p.created_at?.split('T')[0] || '',
-                  referenceNo: p.reference || '',
-                  amount: Number(p.amount) || 0,
-                  method: p.method || 'cash',
-                  notes: p.reference,
-                  createdAt: p.created_at,
-                  updatedAt: p.updated_at ?? p.created_at,
-                  accountId: p.payment_account_id,
-                  accountName: p.payment_account_id ? nameById.get(String(p.payment_account_id)) : undefined,
-                  rentalPaymentKind: p.payment_type === 'advance' ? 'advance' : 'remaining',
-                }))
+                raw.map((p: any) => {
+                  const { referenceNo, subtitle } = resolveRentalPaymentDisplay({
+                    bookingNo: invoice.invoiceNo,
+                    storedReference: p.reference,
+                  });
+                  return {
+                    id: p.id,
+                    date: p.payment_date || p.created_at?.split('T')[0] || '',
+                    referenceNo,
+                    referenceSubtitle: subtitle,
+                    amount: Number(p.amount) || 0,
+                    method: p.method || 'cash',
+                    notes: subtitle || p.reference,
+                    createdAt: p.created_at,
+                    updatedAt: p.updated_at ?? p.created_at,
+                    accountId: p.payment_account_id,
+                    accountName: p.payment_account_id ? nameById.get(String(p.payment_account_id)) : undefined,
+                    rentalPaymentKind: p.payment_type === 'advance' ? 'advance' : 'remaining',
+                  };
+                })
               );
             } catch (rentalError: any) {
               console.error('[VIEW PAYMENTS] Error fetching rental payments:', rentalError);
@@ -375,15 +385,22 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
           const { rentalService } = await import('@/app/services/rentalService');
           const raw = await rentalService.getRentalPayments(invoice.id);
           setPayments(
-            (raw || []).map((p: any) => ({
-              id: p.id,
-              date: p.payment_date || p.created_at?.split('T')[0] || '',
-              referenceNo: p.reference || '',
-              amount: Number(p.amount) || 0,
-              method: p.method || 'cash',
-              notes: p.reference,
-              createdAt: p.created_at,
-            }))
+            (raw || []).map((p: any) => {
+              const { referenceNo, subtitle } = resolveRentalPaymentDisplay({
+                bookingNo: invoice.invoiceNo,
+                storedReference: p.reference,
+              });
+              return {
+                id: p.id,
+                date: p.payment_date || p.created_at?.split('T')[0] || '',
+                referenceNo,
+                referenceSubtitle: subtitle,
+                amount: Number(p.amount) || 0,
+                method: p.method || 'cash',
+                notes: subtitle || p.reference,
+                createdAt: p.created_at,
+              };
+            })
           );
         } else {
           const { saleService } = await import('@/app/services/saleService');
@@ -560,6 +577,9 @@ export const ViewPaymentsModal: React.FC<ViewPaymentsModalProps> = ({
                         </div>
                         <div className="col-span-2">
                           <p className="text-xs font-mono text-gray-400 break-words">{payment.referenceNo || '—'}</p>
+                          {payment.referenceSubtitle && (
+                            <p className="text-[10px] text-gray-500 mt-0.5">{payment.referenceSubtitle}</p>
+                          )}
                           {payment.allocationBadge && (
                             <Badge className="mt-1 text-[9px] font-medium bg-violet-500/15 text-violet-300 border border-violet-500/30">
                               {payment.allocationBadge}

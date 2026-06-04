@@ -1250,7 +1250,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                 });
               const jeId = await rentalService.findLatestJournalEntryForRental(companyId, referenceId, journalSince);
               if (rp?.id && jeId) {
-                await rentalService.linkJournalEntryToRentalPayment(rp.id, jeId);
+                await rentalService.syncRentalPaymentGlLink(rp.id, jeId);
               }
             } else {
               const rp = await rentalService.addPayment(
@@ -1301,7 +1301,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               }
               const jeId = await rentalService.findLatestJournalEntryForRental(companyId, referenceId, journalSince);
               if (rp?.id && jeId) {
-                await rentalService.linkJournalEntryToRentalPayment(rp.id, jeId);
+                await rentalService.syncRentalPaymentGlLink(rp.id, jeId);
               }
             }
             if (typeof window !== 'undefined') {
