@@ -1,16 +1,7 @@
 import { supabase } from '@/lib/supabase';
 
-import {
-
-  DEFAULT_BESPOKE_FORM_CONFIG,
-
-  normalizeBespokeFormConfig,
-
-  type BespokeFormConfig,
-
-  type BusinessSettingsRow,
-
-} from '@/app/types/bespoke';
+import { DEFAULT_BESPOKE_FORM_CONFIG, normalizeBespokeFormConfig } from '@/app/lib/bespokeDefaults';
+import type { BespokeFormConfig, BusinessSettingsRow } from '@/app/types/bespoke';
 
 
 

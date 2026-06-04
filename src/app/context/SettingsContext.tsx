@@ -14,7 +14,8 @@ import { isDebugErpEnabled } from '@/app/lib/debugErp';
 import type { ModuleToggles } from '@/app/config/companyBootstrapRegistry';
 import { defaultModuleToggles } from '@/app/config/companyBootstrapRegistry';
 import { businessSettingsService, type BusinessSettings } from '@/app/services/businessSettingsService';
-import { DEFAULT_BESPOKE_FORM_CONFIG, type BespokeFormConfig } from '@/app/types/bespoke';
+import { DEFAULT_BESPOKE_FORM_CONFIG } from '@/app/lib/bespokeDefaults';
+import type { BespokeFormConfig } from '@/app/types/bespoke';
 import { buildModuleTogglesFromConfigRows, moduleTogglePatchesToDb } from '@/app/config/moduleConfigSemantics';
 import {
   mapAppRoleToEngineRole,

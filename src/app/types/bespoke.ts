@@ -8,16 +8,6 @@ export interface BespokeFormConfig {
   show_customization_charges: boolean;
 }
 
-export const DEFAULT_BESPOKE_FORM_CONFIG: BespokeFormConfig = {
-  show_measurements: true,
-  show_fabric: true,
-  show_color_code: true,
-  show_image_upload: true,
-  show_delivery_date: true,
-  /** Stitching charges use SaleForm Extra Expenses, not the modal. */
-  show_customization_charges: false,
-};
-
 /** Metadata-only fields stored on parent generic SKU line (no fabric/charges in JSON). */
 export interface BespokeMetadata {
   image_url?: string;
@@ -196,18 +186,6 @@ export function normalizeFabricMaterials(raw: unknown): BespokeFabricMaterial[] 
     .filter((r): r is BespokeFabricMaterial => r != null);
 }
 
-export function normalizeBespokeFormConfig(raw: unknown): BespokeFormConfig {
-  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-  return {
-    show_measurements: o.show_measurements !== false,
-    show_fabric: o.show_fabric !== false,
-    show_color_code: o.show_color_code !== false,
-    show_image_upload: o.show_image_upload !== false,
-    show_delivery_date: o.show_delivery_date !== false,
-    show_customization_charges: o.show_customization_charges !== false,
-  };
-}
-
 export function parseCustomizationDetails(raw: unknown): CustomizationDetails | undefined {
   if (raw == null) return undefined;
   let parsed: unknown = raw;
@@ -345,3 +323,5 @@ export function getBespokeInstructionBullets(raw: unknown): BespokeInstructionBu
   if (meta.image_url) bullets.push({ label: 'Reference image', value: meta.image_url });
   return bullets;
 }
+
+export { DEFAULT_BESPOKE_FORM_CONFIG, normalizeBespokeFormConfig } from '@/app/lib/bespokeDefaults';
