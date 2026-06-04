@@ -31,7 +31,13 @@ export default defineConfig({
             if (id.includes('@supabase')) return 'vendor-supabase';
             if (id.includes('lucide-react')) return 'vendor-icons';
             if (id.includes('date-fns') || id.includes('dayjs')) return 'vendor-date';
-            if (id.includes('react-dom')) return 'vendor-react-dom';
+            if (
+              id.includes('/node_modules/react/') ||
+              id.includes('/node_modules/react-dom/') ||
+              id.includes('/node_modules/scheduler/')
+            ) {
+              return 'vendor-react';
+            }
             if (id.includes('sonner') || id.includes('next-themes') || id.includes('cmdk')) return 'vendor-ui';
             if (id.includes('zod') || id.includes('zustand')) return 'vendor-state';
             if (id.includes('xlsx') || id.includes('exceljs')) return 'vendor-excel';
@@ -97,6 +103,7 @@ export default defineConfig({
       // Alias @ to the src directory
       '@': path.resolve(__dirname, './src'),
     },
+    dedupe: ['react', 'react-dom', 'react/jsx-runtime'],
   },
   optimizeDeps: {
     include: ['jspdf', 'html2canvas'],

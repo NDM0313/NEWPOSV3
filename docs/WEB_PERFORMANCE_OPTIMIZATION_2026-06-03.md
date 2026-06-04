@@ -72,7 +72,7 @@ Largest chunks after optimization (loaded on demand, not on dashboard):
 | `vendor-supabase` | `@supabase/*` |
 | `vendor-icons` | `lucide-react` |
 | `vendor-date` | `date-fns`, `dayjs` |
-| `vendor-react-dom` | `react-dom` |
+| `vendor-react` | `react`, `react-dom`, `scheduler` (must stay in one chunk) |
 | `vendor-recharts` | `recharts`, `d3-*` |
 | `vendor-pdf` | `jspdf`, `html2canvas` |
 | `vendor-ui` | `sonner`, `next-themes`, `cmdk` |
@@ -174,10 +174,18 @@ Docs-only commits do **not** require redeploy.
 
 ## Office checklist (after deploy)
 
-1. **Hard refresh** on `erp.dincouture.pk` (Ctrl+Shift+R / Cmd+Shift+R) or clear site data once — old service worker may cache the big bundle.
+1. **Hard refresh** on `erp.dincouture.pk` (Ctrl+Shift+R / Cmd+Shift+R) or clear site data once — old service worker may cache mismatched chunks (e.g. old `index` + new `vendor-react-dom` → white screen / `Children` error).
 2. Login → **Dashboard** should appear faster; brief spinner when opening Sales / Purchases / Expenses first time is normal.
 3. Smoke test: create/view **sale**, **purchase**, **expense**; confirm saves still work.
 4. Mobile app unchanged — no APK/IPA update required for this web-only change.
+
+### If you see `Cannot set properties of undefined (setting 'Children')`
+
+Two copies of React loaded (often after deploy with a stale PWA cache):
+
+1. Hard refresh or clear site data for the ERP origin.
+2. DevTools → Application → unregister **service worker**, then reload.
+3. Confirm production build has **`vendor-react-*.js`** only (no `vendor-react-dom-*.js` in `dist/assets/`). [`vite.config.ts`](../vite.config.ts) uses `resolve.dedupe` for `react` / `react-dom` and keeps both in the `vendor-react` chunk.
 
 ---
 
