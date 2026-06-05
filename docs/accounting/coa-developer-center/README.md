@@ -4,7 +4,7 @@ Documentation hub for the unified **Accounting Developer Center** — diagnose C
 
 **Phase B (shipped):** Read-only UI — COA Health + Transaction Trace at `/admin/accounting-developer-center`. No repairs.
 
-**Phase C (planned):** Report trace tabs — see [05_PHASE_C_IMPLEMENTATION_PLAN.md](05_PHASE_C_IMPLEMENTATION_PLAN.md).
+**Phase C (approved, gated):** Report trace tabs — priorities locked; start after Phase B PR merges. See [05_PHASE_C_IMPLEMENTATION_PLAN.md](05_PHASE_C_IMPLEMENTATION_PLAN.md).
 
 ## Documents
 
@@ -21,7 +21,7 @@ Documentation hub for the unified **Accounting Developer Center** — diagnose C
 
 **Shipped (Phase B):** COA Health + Transaction Trace (read-only).
 
-**Build next (Phase C):** Roznamcha Trace → Statement Trace → Day Book diagnostics.
+**Build next (Phase C, after Phase B merge):** C1 tab shells → Roznamcha Trace → Statement Trace → Day Book Diagnostics → Payment Trace → Journal Integrity (browse-only). One PR per step.
 
 **Keep separate:** AR/AP Reconciliation Center, Numbering Maintenance, System Health.
 
