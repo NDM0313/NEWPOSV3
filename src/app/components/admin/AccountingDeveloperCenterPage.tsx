@@ -14,6 +14,7 @@ import {
 } from '@/app/lib/accountingDeveloperCenterTabs';
 import { CoaHealthTab } from '@/app/components/admin/developer-center/CoaHealthTab';
 import { TransactionTraceTab } from '@/app/components/admin/developer-center/TransactionTraceTab';
+import { RoznamchaTraceTab } from '@/app/components/admin/developer-center/RoznamchaTraceTab';
 import { PhaseCTabShell } from '@/app/components/admin/developer-center/PhaseCTabShell';
 
 function readUrlState(): { tab: DeveloperCenterTabId; query: string } {
@@ -81,7 +82,7 @@ export default function AccountingDeveloperCenterPage() {
             Accounting Developer Center
           </h1>
           <p className="text-sm text-gray-400 mt-1">
-            Read-only COA health, transaction trace, and Phase C tab shells (C1).
+            Read-only COA health, transaction trace, Roznamcha trace (C2), and Phase C shells.
           </p>
         </div>
         <span className="text-xs text-gray-500 flex items-center gap-1" title="docs/accounting/coa-developer-center/">
@@ -122,7 +123,11 @@ export default function AccountingDeveloperCenterPage() {
           <TransactionTraceTab companyId={companyId} initialQuery={urlQuery} />
         </TabsContent>
 
-        {PHASE_C_SHELL_TABS.map((t) => (
+        <TabsContent value="roznamcha">
+          <RoznamchaTraceTab companyId={companyId} initialQuery={urlQuery} />
+        </TabsContent>
+
+        {PHASE_C_SHELL_TABS.filter((t) => t.id !== 'roznamcha').map((t) => (
           <TabsContent key={t.id} value={t.id}>
             <PhaseCTabShell
               title={t.label}

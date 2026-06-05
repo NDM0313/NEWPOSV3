@@ -5,12 +5,21 @@
  */
 
 import { supabase } from '@/lib/supabase';
-import { isLiquidityPaymentAccount } from '@/app/lib/liquidityPaymentAccount';
+import { isLiquidityPaymentAccount, paymentMethodForLiquidityAccount } from '@/app/lib/liquidityPaymentAccount';
 import { journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
 import {
   formatRentalPaymentRef,
+  isRcvReference,
   isGenericRentalPaymentReference,
 } from '@/app/lib/rentalPaymentRef';
+import {
+  dedupeRoznamchaRows,
+  roznamchaEntityKeys,
+  roznamchaLooseMovementKey,
+  roznamchaMovementKey,
+} from '@/app/services/roznamchaDedupe';
+
+export { dedupeRoznamchaRows, roznamchaEntityKeys, roznamchaLooseMovementKey, roznamchaMovementKey };
 
 export type AccountFilter = 'all' | 'cash' | 'bank' | 'wallet';
 
@@ -40,6 +49,14 @@ export interface RoznamchaRow {
   accountName?: string | null;
   /** Internal — used for dedupe (cash/bank/wallet account id). */
   paymentAccountId?: string | null;
+  /** Internal — strict dedupe: one row per payments.id */
+  sourcePaymentId?: string | null;
+  /** Internal — strict dedupe: one row per rental_payments.id */
+  sourceRentalPaymentId?: string | null;
+  /** Internal — strict dedupe: one row per journal_entries.id */
+  sourceJournalEntryId?: string | null;
+  /** Internal — optional dedupe when multiple rows share one economic event */
+  sourceEconomicEventId?: string | null;
   branchId: string | null;
   type: string;
 }
@@ -141,78 +158,6 @@ function paymentMatchesRoznamchaBranch(
   return false;
 }
 
-/** Fingerprint for dedupe: one cash movement → one row (strict — includes account). */
-export function roznamchaMovementKey(row: RoznamchaRow): string {
-  return `${row.date}|${row.direction}|${Math.round(row.amount * 100)}|${row.paymentAccountId || ''}`;
-}
-
-/** Loose dedupe: same date + direction + amount (ignores account id gaps). */
-export function roznamchaLooseMovementKey(row: RoznamchaRow): string {
-  return `${row.date}|${row.direction}|${Math.round(row.amount * 100)}`;
-}
-
-function refQualityScore(row: RoznamchaRow): number {
-  const ref = String(row.ref || '').trim();
-  if (/^RCV-/i.test(ref)) return 5;
-  if (/^PAY-/i.test(ref) || /^WPY-/i.test(ref)) return 5;
-  if (/^REN-/i.test(ref)) return 5;
-  if (/^EXP-/i.test(ref)) return 4;
-  if (/^JE-/i.test(ref) || /^JV-/i.test(ref)) return 1;
-  return 2;
-}
-
-function mergeRoznamchaRowMetadata(winner: RoznamchaRow, loser: RoznamchaRow): RoznamchaRow {
-  const merged = { ...winner };
-  const winnerRef = String(merged.ref || '').trim();
-  const loserRef = String(loser.ref || '').trim();
-  const loserHasPay = /-PAY$/i.test(loserRef);
-  const winnerHasPay = /-PAY$/i.test(winnerRef);
-  if (loserHasPay && !winnerHasPay) {
-    merged.ref = loserRef;
-  } else if (refQualityScore(loser) > refQualityScore(merged)) {
-    merged.ref = loser.ref;
-  }
-  if (!merged.paymentAccountId && loser.paymentAccountId) {
-    merged.paymentAccountId = loser.paymentAccountId;
-    merged.accountName = merged.accountName || loser.accountName;
-    merged.accountType = merged.accountType || loser.accountType;
-    merged.accountLabel = merged.accountName
-      ? resolveSubAccountLabel({ name: merged.accountName }, merged.accountLabel)
-      : loser.accountLabel || merged.accountLabel;
-  }
-  if (!merged.details || merged.details === 'Rental Payment' || merged.details === 'Customer Receipt' || merged.details === 'Supplier Payment') {
-    if (loser.details && loser.details !== merged.details) merged.details = loser.details;
-  }
-  const loserJe = String(loser.journalEntryNo || '').trim();
-  const mergedRef = String(merged.ref || '').trim();
-  if (loserJe && loserJe.toLowerCase() !== mergedRef.toLowerCase()) {
-    merged.journalEntryNo = merged.journalEntryNo || loserJe;
-  }
-  return merged;
-}
-
-function pickBetterRoznamchaRow(a: RoznamchaRow, b: RoznamchaRow): RoznamchaRow {
-  const pa = roznamchaRowSourcePriority(a.id);
-  const pb = roznamchaRowSourcePriority(b.id);
-  let winner: RoznamchaRow;
-  let loser: RoznamchaRow;
-  if (pa !== pb) {
-    winner = pa > pb ? a : b;
-    loser = pa > pb ? b : a;
-  } else {
-    const ra = refQualityScore(a);
-    const rb = refQualityScore(b);
-    if (ra !== rb) {
-      winner = ra > rb ? a : b;
-      loser = ra > rb ? b : a;
-    } else {
-      winner = a;
-      loser = b;
-    }
-  }
-  return mergeRoznamchaRowMetadata(winner, loser);
-}
-
 function resolveSubAccountLabel(
   meta: { name: string } | undefined,
   shortLabel: string
@@ -238,10 +183,10 @@ export function resolveCanonicalRoznamchaRef(opts: {
   const jeSubtitle =
     jeNo && refNum && jeNo.toLowerCase() !== refNum.toLowerCase() ? jeNo : null;
 
-  if (/^RCV-/i.test(refNum)) return { ref: refNum, journalEntryNo: jeSubtitle };
+  if (isRcvReference(refNum)) return { ref: refNum, journalEntryNo: jeSubtitle };
   if (/^PAY-/i.test(refNum) || /^WPY-/i.test(refNum)) return { ref: refNum, journalEntryNo: jeSubtitle };
   if (/^REN-.+-PAY$/i.test(refNum)) return { ref: refNum, journalEntryNo: jeSubtitle || (jeNo || null) };
-  if (rentalNo && (isGenericRentalPaymentReference(refNum) || !refNum)) {
+  if (rentalNo && (isGenericRentalPaymentReference(refNum) || !refNum) && !isRcvReference(refNum)) {
     const synthesized = formatRentalPaymentRef(rentalNo);
     return {
       ref: synthesized || rentalNo,
@@ -273,38 +218,6 @@ export function roznamchaJournalSubtitle(row: Pick<RoznamchaRow, 'ref' | 'journa
   if (!je || je.toLowerCase() === ref.toLowerCase()) return null;
   if (/^JE-/i.test(ref) || /^JV-/i.test(ref)) return null;
   return je;
-}
-
-function finalizeRoznamchaRow(row: RoznamchaRow): RoznamchaRow {
-  row.accountLabel = resolveSubAccountLabel(
-    row.accountName ? { name: row.accountName } : undefined,
-    row.accountLabel
-  );
-  row.journalEntryNo = roznamchaJournalSubtitle(row);
-  return row;
-}
-
-function roznamchaRowSourcePriority(id: string): number {
-  if (id.startsWith('jel-')) return 1;
-  if (id.startsWith('rp-')) return 2;
-  return 3;
-}
-
-/** When keys collide, keep payments > rental_payments > journal; loose pass merges same amount. */
-export function dedupeRoznamchaRows(rows: RoznamchaRow[]): RoznamchaRow[] {
-  const bestByStrict = new Map<string, RoznamchaRow>();
-  for (const row of rows) {
-    const key = roznamchaMovementKey(row);
-    const prev = bestByStrict.get(key);
-    bestByStrict.set(key, prev ? pickBetterRoznamchaRow(prev, row) : row);
-  }
-  const bestByLoose = new Map<string, RoznamchaRow>();
-  for (const row of bestByStrict.values()) {
-    const key = roznamchaLooseMovementKey(row);
-    const prev = bestByLoose.get(key);
-    bestByLoose.set(key, prev ? pickBetterRoznamchaRow(prev, row) : row);
-  }
-  return [...bestByLoose.values()].map(finalizeRoznamchaRow);
 }
 
 async function loadRentalPaymentsInPaymentsTable(
@@ -341,6 +254,64 @@ async function loadRentalPaymentsInPaymentsTable(
   return keys;
 }
 
+/** Match rental_payments rows to RCV-* on linked payments (legacy REN-*-PAY backfill display). */
+async function loadRentalRcvRefByMatchKey(
+  companyId: string,
+  branchId: string | null,
+  dateFrom: string,
+  dateTo: string,
+  includeVoidedReversed: boolean
+): Promise<Map<string, string>> {
+  let q = supabase
+    .from('payments')
+    .select('reference_id, payment_date, amount, payment_account_id, reference_number, branch_id, voided_at')
+    .eq('company_id', companyId)
+    .eq('reference_type', 'rental')
+    .ilike('reference_number', '%RCV-%')
+    .gte('payment_date', dateFrom)
+    .lte('payment_date', dateTo);
+  if (branchId) q = q.eq('branch_id', branchId);
+  if (!includeVoidedReversed) q = q.is('voided_at', null);
+  const { data } = await q;
+  const map = new Map<string, string>();
+  (data || []).forEach((p: any) => {
+    const rid = String(p.reference_id || '').trim();
+    const ref = String(p.reference_number || '').trim();
+    if (!rid || !isRcvReference(ref)) return;
+    map.set(
+      rentalPaymentMatchKey(rid, String(p.payment_date || ''), Number(p.amount) || 0, p.payment_account_id),
+      ref
+    );
+  });
+  return map;
+}
+
+function formatRoznamchaRentalAmount(amount: number): string {
+  const n = Number(amount) || 0;
+  return `Rs ${n.toLocaleString('en-PK', { maximumFractionDigits: 0 })}`;
+}
+
+const RENTAL_PAYMENT_ROW_SELECT =
+  'id, amount, method, payment_date, created_at, reference, payment_account_id, journal_entry_id, created_by, voided_at, rentals!inner(id, booking_no, company_id, branch_id, created_by, customer_name)';
+
+async function loadRentalPartyPaymentJeIdsInEntryDateRange(
+  companyId: string,
+  dateFrom: string,
+  dateTo: string,
+  includeVoidedReversed: boolean
+): Promise<string[]> {
+  let jeQ = supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('company_id', companyId)
+    .gte('entry_date', dateFrom)
+    .lte('entry_date', dateTo)
+    .like('action_fingerprint', 'rental_party_payment:%');
+  if (!includeVoidedReversed) jeQ = jeQ.or('is_void.is.null,is_void.eq.false');
+  const { data } = await jeQ;
+  return (data || []).map((r: any) => String(r.id || '')).filter(Boolean);
+}
+
 async function loadRentalPaymentJournalLinks(
   companyId: string,
   branchId: string | null,
@@ -351,6 +322,8 @@ async function loadRentalPaymentJournalLinks(
     includeVoidedReversed?: boolean;
   }
 ): Promise<Set<string>> {
+  const out = new Set<string>();
+
   let q = supabase
     .from('rental_payments')
     .select('journal_entry_id, payment_date, voided_at, rentals!inner(company_id, branch_id)')
@@ -366,21 +339,126 @@ async function loadRentalPaymentJournalLinks(
   if (!options.includeVoidedReversed) q = q.is('voided_at', null);
 
   const { data } = await q;
-  const out = new Set<string>();
   (data || []).forEach((rp: any) => {
     const jeId = String(rp.journal_entry_id || '').trim();
     if (jeId) out.add(jeId);
   });
+
+  // Also skip JEs whose posting date (entry_date) is in range even when payment_date differs.
+  if (options.dateFrom && options.dateTo) {
+    const jeIds = await loadRentalPartyPaymentJeIdsInEntryDateRange(
+      companyId,
+      options.dateFrom,
+      options.dateTo,
+      options.includeVoidedReversed ?? false
+    );
+    if (jeIds.length > 0) {
+      let supQ = supabase
+        .from('rental_payments')
+        .select('journal_entry_id, rentals!inner(company_id, branch_id)')
+        .eq('rentals.company_id', companyId)
+        .in('journal_entry_id', jeIds)
+        .not('journal_entry_id', 'is', null);
+      if (branchId) supQ = (supQ as any).eq('rentals.branch_id', branchId);
+      if (!options.includeVoidedReversed) supQ = supQ.is('voided_at', null);
+      const { data: supData } = await supQ;
+      (supData || []).forEach((rp: any) => {
+        const jeId = String(rp.journal_entry_id || '').trim();
+        if (jeId) out.add(jeId);
+      });
+    }
+  }
+
   return out;
 }
 
 function shouldSkipJournalEntryForRoznamcha(
-  je: { id: string; reference_type?: string | null },
+  je: { id: string; reference_type?: string | null; action_fingerprint?: string | null },
   skipJeIds: Set<string>
 ): boolean {
   if (skipJeIds.has(je.id)) return true;
   const rt = String(je.reference_type || '').toLowerCase();
+  const fp = String(je.action_fingerprint || '').trim();
+  if (rt === 'rental' && fp.startsWith('rental_party_payment:')) {
+    return false;
+  }
   return ROZNAMCHA_DOCUMENT_JE_TYPES.has(rt);
+}
+
+function rentalMatchesRoznamchaBranch(
+  branchId: string | null,
+  rentalBranchId: string | null | undefined,
+  jeBranchId: string | null | undefined
+): boolean {
+  if (!branchId) return true;
+  if (rentalBranchId) return String(rentalBranchId) === branchId;
+  if (jeBranchId) return String(jeBranchId) === branchId;
+  return false;
+}
+
+async function loadLiquidityDebitAccountByJeId(
+  jeIds: string[],
+  accountById: Map<string, { name: string; type: string; code: string | null }>
+): Promise<Map<string, string>> {
+  const liquidityAccountByJeId = new Map<string, string>();
+  if (jeIds.length === 0) return liquidityAccountByJeId;
+
+  const { data: jeLines } = await supabase
+    .from('journal_entry_lines')
+    .select('journal_entry_id, account_id, debit, credit, account:accounts(id, name, type, code)')
+    .in('journal_entry_id', jeIds);
+  (jeLines || []).forEach((line: any) => {
+    const rawAcc = line.account;
+    const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
+    if (!acc || !isLiquidityPaymentAccount(acc)) return;
+    const debit = Number(line.debit) || 0;
+    if (debit <= 0) return;
+    const jeId = String(line.journal_entry_id || '');
+    if (jeId && !liquidityAccountByJeId.has(jeId)) {
+      liquidityAccountByJeId.set(jeId, String(line.account_id));
+      if (!accountById.has(line.account_id)) {
+        accountById.set(line.account_id, {
+          name: (acc.name || '').trim(),
+          type: String(acc.type || ''),
+          code: acc.code != null ? String(acc.code).trim() : null,
+        });
+      }
+    }
+  });
+  return liquidityAccountByJeId;
+}
+
+function resolveRentalPaymentLiquidity(
+  rp: {
+    payment_account_id?: string | null;
+    journal_entry_id?: string | null;
+    method?: string | null;
+  },
+  liquidityAccountByJeId: Map<string, string>,
+  accountById: Map<string, { name: string; type: string; code: string | null }>
+): {
+  accountId: string | null;
+  liquidity: 'cash' | 'bank' | 'wallet' | null;
+  shortLabel: string;
+  meta?: { name: string; type: string; code: string | null };
+} {
+  let aid = (rp.payment_account_id as string | null | undefined) || null;
+  if (!aid && rp.journal_entry_id) {
+    aid = liquidityAccountByJeId.get(String(rp.journal_entry_id)) || null;
+  }
+  const meta = aid ? accountById.get(aid) : undefined;
+  const methodRaw = String(rp.method || '');
+  let { liquidity, shortLabel } = classifyRoznamchaLiquidity(methodRaw, meta?.type, meta?.name, meta?.code);
+  if (!liquidity && meta) {
+    const inferredMethod = paymentMethodForLiquidityAccount(meta);
+    ({ liquidity, shortLabel } = classifyRoznamchaLiquidity(
+      inferredMethod,
+      meta.type,
+      meta.name,
+      meta.code
+    ));
+  }
+  return { accountId: aid, liquidity, shortLabel, meta };
 }
 
 async function buildJournalSkipJeIds(
@@ -778,10 +856,10 @@ async function fetchPaymentRows(
     allPaymentIds.length > 0
       ? supabase
           .from('journal_entries')
-          .select('payment_id, entry_no')
+          .select('id, payment_id, entry_no')
           .eq('company_id', companyId)
           .in('payment_id', allPaymentIds)
-      : Promise.resolve({ data: [] as { payment_id: string; entry_no: string }[] }),
+      : Promise.resolve({ data: [] as { id: string; payment_id: string; entry_no: string }[] }),
     contactIdsToFetch.length > 0
       ? supabase.from('contacts').select('id, name').in('id', contactIdsToFetch)
       : Promise.resolve({ data: [] as { id: string; name: string }[] }),
@@ -853,12 +931,17 @@ async function fetchPaymentRows(
     if (aDoc && !bDoc) return a;
     return b.length > a.length ? b : a;
   };
+  const journalEntryIdByPaymentId = new Map<string, string>();
   for (const je of jeByPaymentRes.data || []) {
     const pid = String((je as any).payment_id || '');
     const eno = String((je as any).entry_no || '').trim();
+    const jeUuid = String((je as any).id || '').trim();
     if (!pid || !eno) continue;
     const prev = journalEntryNoByPaymentId.get(pid);
     journalEntryNoByPaymentId.set(pid, prev ? pickBetterJeNo(prev, eno) : eno);
+    if (jeUuid && !journalEntryIdByPaymentId.has(pid)) {
+      journalEntryIdByPaymentId.set(pid, jeUuid);
+    }
   }
 
   const contactNameById = new Map<string, string>();
@@ -918,15 +1001,16 @@ async function fetchPaymentRows(
       (p as any).branch_id ??
       (payRefType === 'rental' && payRefId ? rentalBranchById.get(payRefId) ?? null : null);
 
+    const paymentId = String((p as any).id);
     rows.push({
-      id: (p as any).id,
+      id: paymentId,
       date: dateStr,
       time: timeStr,
       ref,
       details,
       referenceDisplay,
       partyLine: null,
-      journalEntryNo: journalEntryNoByPaymentId.get(String((p as any).id)) || null,
+      journalEntryNo: journalEntryNoByPaymentId.get(paymentId) || null,
       createdBy: null, // filled below via received_by
       cashIn: direction === 'IN' ? amount : 0,
       cashOut: direction === 'OUT' ? amount : 0,
@@ -936,6 +1020,8 @@ async function fetchPaymentRows(
       accountLabel: resolveSubAccountLabel(meta, shortLabel),
       accountName: meta?.name || null,
       paymentAccountId: aid ?? null,
+      sourcePaymentId: paymentId,
+      sourceJournalEntryId: journalEntryIdByPaymentId.get(paymentId) || null,
       branchId: payBranchId ?? null,
       type: getPartyAwareTypeLabel((p as any).reference_type, (p as any).payment_type),
     } as RoznamchaRow);
@@ -1021,7 +1107,12 @@ async function fetchPaymentRows(
         null;
       r.details = customer || 'Rental Payment';
       const bookingNo = rentalBookingByRefId.get(refId) || '';
-      r.referenceDisplay = buildRoznamchaMetaLine(pay.reference_number, pay.notes, bookingNo ? [`Rental ${bookingNo}`] : []);
+      const amtLabel = formatRoznamchaRentalAmount(r.amount);
+      r.referenceDisplay = buildRoznamchaMetaLine(
+        pay.reference_number,
+        pay.notes,
+        [bookingNo ? `Rental ${bookingNo}` : '', amtLabel].filter(Boolean) as string[]
+      );
       r.partyLine = bookingNo ? `Rental: ${bookingNo}` : null;
       return;
     }
@@ -1100,12 +1191,8 @@ async function fetchPaymentRows(
       refType === 'expense' && refId && expenseNoById.has(refId) ? expenseNoById.get(refId)! : null;
     const rentalBookingNo =
       refType === 'rental' && refId ? rentalBookingByRefId.get(refId) || null : null;
-    const refForCanon =
-      refType === 'rental' && rentalBookingNo
-        ? formatRentalPaymentRef(rentalBookingNo)
-        : pay.reference_number;
     const canonical = resolveCanonicalRoznamchaRef({
-      referenceNumber: refForCanon,
+      referenceNumber: pay.reference_number,
       rentalBookingNo,
       expenseNo,
       journalEntryNo: r.journalEntryNo,
@@ -1174,51 +1261,61 @@ async function fetchRentalPaymentRows(
 ): Promise<RoznamchaRow[]> {
   let q = supabase
     .from('rental_payments')
-    .select(
-      'id, amount, method, payment_date, created_at, reference, payment_account_id, journal_entry_id, created_by, voided_at, rentals!inner(id, booking_no, company_id, branch_id, created_by, customer_name)',
-    )
+    .select(RENTAL_PAYMENT_ROW_SELECT)
     .eq('rentals.company_id', companyId)
     .gte('payment_date', dateFrom)
     .lte('payment_date', dateTo)
     .order('payment_date', { ascending: true })
     .order('created_at', { ascending: true });
 
-  if (branchId) q = (q as any).eq('rentals.branch_id', branchId);
   if (!includeVoidedReversed) q = q.is('voided_at', null);
 
-  const { data, error } = await q;
-  if (error || !data) return [];
+  const { data: byPayDate, error } = await q;
+  if (error) return [];
 
-  const jeIdsNeedingAccount = [
+  const primaryRows = byPayDate || [];
+  const primaryIds = new Set(primaryRows.map((r: any) => String(r.id)));
+  const supplementalJeIds = await loadRentalPartyPaymentJeIdsInEntryDateRange(
+    companyId,
+    dateFrom,
+    dateTo,
+    includeVoidedReversed
+  );
+  let supplementalRows: any[] = [];
+  const extraJeIds = supplementalJeIds.filter((jeId) => {
+    return !primaryRows.some((r: any) => String(r.journal_entry_id || '') === jeId);
+  });
+  if (extraJeIds.length > 0) {
+    let supQ = supabase
+      .from('rental_payments')
+      .select(RENTAL_PAYMENT_ROW_SELECT)
+      .eq('rentals.company_id', companyId)
+      .in('journal_entry_id', extraJeIds);
+    if (!includeVoidedReversed) supQ = supQ.is('voided_at', null);
+    const { data: supData } = await supQ;
+    supplementalRows = (supData || []).filter((r: any) => !primaryIds.has(String(r.id)));
+  }
+
+  const data = [...primaryRows, ...supplementalRows];
+  if (!data.length) return [];
+
+  const jeIdsForLiquidity = [
     ...new Set(
       (data as any[])
-        .filter((rp: any) => !rp.payment_account_id && rp.journal_entry_id)
+        .filter((rp: any) => rp.journal_entry_id)
         .map((rp: any) => String(rp.journal_entry_id))
     ),
   ] as string[];
-  const liquidityAccountByJeId = new Map<string, string>();
-  if (jeIdsNeedingAccount.length > 0) {
-    const { data: jeLines } = await supabase
-      .from('journal_entry_lines')
-      .select('journal_entry_id, account_id, debit, credit, account:accounts(id, name, type, code)')
-      .in('journal_entry_id', jeIdsNeedingAccount);
-    (jeLines || []).forEach((line: any) => {
-      const rawAcc = line.account;
-      const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
-      if (!acc || !isLiquidityPaymentAccount(acc)) return;
-      const debit = Number(line.debit) || 0;
-      if (debit <= 0) return;
-      const jeId = String(line.journal_entry_id || '');
-      if (jeId && !liquidityAccountByJeId.has(jeId)) {
-        liquidityAccountByJeId.set(jeId, String(line.account_id));
-        if (!accountById.has(line.account_id)) {
-          accountById.set(line.account_id, {
-            name: (acc.name || '').trim(),
-            type: String(acc.type || ''),
-            code: acc.code != null ? String(acc.code).trim() : null,
-          });
-        }
-      }
+  const liquidityAccountByJeId = await loadLiquidityDebitAccountByJeId(jeIdsForLiquidity, accountById);
+
+  const jeBranchById = new Map<string, string>();
+  if (branchId && jeIdsForLiquidity.length > 0) {
+    const { data: jeBranchRows } = await supabase
+      .from('journal_entries')
+      .select('id, branch_id')
+      .in('id', jeIdsForLiquidity);
+    (jeBranchRows || []).forEach((je: any) => {
+      if (je?.id && je.branch_id) jeBranchById.set(String(je.id), String(je.branch_id));
     });
   }
 
@@ -1254,15 +1351,25 @@ async function fetchRentalPaymentRows(
     ),
   ] as string[];
   const entryNoByJeId = new Map<string, string>();
+  const entryDateByJeId = new Map<string, string>();
   if (jeIdsForEntryNo.length > 0) {
     const { data: jeRows } = await supabase
       .from('journal_entries')
-      .select('id, entry_no')
+      .select('id, entry_no, entry_date')
       .in('id', jeIdsForEntryNo);
     (jeRows || []).forEach((je: any) => {
       if (je?.id && je.entry_no) entryNoByJeId.set(String(je.id), String(je.entry_no).trim());
+      if (je?.id && je.entry_date) entryDateByJeId.set(String(je.id), String(je.entry_date).slice(0, 10));
     });
   }
+
+  const rcvRefByMatchKey = await loadRentalRcvRefByMatchKey(
+    companyId,
+    branchId,
+    dateFrom,
+    dateTo,
+    includeVoidedReversed
+  );
 
   const rows: RoznamchaRow[] = [];
   const userIdByRowId = new Map<string, string>();
@@ -1270,13 +1377,16 @@ async function fetchRentalPaymentRows(
     const rental = (rp.rentals && !Array.isArray(rp.rentals)) ? rp.rentals : (Array.isArray(rp.rentals) ? rp.rentals[0] : null);
     if (!rental) continue;
 
-    let aid = (rp.payment_account_id as string | null | undefined) || null;
-    if (!aid && rp.journal_entry_id) {
-      aid = liquidityAccountByJeId.get(String(rp.journal_entry_id)) || null;
-    }
-    const meta = aid ? accountById.get(aid) : undefined;
-    const methodRaw = String(rp.method || '');
-    const { liquidity, shortLabel } = classifyRoznamchaLiquidity(methodRaw, meta?.type, meta?.name, meta?.code);
+    const jeBranchId = rp.journal_entry_id
+      ? jeBranchById.get(String(rp.journal_entry_id)) || null
+      : null;
+    if (!rentalMatchesRoznamchaBranch(branchId, rental.branch_id, jeBranchId)) continue;
+
+    const { accountId: aid, liquidity, shortLabel, meta } = resolveRentalPaymentLiquidity(
+      rp,
+      liquidityAccountByJeId,
+      accountById
+    );
 
     if (!liquidity) continue;
 
@@ -1291,18 +1401,28 @@ async function fetchRentalPaymentRows(
     const rentalId = String(rental.id || '');
     const matchKey = rentalPaymentMatchKey(rentalId, rp.payment_date || '', amount, aid);
     if (
-      rentalPaymentsInPaymentsTable.has(matchKey) &&
+      rentalPaymentsInPaymentsTable.has(matchKey) ||
       rentalPaymentsCoveredByPaymentRows.has(matchKey)
     ) {
       continue;
     }
 
-    const dateStr = rp.payment_date || '';
+    const linkedJeId = rp.journal_entry_id ? String(rp.journal_entry_id) : '';
+    const jeEntryDate = linkedJeId ? entryDateByJeId.get(linkedJeId) : '';
+    const payDay = String(rp.payment_date || '').slice(0, 10);
+    const payInRange = payDay >= dateFrom && payDay <= dateTo;
+    const jeInRange = Boolean(jeEntryDate && jeEntryDate >= dateFrom && jeEntryDate <= dateTo);
+    if (!payInRange && !jeInRange) continue;
+    const dateStr = payInRange ? payDay : jeEntryDate || payDay;
     const createdAt = rp.created_at ? new Date(rp.created_at) : new Date();
     const timeStr = createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
     const rentalNo: string = rental.booking_no || (rental as any).rental_no || '';
     const customerName = String((rental as any).customer_name || '').trim();
-    const refDisplay = String(rp.reference || '').trim();
+    let refDisplay = String(rp.reference || '').trim();
+    if (!isRcvReference(refDisplay) && /^REN-.+-PAY$/i.test(refDisplay)) {
+      const rcvFromPayments = rcvRefByMatchKey.get(matchKey);
+      if (rcvFromPayments) refDisplay = rcvFromPayments;
+    }
     const rowId = `rp-${rp.id}`;
     const creatorId = rp.created_by || rental.created_by || null;
     if (creatorId) userIdByRowId.set(rowId, String(creatorId));
@@ -1318,16 +1438,21 @@ async function fetchRentalPaymentRows(
       fallbackRef: rentalNo || refDisplay || `rental-${String(rp.id).slice(0, 8)}`,
     });
 
-    const genericNote = isGenericRentalPaymentReference(refDisplay) ? refDisplay : '';
-    const detailsParts = [customerName || 'Rental Payment', genericNote].filter(Boolean);
+    const amtLabel = formatRoznamchaRentalAmount(amount);
+    const detailsPrimary = customerName || 'Rental Payment';
 
     rows.push({
       id: rowId,
       date: dateStr,
       time: timeStr,
       ref: canonical.ref,
-      details: detailsParts.join(' · '),
-      referenceDisplay: refDisplay && refDisplay !== canonical.ref ? refDisplay : '',
+      details: detailsPrimary,
+      referenceDisplay: buildRoznamchaMetaLine(
+        canonical.ref,
+        isGenericRentalPaymentReference(String(rp.reference || '')) ? String(rp.reference) : '',
+        [rentalNo ? `Rental ${rentalNo}` : '', amtLabel].filter(Boolean) as string[],
+        detailsPrimary
+      ),
       partyLine: rentalNo ? `Rental: ${rentalNo}` : null,
       journalEntryNo: canonical.journalEntryNo,
       createdBy: null,
@@ -1339,6 +1464,8 @@ async function fetchRentalPaymentRows(
       accountLabel: resolveSubAccountLabel(meta, shortLabel),
       accountName: meta?.name || null,
       paymentAccountId: aid ?? null,
+      sourceRentalPaymentId: String(rp.id),
+      sourceJournalEntryId: linkedJeId || null,
       branchId: rental.branch_id ?? null,
       type: 'Rental Payment',
     });
@@ -1402,8 +1529,12 @@ type JournalLiquidityLineRow = {
   created_at: string | null;
   description: string | null;
   reference_type: string | null;
+  reference_id?: string | null;
+  action_fingerprint?: string | null;
   branch_id: string | null;
   created_by: string | null;
+  is_void?: boolean;
+  economic_event_id?: string | null;
   lines: Array<{
     id: string;
     account_id: string;
@@ -1470,12 +1601,45 @@ function mapJournalLiquidityLinesToRows(
         ),
         accountName: (acc.name || '').trim() || null,
         paymentAccountId: line.account_id,
+        sourceJournalEntryId: String(je.id),
+        sourceEconomicEventId: String((je as JournalLiquidityLineRow).economic_event_id || '').trim() || null,
         branchId: je.branch_id ?? null,
         type: typeLabel,
       });
     }
   }
   return rows;
+}
+
+async function filterJournalEntriesForRoznamchaBranch(
+  entries: JournalLiquidityLineRow[],
+  branchId: string | null
+): Promise<JournalLiquidityLineRow[]> {
+  if (!branchId) return entries;
+  const rentalRefIds = [
+    ...new Set(
+      entries
+        .filter((je) => String(je.reference_type || '').toLowerCase() === 'rental' && je.reference_id)
+        .map((je) => String(je.reference_id))
+    ),
+  ];
+  const rentalBranchById = new Map<string, string>();
+  if (rentalRefIds.length > 0) {
+    const { data: rentalRows } = await supabase
+      .from('rentals')
+      .select('id, branch_id')
+      .in('id', rentalRefIds);
+    (rentalRows || []).forEach((r: any) => {
+      if (r?.id && r.branch_id) rentalBranchById.set(String(r.id), String(r.branch_id));
+    });
+  }
+  return entries.filter((je) =>
+    rentalMatchesRoznamchaBranch(
+      branchId,
+      je.reference_id ? rentalBranchById.get(String(je.reference_id)) : null,
+      je.branch_id
+    )
+  );
 }
 
 /** Journal entries (no payment_id) with cash/bank/wallet legs — one Roznamcha row per liquidity line. */
@@ -1498,9 +1662,12 @@ async function fetchJournalLiquidityRows(
       created_at,
       description,
       reference_type,
+      reference_id,
+      action_fingerprint,
       branch_id,
       created_by,
       is_void,
+      economic_event_id,
       lines:journal_entry_lines(
         id,
         account_id,
@@ -1515,15 +1682,14 @@ async function fetchJournalLiquidityRows(
     .lte('entry_date', dateTo)
     .is('payment_id', null);
 
-  if (branchId) q = q.eq('branch_id', branchId);
-
   const { data, error } = await q;
   if (error || !data) return [];
 
-  const entries = (data as unknown as JournalLiquidityLineRow[]).filter((je) => {
+  let entries = (data as unknown as JournalLiquidityLineRow[]).filter((je) => {
     if (!includeVoidedReversed && (je as { is_void?: boolean }).is_void === true) return false;
     return true;
   });
+  entries = await filterJournalEntriesForRoznamchaBranch(entries, branchId);
   if (entries.length === 0) return [];
 
   const skipJeIds = await buildJournalSkipJeIds(
@@ -1559,6 +1725,8 @@ async function getJournalLiquidityOpeningDelta(
       created_at,
       description,
       reference_type,
+      reference_id,
+      action_fingerprint,
       branch_id,
       created_by,
       is_void,
@@ -1575,15 +1743,14 @@ async function getJournalLiquidityOpeningDelta(
     .lt('entry_date', beforeDate)
     .is('payment_id', null);
 
-  if (branchId) q = q.eq('branch_id', branchId);
-
   const { data, error } = await q;
   if (error || !data) return 0;
 
-  const entries = (data as unknown as JournalLiquidityLineRow[]).filter((je) => {
+  let entries = (data as unknown as JournalLiquidityLineRow[]).filter((je) => {
     if (!includeVoidedReversed && (je as { is_void?: boolean }).is_void === true) return false;
     return true;
   });
+  entries = await filterJournalEntriesForRoznamchaBranch(entries, branchId);
   if (entries.length === 0) return 0;
 
   const skipJeIds = await buildJournalSkipJeIds(
@@ -1672,50 +1839,49 @@ export async function getOpeningBalance(
   // Add rental_payments (cash-IN) when not already in payments table
   let rpQ = supabase
     .from('rental_payments')
-    .select('amount, method, payment_account_id, payment_date, rental_id, voided_at, rentals!inner(company_id, branch_id, id)')
+    .select(
+      'amount, method, payment_account_id, payment_date, rental_id, journal_entry_id, voided_at, rentals!inner(company_id, branch_id, id)'
+    )
     .eq('rentals.company_id', companyId)
     .lt('payment_date', beforeDate);
-  if (branchId) rpQ = (rpQ as any).eq('rentals.branch_id', branchId);
   if (!includeVoidedReversed) rpQ = rpQ.is('voided_at', null);
-  if (paymentLedgerAccountId) rpQ = rpQ.eq('payment_account_id', paymentLedgerAccountId);
 
   const { data: rpData } = await rpQ;
   if (rpData && rpData.length > 0) {
-    // Resolve any account ids not yet in obAccountById
-    const rpMissingIds = [
+    const obJeIds = [
       ...new Set(
         (rpData as any[])
-          .map((rp: any) => rp.payment_account_id)
-          .filter((id: any) => id && !obAccountById.has(id))
+          .filter((rp: any) => rp.journal_entry_id)
+          .map((rp: any) => String(rp.journal_entry_id))
       ),
     ] as string[];
-    if (rpMissingIds.length > 0) {
-      const { data: rpAccounts } = await supabase
-        .from('accounts')
-        .select('id, name, type, code')
-        .in('id', rpMissingIds);
-      (rpAccounts || []).forEach((a: any) => {
-        if (a?.id) {
-          obAccountById.set(a.id, {
-            name: (a.name || '').trim(),
-            type: String(a.type || ''),
-            code: a.code != null ? String(a.code).trim() : null,
-          });
-        }
+    const obLiquidityByJeId = await loadLiquidityDebitAccountByJeId(obJeIds, obAccountById);
+    const obJeBranchById = new Map<string, string>();
+    if (branchId && obJeIds.length > 0) {
+      const { data: obJeRows } = await supabase
+        .from('journal_entries')
+        .select('id, branch_id')
+        .in('id', obJeIds);
+      (obJeRows || []).forEach((je: any) => {
+        if (je?.id && je.branch_id) obJeBranchById.set(String(je.id), String(je.branch_id));
       });
     }
 
     for (const rp of rpData as any[]) {
-      const aid = rp.payment_account_id as string | null | undefined;
-      const meta = aid ? obAccountById.get(aid) : undefined;
-      const { liquidity } = classifyRoznamchaLiquidity(String(rp.method || ''), meta?.type, meta?.name, meta?.code);
+      const rental = (rp.rentals && !Array.isArray(rp.rentals)) ? rp.rentals : (Array.isArray(rp.rentals) ? rp.rentals[0] : null);
+      const jeBranchId = rp.journal_entry_id
+        ? obJeBranchById.get(String(rp.journal_entry_id)) || null
+        : null;
+      if (!rentalMatchesRoznamchaBranch(branchId, rental?.branch_id, jeBranchId)) continue;
+
+      const { accountId: aid, liquidity } = resolveRentalPaymentLiquidity(rp, obLiquidityByJeId, obAccountById);
       if (accountFilter !== 'all') {
         if (accountFilter === 'cash' && liquidity !== 'cash') continue;
         if (accountFilter === 'bank' && liquidity !== 'bank') continue;
         if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
       }
       if (!liquidity) continue;
-      const rental = (rp.rentals && !Array.isArray(rp.rentals)) ? rp.rentals : (Array.isArray(rp.rentals) ? rp.rentals[0] : null);
+      if (paymentLedgerAccountId && aid !== paymentLedgerAccountId) continue;
       const rentalId = String(rp.rental_id || rental?.id || '');
       const rpAmount = Number(rp.amount) || 0;
       const rpDate = String(rp.payment_date || '');
@@ -1783,6 +1949,289 @@ function buildSummaryAndRunning(
   };
 }
 
+/** Recover rental_party_payment JEs skipped from journal path but not emitted via rental_payments. */
+async function recoverOrphanRentalPaymentJeRows(
+  companyId: string,
+  branchId: string | null,
+  dateFrom: string,
+  dateTo: string,
+  accountFilter: AccountFilter,
+  includeVoidedReversed: boolean,
+  paymentLedgerAccountId: string | null,
+  existingRows: RoznamchaRow[]
+): Promise<RoznamchaRow[]> {
+  const representedEntityKeys = new Set<string>();
+  for (const row of existingRows) {
+    for (const k of roznamchaEntityKeys(row)) representedEntityKeys.add(k);
+  }
+  const representedMovementKeys = new Set(existingRows.map((r) => roznamchaMovementKey(r)));
+
+  const jeIds = await loadRentalPartyPaymentJeIdsInEntryDateRange(
+    companyId,
+    dateFrom,
+    dateTo,
+    includeVoidedReversed
+  );
+  if (!jeIds.length) return [];
+
+  const { data: jeData, error } = await supabase
+    .from('journal_entries')
+    .select(
+      `
+      id,
+      entry_no,
+      entry_date,
+      created_at,
+      description,
+      reference_type,
+      reference_id,
+      action_fingerprint,
+      branch_id,
+      created_by,
+      is_void,
+      lines:journal_entry_lines(
+        id,
+        account_id,
+        debit,
+        credit,
+        account:accounts(id, name, type, code)
+      )
+    `
+    )
+    .eq('company_id', companyId)
+    .in('id', jeIds)
+    .is('payment_id', null);
+
+  if (error || !jeData?.length) return [];
+
+  let entries = (jeData as unknown as JournalLiquidityLineRow[]).filter((je) => {
+    if (!includeVoidedReversed && je.is_void === true) return false;
+    return true;
+  });
+  entries = await filterJournalEntriesForRoznamchaBranch(entries, branchId);
+  if (!entries.length) return [];
+
+  const rentalRefIds = [
+    ...new Set(
+      entries
+        .filter((je) => je.reference_id)
+        .map((je) => String(je.reference_id))
+    ),
+  ];
+  const rentalInfoById = new Map<string, { booking_no?: string; customer_name?: string; branch_id?: string }>();
+  if (rentalRefIds.length > 0) {
+    const { data: rentalRows } = await supabase
+      .from('rentals')
+      .select('id, booking_no, customer_name, branch_id')
+      .in('id', rentalRefIds);
+    (rentalRows || []).forEach((r: any) => {
+      if (r?.id) rentalInfoById.set(String(r.id), r);
+    });
+  }
+
+  const rpRefByJeId = new Map<string, string>();
+  const rpIdByJeId = new Map<string, string>();
+  if (jeIds.length > 0) {
+    const { data: rpRows } = await supabase
+      .from('rental_payments')
+      .select('id, journal_entry_id, reference')
+      .in('journal_entry_id', jeIds)
+      .is('voided_at', null);
+    (rpRows || []).forEach((rp: any) => {
+      const jeId = String(rp?.journal_entry_id || '').trim();
+      const ref = String(rp?.reference || '').trim();
+      const rpId = String(rp?.id || '').trim();
+      if (jeId && ref) rpRefByJeId.set(jeId, ref);
+      if (jeId && rpId) rpIdByJeId.set(jeId, rpId);
+    });
+  }
+
+  const userIds = [...new Set(entries.map((e) => e.created_by).filter(Boolean))] as string[];
+  const nameByUserId = await resolveUserDisplayNames(userIds);
+  const recovered: RoznamchaRow[] = [];
+
+  for (const je of entries) {
+    const jeIdStr = String(je.id);
+    if (representedEntityKeys.has(`je:${jeIdStr}`)) continue;
+    const linkedRpId = rpIdByJeId.get(jeIdStr);
+    if (linkedRpId && representedEntityKeys.has(`rp:${linkedRpId}`)) continue;
+
+    const rental = je.reference_id ? rentalInfoById.get(String(je.reference_id)) : undefined;
+    const rentalNo = String(rental?.booking_no || '').trim();
+    const dateStr = String(je.entry_date || '').slice(0, 10);
+    const createdAt = je.created_at ? new Date(je.created_at) : new Date();
+    const timeStr = createdAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const creatorName = je.created_by ? nameByUserId.get(je.created_by) || null : null;
+    const storedRpRef = rpRefByJeId.get(String(je.id)) || '';
+    const canonical = resolveCanonicalRoznamchaRef({
+      referenceNumber: storedRpRef || (rentalNo ? formatRentalPaymentRef(rentalNo) : ''),
+      rentalBookingNo: rentalNo,
+      journalEntryNo: je.entry_no,
+      fallbackRef: je.entry_no || `JE-${String(je.id).slice(0, 8)}`,
+    });
+    const customerLabel = String(rental?.customer_name || '').trim() || 'Rental Payment';
+
+    for (const line of je.lines || []) {
+      const rawAcc = line.account as { id: string; name: string; type: string; code: string | null } | { id: string; name: string; type: string; code: string | null }[] | null | undefined;
+      const acc = Array.isArray(rawAcc) ? rawAcc[0] : rawAcc;
+      if (!acc || !isLiquidityPaymentAccount(acc)) continue;
+      const debit = Number(line.debit) || 0;
+      if (debit <= 0) continue;
+      const { liquidity, shortLabel } = classifyRoznamchaLiquidity('', acc.type, acc.name, acc.code);
+      if (!liquidity) continue;
+      if (accountFilter !== 'all') {
+        if (accountFilter === 'cash' && liquidity !== 'cash') continue;
+        if (accountFilter === 'bank' && liquidity !== 'bank') continue;
+        if (accountFilter === 'wallet' && liquidity !== 'wallet') continue;
+      }
+      if (paymentLedgerAccountId && line.account_id !== paymentLedgerAccountId) continue;
+
+      const candidate: RoznamchaRow = {
+        id: `orphan-rp-${je.id}-${line.id}`,
+        date: dateStr,
+        time: timeStr,
+        ref: canonical.ref,
+        details: customerLabel,
+        referenceDisplay: buildRoznamchaMetaLine(
+          canonical.ref,
+          je.description || '',
+          [rentalNo ? `Rental ${rentalNo}` : '', formatRoznamchaRentalAmount(debit)].filter(Boolean) as string[],
+          customerLabel
+        ),
+        partyLine: rentalNo ? `Rental: ${rentalNo}` : null,
+        journalEntryNo: canonical.journalEntryNo,
+        createdBy: creatorName,
+        cashIn: debit,
+        cashOut: 0,
+        direction: 'IN',
+        amount: debit,
+        accountType: liquidity,
+        accountLabel: resolveSubAccountLabel(
+          acc.name ? { name: acc.name } : undefined,
+          shortLabel
+        ),
+        accountName: (acc.name || '').trim() || null,
+        paymentAccountId: line.account_id,
+        sourceJournalEntryId: String(je.id),
+        branchId: rental?.branch_id ?? je.branch_id ?? null,
+        type: 'Rental Payment',
+      };
+      const candidateEntityKeys = roznamchaEntityKeys(candidate);
+      if (candidateEntityKeys.some((k) => representedEntityKeys.has(k))) continue;
+      if (representedMovementKeys.has(roznamchaMovementKey(candidate))) continue;
+      recovered.push(candidate);
+      for (const k of candidateEntityKeys) representedEntityKeys.add(k);
+      representedMovementKeys.add(roznamchaMovementKey(candidate));
+    }
+  }
+
+  return recovered;
+}
+
+function roznamchaTraceEnabled(): boolean {
+  return Boolean(import.meta.env?.DEV) || String(import.meta.env?.VITE_ROZNAMCHA_TRACE || '') === '1';
+}
+
+function isRoznamchaTraceTarget(row: RoznamchaRow): boolean {
+  const ref = String(row.ref || '').trim();
+  const details = String(row.details || '').trim();
+  const je = String(row.journalEntryNo || '').trim();
+  if (/HQ-RCV-0006/i.test(ref)) return true;
+  if (/JE-0012/i.test(je) || /JE-0012/i.test(ref)) return true;
+  if (String(row.date || '').startsWith('2026-06-04') && Math.round(row.amount) === 10000 && /Inayat/i.test(details)) {
+    return true;
+  }
+  return false;
+}
+
+function logRoznamchaTraceDedupe(pre: RoznamchaRow[], post: RoznamchaRow[]): void {
+  if (!roznamchaTraceEnabled()) return;
+  const preTargets = pre.filter(isRoznamchaTraceTarget);
+  if (preTargets.length === 0) return;
+  const postTargets = post.filter(isRoznamchaTraceTarget);
+  const removed = preTargets.filter(
+    (p) => !postTargets.some((q) => q.id === p.id || (q.ref === p.ref && q.sourceJournalEntryId === p.sourceJournalEntryId))
+  );
+  if (removed.length > 0) {
+    console.warn('[roznamcha trace] Row(s) removed by dedupe (likely movement-key collapse before fix):', removed.map((r) => ({
+      id: r.id,
+      ref: r.ref,
+      date: r.date,
+      amount: r.amount,
+      sourcePaymentId: r.sourcePaymentId,
+      sourceRentalPaymentId: r.sourceRentalPaymentId,
+      sourceJournalEntryId: r.sourceJournalEntryId,
+      paymentAccountId: r.paymentAccountId,
+    })));
+  }
+  if (preTargets.length > 0 && postTargets.length === 0) {
+    console.warn('[roznamcha trace] Trace target present pre-dedupe but missing post-dedupe — check fetch/skip paths');
+  }
+  if (postTargets.length > 0) {
+    console.log('[roznamcha trace] Trace target(s) in final Roznamcha:', postTargets.map((r) => r.ref));
+  }
+}
+
+async function fetchRoznamchaPreDedupeRows(
+  companyId: string,
+  branchId: string | null,
+  dateFrom: string,
+  dateTo: string,
+  accountFilterParam: AccountFilter = 'all',
+  includeVoidedReversed = false,
+  paymentLedgerAccountId: string | null = null
+): Promise<RoznamchaRow[]> {
+  const paymentRows = await fetchPaymentRows(
+    companyId,
+    branchId,
+    dateFrom,
+    dateTo,
+    accountFilterParam,
+    includeVoidedReversed,
+    paymentLedgerAccountId
+  );
+  const journalRows = await fetchJournalLiquidityRows(
+    companyId,
+    branchId,
+    dateFrom,
+    dateTo,
+    accountFilterParam,
+    includeVoidedReversed,
+    paymentLedgerAccountId
+  );
+  const orphanRentalRows = await recoverOrphanRentalPaymentJeRows(
+    companyId,
+    branchId,
+    dateFrom,
+    dateTo,
+    accountFilterParam,
+    includeVoidedReversed,
+    paymentLedgerAccountId,
+    [...paymentRows, ...journalRows]
+  );
+  return [...paymentRows, ...journalRows, ...orphanRentalRows];
+}
+
+/** Pre/post dedupe rows for Developer Center Roznamcha Trace (read-only). */
+export async function getRoznamchaTraceDiagnostics(
+  companyId: string,
+  branchId: string | null,
+  dateFrom: string,
+  dateTo: string
+): Promise<{ preDedupe: RoznamchaRow[]; postDedupe: RoznamchaRow[] }> {
+  const preDedupe = await fetchRoznamchaPreDedupeRows(
+    companyId,
+    branchId,
+    dateFrom,
+    dateTo,
+    'all',
+    false,
+    null
+  );
+  const postDedupe = dedupeRoznamchaRows(preDedupe);
+  return { preDedupe, postDedupe };
+}
+
 /** Get full roznamcha for date range */
 export async function getRoznamcha(
   companyId: string,
@@ -1801,25 +2250,31 @@ export async function getRoznamcha(
     includeVoidedReversed,
     paymentLedgerAccountId
   );
-  const paymentRows = await fetchPaymentRows(
+  const preDedupe = await fetchRoznamchaPreDedupeRows(
     companyId,
     branchId,
     dateFrom,
     dateTo,
     accountFilterParam,
     includeVoidedReversed,
-    paymentLedgerAccountId,
+    paymentLedgerAccountId
   );
-  const journalRows = await fetchJournalLiquidityRows(
-    companyId,
-    branchId,
-    dateFrom,
-    dateTo,
-    accountFilterParam,
-    includeVoidedReversed,
-    paymentLedgerAccountId,
-  );
-  const rows = dedupeRoznamchaRows([...paymentRows, ...journalRows]);
+  if (roznamchaTraceEnabled()) {
+    const tracePre = preDedupe.filter(isRoznamchaTraceTarget);
+    if (tracePre.length > 0) {
+      console.log('[roznamcha trace] Pre-dedupe sources:', tracePre.map((r) => ({
+        id: r.id,
+        ref: r.ref,
+        date: r.date,
+        amount: r.amount,
+        source: r.id.startsWith('rp-') ? 'rental_payments' : r.id.startsWith('jel-') || r.id.startsWith('orphan-') ? 'journal' : 'payments',
+      })));
+    } else if (dateFrom <= '2026-06-04' && dateTo >= '2026-06-04') {
+      console.warn('[roznamcha trace] HQ-RCV-0006 / JE-0012 not in pre-dedupe — excluded by fetch (date/branch/liquidity/rental skip)');
+    }
+  }
+  const rows = dedupeRoznamchaRows(preDedupe);
+  logRoznamchaTraceDedupe(preDedupe, rows);
   sortRoznamchaRows(rows);
   const { rowsWithBalance, summary, cashSplit } = buildSummaryAndRunning(rows, openingBalance);
   return {
