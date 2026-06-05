@@ -27,6 +27,12 @@ import {
 } from '@/app/lib/coaHealthChecks';
 import { evaluateReportVisibility, type ReportVisibility } from '@/app/lib/transactionTraceReportVisibility';
 import { journalHasLiquidityLine } from '@/app/lib/transactionTraceLiquidity';
+import {
+  buildRoznamchaTraceCandidates,
+  defaultRoznamchaTraceDateRange,
+  type RoznamchaTraceCandidateView,
+} from '@/app/lib/roznamchaTraceDiagnostics';
+import { getRoznamchaTraceDiagnostics } from '@/app/services/roznamchaService';
 
 export type TraceMode = 'auto' | 'entry_no' | 'payment_ref' | 'sale' | 'purchase' | 'reference' | 'account_code' | 'uuid';
 
@@ -488,5 +494,39 @@ export async function runTransactionTrace(
     reportVisibility,
     reportVisibilityByJournal,
     multipleEntryNoMatches,
+  };
+}
+
+export interface RoznamchaTraceSnapshot {
+  query: string;
+  dateFrom: string;
+  dateTo: string;
+  preCount: number;
+  postCount: number;
+  candidates: RoznamchaTraceCandidateView[];
+  loadedAt: string;
+}
+
+/** Read-only Roznamcha inclusion/dedupe diagnostic (Phase C2). */
+export async function loadRoznamchaTraceSnapshot(
+  companyId: string,
+  query: string,
+  dateFrom?: string,
+  dateTo?: string,
+  branchId: string | null = null
+): Promise<RoznamchaTraceSnapshot> {
+  const defaults = defaultRoznamchaTraceDateRange();
+  const from = dateFrom?.slice(0, 10) || defaults.dateFrom;
+  const to = dateTo?.slice(0, 10) || defaults.dateTo;
+  const { preDedupe, postDedupe } = await getRoznamchaTraceDiagnostics(companyId, branchId, from, to);
+  const candidates = buildRoznamchaTraceCandidates(preDedupe, postDedupe, query);
+  return {
+    query: query.trim(),
+    dateFrom: from,
+    dateTo: to,
+    preCount: preDedupe.length,
+    postCount: postDedupe.length,
+    candidates,
+    loadedAt: new Date().toISOString(),
   };
 }
