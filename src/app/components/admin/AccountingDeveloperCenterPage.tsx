@@ -1,38 +1,57 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Shield, BookOpen, Lock } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { canAccessAccountingDeveloperCenter } from '@/app/lib/accountingDeveloperCenterAccess';
+import {
+  buildDeveloperCenterUrl,
+  DISABLED_PLACEHOLDER_TABS,
+  isDeveloperCenterTabId,
+  parseDeveloperCenterQuery,
+  parseDeveloperCenterTab,
+  PHASE_C_SHELL_TABS,
+  type DeveloperCenterTabId,
+} from '@/app/lib/accountingDeveloperCenterTabs';
 import { CoaHealthTab } from '@/app/components/admin/developer-center/CoaHealthTab';
 import { TransactionTraceTab } from '@/app/components/admin/developer-center/TransactionTraceTab';
+import { PhaseCTabShell } from '@/app/components/admin/developer-center/PhaseCTabShell';
 
-const PLACEHOLDER_TABS = [
-  'Journal Integrity',
-  'Payment Trace',
-  'Roznamcha Trace',
-  'Statement Trace',
-  'Day Book',
-  'Opening Balance',
-  'Repair Queue',
-  'Audit Log',
-] as const;
-
-function useInitialTab(): 'coa' | 'trace' {
-  if (typeof window === 'undefined') return 'coa';
-  const p = new URLSearchParams(window.location.search);
-  return p.get('tab') === 'trace' ? 'trace' : 'coa';
-}
-
-function useInitialQuery(): string {
-  if (typeof window === 'undefined') return '';
-  return new URLSearchParams(window.location.search).get('q') || '';
+function readUrlState(): { tab: DeveloperCenterTabId; query: string } {
+  if (typeof window === 'undefined') return { tab: 'coa', query: '' };
+  const search = window.location.search;
+  return {
+    tab: parseDeveloperCenterTab(search),
+    query: parseDeveloperCenterQuery(search),
+  };
 }
 
 export default function AccountingDeveloperCenterPage() {
   const { companyId, userRole } = useSupabase();
   const allowed = canAccessAccountingDeveloperCenter(userRole);
-  const defaultTab = useMemo(() => useInitialTab(), []);
-  const initialQuery = useMemo(() => useInitialQuery(), []);
+  const initial = useMemo(() => readUrlState(), []);
+  const [activeTab, setActiveTab] = useState<DeveloperCenterTabId>(initial.tab);
+  const [urlQuery, setUrlQuery] = useState(initial.query);
+
+  const syncFromLocation = useCallback(() => {
+    const next = readUrlState();
+    setActiveTab(next.tab);
+    setUrlQuery(next.query);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('popstate', syncFromLocation);
+    return () => window.removeEventListener('popstate', syncFromLocation);
+  }, [syncFromLocation]);
+
+  const handleTabChange = useCallback(
+    (value: string) => {
+      if (!isDeveloperCenterTabId(value)) return;
+      setActiveTab(value);
+      const url = buildDeveloperCenterUrl(window.location.pathname, value, urlQuery);
+      window.history.replaceState({}, '', url);
+    },
+    [urlQuery]
+  );
 
   if (!allowed) {
     return (
@@ -62,7 +81,7 @@ export default function AccountingDeveloperCenterPage() {
             Accounting Developer Center
           </h1>
           <p className="text-sm text-gray-400 mt-1">
-            Read-only COA health and transaction trace. Phase B — no repairs.
+            Read-only COA health, transaction trace, and Phase C tab shells (C1).
           </p>
         </div>
         <span className="text-xs text-gray-500 flex items-center gap-1" title="docs/accounting/coa-developer-center/">
@@ -72,18 +91,23 @@ export default function AccountingDeveloperCenterPage() {
       </div>
 
       <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-2 text-xs text-violet-200/90">
-        Read-only mode. Repair queue, void, sync, and OB tools are disabled until Phase C–E.
+        Read-only mode. Repair queue, void, sync, and OB tools remain disabled. Phase C shells are navigable only.
       </div>
 
-      <Tabs defaultValue={defaultTab} className="space-y-4">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
         <TabsList className="bg-gray-900 border border-gray-800 flex-wrap h-auto gap-1 p-1">
           <TabsTrigger value="coa">COA Health</TabsTrigger>
           <TabsTrigger value="trace">Transaction Trace</TabsTrigger>
-          {PLACEHOLDER_TABS.map((label) => (
+          {PHASE_C_SHELL_TABS.map((t) => (
+            <TabsTrigger key={t.id} value={t.id}>
+              {t.label}
+            </TabsTrigger>
+          ))}
+          {DISABLED_PLACEHOLDER_TABS.map((label) => (
             <span
               key={label}
               className="inline-flex items-center px-3 py-1.5 text-xs text-gray-600 opacity-50 cursor-not-allowed rounded-md"
-              title="Coming in Phase C"
+              title="Permanently disabled in Developer Center"
             >
               {label}
             </span>
@@ -95,8 +119,19 @@ export default function AccountingDeveloperCenterPage() {
         </TabsContent>
 
         <TabsContent value="trace">
-          <TransactionTraceTab companyId={companyId} initialQuery={initialQuery} />
+          <TransactionTraceTab companyId={companyId} initialQuery={urlQuery} />
         </TabsContent>
+
+        {PHASE_C_SHELL_TABS.map((t) => (
+          <TabsContent key={t.id} value={t.id}>
+            <PhaseCTabShell
+              title={t.label}
+              phase={t.phase}
+              blurb={t.blurb}
+              initialQuery={urlQuery || undefined}
+            />
+          </TabsContent>
+        ))}
       </Tabs>
     </div>
   );
