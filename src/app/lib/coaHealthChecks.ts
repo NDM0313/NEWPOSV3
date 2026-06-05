@@ -174,6 +174,67 @@ export function classifyAccountEditSafety(
   };
 }
 
+export function isNonVoidJournalEntry(je: { is_void?: boolean | null } | null | undefined): boolean {
+  return !!je && je.is_void !== true;
+}
+
+export interface JournalLineUsageInput {
+  debit?: number | null;
+  credit?: number | null;
+  journalEntry?: {
+    entry_date?: string | null;
+    reference_type?: string | null;
+    company_id?: string | null;
+    is_void?: boolean | null;
+  } | null;
+}
+
+export interface JournalLineUsageAggregate {
+  lineCount: number;
+  totalDebit: number;
+  totalCredit: number;
+  firstUsed: string | null;
+  lastUsed: string | null;
+  referenceTypes: string[];
+}
+
+/** Aggregate journal line usage; excludes voided entries and other companies. */
+export function aggregateJournalLineUsage(
+  lines: JournalLineUsageInput[],
+  companyId: string
+): JournalLineUsageAggregate {
+  let totalDebit = 0;
+  let totalCredit = 0;
+  let firstUsed: string | null = null;
+  let lastUsed: string | null = null;
+  const refTypes = new Set<string>();
+  let lineCount = 0;
+
+  for (const row of lines) {
+    const je = row.journalEntry;
+    if (!je || je.company_id !== companyId) continue;
+    if (!isNonVoidJournalEntry(je)) continue;
+    lineCount += 1;
+    totalDebit += Number(row.debit) || 0;
+    totalCredit += Number(row.credit) || 0;
+    const d = je.entry_date ? String(je.entry_date).slice(0, 10) : null;
+    if (d) {
+      if (!firstUsed || d < firstUsed) firstUsed = d;
+      if (!lastUsed || d > lastUsed) lastUsed = d;
+    }
+    if (je.reference_type) refTypes.add(je.reference_type);
+  }
+
+  return {
+    lineCount,
+    totalDebit: Math.round(totalDebit * 100) / 100,
+    totalCredit: Math.round(totalCredit * 100) / 100,
+    firstUsed,
+    lastUsed,
+    referenceTypes: [...refTypes],
+  };
+}
+
 export function inferModulesFromReferenceTypes(referenceTypes: string[]): string[] {
   const mods = new Set<string>();
   for (const rt of referenceTypes) {

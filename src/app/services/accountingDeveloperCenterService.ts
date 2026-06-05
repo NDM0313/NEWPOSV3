@@ -17,10 +17,13 @@ import {
   findDuplicateCodes,
   findDuplicateNamesUnderParent,
   findMissingSystemAccounts,
+  aggregateJournalLineUsage,
   inferModulesFromReferenceTypes,
+  isNonVoidJournalEntry,
   mapFullAuditIssues,
   type CoaAccountRow,
   type CoaHealthIssue,
+  type JournalLineUsageInput,
 } from '@/app/lib/coaHealthChecks';
 import { evaluateReportVisibility, type ReportVisibility } from '@/app/lib/transactionTraceReportVisibility';
 import { journalHasLiquidityLine } from '@/app/lib/transactionTraceLiquidity';
@@ -101,6 +104,18 @@ export interface TransactionTraceResult extends TraceSearchResult {
 
 const BALANCE_EPS = 0.02;
 
+function journalEntryFromLineRow(row: Record<string, unknown>): JournalLineUsageInput['journalEntry'] {
+  const je = row.journal_entries;
+  if (!je) return null;
+  const entry = (Array.isArray(je) ? je[0] : je) as Record<string, unknown>;
+  return {
+    entry_date: entry.entry_date as string | null | undefined,
+    reference_type: entry.reference_type as string | null | undefined,
+    company_id: entry.company_id as string | null | undefined,
+    is_void: entry.is_void as boolean | null | undefined,
+  };
+}
+
 function mapAccount(a: Record<string, unknown>): CoaAccountRow {
   return {
     id: String(a.id),
@@ -137,12 +152,13 @@ export async function loadCoaHealthSnapshot(companyId: string): Promise<CoaHealt
       .select('account_id, journal_entries!inner(company_id, is_void)')
       .eq('journal_entries.company_id', companyId)
       .in('account_id', inactiveIds.slice(0, 200))
-      .or('journal_entries.is_void.is.null,journal_entries.is_void.eq.false')
       .limit(500);
 
     const usedSet = new Set<string>();
     for (const row of usedLines || []) {
-      const aid = (row as { account_id?: string }).account_id;
+      const r = row as Record<string, unknown>;
+      if (!isNonVoidJournalEntry(journalEntryFromLineRow(r))) continue;
+      const aid = r.account_id as string | undefined;
       if (aid) usedSet.add(aid);
     }
     inactiveUsed = usedSet.size;
@@ -200,39 +216,23 @@ export async function loadAccountUsage(companyId: string, accountId: string): Pr
 
   const { data: lines, error } = await supabase
     .from('journal_entry_lines')
-    .select(
-      'debit, credit, journal_entries!inner(entry_date, reference_type, company_id, is_void)'
-    )
+    .select('debit, credit, journal_entries!inner(entry_date, reference_type, company_id, is_void)')
     .eq('account_id', accountId)
     .eq('journal_entries.company_id', companyId)
-    .or('journal_entries.is_void.is.null,journal_entries.is_void.eq.false')
     .limit(5000);
 
   if (error) throw new Error(error.message);
 
-  let totalDebit = 0;
-  let totalCredit = 0;
-  let firstUsed: string | null = null;
-  let lastUsed: string | null = null;
-  const refTypes = new Set<string>();
-
-  for (const row of lines || []) {
-    const r = row as {
-      debit?: number;
-      credit?: number;
-      journal_entries?: { entry_date?: string; reference_type?: string };
+  const usageInputs: JournalLineUsageInput[] = (lines || []).map((row) => {
+    const r = row as Record<string, unknown>;
+    return {
+      debit: r.debit as number | null | undefined,
+      credit: r.credit as number | null | undefined,
+      journalEntry: journalEntryFromLineRow(r),
     };
-    totalDebit += Number(r.debit) || 0;
-    totalCredit += Number(r.credit) || 0;
-    const d = r.journal_entries?.entry_date;
-    if (d) {
-      if (!firstUsed || d < firstUsed) firstUsed = d;
-      if (!lastUsed || d > lastUsed) lastUsed = d;
-    }
-    if (r.journal_entries?.reference_type) refTypes.add(r.journal_entries.reference_type);
-  }
-
-  const lineCount = (lines || []).length;
+  });
+  const usageAgg = aggregateJournalLineUsage(usageInputs, companyId);
+  const { lineCount, totalDebit, totalCredit, firstUsed, lastUsed } = usageAgg;
   const today = new Date().toISOString().slice(0, 10);
   const journalBalances = await accountingReportsService.getAccountBalancesFromJournal(companyId, today);
   const journalBalance = journalBalances[accountId] ?? 0;
@@ -244,11 +244,11 @@ export async function loadAccountUsage(companyId: string, accountId: string): Pr
     code: String(account.code || ''),
     name: String(account.name || ''),
     lineCount,
-    totalDebit: Math.round(totalDebit * 100) / 100,
-    totalCredit: Math.round(totalCredit * 100) / 100,
+    totalDebit,
+    totalCredit,
     firstUsed,
     lastUsed,
-    modules: inferModulesFromReferenceTypes([...refTypes]),
+    modules: inferModulesFromReferenceTypes(usageAgg.referenceTypes),
     editSafety: classifyAccountEditSafety(mapped, lineCount),
     journalBalance,
     storedBalance,
