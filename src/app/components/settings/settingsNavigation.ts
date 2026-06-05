@@ -21,7 +21,8 @@ export type SettingsContentKey =
   | 'employees'
   | 'systemHealth'
   | 'data'
-  | 'developerTools';
+  | 'developerTools'
+  | 'accountingDeveloperCenter';
 
 export type SettingsCategoryId =
   | 'general'
@@ -39,6 +40,7 @@ export interface SettingsNavItem {
   subTabId?: string;
   requiresAdmin?: boolean;
   requiresDeveloper?: boolean;
+  requiresAccountingDeveloperCenter?: boolean;
 }
 
 export interface SettingsCategory {
@@ -86,6 +88,12 @@ export const SETTINGS_NAV: SettingsCategory[] = [
       { id: 'numberingRules', label: 'Numbering — Rules', contentKey: 'numbering', subTabId: 'rules', requiresAdmin: true },
       { id: 'numberingMaintenance', label: 'Numbering — Maintenance', contentKey: 'numbering', subTabId: 'maintenance', requiresAdmin: true },
       { id: 'numberingAudit', label: 'Numbering — Audit Log', contentKey: 'numbering', subTabId: 'audit', requiresAdmin: true },
+      {
+        id: 'accountingDeveloperCenter',
+        label: 'Developer Center',
+        contentKey: 'accountingDeveloperCenter',
+        requiresAccountingDeveloperCenter: true,
+      },
     ],
   },
   {
@@ -137,6 +145,7 @@ export interface ResolvedSettingsNav {
 export function getVisibleSettingsNav(
   isAdminOrOwner: boolean,
   canDeveloperTools: boolean,
+  canAccountingDeveloperCenter = false,
 ): ResolvedSettingsNav {
   const categories: SettingsCategory[] = [];
 
@@ -144,6 +153,7 @@ export function getVisibleSettingsNav(
     const items = category.items.filter((item) => {
       if (item.requiresAdmin && !isAdminOrOwner) return false;
       if (item.requiresDeveloper && !canDeveloperTools) return false;
+      if (item.requiresAccountingDeveloperCenter && !canAccountingDeveloperCenter) return false;
       return true;
     });
     if (items.length > 0) {

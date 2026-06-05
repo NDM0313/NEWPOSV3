@@ -969,6 +969,85 @@ export async function runTraceSearch(
         sourceDocNarrative = `Payment ${p0.reference_number} → linked JEs.`;
       }
       modeUsed = 'payment_ref';
+    } else if (/^HQ-RCV/i.test(query)) {
+      const { data: rpRows } = await supabase
+        .from('rental_payments')
+        .select('id, reference, journal_entry_id, rental_id, rentals!inner(company_id, branch_id)')
+        .eq('rentals.company_id', companyId)
+        .ilike('reference', query)
+        .limit(5);
+      for (const rp of rpRows || []) {
+        const row = rp as {
+          id: string;
+          reference?: string;
+          journal_entry_id?: string;
+          rental_id?: string;
+          rentals?: { branch_id?: string };
+        };
+        entities.push({
+          kind: 'none',
+          id: row.id,
+          label: row.reference || row.id,
+          branch_id: row.rentals?.branch_id ?? null,
+          extra: { rental_payment_id: row.id, rental_id: row.rental_id, reference_type: 'rental_payment' },
+        });
+        if (row.journal_entry_id) pushJe(row.journal_entry_id);
+      }
+      if (rpRows?.length) {
+        sourceDocNarrative = `rental_payments.reference ILIKE ${query} → linked journal(s).`;
+      }
+      modeUsed = 'rental_payment_ref';
+    } else if (/^RCV-/i.test(query)) {
+      const { data: pay } = await supabase
+        .from('payments')
+        .select('id, reference_number, reference_type, reference_id, branch_id')
+        .eq('company_id', companyId)
+        .ilike('reference_number', query)
+        .limit(5);
+      const p0 = pay?.[0] as
+        | { id: string; reference_number?: string; reference_type?: string; reference_id?: string; branch_id?: string }
+        | undefined;
+      if (p0) {
+        entities.push({
+          kind: 'payment',
+          id: p0.id,
+          label: p0.reference_number || p0.id,
+          branch_id: p0.branch_id ?? null,
+          extra: { reference_type: p0.reference_type, reference_id: p0.reference_id },
+        });
+        const { data: jrows } = await supabase.from('journal_entries').select('id').eq('company_id', companyId).eq('payment_id', p0.id).limit(20);
+        for (const j of jrows || []) pushJe((j as { id: string }).id);
+        sourceDocNarrative = `Payment ${p0.reference_number} → linked JEs.`;
+        modeUsed = 'payment_ref';
+      } else {
+        const { data: rpRows } = await supabase
+          .from('rental_payments')
+          .select('id, reference, journal_entry_id, rental_id, rentals!inner(company_id, branch_id)')
+          .eq('rentals.company_id', companyId)
+          .ilike('reference', query)
+          .limit(5);
+        for (const rp of rpRows || []) {
+          const row = rp as {
+            id: string;
+            reference?: string;
+            journal_entry_id?: string;
+            rental_id?: string;
+            rentals?: { branch_id?: string };
+          };
+          entities.push({
+            kind: 'none',
+            id: row.id,
+            label: row.reference || row.id,
+            branch_id: row.rentals?.branch_id ?? null,
+            extra: { rental_payment_id: row.id, rental_id: row.rental_id, reference_type: 'rental_payment' },
+          });
+          if (row.journal_entry_id) pushJe(row.journal_entry_id);
+        }
+        if (rpRows?.length) {
+          sourceDocNarrative = `rental_payments.reference ILIKE ${query} → linked journal(s).`;
+        }
+        modeUsed = 'rental_payment_ref';
+      }
     } else if (/^JE/i.test(query)) {
       const { data: jrows } = await supabase
         .from('journal_entries')

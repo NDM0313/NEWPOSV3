@@ -500,6 +500,22 @@ export async function searchJournalIdsByDisplayRef(
   }
 
   if (/^EXP/i.test(upper) || /^EX[-\s]/i.test(q)) {
+    const { data: expPays } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('company_id', companyId)
+      .ilike('reference_number', `%${q}%`)
+      .limit(limitPerSource);
+    for (const r of expPays || []) {
+      const { data: jrows } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('payment_id', (r as { id: string }).id)
+        .limit(10);
+      for (const j of jrows || []) ids.add((j as { id: string }).id);
+    }
+
     const { data } = await supabase
       .from('expenses')
       .select('id')
@@ -515,6 +531,19 @@ export async function searchJournalIdsByDisplayRef(
         .eq('reference_id', (r as { id: string }).id)
         .limit(5);
       for (const j of jrows || []) ids.add((j as { id: string }).id);
+    }
+  }
+
+  if (/^HQ-RCV/i.test(upper) || /^RCV[-\s]/i.test(q) || (upper.startsWith('RCV') && q.length >= 3)) {
+    const { data: rpRows } = await supabase
+      .from('rental_payments')
+      .select('journal_entry_id, rentals!inner(company_id)')
+      .eq('rentals.company_id', companyId)
+      .ilike('reference', `%${q}%`)
+      .limit(limitPerSource);
+    for (const r of rpRows || []) {
+      const jid = (r as { journal_entry_id?: string }).journal_entry_id;
+      if (jid) ids.add(jid);
     }
   }
 

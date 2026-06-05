@@ -98,6 +98,9 @@ const CustomerLedgerInteractiveTest = lazy(() => import('./components/customer-l
 const PermissionInspectorPage = lazy(() => import('./components/admin/PermissionInspectorPage').then(m => ({ default: m.PermissionInspectorPage })));
 const AccountingIntegrityLabPage = lazy(() => import('./components/admin/AccountingIntegrityLabPage').then(m => ({ default: m.default })));
 const AccountingTestBenchPage = lazy(() => import('./components/admin/AccountingTestBenchPage').then(m => ({ default: m.default })));
+const AccountingDeveloperCenterPage = lazy(() =>
+  import('./components/admin/AccountingDeveloperCenterPage').then((m) => ({ default: m.default }))
+);
 const ArApReconciliationCenterPage = lazy(() => import('./components/accounting/ArApReconciliationCenterPage').then(m => ({ default: m.default })));
 const AccountsHierarchyTestPage = lazy(() => import('./components/test/AccountsHierarchyTestPage').then(m => ({ default: m.default })));
 const ExpenseEditTraceTestPage = lazy(() => import('./components/test/ExpenseEditTraceTestPage').then(m => ({ default: m.default })));
@@ -151,6 +154,12 @@ const AppContent = () => {
     currentView === 'accounting-test-bench'
   ) {
     return (<Layout><AccountingTestBenchPage /><GlobalDrawer /></Layout>);
+  }
+  if (
+    pathname === '/admin/accounting-developer-center' ||
+    currentView === 'accounting-developer-center'
+  ) {
+    return (<Layout><AccountingDeveloperCenterPage /><GlobalDrawer /></Layout>);
   }
 
   // Route protection: module toggles are company-wide and apply to all users/roles (Admin, Manager, Staff).

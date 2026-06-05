@@ -64,6 +64,7 @@ type View =
   | 'accounting-integrity-lab'
   | 'accounting-test-bench'
   | 'developer-integrity-lab'
+  | 'accounting-developer-center'
   | 'ar-ap-reconciliation-center'
   | 'erp-permissions'
   | 'permission-inspector'
