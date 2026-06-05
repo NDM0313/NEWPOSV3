@@ -33,6 +33,34 @@ import {
   type RoznamchaTraceCandidateView,
 } from '@/app/lib/roznamchaTraceDiagnostics';
 import { getRoznamchaTraceDiagnostics } from '@/app/services/roznamchaService';
+import { customerLedgerAPI } from '@/app/services/customerLedgerApi';
+import { fetchJournalExplorer, type JournalExplorerRow } from '@/app/services/developerAccountingDiagnosticsService';
+import { listIntegrityIssues, type IntegrityLabIssueRow } from '@/app/services/integrityIssueRepository';
+import { numberingMaintenanceService } from '@/app/services/numberingMaintenanceService';
+import {
+  computeDayBookPeriodBalance,
+  dayBookLineMatchesQuery,
+  defaultDayBookDiagnosticsDateRange,
+  findUnbalancedVouchers,
+  type DayBookLineInput,
+  type UnbalancedVoucherRow,
+} from '@/app/lib/dayBookDiagnostics';
+import { buildPaymentTraceView, type PaymentTraceView } from '@/app/lib/paymentTraceDiagnostics';
+import {
+  buildNumberingDryRunPreviews,
+  integrityIssueToDryRunPreview,
+  type NumberingDryRunRow,
+  type RepairDryRunPreview,
+} from '@/app/lib/repairQueueDryRun';
+import {
+  buildExcludedRentalPaymentCandidate,
+  buildExcludedVoidPaymentCandidate,
+  defaultStatementTraceDateRange,
+  mapStatementTransactionToCandidate,
+  mergeStatementCandidates,
+  statementRowMatchesQuery,
+  type StatementTraceCandidateView,
+} from '@/app/lib/statementTraceDiagnostics';
 
 export type TraceMode = 'auto' | 'entry_no' | 'payment_ref' | 'sale' | 'purchase' | 'reference' | 'account_code' | 'uuid';
 
@@ -528,5 +556,412 @@ export async function loadRoznamchaTraceSnapshot(
     postCount: postDedupe.length,
     candidates,
     loadedAt: new Date().toISOString(),
+  };
+}
+
+export interface StatementTraceSnapshot {
+  query: string;
+  contactId: string | null;
+  contactName: string | null;
+  dateFrom: string;
+  dateTo: string;
+  statementRowCount: number;
+  candidates: StatementTraceCandidateView[];
+  resolveHints: string[];
+  loadedAt: string;
+}
+
+async function resolveStatementContactFromQuery(
+  companyId: string,
+  query: string
+): Promise<{ contactId: string | null; contactName: string | null; hints: string[] }> {
+  const q = query.trim();
+  if (!q) return { contactId: null, contactName: null, hints: [] };
+  const hints: string[] = [];
+
+  const { data: payHits } = await supabase
+    .from('payments')
+    .select('contact_id, reference_number, contacts(name)')
+    .eq('company_id', companyId)
+    .ilike('reference_number', `%${q}%`)
+    .not('contact_id', 'is', null)
+    .limit(5);
+
+  for (const row of payHits || []) {
+    const cid = (row as { contact_id?: string }).contact_id;
+    if (!cid) continue;
+    const name = ((row as { contacts?: { name?: string } }).contacts?.name) || '';
+    hints.push(`payments.reference_number match → contact ${name || cid}`);
+    return { contactId: cid, contactName: name, hints };
+  }
+
+  const { data: rpHits } = await supabase
+    .from('rental_payments')
+    .select('reference, rentals!inner(id, customer_id, customer_name, company_id)')
+    .ilike('reference', `%${q}%`)
+    .limit(10);
+
+  for (const row of rpHits || []) {
+    const rental = (row as { rentals?: { customer_id?: string; customer_name?: string; company_id?: string } })
+      .rentals;
+    if (!rental || rental.company_id !== companyId || !rental.customer_id) continue;
+    hints.push(`rental_payments.reference match → contact ${rental.customer_name || rental.customer_id}`);
+    return {
+      contactId: rental.customer_id,
+      contactName: rental.customer_name || null,
+      hints,
+    };
+  }
+
+  return { contactId: null, contactName: null, hints };
+}
+
+async function fetchStatementExclusionProbes(
+  companyId: string,
+  contactId: string,
+  contactName: string,
+  query: string,
+  dateFrom: string,
+  dateTo: string
+): Promise<StatementTraceCandidateView[]> {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const out: StatementTraceCandidateView[] = [];
+
+  const { data: rentals } = await supabase
+    .from('rentals')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('customer_id', contactId);
+  const rentalIds = (rentals || []).map((r: { id: string }) => r.id);
+  if (rentalIds.length === 0) return out;
+
+  const { data: rpRows } = await supabase
+    .from('rental_payments')
+    .select('id, reference, amount, payment_date, journal_entry_id, voided_at')
+    .in('rental_id', rentalIds)
+    .ilike('reference', `%${q}%`);
+
+  for (const rp of rpRows || []) {
+    const d = String((rp as { payment_date?: string }).payment_date || '').slice(0, 10);
+    const inRange = (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo);
+    const jeId = (rp as { journal_entry_id?: string | null }).journal_entry_id;
+    if (jeId || !inRange) {
+      out.push(
+        buildExcludedRentalPaymentCandidate({
+          id: String((rp as { id: string }).id),
+          ref: String((rp as { reference?: string }).reference || ''),
+          date: d,
+          amount: Number((rp as { amount?: number }).amount) || 0,
+          contactId,
+          contactName,
+          journalEntryId: jeId,
+          inDateRange: inRange,
+        })
+      );
+    }
+  }
+
+  const { data: voidPays } = await supabase
+    .from('payments')
+    .select('id, reference_number, payment_date, amount, voided_at')
+    .eq('company_id', companyId)
+    .eq('contact_id', contactId)
+    .not('voided_at', 'is', null)
+    .ilike('reference_number', `%${q}%`);
+
+  for (const p of voidPays || []) {
+    out.push(
+      buildExcludedVoidPaymentCandidate({
+        id: String((p as { id: string }).id),
+        ref: String((p as { reference_number?: string }).reference_number || ''),
+        date: String((p as { payment_date?: string }).payment_date || '').slice(0, 10),
+        amount: Number((p as { amount?: number }).amount) || 0,
+        contactId,
+        contactName,
+      })
+    );
+  }
+
+  return out;
+}
+
+/** Read-only party statement inclusion diagnostic (Phase C3). */
+export async function loadStatementTraceSnapshot(
+  companyId: string,
+  query: string,
+  contactId?: string | null,
+  dateFrom?: string,
+  dateTo?: string
+): Promise<StatementTraceSnapshot> {
+  const defaults = defaultStatementTraceDateRange();
+  const from = dateFrom?.slice(0, 10) || defaults.dateFrom;
+  const to = dateTo?.slice(0, 10) || defaults.dateTo;
+  const q = query.trim();
+
+  let cId = contactId?.trim() || null;
+  let contactName: string | null = null;
+  let resolveHints: string[] = [];
+
+  if (!cId && q) {
+    const resolved = await resolveStatementContactFromQuery(companyId, q);
+    cId = resolved.contactId;
+    contactName = resolved.contactName;
+    resolveHints = resolved.hints;
+  } else if (cId) {
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('name')
+      .eq('company_id', companyId)
+      .eq('id', cId)
+      .maybeSingle();
+    contactName = (contact as { name?: string } | null)?.name || null;
+  }
+
+  if (!cId) {
+    return {
+      query: q,
+      contactId: null,
+      contactName: null,
+      dateFrom: from,
+      dateTo: to,
+      statementRowCount: 0,
+      candidates: [],
+      resolveHints,
+      loadedAt: new Date().toISOString(),
+    };
+  }
+
+  const transactions = await customerLedgerAPI.getTransactions(cId, companyId, from, to, {
+    paymentScope: 'live',
+  });
+  const included = transactions
+    .filter((tx) => statementRowMatchesQuery(tx, q))
+    .map((tx) => mapStatementTransactionToCandidate(tx, cId!, contactName || ''));
+
+  const excluded = await fetchStatementExclusionProbes(
+    companyId,
+    cId,
+    contactName || '',
+    q,
+    from,
+    to
+  );
+  const candidates = mergeStatementCandidates(included, excluded);
+
+  return {
+    query: q,
+    contactId: cId,
+    contactName,
+    dateFrom: from,
+    dateTo: to,
+    statementRowCount: transactions.length,
+    candidates,
+    resolveHints,
+    loadedAt: new Date().toISOString(),
+  };
+}
+
+export interface DayBookDiagnosticsSnapshot {
+  query: string;
+  dateFrom: string;
+  dateTo: string;
+  periodBalance: ReturnType<typeof computeDayBookPeriodBalance>;
+  unbalancedVouchers: UnbalancedVoucherRow[];
+  matchingLines: DayBookLineInput[];
+  truncationWarning: string | null;
+  loadedAt: string;
+}
+
+/** Read-only Day Book unbalanced JE diagnostic (Phase C4). */
+export async function loadDayBookDiagnostics(
+  companyId: string,
+  query: string,
+  dateFrom?: string,
+  dateTo?: string,
+  includeVoid = false
+): Promise<DayBookDiagnosticsSnapshot> {
+  const defaults = defaultDayBookDiagnosticsDateRange();
+  const from = dateFrom?.slice(0, 10) || defaults.dateFrom;
+  const to = dateTo?.slice(0, 10) || defaults.dateTo;
+  const q = query.trim();
+
+  let supaQ = supabase
+    .from('journal_entries')
+    .select(
+      `id, entry_no, entry_date, reference_type, is_void,
+       lines:journal_entry_lines(debit, credit, account:accounts(name, code))`
+    )
+    .eq('company_id', companyId)
+    .gte('entry_date', from)
+    .lte('entry_date', to)
+    .order('entry_date', { ascending: true })
+    .limit(500);
+
+  if (!includeVoid) {
+    supaQ = supaQ.or('is_void.is.null,is_void.eq.false');
+  }
+
+  const { data, error } = await supaQ;
+  if (error) throw new Error(error.message);
+
+  const lines: DayBookLineInput[] = [];
+  for (const hdr of data || []) {
+    const h = hdr as Record<string, unknown>;
+    const jeId = String(h.id);
+    const voucher = String(h.entry_no || jeId.slice(0, 8));
+    const entryDate = String(h.entry_date || '').slice(0, 10);
+    const referenceType = String(h.reference_type || '');
+    const isVoid = h.is_void === true;
+    const rawLines = h.lines as Array<Record<string, unknown>> | undefined;
+    for (const ln of rawLines || []) {
+      const acct = ln.account as { name?: string; code?: string } | undefined;
+      const accountLabel = acct ? `${acct.code || ''} ${acct.name || ''}`.trim() : '—';
+      lines.push({
+        journalEntryId: jeId,
+        voucher,
+        entryDate,
+        referenceType,
+        debit: Number(ln.debit) || 0,
+        credit: Number(ln.credit) || 0,
+        isVoid,
+        accountLabel,
+      });
+    }
+  }
+
+  const matchingLines = q ? lines.filter((l) => dayBookLineMatchesQuery(l, q)) : lines;
+  const periodBalance = computeDayBookPeriodBalance(lines);
+  const unbalancedVouchers = findUnbalancedVouchers(lines);
+  const filteredUnbalanced = q
+    ? unbalancedVouchers.filter((v) =>
+        dayBookLineMatchesQuery(
+          {
+            journalEntryId: v.journalEntryId,
+            voucher: v.voucher,
+            entryDate: v.entryDate,
+            referenceType: v.referenceType,
+            debit: 0,
+            credit: 0,
+            isVoid: false,
+            accountLabel: '',
+          },
+          q
+        )
+      )
+    : unbalancedVouchers;
+
+  return {
+    query: q,
+    dateFrom: from,
+    dateTo: to,
+    periodBalance,
+    unbalancedVouchers: filteredUnbalanced,
+    matchingLines: matchingLines.slice(0, 200),
+    truncationWarning:
+      (data || []).length >= 500 ? 'Capped at 500 journal headers — widen dates if totals look wrong.' : null,
+    loadedAt: new Date().toISOString(),
+  };
+}
+
+/** Payment-first trace layout (Phase C5). */
+export async function loadPaymentTraceSnapshot(
+  companyId: string,
+  query: string,
+  mode: TraceMode = 'auto'
+): Promise<PaymentTraceView> {
+  const trace = await runTransactionTrace(companyId, query, mode);
+  return buildPaymentTraceView(trace, query);
+}
+
+export interface JournalIntegrityBrowseSnapshot {
+  query: string;
+  dateFrom: string;
+  dateTo: string;
+  suspiciousOnly: boolean;
+  rows: JournalExplorerRow[];
+  loadedAt: string;
+}
+
+/** Browse-only journal explorer (Phase C6) — no void/repair exports. */
+export async function loadJournalIntegrityBrowse(
+  companyId: string,
+  opts?: {
+    query?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    suspiciousOnly?: boolean;
+    limit?: number;
+  }
+): Promise<JournalIntegrityBrowseSnapshot> {
+  const defaults = defaultDayBookDiagnosticsDateRange();
+  const from = opts?.dateFrom?.slice(0, 10) || defaults.dateFrom;
+  const to = opts?.dateTo?.slice(0, 10) || defaults.dateTo;
+  const q = opts?.query?.trim() || '';
+  const rows = await fetchJournalExplorer(companyId, {
+    dateFrom: from,
+    dateTo: to,
+    suspiciousOnly: opts?.suspiciousOnly ?? false,
+    isVoid: 'all',
+    limit: opts?.limit ?? 60,
+  });
+  const filtered = q
+    ? rows.filter((r) => {
+        const hay = [r.je.entry_no, r.je.reference_type, r.je.id, r.summary, r.uiRef?.displayRef]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return hay.includes(q.toLowerCase());
+      })
+    : rows;
+  return {
+    query: q,
+    dateFrom: from,
+    dateTo: to,
+    suspiciousOnly: opts?.suspiciousOnly ?? false,
+    rows: filtered,
+    loadedAt: new Date().toISOString(),
+  };
+}
+
+export interface RepairQueueSnapshot {
+  issues: IntegrityLabIssueRow[];
+  issuePreviews: RepairDryRunPreview[];
+  numberingRows: NumberingDryRunRow[];
+  loadedAt: string;
+}
+
+/** Repair queue dry-run snapshot (Phase D) — preview only. */
+export async function loadRepairQueueSnapshot(companyId: string): Promise<RepairQueueSnapshot> {
+  const [issues, numbering] = await Promise.all([
+    listIntegrityIssues(companyId, { hideResolved: true, limit: 100 }),
+    numberingMaintenanceService.analyze(companyId),
+  ]);
+  return {
+    issues,
+    issuePreviews: issues.slice(0, 50).map(integrityIssueToDryRunPreview),
+    numberingRows: buildNumberingDryRunPreviews(numbering.rows),
+    loadedAt: new Date().toISOString(),
+  };
+}
+
+export interface SafeSequenceSyncResult {
+  success: boolean;
+  documentType: string;
+  message: string;
+  updated: boolean;
+}
+
+/** Phase E — one safe confirmed repair: sync sequence to effective max (super-admin gate in UI). */
+export async function applySafeSequenceSync(
+  companyId: string,
+  documentType: string
+): Promise<SafeSequenceSyncResult> {
+  const res = await numberingMaintenanceService.syncToEffectiveMax(companyId, documentType);
+  return {
+    success: res.success,
+    documentType,
+    message: res.message || res.error || (res.updated ? 'Sequence synced' : 'No update needed'),
+    updated: res.updated === true,
   };
 }

@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Search, RefreshCw } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
 import { Badge } from '@/app/components/ui/badge';
 import { toast } from 'sonner';
-import { defaultRoznamchaTraceDateRange } from '@/app/lib/roznamchaTraceDiagnostics';
+import { defaultStatementTraceDateRange } from '@/app/lib/statementTraceDiagnostics';
 import {
-  loadRoznamchaTraceSnapshot,
-  type RoznamchaTraceSnapshot,
+  loadStatementTraceSnapshot,
+  type StatementTraceSnapshot,
 } from '@/app/services/accountingDeveloperCenterService';
 
 interface Props {
@@ -16,27 +16,37 @@ interface Props {
   initialQuery?: string;
 }
 
-export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
-  const defaults = defaultRoznamchaTraceDateRange();
+export function StatementTraceTab({ companyId, initialQuery = '' }: Props) {
+  const defaults = defaultStatementTraceDateRange();
   const [query, setQuery] = useState(initialQuery);
+  const [contactId, setContactId] = useState('');
   const [dateFrom, setDateFrom] = useState(defaults.dateFrom);
   const [dateTo, setDateTo] = useState(defaults.dateTo);
   const [loading, setLoading] = useState(false);
-  const [snapshot, setSnapshot] = useState<RoznamchaTraceSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<StatementTraceSnapshot | null>(null);
 
   const run = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
     try {
-      const data = await loadRoznamchaTraceSnapshot(companyId, query, dateFrom, dateTo);
+      const data = await loadStatementTraceSnapshot(
+        companyId,
+        query,
+        contactId.trim() || null,
+        dateFrom,
+        dateTo
+      );
       setSnapshot(data);
+      if (!data.contactId && query.trim()) {
+        toast.message('No contact resolved from reference — try contact UUID or widen search');
+      }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Roznamcha trace failed');
+      toast.error(e instanceof Error ? e.message : 'Statement trace failed');
       setSnapshot(null);
     } finally {
       setLoading(false);
     }
-  }, [companyId, query, dateFrom, dateTo]);
+  }, [companyId, query, contactId, dateFrom, dateTo]);
 
   useEffect(() => {
     setQuery(initialQuery);
@@ -44,20 +54,28 @@ export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
 
   useEffect(() => {
     if (initialQuery && companyId) void run();
-    // Deep-link bootstrap (?tab=roznamcha&q=HQ-RCV-0006)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId, initialQuery]);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-2">
-        <div className="flex-1 min-w-[200px]">
+        <div className="flex-1 min-w-[180px]">
           <label className="text-[10px] uppercase tracking-wider text-gray-500">Reference (q)</label>
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="HQ-RCV-0006"
+            placeholder="HQ-RCV-0006 or SL-0012"
             className="mt-1 bg-gray-950 border-gray-800"
+          />
+        </div>
+        <div className="min-w-[200px]">
+          <label className="text-[10px] uppercase tracking-wider text-gray-500">Contact ID (optional)</label>
+          <Input
+            value={contactId}
+            onChange={(e) => setContactId(e.target.value)}
+            placeholder="UUID — auto-resolve from q"
+            className="mt-1 bg-gray-950 border-gray-800 font-mono text-xs"
           />
         </div>
         <div>
@@ -82,28 +100,26 @@ export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
           <Search className={`w-4 h-4 mr-1 ${loading ? 'animate-pulse' : ''}`} />
           Run diagnostic
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={run} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-        <span className="text-xs text-violet-400/90 ml-auto">Read-only — Phase C2</span>
+        <span className="text-xs text-violet-400/90 ml-auto">Read-only — Phase C3</span>
       </div>
 
       {snapshot && (
         <Card className="border-gray-800 bg-gray-900/40">
           <CardHeader>
-            <CardTitle className="text-base">Roznamcha trace snapshot</CardTitle>
+            <CardTitle className="text-base">Statement trace snapshot</CardTitle>
             <CardDescription>
-              Pre-dedupe: {snapshot.preCount} · Post-dedupe: {snapshot.postCount} · Candidates:{' '}
-              {snapshot.candidates.length}
+              Contact: {snapshot.contactName || snapshot.contactId || '—'} · Statement rows:{' '}
+              {snapshot.statementRowCount} · Candidates: {snapshot.candidates.length}
               {snapshot.query ? ` · Filter: ${snapshot.query}` : ''}
             </CardDescription>
+            {snapshot.resolveHints.length > 0 && (
+              <p className="text-xs text-gray-500 mt-1">{snapshot.resolveHints.join(' · ')}</p>
+            )}
           </CardHeader>
           <CardContent className="overflow-x-auto">
             {snapshot.candidates.length === 0 ? (
               <p className="text-sm text-gray-500 py-4 text-center">
-                No pre-dedupe rows match this reference in {snapshot.dateFrom}–{snapshot.dateTo}. Widen the date
-                range or clear the filter.
+                No statement rows match. Resolve contact from q, widen dates, or check exclusion probes.
               </p>
             ) : (
               <table className="w-full text-xs">
@@ -112,13 +128,10 @@ export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
                     <th className="py-2 pr-2">Source</th>
                     <th className="py-2 pr-2">Ref</th>
                     <th className="py-2 pr-2">Date</th>
-                    <th className="py-2 pr-2">Dir</th>
-                    <th className="py-2 pr-2">Amount</th>
-                    <th className="py-2 pr-2">Liquidity</th>
-                    <th className="py-2 pr-2">Details</th>
+                    <th className="py-2 pr-2">Type</th>
+                    <th className="py-2 pr-2">Debit</th>
+                    <th className="py-2 pr-2">Credit</th>
                     <th className="py-2 pr-2">Included</th>
-                    <th className="py-2 pr-2">Priority</th>
-                    <th className="py-2 pr-2">Entity keys</th>
                     <th className="py-2">Reason</th>
                   </tr>
                 </thead>
@@ -126,17 +139,11 @@ export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
                   {snapshot.candidates.map((row) => (
                     <tr key={row.rowId} className="border-b border-gray-800/60 align-top">
                       <td className="py-2 pr-2 font-mono text-gray-400">{row.source}</td>
-                      <td className="py-2 pr-2 text-gray-200">
-                        {row.ref}
-                        {row.journalEntryNo ? (
-                          <span className="block text-gray-500 font-mono text-[10px]">{row.journalEntryNo}</span>
-                        ) : null}
-                      </td>
+                      <td className="py-2 pr-2 text-gray-200">{row.ref}</td>
                       <td className="py-2 pr-2 text-gray-400">{row.date}</td>
-                      <td className="py-2 pr-2">{row.direction}</td>
-                      <td className="py-2 pr-2 text-gray-300">{row.amount}</td>
-                      <td className="py-2 pr-2 text-gray-400">{row.liquidityAccount}</td>
-                      <td className="py-2 pr-2 text-gray-500 max-w-[120px]">{row.details || '—'}</td>
+                      <td className="py-2 pr-2 text-gray-500">{row.documentType}</td>
+                      <td className="py-2 pr-2">{row.debit || '—'}</td>
+                      <td className="py-2 pr-2">{row.credit || '—'}</td>
                       <td className="py-2 pr-2">
                         {row.included ? (
                           <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-800">yes</Badge>
@@ -144,16 +151,7 @@ export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
                           <Badge className="bg-amber-900/40 text-amber-300 border-amber-800">no</Badge>
                         )}
                       </td>
-                      <td className="py-2 pr-2 text-gray-500">{row.sourcePriority}</td>
-                      <td className="py-2 pr-2 font-mono text-[10px] text-gray-500 max-w-[140px]">
-                        {row.entityKeys.join(' · ') || '—'}
-                      </td>
-                      <td className="py-2 text-gray-400 max-w-xs">
-                        {row.reason}
-                        {row.winnerRef ? (
-                          <span className="block text-gray-600">Winner ref: {row.winnerRef}</span>
-                        ) : null}
-                      </td>
+                      <td className="py-2 text-gray-400 max-w-md">{row.reason}</td>
                     </tr>
                   ))}
                 </tbody>

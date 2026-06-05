@@ -15,7 +15,11 @@ import {
 import { CoaHealthTab } from '@/app/components/admin/developer-center/CoaHealthTab';
 import { TransactionTraceTab } from '@/app/components/admin/developer-center/TransactionTraceTab';
 import { RoznamchaTraceTab } from '@/app/components/admin/developer-center/RoznamchaTraceTab';
-import { PhaseCTabShell } from '@/app/components/admin/developer-center/PhaseCTabShell';
+import { StatementTraceTab } from '@/app/components/admin/developer-center/StatementTraceTab';
+import { DayBookDiagnosticsTab } from '@/app/components/admin/developer-center/DayBookDiagnosticsTab';
+import { PaymentTraceTab } from '@/app/components/admin/developer-center/PaymentTraceTab';
+import { JournalIntegrityTab } from '@/app/components/admin/developer-center/JournalIntegrityTab';
+import { RepairQueueTab } from '@/app/components/admin/developer-center/RepairQueueTab';
 
 function readUrlState(): { tab: DeveloperCenterTabId; query: string } {
   if (typeof window === 'undefined') return { tab: 'coa', query: '' };
@@ -82,7 +86,7 @@ export default function AccountingDeveloperCenterPage() {
             Accounting Developer Center
           </h1>
           <p className="text-sm text-gray-400 mt-1">
-            Read-only COA health, transaction trace, Roznamcha trace (C2), and Phase C shells.
+            COA health, trace tabs, report diagnostics, and repair queue (dry-run + confirm-gated sequence sync).
           </p>
         </div>
         <span className="text-xs text-gray-500 flex items-center gap-1" title="docs/accounting/coa-developer-center/">
@@ -92,7 +96,7 @@ export default function AccountingDeveloperCenterPage() {
       </div>
 
       <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-2 text-xs text-violet-200/90">
-        Read-only mode. Repair queue, void, sync, and OB tools remain disabled. Phase C shells are navigable only.
+        Read-only diagnostics by default. Repair Queue shows dry-run previews; one confirm-gated sequence sync (Phase E). Void/OB apply remain in Integrity Lab.
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
@@ -104,6 +108,7 @@ export default function AccountingDeveloperCenterPage() {
               {t.label}
             </TabsTrigger>
           ))}
+          <TabsTrigger value="repair">Repair Queue</TabsTrigger>
           {DISABLED_PLACEHOLDER_TABS.map((label) => (
             <span
               key={label}
@@ -127,16 +132,25 @@ export default function AccountingDeveloperCenterPage() {
           <RoznamchaTraceTab companyId={companyId} initialQuery={urlQuery} />
         </TabsContent>
 
-        {PHASE_C_SHELL_TABS.filter((t) => t.id !== 'roznamcha').map((t) => (
-          <TabsContent key={t.id} value={t.id}>
-            <PhaseCTabShell
-              title={t.label}
-              phase={t.phase}
-              blurb={t.blurb}
-              initialQuery={urlQuery || undefined}
-            />
-          </TabsContent>
-        ))}
+        <TabsContent value="statement">
+          <StatementTraceTab companyId={companyId} initialQuery={urlQuery} />
+        </TabsContent>
+
+        <TabsContent value="daybook">
+          <DayBookDiagnosticsTab companyId={companyId} initialQuery={urlQuery} />
+        </TabsContent>
+
+        <TabsContent value="payment">
+          <PaymentTraceTab companyId={companyId} initialQuery={urlQuery} />
+        </TabsContent>
+
+        <TabsContent value="journal">
+          <JournalIntegrityTab companyId={companyId} initialQuery={urlQuery} />
+        </TabsContent>
+
+        <TabsContent value="repair">
+          <RepairQueueTab companyId={companyId} />
+        </TabsContent>
       </Tabs>
     </div>
   );

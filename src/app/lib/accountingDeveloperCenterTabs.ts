@@ -11,6 +11,7 @@ export const DEVELOPER_CENTER_TAB_IDS = [
   'daybook',
   'payment',
   'journal',
+  'repair',
 ] as const;
 
 export type DeveloperCenterTabId = (typeof DEVELOPER_CENTER_TAB_IDS)[number];
@@ -56,8 +57,8 @@ export const PHASE_C_SHELL_TABS: PhaseCShellTabDef[] = [
   },
 ];
 
-/** Permanently disabled — not Phase C shells. */
-export const DISABLED_PLACEHOLDER_TABS = ['Opening Balance', 'Repair Queue', 'Audit Log'] as const;
+/** Permanently disabled — not implemented in Developer Center v1. */
+export const DISABLED_PLACEHOLDER_TABS = ['Opening Balance', 'Audit Log'] as const;
 
 const TAB_SET = new Set<string>(DEVELOPER_CENTER_TAB_IDS);
 
