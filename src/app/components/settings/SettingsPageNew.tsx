@@ -46,6 +46,7 @@ import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthServ
 import { EmployeesTab } from './EmployeesTab';
 import { ErpPermissionArchitecturePage } from '@/app/components/erp-permissions/ErpPermissionArchitecturePage';
 import { canAccessTechnicalDeveloperSettings } from '@/app/lib/developerAccountingAccess';
+import { canAccessAccountingDeveloperCenter } from '@/app/lib/accountingDeveloperCenterAccess';
 import { AppVersionTapTarget } from '@/app/components/settings/developer/AppVersionTapTarget';
 import { DeveloperToolsPanel } from '@/app/components/settings/developer/DeveloperToolsPanel';
 import { settingsService } from '@/app/services/settingsService';
@@ -362,9 +363,10 @@ export const SettingsPageNew = () => {
     return r === 'owner';
   })();
   const canDeveloperTools = canAccessTechnicalDeveloperSettings(userRole);
+  const canAccountingDevCenter = canAccessAccountingDeveloperCenter(userRole);
   const visibleNav = useMemo(
-    () => getVisibleSettingsNav(isAdminOrOwner, canDeveloperTools),
-    [isAdminOrOwner, canDeveloperTools],
+    () => getVisibleSettingsNav(isAdminOrOwner, canDeveloperTools, canAccountingDevCenter),
+    [isAdminOrOwner, canDeveloperTools, canAccountingDevCenter],
   );
   const accounting = useAccounting();
   const [activeCategoryId, setActiveCategoryId] = useState<SettingsCategoryId>(visibleNav.defaultCategoryId);
@@ -2273,6 +2275,40 @@ export const SettingsPageNew = () => {
             )}
 
             {/* NUMBERING – Rules, Maintenance, Audit (Admin/Owner only) */}
+            {contentKey === 'accountingDeveloperCenter' && (
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-3 bg-violet-500/10 rounded-lg">
+                    <Shield className="text-violet-400" size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Accounting Developer Center</h3>
+                    <p className="text-sm text-gray-400">
+                      Read-only COA health checks and transaction trace (Phase B). No repairs on this screen.
+                    </p>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-6 space-y-4">
+                  <p className="text-sm text-gray-300">
+                    Diagnose Chart of Accounts structure, journal linkage, and report visibility without SQL or write tools.
+                  </p>
+                  <ul className="text-sm text-gray-500 list-disc pl-5 space-y-1">
+                    <li>COA Health — duplicates, hierarchy, inactive-used, balance cache drift</li>
+                    <li>Transaction Trace — RCV/PAY/JE refs → payment → GL → Roznamcha/statement hints</li>
+                  </ul>
+                  <Button
+                    type="button"
+                    className="bg-violet-600 hover:bg-violet-500"
+                    onClick={() => {
+                      window.location.href = '/admin/accounting-developer-center';
+                    }}
+                  >
+                    Open Developer Center
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {contentKey === 'numbering' && (
               <NumberingPanel
                 isAdminOrOwner={isAdminOrOwner}

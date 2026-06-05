@@ -35,6 +35,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { canAccessTechnicalDeveloperSettings } from '@/app/lib/developerAccountingAccess';
+import { canAccessAccountingDeveloperCenter } from '@/app/lib/accountingDeveloperCenterAccess';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -52,6 +53,7 @@ export const Sidebar = () => {
   const { hasPermission } = useCheckPermission();
   const { userRole } = useSupabase();
   const developerToolsNavAllowed = canAccessTechnicalDeveloperSettings(userRole);
+  const accountingDeveloperCenterAllowed = canAccessAccountingDeveloperCenter(userRole);
   const studioProductionV2 = featureFlags?.studio_production_v2 === true;
   const studioProductionV3 = featureFlags?.studio_production_v3 === true;
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
@@ -138,6 +140,9 @@ export const Sidebar = () => {
         { id: 'rls-validation', label: 'RLS Validation' },
         { id: 'accounting-integrity-lab', label: 'Accounting Integrity Lab' },
         { id: 'developer-integrity-lab', label: 'Developer Integrity Lab' },
+        ...(accountingDeveloperCenterAllowed
+          ? [{ id: 'accounting-developer-center', label: 'Accounting Developer Center' }]
+          : []),
         { id: 'day4-certification', label: 'Day 4 Certification' },
         { id: 'erp-integration-test', label: 'ERP Integration Test' },
         { id: 'cutover-prep', label: 'Cutover Prep' },
@@ -210,9 +215,10 @@ export const Sidebar = () => {
           const isActive =
             currentView === item.id ||
             item.children?.some((c) => c.id === currentView) ||
-            (item.id === 'test-pages-group' &&
+              (item.id === 'test-pages-group' &&
               (pathname === '/admin/permission-inspector' ||
                 pathname === '/admin/developer-integrity-lab' ||
+                pathname === '/admin/accounting-developer-center' ||
                 pathname === '/admin/accounting-test-bench' ||
                 pathname === '/test/accounting-edit-trace' ||
                 pathname === '/test/ar-ap-truth-lab' ||
@@ -299,6 +305,8 @@ export const Sidebar = () => {
                                 window.history.pushState({}, '', '/admin/permission-inspector');
                               } else if (child.id === 'developer-integrity-lab') {
                                 window.history.pushState({}, '', '/admin/developer-integrity-lab');
+                              } else if (child.id === 'accounting-developer-center') {
+                                window.history.pushState({}, '', '/admin/accounting-developer-center');
                               } else if (child.id === 'accounting-edit-trace') {
                                 window.history.pushState({}, '', '/test/accounting-edit-trace');
                               } else if (child.id === 'ar-ap-truth-lab') {
@@ -308,6 +316,7 @@ export const Sidebar = () => {
                               } else if (
                                 p === '/admin/permission-inspector' ||
                                 p === '/admin/developer-integrity-lab' ||
+                                p === '/admin/accounting-developer-center' ||
                                 p === '/admin/accounting-test-bench' ||
                                 p === '/test/accounting-edit-trace' ||
                                 p === '/test/ar-ap-truth-lab' ||
