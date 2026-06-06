@@ -10,6 +10,7 @@ import {
   parseDeveloperCenterQuery,
   parseDeveloperCenterTab,
   PHASE_C_SHELL_TABS,
+  PHASE_DE_TABS,
   type DeveloperCenterTabId,
 } from '@/app/lib/accountingDeveloperCenterTabs';
 import { CoaHealthTab } from '@/app/components/admin/developer-center/CoaHealthTab';
@@ -19,6 +20,9 @@ import { StatementTraceTab } from '@/app/components/admin/developer-center/State
 import { DayBookDiagnosticsTab } from '@/app/components/admin/developer-center/DayBookDiagnosticsTab';
 import { PaymentTraceTab } from '@/app/components/admin/developer-center/PaymentTraceTab';
 import { JournalIntegrityTab } from '@/app/components/admin/developer-center/JournalIntegrityTab';
+import { RepairQueueTab } from '@/app/components/admin/developer-center/RepairQueueTab';
+import { OpeningBalanceToolsTab } from '@/app/components/admin/developer-center/OpeningBalanceToolsTab';
+import { AuditLogTab } from '@/app/components/admin/developer-center/AuditLogTab';
 
 function readUrlState(): { tab: DeveloperCenterTabId; query: string } {
   if (typeof window === 'undefined') return { tab: 'coa', query: '' };
@@ -85,7 +89,7 @@ export default function AccountingDeveloperCenterPage() {
             Accounting Developer Center
           </h1>
           <p className="text-sm text-gray-400 mt-1">
-            Read-only COA health, transaction trace, and Phase C report diagnostics (C2–C6).
+            COA health, trace diagnostics (C2–C6), Repair Queue (D), Opening Balance preview & Audit Log (E).
           </p>
         </div>
         <span className="text-xs text-gray-500 flex items-center gap-1" title="docs/accounting/coa-developer-center/">
@@ -95,7 +99,8 @@ export default function AccountingDeveloperCenterPage() {
       </div>
 
       <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-2 text-xs text-violet-200/90">
-        Read-only mode. Repair queue, void, sync, and OB tools remain disabled. Use Integrity Lab for writes.
+        Diagnostics by default. Repair Queue: dry-run + one confirm-gated sequence sync. OB sync and GL repairs stay in
+        Integrity Lab.
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
@@ -107,11 +112,16 @@ export default function AccountingDeveloperCenterPage() {
               {t.label}
             </TabsTrigger>
           ))}
+          {PHASE_DE_TABS.map((t) => (
+            <TabsTrigger key={t.id} value={t.id}>
+              {t.label}
+            </TabsTrigger>
+          ))}
           {DISABLED_PLACEHOLDER_TABS.map((label) => (
             <span
               key={label}
               className="inline-flex items-center px-3 py-1.5 text-xs text-gray-600 opacity-50 cursor-not-allowed rounded-md"
-              title="Permanently disabled in Developer Center"
+              title="Not implemented"
             >
               {label}
             </span>
@@ -144,6 +154,18 @@ export default function AccountingDeveloperCenterPage() {
 
         <TabsContent value="journal">
           <JournalIntegrityTab companyId={companyId} initialQuery={urlQuery} />
+        </TabsContent>
+
+        <TabsContent value="repair">
+          <RepairQueueTab companyId={companyId} />
+        </TabsContent>
+
+        <TabsContent value="opening">
+          <OpeningBalanceToolsTab companyId={companyId} initialQuery={urlQuery} />
+        </TabsContent>
+
+        <TabsContent value="audit">
+          <AuditLogTab companyId={companyId} />
         </TabsContent>
       </Tabs>
     </div>

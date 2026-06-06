@@ -6,6 +6,10 @@ Documentation hub for the unified **Accounting Developer Center** — diagnose C
 
 **Phase C (complete):** Report trace tabs C2–C6 shipped. See [06_PHASE_C_COMPLETION.md](06_PHASE_C_COMPLETION.md).
 
+**Phase D (complete):** Repair Queue dry-run + confirm-gated sequence sync. See [07_PHASE_D_COMPLETION.md](07_PHASE_D_COMPLETION.md).
+
+**Phase E (complete):** Opening Balance preview + Audit Log read-only. See [08_PHASE_DE_COMPLETION.md](08_PHASE_DE_COMPLETION.md).
+
 ## Documents
 
 | File | Contents |

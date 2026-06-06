@@ -51,6 +51,7 @@ export interface NumberingAnalysisRow {
   label: string;
   sequence_last: number;
   database_max: number;
+  effective_max: number;
   status: 'ok' | 'out_of_sync';
 }
 
@@ -151,6 +152,7 @@ export const numberingMaintenanceService = {
       }
 
       const sequenceLast = sequenceByType.get(doc.document_type) ?? 0;
+      const effectiveMax = Math.max(sequenceLast, databaseMax);
       const status: 'ok' | 'out_of_sync' = databaseMax > sequenceLast ? 'out_of_sync' : 'ok';
 
       result.push({
@@ -158,6 +160,7 @@ export const numberingMaintenanceService = {
         label: doc.label,
         sequence_last: sequenceLast,
         database_max: databaseMax,
+        effective_max: effectiveMax,
         status,
       });
     }
@@ -253,5 +256,38 @@ export const numberingMaintenanceService = {
     }
 
     if (error) throw error;
+  },
+
+  async syncToEffectiveMax(
+    companyId: string,
+    documentType: string
+  ): Promise<{ success: boolean; updated: boolean; message?: string; error?: string }> {
+    try {
+      const rows = await this.analyze(companyId);
+      const docTypeUpper = documentType.toUpperCase();
+      const row = rows.find((r) => r.document_type.toUpperCase() === docTypeUpper);
+      if (!row) {
+        return { success: false, updated: false, error: `Unknown document type: ${documentType}` };
+      }
+      if (row.status === 'ok') {
+        return {
+          success: true,
+          updated: false,
+          message: `${row.label} sequence already in sync (last=${row.sequence_last}, db max=${row.database_max})`,
+        };
+      }
+      await this.fixSequence(companyId, row.document_type, row.effective_max);
+      return {
+        success: true,
+        updated: true,
+        message: `Synced ${row.label} sequence to ${row.effective_max}`,
+      };
+    } catch (e) {
+      return {
+        success: false,
+        updated: false,
+        error: e instanceof Error ? e.message : 'Sequence sync failed',
+      };
+    }
   },
 };

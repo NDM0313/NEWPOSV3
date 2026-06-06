@@ -36,6 +36,26 @@ import {
   type RoznamchaTraceCandidateView,
 } from '@/app/lib/roznamchaTraceDiagnostics';
 import { getRoznamchaTraceDiagnostics } from '@/app/services/roznamchaService';
+import { listIntegrityIssues, type IntegrityLabIssueRow } from '@/app/services/integrityIssueRepository';
+import { numberingMaintenanceService } from '@/app/services/numberingMaintenanceService';
+import {
+  buildNumberingDryRunPreviews,
+  integrityIssueToDryRunPreview,
+  type NumberingDryRunRow,
+  type RepairDryRunPreview,
+} from '@/app/lib/repairQueueDryRun';
+import { openingBalanceJournalService } from '@/app/services/openingBalanceJournalService';
+import {
+  classifyOpeningBalanceGap,
+  openingBalanceRowMatchesQuery,
+  type OpeningBalanceGapRow,
+  type OpeningBalanceEntityType,
+} from '@/app/lib/openingBalanceDiagnostics';
+import {
+  defaultAuditLogDateRange,
+  mapPartyRepairAuditRow,
+  type DeveloperCenterAuditRow,
+} from '@/app/lib/developerCenterAuditLog';
 import {
   computeDayBookPeriodBalance,
   dayBookLineMatchesQuery,
@@ -915,6 +935,252 @@ export async function loadJournalIntegrityBrowse(
     dateTo: to,
     suspiciousOnly: opts?.suspiciousOnly ?? false,
     rows: filtered,
+    loadedAt: new Date().toISOString(),
+  };
+}
+
+export interface RepairQueueSnapshot {
+  issues: IntegrityLabIssueRow[];
+  issuePreviews: RepairDryRunPreview[];
+  numberingRows: NumberingDryRunRow[];
+  loadedAt: string;
+}
+
+/** Repair queue dry-run snapshot (Phase D) — preview only. */
+export async function loadRepairQueueSnapshot(companyId: string): Promise<RepairQueueSnapshot> {
+  const [issues, numberingRows] = await Promise.all([
+    listIntegrityIssues(companyId, { hideResolved: true, limit: 100 }),
+    numberingMaintenanceService.analyze(companyId),
+  ]);
+  return {
+    issues,
+    issuePreviews: issues.slice(0, 50).map(integrityIssueToDryRunPreview),
+    numberingRows: buildNumberingDryRunPreviews(numberingRows),
+    loadedAt: new Date().toISOString(),
+  };
+}
+
+export interface SafeSequenceSyncResult {
+  success: boolean;
+  documentType: string;
+  message: string;
+  updated: boolean;
+}
+
+/** Phase E — one safe confirmed repair: sync sequence to effective max (super-admin gate in UI). */
+export async function applySafeSequenceSync(
+  companyId: string,
+  documentType: string
+): Promise<SafeSequenceSyncResult> {
+  const res = await numberingMaintenanceService.syncToEffectiveMax(companyId, documentType);
+  return {
+    success: res.success,
+    documentType,
+    message: res.message || res.error || (res.updated ? 'Sequence synced' : 'No update needed'),
+    updated: res.updated === true,
+  };
+}
+
+const OB_REF = openingBalanceJournalService.OPENING_BALANCE_REFERENCE;
+
+function openingJePrimaryAmount(lines: Array<{ debit?: number; credit?: number }>): number {
+  let max = 0;
+  for (const l of lines) {
+    max = Math.max(max, Number(l.debit) || 0, Number(l.credit) || 0);
+  }
+  return max;
+}
+
+async function loadOpeningJeSnapshot(
+  companyId: string,
+  referenceType: string,
+  referenceId: string
+): Promise<{ entryNo: string | null; jeAmount: number | null; hasJe: boolean }> {
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .select('entry_no, lines:journal_entry_lines(debit, credit)')
+    .eq('company_id', companyId)
+    .eq('reference_type', referenceType)
+    .eq('reference_id', referenceId)
+    .or('is_void.is.null,is_void.eq.false')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return { entryNo: null, jeAmount: null, hasJe: false };
+  const lines = (data as { lines?: Array<{ debit?: number; credit?: number }> }).lines || [];
+  const mag = openingJePrimaryAmount(lines);
+  return {
+    entryNo: String((data as { entry_no?: string }).entry_no || '') || null,
+    jeAmount: mag > 0 ? mag : null,
+    hasJe: lines.length > 0,
+  };
+}
+
+export interface OpeningBalanceDiagnosticsSnapshot {
+  query: string;
+  rows: OpeningBalanceGapRow[];
+  scannedContacts: number;
+  loadedAt: string;
+}
+
+/** Opening balance gap preview (Phase E) — read-only, no OB sync apply. */
+export async function loadOpeningBalanceDiagnostics(
+  companyId: string,
+  query = '',
+  limit = 100
+): Promise<OpeningBalanceDiagnosticsSnapshot> {
+  const q = query.trim();
+  const { data: contacts, error } = await supabase
+    .from('contacts')
+    .select('id, name, type, opening_balance, supplier_opening_balance')
+    .eq('company_id', companyId)
+    .order('name', { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+
+  const rows: OpeningBalanceGapRow[] = [];
+  for (const c of contacts || []) {
+    const contactId = String((c as { id: string }).id);
+    const name = String((c as { name?: string }).name || contactId.slice(0, 8));
+    const type = String((c as { type?: string }).type || '').toLowerCase();
+
+    const legs: Array<{ entityType: OpeningBalanceEntityType; operational: number; refType: string }> = [];
+    if (type === 'customer' || type === 'both') {
+      legs.push({
+        entityType: 'contact_ar',
+        operational: Number((c as { opening_balance?: number }).opening_balance) || 0,
+        refType: OB_REF.CONTACT_AR,
+      });
+    }
+    if (type === 'supplier' || type === 'both') {
+      const supOb = (c as { supplier_opening_balance?: number | null }).supplier_opening_balance;
+      const ob = (c as { opening_balance?: number }).opening_balance;
+      const apOp =
+        type === 'supplier'
+          ? supOb != null && Math.abs(Number(supOb) || 0) >= 0.02
+            ? Number(supOb) || 0
+            : Number(ob) || 0
+          : Number(supOb) || 0;
+      legs.push({
+        entityType: 'contact_ap',
+        operational: apOp,
+        refType: OB_REF.CONTACT_AP,
+      });
+    }
+
+    for (const leg of legs) {
+      const je = await loadOpeningJeSnapshot(companyId, leg.refType, contactId);
+      const signedJe =
+        je.jeAmount != null && leg.operational < 0 ? -Math.abs(je.jeAmount) : je.jeAmount;
+      const classified = classifyOpeningBalanceGap({
+        operationalOpening: leg.operational,
+        jeAmount: signedJe,
+        hasJe: je.hasJe,
+      });
+      const row: OpeningBalanceGapRow = {
+        rowId: `${leg.entityType}-${contactId}`,
+        entityType: leg.entityType,
+        entityId: contactId,
+        entityName: name,
+        operationalOpening: leg.operational,
+        jeEntryNo: je.entryNo,
+        jeAmount: signedJe,
+        gap: classified.gap,
+        status: classified.status,
+        reason: classified.reason,
+      };
+      if (row.status === 'no_opening' && q) continue;
+      if (q && !openingBalanceRowMatchesQuery(row, q)) continue;
+      rows.push(row);
+    }
+  }
+
+  return {
+    query: q,
+    rows,
+    scannedContacts: (contacts || []).length,
+    loadedAt: new Date().toISOString(),
+  };
+}
+
+export interface DeveloperCenterAuditLogSnapshot {
+  dateFrom: string;
+  dateTo: string;
+  rows: DeveloperCenterAuditRow[];
+  truncationWarning: string | null;
+  loadedAt: string;
+}
+
+/** Read-only audit log (Phase E) — party_repair_audit + resolved integrity issues. */
+export async function loadDeveloperCenterAuditLog(
+  companyId: string,
+  dateFrom?: string,
+  dateTo?: string,
+  limit = 200
+): Promise<DeveloperCenterAuditLogSnapshot> {
+  const defaults = defaultAuditLogDateRange();
+  const from = dateFrom?.slice(0, 10) || defaults.dateFrom;
+  const to = dateTo?.slice(0, 10) || defaults.dateTo;
+
+  const rows: DeveloperCenterAuditRow[] = [];
+
+  const { data: partyRows, error: partyErr } = await supabase
+    .from('party_repair_audit')
+    .select('id, created_at, table_name, row_id, column_name, old_value, new_value, reason_code, applied_by')
+    .eq('company_id', companyId)
+    .gte('created_at', `${from}T00:00:00`)
+    .lte('created_at', `${to}T23:59:59`)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (partyErr && !String(partyErr.message).includes('does not exist')) {
+    throw new Error(partyErr.message);
+  }
+  for (const r of partyRows || []) {
+    rows.push(mapPartyRepairAuditRow(r as Parameters<typeof mapPartyRepairAuditRow>[0]));
+  }
+
+  const { data: resolvedIssues } = await supabase
+    .from('integrity_lab_issues')
+    .select('id, resolved_at, rule_code, rule_message, resolved_by, module, source_id')
+    .eq('company_id', companyId)
+    .not('resolved_at', 'is', null)
+    .gte('resolved_at', `${from}T00:00:00`)
+    .lte('resolved_at', `${to}T23:59:59`)
+    .order('resolved_at', { ascending: false })
+    .limit(Math.max(0, limit - rows.length));
+
+  for (const issue of resolvedIssues || []) {
+    const i = issue as {
+      id: string;
+      resolved_at: string;
+      rule_code: string;
+      rule_message: string | null;
+      resolved_by: string | null;
+      module: string | null;
+      source_id: string | null;
+    };
+    rows.push({
+      id: `ili-${i.id}`,
+      timestamp: i.resolved_at,
+      action: 'integrity_issue_resolved',
+      entityType: i.module || 'integrity_lab',
+      entityId: i.source_id || i.id,
+      actorId: i.resolved_by,
+      before: i.rule_code,
+      after: 'resolved',
+      reasonCode: i.rule_message || i.rule_code,
+      source: 'integrity_lab',
+    });
+  }
+
+  rows.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+
+  return {
+    dateFrom: from,
+    dateTo: to,
+    rows: rows.slice(0, limit),
+    truncationWarning: (partyRows || []).length >= limit ? `Capped at ${limit} party_repair_audit rows` : null,
     loadedAt: new Date().toISOString(),
   };
 }
