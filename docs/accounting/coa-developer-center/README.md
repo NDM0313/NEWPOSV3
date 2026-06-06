@@ -4,7 +4,7 @@ Documentation hub for the unified **Accounting Developer Center** — diagnose C
 
 **Phase B (shipped):** Read-only UI — COA Health + Transaction Trace at `/admin/accounting-developer-center`. No repairs.
 
-**Phase C (approved, gated):** Report trace tabs — priorities locked; start after Phase B PR merges. See [05_PHASE_C_IMPLEMENTATION_PLAN.md](05_PHASE_C_IMPLEMENTATION_PLAN.md).
+**Phase C (complete):** Report trace tabs C2–C6 shipped. See [06_PHASE_C_COMPLETION.md](06_PHASE_C_COMPLETION.md).
 
 ## Documents
 
