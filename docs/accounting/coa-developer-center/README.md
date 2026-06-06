@@ -27,6 +27,8 @@ Documentation hub for the unified **Accounting Developer Center** — diagnose C
 | [11_REPAIR_AUDIT_LOG.md](11_REPAIR_AUDIT_LOG.md) | `developer_repair_audit` schema and rollback notes |
 | [12_PHASE_F_COMPLETION.md](12_PHASE_F_COMPLETION.md) | Phase F completion summary and manual checklist |
 | [13_PHASE_F_PRODUCTION_SMOKE_TEST.md](13_PHASE_F_PRODUCTION_SMOKE_TEST.md) | Production/staging smoke test checklist with risk table |
+| [14_PHASE_F_SMOKE_TEST_RESULTS.md](14_PHASE_F_SMOKE_TEST_RESULTS.md) | Smoke test run results (2026-06-06, commit 51a827d) |
+| [15_ROZNAMCHA_DUPLICATE_TRACE_REVIEW.md](15_ROZNAMCHA_DUPLICATE_TRACE_REVIEW.md) | HQ-RCV-0001 / HQ-RCV-0005 dedupe investigation (read-only, 2026-06-06) |
 
 ## Quick recommendation
 

@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Shield, BookOpen, Lock } from 'lucide-react';
+import { Shield, BookOpen, Lock, ArrowLeft } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
+import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
+import { useNavigation } from '@/app/context/NavigationContext';
 import { canAccessAccountingDeveloperCenter } from '@/app/lib/accountingDeveloperCenterAccess';
+import { leaveSpecialAppRoute } from '@/app/lib/specialRouteNavigation';
 import {
   buildDeveloperCenterUrl,
   DISABLED_PLACEHOLDER_TABS,
@@ -36,6 +39,7 @@ function readUrlState(): { tab: DeveloperCenterTabId; query: string } {
 
 export default function AccountingDeveloperCenterPage() {
   const { companyId, userRole } = useSupabase();
+  const { setCurrentView } = useNavigation();
   const allowed = canAccessAccountingDeveloperCenter(userRole);
   const initial = useMemo(() => readUrlState(), []);
   const [activeTab, setActiveTab] = useState<DeveloperCenterTabId>(initial.tab);
@@ -61,6 +65,11 @@ export default function AccountingDeveloperCenterPage() {
     },
     [urlQuery]
   );
+
+  const exitToErp = useCallback(() => {
+    setCurrentView('dashboard');
+    leaveSpecialAppRoute('/');
+  }, [setCurrentView]);
 
   if (!allowed) {
     return (
@@ -93,10 +102,16 @@ export default function AccountingDeveloperCenterPage() {
             COA health, trace diagnostics (C2–C6), Repair Queue (D), Opening Balance preview & Audit Log (E).
           </p>
         </div>
-        <span className="text-xs text-gray-500 flex items-center gap-1" title="docs/accounting/coa-developer-center/">
-          <BookOpen className="w-3 h-3" />
-          docs/accounting/coa-developer-center/
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={exitToErp} className="gap-1.5">
+            <ArrowLeft className="w-4 h-4" />
+            Back to ERP
+          </Button>
+          <span className="text-xs text-gray-500 flex items-center gap-1" title="docs/accounting/coa-developer-center/">
+            <BookOpen className="w-3 h-3" />
+            docs/accounting/coa-developer-center/
+          </span>
+        </div>
       </div>
 
       <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-2 text-xs text-violet-200/90">

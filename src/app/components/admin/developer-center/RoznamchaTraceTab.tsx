@@ -85,7 +85,10 @@ export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
           <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
-        <span className="text-xs text-violet-400/90 ml-auto">Phase F — send safe repairs to Repair Queue</span>
+        <span className="text-xs text-violet-400/90 ml-auto">
+          Excluded rows are dedupe diagnostics — not missing from Roznamcha. Queue actions are audit-only unless
+          metadata repair is detected.
+        </span>
       </div>
 
       {snapshot && (
@@ -148,9 +151,19 @@ export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
                       <td className="py-2 pr-2 text-gray-400">{row.liquidityAccount}</td>
                       <td className="py-2 pr-2">
                         {row.included ? (
-                          <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-800">yes</Badge>
+                          <Badge
+                            className="bg-emerald-900/40 text-emerald-300 border-emerald-800"
+                            title="Canonical row after dedupe — this is what Roznamcha counts."
+                          >
+                            Canonical
+                          </Badge>
                         ) : (
-                          <Badge className="bg-amber-900/40 text-amber-300 border-amber-800">no</Badge>
+                          <Badge
+                            className="bg-amber-900/40 text-amber-300 border-amber-800"
+                            title="Not missing from Roznamcha — excluded to avoid double counting. See the Canonical row for the same receipt."
+                          >
+                            Excluded (dedupe)
+                          </Badge>
                         )}
                       </td>
                       <td className="py-2 pr-2 text-gray-500">{row.sourcePriority}</td>
@@ -159,6 +172,11 @@ export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
                       </td>
                       <td className="py-2 text-gray-400 max-w-xs">
                         {row.reason}
+                        {!row.included && row.winnerRef ? (
+                          <span className="block text-gray-500 text-[10px] mt-0.5">
+                            Cash already counted via canonical row (ref {row.winnerRef}).
+                          </span>
+                        ) : null}
                         {row.winnerRef ? (
                           <span className="block text-gray-600">Winner ref: {row.winnerRef}</span>
                         ) : null}
@@ -170,12 +188,15 @@ export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs"
+                            title="Audit/report only — does not change cash, payments, or journal lines."
                             onClick={() => {
                               sendToRepairQueue(repair.queueItem!);
-                              toast.success('Sent to Repair Queue');
+                              toast.success('Sent to Repair Queue (audit only)');
                             }}
                           >
-                            Send to queue
+                            {repair.queueItem.actionId === 'roznamcha.report_duplicate_source'
+                              ? 'Report duplicate (audit only)'
+                              : 'Send to queue'}
                           </Button>
                         ) : (
                           <span className="text-gray-600 text-[10px]">{repair.reason}</span>

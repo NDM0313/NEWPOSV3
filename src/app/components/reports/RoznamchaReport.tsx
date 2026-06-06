@@ -19,6 +19,7 @@ import {
 import { BranchSelector } from '@/app/components/layout/BranchSelector';
 import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
+import { formatRoznamchaRowDateTimeDisplay } from '@/app/utils/transactionEventDateTime';
 import {
   getRoznamcha,
   roznamchaJournalSubtitle,
@@ -28,6 +29,29 @@ import {
   type RoznamchaRowWithBalance,
 } from '@/app/services/roznamchaService';
 import { accountService } from '@/app/services/accountService';
+
+const ROZNAMCHA_CACHE_TTL_MS = 30_000;
+const roznamchaResultCache = new Map<string, { at: number; data: RoznamchaResult }>();
+
+function roznamchaCacheKey(
+  companyId: string,
+  branchId: string | null,
+  dateFrom: string,
+  dateTo: string,
+  accountFilter: AccountFilter,
+  includeVoidedReversed: boolean,
+  paymentLedgerAccountId: string | null
+): string {
+  return [
+    companyId,
+    branchId ?? 'all',
+    dateFrom,
+    dateTo,
+    accountFilter,
+    includeVoidedReversed ? '1' : '0',
+    paymentLedgerAccountId ?? '',
+  ].join('|');
+}
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
@@ -178,13 +202,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
 
   const rowDateTime = (r: RoznamchaRowWithBalance) => {
     if (!r.date) return r.time || '—';
-    if (!r.time) return formatDate(new Date(r.date));
-    try {
-      const combined = r.date + 'T' + (r.time.length === 5 ? r.time + ':00' : r.time);
-      return formatDateTime(new Date(combined));
-    } catch {
-      return r.date + ' ' + r.time;
-    }
+    return formatRoznamchaRowDateTimeDisplay(r.date, r.time || '');
   };
 
   const effectiveBranchId = contextBranchId === 'all' ? null : (contextBranchId || null);
@@ -192,6 +210,22 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const load = useCallback(async () => {
     if (!companyId || !dateFrom || !dateTo) {
       setData(null);
+      setLoading(false);
+      return;
+    }
+    const ledgerId = paymentLedgerAccountId.trim() ? paymentLedgerAccountId.trim() : null;
+    const cacheKey = roznamchaCacheKey(
+      companyId,
+      effectiveBranchId,
+      dateFrom,
+      dateTo,
+      accountFilter,
+      includeVoidedReversed,
+      ledgerId
+    );
+    const cached = roznamchaResultCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < ROZNAMCHA_CACHE_TTL_MS) {
+      setData(cached.data);
       setLoading(false);
       return;
     }
@@ -204,11 +238,12 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         dateTo,
         accountFilter,
         includeVoidedReversed,
-        paymentLedgerAccountId.trim() ? paymentLedgerAccountId.trim() : null
+        ledgerId
       );
+      roznamchaResultCache.set(cacheKey, { at: Date.now(), data: result });
       setData(result);
     } catch {
-      setData(null);
+      if (!cached) setData(null);
     } finally {
       setLoading(false);
     }
@@ -474,12 +509,18 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
         </p>
       </div>
 
-      {loading ? (
+      {loading && !data ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
         </div>
       ) : data ? (
         <>
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-2 text-xs text-blue-400">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Refreshing roznamcha…
+            </div>
+          ) : null}
           {/* 2. SUMMARY CARDS */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <SummaryCard

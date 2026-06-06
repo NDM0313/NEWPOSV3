@@ -4,6 +4,8 @@ import type { User } from '../../../types';
 import { getDayBook, type DayBookJournalEntry } from '../../../api/reports';
 import {
   getRoznamcha,
+  roznamchaJournalSubtitle,
+  roznamchaRefDisplay,
   type AccountFilter,
   type RoznamchaResult,
   type RoznamchaRowWithBalance,
@@ -13,6 +15,7 @@ import { ReportHeader } from './_shared/ReportHeader';
 import { DateRangeBar, makeInitialRange, type DateRangeValue } from './_shared/DateRangeBar';
 import { ReportShell, ReportCard } from './_shared/ReportShell';
 import { formatAmount, formatDate, dateRangeLabel, displayReferenceNumber } from './_shared/format';
+import { formatRoznamchaRowDateTimeDisplay } from '../../../utils/transactionEventDateTime';
 import { PdfPreviewModal } from '../../shared/PdfPreviewModal';
 import { TimelinePreviewPdf } from '../../shared/TimelinePreviewPdf';
 import { RoznamchaPreviewPdf } from '../../shared/RoznamchaPreviewPdf';
@@ -40,7 +43,7 @@ function effectiveBranchId(scope: BranchScope, sessionBranchId?: string | null):
 }
 
 function rowSortTimestamp(r: RoznamchaRowWithBalance): number {
-  const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '00:00:00';
+  const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '12:00:00';
   try {
     return new Date(`${r.date}T${t}`).getTime();
   } catch {
@@ -318,8 +321,11 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
       {mode === 'cash' && (
         <div className="px-4 -mt-2 mb-2">
           <p className="text-[10px] text-[#9CA3AF] border border-[#374151] rounded-lg px-3 py-2 bg-[#0F172A]/80">
-            One row per <span className="text-[#D1D5DB] font-medium">payment</span>. Reversal journal entries appear
-            under All entries, not here.
+            Cash / bank / wallet receive &amp; pay only — from{' '}
+            <span className="text-[#D1D5DB] font-medium">payments</span> and{' '}
+            <span className="text-[#D1D5DB] font-medium">rental_payments</span>. One row per actual movement.
+            Rental receipts show as <span className="text-[#D1D5DB] font-medium">REN-*-PAY</span> or RCV, not duplicate JE.
+            Voided reversed receipts are excluded by default.
           </p>
         </div>
       )}
@@ -470,17 +476,7 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
                 <ul className="divide-y divide-[#374151]">
                   {orderedRozRows.map((r) => {
                     const isIn = r.direction === 'IN';
-                    const t = r.time?.length === 5 ? `${r.time}:00` : r.time || '00:00:00';
-                    const timeLabel = (() => {
-                      try {
-                        return new Date(`${r.date}T${t}`).toLocaleTimeString('en-PK', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        });
-                      } catch {
-                        return r.time;
-                      }
-                    })();
+                    const timeLabel = formatRoznamchaRowDateTimeDisplay(r.date, r.time || '');
                     const meta = roznamchaMetaSubline(r);
                     const clickable = !r.id.startsWith('rp-');
                     return (
@@ -499,10 +495,14 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold text-white truncate">{r.details}</p>
-                              <p className="text-[11px] text-[#9CA3AF] truncate">
-                                {r.ref}
-                                {r.journalEntryNo ? ` · ${r.journalEntryNo}` : ''}
+                              <p className="text-[11px] text-[#9CA3AF] truncate font-mono">
+                                {roznamchaRefDisplay(r)}
                               </p>
+                              {roznamchaJournalSubtitle(r) ? (
+                                <p className="text-[10px] text-[#6B7280] truncate font-mono">
+                                  {roznamchaJournalSubtitle(r)}
+                                </p>
+                              ) : null}
                               {meta && <p className="text-[10px] text-[#6B7280] truncate mt-0.5">{meta}</p>}
                               <p className="text-[11px] text-[#9CA3AF] mt-0.5">
                                 {r.accountName?.trim() || r.accountLabel || '—'}

@@ -20,10 +20,14 @@ import {
   MovementAggregate,
 } from '../../services/inventoryService';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
-import { exportToCSV, exportToExcel, exportToPDF, ExportData } from '../../utils/exportUtils';
+import { exportToCSV, exportToExcel, ExportData } from '../../utils/exportUtils';
 import { ListToolbar } from '../ui/list-toolbar';
 import { Pagination } from '../ui/pagination';
 import { toast } from 'sonner';
+import { PdfPreviewModal, type PdfPreviewOrientation } from '@/app/components/shared/PdfPreviewModal';
+import { TabularReportPreview } from './shared/TabularReportPreview';
+import { buildTabularPrintSnapshot } from './shared/buildTabularPrintSnapshot';
+import { useReportExport } from './shared/useReportExport';
 
 // --------------- Types ---------------
 
@@ -52,7 +56,13 @@ export const StockReportPage = () => {
   const { inventorySettings } = useSettings();
   const { setCurrentView } = useNavigation();
   const { formatCurrency } = useFormatCurrency();
+  const reportExport = useReportExport({ companyId, documentType: 'ledger' });
+  const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
   const enablePacking = inventorySettings.enablePacking;
+
+  useEffect(() => {
+    setPrintOrientation(reportExport.reportExportSettings.stockReportOrientation);
+  }, [reportExport.reportExportSettings.stockReportOrientation]);
 
   // Data state
   const [overviewRows, setOverviewRows] = useState<InventoryOverviewRow[]>([]);
@@ -93,6 +103,10 @@ export const StockReportPage = () => {
       setLoading(false);
     }
   }, [companyId, branchId]);
+
+  useEffect(() => {
+    if (companyId) void reportExport.ensureBrand();
+  }, [companyId, reportExport.ensureBrand]);
 
   useEffect(() => {
     if (companyId) loadData();
@@ -238,69 +252,85 @@ export const StockReportPage = () => {
   const filterActiveCount = [categoryFilter !== 'all', statusFilter !== 'all'].filter(Boolean).length;
 
   const columnsList = useMemo(() => [
-    { key: 'sku', label: 'SKU' },
-    { key: 'product', label: 'Product' },
-    { key: 'variation', label: 'Variation' },
-    { key: 'category', label: 'Category' },
-    { key: 'unit', label: 'Unit' },
-    { key: 'purchasePrice', label: 'Purchase Price' },
-    { key: 'sellingPrice', label: 'Selling Price' },
-    { key: 'currentStock', label: 'Current Stock' },
-    { key: 'stockValueCost', label: 'Value (Cost)' },
-    { key: 'stockValueRetail', label: 'Value (Retail)' },
-    { key: 'totalSold', label: 'Total Sold' },
-    { key: 'totalTransferred', label: 'Total Transferred' },
-    { key: 'totalAdjusted', label: 'Total Adjusted' },
+    { key: 'sku', label: 'SKU', align: 'left' as const },
+    { key: 'product', label: 'Product', align: 'left' as const },
+    { key: 'variation', label: 'Variation', align: 'left' as const },
+    { key: 'category', label: 'Category', align: 'left' as const },
+    { key: 'unit', label: 'Unit', align: 'center' as const },
+    { key: 'purchasePrice', label: 'Purchase Price', align: 'right' as const },
+    { key: 'sellingPrice', label: 'Selling Price', align: 'right' as const },
+    { key: 'currentStock', label: 'Current Stock', align: 'center' as const },
+    { key: 'stockValueCost', label: 'Value (Cost)', align: 'right' as const },
+    { key: 'stockValueRetail', label: 'Value (Retail)', align: 'right' as const },
+    { key: 'totalSold', label: 'Total Sold', align: 'center' as const },
+    { key: 'totalTransferred', label: 'Total Transferred', align: 'center' as const },
+    { key: 'totalAdjusted', label: 'Total Adjusted', align: 'center' as const },
   ], []);
 
   const visibleCols = columnsList.filter(c => visibleColumns[c.key] !== false).map(c => c.key);
 
+  const stockRowValue = useCallback(
+    (row: StockReportRow, key: string, forDisplay = false): string | number => {
+      switch (key) {
+        case 'sku': return row.sku;
+        case 'product': return row.productName;
+        case 'variation': return row.variationLabel;
+        case 'category': return row.category;
+        case 'unit': return row.unit;
+        case 'purchasePrice': return forDisplay ? formatCurrency(row.purchasePrice) : row.purchasePrice;
+        case 'sellingPrice': return forDisplay ? formatCurrency(row.sellingPrice) : row.sellingPrice;
+        case 'currentStock': return row.currentStock;
+        case 'stockValueCost': return forDisplay ? formatCurrency(row.stockValueAtCost) : row.stockValueAtCost;
+        case 'stockValueRetail': return forDisplay ? formatCurrency(row.stockValueAtRetail) : row.stockValueAtRetail;
+        case 'totalSold': return row.totalSold;
+        case 'totalTransferred': return row.totalTransferred;
+        case 'totalAdjusted': return row.totalAdjusted;
+        default: return '';
+      }
+    },
+    [formatCurrency],
+  );
+
+  const buildStockExportData = useCallback((): ExportData => {
+    const snap = buildTabularPrintSnapshot({
+      allColumns: columnsList,
+      visibleColumns,
+      rows: filteredRows,
+      cellValue: (row, key) => stockRowValue(row, key),
+    });
+    return {
+      title: 'Stock Report',
+      headers: snap.columns.map((c) => c.label),
+      rows: snap.rows,
+    };
+  }, [columnsList, visibleColumns, filteredRows, stockRowValue]);
+
+  const previewTable = useMemo(
+    () =>
+      buildTabularPrintSnapshot({
+        allColumns: columnsList,
+        visibleColumns,
+        rows: filteredRows,
+        cellValue: (row, key) => stockRowValue(row, key, true),
+      }),
+    [columnsList, visibleColumns, filteredRows, stockRowValue],
+  );
+
   // --------------- Export ---------------
 
   const handleExportCSV = useCallback(() => {
-    const data: ExportData = {
-      title: 'Stock Report',
-      headers: ['SKU', 'Product', 'Variation', 'Category', 'Unit', 'Purchase Price', 'Selling Price', 'Current Stock', 'Value (Cost)', 'Value (Retail)', 'Total Sold', 'Total Transferred', 'Total Adjusted'],
-      rows: filteredRows.map(r => [
-        r.sku, r.productName, r.variationLabel, r.category, r.unit,
-        r.purchasePrice, r.sellingPrice, r.currentStock,
-        r.stockValueAtCost, r.stockValueAtRetail,
-        r.totalSold, r.totalTransferred, r.totalAdjusted,
-      ]),
-    };
-    exportToCSV(data, 'Stock_Report');
+    exportToCSV(buildStockExportData(), 'Stock_Report');
     toast.success('CSV exported');
-  }, [filteredRows]);
+  }, [buildStockExportData]);
 
   const handleExportExcel = useCallback(() => {
-    const data: ExportData = {
-      title: 'Stock Report',
-      headers: ['SKU', 'Product', 'Variation', 'Category', 'Unit', 'Purchase Price', 'Selling Price', 'Current Stock', 'Value (Cost)', 'Value (Retail)', 'Total Sold', 'Total Transferred', 'Total Adjusted'],
-      rows: filteredRows.map(r => [
-        r.sku, r.productName, r.variationLabel, r.category, r.unit,
-        r.purchasePrice, r.sellingPrice, r.currentStock,
-        r.stockValueAtCost, r.stockValueAtRetail,
-        r.totalSold, r.totalTransferred, r.totalAdjusted,
-      ]),
-    };
-    exportToExcel(data, 'Stock_Report');
+    exportToExcel(buildStockExportData(), 'Stock_Report');
     toast.success('Excel exported');
-  }, [filteredRows]);
+  }, [buildStockExportData]);
 
   const handleExportPDF = useCallback(() => {
-    const data: ExportData = {
-      title: 'Stock Report',
-      headers: ['SKU', 'Product', 'Variation', 'Category', 'Unit', 'Purchase Price', 'Selling Price', 'Stock', 'Value (Cost)', 'Value (Retail)', 'Sold', 'Transferred', 'Adjusted'],
-      rows: filteredRows.map(r => [
-        r.sku, r.productName, r.variationLabel, r.category, r.unit,
-        r.purchasePrice, r.sellingPrice, r.currentStock,
-        r.stockValueAtCost, r.stockValueAtRetail,
-        r.totalSold, r.totalTransferred, r.totalAdjusted,
-      ]),
-    };
-    exportToPDF(data, 'Stock_Report');
-    toast.success('PDF exported');
-  }, [filteredRows]);
+    void reportExport.openPreview();
+  }, [reportExport]);
 
   // --------------- Number formatting ---------------
 
@@ -310,6 +340,43 @@ export const StockReportPage = () => {
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-[#0B0F19]">
+      {reportExport.previewOpen && reportExport.brand ? (
+        <PdfPreviewModal
+          open={reportExport.previewOpen}
+          onClose={reportExport.closePreview}
+          title="Stock Report"
+          documentType="ledger"
+          reference="Stock"
+          format={reportExport.printFormat}
+          orientation={printOrientation}
+          showOrientationToggle
+          onOrientationChange={setPrintOrientation}
+          fitSinglePage={filteredRows.length <= 50}
+          pageNumbers={reportExport.reportExportSettings.showReportFooter !== false}
+        >
+          <TabularReportPreview
+            brand={reportExport.brand}
+            title="Stock Report"
+            subtitle={`${filteredRows.length} product row(s)`}
+            generatedAt={new Date().toLocaleString()}
+            columns={previewTable.columns}
+            rows={previewTable.rows}
+            fieldVisibility={reportExport.fieldVisibility}
+            showHeader={reportExport.reportExportSettings.showReportHeader !== false}
+            showFooter={reportExport.reportExportSettings.showReportFooter !== false}
+            compact={filteredRows.length <= 50}
+            fontSize={reportExport.reportFontSize}
+            orientation={printOrientation}
+            stats={[
+              { label: 'Closing (Cost)', value: formatCurrency(summary.closingCost) },
+              { label: 'Closing (Retail)', value: formatCurrency(summary.closingRetail) },
+              { label: 'Potential Profit', value: formatCurrency(summary.potentialProfit) },
+              { label: 'Margin %', value: `${summary.profitMargin.toFixed(2)}%` },
+            ]}
+          />
+        </PdfPreviewModal>
+      ) : null}
+
       {/* Header */}
       <div className="shrink-0 px-6 py-4 border-b border-gray-800 flex justify-between items-start">
         <div>

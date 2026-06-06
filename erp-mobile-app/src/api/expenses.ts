@@ -88,13 +88,24 @@ export async function getExpenses(
       : options?.accessibleBranchIds?.length
         ? `acc:${[...options.accessibleBranchIds].sort().join(',')}`
         : 'all';
+  if (
+    (!branchId || branchId === 'all' || branchId === 'default') &&
+    options?.accessibleBranchIds !== undefined &&
+    options.accessibleBranchIds.length === 0
+  ) {
+    return { data: [], error: 'No branch access configured for your account.' };
+  }
+
   const cacheKey = listCacheKeys.expenses(companyId, branchKey);
   const cached = await readThroughCache(
     cacheKey,
     async () => fetchExpensesOnline(companyId, branchId, options?.accessibleBranchIds),
     [],
   );
-  return { data: cached.data, error: cached.error };
+  if (cached.error && (!cached.data || cached.data.length === 0)) {
+    return { data: [], error: cached.error };
+  }
+  return { data: cached.data ?? [], error: cached.error };
 }
 
 async function enrichExpenseRowsWithCreatorNames(rows: Record<string, unknown>[]): Promise<void> {
@@ -205,7 +216,12 @@ async function fetchExpensesOnline(
     error = retry.error;
   }
 
-  if (error?.message?.includes('expense_category_id') || error?.message?.includes('receipt_url') || error?.message?.includes('payment_account_id')) {
+  if (
+    error?.message?.includes('expense_category_id') ||
+    error?.message?.includes('receipt_url') ||
+    error?.message?.includes('payment_account_id') ||
+    error?.message?.includes('expense_no')
+  ) {
     let q3 = supabase
       .from('expenses')
       .select(
@@ -229,7 +245,11 @@ async function fetchExpensesOnline(
 
   const rows = (data || []) as Record<string, unknown>[];
   await enrichExpenseRowsWithCreatorNames(rows);
-  await enrichExpenseRowsWithPostedPaymentAccount(rows, companyId);
+  try {
+    await enrichExpenseRowsWithPostedPaymentAccount(rows, companyId);
+  } catch (e) {
+    console.warn('[fetchExpensesOnline] enrichExpenseRowsWithPostedPaymentAccount:', e);
+  }
   return { data: rows.map(mapExpenseRow), error: null };
 }
 
@@ -513,12 +533,15 @@ export async function getExtraServiceClearingLines(
 }> {
   if (!isSupabaseConfigured) return { data: [], error: 'App not configured.' };
 
-  const twoArgRpc = {
+  // Fetch all open lines; category narrowing is done client-side (legacy sale_charges
+  // may lack expense_category_id and would be dropped by the RPC filter).
+  const rpcArgs = {
     p_company_id: companyId,
     p_tailor_contact_id: filters?.tailorContactId ?? null,
+    p_expense_category_id: null,
   };
 
-  const { data, error } = await supabase.rpc('extra_service_clearing_lines', twoArgRpc);
+  const { data, error } = await supabase.rpc('extra_service_clearing_lines', rpcArgs);
 
   if (error) {
     if (error.code === '42883' || String(error.message).includes('does not exist')) {

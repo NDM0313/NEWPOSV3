@@ -1015,6 +1015,7 @@ export interface AddRentalPaymentParams {
   /** Cash/Bank/Wallet account UUID (accounts table) selected by user. */
   paymentAccountId?: string | null;
   paymentDate?: string;
+  paymentAt?: string | null;
   userId?: string | null;
 }
 
@@ -1137,6 +1138,11 @@ export async function addRentalPayment(
       });
     } catch {
       // rental_payments insert is informational; RPC already updated rentals totals.
+    }
+
+    if (paymentId && params.paymentAt) {
+      const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+      await patchPaymentCreatedAt(paymentId, params.paymentAt);
     }
 
     return { error: null, paymentId, referenceNumber };

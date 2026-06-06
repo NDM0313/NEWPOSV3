@@ -683,9 +683,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const saleInvDisplay = (journalEntry as { _display_sale_invoice_no?: string })._display_sale_invoice_no;
     const purPoDisplay = (journalEntry as { _display_purchase_po_no?: string })._display_purchase_po_no;
-    // Prefer payment voucher (list/enriched or embedded join) before PO/invoice so supplier settlement shows PAY-xx not PUR-xx.
+    const expenseNoDisplay = (journalEntry as { _display_expense_no?: string })._display_expense_no;
+    // Expense: show EXP-* document no, not internal PAY-* payment voucher.
     const operationalRef =
-      listPaymentRef || embeddedPaymentRef || saleInvDisplay || purPoDisplay || undefined;
+      source === 'Expense' && expenseNoDisplay
+        ? expenseNoDisplay
+        : listPaymentRef || embeddedPaymentRef || saleInvDisplay || purPoDisplay || expenseNoDisplay || undefined;
     const referenceNo =
       operationalRef || journalEntry.entry_no || journalEntry.id?.substring(0, 8) || 'N/A';
     if (operationalRef) metadata.documentNo = operationalRef;

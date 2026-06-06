@@ -913,7 +913,7 @@ export const ExpensesDashboard = () => {
                                 {new Date(expense.date).toLocaleDateString()}
                              </div>
                           </td>
-                          <td className="px-6 py-4 text-gray-500 font-mono text-xs">
+                          <td className="px-6 py-4 text-white font-mono font-bold text-[0.825rem]">
                              {expense.expenseNo || '—'}
                           </td>
                           <td className="px-6 py-4">

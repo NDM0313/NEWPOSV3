@@ -76,7 +76,7 @@ export function explainRoznamchaInclusion(
     }
     return {
       included: false,
-      reason: `Excluded — merged into higher-priority row (${shared.join(', ')})`,
+      reason: `Excluded duplicate — already counted via canonical row (${shared.join(', ')})`,
       winnerRef: winner.ref,
       winnerId: winner.id,
     };

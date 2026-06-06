@@ -11,7 +11,8 @@ test('canApplyDeveloperRepair allows developer and super-admin variants', () => 
   assert.equal(canApplyDeveloperRepair('developer'), true);
   assert.equal(canApplyDeveloperRepair('super_admin'), true);
   assert.equal(canApplyDeveloperRepair('superadmin'), true);
-  assert.equal(canApplyDeveloperRepair('admin'), false);
+  assert.equal(canApplyDeveloperRepair('admin'), true);
+  assert.equal(canApplyDeveloperRepair('owner'), true);
   assert.equal(canApplyDeveloperRepair('accounting_auditor'), false);
 });
 

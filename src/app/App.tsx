@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { FeatureFlagProvider, useFeatureFlag } from './context/FeatureFlagContext';
 import { NavigationProvider, useNavigation } from './context/NavigationContext';
 import { Layout } from './components/layout/Layout';
@@ -123,6 +123,12 @@ const AppContent = () => {
   const { hasPermission } = useCheckPermission();
   const studioProductionV2 = featureFlags?.studio_production_v2 === true;
   const studioProductionV3 = featureFlags?.studio_production_v3 === true;
+  const [, bumpRouteSync] = useState(0);
+  useEffect(() => {
+    const syncRoute = () => bumpRouteSync((n) => n + 1);
+    window.addEventListener('popstate', syncRoute);
+    return () => window.removeEventListener('popstate', syncRoute);
+  }, []);
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
 
   // 🎯 Enable global keyboard shortcuts
@@ -155,10 +161,7 @@ const AppContent = () => {
   ) {
     return (<Layout><AccountingTestBenchPage /><GlobalDrawer /></Layout>);
   }
-  if (
-    pathname === '/admin/accounting-developer-center' ||
-    currentView === 'accounting-developer-center'
-  ) {
+  if (pathname === '/admin/accounting-developer-center') {
     return (<Layout><AccountingDeveloperCenterPage /><GlobalDrawer /></Layout>);
   }
 

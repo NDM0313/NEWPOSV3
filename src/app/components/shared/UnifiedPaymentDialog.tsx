@@ -18,7 +18,10 @@ import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh
 import { dispatchAccountingEditCommitted } from '@/app/lib/unifiedTransactionEdit';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
 import { rebuildManualReceiptFifoAllocations, rebuildManualSupplierFifoAllocations } from '@/app/services/paymentAllocationService';
-import { syncJournalEntryDateByPaymentId } from '@/app/services/journalTransactionDateSyncService';
+import {
+  syncExpenseDateByPaymentId,
+  syncJournalEntryDateByPaymentId,
+} from '@/app/services/journalTransactionDateSyncService';
 
 // ============================================
 // 🎯 TYPES
@@ -722,7 +725,7 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
             .from('payments')
             .update(patch)
             .eq('id', paymentIdForUpdate)
-            .select('id, company_id, reference_type')
+            .select('id, company_id, reference_type, reference_id')
             .single();
           if (upErr) throw upErr;
           const rt = String((updatedPayment as any)?.reference_type || '').toLowerCase();
@@ -745,6 +748,10 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
               companyId,
               paymentId: paymentIdForUpdate,
               entryDate: paymentDate,
+            });
+            await syncExpenseDateByPaymentId({
+              paymentId: paymentIdForUpdate,
+              expenseDate: paymentDate,
             });
           }
           // Supplier Add Entry / on-account manual_payment: amount edit updated `payments` only — GL must get a delta JE (same as purchase-linked path).

@@ -5,7 +5,6 @@ import { getCurrentLocalTimestamp, localNowDateString } from '@/app/utils/localD
 // Manages expenses with auto-numbering and accounting integration
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
-import { documentNumberService } from '@/app/services/documentNumberService';
 import { useAccountingOptional } from '@/app/context/AccountingContext';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { expenseService, Expense as SupabaseExpense } from '@/app/services/expenseService';
@@ -284,34 +283,38 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      // ERP Numbering Engine: atomic, duplicate-free
-      const expenseNo = await documentNumberService.getNextDocumentNumber(companyId, effectiveBranchId, 'expense');
+      const status =
+        expenseData.status === 'paid'
+          ? 'paid'
+          : expenseData.status === 'approved'
+            ? 'approved'
+            : expenseData.status === 'rejected'
+              ? 'rejected'
+              : 'submitted';
 
-      // Convert to Supabase format (expense_no = EXP-0001 style from document numbering)
-      const supabaseExpense: Partial<SupabaseExpense> = {
-        company_id: companyId,
-        branch_id: effectiveBranchId,
-        expense_no: expenseNo,
-        expense_date: expenseData.date,
-        category: mapCategoryToSupabase(expenseData.category),
-        description: expenseData.description,
-        amount: expenseData.amount,
-        payment_method: expenseData.paymentMethod,
-        status: expenseData.status === 'paid' ? 'paid' : expenseData.status === 'approved' ? 'approved' : expenseData.status === 'rejected' ? 'rejected' : 'submitted',
-        notes: expenseData.notes,
-        created_by: user.id,
-      };
-      if (options?.payment_account_id) supabaseExpense.payment_account_id = options.payment_account_id;
-      if (options?.paidToUserId) (supabaseExpense as any).paid_to_user_id = options.paidToUserId;
-      if (options?.expense_category_id) (supabaseExpense as any).expense_category_id = options.expense_category_id;
-      if (expenseData.payeeName?.trim()) (supabaseExpense as any).vendor_name = expenseData.payeeName.trim();
+      const result = await expenseService.createExpenseDocument({
+        companyId,
+        branchId: effectiveBranchId,
+        createdBy: user.id,
+        expense: {
+          expense_date: expenseData.date,
+          category: mapCategoryToSupabase(expenseData.category),
+          description: expenseData.description,
+          amount: expenseData.amount,
+          payment_method: expenseData.paymentMethod,
+          status,
+          payment_account_id: options?.payment_account_id,
+        },
+        patch: {
+          paid_to_user_id: options?.paidToUserId,
+          expense_category_id: options?.expense_category_id,
+          vendor_name: expenseData.payeeName?.trim() || undefined,
+        },
+      });
 
-      // Save to Supabase
-      const result = await expenseService.createExpense(supabaseExpense);
-
-      // Convert back to app format (use generated expenseNo if DB doesn't return expense_no)
+      const expenseNo = String((result as { expense_no?: string }).expense_no || '');
       const newExpense = convertFromSupabaseExpense(result);
-      if (!newExpense.expenseNo) (newExpense as { expenseNo: string }).expenseNo = expenseNo;
+      if (!newExpense.expenseNo && expenseNo) (newExpense as { expenseNo: string }).expenseNo = expenseNo;
       
       // Update local state
       setExpenses(prev => [newExpense, ...prev]);
@@ -320,20 +323,19 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'user', entityId: options.paidToUserId } }));
       }
 
-      // Auto-post to accounting if paid
+      // Auto-post to accounting if paid (same RPC path as mobile ERP)
       if (newExpense.status === 'paid') {
-        accounting?.recordExpense({
-          expenseId: newExpense.id,
-          category: newExpense.category,
-          amount: newExpense.amount,
-          paymentMethod: newExpense.paymentMethod,
-          date: newExpense.date,
-          description: newExpense.description,
-          creditAccountId: options?.payment_account_id,
-        });
+        const post = await expenseService.postExpenseAccounting(newExpense.id);
+        if (!post.success) {
+          toast.warning(
+            post.error
+              ? `Expense saved; accounting post failed: ${post.error}`
+              : 'Expense saved; cash book may be missing until accounting posts.',
+          );
+        }
       }
 
-      toast.success(`Expense ${expenseNo} created successfully!`);
+      toast.success(`Expense ${newExpense.expenseNo || expenseNo} created successfully!`);
       
       return newExpense;
     } catch (error: any) {
@@ -796,17 +798,14 @@ export const ExpenseProvider = ({ children }: { children: ReactNode }) => {
         { silent: true }
       );
 
-      const ok = await (accounting?.recordExpense({
-        expenseId: expense.id,
-        category: String(expense.category),
-        description: expense.description,
-        amount: expense.amount,
-        paymentMethod: paymentMethod as any,
-        date: expense.date,
-      }) ?? Promise.resolve(false));
+      const post = await expenseService.postExpenseAccounting(expense.id);
 
-      if (!ok) {
-        toast.error('Expense marked paid but accounting post failed. Check Chart of Accounts.');
+      if (!post.success) {
+        toast.error(
+          post.error
+            ? `Expense marked paid but accounting post failed: ${post.error}`
+            : 'Expense marked paid but accounting post failed. Check Chart of Accounts.',
+        );
       } else {
         toast.success(`${expense.expenseNo} marked as paid and posted to accounting!`);
       }

@@ -221,6 +221,7 @@ export const documentNumberService = {
   /**
    * ERP Numbering Engine: get next document number (atomic, duplicate-free, multi-user safe).
    * Uses generate_document_number RPC → erp_document_sequences. PAY refs: use this only; do not use document_sequences for new payments.
+   * Always pass the real branch UUID; Postgres resolves global vs branch_based bucket. Expenses: prefer create_expense_document RPC.
    * @param includeYear - if true, format is PREFIX-YY-NNNN (e.g. SL-26-0001); else PREFIX-NNNN
    */
   async getNextDocumentNumber(

@@ -19,6 +19,21 @@ test('buildNumberingDryRunPreviews flags out_of_sync rows', () => {
   ]);
   assert.match(rows[0].previewAction, /sync/i);
   assert.equal(rows[0].status, 'out_of_sync');
+  assert.equal(rows[0].documentType, 'PAYMENT');
+});
+
+test('buildNumberingDryRunPreviews preserves documentType when not double-wrapped', () => {
+  const first = buildNumberingDryRunPreviews([
+    {
+      document_type: 'PRODUCT',
+      label: 'Product',
+      sequence_last: 28,
+      database_max: 30,
+      effective_max: 30,
+      status: 'out_of_sync',
+    },
+  ]);
+  assert.equal(first[0].documentType, 'PRODUCT');
 });
 
 test('isValidRepairConfirmPhrase requires exact match', () => {

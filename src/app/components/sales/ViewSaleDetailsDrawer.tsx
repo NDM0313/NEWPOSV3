@@ -54,6 +54,8 @@ import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
 import { cn, formatBoxesPieces } from "../ui/utils";
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { usePrinterConfig } from '@/app/hooks/usePrinterConfig';
+import { getThermalDimensions } from '@/app/constants/thermalPrintDimensions';
 import { toast } from 'sonner';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import { AttachmentPreviewRow } from '@/app/components/shared/AttachmentPreviewRow';
@@ -171,6 +173,7 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
   const { company, inventorySettings, businessSettings } = useSettings();
   const enableBespoke = businessSettings.enableBespokeOrders;
   const { formatCurrency } = useFormatCurrency();
+  const { config: printerConfig } = usePrinterConfig();
   const enablePacking = inventorySettings.enablePacking;
   const [sale, setSale] = useState<Sale | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1891,15 +1894,23 @@ export const ViewSaleDetailsDrawer: React.FC<ViewSaleDetailsDrawerProps> = ({
 
       {/* Print / PDF / Share – single document engine (Phase A) */}
       {showPrintLayout && sale && companyId && (
-        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
+        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 thermal-print-overlay">
+          <div
+            className={`bg-white rounded-lg w-full max-h-[90vh] overflow-auto ${
+              printLayoutType === 'Thermal' ? 'thermal-print-modal-shell' : 'max-w-4xl'
+            }`}
+            style={
+              printLayoutType === 'Thermal'
+                ? { maxWidth: getThermalDimensions(printerConfig.paperSize).modalMaxPx }
+                : undefined
+            }
+          >
             <UnifiedSalesInvoiceView
               saleId={sale.id}
               companyId={companyId}
               templateType={printLayoutType}
               onClose={() => setShowPrintLayout(false)}
               showPrintAction={true}
-              thermalPaperSize="80mm"
             />
           </div>
         </div>

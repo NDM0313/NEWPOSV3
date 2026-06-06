@@ -1206,6 +1206,7 @@ export async function recordCustomerPayment(params: {
   accountId: string;
   paymentMethod: string;
   paymentDate: string; // YYYY-MM-DD
+  paymentAt?: string | null;
   notes?: string | null;
   referenceNumber?: string | null;
   createdBy?: string | null;
@@ -1279,6 +1280,10 @@ export async function recordCustomerPayment(params: {
   if (error) return { data: null, error: error.message };
   const res = data as { success?: boolean; payment_id?: string; reference_number?: string; error?: string } | null;
   if (res?.success && res.payment_id) {
+    if (params.paymentAt) {
+      const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+      await patchPaymentCreatedAt(res.payment_id, params.paymentAt);
+    }
     return { data: { payment_id: res.payment_id, reference_number: res.reference_number }, error: null };
   }
   return { data: null, error: res?.error ?? 'Payment failed.' };
@@ -1317,6 +1322,7 @@ export async function recordOnAccountCustomerPayment(params: {
   accountId: string;
   paymentMethod: string;
   paymentDate: string;
+  paymentAt?: string | null;
   notes?: string | null;
   bankTraceId?: string | null;
   createdBy?: string | null;
@@ -1376,6 +1382,10 @@ export async function recordOnAccountCustomerPayment(params: {
   let upd = await supabase.from('payments').update(patch).eq('id', paymentId);
   if (upd.error) {
     console.warn('[recordOnAccountCustomerPayment] payments patch:', upd.error.message);
+  }
+  if (params.paymentAt) {
+    const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
+    await patchPaymentCreatedAt(paymentId, params.paymentAt);
   }
   return {
     data: { payment_id: paymentId, reference_number: res.reference_number },

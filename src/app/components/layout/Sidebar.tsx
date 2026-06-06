@@ -36,6 +36,7 @@ import { useSupabase } from '../../context/SupabaseContext';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { canAccessTechnicalDeveloperSettings } from '@/app/lib/developerAccountingAccess';
 import { canAccessAccountingDeveloperCenter } from '@/app/lib/accountingDeveloperCenterAccess';
+import { leaveSpecialAppRoute } from '@/app/lib/specialRouteNavigation';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -165,16 +166,8 @@ export const Sidebar = () => {
       if (typeof window !== 'undefined') {
         if (item.id === 'permission-inspector') {
           window.history.pushState({}, '', '/admin/permission-inspector');
-        } else if (
-          pathname === '/admin/permission-inspector' ||
-          pathname === '/admin/developer-integrity-lab' ||
-          pathname === '/admin/accounting-test-bench' ||
-          pathname === '/test/accounting-edit-trace' ||
-          pathname === '/test/ar-ap-truth-lab' ||
-          pathname === '/test/expense-edit-trace' ||
-          pathname === '/test/accounting-accounts-hierarchy'
-        ) {
-          window.history.pushState({}, '', '/');
+        } else {
+          leaveSpecialAppRoute('/');
         }
       }
     }
@@ -313,17 +306,8 @@ export const Sidebar = () => {
                                 window.history.pushState({}, '', '/test/ar-ap-truth-lab');
                               } else if (child.id === 'expense-edit-trace') {
                                 window.history.pushState({}, '', '/test/expense-edit-trace');
-                              } else if (
-                                p === '/admin/permission-inspector' ||
-                                p === '/admin/developer-integrity-lab' ||
-                                p === '/admin/accounting-developer-center' ||
-                                p === '/admin/accounting-test-bench' ||
-                                p === '/test/accounting-edit-trace' ||
-                                p === '/test/ar-ap-truth-lab' ||
-                                p === '/test/expense-edit-trace' ||
-                                p === '/test/accounting-accounts-hierarchy'
-                              ) {
-                                window.history.pushState({}, '', '/');
+                              } else {
+                                leaveSpecialAppRoute('/');
                               }
                             }
                           }}

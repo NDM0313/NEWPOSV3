@@ -912,6 +912,17 @@ export const accountingService = {
       (paymentsList || []).forEach((p: any) => {
         if (p.reference_type === 'purchase' && p.reference_id) purchaseIdsForPo.add(String(p.reference_id));
       });
+      const expenseIdsForNo = new Set<string>();
+      validEntries.forEach((e: any) => {
+        const rtN = String(e.reference_type || '')
+          .toLowerCase()
+          .trim()
+          .replace(/\s+/g, '_');
+        if (rtN === 'expense' && e.reference_id) expenseIdsForNo.add(String(e.reference_id));
+      });
+      (paymentsList || []).forEach((p: any) => {
+        if (p.reference_type === 'expense' && p.reference_id) expenseIdsForNo.add(String(p.reference_id));
+      });
 
       const saleInvoiceNoById = new Map<string, string>();
       if (saleIdsForInvoice.size > 0) {
@@ -932,6 +943,17 @@ export const accountingService = {
           .in('id', [...purchaseIdsForPo]);
         (purRows || []).forEach((r: any) => {
           if (r?.id && r.po_no) purchasePoNoById.set(String(r.id), String(r.po_no));
+        });
+      }
+
+      const expenseNoById = new Map<string, string>();
+      if (expenseIdsForNo.size > 0) {
+        const { data: expRows } = await supabase
+          .from('expenses')
+          .select('id, expense_no')
+          .in('id', [...expenseIdsForNo]);
+        (expRows || []).forEach((r: any) => {
+          if (r?.id && r.expense_no) expenseNoById.set(String(r.id), String(r.expense_no).trim());
         });
       }
 
@@ -1017,10 +1039,13 @@ export const accountingService = {
           .replace(/\s+/g, '_');
         let opSaleInv: string | undefined;
         let opPurPo: string | undefined;
+        let opExpenseNo: string | undefined;
         if ((rtN === 'sale' || rtN === 'sale_adjustment') && entry.reference_id) {
           opSaleInv = saleInvoiceNoById.get(String(entry.reference_id));
         } else if ((rtN === 'purchase' || rtN === 'purchase_adjustment') && entry.reference_id) {
           opPurPo = purchasePoNoById.get(String(entry.reference_id));
+        } else if (rtN === 'expense' && entry.reference_id) {
+          opExpenseNo = expenseNoById.get(String(entry.reference_id));
         }
         const payKeyForOps =
           entry.payment_id ||
@@ -1030,6 +1055,13 @@ export const accountingService = {
         if (payKeyForOps) {
           const payRn = paymentRefNumberById.get(String(payKeyForOps));
           if (payRn) out._payment_reference_number = payRn;
+          const linkedPayRt = paymentRefTypeByPaymentId.get(String(payKeyForOps));
+          if (linkedPayRt === 'expense') {
+            const payRow = (paymentsList || []).find((p: any) => String(p.id) === String(payKeyForOps));
+            if (payRow?.reference_id) {
+              opExpenseNo = opExpenseNo || expenseNoById.get(String(payRow.reference_id));
+            }
+          }
           const root = paymentIdToRoot.get(String(payKeyForOps));
           if (root?.root_reference_type === 'sale' && root.root_reference_id) {
             opSaleInv = opSaleInv || saleInvoiceNoById.get(String(root.root_reference_id));
@@ -1040,6 +1072,7 @@ export const accountingService = {
         }
         if (opSaleInv) out._display_sale_invoice_no = opSaleInv;
         if (opPurPo) out._display_purchase_po_no = opPurPo;
+        if (opExpenseNo) out._display_expense_no = opExpenseNo;
         return out;
       });
 

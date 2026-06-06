@@ -30,7 +30,7 @@ export function detectRoznamchaRepairCandidate(
   if (row.excludedReason && row.winnerRef) {
     return {
       canQueue: true,
-      reason: 'Report-level dedupe duplicate — review only',
+      reason: 'Report / audit only — not a cash or GL repair',
       queueItem: {
         actionId: 'roznamcha.report_duplicate_source',
         sourceTab: 'roznamcha',
@@ -39,9 +39,9 @@ export function detectRoznamchaRepairCandidate(
           winnerRef: row.winnerRef,
           reason: row.excludedReason,
         },
-        detectedReason: row.excludedReason,
+        detectedReason: `Dedupe duplicate (audit only) — canonical ref ${row.winnerRef}`,
         severity: 'low',
-        title: 'Report duplicate source',
+        title: 'Report duplicate source (audit only)',
       },
     };
   }

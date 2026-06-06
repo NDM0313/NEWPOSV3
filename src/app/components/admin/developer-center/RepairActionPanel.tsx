@@ -169,45 +169,68 @@ export function RepairActionPanel({ companyId, item, systemStatus, onRemove, onA
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 items-end">
-          <Button type="button" size="sm" variant="outline" onClick={runDryRun} disabled={running}>
+        {applyGate.blocked && (
+          <div className="rounded border border-amber-900/40 bg-amber-950/20 p-2 text-amber-300/95">
+            <div className="flex items-center gap-1 font-medium mb-1">
+              <ShieldAlert className="w-3 h-3" />
+              Apply blocked
+            </div>
+            <ul className="list-disc ml-4 space-y-0.5 text-[11px]">
+              {applyGate.reasons.map((r) => (
+                <li key={r.code}>{r.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-x-3 gap-y-2 items-end">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={runDryRun}
+            disabled={running}
+            className="h-9 shrink-0"
+          >
             <Play className="w-3 h-3 mr-1" />
             Dry-run
           </Button>
-          <div className="flex-1 min-w-[200px]">
-            <label className="text-[10px] uppercase tracking-wider text-gray-500">Confirm phrase</label>
+          <div className="flex-1 min-w-[220px]">
+            <label
+              className="text-[10px] uppercase tracking-wider text-gray-500 block mb-1"
+              htmlFor={`confirm-phrase-${item.queueId}`}
+            >
+              Confirm phrase
+            </label>
             <Input
+              id={`confirm-phrase-${item.queueId}`}
               value={confirmPhrase}
               onChange={(e) => setConfirmPhrase(e.target.value)}
               placeholder={expectedPhrase}
-              className="mt-1 bg-gray-950 border-gray-800 font-mono text-xs"
-              disabled={!canApply || !dryRun?.ok}
+              autoComplete="off"
+              spellCheck={false}
+              className="h-9 bg-gray-950 border-gray-800 font-mono text-xs"
+              disabled={!canApply}
             />
           </div>
-          <div className="flex flex-col gap-1 min-w-[140px]">
-            {applyGate.blocked && (
-              <div className="rounded border border-amber-900/40 bg-amber-950/20 p-2 text-amber-300/95">
-                <div className="flex items-center gap-1 font-medium mb-1">
-                  <ShieldAlert className="w-3 h-3" />
-                  Apply blocked
-                </div>
-                <ul className="list-disc ml-4 space-y-0.5 text-[11px]">
-                  {applyGate.reasons.map((r) => (
-                    <li key={r.code}>{r.message}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <Button
-              type="button"
-              size="sm"
-              onClick={apply}
-              disabled={applyGate.blocked}
-            >
-              Apply repair
-            </Button>
-          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={apply}
+            disabled={applyGate.blocked}
+            className="h-9 shrink-0"
+          >
+            Apply repair
+          </Button>
         </div>
+
+        {!dryRun?.ok && canApply && (
+          <p className="text-[10px] text-gray-500">
+            {dryRun && !dryRun.ok
+              ? 'Dry-run blocked — remove item, re-send to queue, then dry-run again'
+              : 'Run dry-run first — type phrase exactly as shown in placeholder'}
+          </p>
+        )}
 
         {dryRun && !dryRun.ok && (
           <p className="text-amber-400">{dryRun.blockedReason || 'Not safe to apply'}</p>

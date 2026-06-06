@@ -397,6 +397,60 @@ const DEFAULT_MODULE_TOGGLES: ModuleToggles = {
   posModuleEnabled: true,
 };
 
+// --- Default payment accounts (mirrors web settings[key='default_accounts']) ---
+
+export interface DefaultPaymentMethodSetting {
+  id?: string;
+  method: string;
+  enabled?: boolean;
+  defaultAccount?: string;
+}
+
+export interface DefaultAccountsSettings {
+  paymentMethods: DefaultPaymentMethodSetting[];
+}
+
+const FALLBACK_DEFAULT_ACCOUNTS: DefaultAccountsSettings = {
+  paymentMethods: [
+    { id: '1', method: 'Cash', enabled: true, defaultAccount: '' },
+    { id: '2', method: 'Bank', enabled: true, defaultAccount: '' },
+    { id: '3', method: 'Mobile Wallet', enabled: true, defaultAccount: '' },
+  ],
+};
+
+export async function getDefaultAccounts(
+  companyId: string | null,
+): Promise<{ data: DefaultAccountsSettings | null; error: string | null }> {
+  if (!isSupabaseConfigured || !companyId) {
+    return { data: null, error: null };
+  }
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('company_id', companyId)
+    .eq('key', 'default_accounts')
+    .maybeSingle();
+  if (error) return { data: null, error: error.message };
+  let raw = data?.value;
+  if (raw == null) return { data: FALLBACK_DEFAULT_ACCOUNTS, error: null };
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return { data: FALLBACK_DEFAULT_ACCOUNTS, error: null };
+    }
+  }
+  const obj = raw as { paymentMethods?: DefaultPaymentMethodSetting[] };
+  return {
+    data: {
+      paymentMethods: obj.paymentMethods?.length
+        ? obj.paymentMethods
+        : FALLBACK_DEFAULT_ACCOUNTS.paymentMethods,
+    },
+    error: null,
+  };
+}
+
 // --- Enable Packing (per-company toggle). Mirrors web: settings[key='enable_packing'].value === true ---
 
 export async function getEnablePacking(companyId: string | null): Promise<boolean> {

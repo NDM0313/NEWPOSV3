@@ -16,9 +16,6 @@ import {
   type RepairQueueItem,
 } from '@/app/lib/developerRepairActions';
 import {
-  buildNumberingDryRunPreviews,
-} from '@/app/lib/repairQueueDryRun';
-import {
   loadRepairQueueSnapshot,
   type RepairQueueSnapshot,
 } from '@/app/services/accountingDeveloperCenterService';
@@ -160,10 +157,7 @@ export function RepairQueueTab({ companyId }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {(snapshot.numberingRows.length
-                    ? buildNumberingDryRunPreviews(snapshot.numberingRows)
-                    : []
-                  ).map((row) => (
+                  {snapshot.numberingRows.map((row) => (
                     <tr key={row.documentType} className="border-b border-gray-800/60">
                       <td className="py-2 pr-2 text-gray-200">{row.label}</td>
                       <td className="py-2 pr-2">{row.sequenceLast}</td>

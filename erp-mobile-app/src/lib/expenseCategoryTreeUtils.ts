@@ -216,6 +216,13 @@ export function countExpensesForSub(
 
 export const CLEARING_CATEGORY_SLUGS = new Set(['stitching', 'dying', 'dyeing', 'lining']);
 
+/** True only when THIS node is stitching/dying/lining — not when a child is. */
+export function categoryIsDirect4120Clearing(node: CategoryTreeNode): boolean {
+  const slug = normalizeSlug(node.slug);
+  const nameSlug = normalizeSlug(node.name);
+  return CLEARING_CATEGORY_SLUGS.has(slug) || CLEARING_CATEGORY_SLUGS.has(nameSlug);
+}
+
 export function categoryRequires4120Clearing(node: CategoryTreeNode): boolean {
   const slug = normalizeSlug(node.slug);
   const nameSlug = normalizeSlug(node.name);

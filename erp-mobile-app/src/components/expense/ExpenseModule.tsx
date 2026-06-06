@@ -36,7 +36,7 @@ import { formatSaleChargeDisplayLabel } from '../../lib/saleChargeDisplay';
 import { ExpenseCategorySheet } from './ExpenseCategorySheet';
 import { ExpenseDetailSheet } from './ExpenseDetailSheet';
 import {
-  categoryRequires4120Clearing,
+  categoryIsDirect4120Clearing,
   collectCategoryIdsForClearingFilter,
   collectClearingSlugsUnder,
   displayLabelForCategoryId,
@@ -129,7 +129,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   const effectiveProfileId = useEffectiveWorkerProfileId() ?? user.profileId ?? null;
   const effectiveRole = useEffectiveWorkerRole(user.role);
   const isolateWorkerData = shouldIsolateCounterWorkerData(effectiveRole);
-  const { canViewBalances, branchIds, isAdminOrOwner } = usePermissions();
+  const { canViewBalances, branchIds, isAdminOrOwner, isPermissionLoaded } = usePermissions();
 
   const listBranchScope = useMemo(
     () => resolveCounterListBranchScope(branch?.id, branchIds, isAdminOrOwner, isolateWorkerData),
@@ -159,6 +159,8 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     }[]
   >([]);
   const [loading, setLoading] = useState(!!companyId);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadWarning, setLoadWarning] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showCategories, setShowCategories] = useState(false);
   const [detailExpenseId, setDetailExpenseId] = useState<string | null>(null);
@@ -316,13 +318,31 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     if (showAdd) setAddExpenseDate(localNowDateString());
   }, [showAdd]);
 
+  const noBranchAccess =
+    isPermissionLoaded &&
+    listBranchScope.mode === 'accessible' &&
+    listBranchScope.branchIds.length === 0;
+
   const loadExpenses = useCallback(
     async (opts?: { silent?: boolean }) => {
       if (!companyId) {
         setLoading(false);
         return;
       }
+      if (!isPermissionLoaded) {
+        if (!opts?.silent) setLoading(true);
+        return;
+      }
+      if (noBranchAccess) {
+        setLoading(false);
+        setLoadError('No branch access configured for your account. Contact an administrator.');
+        setLoadWarning(null);
+        setList([]);
+        return;
+      }
       if (!opts?.silent) setLoading(true);
+      setLoadError(null);
+      setLoadWarning(null);
       const scope = listBranchScope;
       const apiBranchId = scope.mode === 'single' ? scope.branchId : null;
       const accessibleBranchIds = scope.mode === 'accessible' ? scope.branchIds : undefined;
@@ -330,7 +350,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         accessibleBranchIds,
       });
       setLoading(false);
-      if (!error && data) {
+      if (data?.length) {
         setList(
           data.map((r) => ({
             id: r.id,
@@ -353,9 +373,15 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
             vendor_name: r.vendor_name ?? null,
           })),
         );
+        if (error) setLoadWarning(error);
+      } else if (error) {
+        setLoadError(error);
+        setList([]);
+      } else {
+        setList([]);
       }
     },
-    [companyId, listBranchScope, user.id]
+    [companyId, listBranchScope, isPermissionLoaded, noBranchAccess],
   );
 
   useEffect(() => {
@@ -415,8 +441,8 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
     selectedLeaf?.type === 'salary';
 
   const isClearingCategory =
-    categoryTree.length > 0 && selectedMain
-      ? categoryRequires4120Clearing(selectedMain)
+    categoryTree.length > 0 && deepestCategory
+      ? categoryIsDirect4120Clearing(deepestCategory)
       : CLEARING_CATEGORY_SLUGS.has(slugLower);
 
   const selectedClearingLine = clearingLines.find(
@@ -557,12 +583,8 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
       showExpenseError(clearingLoadError);
       return;
     }
-    if (isClearingCategory && !selectedClearingLine) {
-      showExpenseError(
-        clearingLines.length === 0
-          ? 'No open sale extra to pay against. Finalize a sale with stitching/dying extras first.'
-          : 'Select a sale extra charge to pay against (4120 clearing).',
-      );
+    if (isClearingCategory && clearingLines.length > 0 && !selectedClearingLine) {
+      showExpenseError('Select a sale extra charge to pay against (4120 clearing).');
       return;
     }
     if (
@@ -943,7 +965,8 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
             {isClearingCategory && (
               <div className="bg-[#1F2937] border border-[#374151] rounded-xl p-4">
                 <span className="block text-sm font-medium text-[#D1D5DB] mb-2">
-                  Link to sale extra (4120 clearing) *
+                  Link to sale extra (4120 clearing)
+                  {clearingLines.length > 0 ? ' *' : ''}
                 </span>
                 {clearingLinesLoading ? (
                   <p className="text-sm text-[#9CA3AF] flex items-center gap-2">
@@ -953,7 +976,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                   <p className="text-xs text-[#EF4444]">{clearingLoadError}</p>
                 ) : clearingLines.length === 0 ? (
                   <p className="text-xs text-[#9CA3AF]">
-                    No open extra-service balance. Finalize a sale with stitching extras first.
+                    No open extra-service balance to clear. You can still save this as a normal expense.
                   </p>
                 ) : (
                   <>
@@ -1257,9 +1280,28 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
         spinnerAccentClass="border-t-[#EF4444]"
       >
       <div className="p-4 space-y-4">
-        {loading ? (
+        {loadWarning && (
+          <div className="p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/40 rounded-xl text-sm text-[#FCD34D]">
+            {loadWarning}
+          </div>
+        )}
+        {loading || !isPermissionLoaded ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 text-[#EF4444] animate-spin" />
+          </div>
+        ) : loadError ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-[#EF4444]/10 rounded-full flex items-center justify-center mx-auto mb-3">
+              <DollarSign className="w-8 h-8 text-[#FCA5A5]" />
+            </div>
+            <p className="text-[#FCA5A5] text-sm">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => void loadExpenses()}
+              className="mt-4 px-4 py-2 bg-[#374151] hover:bg-[#4B5563] rounded-lg text-white text-sm font-medium"
+            >
+              Retry
+            </button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-12">
@@ -1267,7 +1309,11 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
               <DollarSign className="w-8 h-8 text-[#6B7280]" />
             </div>
             <p className="text-[#9CA3AF] text-sm">No expenses found</p>
-            <p className="text-[#6B7280] text-xs mt-1 mb-4">Try adjusting your filters or add a new expense</p>
+            <p className="text-[#6B7280] text-xs mt-1 mb-4">
+              {noBranchAccess
+                ? 'You need branch access to view expenses.'
+                : 'Try adjusting your filters or add a new expense'}
+            </p>
             <button
               type="button"
               onClick={handleOpenAdd}
@@ -1320,8 +1366,16 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                         <div className="flex items-start gap-3 flex-1 min-w-0">
                           <span className="text-2xl">{getCategoryIcon(e.category)}</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white mb-1">{categoryLabelForRow(e)}</p>
-                            <p className="text-xs text-[#9CA3AF] line-clamp-2">{e.description || e.expense_no}</p>
+                            <p className="text-sm font-semibold text-white truncate mb-1">
+                              {e.expense_no && e.expense_no !== '—' ? (
+                                <>
+                                  <span className="font-mono font-normal">{e.expense_no}</span>
+                                  <span className="text-[#6B7280] font-normal"> · </span>
+                                </>
+                              ) : null}
+                              {categoryLabelForRow(e)}
+                            </p>
+                            <p className="text-xs text-[#9CA3AF] line-clamp-2">{e.description}</p>
                           </div>
                         </div>
                         <div className="text-right ml-2">

@@ -71,6 +71,123 @@ export interface Expense {
 }
 
 export const expenseService = {
+  /** Server-allocated expense_no via create_expense_document (same path as mobile ERP). */
+  async createExpenseDocument(input: {
+    companyId: string;
+    branchId: string;
+    createdBy: string;
+    expense: {
+      expense_date: string;
+      category: string;
+      description: string;
+      amount: number;
+      payment_method: string;
+      status: string;
+      payment_account_id?: string;
+      receipt_url?: string;
+    };
+    patch?: {
+      paid_to_user_id?: string;
+      vendor_name?: string;
+      expense_category_id?: string;
+    };
+  }) {
+    const expensePayload: Record<string, unknown> = {
+      expense_date: input.expense.expense_date,
+      category: input.expense.category,
+      description: input.expense.description,
+      amount: input.expense.amount,
+      payment_method: input.expense.payment_method,
+      status: input.expense.status,
+    };
+    if (input.expense.payment_account_id) {
+      expensePayload.payment_account_id = input.expense.payment_account_id;
+    }
+    if (input.expense.receipt_url) {
+      expensePayload.receipt_url = input.expense.receipt_url;
+    }
+
+    const callRpc = async (payload: Record<string, unknown>) =>
+      supabase.rpc('create_expense_document', {
+        p_company_id: input.companyId,
+        p_branch_id: input.branchId,
+        p_expense: payload,
+        p_created_by: input.createdBy,
+      });
+
+    let { data: rpcRaw, error: rpcErr } = await callRpc(expensePayload);
+
+    if (rpcErr) {
+      const msg = String(rpcErr.message || '').toLowerCase();
+      const schemaMissing =
+        msg.includes('payment_account_id') ||
+        msg.includes('receipt_url') ||
+        (msg.includes('column') && msg.includes('schema'));
+      if (schemaMissing && (expensePayload.payment_account_id || expensePayload.receipt_url)) {
+        const fallback = { ...expensePayload };
+        delete fallback.payment_account_id;
+        delete fallback.receipt_url;
+        const retry = await callRpc(fallback);
+        rpcRaw = retry.data;
+        rpcErr = retry.error;
+      }
+    }
+
+    if (rpcErr) throw rpcErr;
+
+    const rpc = rpcRaw as { success?: boolean; expense_id?: string; expense_no?: string; error?: string } | null;
+    if (!rpc?.success || !rpc.expense_id) {
+      throw new Error(rpc?.error ?? 'Failed to create expense document.');
+    }
+
+    const expenseId = rpc.expense_id;
+    const patch = input.patch ?? {};
+    const patchPayload: Record<string, unknown> = {};
+    if (patch.paid_to_user_id) patchPayload.paid_to_user_id = patch.paid_to_user_id;
+    if (patch.vendor_name) patchPayload.vendor_name = patch.vendor_name;
+    if (patch.expense_category_id) patchPayload.expense_category_id = patch.expense_category_id;
+
+    if (Object.keys(patchPayload).length > 0) {
+      let upd = await supabase.from('expenses').update(patchPayload).eq('id', expenseId).eq('company_id', input.companyId);
+      if (upd.error) {
+        const msg = String(upd.error.message || '');
+        if (/vendor_name|expense_category_id|paid_to_user_id|schema cache/i.test(msg)) {
+          const slim = { ...patchPayload };
+          delete slim.vendor_name;
+          delete slim.expense_category_id;
+          delete slim.paid_to_user_id;
+          if (Object.keys(slim).length > 0) {
+            await supabase.from('expenses').update(slim).eq('id', expenseId).eq('company_id', input.companyId);
+          }
+        }
+      }
+    }
+
+    const { data: row, error: fetchErr } = await supabase.from('expenses').select('*').eq('id', expenseId).single();
+    if (fetchErr) throw fetchErr;
+    if (!row.expense_no && rpc.expense_no) {
+      (row as { expense_no?: string }).expense_no = rpc.expense_no;
+    }
+    return row;
+  },
+
+  /** Post expense to GL + payments row (Roznamcha parity with mobile ERP). */
+  async postExpenseAccounting(expenseId: string): Promise<{ success: boolean; error?: string }> {
+    const { data, error } = await supabase.rpc('record_expense_with_accounting', {
+      p_expense_id: expenseId,
+    });
+    if (error) {
+      console.warn('[EXPENSE SERVICE] record_expense_with_accounting failed:', error);
+      return { success: false, error: error.message };
+    }
+    const result = data as { success?: boolean; error?: string } | null;
+    if (result?.success === false) {
+      console.warn('[EXPENSE SERVICE] record_expense_with_accounting returned error:', result);
+      return { success: false, error: result.error ?? 'Accounting post failed.' };
+    }
+    return { success: true };
+  },
+
   // Create expense
   async createExpense(expense: Partial<Expense>) {
     const payload = { ...expense } as Record<string, unknown>;

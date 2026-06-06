@@ -85,62 +85,6 @@ const INVENTORY_SUB_TAB_TO_NAV_ITEM: Record<InventoryMasterTab, string> = {
   variations: 'inventoryVariations',
 };
 
-function TemplateFormFields({
-  template,
-  onChange,
-}: {
-  template: Partial<InvoiceTemplate>;
-  onChange: (t: Partial<InvoiceTemplate>) => void;
-}) {
-  const update = (key: keyof InvoiceTemplate, value: boolean | string | null) => {
-    onChange({ ...template, [key]: value });
-  };
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Label className="text-gray-300">Show SKU</Label>
-        <Switch checked={template.show_sku ?? true} onCheckedChange={(v) => update('show_sku', v)} />
-      </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-gray-300">Show Discount</Label>
-        <Switch checked={template.show_discount ?? true} onCheckedChange={(v) => update('show_discount', v)} />
-      </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-gray-300">Show Tax</Label>
-        <Switch checked={template.show_tax ?? true} onCheckedChange={(v) => update('show_tax', v)} />
-      </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-gray-300">Show Studio Cost</Label>
-        <Switch checked={template.show_studio ?? true} onCheckedChange={(v) => update('show_studio', v)} />
-      </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-gray-300">Show Signature Line</Label>
-        <Switch checked={template.show_signature ?? false} onCheckedChange={(v) => update('show_signature', v)} />
-      </div>
-      <div>
-        <Label className="text-gray-300">Logo URL (optional override)</Label>
-        <p className="text-xs text-gray-500 mt-1 mb-2">
-          Leave blank to use the company logo from Company Information.
-        </p>
-        <Input
-          className="mt-1 bg-gray-800 border-gray-700 text-white"
-          placeholder="https://..."
-          value={template.logo_url ?? ''}
-          onChange={(e) => update('logo_url', e.target.value || null)}
-        />
-      </div>
-      <div>
-        <Label className="text-gray-300">Footer Note</Label>
-        <Textarea
-          className="mt-1 bg-gray-800 border-gray-700 text-white min-h-[60px]"
-          placeholder="Thank you for your business..."
-          value={template.footer_note ?? ''}
-          onChange={(e) => update('footer_note', e.target.value || null)}
-        />
-      </div>
-    </div>
-  );
-}
 import {
   Dialog,
   DialogContent,
@@ -711,6 +655,45 @@ export const SettingsPageNew = () => {
     }
   }, [companyId]);
 
+  const saveInvoiceTemplates = useCallback(async () => {
+    if (!companyId) return;
+    setSavingInvoiceTemplates(true);
+    try {
+      const a4Payload = {
+        show_sku: invoiceTemplateA4.show_sku ?? true,
+        show_discount: invoiceTemplateA4.show_discount ?? true,
+        show_tax: invoiceTemplateA4.show_tax ?? true,
+        show_studio: invoiceTemplateA4.show_studio ?? true,
+        show_signature: invoiceTemplateA4.show_signature ?? false,
+        logo_url: invoiceTemplateA4.logo_url || null,
+        footer_note: invoiceTemplateA4.footer_note || null,
+      };
+      const thermalPayload = {
+        show_sku: invoiceTemplateThermal.show_sku ?? true,
+        show_discount: invoiceTemplateThermal.show_discount ?? true,
+        show_tax: invoiceTemplateThermal.show_tax ?? true,
+        show_studio: invoiceTemplateThermal.show_studio ?? true,
+        show_signature: invoiceTemplateThermal.show_signature ?? false,
+        logo_url: invoiceTemplateThermal.logo_url || null,
+        footer_note: invoiceTemplateThermal.footer_note || null,
+      };
+      const [a4Err, thermalErr] = await Promise.all([
+        invoiceDocumentService.upsertTemplate(companyId, 'A4', a4Payload),
+        invoiceDocumentService.upsertTemplate(companyId, 'Thermal', thermalPayload),
+      ]);
+      if (a4Err.error || thermalErr.error) {
+        toast.error(a4Err.error || thermalErr.error || 'Failed to save');
+        return;
+      }
+      toast.success('Invoice template settings saved');
+    } catch (e) {
+      console.error('[SETTINGS] Error saving invoice templates:', e);
+      toast.error('Failed to save invoice template settings');
+    } finally {
+      setSavingInvoiceTemplates(false);
+    }
+  }, [companyId, invoiceTemplateA4, invoiceTemplateThermal]);
+
   const loadPrintingSettings = useCallback(async () => {
     if (!companyId) return;
     setLoadingPrinting(true);
@@ -740,6 +723,13 @@ export const SettingsPageNew = () => {
         return;
       }
       setPrintingSettings(toSave);
+
+      if (navSubTabId === 'thermalReceipts') {
+        const paperSize = toSave.thermal.paperSize ?? '58mm';
+        await printer.setMode('thermal');
+        await printer.setPaperSize(paperSize);
+      }
+
       toast.success('Printing settings saved');
     } catch (e) {
       console.error('[SETTINGS] Error saving printing settings:', e);
@@ -747,7 +737,7 @@ export const SettingsPageNew = () => {
     } finally {
       setSavingPrinting(false);
     }
-  }, [companyId, printingSettings]);
+  }, [companyId, printingSettings, navSubTabId, printer]);
 
   const loadPaymentAccounts = useCallback(async () => {
     if (!companyId) return;
@@ -840,11 +830,9 @@ export const SettingsPageNew = () => {
     if (contentKey === 'users') {
       loadUsers();
     }
-    if (contentKey === 'invoiceTemplates') {
-      loadInvoiceTemplates();
-    }
     if (contentKey === 'printing') {
       loadPrintingSettings();
+      loadInvoiceTemplates();
     }
   }, [contentKey, loadUsers, loadInvoiceTemplates, loadPrintingSettings]);
 
@@ -2317,83 +2305,21 @@ export const SettingsPageNew = () => {
             )}
 
 
-            {/* PRINTER CONFIGURATION TAB */}
             {contentKey === 'printer' && (
-              <div className="space-y-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 bg-slate-500/10 rounded-lg">
-                    <Printer className="text-slate-400" size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Printer Configuration</h3>
-                    <p className="text-sm text-gray-400">Receipt and invoice print settings (58mm / 80mm thermal, A4)</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
-                    <div>
-                      <p className="text-white font-medium">Printer Mode</p>
-                      <p className="text-sm text-gray-400">Thermal receipt or A4 invoice layout</p>
-                    </div>
-                    <select
-                      value={printer.config.mode}
-                      onChange={(e) => printer.setMode(e.target.value as 'thermal' | 'a4')}
-                      className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
-                    >
-                      <option value="a4">A4 (Standard)</option>
-                      <option value="thermal">Thermal Receipt</option>
-                    </select>
-                  </div>
-
-                  {printer.config.mode === 'thermal' && (
-                    <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
-                      <div>
-                        <p className="text-white font-medium">Paper Size</p>
-                        <p className="text-sm text-gray-400">58mm or 80mm thermal roll</p>
-                      </div>
-                      <select
-                        value={printer.config.paperSize}
-                        onChange={(e) => printer.setPaperSize(e.target.value as '58mm' | '80mm')}
-                        className="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
-                      >
-                        <option value="58mm">58mm</option>
-                        <option value="80mm">80mm</option>
-                      </select>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between bg-gray-950 p-4 rounded-lg border border-gray-800">
-                    <div>
-                      <p className="text-white font-medium">Auto Print Receipt</p>
-                      <p className="text-sm text-gray-400">Print receipt after POS sale</p>
-                    </div>
-                    <Switch
-                      checked={printer.config.autoPrintReceipt}
-                      onCheckedChange={(val) => printer.setAutoPrintReceipt(val)}
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-3 pt-4">
-                    <Button
-                      variant="outline"
-                      className="border-gray-600 text-gray-300 hover:bg-gray-800"
-                      onClick={() => {
-                        window.print();
-                        toast.success('Test print dialog opened');
-                      }}
-                    >
-                      <Printer size={16} className="mr-2" />
-                      Test Print
-                    </Button>
-                    <span className="text-sm text-gray-500">Opens browser print dialog</span>
-                  </div>
-                </div>
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
+                Legacy printer settings moved to{' '}
+                <button
+                  type="button"
+                  className="underline text-amber-200"
+                  onClick={() => writeSettingsHash('documentsPrinting', 'printingAdvanced')}
+                >
+                  Documents & Printing → Advanced
+                </button>
+                . Prefer <strong>Thermal Receipts</strong> for new receipt setup.
               </div>
             )}
 
-            {/* PHASE B: INVOICE TEMPLATES TAB */}
-            {/* Centralized Printing (Settings → Printing) */}
+            {/* Centralized Printing (Settings → Documents & Printing) */}
             {contentKey === 'printing' && (
               <PrintingSettingsPanel
                 subTabId={navSubTabId}
@@ -2402,94 +2328,30 @@ export const SettingsPageNew = () => {
                 saving={savingPrinting}
                 onSettingsChange={(partial) => setPrintingSettings((prev) => ({ ...(prev ?? {}), ...partial }))}
                 onSave={savePrintingSettings}
+                printer={printer}
+                invoiceTemplates={{
+                  loading: loadingInvoiceTemplates,
+                  saving: savingInvoiceTemplates,
+                  invoiceTemplateA4,
+                  invoiceTemplateThermal,
+                  onA4Change: setInvoiceTemplateA4,
+                  onThermalChange: setInvoiceTemplateThermal,
+                  onSave: saveInvoiceTemplates,
+                }}
               />
             )}
 
             {contentKey === 'invoiceTemplates' && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 bg-slate-500/10 rounded-lg">
-                      <FileText className="text-slate-400" size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-white">Invoice Templates</h3>
-                      <p className="text-sm text-gray-400">Control what appears on A4 and Thermal invoices (Print / PDF / Share)</p>
-                    </div>
-                  </div>
-                  <Button
-                    className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
-                    disabled={savingInvoiceTemplates || loadingInvoiceTemplates}
-                    onClick={async () => {
-                      if (!companyId) return;
-                      setSavingInvoiceTemplates(true);
-                      try {
-                        const a4Payload = {
-                          show_sku: invoiceTemplateA4.show_sku ?? true,
-                          show_discount: invoiceTemplateA4.show_discount ?? true,
-                          show_tax: invoiceTemplateA4.show_tax ?? true,
-                          show_studio: invoiceTemplateA4.show_studio ?? true,
-                          show_signature: invoiceTemplateA4.show_signature ?? false,
-                          logo_url: invoiceTemplateA4.logo_url || null,
-                          footer_note: invoiceTemplateA4.footer_note || null,
-                        };
-                        const thermalPayload = {
-                          show_sku: invoiceTemplateThermal.show_sku ?? true,
-                          show_discount: invoiceTemplateThermal.show_discount ?? true,
-                          show_tax: invoiceTemplateThermal.show_tax ?? true,
-                          show_studio: invoiceTemplateThermal.show_studio ?? true,
-                          show_signature: invoiceTemplateThermal.show_signature ?? false,
-                          logo_url: invoiceTemplateThermal.logo_url || null,
-                          footer_note: invoiceTemplateThermal.footer_note || null,
-                        };
-                        const [a4Err, thermalErr] = await Promise.all([
-                          invoiceDocumentService.upsertTemplate(companyId, 'A4', a4Payload),
-                          invoiceDocumentService.upsertTemplate(companyId, 'Thermal', thermalPayload),
-                        ]);
-                        if (a4Err.error || thermalErr.error) {
-                          toast.error(a4Err.error || thermalErr.error || 'Failed to save');
-                          return;
-                        }
-                        toast.success('Invoice template settings saved');
-                      } catch (e) {
-                        console.error('[SETTINGS] Error saving invoice templates:', e);
-                        toast.error('Failed to save invoice template settings');
-                      } finally {
-                        setSavingInvoiceTemplates(false);
-                      }
-                    }}
-                  >
-                    {savingInvoiceTemplates ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
-                    Save Invoice Templates
-                  </Button>
-                </div>
-
-                {loadingInvoiceTemplates ? (
-                  <div className="p-8 text-center text-gray-400">Loading template settings...</div>
-                ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* A4 template */}
-                    <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-4">
-                      <h4 className="text-white font-semibold flex items-center gap-2">
-                        <FileText size={18} /> A4 Invoice
-                      </h4>
-                      <TemplateFormFields
-                        template={invoiceTemplateA4}
-                        onChange={setInvoiceTemplateA4}
-                      />
-                    </div>
-                    {/* Thermal template */}
-                    <div className="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-4">
-                      <h4 className="text-white font-semibold flex items-center gap-2">
-                        <Printer size={18} /> Thermal (58mm / 80mm)
-                      </h4>
-                      <TemplateFormFields
-                        template={invoiceTemplateThermal}
-                        onChange={setInvoiceTemplateThermal}
-                      />
-                    </div>
-                  </div>
-                )}
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-100">
+                Invoice Templates moved to{' '}
+                <button
+                  type="button"
+                  className="underline text-amber-200"
+                  onClick={() => writeSettingsHash('documentsPrinting', 'printingAdvanced')}
+                >
+                  Documents & Printing → Advanced
+                </button>
+                .
               </div>
             )}
 

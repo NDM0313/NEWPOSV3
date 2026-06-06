@@ -35,13 +35,15 @@ export function canAccessAccountingDiagnostics(userRole: string | null | undefin
 }
 
 const DEVELOPER_REPAIR_APPLY_ROLES = new Set([
+  'admin',
+  'owner',
   'developer',
   'super admin',
   'superadmin',
   'super_admin',
 ]);
 
-/** Apply controlled Developer Center repairs — super-admin / developer only. */
+/** Apply controlled Developer Center repairs — company admin / super-admin / developer only. */
 export function canApplyDeveloperRepair(userRole: string | null | undefined): boolean {
   return DEVELOPER_REPAIR_APPLY_ROLES.has(canonRole(userRole));
 }

@@ -22,6 +22,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useCheckPermission } from '../../hooks/useCheckPermission';
 import { Sheet, SheetContent } from '../ui/sheet';
 import { clsx } from 'clsx';
+import { leaveSpecialAppRoute } from '@/app/lib/specialRouteNavigation';
 
 type NavItem = {
   id: string;
@@ -86,6 +87,7 @@ export const MobileNavDrawer = () => {
 
   const handleNavClick = (id: string) => {
     setCurrentView(id as any);
+    leaveSpecialAppRoute('/');
     setMobileNavOpen(false);
   };
 

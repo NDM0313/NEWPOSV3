@@ -16,8 +16,9 @@ test('detectRoznamchaRepairCandidate queues fill payment account', () => {
 test('detectRoznamchaRepairCandidate report duplicate when excluded with winner', () => {
   const res = detectRoznamchaRepairCandidate({
     rowId: 'dup-1',
-    excludedReason: 'Excluded — merged',
+    excludedReason: 'Excluded duplicate — already counted',
     winnerRef: 'RCV-001',
   });
   assert.equal(res.queueItem?.actionId, 'roznamcha.report_duplicate_source');
+  assert.match(res.queueItem?.title || '', /audit only/i);
 });

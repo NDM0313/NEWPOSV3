@@ -38,6 +38,9 @@ export interface UnifiedPaymentSheetProps {
   companyId: string;
   branchId: string | null;
   userId?: string | null;
+  userRole?: string;
+  profileId?: string | null;
+  documentBranchId?: string | null;
 
   /** Counter-party name. For 'expense' this may be the category. */
   partyName: string | null;
@@ -66,6 +69,9 @@ export function UnifiedPaymentSheet({
   companyId,
   branchId,
   userId,
+  userRole,
+  profileId,
+  documentBranchId,
   partyName,
   partyId,
   partyPhone,
@@ -85,13 +91,14 @@ export function UnifiedPaymentSheet({
     if (kind === 'sale') {
       const { success, error, paymentId, referenceNumber } = await submitCustomer({
         companyId,
-        branchId,
+        branchId: payload.branchId ?? branchId,
         customerId: partyId ?? null,
         referenceId,
         amount: payload.amount,
         accountId: payload.accountId,
         paymentMethod: payload.method === 'wallet' ? 'wallet' : payload.method,
         paymentDate: payload.paymentDate,
+        paymentAt: payload.paymentAt,
         notes: payload.notes || undefined,
         referenceNumber: payload.reference?.trim() ? payload.reference.trim() : null,
         createdBy: userId ?? null,
@@ -132,11 +139,12 @@ export function UnifiedPaymentSheet({
       const { error, paymentId, referenceNumber } = await addRentalPayment({
         rentalId: referenceId,
         companyId,
-        branchId,
+        branchId: payload.branchId ?? branchId,
         amount: payload.amount,
         method: payload.method,
         paymentAccountId: payload.accountId,
         paymentDate: payload.paymentDate,
+        paymentAt: payload.paymentAt,
         reference: payload.reference || undefined,
         notes: payload.notes || undefined,
         userId: userId ?? null,
@@ -151,14 +159,16 @@ export function UnifiedPaymentSheet({
     }
 
     if (kind === 'purchase') {
-      if (!branchId) return { success: false, error: 'Branch required for supplier payment.' };
+      const payBranchId = payload.branchId ?? branchId;
+      if (!payBranchId) return { success: false, error: 'Branch required for supplier payment.' };
       const methodForRpc: 'cash' | 'bank' | 'card' | 'other' = payload.method === 'wallet' ? 'other' : payload.method;
       const { data, error } = await recordSupplierPayment({
         companyId,
-        branchId,
+        branchId: payBranchId,
         purchaseId: referenceId,
         amount: payload.amount,
         paymentDate: payload.paymentDate,
+        paymentAt: payload.paymentAt,
         paymentAccountId: payload.accountId,
         paymentMethod: methodForRpc,
         reference: payload.reference || undefined,
@@ -190,6 +200,9 @@ export function UnifiedPaymentSheet({
       companyId={companyId}
       branchId={branchId}
       userId={userId}
+      userRole={userRole}
+      profileId={profileId}
+      documentBranchId={documentBranchId}
       partyName={partyName}
       partyPhone={partyPhone}
       referenceNo={referenceNo ?? null}

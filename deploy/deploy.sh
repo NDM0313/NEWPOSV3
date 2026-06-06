@@ -45,8 +45,8 @@ BEGIN
     SELECT gen_random_uuid(), 'product-images', false, now(), now()
     WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'product-images');
     INSERT INTO storage.buckets (id, name, public, created_at, updated_at)
-    SELECT gen_random_uuid(), 'company-logos', false, now(), now()
-    WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE name = 'company-logos');
+    SELECT 'company-logos', 'company-logos', false, now(), now()
+    WHERE NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'company-logos');
   END IF;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
@@ -94,6 +94,15 @@ BEGIN
   CREATE POLICY "product_images_select" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'product-images');
   CREATE POLICY "product_images_update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'product-images') WITH CHECK (bucket_id = 'product-images');
   CREATE POLICY "product_images_delete" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'product-images');
+
+  DROP POLICY IF EXISTS "company_logos_insert" ON storage.objects;
+  DROP POLICY IF EXISTS "company_logos_select" ON storage.objects;
+  DROP POLICY IF EXISTS "company_logos_update" ON storage.objects;
+  DROP POLICY IF EXISTS "company_logos_delete" ON storage.objects;
+  CREATE POLICY "company_logos_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'company-logos');
+  CREATE POLICY "company_logos_select" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'company-logos');
+  CREATE POLICY "company_logos_update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'company-logos') WITH CHECK (bucket_id = 'company-logos');
+  CREATE POLICY "company_logos_delete" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'company-logos');
 END $$;
 EOSQL
   echo "[deploy] Storage buckets + RLS applied."
