@@ -26,12 +26,13 @@ Documentation hub for the unified **Accounting Developer Center** — diagnose C
 | [10_REPAIR_ACTION_REGISTRY.md](10_REPAIR_ACTION_REGISTRY.md) | Registry type contract and dry-run hash flow |
 | [11_REPAIR_AUDIT_LOG.md](11_REPAIR_AUDIT_LOG.md) | `developer_repair_audit` schema and rollback notes |
 | [12_PHASE_F_COMPLETION.md](12_PHASE_F_COMPLETION.md) | Phase F completion summary and manual checklist |
+| [13_PHASE_F_PRODUCTION_SMOKE_TEST.md](13_PHASE_F_PRODUCTION_SMOKE_TEST.md) | Production/staging smoke test checklist with risk table |
 
 ## Quick recommendation
 
 **Shipped (Phase F):** Controlled repair registry + Repair Queue apply from COA, trace tabs, Opening Balance.
 
-**Before production apply:** Run migrations `20260606120000_*` and `20260606130000_*` on Supabase.
+**Before production apply:** Run migrations `20260606120000_*` and `20260606130000_*` on Supabase. Follow [13_PHASE_F_PRODUCTION_SMOKE_TEST.md](13_PHASE_F_PRODUCTION_SMOKE_TEST.md).
 
 **Keep separate:** AR/AP Reconciliation Center, Numbering Maintenance, System Health.
 

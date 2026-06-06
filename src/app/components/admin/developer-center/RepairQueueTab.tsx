@@ -4,7 +4,12 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 import { toast } from 'sonner';
+import { useSupabase } from '@/app/context/SupabaseContext';
 import { RepairActionPanel } from '@/app/components/admin/developer-center/RepairActionPanel';
+import {
+  RepairSystemStatusPanel,
+  type DeveloperRepairSystemStatus,
+} from '@/app/components/admin/developer-center/RepairSystemStatusPanel';
 import { useRepairQueue } from '@/app/components/admin/developer-center/RepairQueueContext';
 import {
   getDeveloperRepairAction,
@@ -23,13 +28,17 @@ interface Props {
 }
 
 export function RepairQueueTab({ companyId }: Props) {
+  const { userRole } = useSupabase();
   const { items, sendToRepairQueue, removeFromQueue } = useRepairQueue();
   const [loading, setLoading] = useState(false);
+  const [statusRefreshToken, setStatusRefreshToken] = useState(0);
+  const [systemStatus, setSystemStatus] = useState<DeveloperRepairSystemStatus | null>(null);
   const [snapshot, setSnapshot] = useState<RepairQueueSnapshot | null>(null);
 
   const load = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
+    setStatusRefreshToken((t) => t + 1);
     try {
       setSnapshot(await loadRepairQueueSnapshot(companyId));
     } catch (e) {
@@ -60,6 +69,13 @@ export function RepairQueueTab({ companyId }: Props) {
 
   return (
     <div className="space-y-4">
+      <RepairSystemStatusPanel
+        companyId={companyId}
+        userRole={userRole}
+        refreshToken={statusRefreshToken}
+        onStatusLoaded={setSystemStatus}
+      />
+
       <div className="flex items-center gap-2">
         <Button type="button" size="sm" variant="outline" onClick={load} disabled={loading}>
           <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
@@ -83,6 +99,7 @@ export function RepairQueueTab({ companyId }: Props) {
                 key={item.queueId}
                 companyId={companyId}
                 item={item}
+                systemStatus={systemStatus}
                 onRemove={() => removeFromQueue(item.queueId)}
                 onApplied={load}
               />

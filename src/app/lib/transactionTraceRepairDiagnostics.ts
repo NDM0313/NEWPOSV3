@@ -11,6 +11,8 @@ import type { TransactionTraceResult } from '@/app/services/accountingDeveloperC
 export interface TraceRepairCandidate {
   canQueue: boolean;
   reason: string;
+  targetTable?: string;
+  targetId?: string;
   queueItem?: Omit<RepairQueueItem, 'queueId'>;
 }
 
@@ -49,6 +51,8 @@ function candidateRelinkPayment(
   return {
     canQueue: true,
     reason,
+    targetTable: 'payments',
+    targetId: paymentId,
     queueItem: {
       actionId: 'payment.relink_payment_to_journal',
       sourceTab: 'trace',
@@ -69,6 +73,8 @@ function candidateSyncBranch(
   return {
     canQueue: true,
     reason,
+    targetTable,
+    targetId: rowId,
     queueItem: {
       actionId: 'payment.sync_branch_from_document',
       sourceTab,
@@ -89,6 +95,8 @@ function candidateRelinkRentalPayment(
   return {
     canQueue: true,
     reason,
+    targetTable: 'rental_payments',
+    targetId: rentalPaymentId,
     queueItem: {
       actionId: 'rental.relink_rental_payment_to_journal',
       sourceTab,

@@ -56,10 +56,16 @@ See [09_CONTROLLED_REPAIR_ACTIONS.md](09_CONTROLLED_REPAIR_ACTIONS.md) for full 
 
 ## Manual checklist
 
-1. Apply both migrations on target Supabase project
+For production/staging verification, use the full smoke test checklist:
+
+→ **[13_PHASE_F_PRODUCTION_SMOKE_TEST.md](13_PHASE_F_PRODUCTION_SMOKE_TEST.md)** (backup, migrations, role, per-scenario dry-run/apply, audit verification, risk table)
+
+Quick sanity checks:
+
+1. Repair Queue → **Repair System Status** → Ready for apply
 2. Repair Queue → numbering out-of-sync → dry-run → phrase → apply
 3. COA Health → account usage → queue rename → dry-run → apply
 4. Transaction / Payment Trace → repair candidates → Send to queue → dry-run
 5. Roznamcha Trace → missing payment_account_id candidate → queue
-6. Opening Balance → missing_je → queue with effective date
+6. Opening Balance → missing_je → queue with effective date (dry-run first)
 7. Audit Log → verify `developer_repair` source rows after apply

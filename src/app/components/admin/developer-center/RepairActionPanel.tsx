@@ -8,20 +8,25 @@ import { toast } from 'sonner';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { canApplyDeveloperRepair } from '@/app/lib/developerAccountingAccess';
 import {
+  actionRequiresRelinkRpc,
+  resolveRepairApplyBlockReasons,
+} from '@/app/lib/developerRepairApplyGate';
+import {
   getDeveloperRepairAction,
   resolveConfirmPhrase,
   type RepairQueueItem,
 } from '@/app/lib/developerRepairActions';
-import { isValidRepairConfirmPhrase } from '@/app/lib/repairQueueDryRun';
 import {
   applyDeveloperRepair,
   runDeveloperRepairDryRun,
   type DryRunResult,
 } from '@/app/services/developerRepairService';
+import type { DeveloperRepairSystemStatus } from '@/app/components/admin/developer-center/RepairSystemStatusPanel';
 
 interface Props {
   companyId: string;
   item: RepairQueueItem;
+  systemStatus?: DeveloperRepairSystemStatus | null;
   onRemove?: () => void;
   onApplied?: () => void;
 }
@@ -32,7 +37,7 @@ function riskBadge(level: string) {
   return <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-800">low</Badge>;
 }
 
-export function RepairActionPanel({ companyId, item, onRemove, onApplied }: Props) {
+export function RepairActionPanel({ companyId, item, systemStatus, onRemove, onApplied }: Props) {
   const { userId, userRole } = useSupabase();
   const canApply = canApplyDeveloperRepair(userRole);
   const action = getDeveloperRepairAction(item.actionId);
@@ -45,6 +50,20 @@ export function RepairActionPanel({ companyId, item, onRemove, onApplied }: Prop
   const [resultMessage, setResultMessage] = useState<string | null>(null);
 
   const expectedPhrase = action ? resolveConfirmPhrase(action, item.params) : '';
+
+  const requiresRelinkRpc = actionRequiresRelinkRpc(item.actionId);
+  const relinkRpcAvailable = systemStatus?.probe.relinkRpcAvailable ?? true;
+
+  const applyGate = resolveRepairApplyBlockReasons({
+    canApply,
+    dryRun,
+    confirmPhrase,
+    expectedPhrase,
+    applying,
+    actionKnown: Boolean(action),
+    actionRequiresRelinkRpc: requiresRelinkRpc,
+    relinkRpcAvailable,
+  });
 
   const runDryRun = useCallback(async () => {
     if (!action) {
@@ -72,18 +91,12 @@ export function RepairActionPanel({ companyId, item, onRemove, onApplied }: Prop
   }, [action, item.actionId, item.params, companyId, userId, userRole]);
 
   const apply = async () => {
-    if (!action || !dryRun?.ok) {
-      toast.error('Run dry-run first');
+    if (applyGate.blocked) {
+      toast.error(applyGate.reasons[0]?.message || 'Apply blocked');
       return;
     }
-    if (!canApply) {
-      toast.error('Apply requires super-admin or developer role');
-      return;
-    }
-    if (!isValidRepairConfirmPhrase(confirmPhrase, expectedPhrase)) {
-      toast.error(`Type confirm phrase: ${expectedPhrase}`);
-      return;
-    }
+    if (!action || !dryRun?.ok) return;
+
     setApplying(true);
     try {
       const res = await applyDeveloperRepair(
@@ -171,22 +184,30 @@ export function RepairActionPanel({ companyId, item, onRemove, onApplied }: Prop
               disabled={!canApply || !dryRun?.ok}
             />
           </div>
-          <Button
-            type="button"
-            size="sm"
-            onClick={apply}
-            disabled={!canApply || !dryRun?.ok || applying}
-          >
-            Apply repair
-          </Button>
+          <div className="flex flex-col gap-1 min-w-[140px]">
+            {applyGate.blocked && (
+              <div className="rounded border border-amber-900/40 bg-amber-950/20 p-2 text-amber-300/95">
+                <div className="flex items-center gap-1 font-medium mb-1">
+                  <ShieldAlert className="w-3 h-3" />
+                  Apply blocked
+                </div>
+                <ul className="list-disc ml-4 space-y-0.5 text-[11px]">
+                  {applyGate.reasons.map((r) => (
+                    <li key={r.code}>{r.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              onClick={apply}
+              disabled={applyGate.blocked}
+            >
+              Apply repair
+            </Button>
+          </div>
         </div>
-
-        {!canApply && (
-          <p className="text-amber-400/90 flex items-center gap-1">
-            <ShieldAlert className="w-3 h-3" />
-            Apply disabled — super-admin or developer only
-          </p>
-        )}
 
         {dryRun && !dryRun.ok && (
           <p className="text-amber-400">{dryRun.blockedReason || 'Not safe to apply'}</p>

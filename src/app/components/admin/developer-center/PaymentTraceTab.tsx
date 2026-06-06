@@ -12,6 +12,7 @@ import {
   type TransactionTraceResult,
 } from '@/app/services/accountingDeveloperCenterService';
 import { detectTransactionTraceRepairCandidates } from '@/app/lib/transactionTraceRepairDiagnostics';
+import { TraceRepairCandidatesPanel } from '@/app/components/admin/developer-center/TraceRepairCandidateCard';
 import type { PaymentTraceView } from '@/app/lib/paymentTraceDiagnostics';
 
 interface Props {
@@ -78,29 +79,14 @@ export function PaymentTraceTab({ companyId, initialQuery = '' }: Props) {
             <CardDescription>Metadata-only repairs — dry-run required before apply</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {repairCandidates.filter((c) => c.canQueue).length === 0 ? (
-              <p className="text-xs text-gray-500">{repairCandidates[0]?.reason || 'No safe repair available'}</p>
-            ) : (
-              repairCandidates
-                .filter((c) => c.canQueue && c.queueItem)
-                .map((c) => (
-                  <div key={`${c.queueItem!.actionId}-${JSON.stringify(c.queueItem!.params)}`} className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="text-gray-400 flex-1 min-w-[200px]">{c.reason}</span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-7"
-                      onClick={() => {
-                        sendToRepairQueue({ ...c.queueItem!, sourceTab: 'payment' });
-                        toast.success('Sent to Repair Queue');
-                      }}
-                    >
-                      Send to queue
-                    </Button>
-                  </div>
-                ))
-            )}
+            <TraceRepairCandidatesPanel
+              candidates={repairCandidates}
+              sourceTab="payment"
+              onSendToQueue={(item) => {
+                sendToRepairQueue(item);
+                toast.success('Sent to Repair Queue');
+              }}
+            />
           </CardContent>
         </Card>
       )}
