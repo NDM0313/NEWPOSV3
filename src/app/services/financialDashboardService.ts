@@ -22,6 +22,10 @@ export interface FinancialDashboardMetrics {
   /** Populated when RPC returns JSON from migration 20260370+: operational party roll-up basis. */
   ar_ap_basis?: string;
   ar_ap_scope?: string;
+  /** all_branches | branch — period sales/purchases/expenses/trends/category scope */
+  period_scope?: string;
+  /** company — cash/bank GL remains company-wide */
+  cash_bank_scope?: string;
   /** Purchases (final/received) in the same window as today_sales / monthly_revenue (not operating expenses). */
   period_purchases?: number;
   /** Expenses module (paid) only — excludes purchase inventory spend. */
@@ -282,7 +286,7 @@ export async function getDashboardMetrics(
   }
 }
 
-function parseFinancialMetrics(raw: Record<string, unknown>): FinancialDashboardMetrics {
+export function parseFinancialMetrics(raw: Record<string, unknown>): FinancialDashboardMetrics {
   return {
     today_sales: Number(raw.today_sales) ?? 0,
     today_profit: Number(raw.today_profit) ?? 0,
@@ -296,6 +300,8 @@ function parseFinancialMetrics(raw: Record<string, unknown>): FinancialDashboard
     payables: Number(raw.payables) ?? 0,
     ar_ap_basis: raw.ar_ap_basis != null ? String(raw.ar_ap_basis) : undefined,
     ar_ap_scope: raw.ar_ap_scope != null ? String(raw.ar_ap_scope) : undefined,
+    period_scope: raw.period_scope != null ? String(raw.period_scope) : undefined,
+    cash_bank_scope: raw.cash_bank_scope != null ? String(raw.cash_bank_scope) : undefined,
     period_purchases: Number(raw.period_purchases) || 0,
     period_operating_expenses: Number(raw.period_operating_expenses) || 0,
     sales_trend: Array.isArray(raw.sales_trend) ? (raw.sales_trend as { date: string; value: number }[]) : [],

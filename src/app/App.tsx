@@ -34,7 +34,7 @@ const GlobalSuspenseFallback = () => (
   </div>
 );
 
-const Dashboard = lazy(() => import('./components/dashboard/Dashboard').then(m => ({ default: m.Dashboard })));
+const Dashboard = lazy(() => import('./components/dashboard/v2/DashboardV2Page').then(m => ({ default: m.DashboardV2Page })));
 const ProductsPage = lazy(() => import('./components/products/ProductsPage').then(m => ({ default: m.ProductsPage })));
 const POS = lazy(() => import('./components/pos/POS').then(m => ({ default: m.POS })));
 const SalesEntry = lazy(() => import('./components/sales/SalesEntry').then(m => ({ default: m.SalesEntry })));

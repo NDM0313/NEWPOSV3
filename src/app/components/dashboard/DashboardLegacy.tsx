@@ -15,8 +15,10 @@ import { getBusinessAlerts, type BusinessAlert } from '../../services/businessAl
 import { canViewExecutiveDashboard } from '@/app/lib/executiveDashboardAccess';
 import { productService } from '@/app/services/productService';
 import { safeRpcBranchId } from '@/app/lib/safeRpcBranchId';
+import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
 import { useFormatCurrency } from '../../hooks/useFormatCurrency';
 import { businessService } from '../../services/businessService';
+import { branchService } from '@/app/services/branchService';
 
 const DashboardRevenueChart = lazy(() =>
   import('./DashboardRevenueChart').then((m) => ({ default: m.DashboardRevenueChart }))
@@ -24,7 +26,7 @@ const DashboardRevenueChart = lazy(() =>
 
 const CHART_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4'];
 
-const CreateYourBusinessCard: React.FC<{
+export const CreateYourBusinessCard: React.FC<{
   signOut: () => Promise<void>;
   refreshUserProfile: () => void;
 }> = ({ signOut, refreshUserProfile }) => {
@@ -185,7 +187,8 @@ interface LowStockItem {
   min_stock?: number;
 }
 
-export const Dashboard = () => {
+/** @deprecated Use DashboardV2Page — kept for reference until zero imports. */
+export const DashboardLegacy = () => {
   const { setCurrentView } = useNavigation();
   const sales = useSales();
   const purchases = usePurchases();
@@ -219,6 +222,7 @@ export const Dashboard = () => {
   const [salesByCategory, setSalesByCategory] = useState<Array<{ categoryName: string; total: number }>>([]);
   const [financialMetrics, setFinancialMetrics] = useState<FinancialDashboardMetrics | null>(null);
   const [alerts, setAlerts] = useState<BusinessAlert[]>([]);
+  const [branchScopeLabel, setBranchScopeLabel] = useState('All branches');
 
   // Business alerts (separate lightweight call)
   useEffect(() => {
@@ -235,11 +239,14 @@ export const Dashboard = () => {
       return;
     }
     setLoading(true);
-    const start = startDate ? startDate.slice(0, 10) : null;
-    const end = endDate ? endDate.slice(0, 10) : null;
+    const start = startDateObj ? formatLocalDateYYYYMMDD(startDateObj) : null;
+    const end = endDateObj ? formatLocalDateYYYYMMDD(endDateObj) : null;
     const branchId = globalFilter.branchId ?? null;
     getDashboardMetrics(companyId, branchId, start, end)
       .then((payload) => {
+        if (payload.error) {
+          console.warn('[Dashboard] get_dashboard_metrics returned error:', payload.error);
+        }
         setFinancialMetrics(payload.metrics);
         setSalesByCategory(payload.sales_by_category ?? []);
         setLowStockProducts(
@@ -258,7 +265,26 @@ export const Dashboard = () => {
         setLowStockProducts([]);
       })
       .finally(() => setLoading(false));
-  }, [companyId, startDate, endDate, globalFilter.branchId, canExecutive]);
+  }, [companyId, startDateObj, endDateObj, globalFilter.branchId, canExecutive]);
+
+  useEffect(() => {
+    if (!companyId) {
+      setBranchScopeLabel('All branches');
+      return;
+    }
+    const bid = globalFilter.branchId;
+    if (!bid || bid === 'all') {
+      setBranchScopeLabel('All branches');
+      return;
+    }
+    branchService
+      .getAllBranches(companyId)
+      .then((rows) => {
+        const name = (rows || []).find((b: { id: string }) => b.id === bid)?.name;
+        setBranchScopeLabel(name ? String(name) : 'Selected branch');
+      })
+      .catch(() => setBranchScopeLabel('Selected branch'));
+  }, [companyId, globalFilter.branchId]);
 
   // Low stock for non-executive roles (no get_dashboard_metrics)
   useEffect(() => {
@@ -331,8 +357,14 @@ export const Dashboard = () => {
   }, [lowStockProducts]);
 
   // Executive summary fallback: when RPC fails, compute from context using global date range
-  const periodStart = useMemo(() => (startDate ? startDate.slice(0, 10) : null), [startDate]);
-  const periodEnd = useMemo(() => (endDate ? endDate.slice(0, 10) : null), [endDate]);
+  const periodStart = useMemo(
+    () => (startDateObj ? formatLocalDateYYYYMMDD(startDateObj) : null),
+    [startDateObj]
+  );
+  const periodEnd = useMemo(
+    () => (endDateObj ? formatLocalDateYYYYMMDD(endDateObj) : null),
+    [endDateObj]
+  );
 
   const executiveFromContext = useMemo((): FinancialDashboardMetrics => {
     const finalSales = sales.sales.filter((s: any) => s.status === 'final');
@@ -475,18 +507,21 @@ export const Dashboard = () => {
       
       // Filter by date range
       const daySales = sales.sales
-        .filter(s => {
-          if (!s.date?.startsWith(dateStr)) return false;
-          return filterByDateRange(s.date);
+        .filter((s) => {
+          const saleDate = (s.date || '').toString().slice(0, 10);
+          if (saleDate !== dateStr) return false;
+          return filterByDateRange(s.date) && (s as { status?: string }).status === 'final';
         })
-        .reduce((sum, sale) => sum + (sale.type === 'invoice' ? sale.total : 0), 0);
-      
+        .reduce((sum, sale) => sum + (Number(sale.total) || 0), 0);
+
       const dayPurchases = purchases.purchases
-        .filter(p => {
-          if (!p.poDate?.startsWith(dateStr)) return false;
-          return filterByDateRange(p.poDate);
+        .filter((p) => {
+          const poDate = (p.poDate || '').toString().slice(0, 10);
+          if (poDate !== dateStr) return false;
+          const st = (p as { status?: string }).status;
+          return filterByDateRange(p.poDate) && (st === 'final' || st === 'received');
         })
-        .reduce((sum, purchase) => sum + purchase.total, 0);
+        .reduce((sum, purchase) => sum + (Number(purchase.total) || 0), 0);
       
       const dayProfit = daySales - dayPurchases;
       
@@ -611,7 +646,12 @@ export const Dashboard = () => {
         <h3 className="text-lg font-bold text-white mb-1">Executive summary</h3>
         <p className="text-xs text-[#9CA3AF] mb-4">
           Cards follow the <span className="text-gray-300">global date filter</span>
-          {periodStart && periodEnd ? ` (${dashboardRangeLabel}).` : '.'} Period net = sales − purchases − operating expenses (not the same as cash).
+          {periodStart && periodEnd ? ` (${dashboardRangeLabel})` : ''} ·{' '}
+          <span className="text-gray-300">Branch: {branchScopeLabel}</span>
+          {displayMetricsWithCashBank.cash_bank_scope === 'company' ? (
+            <span className="text-gray-500"> · Cash/bank = company-wide GL</span>
+          ) : null}
+          . Period net = sales − purchases − operating expenses (not the same as cash).
         </p>
         {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 h-24 items-center justify-center">
