@@ -4,10 +4,14 @@ import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
 import { toast } from 'sonner';
+import { useRepairQueue } from '@/app/components/admin/developer-center/RepairQueueContext';
 import {
   loadPaymentTraceSnapshot,
+  runTransactionTrace,
   type TraceMode,
+  type TransactionTraceResult,
 } from '@/app/services/accountingDeveloperCenterService';
+import { detectTransactionTraceRepairCandidates } from '@/app/lib/transactionTraceRepairDiagnostics';
 import type { PaymentTraceView } from '@/app/lib/paymentTraceDiagnostics';
 
 interface Props {
@@ -16,9 +20,11 @@ interface Props {
 }
 
 export function PaymentTraceTab({ companyId, initialQuery = '' }: Props) {
+  const { sendToRepairQueue } = useRepairQueue();
   const [query, setQuery] = useState(initialQuery);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<PaymentTraceView | null>(null);
+  const [trace, setTrace] = useState<TransactionTraceResult | null>(null);
 
   const run = useCallback(async () => {
     if (!companyId || !query.trim()) {
@@ -27,10 +33,17 @@ export function PaymentTraceTab({ companyId, initialQuery = '' }: Props) {
     }
     setLoading(true);
     try {
-      setView(await loadPaymentTraceSnapshot(companyId, query, 'auto' as TraceMode));
+      const mode = 'auto' as TraceMode;
+      const [snapshot, fullTrace] = await Promise.all([
+        loadPaymentTraceSnapshot(companyId, query, mode),
+        runTransactionTrace(companyId, query.trim(), mode),
+      ]);
+      setView(snapshot);
+      setTrace(fullTrace);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Payment trace failed');
       setView(null);
+      setTrace(null);
     } finally {
       setLoading(false);
     }
@@ -41,6 +54,8 @@ export function PaymentTraceTab({ companyId, initialQuery = '' }: Props) {
     if (initialQuery && companyId) void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId, initialQuery]);
+
+  const repairCandidates = trace ? detectTransactionTraceRepairCandidates(trace, 'payment') : [];
 
   return (
     <div className="space-y-4">
@@ -53,8 +68,42 @@ export function PaymentTraceTab({ companyId, initialQuery = '' }: Props) {
           <Search className={`w-4 h-4 mr-1 ${loading ? 'animate-pulse' : ''}`} />
           Run diagnostic
         </Button>
-        <span className="text-xs text-violet-400/90 ml-auto">Read-only — Phase C5</span>
+        <span className="text-xs text-violet-400/90 ml-auto">Phase F — send safe repairs to Repair Queue</span>
       </div>
+
+      {trace && (
+        <Card className="border-violet-900/30 bg-violet-950/10">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Repair candidates</CardTitle>
+            <CardDescription>Metadata-only repairs — dry-run required before apply</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {repairCandidates.filter((c) => c.canQueue).length === 0 ? (
+              <p className="text-xs text-gray-500">{repairCandidates[0]?.reason || 'No safe repair available'}</p>
+            ) : (
+              repairCandidates
+                .filter((c) => c.canQueue && c.queueItem)
+                .map((c) => (
+                  <div key={`${c.queueItem!.actionId}-${JSON.stringify(c.queueItem!.params)}`} className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-gray-400 flex-1 min-w-[200px]">{c.reason}</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7"
+                      onClick={() => {
+                        sendToRepairQueue({ ...c.queueItem!, sourceTab: 'payment' });
+                        toast.success('Sent to Repair Queue');
+                      }}
+                    >
+                      Send to queue
+                    </Button>
+                  </div>
+                ))
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {view && (
         <Card className="border-gray-800 bg-gray-900/40">

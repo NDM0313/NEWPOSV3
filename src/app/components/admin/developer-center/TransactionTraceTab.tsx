@@ -12,6 +12,8 @@ import {
 } from '@/app/components/ui/select';
 import { Badge } from '@/app/components/ui/badge';
 import { toast } from 'sonner';
+import { useRepairQueue } from '@/app/components/admin/developer-center/RepairQueueContext';
+import { detectTransactionTraceRepairCandidates } from '@/app/lib/transactionTraceRepairDiagnostics';
 import {
   runTransactionTrace,
   type TraceMode,
@@ -57,6 +59,7 @@ function inclBadge(included: boolean) {
 }
 
 export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
+  const { sendToRepairQueue } = useRepairQueue();
   const [mode, setMode] = useState<TraceMode>('auto');
   const [query, setQuery] = useState(initialQuery);
   const [loading, setLoading] = useState(false);
@@ -94,13 +97,15 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
         visibility,
       }));
 
+  const repairCandidates = trace ? detectTransactionTraceRepairCandidates(trace, 'trace') : [];
+
   return (
     <div className="space-y-4">
       <Card className="border-gray-800 bg-gray-900/40">
         <CardHeader>
           <CardTitle className="text-lg">Transaction trace</CardTitle>
           <CardDescription>
-            RCV/PAY/EXP/JE/SL/REN/UUID — operational doc → payment → JE → report visibility. Read-only.
+            RCV/PAY/EXP/JE/SL/REN/UUID — operational doc → payment → JE → report visibility. Phase F repair queue.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -140,6 +145,41 @@ export function TransactionTraceTab({ companyId, initialQuery = '' }: Props) {
 
       {trace && (
         <div className="space-y-2">
+          <Card className="border-violet-900/30 bg-violet-950/10">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Repair candidates</CardTitle>
+              <CardDescription>Safe metadata repairs — always dry-run before apply</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {repairCandidates.filter((c) => c.canQueue).length === 0 ? (
+                <p className="text-xs text-gray-500">{repairCandidates[0]?.reason || 'No safe repair available'}</p>
+              ) : (
+                repairCandidates
+                  .filter((c) => c.canQueue && c.queueItem)
+                  .map((c) => (
+                    <div
+                      key={`${c.queueItem!.actionId}-${JSON.stringify(c.queueItem!.params)}`}
+                      className="flex flex-wrap items-center gap-2 text-xs"
+                    >
+                      <span className="text-gray-400 flex-1 min-w-[200px]">{c.reason}</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7"
+                        onClick={() => {
+                          sendToRepairQueue(c.queueItem!);
+                          toast.success('Sent to Repair Queue');
+                        }}
+                      >
+                        Send to queue
+                      </Button>
+                    </div>
+                  ))
+              )}
+            </CardContent>
+          </Card>
+
           <div className="flex flex-wrap gap-2 items-center text-sm">
             <span className="text-gray-500">Overall:</span>
             <Badge>{trace.overall}</Badge>

@@ -25,12 +25,13 @@ Documentation hub for the unified **Accounting Developer Center** — diagnose C
 | [09_CONTROLLED_REPAIR_ACTIONS.md](09_CONTROLLED_REPAIR_ACTIONS.md) | Phase F action catalog and hard rules |
 | [10_REPAIR_ACTION_REGISTRY.md](10_REPAIR_ACTION_REGISTRY.md) | Registry type contract and dry-run hash flow |
 | [11_REPAIR_AUDIT_LOG.md](11_REPAIR_AUDIT_LOG.md) | `developer_repair_audit` schema and rollback notes |
+| [12_PHASE_F_COMPLETION.md](12_PHASE_F_COMPLETION.md) | Phase F completion summary and manual checklist |
 
 ## Quick recommendation
 
-**Shipped (Phase B):** COA Health + Transaction Trace (read-only).
+**Shipped (Phase F):** Controlled repair registry + Repair Queue apply from COA, trace tabs, Opening Balance.
 
-**Build next:** Extend trace tabs (Payment / Transaction) with queue buttons where safe candidates exist.
+**Before production apply:** Run migrations `20260606120000_*` and `20260606130000_*` on Supabase.
 
 **Keep separate:** AR/AP Reconciliation Center, Numbering Maintenance, System Health.
 

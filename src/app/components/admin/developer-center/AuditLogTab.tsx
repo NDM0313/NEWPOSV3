@@ -72,7 +72,7 @@ export function AuditLogTab({ companyId }: Props) {
           <CardHeader>
             <CardTitle className="text-base">Audit log ({snapshot.rows.length})</CardTitle>
             <CardDescription>
-              {snapshot.dateFrom} → {snapshot.dateTo} · party_repair_audit + resolved integrity issues
+              {snapshot.dateFrom} → {snapshot.dateTo} · party_repair_audit + developer_repair_audit + resolved integrity issues
             </CardDescription>
             {snapshot.truncationWarning && <p className="text-xs text-amber-400">{snapshot.truncationWarning}</p>}
           </CardHeader>
