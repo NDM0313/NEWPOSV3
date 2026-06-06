@@ -205,8 +205,9 @@ export const openingBalanceJournalService = {
 
   /**
    * Load contact from DB and post/void opening JEs for AR, AP, and worker legs as applicable.
+   * @param options.effectiveDate — optional YYYY-MM-DD for new opening JEs (Developer Center apply).
    */
-  async syncFromContactRow(contactId: string): Promise<void> {
+  async syncFromContactRow(contactId: string, options?: { effectiveDate?: string }): Promise<void> {
     const { data: row, error } = await supabase
       .from('contacts')
       .select(
@@ -247,7 +248,7 @@ export const openingBalanceJournalService = {
     const wpId = await findAccountIdByCode(companyId, '2010');
     const waId = await findAccountIdByCode(companyId, '1180');
 
-    const entryDate = openingEntryDate();
+    const entryDate = (options?.effectiveDate || openingEntryDate()).slice(0, 10);
 
     // --- Customer / both: AR from opening_balance
     if (type === 'customer' || type === 'both') {
@@ -799,5 +800,80 @@ export const openingBalanceJournalService = {
       inventoryTotalValue,
       errors,
     };
+  },
+
+  /**
+   * Post a balanced adjustment JE for opening balance gap (does not void existing opening JE).
+   * Developer Center controlled repair only.
+   */
+  async createContactOpeningAdjustment(params: {
+    companyId: string;
+    contactId: string;
+    entityType: 'contact_ar' | 'contact_ap' | 'contact_worker';
+    gap: number;
+    effectiveDate: string;
+    contactName?: string;
+  }): Promise<{ entryDate: string; lines: { account_id: string; debit: number; credit: number; description: string }[] }> {
+    const { companyId, contactId, entityType, gap, effectiveDate, contactName } = params;
+    const amt = roundMoney(Math.abs(gap));
+    if (amt < MONEY_EPS) throw new Error('Adjustment amount too small');
+
+    await defaultAccountsService.ensureDefaultAccounts(companyId);
+    const equityId = await resolveOpeningEquityAccountId(companyId);
+    const entryDate = effectiveDate.slice(0, 10);
+    const name = contactName || 'Contact';
+
+    let primaryId: string | null = null;
+    if (entityType === 'contact_ar') {
+      primaryId = await findAccountIdByCode(companyId, '1100');
+      try {
+        const { resolveReceivablePostingAccountId } = await import('./partySubledgerAccountService');
+        const subId = await resolveReceivablePostingAccountId(companyId, contactId);
+        if (subId) primaryId = subId;
+      } catch { /* parent AR */ }
+    } else if (entityType === 'contact_ap') {
+      primaryId = await findAccountIdByCode(companyId, '2000');
+      try {
+        const { resolvePayablePostingAccountId } = await import('./partySubledgerAccountService');
+        const subId = await resolvePayablePostingAccountId(companyId, contactId);
+        if (subId) primaryId = subId;
+      } catch { /* parent AP */ }
+    } else {
+      primaryId = await findAccountIdByCode(companyId, '2010') || (await findAccountIdByCode(companyId, '1180'));
+    }
+    if (!primaryId) throw new Error('Primary opening account not found');
+
+    const refType = `opening_balance_adjustment_${entityType.replace('contact_', '')}`;
+    const lines =
+      entityType === 'contact_ap'
+        ? gap > 0
+          ? [
+              { account_id: equityId, debit: amt, credit: 0, description: 'Opening adjustment — equity offset' },
+              { account_id: primaryId, debit: 0, credit: amt, description: 'Opening adjustment — payable' },
+            ]
+          : [
+              { account_id: primaryId, debit: amt, credit: 0, description: 'Opening adjustment — payable' },
+              { account_id: equityId, debit: 0, credit: amt, description: 'Opening adjustment — equity offset' },
+            ]
+        : gap > 0
+          ? [
+              { account_id: primaryId, debit: amt, credit: 0, description: 'Opening adjustment — receivable' },
+              { account_id: equityId, debit: 0, credit: amt, description: 'Opening adjustment — equity offset' },
+            ]
+          : [
+              { account_id: equityId, debit: amt, credit: 0, description: 'Opening adjustment — equity offset' },
+              { account_id: primaryId, debit: 0, credit: amt, description: 'Opening adjustment — receivable' },
+            ];
+
+    await postBalancedOpening({
+      companyId,
+      referenceType: refType,
+      referenceId: contactId,
+      description: `Opening balance adjustment — ${name} (${entityType})`,
+      lines,
+      entryDate,
+    });
+
+    return { entryDate, lines };
   },
 };

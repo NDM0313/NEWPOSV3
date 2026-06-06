@@ -1,5 +1,5 @@
 /**
- * Developer Center audit log view helpers (Phase E) — read-only.
+ * Developer Center audit log view helpers (Phase E/F) — read-only.
  */
 
 export interface DeveloperCenterAuditRow {
@@ -12,7 +12,7 @@ export interface DeveloperCenterAuditRow {
   before: string;
   after: string;
   reasonCode: string;
-  source: 'party_repair_audit' | 'integrity_lab';
+  source: 'party_repair_audit' | 'integrity_lab' | 'developer_repair';
 }
 
 export function mapPartyRepairAuditRow(row: {
@@ -37,6 +37,33 @@ export function mapPartyRepairAuditRow(row: {
     after: row.new_value ?? '—',
     reasonCode: row.reason_code,
     source: 'party_repair_audit',
+  };
+}
+
+export function mapDeveloperRepairAuditRow(row: {
+  id: string;
+  created_at: string;
+  action_id: string;
+  target_table: string | null;
+  target_id: string | null;
+  before_json: Record<string, unknown> | null;
+  after_json: Record<string, unknown> | null;
+  status: string;
+  user_id: string | null;
+  confirm_phrase: string;
+  error_message: string | null;
+}): DeveloperCenterAuditRow {
+  return {
+    id: row.id,
+    timestamp: row.created_at,
+    action: row.action_id,
+    entityType: row.target_table || 'developer_repair',
+    entityId: row.target_id || '—',
+    actorId: row.user_id,
+    before: JSON.stringify(row.before_json ?? {}),
+    after: JSON.stringify(row.after_json ?? {}),
+    reasonCode: row.status === 'failed' ? row.error_message || row.confirm_phrase : row.confirm_phrase,
+    source: 'developer_repair',
   };
 }
 

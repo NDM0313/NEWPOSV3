@@ -112,6 +112,10 @@ export interface RoznamchaTraceCandidateView {
   journalEntryNo: string | null;
   details: string;
   winnerRef?: string;
+  sourcePaymentId?: string | null;
+  sourceRentalPaymentId?: string | null;
+  sourceJournalEntryId?: string | null;
+  paymentAccountId?: string | null;
 }
 
 export function buildRoznamchaTraceCandidates(
@@ -140,6 +144,10 @@ export function buildRoznamchaTraceCandidates(
       journalEntryNo: row.journalEntryNo ?? null,
       details: String(row.details || ''),
       winnerRef: outcome.winnerRef,
+      sourcePaymentId: row.sourcePaymentId ?? null,
+      sourceRentalPaymentId: row.sourceRentalPaymentId ?? null,
+      sourceJournalEntryId: row.sourceJournalEntryId ?? null,
+      paymentAccountId: row.paymentAccountId ?? null,
     };
   });
 }

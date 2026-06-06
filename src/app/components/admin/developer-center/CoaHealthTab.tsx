@@ -3,7 +3,11 @@ import { RefreshCw, Copy, AlertTriangle } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
+import { Input } from '@/app/components/ui/input';
 import { toast } from 'sonner';
+import { RepairActionPanel } from '@/app/components/admin/developer-center/RepairActionPanel';
+import { useRepairQueue } from '@/app/components/admin/developer-center/RepairQueueContext';
+import type { RepairQueueItem } from '@/app/lib/developerRepairActions';
 import {
   loadCoaHealthSnapshot,
   loadAccountUsage,
@@ -23,12 +27,16 @@ function severityBadge(sev: CoaHealthIssue['severity']) {
 }
 
 export function CoaHealthTab({ companyId }: Props) {
+  const { sendToRepairQueue } = useRepairQueue();
   const [loading, setLoading] = useState(false);
   const [snapshot, setSnapshot] = useState<CoaHealthSnapshot | null>(null);
   const [issuesOnly, setIssuesOnly] = useState(true);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [usage, setUsage] = useState<AccountUsageDetail | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [coaRepairItem, setCoaRepairItem] = useState<RepairQueueItem | null>(null);
 
   const load = useCallback(async () => {
     if (!companyId) return;
@@ -60,6 +68,9 @@ export function CoaHealthTab({ companyId }: Props) {
     try {
       const detail = await loadAccountUsage(companyId, accountId);
       setUsage(detail);
+      setNewName(detail?.name || '');
+      setNewDescription(detail?.description || '');
+      setCoaRepairItem(null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to load account usage');
       setUsage(null);
@@ -94,7 +105,7 @@ export function CoaHealthTab({ companyId }: Props) {
           />
           Hide low-priority info
         </label>
-        <span className="text-xs text-violet-400/90 ml-auto">Read-only — Phase B</span>
+        <span className="text-xs text-violet-400/90 ml-auto">Phase F — safe display-field repairs when eligible</span>
       </div>
 
       {snapshot && (
@@ -169,33 +180,154 @@ export function CoaHealthTab({ companyId }: Props) {
         <Card className="border-gray-800 bg-gray-900/40">
           <CardHeader>
             <CardTitle className="text-base">Account usage</CardTitle>
-            <CardDescription>Journal-derived usage — read-only drill-down</CardDescription>
+            <CardDescription>Journal-derived usage and controlled COA display edits</CardDescription>
           </CardHeader>
           <CardContent>
             {usageLoading && <p className="text-sm text-gray-500">Loading usage…</p>}
             {!usageLoading && usage && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-400">
-                    <span className="text-white font-medium">{usage.code}</span> — {usage.name}
-                  </p>
-                  <p className="text-gray-500 mt-2">Lines: {usage.lineCount}</p>
-                  <p className="text-gray-500">Debit: {usage.totalDebit} · Credit: {usage.totalCredit}</p>
-                  <p className="text-gray-500">
-                    First: {usage.firstUsed || '—'} · Last: {usage.lastUsed || '—'}
-                  </p>
-                  <p className="text-gray-500">Modules: {usage.modules.join(', ') || '—'}</p>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-400">
+                      <span className="text-white font-medium">{usage.code}</span> — {usage.name}
+                    </p>
+                    <p className="text-gray-500 mt-2 font-mono text-xs">ID: {usage.accountId}</p>
+                    <p className="text-gray-500">Type: {usage.type} · Parent: {usage.parentId || '—'}</p>
+                    <p className="text-gray-500">
+                      Control: {usage.isControl ? 'yes' : 'no'} · Group header: {usage.isGroup ? 'yes' : 'no'}
+                    </p>
+                    <p className="text-gray-500 mt-2">Lines: {usage.lineCount}</p>
+                    <p className="text-gray-500">Debit: {usage.totalDebit} · Credit: {usage.totalCredit}</p>
+                    <p className="text-gray-500">
+                      First: {usage.firstUsed || '—'} · Last: {usage.lastUsed || '—'}
+                    </p>
+                    <p className="text-gray-500">Modules: {usage.modules.join(', ') || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Journal balance: {usage.journalBalance}</p>
+                    <p className="text-gray-500">Stored balance: {usage.storedBalance}</p>
+                    <p className="text-gray-500">Variance: {usage.balanceVariance}</p>
+                    <p className="text-gray-400 mt-2">{usage.editSafety.reason}</p>
+                    <p className="text-xs mt-1">
+                      Safe to edit:{' '}
+                      {usage.safeToEdit ? (
+                        <Badge className="bg-emerald-900/40 text-emerald-300 border-emerald-800">yes</Badge>
+                      ) : (
+                        <Badge className="bg-red-900/40 text-red-300 border-red-800">no</Badge>
+                      )}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-gray-500">Journal balance: {usage.journalBalance}</p>
-                  <p className="text-gray-500">Stored balance: {usage.storedBalance}</p>
-                  <p className="text-gray-500">Variance: {usage.balanceVariance}</p>
-                  <p className="text-gray-400 mt-2">{usage.editSafety.reason}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    canEditName: {String(usage.editSafety.canEditName)} · canArchive: {String(usage.editSafety.canArchive)} ·
-                    cannotTouch: {String(usage.editSafety.cannotTouch)}
-                  </p>
-                </div>
+
+                {usage.editSafety.canEditName && (
+                  <div className="flex flex-wrap gap-2 items-end border-t border-gray-800 pt-3">
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="text-[10px] uppercase tracking-wider text-gray-500">New name</label>
+                      <Input
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        className="mt-1 bg-gray-950 border-gray-800 text-sm"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const item: Omit<RepairQueueItem, 'queueId'> = {
+                          actionId: 'coa.rename_account',
+                          sourceTab: 'coa',
+                          params: {
+                            accountId: usage.accountId,
+                            accountCode: usage.code,
+                            newName,
+                          },
+                          detectedReason: 'Safe display rename',
+                          severity: 'low',
+                          title: `Rename ${usage.code}`,
+                        };
+                        setCoaRepairItem({ ...item, queueId: 'inline-coa' });
+                        sendToRepairQueue(item);
+                        toast.success('Rename queued — run dry-run in Repair Queue or below');
+                      }}
+                    >
+                      Queue rename
+                    </Button>
+                  </div>
+                )}
+
+                {!usage.editSafety.cannotTouch && (
+                  <div className="flex flex-wrap gap-2 items-end border-t border-gray-800 pt-3">
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="text-[10px] uppercase tracking-wider text-gray-500">Description</label>
+                      <Input
+                        value={newDescription}
+                        onChange={(e) => setNewDescription(e.target.value)}
+                        className="mt-1 bg-gray-950 border-gray-800 text-sm"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const item: Omit<RepairQueueItem, 'queueId'> = {
+                          actionId: 'coa.update_description',
+                          sourceTab: 'coa',
+                          params: {
+                            accountId: usage.accountId,
+                            accountCode: usage.code,
+                            newDescription,
+                          },
+                          detectedReason: 'Safe description update',
+                          severity: 'low',
+                          title: `Update description ${usage.code}`,
+                        };
+                        setCoaRepairItem({ ...item, queueId: 'inline-coa-desc' });
+                        sendToRepairQueue(item);
+                      }}
+                    >
+                      Queue description update
+                    </Button>
+                  </div>
+                )}
+
+                {(usage.editSafety.canArchive || (usage.lineCount === 0 && !usage.editSafety.cannotTouch)) && (
+                  <div className="border-t border-gray-800 pt-3">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const targetActive = !usage.editSafety.canArchive;
+                        const item: Omit<RepairQueueItem, 'queueId'> = {
+                          actionId: 'coa.toggle_active_if_safe',
+                          sourceTab: 'coa',
+                          params: {
+                            accountId: usage.accountId,
+                            accountCode: usage.code,
+                            isActive: targetActive,
+                          },
+                          detectedReason: targetActive ? 'Activate account' : 'Deactivate when safe',
+                          severity: 'low',
+                          title: `Toggle active ${usage.code}`,
+                        };
+                        setCoaRepairItem({ ...item, queueId: 'inline-coa-active' });
+                        sendToRepairQueue(item);
+                      }}
+                    >
+                      Queue active toggle
+                    </Button>
+                  </div>
+                )}
+
+                {coaRepairItem && (
+                  <RepairActionPanel
+                    companyId={companyId}
+                    item={coaRepairItem}
+                    onApplied={() => openAccount(usage.accountId)}
+                  />
+                )}
               </div>
             )}
           </CardContent>

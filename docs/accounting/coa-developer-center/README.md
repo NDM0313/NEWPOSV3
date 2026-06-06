@@ -10,6 +10,8 @@ Documentation hub for the unified **Accounting Developer Center** — diagnose C
 
 **Phase E (complete):** Opening Balance preview + Audit Log read-only. See [08_PHASE_DE_COMPLETION.md](08_PHASE_DE_COMPLETION.md).
 
+**Phase F (complete):** Controlled repair registry, confirm-gated apply, audit log. See [09_CONTROLLED_REPAIR_ACTIONS.md](09_CONTROLLED_REPAIR_ACTIONS.md).
+
 ## Documents
 
 | File | Contents |
@@ -20,12 +22,15 @@ Documentation hub for the unified **Accounting Developer Center** — diagnose C
 | [03_DEVELOPER_CENTER_SPEC.md](03_DEVELOPER_CENTER_SPEC.md) | 10-tab Developer Center spec, permissions, RPCs, implementation phases |
 | [04_PHASE_B_IMPLEMENTATION_PLAN.md](04_PHASE_B_IMPLEMENTATION_PLAN.md) | Phase B plan: files, routes, access, services, rollback (read-only shell) |
 | [05_PHASE_C_IMPLEMENTATION_PLAN.md](05_PHASE_C_IMPLEMENTATION_PLAN.md) | Phase C plan: Roznamcha/Statement/Day Book trace tabs (read-only only) |
+| [09_CONTROLLED_REPAIR_ACTIONS.md](09_CONTROLLED_REPAIR_ACTIONS.md) | Phase F action catalog and hard rules |
+| [10_REPAIR_ACTION_REGISTRY.md](10_REPAIR_ACTION_REGISTRY.md) | Registry type contract and dry-run hash flow |
+| [11_REPAIR_AUDIT_LOG.md](11_REPAIR_AUDIT_LOG.md) | `developer_repair_audit` schema and rollback notes |
 
 ## Quick recommendation
 
 **Shipped (Phase B):** COA Health + Transaction Trace (read-only).
 
-**Build next (Phase C, after Phase B merge):** C1 tab shells → Roznamcha Trace → Statement Trace → Day Book Diagnostics → Payment Trace → Journal Integrity (browse-only). One PR per step.
+**Build next:** Extend trace tabs (Payment / Transaction) with queue buttons where safe candidates exist.
 
 **Keep separate:** AR/AP Reconciliation Center, Numbering Maintenance, System Health.
 

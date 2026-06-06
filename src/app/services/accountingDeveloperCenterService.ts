@@ -54,6 +54,7 @@ import {
 import {
   defaultAuditLogDateRange,
   mapPartyRepairAuditRow,
+  mapDeveloperRepairAuditRow,
   type DeveloperCenterAuditRow,
 } from '@/app/lib/developerCenterAuditLog';
 import {
@@ -96,6 +97,11 @@ export interface AccountUsageDetail {
   accountId: string;
   code: string;
   name: string;
+  type: string;
+  parentId: string | null;
+  isControl: boolean;
+  isGroup: boolean;
+  description: string | null;
   lineCount: number;
   totalDebit: number;
   totalCredit: number;
@@ -103,6 +109,7 @@ export interface AccountUsageDetail {
   lastUsed: string | null;
   modules: string[];
   editSafety: ReturnType<typeof classifyAccountEditSafety>;
+  safeToEdit: boolean;
   journalBalance: number;
   storedBalance: number;
   balanceVariance: number;
@@ -288,17 +295,26 @@ export async function loadAccountUsage(companyId: string, accountId: string): Pr
   const storedBalance = Number((account as { balance?: number }).balance) || 0;
 
   const mapped = mapAccount(account as Record<string, unknown>);
+  const code = String(account.code || '').trim();
+  const isControl = ['1100', '2000', '1000', '1010', '1020', '3000', '2010'].includes(code);
+  const editSafety = classifyAccountEditSafety(mapped, lineCount);
   return {
     accountId,
-    code: String(account.code || ''),
+    code,
     name: String(account.name || ''),
+    type: String(account.type || ''),
+    parentId: (account.parent_id as string | null) ?? null,
+    isControl,
+    isGroup: account.is_group === true,
+    description: (account as { description?: string | null }).description ?? null,
     lineCount,
     totalDebit,
     totalCredit,
     firstUsed,
     lastUsed,
     modules: inferModulesFromReferenceTypes(usageAgg.referenceTypes),
-    editSafety: classifyAccountEditSafety(mapped, lineCount),
+    editSafety,
+    safeToEdit: !editSafety.cannotTouch || editSafety.canEditName,
     journalBalance,
     storedBalance,
     balanceVariance: Math.round((storedBalance - journalBalance) * 100) / 100,
@@ -967,17 +983,24 @@ export interface SafeSequenceSyncResult {
   updated: boolean;
 }
 
-/** Phase E — one safe confirmed repair: sync sequence to effective max (super-admin gate in UI). */
+/** Phase E — sequence sync via controlled repair registry (Phase F). */
 export async function applySafeSequenceSync(
   companyId: string,
-  documentType: string
+  documentType: string,
+  ctx?: { userId: string | null; userRole: string | null; confirmPhrase?: string }
 ): Promise<SafeSequenceSyncResult> {
-  const res = await numberingMaintenanceService.syncToEffectiveMax(companyId, documentType);
+  const { applySafeSequenceSyncViaRegistry } = await import('./developerRepairService');
+  const { SAFE_SEQUENCE_SYNC_CONFIRM_PHRASE } = await import('@/app/lib/repairQueueDryRun');
+  const confirmPhrase = ctx?.confirmPhrase ?? SAFE_SEQUENCE_SYNC_CONFIRM_PHRASE;
+  const res = await applySafeSequenceSyncViaRegistry(companyId, documentType, confirmPhrase, {
+    userId: ctx?.userId ?? null,
+    userRole: ctx?.userRole ?? null,
+  });
   return {
-    success: res.success,
+    success: res.ok,
     documentType,
-    message: res.message || res.error || (res.updated ? 'Sequence synced' : 'No update needed'),
-    updated: res.updated === true,
+    message: res.message || res.error || (res.ok ? 'Sequence synced' : 'Apply failed'),
+    updated: res.ok && !String(res.message || '').includes('already in sync'),
   };
 }
 
@@ -1138,6 +1161,24 @@ export async function loadDeveloperCenterAuditLog(
   }
   for (const r of partyRows || []) {
     rows.push(mapPartyRepairAuditRow(r as Parameters<typeof mapPartyRepairAuditRow>[0]));
+  }
+
+  const { data: devRepairRows, error: devRepairErr } = await supabase
+    .from('developer_repair_audit')
+    .select(
+      'id, created_at, action_id, target_table, target_id, before_json, after_json, status, user_id, confirm_phrase, error_message'
+    )
+    .eq('company_id', companyId)
+    .gte('created_at', `${from}T00:00:00`)
+    .lte('created_at', `${to}T23:59:59`)
+    .order('created_at', { ascending: false })
+    .limit(Math.max(0, limit - rows.length));
+
+  if (devRepairErr && !String(devRepairErr.message).includes('does not exist')) {
+    throw new Error(devRepairErr.message);
+  }
+  for (const r of devRepairRows || []) {
+    rows.push(mapDeveloperRepairAuditRow(r as Parameters<typeof mapDeveloperRepairAuditRow>[0]));
   }
 
   const { data: resolvedIssues } = await supabase

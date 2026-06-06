@@ -2,17 +2,18 @@
 import { RefreshCw, ShieldAlert } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { Input } from '@/app/components/ui/input';
 import { Badge } from '@/app/components/ui/badge';
 import { toast } from 'sonner';
-import { useSupabase } from '@/app/context/SupabaseContext';
-import { canonRole } from '@/app/lib/developerAccountingAccess';
+import { RepairActionPanel } from '@/app/components/admin/developer-center/RepairActionPanel';
+import { useRepairQueue } from '@/app/components/admin/developer-center/RepairQueueContext';
 import {
-  SAFE_SEQUENCE_SYNC_CONFIRM_PHRASE,
-  isValidRepairConfirmPhrase,
+  getDeveloperRepairAction,
+  type RepairQueueItem,
+} from '@/app/lib/developerRepairActions';
+import {
+  buildNumberingDryRunPreviews,
 } from '@/app/lib/repairQueueDryRun';
 import {
-  applySafeSequenceSync,
   loadRepairQueueSnapshot,
   type RepairQueueSnapshot,
 } from '@/app/services/accountingDeveloperCenterService';
@@ -21,16 +22,10 @@ interface Props {
   companyId: string;
 }
 
-const SUPER_ROLES = new Set(['super admin', 'superadmin', 'super_admin', 'developer']);
-
 export function RepairQueueTab({ companyId }: Props) {
-  const { userRole } = useSupabase();
-  const canApply = SUPER_ROLES.has(canonRole(userRole));
+  const { items, sendToRepairQueue, removeFromQueue } = useRepairQueue();
   const [loading, setLoading] = useState(false);
   const [snapshot, setSnapshot] = useState<RepairQueueSnapshot | null>(null);
-  const [confirmPhrase, setConfirmPhrase] = useState('');
-  const [selectedDocType, setSelectedDocType] = useState<string | null>(null);
-  const [applying, setApplying] = useState(false);
 
   const load = useCallback(async () => {
     if (!companyId) return;
@@ -49,34 +44,19 @@ export function RepairQueueTab({ companyId }: Props) {
     if (companyId) void load();
   }, [companyId, load]);
 
-  const applySequenceSync = async () => {
-    if (!companyId || !selectedDocType) return;
-    if (!canApply) {
-      toast.error('Sequence sync requires super-admin or developer role');
-      return;
-    }
-    if (!isValidRepairConfirmPhrase(confirmPhrase, SAFE_SEQUENCE_SYNC_CONFIRM_PHRASE)) {
-      toast.error(`Type confirm phrase: ${SAFE_SEQUENCE_SYNC_CONFIRM_PHRASE}`);
-      return;
-    }
-    setApplying(true);
-    try {
-      const res = await applySafeSequenceSync(companyId, selectedDocType);
-      if (res.success) {
-        toast.success(res.message);
-        setConfirmPhrase('');
-        await load();
-      } else {
-        toast.error(res.message);
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Apply failed');
-    } finally {
-      setApplying(false);
-    }
-  };
-
   const outOfSync = snapshot?.numberingRows.filter((r) => r.status === 'out_of_sync') ?? [];
+
+  const queueSequenceSync = (documentType: string, label: string) => {
+    sendToRepairQueue({
+      actionId: 'numbering.sync_sequence_to_effective_max',
+      sourceTab: 'repair',
+      params: { documentType },
+      detectedReason: `${label} sequence out of sync`,
+      severity: 'low',
+      title: `Sync ${label} sequence`,
+    });
+    toast.success('Added to repair queue — run dry-run below');
+  };
 
   return (
     <div className="space-y-4">
@@ -87,16 +67,36 @@ export function RepairQueueTab({ companyId }: Props) {
         </Button>
         <span className="text-xs text-amber-400/90 flex items-center gap-1">
           <ShieldAlert className="w-3 h-3" />
-          Phase D dry-run ┬╖ Phase E confirm-gated apply (sequence sync only)
+          Phase F — dry-run required before every apply · audit logged
         </span>
       </div>
+
+      {items.length > 0 && (
+        <Card className="border-violet-900/40 bg-violet-950/10">
+          <CardHeader>
+            <CardTitle className="text-base">Repair queue ({items.length})</CardTitle>
+            <CardDescription>Confirm-gated repairs from trace tabs and numbering analysis</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {items.map((item: RepairQueueItem) => (
+              <RepairActionPanel
+                key={item.queueId}
+                companyId={companyId}
+                item={item}
+                onRemove={() => removeFromQueue(item.queueId)}
+                onApplied={load}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {snapshot && (
         <>
           <Card className="border-gray-800 bg-gray-900/40">
             <CardHeader>
               <CardTitle className="text-base">Integrity Lab issues ({snapshot.issues.length})</CardTitle>
-              <CardDescription>Read-only previews ΓÇö apply via Developer Integrity Lab unless Phase E action below.</CardDescription>
+              <CardDescription>Read-only previews — apply via Developer Integrity Lab unless queued below.</CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto max-h-64">
               {snapshot.issuePreviews.length === 0 ? (
@@ -127,7 +127,9 @@ export function RepairQueueTab({ companyId }: Props) {
           <Card className="border-gray-800 bg-gray-900/40">
             <CardHeader>
               <CardTitle className="text-base">Numbering dry-run ({outOfSync.length} out of sync)</CardTitle>
-              <CardDescription>Preview from numberingMaintenanceService.analyze ΓÇö never decreases counters.</CardDescription>
+              <CardDescription>
+                Click a row to send to repair queue. Action: {getDeveloperRepairAction('numbering.sync_sequence_to_effective_max')?.id}
+              </CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -137,16 +139,15 @@ export function RepairQueueTab({ companyId }: Props) {
                     <th className="py-2 pr-2">Seq last</th>
                     <th className="py-2 pr-2">DB max</th>
                     <th className="py-2 pr-2">Status</th>
-                    <th className="py-2">Preview action</th>
+                    <th className="py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {snapshot.numberingRows.map((row) => (
-                    <tr
-                      key={row.documentType}
-                      className={`border-b border-gray-800/60 cursor-pointer ${selectedDocType === row.documentType ? 'bg-violet-950/30' : ''}`}
-                      onClick={() => row.status === 'out_of_sync' && setSelectedDocType(row.documentType)}
-                    >
+                  {(snapshot.numberingRows.length
+                    ? buildNumberingDryRunPreviews(snapshot.numberingRows)
+                    : []
+                  ).map((row) => (
+                    <tr key={row.documentType} className="border-b border-gray-800/60">
                       <td className="py-2 pr-2 text-gray-200">{row.label}</td>
                       <td className="py-2 pr-2">{row.sequenceLast}</td>
                       <td className="py-2 pr-2">{row.databaseMax}</td>
@@ -157,40 +158,34 @@ export function RepairQueueTab({ companyId }: Props) {
                           <Badge className="bg-amber-900/40 text-amber-300 border-amber-800">out_of_sync</Badge>
                         )}
                       </td>
-                      <td className="py-2 text-gray-400">{row.previewAction}</td>
+                      <td className="py-2">
+                        {row.status === 'out_of_sync' ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => queueSequenceSync(row.documentType, row.label)}
+                          >
+                            Send to queue
+                          </Button>
+                        ) : (
+                          <span className="text-gray-500">{row.previewAction}</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </CardContent>
           </Card>
-
-          {selectedDocType && outOfSync.some((r) => r.documentType === selectedDocType) && (
-            <Card className="border-amber-900/40 bg-amber-950/10">
-              <CardHeader>
-                <CardTitle className="text-base">Phase E ΓÇö Confirm sequence sync</CardTitle>
-                <CardDescription>
-                  Selected: {selectedDocType}. Requires super-admin/developer and typed confirm phrase.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-wrap items-end gap-2">
-                <div className="flex-1 min-w-[240px]">
-                  <label className="text-[10px] uppercase tracking-wider text-gray-500">Confirm phrase</label>
-                  <Input
-                    value={confirmPhrase}
-                    onChange={(e) => setConfirmPhrase(e.target.value)}
-                    placeholder={SAFE_SEQUENCE_SYNC_CONFIRM_PHRASE}
-                    className="mt-1 bg-gray-950 border-gray-800 font-mono text-xs"
-                    disabled={!canApply}
-                  />
-                </div>
-                <Button type="button" size="sm" onClick={applySequenceSync} disabled={!canApply || applying}>
-                  Apply sequence sync
-                </Button>
-              </CardContent>
-            </Card>
-          )}
         </>
+      )}
+
+      {items.length === 0 && (
+        <p className="text-sm text-gray-500">
+          Queue is empty. Send repairs from COA Health, trace tabs, or numbering table above.
+        </p>
       )}
     </div>
   );

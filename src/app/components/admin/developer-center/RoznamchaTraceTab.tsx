@@ -6,6 +6,8 @@ import { Input } from '@/app/components/ui/input';
 import { Badge } from '@/app/components/ui/badge';
 import { toast } from 'sonner';
 import { defaultRoznamchaTraceDateRange } from '@/app/lib/roznamchaTraceDiagnostics';
+import { detectRoznamchaRepairCandidate } from '@/app/lib/roznamchaRepairDiagnostics';
+import { useRepairQueue } from '@/app/components/admin/developer-center/RepairQueueContext';
 import {
   loadRoznamchaTraceSnapshot,
   type RoznamchaTraceSnapshot,
@@ -17,6 +19,7 @@ interface Props {
 }
 
 export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
+  const { sendToRepairQueue } = useRepairQueue();
   const defaults = defaultRoznamchaTraceDateRange();
   const [query, setQuery] = useState(initialQuery);
   const [dateFrom, setDateFrom] = useState(defaults.dateFrom);
@@ -82,7 +85,7 @@ export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
           <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
-        <span className="text-xs text-violet-400/90 ml-auto">Read-only — Phase C2</span>
+        <span className="text-xs text-violet-400/90 ml-auto">Phase F — send safe repairs to Repair Queue</span>
       </div>
 
       {snapshot && (
@@ -114,11 +117,23 @@ export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
                     <th className="py-2 pr-2">Included</th>
                     <th className="py-2 pr-2">Priority</th>
                     <th className="py-2 pr-2">Entity keys</th>
-                    <th className="py-2">Reason</th>
+                    <th className="py-2 pr-2">Reason</th>
+                    <th className="py-2">Repair</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {snapshot.candidates.map((row) => (
+                  {snapshot.candidates.map((row) => {
+                    const repair = detectRoznamchaRepairCandidate({
+                      rowId: row.rowId,
+                      ref: row.ref,
+                      sourcePaymentId: row.sourcePaymentId,
+                      sourceRentalPaymentId: row.sourceRentalPaymentId,
+                      sourceJournalEntryId: row.sourceJournalEntryId,
+                      paymentAccountId: row.paymentAccountId,
+                      excludedReason: row.included ? null : row.reason,
+                      winnerRef: row.winnerRef,
+                    });
+                    return (
                     <tr key={row.rowId} className="border-b border-gray-800/60 align-top">
                       <td className="py-2 pr-2 font-mono text-gray-400">{row.source}</td>
                       <td className="py-2 pr-2 text-gray-200">
@@ -148,8 +163,27 @@ export function RoznamchaTraceTab({ companyId, initialQuery = '' }: Props) {
                           <span className="block text-gray-600">Winner ref: {row.winnerRef}</span>
                         ) : null}
                       </td>
+                      <td className="py-2">
+                        {repair.canQueue && repair.queueItem ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => {
+                              sendToRepairQueue(repair.queueItem!);
+                              toast.success('Sent to Repair Queue');
+                            }}
+                          >
+                            Send to queue
+                          </Button>
+                        ) : (
+                          <span className="text-gray-600 text-[10px]">{repair.reason}</span>
+                        )}
+                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             )}
