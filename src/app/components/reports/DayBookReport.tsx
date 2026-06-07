@@ -1,15 +1,24 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { DocumentPreviewButton } from '@/app/components/shared/DocumentPreviewButton';
 import { supabase } from '@/lib/supabase';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
+import { formatDateTime as formatDateTimeUtil } from '@/app/utils/formatDate';
 import { ReportActions } from './ReportActions';
 import { DateRangePicker } from '../ui/DateRangePicker';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
 import { Button } from '../ui/button';
-import { Loader2, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown, Pencil } from 'lucide-react';
+import { Loader2, BookOpen, ChevronDown, ChevronUp, ChevronsUpDown, Pencil, Search } from 'lucide-react';
 import { cn } from '../ui/utils';
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
+import { shareViaWhatsApp } from '@/app/services/documentShareService';
+import { Input } from '../ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 import { stripJournalEditAuditSuffix } from '@/app/utils/journalDescriptionDisplay';
 import { allowsDayBookUnifiedEdit } from '@/app/lib/journalEntryEditPolicy';
 import {
@@ -50,6 +59,8 @@ export interface DayBookEntry {
   economicMeaning: string;
   /** True when a non-void correction_reversal JE references this journal header — same lock as Journal Entries. */
   hasActiveCorrectionReversal?: boolean;
+  /** Voided voucher headers are excluded from balance checks (audit mode may still list them). */
+  isVoid?: boolean;
 }
 
 function refTypeToDisplayType(ref: string): DayBookEntry['type'] {
@@ -88,7 +99,7 @@ function journalEntriesBranchOrFilter(branchId: string | null | undefined): stri
 
 export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartDate, globalEndDate }: DayBookReportProps) => {
   const { companyId, branchId: contextBranchId } = useSupabase();
-  const { formatDateTime } = useFormatDate();
+  const { dateFormat, timeFormat, timezone } = useFormatDate();
   const today = new Date();
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({
     from: today,
@@ -96,8 +107,13 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
   });
   const [entries, setEntries] = useState<DayBookEntry[]>([]);
   const [loading, setLoading] = useState(!!companyId);
+  const [journalHeaderCount, setJournalHeaderCount] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [truncationWarning, setTruncationWarning] = useState<string | null>(null);
   /** Phase 4: Audit = every line; Effective = same lines, transfer/delta rows visually de-emphasized + badges. */
-  const [auditMode, setAuditMode] = useState(true);
+  const [auditMode, setAuditMode] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | DayBookEntry['type']>('all');
 
   // Table sort: default by date+time descending (newest first)
   type DayBookSortKey =
@@ -137,32 +153,68 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
     }
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
+    setTruncationWarning(null);
     (async () => {
-      let q = supabase
-        .from('journal_entries')
-        .select(`
-          id, entry_no, entry_date, description, reference_type, created_at, payment_id, action_fingerprint, economic_event_id,
-          lines:journal_entry_lines(id, debit, credit, description, account:accounts(name, code))
-        `)
-        .eq('company_id', companyId)
-        .gte('entry_date', dateFrom)
-        .lte('entry_date', dateTo);
-      if (branchOrFilter) {
-        q = q.or(branchOrFilter);
-      }
-      const { data, error } = await q
-        .order('entry_date', { ascending: true })
-        .order('created_at', { ascending: true })
-        .limit(500);
+      const JE_CHUNK = 500;
+      const MAX_JE_PAGES = 200;
+      const allHeaders: Array<Record<string, unknown>> = [];
+      let offset = 0;
+      let page = 0;
+      let fetchError: { message: string } | null = null;
+      let hitTruncationCap = false;
+      try {
+        while (page < MAX_JE_PAGES) {
+          let q = supabase
+            .from('journal_entries')
+            .select(`
+              id, entry_no, entry_date, description, reference_type, created_at, payment_id, action_fingerprint, economic_event_id, is_void,
+              lines:journal_entry_lines(id, debit, credit, description, account:accounts(name, code))
+            `)
+            .eq('company_id', companyId)
+            .gte('entry_date', dateFrom)
+            .lte('entry_date', dateTo);
+          if (branchOrFilter) {
+            q = q.or(branchOrFilter);
+          }
+          if (!auditMode) {
+            q = q.or('is_void.is.null,is_void.eq.false');
+          }
+          const { data: chunk, error } = await q
+            .order('entry_date', { ascending: true })
+            .order('created_at', { ascending: true })
+            .range(offset, offset + JE_CHUNK - 1);
+          if (error) {
+            fetchError = error;
+            break;
+          }
+          const rows = chunk || [];
+          allHeaders.push(...rows);
+          page += 1;
+          if (rows.length < JE_CHUNK) break;
+          offset += JE_CHUNK;
+        }
+        if (page >= MAX_JE_PAGES) {
+          hitTruncationCap = true;
+        }
 
-      if (cancelled) return;
-      setLoading(false);
-      if (error) {
-        setEntries([]);
-        return;
-      }
+        if (cancelled) return;
+        if (fetchError) {
+          setEntries([]);
+          setJournalHeaderCount(0);
+          setLoadError(fetchError.message || 'Failed to load Day Book');
+          return;
+        }
 
-      const jeIds = (data || []).map((j: { id?: string }) => String(j.id || '').trim()).filter(Boolean);
+        const data = allHeaders;
+        setJournalHeaderCount(data.length);
+        if (hitTruncationCap) {
+          setTruncationWarning(
+            `Showing first ${MAX_JE_PAGES * JE_CHUNK} journal vouchers only. Narrow the date range to see more.`
+          );
+        }
+
+      const jeIds = data.map((j: { id?: string }) => String(j.id || '').trim()).filter(Boolean);
       const reversedOriginalIds = new Set<string>();
       for (let i = 0; i < jeIds.length; i += 150) {
         const chunk = jeIds.slice(i, i + 150);
@@ -195,9 +247,10 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         const entryDate = je.entry_date
           ? new Date(String(je.entry_date).slice(0, 10) + 'T12:00:00')
           : createdAt;
-        const dateTimeStr = formatDateTime(createdAt);
+        const dateTimeStr = formatDateTimeUtil(createdAt, dateFormat, timeFormat, timezone);
         const timeStr = createdAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
         const voucher = String(je.entry_no ?? `JE-${String(je.id ?? '').slice(0, 8)}`);
+        const isVoid = (je as { is_void?: boolean | null }).is_void === true;
         // PF-14.3B: Make clear in Day Book that these are edit adjustments for the same document, not new sales
         const refType = String(je.reference_type ?? '');
         const fp = String((je as { action_fingerprint?: string }).action_fingerprint || '');
@@ -279,13 +332,23 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
             toAccount,
             economicMeaning: meaning,
             hasActiveCorrectionReversal: Boolean(je.id && reversedOriginalIds.has(String(je.id))),
+            isVoid,
           });
         }
       }
-      setEntries(list);
+        setEntries(list);
+      } catch (err) {
+        if (!cancelled) {
+          setEntries([]);
+          setJournalHeaderCount(0);
+          setLoadError(err instanceof Error ? err.message : 'Failed to load Day Book');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => { cancelled = true; };
-  }, [companyId, dateFrom, dateTo, branchOrFilter]);
+  }, [companyId, dateFrom, dateTo, branchOrFilter, auditMode, dateFormat, timeFormat, timezone]);
 
   const getSortValue = (e: DayBookEntry, key: DayBookSortKey): string | number => {
     switch (key) {
@@ -314,18 +377,45 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
     }
   };
 
+  const filteredEntries = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    return entries.filter((e) => {
+      if (typeFilter !== 'all' && e.type !== typeFilter) return false;
+      if (!q) return true;
+      const amountStr = String(e.debit > 0 ? e.debit : e.credit);
+      const hay = [
+        e.voucher,
+        e.account,
+        e.description,
+        e.fromAccount,
+        e.toAccount,
+        e.economicMeaning,
+        e.type,
+        amountStr,
+      ]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [entries, searchTerm, typeFilter]);
+
   const sortedEntries = useMemo(() => {
     const dir = sortDir === 'asc' ? 1 : -1;
-    return [...entries].sort((a, b) => {
+    return [...filteredEntries].sort((a, b) => {
       const va = getSortValue(a, sortKey);
       const vb = getSortValue(b, sortKey);
       const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb));
       return cmp * dir;
     });
-  }, [entries, sortKey, sortDir]);
+  }, [filteredEntries, sortKey, sortDir]);
 
-  const totalDebit = entries.reduce((s, e) => s + e.debit, 0);
-  const totalCredit = entries.reduce((s, e) => s + e.credit, 0);
+  const balanceEntries = useMemo(
+    () => filteredEntries.filter((e) => !e.isVoid),
+    [filteredEntries]
+  );
+  const voidRowCount = entries.length - balanceEntries.length;
+  const totalDebit = balanceEntries.reduce((s, e) => s + e.debit, 0);
+  const totalCredit = balanceEntries.reduce((s, e) => s + e.credit, 0);
   const difference = totalDebit - totalCredit;
   const ROUNDING_TOLERANCE = 0.02;
   const isBalanced = Math.abs(difference) < ROUNDING_TOLERANCE;
@@ -342,25 +432,28 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
   }, [currentPage, totalPages]);
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFrom, dateTo, sortKey, sortDir, branchOrFilter]);
+  }, [dateFrom, dateTo, sortKey, sortDir, branchOrFilter, searchTerm, typeFilter]);
 
   // Analyse: which vouchers are unbalanced (sum of debit - sum of credit per voucher)
-  const byVoucher = new Map<string, { debit: number; credit: number }>();
-  for (const e of entries) {
-    const cur = byVoucher.get(e.voucher) ?? { debit: 0, credit: 0 };
-    cur.debit += e.debit;
-    cur.credit += e.credit;
-    byVoucher.set(e.voucher, cur);
-  }
-  const unbalancedVouchers = [...byVoucher.entries()]
-    .filter(([, v]) => Math.abs(v.debit - v.credit) >= ROUNDING_TOLERANCE)
-    .map(([voucher]) => voucher);
-
-  // Display-only adjustment: one row so totals show balanced (standard practice for rounding)
-  const adjustmentDebit = difference < -ROUNDING_TOLERANCE ? Math.abs(difference) : 0;
-  const adjustmentCredit = difference > ROUNDING_TOLERANCE ? difference : 0;
-  const displayTotalDebit = totalDebit + adjustmentDebit;
-  const displayTotalCredit = totalCredit + adjustmentCredit;
+  const unbalancedVoucherDetails = useMemo(() => {
+    const byVoucherMap = new Map<string, { debit: number; credit: number }>();
+    for (const e of balanceEntries) {
+      const cur = byVoucherMap.get(e.voucher) ?? { debit: 0, credit: 0 };
+      cur.debit += e.debit;
+      cur.credit += e.credit;
+      byVoucherMap.set(e.voucher, cur);
+    }
+    return [...byVoucherMap.entries()]
+      .map(([voucher, v]) => ({
+        voucher,
+        debit: v.debit,
+        credit: v.credit,
+        diff: v.debit - v.credit,
+      }))
+      .filter((row) => Math.abs(row.diff) >= ROUNDING_TOLERANCE)
+      .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+  }, [balanceEntries]);
+  const unbalancedVouchers = unbalancedVoucherDetails.map((r) => r.voucher);
 
   const exportData = {
     headers: [
@@ -396,27 +489,72 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
   };
 
   const previewRef = useRef<HTMLDivElement>(null);
+  const whatsappSummary = `Journal Day Book\nPeriod: ${dateFrom} to ${dateTo}\nLines: ${sortedEntries.length}\nDebit total: ${totalDebit.toLocaleString()}\nCredit total: ${totalCredit.toLocaleString()}`;
 
   return (
-    <div ref={previewRef} className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
-      <div className="flex items-center justify-between gap-2 no-print">
+    <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+      <div className="no-print">
         <ReportActions
           title="Journal Day Book"
           onPrint={() => window.print()}
           onPdf={() => exportToPDF(exportData, 'DayBook')}
           onExcel={() => exportToExcel(exportData, 'DayBook')}
-          onWhatsapp={() => {}}
-        />
-        <DocumentPreviewButton
-          contentRef={previewRef}
-          documentType="ledger"
-          reference={`daybook-${dateFrom}-${dateTo}`}
-          label="Preview & Share"
+          onWhatsapp={() => shareViaWhatsApp(whatsappSummary)}
+          previewContentRef={previewRef}
+          previewDocumentType="ledger"
+          previewReference={`daybook-${dateFrom}-${dateTo}`}
         />
       </div>
 
+      <div ref={previewRef} className="space-y-6">
+
+      <div className="no-print flex flex-wrap items-end gap-3 rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+        <div className="flex flex-col gap-1.5 min-w-[12rem] flex-1">
+          <Label className="text-xs text-gray-500 uppercase tracking-wide">Search</Label>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Voucher, account, description, amount…"
+              className="pl-9 bg-gray-950 border-gray-700 text-gray-200"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5 min-w-[10rem]">
+          <Label className="text-xs text-gray-500 uppercase tracking-wide">Type</Label>
+          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
+            <SelectTrigger className="bg-gray-950 border-gray-700 text-gray-200">
+              <SelectValue placeholder="All types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              {(['Sale', 'Purchase', 'Expense', 'Payment', 'Transfer', 'Journal', 'Rental'] as const).map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {(searchTerm || typeFilter !== 'all') && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="border-gray-700 text-gray-300"
+            onClick={() => {
+              setSearchTerm('');
+              setTypeFilter('all');
+            }}
+          >
+            Clear filters
+          </Button>
+        )}
+      </div>
+
       {!useGlobalRange && (
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="no-print flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-400">Date Range:</span>
             <DateRangePicker
@@ -460,6 +598,16 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
         )}
       </p>
 
+      {loadError && !loading && (
+        <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl text-red-300 text-sm">
+          Day Book failed to load: {loadError}
+        </div>
+      )}
+      {truncationWarning && !loading && (
+        <div className="p-3 bg-amber-900/20 border border-amber-500/30 rounded-xl text-amber-200 text-sm">
+          {truncationWarning}
+        </div>
+      )}
       {loading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
@@ -614,38 +762,17 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                     )}
                   </tr>
                 ))}
-                {!isBalanced && (adjustmentDebit > 0 || adjustmentCredit > 0) && (
-                  <tr className="bg-amber-950/30 border-t border-amber-700/50">
-                    <td className="px-4 py-3 text-gray-500 italic">—</td>
-                    <td className="px-4 py-3 font-mono text-amber-400">—</td>
-                    <td className="px-4 py-3 text-amber-400/80 text-xs">—</td>
-                    <td className="px-4 py-3 text-amber-400/80 text-xs">—</td>
-                    <td className="px-4 py-3 text-amber-400/80 text-xs">—</td>
-                    <td className="px-4 py-3 text-amber-400/80">—</td>
-                    <td className="px-4 py-3 text-amber-400/90 italic">Rounding / Unbalanced difference — display-only</td>
-                    <td className="px-4 py-3 text-right font-mono text-green-400">
-                      {adjustmentDebit > 0 ? adjustmentDebit.toLocaleString() : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-red-400">
-                      {adjustmentCredit > 0 ? adjustmentCredit.toLocaleString() : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400">Journal</span>
-                    </td>
-                    {onEditJournalEntry && <td className="px-4 py-3" />}
-                  </tr>
-                )}
               </tbody>
               <tfoot className="bg-gray-900 border-t-2 border-gray-700">
                 <tr>
                   <td colSpan={5} className="px-4 py-3 font-bold text-white">
-                    Totals
+                    Totals (raw journal lines)
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-green-400">
-                    ₨ {displayTotalDebit.toLocaleString()}
+                    ₨ {totalDebit.toLocaleString()}
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-red-400">
-                    ₨ {displayTotalCredit.toLocaleString()}
+                    ₨ {totalCredit.toLocaleString()}
                   </td>
                   <td />
                   {onEditJournalEntry && <td />}
@@ -700,8 +827,13 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
           </div>
 
           {isBalanced ? (
-            <div className="p-4 bg-green-900/20 border border-green-500/30 rounded-xl">
+            <div className="p-4 bg-green-900/20 border border-green-500/30 rounded-xl space-y-1">
               <p className="text-green-400 text-center font-medium">✓ Debit = Credit – Balanced Day Book</p>
+              {voidRowCount > 0 && auditMode && (
+                <p className="text-gray-500 text-center text-xs">
+                  Balance excludes {voidRowCount} voided line(s). Turn off Audit mode to hide void vouchers from the list.
+                </p>
+              )}
             </div>
           ) : (
             <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl space-y-2">
@@ -715,8 +847,36 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
                 )}
               </p>
               <p className="text-gray-400 text-center text-xs">
-                A &quot;Rounding / Unbalanced difference&quot; row has been added above so totals display balanced. Correct the journal entries for the voucher(s) above to fix the underlying data.
+                Balance uses active (non-void) journal lines only.
+                {voidRowCount > 0 && auditMode
+                  ? ` ${voidRowCount} voided line(s) in the table are excluded from this check.`
+                  : ''}{' '}
+                Correct unbalanced voucher(s) in Journal Entries or Accounting Integrity Lab.
               </p>
+              {unbalancedVoucherDetails.length > 0 && (
+                <div className="mt-3 overflow-x-auto rounded-lg border border-amber-700/40">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-amber-950/40 text-amber-200">
+                      <tr>
+                        <th className="px-3 py-2">Voucher</th>
+                        <th className="px-3 py-2 text-right">Debit</th>
+                        <th className="px-3 py-2 text-right">Credit</th>
+                        <th className="px-3 py-2 text-right">Diff</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unbalancedVoucherDetails.slice(0, 20).map((row) => (
+                        <tr key={row.voucher} className="border-t border-amber-900/30">
+                          <td className="px-3 py-2 font-mono text-amber-100">{row.voucher}</td>
+                          <td className="px-3 py-2 text-right font-mono text-green-400">₨ {row.debit.toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right font-mono text-red-400">₨ {row.credit.toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right font-mono text-amber-300">₨ {row.diff.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </>
@@ -728,6 +888,7 @@ export const DayBookReport = ({ onVoucherClick, onEditJournalEntry, globalStartD
           <p className="text-gray-400">No transactions in this period</p>
         </div>
       )}
+      </div>
     </div>
   );
 };

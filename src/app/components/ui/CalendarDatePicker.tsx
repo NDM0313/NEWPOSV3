@@ -7,6 +7,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from './popover';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
+import { formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/app/utils/formatDate';
 
 interface CalendarDatePickerProps {
   value?: Date;
@@ -35,6 +37,7 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
   maxDate,
   displayFormat,
 }) => {
+  const { dateFormat, timeFormat, timezone } = useFormatDate();
   const [isOpen, setIsOpen] = useState(false);
   // Helper to safely convert value to Date
   const getDateValue = (val: Date | undefined): Date | null => {
@@ -84,13 +87,19 @@ export const CalendarDatePicker: React.FC<CalendarDatePickerProps> = ({
 
   const formatDate = (date: Date | null | undefined) => {
     if (!date) return '';
-    return displayFormat ? displayFormat(date) : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    if (displayFormat) return displayFormat(date);
+    return formatDateUtil(date, dateFormat, timezone);
   };
 
   const formatDateTime = (date: Date | null | undefined, time: string) => {
     if (!date) return '';
     const dateStr = formatDate(date);
-    return showTime ? `${dateStr} ${time}` : dateStr;
+    if (!showTime) return dateStr;
+    const [hours, minutes] = time.split(':').map(Number);
+    const withTime = new Date(date);
+    withTime.setHours(hours || 0, minutes || 0, 0, 0);
+    if (displayFormat) return displayFormat(withTime);
+    return `${dateStr} ${formatTimeUtil(withTime, timeFormat as '12h' | '24h', timezone)}`;
   };
 
   const getDaysInMonth = (date: Date) => {

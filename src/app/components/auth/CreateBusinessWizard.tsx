@@ -7,6 +7,7 @@ import React, { useState, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { DatePicker } from '../ui/DatePicker';
 import {
   Building2,
   User,
@@ -481,11 +482,9 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
                 </div>
                 <div>
                   <Label className="text-gray-400">Financial Year End</Label>
-                  <Input
-                    type="date"
+                  <DatePicker
                     value={formData.fiscalYearEnd}
-                    onChange={(e) => setFormData({ ...formData, fiscalYearEnd: e.target.value })}
-                    className="bg-gray-800 border-gray-700 text-white mt-1"
+                    onChange={(v) => setFormData({ ...formData, fiscalYearEnd: v })}
                     disabled={loading}
                   />
                   <p className="text-xs text-gray-500 mt-1">Auto-suggested from start date; editable</p>

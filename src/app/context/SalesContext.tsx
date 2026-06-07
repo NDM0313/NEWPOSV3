@@ -2331,11 +2331,9 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
           if (docJe?.id) {
             const jeId = docJe.id as string;
             const newTotal = newSnapshot.total;
-            const newGross = newSnapshot.subtotal || (newTotal + newSnapshot.discount);
             const newDiscount = newSnapshot.discount;
             const newShipping = newSnapshot.shippingCharges || 0;
             const newExtra = newSnapshot.extraExpense || 0;
-            const newRevenue = newGross - newShipping - newExtra;
 
             // Resolve AR sub-ledger for customer
             const customerId = (updatedSale as any).customer_id;
@@ -2354,9 +2352,22 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               const { data } = await sbEdit.from('accounts').select('id').eq('code', code).eq('company_id', companyId).eq('is_active', true).maybeSingle();
               return data?.id as string | null;
             };
-            const { computeProductRevenueCreditSplit, syncSaleDocumentJeCogsInventoryPair, assertJournalEntryBalanced } =
-              await import('@/app/services/saleAccountingService');
-            const revenueSplit = await computeProductRevenueCreditSplit(id, Math.max(0, newRevenue));
+            const {
+              computeProductRevenueCreditSplit,
+              computeSaleDocumentRevenueAmounts,
+              syncSaleDocumentJeCogsInventoryPair,
+              assertJournalEntryBalanced,
+            } = await import('@/app/services/saleAccountingService');
+            const docAmounts = computeSaleDocumentRevenueAmounts({
+              total: newTotal,
+              discount: newDiscount,
+              extraExpense: newExtra,
+              shippingCharges: newShipping,
+            });
+            const revenueSplit = await computeProductRevenueCreditSplit(
+              id,
+              Math.max(0, docAmounts.merchandisePool)
+            );
             const merchandiseRevenueIds = new Set(
               [(await getAccId('4000')), (await getAccId('4100'))].filter(Boolean) as string[]
             );
@@ -2378,7 +2389,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
               let didMatch = false;
 
               if (accId === arAccountId || (ar1100Id && accId === ar1100Id)) {
-                newDebit = Math.round((newTotal + newShipping) * 100) / 100;
+                newDebit = docAmounts.arDebit;
                 newCredit = 0;
                 didMatch = true;
               } else if (merchandiseRevenueIds.has(accId)) {

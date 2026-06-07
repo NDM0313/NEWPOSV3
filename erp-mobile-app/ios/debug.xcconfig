@@ -1,1 +1,2 @@
+// Project-level Debug only (no Pods paths — those live in App/Target.debug.xcconfig).
 CAPACITOR_DEBUG = true

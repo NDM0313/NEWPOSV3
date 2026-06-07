@@ -20,7 +20,9 @@ import {
   ChevronDown,
   ChevronRight,
   AlertTriangle,
+  CheckCircle2,
 } from 'lucide-react';
+import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import {
@@ -63,6 +65,8 @@ interface ViewRentalDetailsDrawerProps {
   onReceiveReturn?: () => void;
   onDelete?: () => void;
   onMarkAsPickedUp?: (rentalId: string, payload: { actualPickupDate: string; notes?: string; documentType: string; documentNumber: string; documentExpiry?: string; documentReceived: boolean; remainingPaymentConfirmed: boolean; documentFrontImage?: string; documentBackImage?: string; customerPhoto?: string }) => Promise<void>;
+  /** Open print layout immediately when the drawer mounts (list Print action). */
+  openPrintOnMount?: boolean;
 }
 
 export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = ({
@@ -77,6 +81,7 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
   onReceiveReturn,
   onDelete,
   onMarkAsPickedUp,
+  openPrintOnMount = false,
 }) => {
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
@@ -127,12 +132,20 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
     try {
       const logs = await activityLogService.getEntityActivityLogs(companyId, 'rental', rentalId);
       setActivityLogs(logs || []);
-    } catch {
+    } catch (err) {
+      console.error('[VIEW RENTAL] Failed to load activity logs:', err);
       setActivityLogs([]);
     } finally {
       setLoadingActivityLogs(false);
     }
   }, [companyId]);
+
+  const reloadRentalData = useCallback(async (rentalId: string, bookingNo?: string) => {
+    await Promise.all([
+      loadPayments(rentalId, bookingNo),
+      loadActivityLogs(rentalId),
+    ]);
+  }, [loadPayments, loadActivityLogs]);
 
   useEffect(() => {
     const loadBranches = async () => {
@@ -150,6 +163,15 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
   useEffect(() => {
     setFinancialBreakdownOpen(false);
   }, [isOpen, rental?.id]);
+
+  useEffect(() => {
+    if (isOpen && openPrintOnMount) {
+      setShowPrintLayout(true);
+    }
+    if (!isOpen) {
+      setShowPrintLayout(false);
+    }
+  }, [isOpen, openPrintOnMount, rental?.id]);
 
   useEffect(() => {
     if (isOpen && rental?.id) {
@@ -200,6 +222,21 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
       setFullRental(null);
     }
   }, [isOpen, rental?.id, loadPayments, loadActivityLogs]);
+
+  useEffect(() => {
+    if (isOpen && rental?.id && activeTab === 'history') {
+      loadActivityLogs(rental.id);
+    }
+  }, [isOpen, rental?.id, activeTab, loadActivityLogs]);
+
+  useEffect(() => {
+    if (!isOpen || !rental?.id) return;
+    const handlePaymentsChanged = () => {
+      void reloadRentalData(rental.id, rental.rentalNo);
+    };
+    window.addEventListener('rentalPaymentsChanged', handlePaymentsChanged);
+    return () => window.removeEventListener('rentalPaymentsChanged', handlePaymentsChanged);
+  }, [isOpen, rental?.id, rental?.rentalNo, reloadRentalData]);
 
   const r = fullRental || rental;
   if (!isOpen) return null;
@@ -698,16 +735,42 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
                   {loadingActivityLogs ? (
                     <div className="text-center py-12 text-gray-400">Loading…</div>
                   ) : activityLogs.length > 0 ? (
-                    <div className="space-y-2">
-                      {activityLogs.map((log) => (
-                        <div key={log.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex items-start gap-3">
-                          <History size={16} className="text-gray-500 shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-white text-sm">{log.description || activityLogService.formatActivityLog(log)}</p>
-                            <p className="text-xs text-gray-500 mt-1">{new Date(log.created_at).toLocaleString()}</p>
+                    <div className="space-y-3">
+                      {activityLogs.map((log) => {
+                        const action = String(log.action || '');
+                        const icon =
+                          action.includes('payment_added') ? <DollarSign size={16} className="text-blue-400" /> :
+                          action.includes('payment_deleted') ? <DollarSign size={16} className="text-red-400" /> :
+                          action.includes('payment_edited') ? <Edit size={16} className="text-amber-400" /> :
+                          action.includes('picked_up') ? <Truck size={16} className="text-blue-400" /> :
+                          action.includes('returned') ? <CornerDownLeft size={16} className="text-green-400" /> :
+                          action.includes('cancelled') || action.includes('deleted') ? <Trash2 size={16} className="text-red-400" /> :
+                          action.includes('status_change') || action.includes('finalized') ? <CheckCircle2 size={16} className="text-green-400" /> :
+                          action.includes('created') ? <FileText size={16} className="text-pink-400" /> :
+                          action.includes('edited') ? <Edit size={16} className="text-yellow-400" /> :
+                          <History size={16} className="text-gray-500" />;
+                        const actionLabel = action.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+                        return (
+                          <div key={log.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 flex items-start gap-3">
+                            <div className="mt-0.5 shrink-0">{icon}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2 mb-1">
+                                <Badge variant="outline" className="text-[10px] border-gray-700 text-gray-400 capitalize">
+                                  {actionLabel}
+                                </Badge>
+                                {log.performed_by_name ? (
+                                  <span className="text-xs text-gray-500 flex items-center gap-1">
+                                    <User size={12} />
+                                    {log.performed_by_name}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p className="text-white text-sm">{log.description || activityLogService.formatActivityLog(log)}</p>
+                              <DateTimeDisplay date={log.created_at} className="text-xs text-gray-500 mt-1.5" />
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-center py-12 text-gray-500 border border-dashed border-gray-700 rounded-xl">
@@ -760,12 +823,12 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
           onDeletePayment={async (paymentId) => {
             if (r) {
               await rentalService.deletePayment(paymentId, r.id, companyId!);
-              await loadPayments(r.id, r.rentalNo);
+              await reloadRentalData(r.id, r.rentalNo);
               await onRefresh?.();
             }
           }}
           onRefresh={async () => {
-            await loadPayments(r.id, r.rentalNo);
+            await reloadRentalData(r.id, r.rentalNo);
             await onRefresh?.();
           }}
         />
@@ -778,6 +841,7 @@ export const ViewRentalDetailsDrawer: React.FC<ViewRentalDetailsDrawerProps> = (
           rental={r}
           onConfirm={async (id, payload) => {
             await onMarkAsPickedUp(id, payload);
+            if (r) await reloadRentalData(r.id, r.rentalNo);
             await onRefresh?.();
           }}
           onAddPayment={(rental) => {

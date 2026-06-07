@@ -1,7 +1,15 @@
 import { supabase } from '@/lib/supabase';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
-import { fetchCustomerLedgerSalesForRange, ledgerSalesRpcBranchId } from '@/app/services/customerLedgerApi';
-import { formatRentalPaymentRef } from '@/app/lib/rentalPaymentRef';
+import {
+  fetchCustomerLedgerSalesForRange,
+  fetchCustomerReceivedPaymentsForRange,
+  ledgerSalesRpcBranchId,
+} from '@/app/services/customerLedgerApi';
+import { formatRentalPaymentRef, isRcvReference } from '@/app/lib/rentalPaymentRef';
+import {
+  customerReceiptLedgerDescription,
+  resolvePartyLedgerReference,
+} from '@/app/lib/partyLedgerReference';
 
 export interface JournalEntry {
   id?: string;
@@ -1725,7 +1733,11 @@ export const accountingService = {
   },
 
   // CRITICAL FIX: Lookup by entry_no, payment reference_number, or invoice_no (FALLBACK ONLY)
-  async getEntryByReference(referenceNumber: string, companyId: string) {
+  async getEntryByReference(
+    referenceNumber: string,
+    companyId: string,
+    options?: { journalEntryIdHint?: string }
+  ) {
     if (!referenceNumber || !companyId) {
       console.error('[ACCOUNTING SERVICE] getEntryByReference: Missing referenceNumber or companyId');
       return null;
@@ -1735,9 +1747,111 @@ export const accountingService = {
     // But use uppercase for ilike search (case-insensitive)
     const cleanRef = referenceNumber.trim();
     const cleanRefUpper = cleanRef.toUpperCase();
+    const hintJeId = String(options?.journalEntryIdHint || '').trim();
     
     let data: any = null;
     let error: any = null;
+
+    const loadRentalPaymentJournalEntry = async (
+      rentalJeId: string | null,
+      rentalPaymentRef: string | null
+    ): Promise<boolean> => {
+      if (!rentalJeId) return false;
+      const stepRp = await supabase
+        .from('journal_entries')
+        .select(`
+          *,
+          lines:journal_entry_lines(
+            *,
+            account:accounts(id, name, code, type)
+          ),
+          payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
+          branch:branches(id, name, code)
+        `)
+        .eq('company_id', companyId)
+        .eq('id', rentalJeId)
+        .limit(1);
+
+      if (stepRp.error) {
+        error = stepRp.error;
+        return false;
+      }
+      data = pickPreferredJournalEntryRow(stepRp.data as any[]) ?? null;
+      if (data) {
+        (data as { rental_payment_ref?: string }).rental_payment_ref =
+          rentalPaymentRef || formatRentalPaymentRef(cleanRef.replace(/-PAY$/i, '')) || cleanRef;
+        error = null;
+        return true;
+      }
+      error = { code: 'PGRST116' } as any;
+      return false;
+    };
+
+    // STEP 0: Bare rental booking no (REN-0002) → linked payment journal (not revenue JE)
+    if (/^REN-\d+$/i.test(cleanRef)) {
+      error = null;
+      const { data: rentalRow } = await supabase
+        .from('rentals')
+        .select('id, booking_no')
+        .eq('company_id', companyId)
+        .ilike('booking_no', cleanRef)
+        .maybeSingle();
+
+      if (rentalRow?.id) {
+        let rentalJeId: string | null = null;
+        let rentalPaymentRef: string | null = formatRentalPaymentRef(String(rentalRow.booking_no || cleanRef));
+
+        if (hintJeId) {
+          const { data: rpByHint } = await supabase
+            .from('rental_payments')
+            .select('id, journal_entry_id, reference')
+            .eq('rental_id', rentalRow.id)
+            .eq('journal_entry_id', hintJeId)
+            .is('voided_at', null)
+            .maybeSingle();
+          if (rpByHint) {
+            rentalJeId = (rpByHint as { journal_entry_id?: string | null }).journal_entry_id ?? null;
+            rentalPaymentRef =
+              String((rpByHint as { reference?: string }).reference || '').trim() || rentalPaymentRef;
+          }
+        }
+
+        if (!rentalJeId) {
+          const { data: rpRows } = await supabase
+            .from('rental_payments')
+            .select('id, journal_entry_id, reference')
+            .eq('rental_id', rentalRow.id)
+            .is('voided_at', null)
+            .not('journal_entry_id', 'is', null)
+            .order('payment_date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1);
+          const rpRow = (rpRows || [])[0] as { journal_entry_id?: string | null; reference?: string } | undefined;
+          if (rpRow) {
+            rentalJeId = rpRow.journal_entry_id ?? null;
+            rentalPaymentRef = String(rpRow.reference || '').trim() || rentalPaymentRef;
+          }
+        }
+
+        if (!rentalJeId) {
+          const { data: rpRows } = await supabase
+            .from('rental_payments')
+            .select('id, journal_entry_id, reference')
+            .eq('rental_id', rentalRow.id)
+            .is('voided_at', null)
+            .order('payment_date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1);
+          const rpRow = (rpRows || [])[0] as { journal_entry_id?: string | null; reference?: string } | undefined;
+          if (rpRow) {
+            rentalJeId = rpRow.journal_entry_id ?? null;
+            rentalPaymentRef = String(rpRow.reference || '').trim() || rentalPaymentRef;
+          }
+        }
+
+        await loadRentalPaymentJournalEntry(rentalJeId, rentalPaymentRef);
+      }
+    }
 
     // STEP 1: entry_no (case-insensitive). No maybeSingle — duplicate entry_no caused PostgREST / UI failures.
     const step1 = await supabase
@@ -1799,6 +1913,37 @@ export const accountingService = {
       }
     }
 
+    // STEP 2.4: RCV-* on rental_payments → linked journal entry (rental receipts)
+    if (!data && (!error || error.code === 'PGRST116') && isRcvReference(cleanRef)) {
+      error = null;
+      let rentalJeId: string | null = null;
+      const rentalPaymentRef = cleanRef;
+
+      const rpBaseQuery = () =>
+        supabase
+          .from('rental_payments')
+          .select('id, journal_entry_id, reference, rentals!inner(company_id)')
+          .eq('rentals.company_id', companyId)
+          .ilike('reference', cleanRef)
+          .is('voided_at', null)
+          .order('created_at', { ascending: true });
+
+      if (hintJeId) {
+        const { data: rpByHint } = await rpBaseQuery().eq('journal_entry_id', hintJeId).limit(1).maybeSingle();
+        if (rpByHint) {
+          rentalJeId = (rpByHint as { journal_entry_id?: string | null }).journal_entry_id ?? null;
+        }
+      }
+
+      if (!rentalJeId) {
+        const { data: rpRows } = await rpBaseQuery().limit(1);
+        const rpRow = (rpRows || [])[0] as { journal_entry_id?: string | null } | undefined;
+        if (rpRow) rentalJeId = rpRow.journal_entry_id ?? null;
+      }
+
+      await loadRentalPaymentJournalEntry(rentalJeId, rentalPaymentRef);
+    }
+
     // STEP 2.5: Rental payment voucher (REN-*-PAY) → linked journal entry
     if (!data && (!error || error.code === 'PGRST116') && /^REN-.+-PAY$/i.test(cleanRef)) {
       error = null;
@@ -1847,33 +1992,7 @@ export const accountingService = {
         }
       }
 
-      if (rentalJeId) {
-        const stepRp = await supabase
-          .from('journal_entries')
-          .select(`
-            *,
-            lines:journal_entry_lines(
-              *,
-              account:accounts(id, name, code, type)
-            ),
-            payment:payments(id, reference_number, notes, amount, payment_method, payment_date, contact_id, payment_account_id, contact:contacts(name)),
-            branch:branches(id, name, code)
-          `)
-          .eq('company_id', companyId)
-          .eq('id', rentalJeId)
-          .limit(1);
-
-        if (stepRp.error) {
-          error = stepRp.error;
-        } else {
-          data = pickPreferredJournalEntryRow(stepRp.data as any[]) ?? null;
-          if (data) {
-            (data as { rental_payment_ref?: string }).rental_payment_ref =
-              rentalPaymentRef || cleanRef;
-          }
-          error = data ? null : ({ code: 'PGRST116' } as any);
-        }
-      }
+      await loadRentalPaymentJournalEntry(rentalJeId, rentalPaymentRef || cleanRef);
     }
 
     // STEP 3: If still not found, try invoice_no (for sales)
@@ -2090,18 +2209,53 @@ export const accountingService = {
       )];
       const saleDocMap = new Map<string, string>();
       const purchaseDocMap = new Map<string, string>();
+      const saleBranchById = new Map<string, string>();
+      const purchaseBranchById = new Map<string, string>();
+      const rentalBranchByRefId = new Map<string, string>();
+      const branchLabelById = new Map<string, string>();
       if (saleIds.length) {
-        const { data: sales } = await supabase.from('sales').select('id, invoice_no, order_no, draft_no').in('id', saleIds);
+        const { data: sales } = await supabase.from('sales').select('id, invoice_no, order_no, draft_no, branch_id').in('id', saleIds);
         (sales || []).forEach((s: any) => {
           const doc = String(s.invoice_no || s.order_no || s.draft_no || '').trim();
           if (doc) saleDocMap.set(String(s.id), doc);
+          if (s?.branch_id) saleBranchById.set(String(s.id), String(s.branch_id));
         });
       }
       if (purchaseIds.length) {
-        const { data: purchases } = await supabase.from('purchases').select('id, po_no, order_no, draft_no').in('id', purchaseIds);
+        const { data: purchases } = await supabase.from('purchases').select('id, po_no, order_no, draft_no, branch_id').in('id', purchaseIds);
         (purchases || []).forEach((p: any) => {
           const doc = String(p.po_no || p.order_no || p.draft_no || '').trim();
           if (doc) purchaseDocMap.set(String(p.id), doc);
+          if (p?.branch_id) purchaseBranchById.set(String(p.id), String(p.branch_id));
+        });
+      }
+      const rentalRefIds = [
+        ...new Set(
+          (lines as any[])
+            .map((line: any) => line.journal_entry)
+            .filter((entry: any) => String(entry?.reference_type || '').toLowerCase() === 'rental' && entry?.reference_id)
+            .map((entry: any) => String(entry.reference_id))
+        ),
+      ];
+      if (rentalRefIds.length) {
+        const { data: rentalRows } = await supabase.from('rentals').select('id, branch_id').in('id', rentalRefIds);
+        (rentalRows || []).forEach((r: any) => {
+          if (r?.id && r.branch_id) rentalBranchByRefId.set(String(r.id), String(r.branch_id));
+        });
+      }
+      const docBranchIds = [
+        ...new Set([
+          ...saleBranchById.values(),
+          ...purchaseBranchById.values(),
+          ...rentalBranchByRefId.values(),
+        ]),
+      ];
+      if (docBranchIds.length) {
+        const { data: branchRows } = await supabase.from('branches').select('id, name, code').in('id', docBranchIds);
+        (branchRows || []).forEach((b: any) => {
+          if (!b?.id) return;
+          const label = b.code ? `${b.code} | ${b.name}` : String(b.name || '');
+          branchLabelById.set(String(b.id), label);
         });
       }
 
@@ -2310,7 +2464,20 @@ export const accountingService = {
           }
 
           const branch = (entry as any).branch;
-          const branchName = branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : null;
+          let branchName = branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : null;
+          let resolvedBranchId = entry.branch_id as string | null | undefined;
+          if (!resolvedBranchId) {
+            if (refType === 'rental' && entry.reference_id) {
+              resolvedBranchId = rentalBranchByRefId.get(String(entry.reference_id));
+            } else if (refType === 'sale' && entry.reference_id) {
+              resolvedBranchId = saleBranchById.get(String(entry.reference_id));
+            } else if (refType === 'purchase' && entry.reference_id) {
+              resolvedBranchId = purchaseBranchById.get(String(entry.reference_id));
+            }
+          }
+          if (!branchName && resolvedBranchId) {
+            branchName = branchLabelById.get(String(resolvedBranchId)) ?? null;
+          }
           const counterAccount = counterAccountMap.get(entry.id) || null;
           const acc = (line as { account?: { name?: string; code?: string } | null }).account;
           const accName = acc?.name ? String(acc.name) : '';
@@ -2333,7 +2500,7 @@ export const accountingService = {
             je_action_fingerprint: (entry as { action_fingerprint?: string | null }).action_fingerprint ?? null,
             payment_id: entry.payment_id,
             sale_id: entry.reference_id,
-            branch_id: entry.branch_id,
+            branch_id: resolvedBranchId ?? entry.branch_id,
             branch_name: branchName,
             account_name: accountNameLine,
             counter_account: counterAccount ?? undefined,
@@ -2446,6 +2613,7 @@ export const accountingService = {
             branch_id,
             created_by,
             created_at,
+            is_void,
             branch:branches(id, name, code)
           )
         `;
@@ -2495,72 +2663,26 @@ export const accountingService = {
       const saleIds = customerSales.map((s: any) => s.id);
       console.log('[ACCOUNTING SERVICE] getCustomerLedger - Customer sales (canonical fetch):', saleIds.length);
       
-      // Get payments via RPC so we get them regardless of branch (SECURITY DEFINER bypasses RLS)
-      let customerPayments: any[] = [];
-      if (saleIds.length > 0) {
-        const rpcPay = await supabase.rpc('get_customer_ledger_payments', {
-          p_company_id: companyId,
-          p_sale_ids: saleIds,
-          p_from_date: glJournalOnly ? null : startDate || null,
-          p_to_date: glJournalOnly ? null : endDate || null,
-        });
-        if (!rpcPay.error) customerPayments = rpcPay.data ?? [];
-      }
-      // Normalize to include reference_type for downstream (RPC does not return it)
-      customerPayments = customerPayments.map((p: any) => ({ ...p, reference_type: 'sale' }));
+      // Received payments: includes advances on non-final sales/orders (not gated by final saleIds RPC).
+      let customerPayments: any[] = glJournalOnly
+        ? []
+        : await fetchCustomerReceivedPaymentsForRange(
+            companyId,
+            customerId,
+            startDate,
+            endDate,
+            'live',
+            ledgerSalesRpcBranchId(branchId)
+          );
 
-      // On-account payments: same contact, not linked to a sale — must be included for correct ledger
-      let onAccountPayments: any[] = [];
-      const { data: onAccountData } = await supabase
-        .from('payments')
-        .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id')
+      const { data: allCustomerSalesMeta } = await supabase
+        .from('sales')
+        .select('id, status, invoice_no')
         .eq('company_id', companyId)
-        .eq('contact_id', customerId)
-        .eq('reference_type', 'on_account')
-        .is('voided_at', null);
-      if (onAccountData?.length) {
-        const dateFiltered = glJournalOnly
-          ? (onAccountData as any[])
-          : (onAccountData as any[]).filter((p: any) => {
-              const d = (p.payment_date || '').toString().slice(0, 10);
-              if (startDate && d < startDate) return false;
-              if (endDate && d > endDate) return false;
-              return true;
-            });
-        onAccountPayments = dateFiltered.map((p: any) => ({ ...p, reference_type: 'on_account', reference_id: p.reference_id ?? null }));
-      }
-      // Add Entry V2: manual_receipt (customer receipt) — same contact, must appear in customer ledger
-      let manualReceiptPayments: any[] = [];
-      const { data: manualReceiptData } = await supabase
-        .from('payments')
-        .select('id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id')
-        .eq('company_id', companyId)
-        .eq('contact_id', customerId)
-        .eq('reference_type', 'manual_receipt')
-        .is('voided_at', null);
-      if (manualReceiptData?.length) {
-        const dateFiltered = glJournalOnly
-          ? (manualReceiptData as any[])
-          : (manualReceiptData as any[]).filter((p: any) => {
-              const d = (p.payment_date || '').toString().slice(0, 10);
-              if (startDate && d < startDate) return false;
-              if (endDate && d > endDate) return false;
-              return true;
-            });
-        manualReceiptPayments = dateFiltered.map((p: any) => ({ ...p, reference_type: 'manual_receipt', reference_id: p.reference_id ?? null }));
-      }
-      const existingPaymentIds = new Set(customerPayments.map((p: any) => p.id));
-      onAccountPayments.forEach((p: any) => {
-        if (!existingPaymentIds.has(p.id)) {
-          customerPayments.push(p);
-          existingPaymentIds.add(p.id);
-        }
-      });
-      manualReceiptPayments.forEach((p: any) => {
-        if (!existingPaymentIds.has(p.id)) {
-          customerPayments.push(p);
-          existingPaymentIds.add(p.id);
-        }
+        .eq('customer_id', customerId);
+      const saleStatusById = new Map<string, string>();
+      (allCustomerSalesMeta || []).forEach((s: any) => {
+        if (s?.id) saleStatusById.set(String(s.id), String(s.status || ''));
       });
       
       const accountMap = new Map<string, string>();
@@ -2596,7 +2718,12 @@ export const accountingService = {
       // Sales already from RPC above (customerSales). Build salesMap for journal entry matching.
       const salesMap = new Map();
       customerSales.forEach((sale: any) => {
-        salesMap.set(sale.id, { id: sale.id, invoice_no: sale.invoice_no, customer_id: customerId });
+        salesMap.set(sale.id, {
+          id: sale.id,
+          invoice_no: sale.invoice_no,
+          customer_id: customerId,
+          branch_id: sale.branch_id ?? null,
+        });
       });
       // Also include cancelled sales in salesMap (for sale_reversal JE matching only — no synthetic rows)
       const { data: cancelledSales } = await supabase
@@ -2643,23 +2770,38 @@ export const accountingService = {
         if (rentalIds.length > 0) {
           const { data: rpData } = await supabase
             .from('rental_payments')
-            .select('id, rental_id, amount, method, payment_date, created_at, journal_entry_id')
-            .in('rental_id', rentalIds);
+            .select('id, rental_id, amount, method, payment_date, created_at, journal_entry_id, reference, voided_at')
+            .in('rental_id', rentalIds)
+            .is('voided_at', null);
           customerRentalPayments = rpData ?? [];
         }
       } catch (e) {
         console.warn('[ACCOUNTING SERVICE] getCustomerLedger - Rental fetch failed (non-critical):', e);
       }
       const rentalsMap = new Map(customerRentals.map((r: any) => [r.id, r]));
+      const rentalPaymentRefByJeId = new Map<string, string>();
+      customerRentalPayments.forEach((rp: any) => {
+        const jeId = String(rp.journal_entry_id || '').trim();
+        const ref = String(rp.reference || '').trim();
+        if (jeId && ref) rentalPaymentRefByJeId.set(jeId, ref);
+      });
       const branchNameById = new Map<string, string>();
       const rentalBranchIds = [
         ...new Set(customerRentals.map((r: any) => r.branch_id).filter(Boolean)),
       ] as string[];
-      if (rentalBranchIds.length > 0) {
+      const saleBranchIds = [
+        ...new Set(
+          [...salesMap.values()]
+            .map((s: any) => s.branch_id)
+            .filter(Boolean)
+        ),
+      ] as string[];
+      const statementBranchIds = [...new Set([...rentalBranchIds, ...saleBranchIds])];
+      if (statementBranchIds.length > 0) {
         const { data: branchRows } = await supabase
           .from('branches')
           .select('id, name, code')
-          .in('id', rentalBranchIds);
+          .in('id', statementBranchIds);
         (branchRows || []).forEach((b: any) => {
           if (!b?.id) return;
           const label = b.code ? `${b.code} | ${b.name}` : String(b.name || '');
@@ -2883,15 +3025,31 @@ export const accountingService = {
         const rental = entry.reference_type === 'rental' && entry.reference_id ? rentalsMap.get(entry.reference_id) : null;
         const paymentMeta = entry.payment_id ? paymentRefsMap.get(entry.payment_id) : undefined;
         const normalizedRefType = String(entry.reference_type || '').toLowerCase();
-        const preferredRef =
-          (normalizedRefType === 'sale' && sale?.invoice_no ? String(sale.invoice_no) : '') ||
-          ((normalizedRefType === 'manual_receipt' || normalizedRefType === 'manual_payment') && paymentMeta
-            ? paymentMeta.bankTraceId || paymentMeta.referenceNumber
-            : '') ||
-          (paymentMeta?.referenceNumber || '') ||
-          (normalizedRefType === 'rental' && rental?.booking_no ? String(rental.booking_no) : '');
-        if (preferredRef) {
-          referenceNumber = preferredRef;
+        const isReceiptCredit = credit > 0 && (
+          Boolean(entry.payment_id) ||
+          normalizedRefType === 'payment' ||
+          (normalizedRefType === 'rental' && debit === 0)
+        );
+        const lineKind =
+          normalizedRefType === 'sale' && debit > 0
+            ? 'sale_debit'
+            : normalizedRefType === 'rental' && debit > 0
+              ? 'rental_debit'
+              : isReceiptCredit
+                ? 'receipt_credit'
+                : 'journal';
+        const resolvedRef = resolvePartyLedgerReference({
+          lineKind,
+          entryNo: entry.entry_no,
+          referenceType: entry.reference_type,
+          saleInvoiceNo: sale?.invoice_no,
+          rentalBookingNo: rental?.booking_no,
+          rentalPaymentRef: rentalPaymentRefByJeId.get(String(entry.id)) || null,
+          paymentReferenceNumber: paymentMeta?.referenceNumber,
+          paymentBankTraceId: paymentMeta?.bankTraceId,
+        });
+        if (resolvedRef && resolvedRef !== '—') {
+          referenceNumber = resolvedRef;
         } else if (isInvalidEntryNo) {
           if (entry.payment_id) {
             referenceNumber = `PAY-${entry.payment_id.substring(0, 4).toUpperCase()}`;
@@ -2903,9 +3061,22 @@ export const accountingService = {
           }
         }
         
-        // Get branch info from joined data
+        // Get branch info from joined data; fall back to source document branch when JE.branch_id is null
         const branch = (entry as any).branch;
-        const branchName = branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : null;
+        let branchName = branch ? (branch.code ? `${branch.code} | ${branch.name}` : branch.name) : null;
+        let resolvedBranchId = entry.branch_id as string | null | undefined;
+        if (entry.reference_type === 'rental' && entry.reference_id) {
+          const rb = rentalLedgerBranch(String(entry.reference_id));
+          if (!resolvedBranchId) resolvedBranchId = rb.branch_id;
+          if (!branchName) branchName = rb.branch_name;
+        } else if (
+          (entry.reference_type === 'sale' || entry.reference_type === 'sale_adjustment') &&
+          entry.reference_id
+        ) {
+          const saleBranchId = salesMap.get(entry.reference_id)?.branch_id;
+          if (!resolvedBranchId && saleBranchId) resolvedBranchId = String(saleBranchId);
+          if (!branchName && saleBranchId) branchName = branchNameById.get(String(saleBranchId)) ?? null;
+        }
 
         // STEP 2: DATA SOURCE CONFIRMATION - Ensure debit/credit are properly set
         const finalDebit = debit;
@@ -2943,7 +3114,7 @@ export const accountingService = {
             (entry.reference_type === 'payment' && entry.reference_id ? String(entry.reference_id) : undefined),
           sale_id: entry.reference_type === 'sale' ? entry.reference_id : undefined,
           rental_id: entry.reference_type === 'rental' ? entry.reference_id : undefined,
-          branch_id: entry.branch_id,
+          branch_id: resolvedBranchId ?? entry.branch_id,
           branch_name: branchName,
           ledger_kind: entry.reference_type === 'correction_reversal' ? ('reversal' as const) : undefined,
         };
@@ -2976,10 +3147,17 @@ export const accountingService = {
           const d = (p.payment_date || '').toString();
           if (startDate && d < startDate) return;
           if (endDate && d > endDate) return;
+          const saleStatus =
+            String(p.reference_type || '') === 'sale' && p.reference_id
+              ? saleStatusById.get(String(p.reference_id))
+              : undefined;
           items.push({
             date: d,
-            reference_number: (p.reference_number || `PAY-${p.id?.slice(0, 8)}`).toString(),
-            description: 'Payment',
+            reference_number: resolvePartyLedgerReference({
+              lineKind: 'receipt_credit',
+              paymentReferenceNumber: p.reference_number,
+            }),
+            description: customerReceiptLedgerDescription({ saleStatus, base: 'Payment' }),
             debit: 0,
             credit: Number(p.amount) || 0,
             payment_id: p.id,
@@ -3015,9 +3193,14 @@ export const accountingService = {
           if (!d) return;
           if (startDate && d < startDate) return;
           if (endDate && d > endDate) return;
+          const rentalMeta = rentalsMap.get(p.rental_id);
           items.push({
             date: d,
-            reference_number: (rentalsMap.get(p.rental_id)?.booking_no || `RN-${p.rental_id?.slice(0, 8)}`) + `-PAY`,
+            reference_number: resolvePartyLedgerReference({
+              lineKind: 'receipt_credit',
+              rentalBookingNo: rentalMeta?.booking_no,
+              rentalPaymentRef: p.reference,
+            }),
             description: 'Rental Payment',
             debit: 0,
             credit: Number(p.amount) || 0,
@@ -3089,10 +3272,17 @@ export const accountingService = {
           const d = (p.payment_date || '').toString();
           if (startDate && d < startDate) return;
           if (endDate && d > endDate) return;
+          const saleStatus =
+            String(p.reference_type || '') === 'sale' && p.reference_id
+              ? saleStatusById.get(String(p.reference_id))
+              : undefined;
           mergeItems.push({
             date: d,
-            reference_number: (p.reference_number || `PAY-${p.id?.slice(0, 8)}`).toString(),
-            description: 'Payment',
+            reference_number: resolvePartyLedgerReference({
+              lineKind: 'receipt_credit',
+              paymentReferenceNumber: p.reference_number,
+            }),
+            description: customerReceiptLedgerDescription({ saleStatus, base: 'Payment' }),
             debit: 0,
             credit: Number(p.amount) || 0,
             payment_id: p.id,
@@ -3129,9 +3319,14 @@ export const accountingService = {
           if (!d) return;
           if (startDate && d < startDate) return;
           if (endDate && d > endDate) return;
+          const rentalMeta = rentalsMap.get(p.rental_id);
           mergeItems.push({
             date: d,
-            reference_number: (rentalsMap.get(p.rental_id)?.booking_no || `RN-${p.rental_id?.slice(0, 8)}`) + `-PAY`,
+            reference_number: resolvePartyLedgerReference({
+              lineKind: 'receipt_credit',
+              rentalBookingNo: rentalMeta?.booking_no,
+              rentalPaymentRef: p.reference,
+            }),
             description: 'Rental Payment',
             debit: 0,
             credit: Number(p.amount) || 0,
@@ -3890,6 +4085,8 @@ export const accountingService = {
     journalEntryId: string,
     patch: {
       entry_date?: string;
+      /** Posted-at timestamp (manual journals only) — does not change GL amounts. */
+      created_at?: string;
       description?: string | null;
       lines?: { account_id: string; debit: number; credit: number; description?: string | null }[];
     }
@@ -3909,9 +4106,10 @@ export const accountingService = {
       return { ok: false, error: 'Only manual (journal) entries can be edited here; use Edit source for posted documents.' };
     }
 
-    if (patch.entry_date !== undefined || patch.description !== undefined) {
+    if (patch.entry_date !== undefined || patch.description !== undefined || patch.created_at !== undefined) {
       const header: Record<string, unknown> = {};
       if (patch.entry_date !== undefined) header.entry_date = String(patch.entry_date).slice(0, 10);
+      if (patch.created_at !== undefined) header.created_at = patch.created_at;
       if (patch.description !== undefined) header.description = patch.description;
       const { error: up } = await supabase
         .from('journal_entries')

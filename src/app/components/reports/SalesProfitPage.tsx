@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Loader2, FileText, FileSpreadsheet } from 'lucide-react';
-import { Button } from '@/app/components/ui/button';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Loader2 } from 'lucide-react';
+import { ReportActions } from './ReportActions';
+import { FinancialReportPrintLayout, FinancialReportDataTable } from './FinancialReportPrintLayout';
+import { shareViaWhatsApp } from '@/app/services/documentShareService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { accountingReportsService, SalesProfitResult } from '@/app/services/accountingReportsService';
@@ -49,13 +51,23 @@ export const SalesProfitPage: React.FC<{
       .finally(() => setLoading(false));
   }, [companyId, startDate, endDate, branchId, customerId]);
 
+  const reportPrintRef = useRef<HTMLDivElement>(null);
+  const branchLabel = branchId && branchId !== 'all' ? 'Branch scope' : 'All branches';
+  const exportPayload = useMemo(() => (data ? toExport(data, formatCurrency) : null), [data, formatCurrency]);
+
   const handleExportPDF = () => {
-    if (!data) return;
-    exportToPDF(toExport(data, formatCurrency), 'Sales_Profit');
+    if (!exportPayload) return;
+    exportToPDF(exportPayload, 'Sales_Profit');
   };
   const handleExportExcel = () => {
+    if (!exportPayload) return;
+    exportToExcel(exportPayload, 'Sales_Profit');
+  };
+  const handleWhatsApp = () => {
     if (!data) return;
-    exportToExcel(toExport(data, formatCurrency), 'Sales_Profit');
+    void shareViaWhatsApp(
+      `Sales Profit Report\n${data.startDate} to ${data.endDate}\nRevenue: ${formatCurrency(data.totalRevenue)}\nProfit: ${formatCurrency(data.totalProfit)}`
+    );
   };
 
   if (loading) {
@@ -76,20 +88,34 @@ export const SalesProfitPage: React.FC<{
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-gray-400">
-          Period: {data.startDate} to {data.endDate} • Total Revenue: {formatCurrency(data.totalRevenue)} • Total Profit: {formatCurrency(data.totalProfit)}
-        </p>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportPDF} className="gap-1">
-            <FileText size={14} /> PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExportExcel} className="gap-1">
-            <FileSpreadsheet size={14} /> Excel
-          </Button>
-        </div>
+      <div className="no-print">
+        <ReportActions
+          title="Sales Profit Report"
+          onPrint={() => window.print()}
+          onPdf={handleExportPDF}
+          onExcel={handleExportExcel}
+          onWhatsapp={handleWhatsApp}
+          previewContentRef={reportPrintRef}
+          previewDocumentType="ledger"
+          previewReference={`sales-profit-${data.startDate}-${data.endDate}`}
+        />
       </div>
-      <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50">
+      <p className="no-print text-sm text-gray-400">
+        Period: {data.startDate} to {data.endDate} • Total Revenue: {formatCurrency(data.totalRevenue)} • Total Profit: {formatCurrency(data.totalProfit)}
+      </p>
+      {exportPayload ? (
+        <div className="fixed left-[-9999px] top-0 w-[820px] pointer-events-none" aria-hidden>
+          <FinancialReportPrintLayout
+            ref={reportPrintRef}
+            title="Sales Profit Report"
+            periodLabel={`${data.startDate} to ${data.endDate}`}
+            branchLabel={branchLabel}
+          >
+            <FinancialReportDataTable headers={exportPayload.headers} rows={exportPayload.rows} />
+          </FinancialReportPrintLayout>
+        </div>
+      ) : null}
+      <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50 no-print">
         <table className="w-full text-base leading-snug">
           <thead className="border-b border-gray-800 bg-gray-800/50">
             <tr>

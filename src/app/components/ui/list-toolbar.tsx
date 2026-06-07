@@ -132,9 +132,15 @@ export const ListToolbar: React.FC<ListToolbarProps> = ({
 
   // Default rows options
   const rowsOptions = rowsSelector.options || [25, 50, 100, 500, 1000];
+  const overlayOpen = Boolean(filter?.isOpen || columnVisibilityOpen);
 
   return (
-    <div className="shrink-0 px-6 py-3 bg-[#0B0F19] border-b border-gray-800 relative z-10">
+    <div
+      className={cn(
+        'shrink-0 px-6 py-3 bg-[#0B0F19] border-b border-gray-800 relative',
+        overlayOpen ? 'z-30' : 'z-20'
+      )}
+    >
       <div className="flex items-center gap-3">
         {/* ============================================ */}
         {/* LEFT SECTION - SEARCH (Full Width) */}

@@ -5,7 +5,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import { CalendarDatePicker } from "../ui/CalendarDatePicker";
+import { DateTimePicker, dateToDateTimePickerValue, dateTimePickerValueToDate } from "../ui/DateTimePicker";
 import {
   Select,
   SelectContent,
@@ -301,11 +301,10 @@ export const StockTransferDrawer: React.FC<StockTransferDrawerProps> = ({
 
           {/* Transfer Date */}
           <div className="space-y-2">
-            <CalendarDatePicker
+            <DateTimePicker
               label="Transfer Date"
-              value={transferDate}
-              onChange={(d) => setTransferDate(d || new Date())}
-              showTime={true}
+              value={dateToDateTimePickerValue(transferDate)}
+              onChange={(v) => setTransferDate(dateTimePickerValueToDate(v) || new Date())}
               required
             />
           </div>

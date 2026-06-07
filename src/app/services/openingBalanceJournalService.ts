@@ -418,6 +418,8 @@ export const openingBalanceJournalService = {
     accountName?: string;
     category: AccountCategory;
     openingAmount: number;
+    /** GL entry_date for the opening balance JE (defaults to today). */
+    entryDate?: string;
   }): Promise<void> {
     const amt = roundMoney(Math.abs(params.openingAmount));
     if (amt < MONEY_EPS) {
@@ -458,6 +460,8 @@ export const openingBalanceJournalService = {
           { account_id: params.accountId, debit: 0, credit: amt, description: `Opening balance — ${label}` },
         ];
 
+    const entryDate =
+      String(params.entryDate || '').trim().slice(0, 10) || openingEntryDate();
     await postBalancedOpening({
       companyId: params.companyId,
       branchId,
@@ -465,7 +469,7 @@ export const openingBalanceJournalService = {
       referenceId: params.accountId,
       description: `Opening balance — account ${label}`,
       lines,
-      entryDate: openingEntryDate(),
+      entryDate,
     });
   },
 

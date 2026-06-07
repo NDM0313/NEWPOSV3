@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Clock, X } from 'lucide-react';
 import { Button } from './button';
 import { cn } from './utils';
@@ -7,6 +7,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from './popover';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
+import { formatDate as formatDateUtil, formatTime as formatTimeUtil } from '@/app/utils/formatDate';
 
 interface DateRangePickerProps {
   value?: { from?: Date; to?: Date };
@@ -24,9 +26,15 @@ export const CalendarDateRangePicker: React.FC<DateRangePickerProps> = ({
   placeholder = 'Select date range',
   showTime = false,
 }) => {
+  const { dateFormat, timeFormat, timezone } = useFormatDate();
   const [isOpen, setIsOpen] = useState(false);
   const [fromDate, setFromDate] = useState<Date | null>(value?.from || null);
   const [toDate, setToDate] = useState<Date | null>(value?.to || null);
+
+  useEffect(() => {
+    setFromDate(value?.from || null);
+    setToDate(value?.to || null);
+  }, [value?.from?.getTime?.(), value?.to?.getTime?.()]);
   const [hoverDate, setHoverDate] = useState<Date | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [fromTime, setFromTime] = useState('00:00');
@@ -34,13 +42,17 @@ export const CalendarDateRangePicker: React.FC<DateRangePickerProps> = ({
 
   const formatDate = (date: Date | null | undefined) => {
     if (!date) return '';
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return formatDateUtil(date, dateFormat, timezone);
   };
 
   const formatDateTime = (date: Date | null | undefined, time: string) => {
     if (!date) return '';
     const dateStr = formatDate(date);
-    return showTime ? `${dateStr} ${time}` : dateStr;
+    if (!showTime) return dateStr;
+    const [hours, minutes] = time.split(':').map(Number);
+    const withTime = new Date(date);
+    withTime.setHours(hours || 0, minutes || 0, 0, 0);
+    return `${dateStr} ${formatTimeUtil(withTime, timeFormat as '12h' | '24h', timezone)}`;
   };
 
   const getDaysInMonth = (date: Date) => {

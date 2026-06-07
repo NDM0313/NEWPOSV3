@@ -35,6 +35,9 @@ import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { Pagination } from '@/app/components/ui/pagination';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { formatLongDate } from '@/app/components/ui/utils';
+import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
+import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
+import { userService } from '@/app/services/userService';
 import { UnifiedPaymentDialog } from '@/app/components/shared/UnifiedPaymentDialog';
 import { ViewPaymentsModal } from '@/app/components/sales/ViewPaymentsModal';
 import { ViewRentalDetailsDrawer } from '@/app/components/rentals/ViewRentalDetailsDrawer';
@@ -78,6 +81,11 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
     setCurrentModule('rentals');
   }, [setCurrentModule]);
 
+  useEffect(() => {
+    if (!companyId) return;
+    userService.getSalesmen(companyId).then((list) => setSalesmen(list || [])).catch(() => setSalesmen([]));
+  }, [companyId]);
+
   const { rentals, loading, refreshRentals, receiveReturn, cancelRental, addPayment, deletePayment, deleteRental, markAsPickedUp, getRentalById } = useRentals();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -85,6 +93,10 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | RentalStatus>('all');
   const [branchFilter, setBranchFilter] = useState('all');
+  const [salesmanFilter, setSalesmanFilter] = useState('all');
+  const [dateFilterMode, setDateFilterMode] = useState<'pickup' | 'created'>('pickup');
+  const [salesmen, setSalesmen] = useState<Array<{ id: string; full_name?: string; name?: string }>>([]);
+  const [viewDetailsPrintMode, setViewDetailsPrintMode] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedRental, setSelectedRental] = useState<RentalUI | null>(null);
@@ -100,9 +112,11 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   const [visibleColumns, setVisibleColumns] = useState({
     rentalNo: true,
     customer: true,
-    product: true,
+    product: false,
     item: true,
     branch: true,
+    createdAt: true,
+    salesman: true,
     startDate: true,
     expectedReturn: true,
     actualReturn: true,
@@ -114,7 +128,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   });
 
   const [columnOrder, setColumnOrder] = useState([
-    'rentalNo', 'customer', 'product', 'item', 'branch', 'startDate', 'expectedReturn', 'actualReturn', 'status', 'action', 'total', 'paid', 'due',
+    'createdAt', 'rentalNo', 'customer', 'item', 'branch', 'salesman', 'startDate', 'expectedReturn', 'actualReturn', 'status', 'action', 'total', 'paid', 'due',
   ]);
 
   const columnLabels: Record<string, string> = {
@@ -123,6 +137,8 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
     product: 'Product',
     item: 'Item',
     branch: 'Branch',
+    createdAt: 'Created',
+    salesman: 'Salesman',
     startDate: 'Start Date',
     expectedReturn: 'Expected Return',
     actualReturn: 'Actual Return',
@@ -158,6 +174,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
   const getColumnWidth = (key: string): string => {
     const w: Record<string, string> = {
       rentalNo: '110px', customer: '160px', product: '170px', item: '150px', branch: '120px',
+      createdAt: '110px', salesman: '130px',
       startDate: '100px', expectedReturn: '110px', actualReturn: '100px', status: '100px',
       action: '120px',
       total: '100px', paid: '90px', due: '90px',
@@ -172,21 +189,29 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
     return `${parts.join(' ')} 60px`.trim();
   }, [columnOrder, visibleColumns]);
 
+  const rentalDateKey = useCallback((r: RentalUI) => {
+    const raw = dateFilterMode === 'created' ? r.createdAt : r.startDate;
+    if (!raw) return '';
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return String(raw).slice(0, 10);
+    return formatLocalDateYYYYMMDD(parsed);
+  }, [dateFilterMode]);
+
   const filterByDate = useCallback(
-    (dateStr: string | undefined) => {
+    (r: RentalUI) => {
       if (!startDate && !endDate) return true;
-      if (!dateStr) return false;
-      const d = new Date(dateStr);
-      if (startDate && d < new Date(startDate)) return false;
-      if (endDate && d > new Date(endDate + 'T23:59:59')) return false;
+      const d = rentalDateKey(r);
+      if (!d) return false;
+      if (startDate && d < startDate) return false;
+      if (endDate && d > endDate) return false;
       return true;
     },
-    [startDate, endDate]
+    [startDate, endDate, rentalDateKey]
   );
 
   const filteredRentals = useMemo(() => {
     return rentals.filter((r) => {
-      if (!filterByDate(r.startDate)) return false;
+      if (!filterByDate(r)) return false;
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
         const itemTextMatch = (r.items ?? []).some(
@@ -204,9 +229,10 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
       }
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
       if (branchFilter !== 'all' && r.branchId !== branchFilter) return false;
+      if (salesmanFilter !== 'all' && (r.salesmanId || '') !== salesmanFilter) return false;
       return true;
     });
-  }, [rentals, searchTerm, statusFilter, branchFilter, filterByDate]);
+  }, [rentals, searchTerm, statusFilter, branchFilter, salesmanFilter, filterByDate]);
 
   const paginatedRentals = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -339,11 +365,25 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
         filter={{
           isOpen: filterOpen,
           onToggle: () => setFilterOpen(!filterOpen),
-          activeCount: [statusFilter, branchFilter].filter((f) => f !== 'all').length,
+          activeCount: [
+            statusFilter !== 'all' ? statusFilter : null,
+            branchFilter !== 'all' ? branchFilter : null,
+            salesmanFilter !== 'all' ? salesmanFilter : null,
+            dateFilterMode !== 'pickup' ? dateFilterMode : null,
+          ].filter(Boolean).length,
           renderPanel: () => (
-            <div className="absolute right-0 top-12 w-64 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 z-50">
+            <div className="absolute right-0 top-12 w-64 max-h-[min(70vh,22rem)] overflow-y-auto bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-4 z-50">
               <p className="text-sm font-semibold text-white mb-2">Filters</p>
-              <label className="text-xs text-gray-400">Status</label>
+              <label className="text-xs text-gray-400">Date filter basis</label>
+              <select
+                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
+                value={dateFilterMode}
+                onChange={(e) => setDateFilterMode(e.target.value as 'pickup' | 'created')}
+              >
+                <option value="pickup">Pickup / start date</option>
+                <option value="created">Created date</option>
+              </select>
+              <label className="text-xs text-gray-400 mt-2 block">Status</label>
               <select
                 className="w-full mt-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
                 value={statusFilter}
@@ -369,6 +409,19 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                   </option>
                 ))}
               </select>
+              <label className="text-xs text-gray-400 mt-2 block">Salesman</label>
+              <select
+                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-white text-sm"
+                value={salesmanFilter}
+                onChange={(e) => setSalesmanFilter(e.target.value)}
+              >
+                <option value="all">All</option>
+                {salesmen.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.full_name || s.name || s.id}
+                  </option>
+                ))}
+              </select>
             </div>
           ),
         }}
@@ -384,8 +437,8 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
       <div className="flex-1 overflow-auto px-6 py-4">
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <div className="min-w-[1320px]">
-              <div className="sticky top-0 z-10 min-w-[1320px] w-max bg-gray-900 border-b border-gray-800">
+            <div className="min-w-[1560px]">
+              <div className="sticky top-0 z-[1] min-w-[1560px] w-max bg-gray-900 border-b border-gray-800">
                 <div
                   className="grid gap-3 px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider"
                   style={{ gridTemplateColumns: gridTemplateColumns }}
@@ -404,7 +457,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                 </div>
               </div>
 
-              <div className="min-w-[1320px] w-max">
+              <div className="min-w-[1560px] w-max">
                 {loading ? (
                   <div className="py-12 text-center">
                     <Loader2 size={48} className="mx-auto text-pink-500 mb-3 animate-spin" />
@@ -421,7 +474,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                       key={r.id}
                       onMouseEnter={() => setHoveredRow(r.id)}
                       onMouseLeave={() => setHoveredRow(null)}
-                      className="grid gap-3 px-4 h-14 min-w-[1320px] w-max hover:bg-gray-800/30 items-center border-b border-gray-800 last:border-b-0"
+                      className="grid gap-3 px-4 h-14 min-w-[1560px] w-max hover:bg-gray-800/30 items-center border-b border-gray-800 last:border-b-0"
                       style={{ gridTemplateColumns: gridTemplateColumns }}
                     >
                       {columnOrder.map((key) => {
@@ -471,6 +524,20 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                           }
                           case 'branch':
                             cell = <span className="text-xs text-gray-400 truncate">{r.location || '—'}</span>;
+                            break;
+                          case 'createdAt':
+                            cell = r.createdAt ? (
+                              <DateTimeDisplay date={r.createdAt} dateOnly className="text-sm text-gray-400" />
+                            ) : (
+                              <span className="text-sm text-gray-500">—</span>
+                            );
+                            break;
+                          case 'salesman':
+                            cell = (
+                              <span className="text-sm text-gray-400 truncate" title={r.salesmanName || ''}>
+                                {r.salesmanName || '—'}
+                              </span>
+                            );
                             break;
                           case 'startDate':
                             cell = <span className="text-sm text-gray-400">{formatLongDate(r.startDate)}</span>;
@@ -668,6 +735,7 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
                               className="hover:bg-gray-800 cursor-pointer"
                               onClick={() => {
                                 setSelectedRental(r);
+                                setViewDetailsPrintMode(true);
                                 setViewDetailsOpen(true);
                               }}
                             >
@@ -806,8 +874,10 @@ export const RentalsPage = ({ onAddRental, onEditRental, embedded }: RentalsPage
 
       <ViewRentalDetailsDrawer
         isOpen={viewDetailsOpen}
+        openPrintOnMount={viewDetailsPrintMode}
         onClose={() => {
           setViewDetailsOpen(false);
+          setViewDetailsPrintMode(false);
           setSelectedRental(null);
         }}
         rental={selectedRental}

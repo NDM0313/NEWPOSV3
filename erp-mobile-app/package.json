@@ -18,7 +18,7 @@
     "cap:sync:ios": "npm run build:mobile && npx cap sync ios",
     "cap:sync:ios:prod": "npm run build:mobile:prod && npx cap sync ios",
     "cap:android": "npx cap open android",
-    "cap:ios": "npx cap open ios",
+    "cap:ios": "open ios/App/App.xcworkspace",
     "android:debug": "npm run cap:sync:android && cd android && ./gradlew assembleDebug",
     "android:debug:win": "npm run cap:sync:android && cd android && gradlew.bat assembleDebug",
     "android:bundle": "cd android && ./gradlew bundleRelease",

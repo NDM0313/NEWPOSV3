@@ -12,7 +12,10 @@ import { CalendarDateRangePicker } from '@/app/components/ui/CalendarDateRangePi
 import { format } from 'date-fns';
 import { cn } from '@/app/components/ui/utils';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { exportToExcel } from '@/app/utils/exportUtils';
+import { ledgerTransactionOpenEventDetail } from '@/app/lib/ledgerTransactionOpenRef';
+import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 
 interface AccountLedgerViewProps {
   isOpen: boolean;
@@ -51,6 +54,7 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
 }) => {
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
+  const { formatTime } = useFormatDate();
   const [ledgerEntries, setLedgerEntries] = useState<AccountLedgerEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>(() => ({
@@ -135,10 +139,11 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
     );
   };
 
-  const openJournalDetail = (referenceNumber: string, autoEdit = false) => {
+  const openJournalDetail = (entry: AccountLedgerEntry, autoEdit = false) => {
+    const detail = ledgerTransactionOpenEventDetail(entry, autoEdit);
     window.dispatchEvent(
       new CustomEvent('openTransactionDetail', {
-        detail: { referenceNumber, autoLaunchUnifiedEdit: autoEdit },
+        detail,
       })
     );
   };
@@ -231,7 +236,7 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
               className="pl-9 h-9 bg-gray-800 border-gray-700 text-white text-sm placeholder:text-gray-600"
             />
           </div>
-          <CalendarDateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} />
+          <CalendarDateRangePicker value={dateRange} onChange={setDateRange} />
           <Button
             variant="outline"
             size="sm"
@@ -290,7 +295,12 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                   >
                     {/* Date */}
                     <td className="px-4 py-2.5 text-gray-400 text-xs whitespace-nowrap">
-                      {format(new Date(entry.date), 'dd MMM yyyy')}
+                      <div className="flex flex-col leading-tight">
+                        <DateTimeDisplay date={entry.date} dateOnly className="text-gray-400 text-xs" />
+                        {entry.created_at ? (
+                          <span className="text-[10px] text-gray-600 italic mt-0.5">{formatTime(entry.created_at)}</span>
+                        ) : null}
+                      </div>
                     </td>
 
                     {/* Reference No — clickable, opens transaction detail */}
@@ -298,7 +308,7 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                       <button
                         type="button"
                         className="text-blue-400 hover:text-blue-300 hover:underline text-xs font-medium"
-                        onClick={() => openJournalDetail(entry.entry_no || entry.reference_number, false)}
+                        onClick={() => openJournalDetail(entry, false)}
                       >
                         {entry.reference_number}
                       </button>
@@ -348,7 +358,7 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                           size="icon"
                           className="h-7 w-7 text-gray-500 hover:text-blue-400"
                           title="View journal entry"
-                          onClick={() => openJournalDetail(entry.entry_no || entry.reference_number, false)}
+                          onClick={() => openJournalDetail(entry, false)}
                         >
                           <FileSearch size={13} />
                         </Button>
@@ -358,7 +368,7 @@ export const AccountLedgerView: React.FC<AccountLedgerViewProps> = ({
                           size="icon"
                           className="h-7 w-7 text-gray-500 hover:text-sky-400"
                           title="Edit journal entry"
-                          onClick={() => openJournalDetail(entry.journal_entry_id, true)}
+                          onClick={() => openJournalDetail(entry, true)}
                         >
                           <Edit size={13} />
                         </Button>

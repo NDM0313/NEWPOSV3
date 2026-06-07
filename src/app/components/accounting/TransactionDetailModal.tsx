@@ -6,6 +6,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/app/componen
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
+import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
+import {
+  formatLocalDateTimeYYYYMMDDHHmm,
+  parseLocalDateInput,
+  parseLocalDateTimeInput,
+  toLocalISOString,
+} from '@/app/utils/localDate';
 import { Label } from '@/app/components/ui/label';
 import { accountingService } from '@/app/services/accountingService';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -52,6 +59,8 @@ interface TransactionDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   referenceNumber: string; // Can be journal_entry_id (UUID) or reference_no (string)
+  /** When opening from Account Ledger, prefer this exact journal row over entry_no heuristics. */
+  journalEntryIdHint?: string;
   /** PF-14.3B: When opening from grouped journal row, pass all entries in the document thread to show edit trail. */
   groupEntries?: AccountingEntry[];
   /** After load, open the same unified editor as the primary Edit action (journal / payment / source). */
@@ -203,6 +212,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   isOpen,
   onClose,
   referenceNumber,
+  journalEntryIdHint,
   groupEntries,
   autoLaunchUnifiedEdit = false,
   onAutoLaunchUnifiedEditConsumed,
@@ -218,7 +228,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   const actionLocked = busy || loading;
   const [selectedAttachment, setSelectedAttachment] = useState<string | null>(null);
   const [journalQuickEditOpen, setJournalQuickEditOpen] = useState(false);
-  const [editEntryDate, setEditEntryDate] = useState('');
+  const [editEntryDateTime, setEditEntryDateTime] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [savingJournalEdit, setSavingJournalEdit] = useState(false);
   /** Effective journal lines for payment (original + account-adjustment JEs merged) so Bank shows after Cash→Bank edit */
@@ -330,7 +340,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     if (isOpen && referenceNumber && companyId) {
       loadTransaction();
     }
-  }, [isOpen, referenceNumber, companyId]);
+  }, [isOpen, referenceNumber, journalEntryIdHint, companyId]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -393,6 +403,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         payment_id: transaction.payment_id,
         is_void: transaction.is_void,
         payment_chain_is_historical: transaction.payment_chain_is_historical,
+        action_fingerprint: transaction.action_fingerprint,
+        description: transaction.description,
         hasActiveCorrectionReversal: txnHasActiveCorrectionReversal,
       },
       paymentForReversalPolicy
@@ -401,9 +413,16 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
   const openJournalQuickEdit = () => {
     if (!transaction) return;
-    setEditEntryDate(
-      transaction.entry_date ? format(new Date(transaction.entry_date), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')
-    );
+    const base = transaction.entry_date
+      ? parseLocalDateInput(String(transaction.entry_date).slice(0, 10))
+      : new Date();
+    if (transaction.created_at) {
+      const posted = new Date(transaction.created_at as string);
+      if (!Number.isNaN(posted.getTime())) {
+        base.setHours(posted.getHours(), posted.getMinutes(), 0, 0);
+      }
+    }
+    setEditEntryDateTime(formatLocalDateTimeYYYYMMDDHHmm(base));
     setEditDescription(String(transaction.description || ''));
     setJournalQuickEditOpen(true);
   };
@@ -412,8 +431,10 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     if (!companyId || !transaction?.id) return;
     setSavingJournalEdit(true);
     try {
+      const when = parseLocalDateTimeInput(editEntryDateTime);
       const res = await accountingService.updateManualJournalEntry(companyId, transaction.id, {
-        entry_date: editEntryDate,
+        entry_date: editEntryDateTime.split('T')[0] || format(when, 'yyyy-MM-dd'),
+        created_at: toLocalISOString(when),
         description: editDescription,
       });
       if (!res.ok) {
@@ -486,6 +507,21 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           return;
         }
         case 'payment_editor': {
+          if (resolution.context === 'rental') {
+            const rentalId =
+              resolution.sourceId ||
+              String(transaction.reference_id || '').trim() ||
+              String(pr?.reference_id || '').trim();
+            if (!rentalId) {
+              toast.error('Missing rental reference on payment.');
+              return;
+            }
+            const { rentalService } = await import('@/app/services/rentalService');
+            const row = await rentalService.getRental(rentalId);
+            setRentalForPaymentDialog(mapRentalRowForPaymentDialog(row as any));
+            setRentalPaymentEditorOpen(true);
+            return;
+          }
           const pid =
             (transaction.payment_id as string | undefined) ||
             (pr?.id ? resolvePaymentIdForMutation({ id: pr.id, parentPaymentId: (pr as any).parentPaymentId }) : '') ||
@@ -512,7 +548,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                 : prt === 'rental'
                   ? 'rental'
                   : 'customer'; // includes sale, sale_extra_expense, payment, payment_adjustment, etc.
-          if (resolution.context === 'rental' || prt === 'rental') {
+          if (prt === 'rental') {
             const rentalId = resolution.sourceId || prid;
             if (!rentalId) {
               toast.error('Missing rental reference on payment.');
@@ -644,6 +680,14 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
 
       let data = null;
 
+      const hintId = String(journalEntryIdHint || '').trim();
+      const hintIsUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(hintId);
+
+      // PRIORITY 0a: Ledger row hint — exact journal the user clicked
+      if (!data && hintIsUuid && companyId) {
+        data = await accountingService.getEntryById(hintId, companyId);
+      }
+
       // PRIORITY 0: Grouped journal row — load the clicked / primary entry by UUID
       if (groupEntries?.length && companyId) {
         const primary =
@@ -660,17 +704,12 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
         data = await accountingService.getEntryById(referenceNumber, companyId);
       }
 
-      // PRIORITY 2: If it looks like entry_no (JE-0058), use reference lookup
-      if (!data && looksLikeEntryNo) {
-        console.log('[TRANSACTION DETAIL] Looks like entry_no, using reference lookup first...');
-        data = await accountingService.getEntryByReference(referenceNumber, companyId);
-        console.log('[TRANSACTION DETAIL] Reference lookup result:', data ? 'FOUND' : 'NOT FOUND');
-      }
-      
-      // PRIORITY 3: Fallback to reference lookup (for any other format)
-      if (!data && !looksLikeEntryNo) {
-        console.log('[TRANSACTION DETAIL] Trying reference lookup as fallback...');
-        data = await accountingService.getEntryByReference(referenceNumber, companyId);
+      // PRIORITY 2: Reference lookup (REN-*-PAY, PAY/RCV, booking_no, entry_no, etc.)
+      if (!data) {
+        console.log('[TRANSACTION DETAIL] Using reference lookup...');
+        data = await accountingService.getEntryByReference(referenceNumber, companyId, {
+          journalEntryIdHint: hintIsUuid ? hintId : undefined,
+        });
         console.log('[TRANSACTION DETAIL] Reference lookup result:', data ? 'FOUND' : 'NOT FOUND');
       }
 
@@ -1682,8 +1721,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             </DialogHeader>
             <div className="space-y-3 pt-2">
               <div>
-                <Label className="text-gray-400">Transaction date</Label>
-                <Input type="date" value={editEntryDate} onChange={(e) => setEditEntryDate(e.target.value)} className="bg-gray-950 border-gray-700 mt-1" />
+                <Label className="text-gray-400">Transaction date &amp; time</Label>
+                <DateTimePicker value={editEntryDateTime} onChange={setEditEntryDateTime} required />
               </div>
               <div>
                 <Label className="text-gray-400">Description / notes</Label>
