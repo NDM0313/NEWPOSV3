@@ -21,7 +21,7 @@ import { TimelinePreviewPdf } from '../../shared/TimelinePreviewPdf';
 import { RoznamchaPreviewPdf } from '../../shared/RoznamchaPreviewPdf';
 import { usePdfPreview } from '../../shared/usePdfPreview';
 import { TransactionDetailSheet } from './_shared/TransactionDetailSheet';
-import { formatLocalDateYYYYMMDD, localNowDateString } from '../../../utils/localDate';
+import { localNowDateString } from '../../../utils/localDate';
 import { roznamchaMetaSubline } from '../../../lib/roznamchaRowDescription';
 
 interface DayBookReportProps {
@@ -49,25 +49,6 @@ function rowSortTimestamp(r: RoznamchaRowWithBalance): number {
   } catch {
     return 0;
   }
-}
-
-function applyQuickRange(days: number, single: boolean): DateRangeValue {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const to = formatLocalDateYYYYMMDD(today);
-  if (days === -1) {
-    const from = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { from: formatLocalDateYYYYMMDD(from), to, preset: 'custom' };
-  }
-  if (single) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - days);
-    const iso = formatLocalDateYYYYMMDD(d);
-    return { from: iso, to: iso, preset: 'custom' };
-  }
-  const from = new Date(today);
-  from.setDate(from.getDate() - days);
-  return { from: formatLocalDateYYYYMMDD(from), to, preset: 'custom' };
 }
 
 export function DayBookReport({ onBack, companyId, branchId, user, reportRefreshEpoch = 0 }: DayBookReportProps) {
@@ -276,26 +257,11 @@ export function DayBookReport({ onBack, companyId, branchId, user, reportRefresh
         onShare={preview.openPreview}
         sharing={preview.loading}
       >
-        <DateRangeBar value={range} onChange={setRange} hidePresets={['all', 'quarter', 'year']} />
-        {mode === 'cash' && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {[
-              { label: 'Yesterday', days: 1, single: true },
-              { label: 'Last 7 days', days: 6, single: false },
-              { label: 'Last 30 days', days: 29, single: false },
-              { label: 'This month', days: -1, single: false },
-            ].map(({ label, days, single }) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => setRange(applyQuickRange(days, single))}
-                className="px-2.5 py-1 rounded-full text-[10px] font-medium bg-white/10 text-white hover:bg-white/20"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
+        <DateRangeBar
+          value={range}
+          onChange={setRange}
+          hidePresets={['all', 'quarter', 'year']}
+        />
         <div className="flex gap-1.5 mt-2">
           <button
             type="button"

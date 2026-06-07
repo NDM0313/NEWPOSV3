@@ -24,9 +24,8 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Sheet, SheetContent } from "../ui/sheet";
-import { Calendar } from "../ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { format } from "date-fns";
+import { DatePicker } from "../ui/DatePicker";
+import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
 import { cn } from "../ui/utils";
 import { VirtualNumpad } from "../ui/virtual-numpad";
 import { useExpenses } from "@/app/context/ExpenseContext";
@@ -319,7 +318,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
           category: effectiveSlug,
           description: description.trim() || (isSalaryCategory && selectedSalaryUser ? `${selectedSalaryUser.full_name} – Salary` : deepestCategory?.name ?? effectiveSlug),
           amount: amt,
-          date: date ? format(date, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
+          date: date ? formatLocalDateYYYYMMDD(date) : formatLocalDateYYYYMMDD(new Date()),
           paymentMethod: paymentMethodName,
           payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : "",
           location: effectiveBranchId,
@@ -331,7 +330,7 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
             category: effectiveSlug,
             description: description.trim() || (isSalaryCategory && selectedSalaryUser ? `${selectedSalaryUser.full_name} – Salary` : deepestCategory?.name ?? effectiveSlug),
             amount: amt,
-            date: date ? format(date, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
+            date: date ? formatLocalDateYYYYMMDD(date) : formatLocalDateYYYYMMDD(new Date()),
             paymentMethod: paymentMethodName,
             payeeName: isSalaryCategory && selectedSalaryUser ? selectedSalaryUser.full_name : "",
             location: effectiveBranchId,
@@ -347,12 +346,15 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
           }
         );
       }
-      refreshExpenses();
+      await refreshExpenses();
       resetForm();
       onClose();
       onSuccess?.();
     } catch (e) {
-      // toast already in context
+      const msg = e instanceof Error ? e.message : 'Failed to save expense';
+      if (!String(msg).includes('Failed to create expense')) {
+        toast.error(msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -433,29 +435,11 @@ export const AddExpenseDrawer = ({ isOpen, onClose, onSuccess, expenseToEdit }: 
             {/* Row 1: Date Picker */}
             <div className="space-y-2">
               <Label className="text-gray-400 text-sm">Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className={cn(
-                      "w-full justify-start text-left font-normal h-11 bg-gray-900 border-gray-700 text-white hover:bg-gray-800 hover:text-white",
-                      !date && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {date ? format(date, "PPP") : <span>Pick a date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-gray-900 border-gray-800 text-white">
-                  <Calendar
-                    mode="single"
-                    selected={date}
-                    onSelect={setDate}
-                    initialFocus
-                    className="bg-gray-900 text-white"
-                  />
-                </PopoverContent>
-              </Popover>
+              <DatePicker
+                value={date ? formatLocalDateYYYYMMDD(date) : ''}
+                onChange={(v) => setDate(v ? parseLocalDateInput(v) : undefined)}
+                placeholder="Pick a date"
+              />
             </div>
 
             {/* Row 2: Category – Main + Sub from DB, or single fallback */}

@@ -35,6 +35,33 @@ import {
 import { logPaymentCreated } from '@/app/services/auditLogService';
 import { fetchInBatches } from '@/app/lib/chunkInQuery';
 
+/** Prefer source document branch (rental/sale/purchase) over session branch selector. */
+function resolvePostingBranchId(
+  documentBranchId: string | null | undefined,
+  sessionBranchId: string | null | undefined
+): string | null {
+  const doc =
+    documentBranchId != null && String(documentBranchId).trim() !== ''
+      ? String(documentBranchId).trim()
+      : null;
+  if (doc) return doc;
+  const sess =
+    sessionBranchId != null && String(sessionBranchId).trim() !== '' && sessionBranchId !== 'all'
+      ? String(sessionBranchId).trim()
+      : null;
+  return sess;
+}
+
+async function loadRentalDocumentBranchId(rentalId: string): Promise<string | null> {
+  const { data } = await supabase.from('rentals').select('branch_id').eq('id', rentalId).maybeSingle();
+  return (data as { branch_id?: string | null } | null)?.branch_id ?? null;
+}
+
+async function loadSaleDocumentBranchId(saleId: string): Promise<string | null> {
+  const { data } = await supabase.from('sales').select('branch_id').eq('id', saleId).maybeSingle();
+  return (data as { branch_id?: string | null } | null)?.branch_id ?? null;
+}
+
 /** Leading numeric segment of account code (e.g. "1021-NDM" → "1021"). */
 function accountCodeDigits(acc: { code?: string } | null): string {
   const raw = String(acc?.code || '').trim();
@@ -1584,6 +1611,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       // Canonical rule: if a transaction touches Cash/Bank/Wallet, create payments row so Roznamcha shows it
       let manualPaymentId: string | null = null;
       let manualRefType: string | null = null;
+      let supplierPaymentViaRpc = false;
+      let supplierPaymentRpcJournalId: string | null = null;
       const debitIsPayment = debitAccountObj ? isPaymentAccount(debitAccountObj) : false;
       const creditIsPayment = creditAccountObj ? isPaymentAccount(creditAccountObj) : false;
 
@@ -1618,37 +1647,68 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             });
           }
         } else if (!debitIsPayment && creditIsPayment) {
-          const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'supplier_payment').catch(() => generatePaymentReference(null));
-          const { data: { user } } = await supabase.auth.getUser();
-          const manualPaymentPayload: Record<string, unknown> = {
-            company_id: companyId,
-            branch_id: validBranchId,
-            payment_type: 'paid',
-            reference_type: 'manual_payment',
-            reference_id: null,
-            amount: entry.amount,
-            payment_method: paymentMethodFromAccount(creditAccountObj),
-            payment_account_id: creditAccountObj.id,
-            payment_date: entryDate,
-            reference_number: refNo,
-            received_by: (user as any)?.id ?? null,
-            created_by: currentUserId ?? null,
-          };
-          // Supplier ledger: set contact_id when Dr AP (supplier payment) and supplier selected (real schema: payments.contact_id)
-          const manualSupplierContactId = (entry.debitAccount === 'Accounts Payable' && (entry.metadata as any)?.contactId) ? (entry.metadata as any).contactId : null;
-          if (manualSupplierContactId) manualPaymentPayload.contact_id = manualSupplierContactId;
-          if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-            console.debug('[SUPPLIER_LEDGER] Manual payment payload', { contact_id: manualSupplierContactId ?? null, reference_type: 'manual_payment', amount: manualPaymentPayload.amount });
+          const manualSupplierContactId =
+            entry.debitAccount === 'Accounts Payable' && (entry.metadata as { contactId?: string })?.contactId
+              ? (entry.metadata as { contactId: string }).contactId
+              : null;
+          const debitCodeEarly = String((debitAccountObj as { code?: string } | undefined)?.code ?? '');
+          const debitNameEarly = String((debitAccountObj as { name?: string } | undefined)?.name ?? '').toLowerCase();
+          const debitIsApEarly =
+            entry.debitAccount === 'Accounts Payable' ||
+            debitCodeEarly === '2000' ||
+            debitNameEarly.includes('accounts payable') ||
+            debitNameEarly.includes('payable');
+
+          if (manualSupplierContactId && debitIsApEarly) {
+            try {
+              const { createManualSupplierPayment } = await import('@/app/services/supplierPaymentService');
+              const rpcRes = await createManualSupplierPayment({
+                companyId,
+                branchId: validBranchId,
+                supplierContactId: manualSupplierContactId,
+                amount: entry.amount,
+                paymentMethod: paymentMethodFromAccount(creditAccountObj),
+                paymentAccountId: creditAccountObj.id,
+                paymentDate: entryDate,
+                notes: entry.description || null,
+              });
+              manualPaymentId = rpcRes.paymentId;
+              manualRefType = 'manual_payment';
+              supplierPaymentViaRpc = true;
+              supplierPaymentRpcJournalId = rpcRes.journalEntryId;
+            } catch (rpcErr: unknown) {
+              console.warn('[ACCOUNTING] Manual supplier RPC payment failed; falling back to client insert:', rpcErr);
+            }
           }
-          const { data: row, error } = await supabase.from('payments').insert(manualPaymentPayload).select('id').single();
-          if (!error && row) {
-            manualPaymentId = (row as { id: string }).id;
-            manualRefType = 'manual_payment';
-            logPaymentCreated(companyId, manualPaymentId, {
+
+          if (!supplierPaymentViaRpc) {
+            const refNo = await documentNumberService.getNextDocumentNumber(companyId, validBranchId, 'payment').catch(() => generatePaymentReference(null));
+            const { data: { user } } = await supabase.auth.getUser();
+            const manualPaymentPayload: Record<string, unknown> = {
+              company_id: companyId,
+              branch_id: validBranchId,
+              payment_type: 'paid',
               reference_type: 'manual_payment',
+              reference_id: null,
               amount: entry.amount,
-              contact_id: manualSupplierContactId,
-            });
+              payment_method: paymentMethodFromAccount(creditAccountObj),
+              payment_account_id: creditAccountObj.id,
+              payment_date: entryDate,
+              reference_number: refNo,
+              received_by: (user as any)?.id ?? null,
+              created_by: currentUserId ?? null,
+            };
+            if (manualSupplierContactId) manualPaymentPayload.contact_id = manualSupplierContactId;
+            const { data: row, error } = await supabase.from('payments').insert(manualPaymentPayload).select('id').single();
+            if (!error && row) {
+              manualPaymentId = (row as { id: string }).id;
+              manualRefType = 'manual_payment';
+              logPaymentCreated(companyId, manualPaymentId, {
+                reference_type: 'manual_payment',
+                amount: entry.amount,
+                contact_id: manualSupplierContactId,
+              });
+            }
           }
         }
       }
@@ -1758,8 +1818,18 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       ];
 
       // Save to database (link to payment when Manual entry involves payment account)
-      const paymentIdToLink = manualPaymentId || (entry.metadata as any)?.paymentId;
-      const savedEntry = await accountingService.createEntry(journalEntry, lines, paymentIdToLink);
+      const paymentIdToLink = supplierPaymentViaRpc ? null : manualPaymentId || (entry.metadata as any)?.paymentId;
+      let savedEntry: JournalEntryWithLines;
+      if (supplierPaymentViaRpc && supplierPaymentRpcJournalId) {
+        const loaded = await accountingService.getEntryById(supplierPaymentRpcJournalId, companyId);
+        if (!loaded) {
+          toast.error('Supplier payment saved but journal entry could not be loaded.');
+          return false;
+        }
+        savedEntry = loaded as JournalEntryWithLines;
+      } else {
+        savedEntry = (await accountingService.createEntry(journalEntry, lines, paymentIdToLink)) as JournalEntryWithLines;
+      }
       if (typeof window !== 'undefined' && entry.debitAccount === 'Worker Payable') {
         console.log('[WORKER LEDGER DEBUG] journal insert result', {
           journalEntryId: (savedEntry as any)?.id ?? null,
@@ -1813,7 +1883,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       }
 
       // Manual supplier payment (Dr AP, Cr cash/bank/wallet): FIFO allocate to open purchase bills — same as Add Entry V2.
-      if (manualRefType === 'manual_payment' && manualPaymentId && companyId) {
+      if (manualRefType === 'manual_payment' && manualPaymentId && companyId && !supplierPaymentViaRpc) {
         const supplierId = (entry.metadata as { contactId?: string } | undefined)?.contactId;
         const debitCode = String((debitAccountObj as { code?: string } | undefined)?.code ?? '');
         const debitName = String((debitAccountObj as { name?: string } | undefined)?.name ?? '').toLowerCase();
@@ -1914,10 +1984,11 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       }
 
       // Convert and add to local state (no global refetch)
+      const convertedEntry = convertFromJournalEntry(savedEntry as JournalEntryWithLines);
       appendOrMergeEntries(savedEntry as JournalEntryWithLines);
-      
+
       // Update balances
-    updateBalances(entry.debitAccount, entry.creditAccount, entry.amount);
+      updateBalances(entry.debitAccount, entry.creditAccount, entry.amount);
 
       console.log('✅ Accounting Entry Created and Saved:', convertedEntry);
       toast.success('Accounting entry created successfully');
@@ -2180,9 +2251,25 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
           .maybeSingle();
         
         if (existingPayment?.id) {
+          const saleDocBranch = await loadSaleDocumentBranchId(saleId);
+          const paymentBranch = resolvePostingBranchId(saleDocBranch, branchId);
+          if (paymentBranch) {
+            await supabase
+              .from('payments')
+              .update({ branch_id: paymentBranch })
+              .eq('id', existingPayment.id)
+              .is('branch_id', null);
+          }
           const { ensureSalePaymentJournalAfterInsert } = await import('@/app/services/saleAccountingService');
           const { assertActiveJournalForPaymentId } = await import('@/app/lib/paymentPostingInvariant');
           await ensureSalePaymentJournalAfterInsert(existingPayment.id as string);
+          if (paymentBranch) {
+            await supabase
+              .from('journal_entries')
+              .update({ branch_id: paymentBranch })
+              .eq('payment_id', existingPayment.id)
+              .is('branch_id', null);
+          }
           await assertActiveJournalForPaymentId(existingPayment.id as string, 'AccountingContext.recordSalePayment');
         } else {
           console.warn('[ACCOUNTING] recordSalePayment: no matching payments row yet for sale/amount — caller must insert payment first');
@@ -2226,7 +2313,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
     if (advanceAmount <= 0) return true;
 
-    const rentalBranchId = (branchId && branchId !== 'all') ? branchId : null;
+    const rentalDocBranch = await loadRentalDocumentBranchId(bookingId);
+    const rentalBranchId = resolvePostingBranchId(rentalDocBranch, branchId);
 
     // Party AR model (named customer): Dr Cash/Bank / Cr party AR + ensure Dr AR / Cr Rental Income for charges.
     if (customerId && companyId && paymentAccountId) {
@@ -2340,7 +2428,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     const { bookingId, customerName, customerId, remainingAmount, paymentMethod, paymentAccountId, paymentDate, rentalPaymentId } = params;
 
     const postingDate = paymentDate?.slice(0, 10) || new Date().toISOString().split('T')[0];
-    const rentalBranchId = (branchId && branchId !== 'all') ? branchId : null;
+    const rentalDocBranch = await loadRentalDocumentBranchId(bookingId);
+    const rentalBranchId = resolvePostingBranchId(rentalDocBranch, branchId);
 
     if (remainingAmount <= 0) {
       await recognizeRentalAdvance({ bookingId, customerName, customerId, postingDate });

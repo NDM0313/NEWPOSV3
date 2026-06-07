@@ -16,12 +16,36 @@ import { Loader2, Save, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
 /** Document = transaction (invoice, payment). Master = permanent record (product, customer). */
-const MODULES: { document_type: string; label: string; defaultPrefix: string; type: 'Document' | 'Master' }[] = [
+const MODULES: {
+  document_type: string;
+  label: string;
+  defaultPrefix: string;
+  type: 'Document' | 'Master';
+  description?: string;
+}[] = [
   { document_type: 'SALE', label: 'Sale', defaultPrefix: 'SL', type: 'Document' },
   { document_type: 'PURCHASE', label: 'Purchase', defaultPrefix: 'PUR', type: 'Document' },
-  { document_type: 'PAYMENT', label: 'Outgoing payment', defaultPrefix: 'PAY', type: 'Document' },
-  { document_type: 'CUSTOMER_RECEIPT', label: 'Customer receipt', defaultPrefix: 'RCV', type: 'Document' },
-  { document_type: 'EXPENSE', label: 'Expense', defaultPrefix: 'EXP', type: 'Document' },
+  {
+    document_type: 'PAYMENT',
+    label: 'Outgoing payment',
+    defaultPrefix: 'PAY',
+    type: 'Document',
+    description: 'Single PAY sequence for purchase pay, supplier, worker, and courier (RPC).',
+  },
+  {
+    document_type: 'CUSTOMER_RECEIPT',
+    label: 'Customer receipt',
+    defaultPrefix: 'RCV',
+    type: 'Document',
+    description: 'Customer receipts use RCV prefix.',
+  },
+  {
+    document_type: 'EXPENSE',
+    label: 'Expense',
+    defaultPrefix: 'EXP',
+    type: 'Document',
+    description: 'Expense cash payments use EXP prefix, not PAY.',
+  },
   { document_type: 'RENTAL', label: 'Rental', defaultPrefix: 'REN', type: 'Document' },
   { document_type: 'STUDIO', label: 'Studio', defaultPrefix: 'STD', type: 'Document' },
   { document_type: 'POS', label: 'POS', defaultPrefix: 'POS', type: 'Document' },
@@ -219,7 +243,7 @@ export function NumberingRulesTable() {
           null,
           row.document_type,
           row.prefix,
-          undefined,
+          row.last_number,
           row.padding,
           row.year_reset,
           row.branch_based,
@@ -278,6 +302,8 @@ export function NumberingRulesTable() {
     <div className="space-y-6">
       <p className="text-sm text-gray-400">
         Configure prefixes and digits for document numbers. Preview next number engine ke mutabiq hai (last issued + 1).
+        Phase B: outgoing supplier, worker, courier, and purchase payments share the <span className="font-mono text-gray-300">PAYMENT</span> row
+        below — do not add separate supplier or worker payment rules here.
       </p>
 
       {!branchCodeColumnSupported ? (
@@ -329,7 +355,12 @@ export function NumberingRulesTable() {
                 return (
                   <tr key={r.document_type} className="hover:bg-gray-800/30 bg-gray-950/30">
                     <td className="px-4 py-3 text-white font-medium">
-                      {r.document_type.charAt(0) + r.document_type.slice(1).toLowerCase()}
+                      <div>{MODULES.find((m) => m.document_type === r.document_type)?.label ?? r.document_type}</div>
+                      {MODULES.find((m) => m.document_type === r.document_type)?.description ? (
+                        <p className="text-xs text-gray-500 font-normal mt-0.5 font-sans">
+                          {MODULES.find((m) => m.document_type === r.document_type)?.description}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-gray-400 text-xs uppercase tracking-wide">{r.type ?? 'Document'}</td>
                     <td className="px-4 py-3">

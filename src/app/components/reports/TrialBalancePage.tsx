@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Loader2, FileText, FileSpreadsheet, ExternalLink, AlertTriangle, ShieldAlert } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Loader2, ExternalLink, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { ReportActions } from './ReportActions';
+import { FinancialReportPrintLayout, FinancialReportDataTable } from './FinancialReportPrintLayout';
+import { shareViaWhatsApp } from '@/app/services/documentShareService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useNavigation } from '@/app/context/NavigationContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
@@ -85,15 +88,30 @@ export const TrialBalancePage: React.FC<{
     });
   }, [data]);
 
-  const periodExportLabel = `${startDate} to ${endDate}${branchId && branchId !== 'all' ? ` · branch` : ' · all branches'}`;
+  const reportPrintRef = useRef<HTMLDivElement>(null);
+  const arApModeLabel =
+    arApMode === 'summary' ? 'Summary (AR+AP rolled)' : arApMode === 'expanded' ? 'Expanded party subledgers' : 'All accounts (GL lines)';
+  const periodExportLabel = `${startDate} to ${endDate} · ${arApModeLabel}`;
+  const branchLabel = branchId && branchId !== 'all' ? 'Branch scope' : 'All branches';
+
+  const exportPayload = useMemo(
+    () => (data ? toExport(data, formatCurrency, periodExportLabel) : null),
+    [data, formatCurrency, periodExportLabel]
+  );
 
   const handleExportPDF = () => {
-    if (!data) return;
-    exportToPDF(toExport(data, formatCurrency, periodExportLabel), `Trial_Balance_GL_${startDate}_${endDate}`);
+    if (!exportPayload) return;
+    exportToPDF(exportPayload, `Trial_Balance_GL_${startDate}_${endDate}`);
   };
   const handleExportExcel = () => {
+    if (!exportPayload) return;
+    exportToExcel(exportPayload, `Trial_Balance_GL_${startDate}_${endDate}`);
+  };
+  const handleWhatsApp = () => {
     if (!data) return;
-    exportToExcel(toExport(data, formatCurrency, periodExportLabel), `Trial_Balance_GL_${startDate}_${endDate}`);
+    void shareViaWhatsApp(
+      `Trial Balance (GL)\n${periodExportLabel}\nTotal Debit: ${formatCurrency(data.totalDebit)}\nTotal Credit: ${formatCurrency(data.totalCredit)}\nDifference: ${formatCurrency(data.difference)}`
+    );
   };
 
   if (loading) {
@@ -139,7 +157,19 @@ export const TrialBalancePage: React.FC<{
           </div>
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="no-print">
+        <ReportActions
+          title="Trial Balance (GL)"
+          onPrint={() => window.print()}
+          onPdf={handleExportPDF}
+          onExcel={handleExportExcel}
+          onWhatsapp={handleWhatsApp}
+          previewContentRef={reportPrintRef}
+          previewDocumentType="ledger"
+          previewReference={`trial-balance-${startDate}-${endDate}-${arApMode}`}
+        />
+      </div>
+      <div className="no-print flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3">
           <label className="text-sm text-gray-500 flex items-center gap-2">
             AR / AP view
@@ -165,16 +195,20 @@ export const TrialBalancePage: React.FC<{
             </span>
           )}
         </p>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportPDF} className="gap-1">
-            <FileText size={14} /> PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExportExcel} className="gap-1">
-            <FileSpreadsheet size={14} /> Excel
-          </Button>
-        </div>
       </div>
-      <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50">
+      {exportPayload ? (
+        <div className="fixed left-[-9999px] top-0 w-[820px] pointer-events-none" aria-hidden>
+          <FinancialReportPrintLayout
+            ref={reportPrintRef}
+            title="Trial Balance (GL)"
+            periodLabel={periodExportLabel}
+            branchLabel={branchLabel}
+          >
+            <FinancialReportDataTable headers={exportPayload.headers} rows={exportPayload.rows} />
+          </FinancialReportPrintLayout>
+        </div>
+      ) : null}
+      <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50 no-print">
         <table className="w-full text-base leading-snug">
           <thead className="border-b border-gray-800 bg-gray-800/50">
             <tr>

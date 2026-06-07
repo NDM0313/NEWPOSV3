@@ -9,16 +9,11 @@ import { supabase } from '@/lib/supabase';
 import { documentNumberService } from '@/app/services/documentNumberService';
 import { accountingService, type JournalEntry, type JournalEntryLine } from '@/app/services/accountingService';
 import { dispatchContactBalancesRefresh } from '@/app/lib/contactBalancesRefresh';
-import { applyManualReceiptAllocations, applyManualSupplierPaymentAllocations } from '@/app/services/paymentAllocationService';
+import { applyManualReceiptAllocations } from '@/app/services/paymentAllocationService';
 import { generatePaymentReference } from '@/app/utils/paymentUtils';
-import {
-  getWorkerAdvanceAccountId,
-  shouldDebitWorkerPayableForPayment,
-} from '@/app/services/workerAdvanceService';
-import {
-  resolvePayablePostingAccountId,
-  resolveWorkerPayablePostingAccountId,
-} from '@/app/services/partySubledgerAccountService';
+import { createManualSupplierPayment } from '@/app/services/supplierPaymentService';
+import { createWorkerPayment } from '@/app/services/workerPaymentService';
+import { createCourierPayment } from '@/app/services/courierPaymentService';
 import { logPaymentCreated } from '@/app/services/auditLogService';
 import { ensurePaymentsForLiquidityJournal } from '@/app/services/journalLiquidityPaymentService';
 
@@ -42,47 +37,6 @@ async function getCustomerReceiptRef(companyId: string, branchId: string | null)
   } catch {
     return generatePaymentReference(null);
   }
-}
-
-async function getOutgoingPaymentRef(companyId: string, branchId: string | null): Promise<string> {
-  try {
-    return await documentNumberService.getNextDocumentNumber(companyId, branchId, 'supplier_payment');
-  } catch {
-    return generatePaymentReference(null);
-  }
-}
-
-/** Worker/courier payments must NOT reuse supplier_payment numbers — same sequence caused payments_reference_number_unique collisions with supplier rows. */
-async function getWorkerOrCourierPaymentRef(companyId: string, branchId: string | null): Promise<string> {
-  try {
-    return await documentNumberService.getNextDocumentNumber(companyId, branchId, 'payment');
-  } catch {
-    return generatePaymentReference(null);
-  }
-}
-
-function isPaymentReferenceDuplicateError(err: { code?: string; message?: string } | null): boolean {
-  if (!err) return false;
-  if (err.code === '23505') return true;
-  const m = String(err.message || '').toLowerCase();
-  return m.includes('duplicate') || m.includes('payments_reference_number_unique');
-}
-
-async function getApAccountId(companyId: string): Promise<string> {
-  const { data } = await supabase.from('accounts').select('id').eq('company_id', companyId).or('code.eq.2000,name.ilike.%Accounts Payable%').limit(1);
-  const id = (data?.[0] as { id: string })?.id;
-  if (!id) throw new Error('Accounts Payable account (2000) not found');
-  return id;
-}
-
-async function getCourierPayableAccountId(companyId: string, contactId: string, contactName: string): Promise<string> {
-  const { data, error } = await supabase.rpc('get_or_create_courier_payable_account', {
-    p_company_id: companyId,
-    p_contact_id: contactId,
-    p_contact_name: contactName,
-  });
-  if (error || !data) throw new Error('Courier payable account not found');
-  return data as string;
 }
 
 /** Returns contactId only if it exists in contacts. Used to avoid payments.contact_id FK violation (e.g. courier with stale/missing contact). */
@@ -263,71 +217,22 @@ export interface CreateSupplierPaymentParams {
 export async function createSupplierPaymentEntry(params: CreateSupplierPaymentParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
   const { companyId, branchId, supplierContactId, supplierName, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments } = params;
   if (!companyId || !supplierContactId || amount <= 0 || !paymentAccountId) throw new Error('Invalid supplier payment params');
-  const branch = validBranchId(branchId);
-  const refNo = await getOutgoingPaymentRef(companyId, branch);
-  const { data: { user } } = await supabase.auth.getUser();
-  const uid = (user as any)?.id ?? null;
-
-  const supplierPayPayload: Record<string, unknown> = {
-    company_id: companyId,
-    branch_id: branch,
-    payment_type: 'paid',
-    reference_type: 'manual_payment',
-    reference_id: null,
-    contact_id: supplierContactId,
-    amount,
-    payment_method: normalizePaymentMethod(paymentMethod),
-    payment_account_id: paymentAccountId,
-    payment_date: paymentDate,
-    reference_number: refNo,
-    notes: notes || undefined,
-    received_by: uid,
-    created_by: uid,
-  };
-  if (attachments && attachments.length > 0) supplierPayPayload.attachments = attachments;
-  const { data: paymentRow, error: payErr } = await supabase.from('payments').insert(supplierPayPayload).select('id').single();
-  if (payErr) throw new Error(`Payment row failed: ${payErr.message}`);
-  const paymentId = (paymentRow as { id: string }).id;
-  logPaymentCreated(companyId, paymentId, { reference_type: 'manual_payment', amount, contact_id: supplierContactId });
-
-  const apId =
-    (await resolvePayablePostingAccountId(companyId, supplierContactId)) || (await getApAccountId(companyId));
   const desc = notes || `Manual payment to ${supplierName}`;
-  const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-  const journalEntry: JournalEntry = {
-    company_id: companyId,
-    branch_id: branch ?? undefined,
-    entry_no: entryNo,
-    entry_date: paymentDate,
-    description: desc,
-    reference_type: 'manual_payment',
-    reference_id: paymentId,
-    created_by: uid ?? undefined,
-  };
-  const lines: JournalEntryLine[] = [
-    { account_id: apId, debit: amount, credit: 0, description: desc },
-    { account_id: paymentAccountId, debit: 0, credit: amount, description: desc },
-  ];
-  const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
-
-  await applyManualSupplierPaymentAllocations({
+  const result = await createManualSupplierPayment({
     companyId,
-    branchId: branch,
-    paymentId,
-    supplierId: supplierContactId,
+    branchId: validBranchId(branchId),
+    supplierContactId,
     amount,
+    paymentMethod,
+    paymentAccountId,
     paymentDate,
-    referenceNumber: refNo,
-    createdBy: uid,
-    explicitAllocations: null,
+    notes: desc,
+    attachments,
   });
-
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'supplier', entityId: supplierContactId } }));
     window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
   }
-  dispatchContactBalancesRefresh(companyId);
-  return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
+  return result;
 }
 
 // ─── 4. Worker Payment ────────────────────────────────────────────────────
@@ -349,86 +254,30 @@ export interface CreateWorkerPaymentParams {
 export async function createWorkerPaymentEntry(params: CreateWorkerPaymentParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
   const { companyId, branchId, workerId, workerName, amount, paymentAccountId, paymentDate, paymentMethod, notes, stageId, attachments } = params;
   if (!companyId || !workerId || amount <= 0 || !paymentAccountId) throw new Error('Invalid worker payment params');
-  const branch = validBranchId(branchId);
-  const { data: { user } } = await supabase.auth.getUser();
-  const uid = (user as any)?.id ?? null;
-  const contactIdForPay = await validPaymentsContactId(companyId, workerId);
-
-  let refNo = await getWorkerOrCourierPaymentRef(companyId, branch);
-  let paymentId = '';
-  let payErr: { code?: string; message?: string } | null = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const workerPayPayload: Record<string, unknown> = {
-      company_id: companyId,
-      branch_id: branch,
-      payment_type: 'paid',
-      reference_type: 'worker_payment',
-      reference_id: workerId,
-      amount,
-      payment_method: normalizePaymentMethod(paymentMethod),
-      payment_account_id: paymentAccountId,
-      payment_date: paymentDate,
-      reference_number: refNo,
-      notes: notes || undefined,
-      received_by: uid,
-      created_by: uid,
-    };
-    if (contactIdForPay) workerPayPayload.contact_id = contactIdForPay;
-    if (attachments && attachments.length > 0) workerPayPayload.attachments = attachments;
-    const { data: paymentRow, error } = await supabase.from('payments').insert(workerPayPayload).select('id').single();
-    payErr = error;
-    if (!error && paymentRow) {
-      paymentId = (paymentRow as { id: string }).id;
-      break;
-    }
-    if (isPaymentReferenceDuplicateError(error) && attempt < 4) {
-      refNo = generatePaymentReference(null);
-      continue;
-    }
-    throw new Error(`Payment row failed: ${error?.message || 'unknown'}`);
-  }
-  if (!paymentId) throw new Error(`Payment row failed: ${payErr?.message || 'unknown'}`);
-  logPaymentCreated(companyId, paymentId, { reference_type: 'worker_payment', amount, reference_id: workerId });
-
-  const payToPayable = await shouldDebitWorkerPayableForPayment(companyId, workerId, stageId ?? null, branch);
-  const wpId = await resolveWorkerPayablePostingAccountId(companyId, workerId);
-  if (!wpId) throw new Error('Worker Payable account (2010) not found');
-  const advId = payToPayable ? null : await getWorkerAdvanceAccountId(companyId);
-  if (!payToPayable && !advId) throw new Error('Worker Advance account (1180) not found');
-  const debitId = payToPayable ? wpId : advId!;
-  const debitNote = payToPayable ? 'Worker payable' : 'Worker advance (pre-bill)';
-  const desc = notes || `Payment to worker ${workerName} (${debitNote})`;
-  const entryNo = `JE-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-  const journalEntry: JournalEntry = {
-    company_id: companyId,
-    branch_id: branch ?? undefined,
-    entry_no: entryNo,
-    entry_date: paymentDate,
-    description: desc,
-    reference_type: 'worker_payment',
-    reference_id: workerId,
-    created_by: uid ?? undefined,
-  };
-  const lines: JournalEntryLine[] = [
-    { account_id: debitId, debit: amount, credit: 0, description: desc },
-    { account_id: paymentAccountId, debit: 0, credit: amount, description: desc },
-  ];
-  const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
-
-  const { studioProductionService } = await import('@/app/services/studioProductionService');
-  await studioProductionService.recordAccountingPaymentToLedger({
+  const desc = notes || `Payment to worker ${workerName}`;
+  const result = await createWorkerPayment({
     companyId,
+    branchId: validBranchId(branchId),
     workerId,
+    workerName,
     amount,
-    paymentReference: refNo,
+    paymentMethod,
+    paymentAccountId,
+    paymentDate,
+    stageId: stageId ?? null,
     notes: desc,
-    journalEntryId: (saved as { id: string }).id,
   });
+  if (attachments && attachments.length > 0) {
+    const upd = await supabase.from('payments').update({ attachments }).eq('id', result.paymentId);
+    if (upd.error?.code === 'PGRST204') {
+      /* attachments column optional */
+    }
+  }
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'worker', entityId: workerId } }));
+    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
   }
-  dispatchContactBalancesRefresh(companyId);
-  return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
+  return result;
 }
 
 // ─── 5. Expense Payment ─────────────────────────────────────────────────────
@@ -571,89 +420,26 @@ export interface CreateCourierPaymentParams {
 export async function createCourierPaymentEntry(params: CreateCourierPaymentParams): Promise<{ paymentId: string; journalEntryId: string; referenceNumber: string }> {
   const { companyId, branchId, courierId, courierName, courierContactId, amount, paymentAccountId, paymentDate, paymentMethod, notes, attachments } = params;
   if (!companyId || !courierId || amount <= 0 || !paymentAccountId) throw new Error('Invalid courier payment params');
-  const branch = validBranchId(branchId);
-  const { data: { user } } = await supabase.auth.getUser();
-  const uid = (user as any)?.id ?? null;
-
   const rawContactId = courierContactId || courierId;
   const contactIdForPayments = await validPaymentsContactId(companyId, rawContactId);
-  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    console.log('[AddEntryV2] createCourierPaymentEntry – courier/contact:', {
-      courierId,
-      courierName,
-      rawContactId,
-      contactIdValid: !!contactIdForPayments,
-    });
+  if (!contactIdForPayments) {
+    throw new Error('Courier payment requires a valid contact linked to the courier.');
   }
-
-  let refNo = await getWorkerOrCourierPaymentRef(companyId, branch);
-  let paymentId = '';
-  let payErr: { code?: string; message?: string } | null = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const paymentPayload: Record<string, unknown> = {
-      company_id: companyId,
-      branch_id: branch,
-      payment_type: 'paid',
-      reference_type: 'courier_payment',
-      reference_id: courierId,
-      amount,
-      payment_method: normalizePaymentMethod(paymentMethod),
-      payment_account_id: paymentAccountId,
-      payment_date: paymentDate,
-      reference_number: refNo,
-      notes: notes || undefined,
-      received_by: uid,
-      created_by: uid,
-    };
-    if (attachments && attachments.length > 0) paymentPayload.attachments = attachments;
-    if (contactIdForPayments != null) {
-      paymentPayload.contact_id = contactIdForPayments;
-    }
-    const { data: paymentRow, error } = await supabase.from('payments').insert(paymentPayload).select('id').single();
-    payErr = error;
-    if (!error && paymentRow) {
-      paymentId = (paymentRow as { id: string }).id;
-      break;
-    }
-    if (isPaymentReferenceDuplicateError(error) && attempt < 4) {
-      refNo = generatePaymentReference(null);
-      continue;
-    }
-    throw new Error(`Payment row failed: ${error?.message || 'unknown'}`);
-  }
-  if (!paymentId) throw new Error(`Payment row failed: ${payErr?.message || 'unknown'}`);
-  logPaymentCreated(companyId, paymentId, { reference_type: 'courier_payment', amount, reference_id: courierId });
-
-  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    console.log('[AddEntryV2] createCourierPaymentEntry – payments row created:', { paymentId, contact_id: contactIdForPayments ?? null });
-  }
-
-  const courierPayableId = await getCourierPayableAccountId(companyId, rawContactId, courierName);
   const desc = notes || `Courier payment – ${courierName}`;
-  const entryNo = `JE-COUR-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-  const journalEntry: JournalEntry = {
-    company_id: companyId,
-    branch_id: branch ?? undefined,
-    entry_no: entryNo,
-    entry_date: paymentDate,
-    description: desc,
-    reference_type: 'courier_payment',
-    reference_id: rawContactId,
-    created_by: uid ?? undefined,
-  };
-  const lines: JournalEntryLine[] = [
-    { account_id: courierPayableId, debit: amount, credit: 0, description: desc },
-    { account_id: paymentAccountId, debit: 0, credit: amount, description: `Payment to ${courierName}` },
-  ];
-  const saved = await accountingService.createEntry(journalEntry, lines, paymentId);
+  const result = await createCourierPayment({
+    companyId,
+    branchId: validBranchId(branchId),
+    courierContactId: contactIdForPayments,
+    courierReferenceId: courierId,
+    amount,
+    paymentMethod,
+    paymentAccountId,
+    paymentDate,
+    notes: desc,
+    attachments,
+  });
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('ledgerUpdated', { detail: { ledgerType: 'courier', entityId: rawContactId } }));
+    window.dispatchEvent(new CustomEvent('accountingEntriesChanged'));
   }
-  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    console.log('[AddEntryV2] createCourierPaymentEntry – JE + ledgerUpdated:', {
-      journalEntryId: (saved as { id: string }).id,
-      courierEntityId: rawContactId,
-    });
-  }
-  return { paymentId, journalEntryId: (saved as { id: string }).id, referenceNumber: refNo };
+  return result;
 }

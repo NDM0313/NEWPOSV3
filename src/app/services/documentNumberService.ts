@@ -15,6 +15,7 @@ export type ErpDocumentType =
   | 'purchase'
   | 'purchase_return'   // P2: dedicated sequence with PRET- prefix (see 39_PURCHASE_RETURN_NUMBERING_DECISION.md)
   | 'payment'
+  /** @deprecated Phase B — use `payment` + RPC for new outgoing supplier payments; legacy counter only. */
   | 'supplier_payment'
   | 'customer_receipt'
   | 'expense'
@@ -225,6 +226,19 @@ export const documentNumberService = {
    * @param includeYear - if true, format is PREFIX-YY-NNNN (e.g. SL-26-0001); else PREFIX-NNNN
    */
   async getNextDocumentNumber(
+    companyId: string,
+    branchId: string | null,
+    documentType: ErpDocumentType,
+    includeYear?: boolean
+  ): Promise<string> {
+    return this.getEffectiveNextDocumentNumber(companyId, branchId, documentType, includeYear);
+  },
+
+  /**
+   * Next voucher ref using effective-max continuity (prefix/branch-code is display-only).
+   * Delegates to generate_document_number RPC after sequence-continuity migration.
+   */
+  async getEffectiveNextDocumentNumber(
     companyId: string,
     branchId: string | null,
     documentType: ErpDocumentType,

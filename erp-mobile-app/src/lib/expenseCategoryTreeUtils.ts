@@ -274,3 +274,84 @@ export function levelIdsFromPath(path: CategoryTreeNode[] | null): {
     level3Id: path[2]?.id ?? '',
   };
 }
+
+export interface ExpenseFilterChip {
+  value: string;
+  label: string;
+  icon: string;
+  isSub?: boolean;
+}
+
+/** Flat filter chips: All + each main + sub + leaf from the expense category tree. */
+export function buildExpenseFilterChips(tree: CategoryTreeNode[]): ExpenseFilterChip[] {
+  const all: ExpenseFilterChip = { value: 'all', label: 'All', icon: '📊' };
+  if (!tree.length) return [all];
+  const chips: ExpenseFilterChip[] = [all];
+  for (const main of tree) {
+    chips.push({ value: `main:${main.id}`, label: main.name, icon: '📁' });
+    for (const child of main.children ?? []) {
+      chips.push({
+        value: `node:${child.id}`,
+        label: `${main.name}${PATH_SEP}${child.name}`,
+        icon: '🏷️',
+        isSub: true,
+      });
+      for (const leaf of child.children ?? []) {
+        chips.push({
+          value: `node:${leaf.id}`,
+          label: `${main.name}${PATH_SEP}${child.name}${PATH_SEP}${leaf.name}`,
+          icon: '·',
+          isSub: true,
+        });
+      }
+    }
+  }
+  return chips;
+}
+
+export function findNodeById(
+  tree: CategoryTreeNode[],
+  categoryId: string | null | undefined,
+): CategoryTreeNode | null {
+  const path = findPathToCategory(tree, categoryId);
+  return path?.length ? path[path.length - 1] : null;
+}
+
+/** Match expenses tagged with this node or any descendant (sub/leaf filter). */
+export function expenseMatchesNodeFilter(
+  expenseCategoryLabel: string | null | undefined,
+  expenseCategoryId: string | null | undefined,
+  node: CategoryTreeNode,
+  tree: CategoryTreeNode[],
+): boolean {
+  const id = String(expenseCategoryId || '').trim();
+  if (id) {
+    const path = findPathToCategory(tree, id);
+    if (path?.some((n) => n.id === node.id)) return true;
+  }
+  const label = String(expenseCategoryLabel || '').trim();
+  if (!label) return false;
+  const { names, slugs } = collectDescendantNames(node);
+  if (names.has(label)) return true;
+  return slugs.has(normalizeSlug(label));
+}
+
+export function expenseMatchesCategoryFilter(
+  filterValue: string,
+  expenseCategoryLabel: string | null | undefined,
+  expenseCategoryId: string | null | undefined,
+  tree: CategoryTreeNode[],
+): boolean {
+  if (filterValue === 'all') return true;
+  if (filterValue.startsWith('main:')) {
+    const main = findNodeById(tree, filterValue.slice(5));
+    if (!main) return false;
+    return expenseMatchesMainFilter(expenseCategoryLabel, expenseCategoryId, main, tree);
+  }
+  if (filterValue.startsWith('node:')) {
+    const node = findNodeById(tree, filterValue.slice(5));
+    if (!node) return false;
+    return expenseMatchesNodeFilter(expenseCategoryLabel, expenseCategoryId, node, tree);
+  }
+  return expenseCategoryLabel === filterValue;
+}

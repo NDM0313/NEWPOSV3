@@ -23,11 +23,15 @@ import type { RentalListItem } from '../../api/rentals';
 import { CreateRentalFlow } from './CreateRentalFlow';
 import { RentalCalendarTab } from './RentalCalendarTab';
 import { ViewRentalDetails, type RentalDetailInitialAction } from './ViewRentalDetails';
-import { DateInputField } from '../shared/DateTimePicker';
 import { openWhatsAppShare } from '../../lib/phoneWhatsApp';
 import { formatDate } from '../accounts/reports/_shared/format';
 import { localNowDateString } from '../../utils/localDate';
-import { getRentalDateRange, type RentalDatePreset } from '../../utils/rentalDateRange';
+import {
+  DateRangeBar,
+  makeInitialRange,
+  type DateRangePreset,
+  type DateRangeValue,
+} from '../shared/DateRangeBar';
 import { usePermissions } from '../../context/PermissionContext';
 import { shouldScopeRentalsToOwnOnly } from '../../api/permissions';
 import {
@@ -43,6 +47,16 @@ import {
 } from '../../context/CounterWorkerContext';
 
 type RentalTab = 'list' | 'calendar' | 'pickupToday' | 'returnToday' | 'collections';
+
+const RENTAL_HIDDEN_DATE_PRESETS: DateRangePreset[] = [
+  'yesterday',
+  'last7',
+  'last15',
+  'month',
+  'quarter',
+  'year',
+  'all',
+];
 
 function matchesRentalSearch(r: RentalListItem, q: string): boolean {
   if (!q) return true;
@@ -96,19 +110,12 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuRental, setMenuRental] = useState<RentalListItem | null>(null);
   const [activeTab, setActiveTab] = useState<RentalTab>('list');
-  const [datePreset, setDatePreset] = useState<RentalDatePreset>('30d');
-  const [customDateFrom, setCustomDateFrom] = useState('');
-  const [customDateTo, setCustomDateTo] = useState('');
+  const [dateRange, setDateRange] = useState<DateRangeValue>(() => makeInitialRange('last30'));
   const [detailAction, setDetailAction] = useState<RentalDetailInitialAction | null>(null);
   const [metaEditRental, setMetaEditRental] = useState<RentalListItem | null>(null);
   const [metaBillRef, setMetaBillRef] = useState('');
   const [metaSaving, setMetaSaving] = useState(false);
   const wasInChildView = useRef(false);
-
-  const dateRange = useMemo(
-    () => getRentalDateRange(datePreset, { from: customDateFrom, to: customDateTo }),
-    [datePreset, customDateFrom, customDateTo]
-  );
 
   const rentalFetchOpts = useMemo(() => {
     const scopeToOwn =
@@ -116,8 +123,8 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
         ? { authUserId: effectiveUserId, profileId: effectiveProfileId }
         : undefined;
     const base = {
-      dateFrom: dateRange.dateFrom,
-      dateTo: dateRange.dateTo,
+      dateFrom: dateRange.from,
+      dateTo: dateRange.to,
       scopeToOwn,
     };
     if (listBranchScope.mode === 'accessible') {
@@ -125,8 +132,8 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
     }
     return base;
   }, [
-    dateRange.dateFrom,
-    dateRange.dateTo,
+    dateRange.from,
+    dateRange.to,
     scopeRentalsToOwn,
     isolateWorkerData,
     effectiveUserId,
@@ -509,32 +516,13 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
 
         {/* Date range — list / pickup / return / collections */}
         {activeTab !== 'calendar' && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {(
-            [
-              { id: 'today' as RentalDatePreset, label: 'Today' },
-              { id: '7d' as RentalDatePreset, label: '7 days' },
-              { id: '30d' as RentalDatePreset, label: '1 month' },
-              { id: 'custom' as RentalDatePreset, label: 'Custom' },
-            ] as const
-          ).map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setDatePreset(p.id)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium ${
-                datePreset === p.id ? 'bg-white text-[#7C3AED]' : 'bg-white/10 text-white/80'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        )}
-        {activeTab !== 'calendar' && datePreset === 'custom' && (
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            <DateInputField label="From" value={customDateFrom} onChange={setCustomDateFrom} />
-            <DateInputField label="To" value={customDateTo} onChange={setCustomDateTo} />
+          <div className="mb-2">
+            <DateRangeBar
+              value={dateRange}
+              onChange={setDateRange}
+              variant="purple"
+              hidePresets={RENTAL_HIDDEN_DATE_PRESETS}
+            />
           </div>
         )}
 

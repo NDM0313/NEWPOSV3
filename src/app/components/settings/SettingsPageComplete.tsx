@@ -7,6 +7,7 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { DatePicker } from "../ui/DatePicker";
 import { Badge } from "../ui/badge";
 import { Switch } from "../ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -946,27 +947,23 @@ export const SettingsPageComplete = () => {
             <div className="grid grid-cols-2 gap-6">
               <div>
                 <Label className="text-gray-300 mb-2 block">Fiscal Year Start</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={accountingForm.fiscalYearStart}
-                  onChange={(e) => {
-                    setAccountingForm({ ...accountingForm, fiscalYearStart: e.target.value });
+                  onChange={(v) => {
+                    setAccountingForm({ ...accountingForm, fiscalYearStart: v });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
                 />
               </div>
 
               <div>
                 <Label className="text-gray-300 mb-2 block">Fiscal Year End</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={accountingForm.fiscalYearEnd}
-                  onChange={(e) => {
-                    setAccountingForm({ ...accountingForm, fiscalYearEnd: e.target.value });
+                  onChange={(v) => {
+                    setAccountingForm({ ...accountingForm, fiscalYearEnd: v });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
                 />
               </div>
 
@@ -1017,14 +1014,12 @@ export const SettingsPageComplete = () => {
 
               <div className="col-span-2">
                 <Label className="text-gray-300 mb-2 block">Lock Accounting Date (Optional)</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={accountingForm.lockAccountingDate || ''}
-                  onChange={(e) => {
-                    setAccountingForm({ ...accountingForm, lockAccountingDate: e.target.value });
+                  onChange={(v) => {
+                    setAccountingForm({ ...accountingForm, lockAccountingDate: v });
                     setHasUnsavedChanges(true);
                   }}
-                  className="bg-gray-950 border-gray-700 text-white"
                 />
                 <p className="text-xs text-gray-500 mt-1">No entries can be created before this date</p>
               </div>

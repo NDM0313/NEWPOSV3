@@ -3,6 +3,7 @@ import { Loader2, FileText, FileSpreadsheet, Filter, RotateCcw, Eye, Pencil } fr
 import { Button } from '@/app/components/ui/button';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
+import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { accountingService, AccountLedgerEntry } from '@/app/services/accountingService';
 import { accountService } from '@/app/services/accountService';
 import { exportToPDF, exportToExcel, ExportData } from '@/app/utils/exportUtils';
@@ -33,6 +34,7 @@ import {
   netEconomicMeaning,
   editTargetTypeLabel,
 } from '@/app/lib/accountFlowPresentation';
+import { ledgerTransactionOpenEventDetail } from '@/app/lib/ledgerTransactionOpenRef';
 
 /** AR / AP running balance sign: highlight “inverted” party positions so refunds / prepaids are obvious. */
 const PARTY_BAL_EPS = 0.005;
@@ -365,6 +367,7 @@ export const AccountLedgerReportPage: React.FC<{
 }> = ({ startDate, endDate, branchId, branchScopeLabel, initialAccountId }) => {
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
+  const { formatTime } = useFormatDate();
   const [accounts, setAccounts] = useState<
     { id: string; name: string; code?: string; type?: string; linked_contact_id?: string | null; parent_id?: string | null }[]
   >([]);
@@ -1051,11 +1054,15 @@ export const AccountLedgerReportPage: React.FC<{
     accountById,
   ]);
 
-  const openStatementTransaction = (referenceNumber: string, autoLaunchUnifiedEdit: boolean) => {
+  const openStatementTransaction = (
+    referenceNumber: string,
+    autoLaunchUnifiedEdit: boolean,
+    journalEntryId?: string
+  ) => {
     if (typeof window === 'undefined' || !referenceNumber) return;
     window.dispatchEvent(
       new CustomEvent('openTransactionDetail', {
-        detail: { referenceNumber, autoLaunchUnifiedEdit },
+        detail: { referenceNumber, journalEntryId, autoLaunchUnifiedEdit },
       })
     );
   };
@@ -1721,16 +1728,26 @@ export const AccountLedgerReportPage: React.FC<{
                         'opacity-60'
                     )}
                   >
-                    <td className="p-3 text-gray-300">{e.created_at ? <DateTimeDisplay date={e.created_at} /> : e.date}</td>
+                    <td className="p-3 text-gray-300">
+                      <div className="flex flex-col leading-tight">
+                        <DateTimeDisplay date={e.date} dateOnly />
+                        {e.created_at ? (
+                          <span className="text-[10px] text-gray-500 font-normal italic mt-0.5">
+                            {formatTime(e.created_at)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className="p-3 font-mono text-gray-300 align-top">
                       <div className="flex flex-col gap-0.5 items-start max-w-[14rem]">
                         {e.journal_entry_id ? (
                           <button
                             type="button"
                             className="text-left text-sky-400 hover:text-sky-300 hover:underline"
-                            onClick={() =>
-                              openStatementTransaction(String(e.entry_no || '').trim() || e.journal_entry_id, false)
-                            }
+                            onClick={() => {
+                              const d = ledgerTransactionOpenEventDetail(e, false);
+                              openStatementTransaction(d.referenceNumber, false, d.journalEntryId);
+                            }}
                           >
                             {e.reference_number}
                           </button>
@@ -1857,9 +1874,10 @@ export const AccountLedgerReportPage: React.FC<{
                             variant="ghost"
                             size="sm"
                             className="h-8 gap-1 text-gray-300 hover:text-white"
-                            onClick={() =>
-                              openStatementTransaction(String(e.entry_no || '').trim() || e.journal_entry_id, false)
-                            }
+                            onClick={() => {
+                              const d = ledgerTransactionOpenEventDetail(e, false);
+                              openStatementTransaction(d.referenceNumber, false, d.journalEntryId);
+                            }}
                           >
                             <Eye className="h-3.5 w-3.5" />
                             View

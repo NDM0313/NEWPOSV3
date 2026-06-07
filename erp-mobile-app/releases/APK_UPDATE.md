@@ -16,7 +16,37 @@ API base for production APK: `https://erp.dincouture.pk` from `.env.production` 
 
 ---
 
-## Latest build — 1.0.5 (build 10 iOS / versionCode 35 Android) — 2026-06-03
+## Latest build — 1.0.5 (build 11 iOS / versionCode 36 Android) — 2026-06-04
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-06-04 |
+| **versionName** | 1.0.5 |
+| **iOS build** | 11 (`CURRENT_PROJECT_VERSION`) |
+| **Android versionCode** | 36 |
+| **Git commit** | `56dc9688` (+ version bump) |
+| **iOS** | `cap:sync:ios:prod` + Archive/Export (Development signing, team NLNZN84GX4) |
+| **IPA path (local)** | `releases/erp-mobile-1.0.5-build11.ipa` |
+| **Export folder** | `releases/ios-export-build11/` |
+| **Install guide** | [`releases/IOS_DEVELOPMENT_IPA_BUILD11.md`](IOS_DEVELOPMENT_IPA_BUILD11.md) |
+| **Built on** | Mac — Xcode scheme **NDM ERP** |
+
+### Changelog (user-facing) — build 11
+
+- Rebuild for office iPhones after web performance + latest `main` sync.
+- Same expense/sales fixes as build 10 when synced from current `erp-mobile-app` source.
+- See build 10 for expense category / RPC details.
+
+### Install notes — iOS (build 11)
+
+1. **Uninstall** previous NDM ERP if install fails.
+2. Drag `releases/erp-mobile-1.0.5-build11.ipa` in Xcode **Devices and Simulators**.
+3. Trust developer under **VPN & Device Management** if prompted.
+4. Full steps: [`IOS_DEVELOPMENT_IPA_BUILD11.md`](IOS_DEVELOPMENT_IPA_BUILD11.md).
+
+---
+
+## Previous build — 1.0.5 (build 10 iOS / versionCode 35 Android) — 2026-06-03
 
 | Field | Value |
 |--------|--------|

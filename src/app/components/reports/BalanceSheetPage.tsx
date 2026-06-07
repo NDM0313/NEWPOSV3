@@ -1,7 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Loader2, FileText, FileSpreadsheet, Calendar, Users, AlertTriangle, ShieldAlert } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Loader2, Calendar, Users, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { ReportActions } from './ReportActions';
+import { FinancialReportPrintLayout, FinancialReportDataTable } from './FinancialReportPrintLayout';
+import { shareViaWhatsApp } from '@/app/services/documentShareService';
 import { Input } from '@/app/components/ui/input';
+import { DatePicker } from '@/app/components/ui/DatePicker';
 import {
   Dialog,
   DialogContent,
@@ -150,24 +154,33 @@ function groupEquity(items: { name: string; amount: number; code?: string }[]): 
     }));
 }
 
-const toExport = (r: BalanceSheetResult, formatCurrency: (n: number) => string): ExportData => {
-  const rows: (string | number)[][] = [
-    ['Section', 'Group', 'Account', 'Code', 'Amount'],
-    ...r.assets.items.map((i) => [r.assets.label, '', i.name, i.code || '', formatCurrency(i.amount)]),
-    ['Total Assets', '', '', '', formatCurrency(r.totalAssets)],
-    [],
-    ...r.liabilities.items.map((i) => [r.liabilities.label, '', i.name, i.code || '', formatCurrency(i.amount)]),
-    ['Total Liabilities', '', '', '', formatCurrency(r.liabilities.total)],
-    [],
-    ...r.equity.items.map((i) => [r.equity.label, '', i.name, i.code || '', formatCurrency(i.amount)]),
-    ['Total Equity', '', '', '', formatCurrency(r.equity.total)],
-    [],
-    ['Total Liabilities & Equity', '', '', '', formatCurrency(r.totalLiabilitiesAndEquity)],
-    ['Difference (should be 0)', '', '', '', formatCurrency(r.difference)],
-  ];
+const toExportGrouped = (
+  r: BalanceSheetResult,
+  formatCurrency: (n: number) => string,
+  groupedAssets: GroupedItem[],
+  groupedLiabilities: GroupedItem[],
+  groupedEquity: GroupedItem[]
+): ExportData => {
+  const headers = ['Section', 'Group', 'Account', 'Code', 'Amount'];
+  const rows: (string | number)[][] = [];
+  const pushSection = (section: string, groups: GroupedItem[], sectionTotal: number) => {
+    rows.push([section, '', '', '', '']);
+    groups.forEach((g) => {
+      rows.push(['', g.groupLabel, '', '', '']);
+      g.items.forEach((i) => rows.push(['', g.groupLabel, i.name, i.code || '', formatCurrency(i.amount)]));
+      rows.push(['', g.groupLabel, 'Subtotal', '', formatCurrency(g.subtotal)]);
+    });
+    rows.push([`Total ${section}`, '', '', '', formatCurrency(sectionTotal)]);
+    rows.push([]);
+  };
+  pushSection(r.assets.label, groupedAssets, r.totalAssets);
+  pushSection(r.liabilities.label, groupedLiabilities, r.liabilities.total);
+  pushSection(r.equity.label, groupedEquity, r.equity.total);
+  rows.push(['Total Liabilities & Equity', '', '', '', formatCurrency(r.totalLiabilitiesAndEquity)]);
+  rows.push(['Difference (should be 0)', '', '', '', formatCurrency(r.difference)]);
   return {
     title: `Balance Sheet (GL) as at ${r.asOfDate}`,
-    headers: ['Section', 'Group', 'Account', 'Code', 'Amount'],
+    headers,
     rows,
   };
 };
@@ -259,17 +272,33 @@ export const BalanceSheetPage: React.FC<{
       .finally(() => setLoading(false));
   }, [companyId, asOfDate, branchId]);
 
+  const reportPrintRef = useRef<HTMLDivElement>(null);
   const groupedAssets = useMemo(() => (data ? groupAssets(data.assets.items) : []), [data]);
   const groupedLiabilities = useMemo(() => (data ? groupLiabilities(data.liabilities.items) : []), [data]);
   const groupedEquity = useMemo(() => (data ? groupEquity(data.equity.items) : []), [data]);
+  const branchLabel = branchId && branchId !== 'all' ? 'Branch scope' : 'All branches';
+
+  const exportPayload = useMemo(() => {
+    if (!data) return null;
+    const ga = groupedAssets.length > 0 ? groupedAssets : [{ groupLabel: 'Assets', items: data.assets.items, subtotal: data.totalAssets }];
+    const gl = groupedLiabilities.length > 0 ? groupedLiabilities : [{ groupLabel: 'Liabilities', items: data.liabilities.items, subtotal: data.liabilities.total }];
+    const ge = groupedEquity.length > 0 ? groupedEquity : [{ groupLabel: 'Equity', items: data.equity.items, subtotal: data.equity.total }];
+    return toExportGrouped(data, formatCurrency, ga, gl, ge);
+  }, [data, formatCurrency, groupedAssets, groupedLiabilities, groupedEquity]);
 
   const handleExportPDF = () => {
-    if (!data) return;
-    exportToPDF(toExport(data, formatCurrency), `Balance_Sheet_GL_${data.asOfDate}`);
+    if (!exportPayload) return;
+    exportToPDF(exportPayload, `Balance_Sheet_GL_${data!.asOfDate}`);
   };
   const handleExportExcel = () => {
+    if (!exportPayload) return;
+    exportToExcel(exportPayload, `Balance_Sheet_GL_${data!.asOfDate}`);
+  };
+  const handleWhatsApp = () => {
     if (!data) return;
-    exportToExcel(toExport(data, formatCurrency), `Balance_Sheet_GL_${data.asOfDate}`);
+    void shareViaWhatsApp(
+      `Balance Sheet (GL)\nAs at ${data.asOfDate}\nTotal Assets: ${formatCurrency(data.totalAssets)}\nL+E: ${formatCurrency(data.totalLiabilitiesAndEquity)}`
+    );
   };
 
   const openPartyDrilldown = async (kind: 'ar' | 'ap') => {
@@ -327,16 +356,27 @@ export const BalanceSheetPage: React.FC<{
         <strong className="font-semibold">Basis: GL (journal)</strong> — Point-in-time balance sheet from posted accounts.
         Party “Parties” drill-down is <strong className="text-emerald-200">Party GL</strong> attribution, not operational due.
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="no-print">
+        <ReportActions
+          title="Balance Sheet (GL)"
+          onPrint={() => window.print()}
+          onPdf={handleExportPDF}
+          onExcel={handleExportExcel}
+          onWhatsapp={handleWhatsApp}
+          previewContentRef={reportPrintRef}
+          previewDocumentType="ledger"
+          previewReference={`balance-sheet-${asOfDate}`}
+        />
+      </div>
+      <div className="no-print flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-gray-400" />
             <label className="text-sm text-gray-400 whitespace-nowrap">As at date</label>
-            <Input
-              type="date"
+            <DatePicker
               value={asOfDate}
-              onChange={(e) => setAsOfDate(e.target.value.slice(0, 10))}
-              className="w-[160px] h-9 bg-gray-800 border-gray-700 text-white text-sm"
+              onChange={(v) => setAsOfDate(v)}
+              className="w-[160px]"
             />
           </div>
           {data.difference !== 0 && (
@@ -348,16 +388,20 @@ export const BalanceSheetPage: React.FC<{
             </span>
           )}
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportPDF} className="gap-1">
-            <FileText size={14} /> PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExportExcel} className="gap-1">
-            <FileSpreadsheet size={14} /> Excel
-          </Button>
-        </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {exportPayload ? (
+        <div className="fixed left-[-9999px] top-0 w-[820px] pointer-events-none" aria-hidden>
+          <FinancialReportPrintLayout
+            ref={reportPrintRef}
+            title="Balance Sheet (GL)"
+            periodLabel={`As at ${data.asOfDate}`}
+            branchLabel={branchLabel}
+          >
+            <FinancialReportDataTable headers={exportPayload.headers} rows={exportPayload.rows} />
+          </FinancialReportPrintLayout>
+        </div>
+      ) : null}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 no-print">
         <SectionBlock
           title={data.assets.label}
           grouped={groupedAssets.length > 0 ? groupedAssets : [{ groupLabel: 'Assets', items: data.assets.items, subtotal: data.totalAssets }]}

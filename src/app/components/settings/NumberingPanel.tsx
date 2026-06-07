@@ -32,7 +32,7 @@ export function NumberingPanel({
           </div>
           <div>
             <h3 className="text-xl font-bold text-white">Numbering</h3>
-            <p className="text-sm text-gray-400">Rules, sequence sync, and audit log</p>
+            <p className="text-sm text-gray-400">Prefixes and sequence sync for RCV / PAY / EXP (and other modules)</p>
           </div>
         </div>
         <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-8 flex flex-col items-center justify-center gap-4 min-h-[200px]">
@@ -54,7 +54,7 @@ export function NumberingPanel({
         </div>
         <div>
           <h3 className="text-xl font-bold text-white">Numbering</h3>
-          <p className="text-sm text-gray-400">Rules, sequence sync, and audit log</p>
+            <p className="text-sm text-gray-400">Prefixes and sequence sync for RCV / PAY / EXP (and other modules)</p>
         </div>
       </div>
       <div className="flex flex-wrap gap-2 border-b border-gray-800 pb-4">

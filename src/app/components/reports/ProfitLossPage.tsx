@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Loader2, FileText, FileSpreadsheet, GitCompare } from 'lucide-react';
-import { Button } from '@/app/components/ui/button';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Loader2, GitCompare } from 'lucide-react';
+import { ReportActions } from './ReportActions';
+import { FinancialReportPrintLayout, FinancialReportDataTable } from './FinancialReportPrintLayout';
+import { shareViaWhatsApp } from '@/app/services/documentShareService';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useFormatCurrency } from '@/app/hooks/useFormatCurrency';
 import { accountingReportsService, ProfitLossResult } from '@/app/services/accountingReportsService';
@@ -12,23 +14,29 @@ const toExport = (
   formatCurrency: (n: number) => string,
   periodLabel: string
 ): ExportData => {
+  const comp = r.comparison;
+  const headers = comp
+    ? ['Section', 'Code', `Current (${r.startDate}–${r.endDate})`, `Prior (${comp.startDate}–${comp.endDate})`]
+    : ['Section', 'Code', 'Amount'];
+  const amt = (n: number, prior?: number) =>
+    comp ? [formatCurrency(n), formatCurrency(prior ?? 0)] : [formatCurrency(n)];
   const rows: (string | number)[][] = [
-    ['Revenue', '', ''],
-    ...r.revenue.items.map((i) => [i.name, i.code || '', formatCurrency(i.amount)]),
-    ['Total Revenue', '', formatCurrency(r.revenue.total)],
+    ['Revenue', '', ...(comp ? ['', ''] : [''])],
+    ...r.revenue.items.map((i) => [i.name, i.code || '', ...amt(i.amount)]),
+    ['Total Revenue', '', ...amt(r.revenue.total, comp?.revenue)],
     [],
-    ['Cost of Sales', '', ''],
-    ...r.costOfSales.items.map((i) => [i.name, i.code || '', formatCurrency(i.amount)]),
-    ['Total Cost of Sales', '', formatCurrency(r.costOfSales.total)],
-    ['Gross Profit', '', formatCurrency(r.grossProfit)],
+    ['Cost of Sales', '', ...(comp ? ['', ''] : [''])],
+    ...r.costOfSales.items.map((i) => [i.name, i.code || '', ...amt(i.amount)]),
+    ['Total Cost of Sales', '', ...amt(r.costOfSales.total, comp?.costOfSales)],
+    ['Gross Profit', '', ...amt(r.grossProfit, comp?.grossProfit)],
     [],
-    ['Expenses', '', ''],
-    ...r.expenses.items.map((i) => [i.name, i.code || '', formatCurrency(i.amount)]),
-    ['Total Expenses', '', formatCurrency(r.expenses.total)],
+    ['Expenses', '', ...(comp ? ['', ''] : [''])],
+    ...r.expenses.items.map((i) => [i.name, i.code || '', ...amt(i.amount)]),
+    ['Total Expenses', '', ...amt(r.expenses.total, comp?.expenses)],
     [],
-    ['Net Profit', '', formatCurrency(r.netProfit)],
+    ['Net Profit', '', ...amt(r.netProfit, comp?.netProfit)],
   ];
-  return { title: 'Profit & Loss', headers: ['Section', 'Code', 'Amount'], rows };
+  return { title: `Profit & Loss (GL) — ${periodLabel}`, headers, rows };
 };
 
 function getCompareDates(startDate: string, endDate: string, period: 'prior-month' | 'prior-quarter'): { compareStart: string; compareEnd: string } {
@@ -80,15 +88,27 @@ export const ProfitLossPage: React.FC<{
       .finally(() => setLoading(false));
   }, [companyId, startDate, endDate, branchId, compareOptions?.compareStart, compareOptions?.compareEnd]);
 
+  const reportPrintRef = useRef<HTMLDivElement>(null);
   const exportPeriodLabel = `${data?.startDate ?? startDate} to ${data?.endDate ?? endDate}`;
+  const branchLabel = branchId && branchId !== 'all' ? 'Branch scope' : 'All branches';
+  const exportPayload = useMemo(
+    () => (data ? toExport(data, formatCurrency, exportPeriodLabel) : null),
+    [data, formatCurrency, exportPeriodLabel]
+  );
 
   const handleExportPDF = () => {
-    if (!data) return;
-    exportToPDF(toExport(data, formatCurrency, exportPeriodLabel), `P_L_GL_${data.startDate}_${data.endDate}`);
+    if (!exportPayload) return;
+    exportToPDF(exportPayload, `P_L_GL_${data!.startDate}_${data!.endDate}`);
   };
   const handleExportExcel = () => {
+    if (!exportPayload) return;
+    exportToExcel(exportPayload, `P_L_GL_${data!.startDate}_${data!.endDate}`);
+  };
+  const handleWhatsApp = () => {
     if (!data) return;
-    exportToExcel(toExport(data, formatCurrency, exportPeriodLabel), `P_L_GL_${data.startDate}_${data.endDate}`);
+    void shareViaWhatsApp(
+      `Profit & Loss (GL)\n${exportPeriodLabel}\nNet Profit: ${formatCurrency(data.netProfit)}\nRevenue: ${formatCurrency(data.revenue.total)}`
+    );
   };
 
   if (loading) {
@@ -114,7 +134,19 @@ export const ProfitLossPage: React.FC<{
         <strong className="font-semibold">Basis: GL (journal)</strong> — Canonical net profit from account types and posted lines.
         Reports Overview “operational flow” uses documents — do not compare without reading both labels.
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="no-print">
+        <ReportActions
+          title="Profit & Loss (GL)"
+          onPrint={() => window.print()}
+          onPdf={handleExportPDF}
+          onExcel={handleExportExcel}
+          onWhatsapp={handleWhatsApp}
+          previewContentRef={reportPrintRef}
+          previewDocumentType="ledger"
+          previewReference={`profit-loss-${data.startDate}-${data.endDate}`}
+        />
+      </div>
+      <div className="no-print flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-gray-400">
           Period: {data.startDate} to {data.endDate}
           {comp && (
@@ -137,15 +169,21 @@ export const ProfitLossPage: React.FC<{
               </SelectContent>
             </Select>
           </div>
-          <Button variant="outline" size="sm" onClick={handleExportPDF} className="gap-1">
-            <FileText size={14} /> PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExportExcel} className="gap-1">
-            <FileSpreadsheet size={14} /> Excel
-          </Button>
         </div>
       </div>
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 space-y-6">
+      {exportPayload ? (
+        <div className="fixed left-[-9999px] top-0 w-[820px] pointer-events-none" aria-hidden>
+          <FinancialReportPrintLayout
+            ref={reportPrintRef}
+            title="Profit & Loss (GL)"
+            periodLabel={exportPeriodLabel}
+            branchLabel={branchLabel}
+          >
+            <FinancialReportDataTable headers={exportPayload.headers} rows={exportPayload.rows} />
+          </FinancialReportPrintLayout>
+        </div>
+      ) : null}
+      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-6 space-y-6 no-print">
         <section>
           <h3 className="text-lg font-semibold text-white mb-2">{data.revenue.label}</h3>
           <ul className="space-y-1">

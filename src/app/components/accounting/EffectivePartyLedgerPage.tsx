@@ -324,8 +324,8 @@ export const EffectivePartyLedgerPage: React.FC<EffectivePartyLedgerPageProps> =
 
         {/* Date Range */}
         <CalendarDateRangePicker
-          dateRange={dateRange}
-          onDateRangeChange={(r: any) => setDateRange(r)}
+          value={dateRange}
+          onChange={(r) => setDateRange(r)}
         />
 
         {/* Type Filter */}

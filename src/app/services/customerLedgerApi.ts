@@ -427,6 +427,95 @@ export async function fetchCustomerLedgerSalesForRange(
   return mergeSalesWithNullInvoiceDateInRange(companyId, cId, sales, fromDate, toDate);
 }
 
+const PAYMENT_SELECT_LEDGER =
+  'id, reference_number, payment_date, amount, payment_method, notes, reference_id, reference_type, payment_account_id, contact_id, voided_at';
+
+/**
+ * Customer received payments for statement — includes advances on non-final sales/orders.
+ * Does not require sale to be final (unlike get_customer_ledger_payments sale-id batch).
+ */
+export async function fetchCustomerReceivedPaymentsForRange(
+  companyId: string,
+  customerId: string,
+  fromDate?: string,
+  toDate?: string,
+  scope: CustomerLedgerPaymentScope = 'live',
+  branchId?: string | null
+): Promise<any[]> {
+  const cId = String(customerId || '').trim();
+  if (!companyId || !cId) return [];
+
+  const pBranch = ledgerSalesRpcBranchId(branchId);
+  const seen = new Set<string>();
+  const out: any[] = [];
+
+  const pushPayment = (p: any) => {
+    const id = String(p?.id ?? '');
+    if (!id || seen.has(id)) return;
+    const d = String(p.payment_date || '').slice(0, 10);
+    if (fromDate && d && d < fromDate) return;
+    if (toDate && d && d > toDate) return;
+    seen.add(id);
+    out.push(p);
+  };
+
+  let directQ = supabase
+    .from('payments')
+    .select(PAYMENT_SELECT_LEDGER)
+    .eq('company_id', companyId)
+    .eq('payment_type', 'received')
+    .eq('contact_id', cId);
+  if (isLiveScope(scope)) directQ = directQ.is('voided_at', null);
+  if (fromDate) directQ = directQ.gte('payment_date', fromDate);
+  if (toDate) directQ = directQ.lte('payment_date', toDate);
+  const { data: directRows } = await directQ;
+  for (const p of directRows || []) pushPayment(p);
+
+  let salesQ = supabase.from('sales').select('id').eq('company_id', companyId).eq('customer_id', cId);
+  if (pBranch) salesQ = salesQ.eq('branch_id', pBranch);
+  const { data: saleRows } = await salesQ;
+  const saleIds = (saleRows || []).map((s: any) => String(s.id)).filter(Boolean);
+
+  for (let i = 0; i < saleIds.length; i += LEDGER_SALE_IDS_CHUNK) {
+    const chunk = saleIds.slice(i, i + LEDGER_SALE_IDS_CHUNK);
+    let pq = supabase
+      .from('payments')
+      .select(PAYMENT_SELECT_LEDGER)
+      .eq('company_id', companyId)
+      .eq('payment_type', 'received')
+      .eq('reference_type', 'sale')
+      .in('reference_id', chunk);
+    if (isLiveScope(scope)) pq = pq.is('voided_at', null);
+    if (fromDate) pq = pq.gte('payment_date', fromDate);
+    if (toDate) pq = pq.lte('payment_date', toDate);
+    const { data: payRows } = await pq;
+    for (const p of payRows || []) pushPayment(p);
+  }
+
+  let rentalsQ = supabase.from('rentals').select('id').eq('company_id', companyId).eq('customer_id', cId);
+  if (pBranch) rentalsQ = rentalsQ.eq('branch_id', pBranch);
+  const { data: rentalRows } = await rentalsQ;
+  const rentalIds = (rentalRows || []).map((r: any) => String(r.id)).filter(Boolean);
+
+  for (let i = 0; i < rentalIds.length; i += LEDGER_SALE_IDS_CHUNK) {
+    const chunk = rentalIds.slice(i, i + LEDGER_SALE_IDS_CHUNK);
+    let pq = supabase
+      .from('payments')
+      .select(PAYMENT_SELECT_LEDGER)
+      .eq('company_id', companyId)
+      .eq('payment_type', 'received')
+      .eq('reference_type', 'rental')
+      .in('reference_id', chunk);
+    if (isLiveScope(scope)) pq = pq.is('voided_at', null);
+    if (fromDate) pq = pq.gte('payment_date', fromDate);
+    if (toDate) pq = pq.lte('payment_date', toDate);
+    const { data: payRows } = await pq;
+    for (const p of payRows || []) pushPayment({ ...p, reference_type: 'rental' });
+  }
+
+  return out.sort((a, b) => String(a.payment_date).localeCompare(String(b.payment_date)));
+}
+
 /** One-line description: invoice + discount / tax / extra / shipping (amounts are informational; total is authoritative). */
 function describeCustomerSaleLedgerLine(sale: any, isStudioSale: boolean): string {
   const inv = sale.invoice_no || '';

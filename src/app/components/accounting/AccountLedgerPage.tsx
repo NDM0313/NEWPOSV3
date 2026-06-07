@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import { cn } from '@/app/components/ui/utils';
 import { toast } from 'sonner';
 import { TransactionDetailModal } from './TransactionDetailModal';
+import { resolveLedgerTransactionOpenRef } from '@/app/lib/ledgerTransactionOpenRef';
 import { DateTimeDisplay } from '@/app/components/ui/DateTimeDisplay';
 import { Switch } from '@/app/components/ui/switch';
 import { Label } from '@/app/components/ui/label';
@@ -56,6 +57,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedReference, setSelectedReference] = useState<string | null>(null);
+  const [selectedJournalEntryId, setSelectedJournalEntryId] = useState<string | null>(null);
   const [ledgerDetailAutoEdit, setLedgerDetailAutoEdit] = useState(false);
   const [openingBalance, setOpeningBalance] = useState<number>(0);
   /** Audit = all rows equal weight; Effective = dim PF-14 helper rows (running balance unchanged). */
@@ -179,9 +181,11 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
     window.print();
   };
 
-  const openLedgerTransactionDetail = (referenceNumber: string, autoLaunchUnifiedEdit?: boolean) => {
+  const openLedgerTransactionDetail = (entry: AccountLedgerEntry, autoLaunchUnifiedEdit?: boolean) => {
+    const resolved = resolveLedgerTransactionOpenRef(entry);
     setLedgerDetailAutoEdit(!!autoLaunchUnifiedEdit);
-    setSelectedReference(referenceNumber);
+    setSelectedReference(resolved.referenceNumber);
+    setSelectedJournalEntryId(resolved.journalEntryId || null);
   };
 
   return (
@@ -311,10 +315,9 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
           <div className="flex items-center gap-2">
             <Calendar size={16} className="text-gray-400" />
             <CalendarDateRangePicker
-              dateRange={dateRange}
-              onDateRangeChange={(range) => {
+              value={dateRange}
+              onChange={(range) => {
                 setDateRange(range);
-                // Auto-reload on date change
                 if (accountId && companyId) {
                   setTimeout(() => loadLedger(), 100);
                 }
@@ -465,9 +468,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                       <td className="px-4 py-3">
                         <button
                           type="button"
-                          onClick={() =>
-                            openLedgerTransactionDetail(entry.entry_no || entry.reference_number, false)
-                          }
+                          onClick={() => openLedgerTransactionDetail(entry, false)}
                           className="text-blue-400 hover:text-blue-300 hover:underline text-sm font-medium font-mono"
                         >
                           {entry.reference_number}
@@ -550,7 +551,7 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
                           variant="ghost"
                           size="sm"
                           className="h-8 text-sky-400 hover:text-sky-300"
-                          onClick={() => openLedgerTransactionDetail(entry.journal_entry_id, true)}
+                          onClick={() => openLedgerTransactionDetail(entry, true)}
                         >
                           <Edit size={14} className="mr-1" />
                           {entry.payment_id ? 'Edit payment' : 'Edit'}
@@ -601,9 +602,11 @@ export const AccountLedgerPage: React.FC<AccountLedgerPageProps> = ({
           isOpen={!!selectedReference}
           onClose={() => {
             setSelectedReference(null);
+            setSelectedJournalEntryId(null);
             setLedgerDetailAutoEdit(false);
           }}
           referenceNumber={selectedReference}
+          journalEntryIdHint={selectedJournalEntryId ?? undefined}
           autoLaunchUnifiedEdit={ledgerDetailAutoEdit}
           onAutoLaunchUnifiedEditConsumed={() => setLedgerDetailAutoEdit(false)}
         />

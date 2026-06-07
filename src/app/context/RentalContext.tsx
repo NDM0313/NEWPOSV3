@@ -7,6 +7,7 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { useAccountingOptional } from '@/app/context/AccountingContext';
 import { supabase, isPlaceholderSupabaseAnonKey } from '@/lib/supabase';
 import { rentalService, RentalStatus } from '@/app/services/rentalService';
+import { userService } from '@/app/services/userService';
 import { toast } from 'sonner';
 import {
   DATA_INVALIDATED_EVENT,
@@ -45,6 +46,9 @@ export interface RentalUI {
   dueAmount: number;
   itemsCount: number;
   items?: RentalItemUI[];
+  createdAt?: string;
+  salesmanId?: string | null;
+  salesmanName?: string;
   createdBy?: string;
   createdByName?: string;
   notes?: string | null;
@@ -118,6 +122,8 @@ function convertFromSupabaseRental(row: any): RentalUI {
       boxes: i.boxes,
       pieces: i.pieces,
     })),
+    createdAt: row.created_at || row.booking_date || '',
+    salesmanId: row.salesman_id ?? null,
     createdBy: row.created_by,
     createdByName: row.created_by_user?.full_name || row.created_by_user?.email || 'System',
     notes: row.notes,
@@ -193,7 +199,22 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
         companyId,
         branchId === 'all' ? undefined : branchId || undefined
       );
-      setRentals((data || []).map(convertFromSupabaseRental));
+      const salesmen = await userService.getSalesmen(companyId).catch(() => []);
+      const salesmanNameById = new Map(
+        (salesmen || []).map((s: { id: string; full_name?: string; name?: string }) => [
+          s.id,
+          s.full_name || s.name || '',
+        ])
+      );
+      setRentals(
+        (data || []).map((row) => {
+          const rental = convertFromSupabaseRental(row);
+          if (rental.salesmanId) {
+            rental.salesmanName = salesmanNameById.get(rental.salesmanId) || '';
+          }
+          return rental;
+        })
+      );
     } catch (e) {
       console.error('[RENTAL CONTEXT]', e);
       toast.error('Failed to load rentals');

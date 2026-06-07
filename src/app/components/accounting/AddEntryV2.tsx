@@ -29,6 +29,8 @@ import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
+import { DateTimePicker } from '@/app/components/ui/DateTimePicker';
+import { formatLocalDateTimeYYYYMMDDHHmm } from '@/app/utils/localDate';
 import { Textarea } from '@/app/components/ui/textarea';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { useAccounting } from '@/app/context/AccountingContext';
@@ -81,6 +83,12 @@ const ENTRY_TYPES: { key: AddEntryV2Type; label: string; description: string; ic
 ];
 
 const today = () => new Date().toISOString().slice(0, 10);
+
+function entryDateFromDateTime(value: string): string {
+  const v = String(value || '').trim();
+  if (!v) return today();
+  return v.includes('T') ? v.split('T')[0] : v.slice(0, 10);
+}
 
 export interface AddEntryV2Props {
   onClose: () => void;
@@ -141,7 +149,8 @@ export function AddEntryV2({
   const initialPropsAppliedRef = useRef(false);
 
   // Form state – shared where applicable
-  const [entryDate, setEntryDate] = useState(today());
+  const [entryDateTime, setEntryDateTime] = useState(() => formatLocalDateTimeYYYYMMDDHHmm(new Date()));
+  const entryDate = entryDateFromDateTime(entryDateTime);
   const [amount, setAmount] = useState<number>(0);
   const [description, setDescription] = useState('');
   const [paymentAccountId, setPaymentAccountId] = useState('');
@@ -1454,17 +1463,13 @@ export function AddEntryV2({
                       <div className="space-y-4">
                         <div className={cardInnerClass}>
                           <Label className={labelClass}>
-                            Entry date <span className="text-red-400">*</span>
+                            Entry date &amp; time <span className="text-red-400">*</span>
                           </Label>
-                          <div className="relative">
-                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={16} />
-                            <Input
-                              type="date"
-                              value={entryDate}
-                              onChange={(e) => setEntryDate(e.target.value)}
-                              className={`${inputClass} pl-10`}
-                            />
-                          </div>
+                          <DateTimePicker
+                            value={entryDateTime}
+                            onChange={(v) => setEntryDateTime(v || entryDateTime)}
+                            required
+                          />
                         </div>
 
                         {showEntryAttachments && (

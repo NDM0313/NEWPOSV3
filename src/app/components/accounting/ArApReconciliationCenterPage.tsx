@@ -17,6 +17,7 @@ import {
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { Input } from '@/app/components/ui/input';
+import { DatePicker } from '@/app/components/ui/DatePicker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import {
   DropdownMenu,
@@ -338,11 +339,10 @@ export function ArApReconciliationCenterPage() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <label className="text-xs text-gray-500 uppercase font-semibold shrink-0">As of</label>
-          <Input
-            type="date"
+          <DatePicker
             value={asOfDate}
-            onChange={(e) => setAsOfDate(e.target.value)}
-            className="w-40 bg-gray-900 border-gray-700 text-white"
+            onChange={(v) => setAsOfDate(v)}
+            className="w-40"
           />
           <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
             <input type="checkbox" checked={hideResolved} onChange={(e) => setHideResolved(e.target.checked)} className="rounded border-gray-600" />

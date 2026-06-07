@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { 
   Receipt, 
@@ -22,6 +22,7 @@ import { AddCategoryModal } from './AddCategoryModal';
 import { ExpenseCategoryTreePanel } from './ExpenseCategoryTreePanel';
 import { ExpenseDetailSheet } from './ExpenseDetailSheet';
 import { expenseMatchesMainFilter, findPathToCategory, formatCategoryPathFromNodes } from '@/app/lib/expenseCategoryTreeUtils';
+import { PENDING_EXPENSE_OPEN_KEY } from '@/app/lib/notificationNavConstants';
 import { Badge } from "../ui/badge";
 import {
   DropdownMenu,
@@ -51,6 +52,7 @@ import { useAccounting } from '../../context/AccountingContext';
 import { useSupabase } from '../../context/SupabaseContext';
 import { expenseCategoryService, type ExpenseCategoryRow, type ExpenseCategoryTreeItem } from '../../services/expenseCategoryService';
 import { expenseService } from '../../services/expenseService';
+import { branchService } from '../../services/branchService';
 import { normalizeCategoryForComparison } from '@/app/lib/expenseEditCanonical';
 import {
   EXPENSE_LIST_TRACE,
@@ -107,6 +109,19 @@ export const ExpensesDashboard = () => {
   const [categoryModalParentId, setCategoryModalParentId] = useState<string | null>(null);
   const [categoriesFromDb, setCategoriesFromDb] = useState<ExpenseCategoryTreeItem[]>([]);
 
+  // List filtering states (declared before hooks that depend on them)
+  const [searchTerm, setSearchTerm] = useState('');
+  const [pageSize, setPageSize] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [subCategoryFilter, setSubCategoryFilter] = useState<string>('all');
+  const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [branches, setBranches] = useState<Array<{ id: string; name: string; code?: string }>>([]);
+  const [accountFilter, setAccountFilter] = useState<string>('all');
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
+
   const loadCategoriesFromDb = React.useCallback(() => {
     if (!companyId) return;
     expenseCategoryService.getTree(companyId).then(setCategoriesFromDb).catch(() => setCategoriesFromDb([]));
@@ -116,20 +131,54 @@ export const ExpensesDashboard = () => {
     loadCategoriesFromDb();
   }, [loadCategoriesFromDb]);
 
+  useEffect(() => {
+    if (!companyId) return;
+    branchService.getBranchesCached(companyId).then(setBranches).catch(() => setBranches([]));
+  }, [companyId]);
+
+  useEffect(() => {
+    setSubCategoryFilter('all');
+  }, [categoryFilter]);
+
+  const branchNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    branches.forEach((b) => {
+      const label = b.code ? `${b.code} | ${b.name}` : b.name;
+      map.set(b.id, label);
+    });
+    return map;
+  }, [branches]);
+
+  const resolveExpenseBranchLabel = useCallback(
+    (location?: string) => {
+      if (!location) return '—';
+      return branchNameById.get(location) || location;
+    },
+    [branchNameById]
+  );
+
+  const subCategoryFilterOptions = useMemo(() => {
+    if (categoryFilter === 'all') return [];
+    const main = categoriesFromDb.find((m) => m.name === categoryFilter);
+    return main?.children ?? [];
+  }, [categoryFilter, categoriesFromDb]);
+
   // 🎯 NEW: Action States
   const [selectedExpense, setSelectedExpense] = useState<any>(null);
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
   const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
 
-  // List filtering states
-  const [searchTerm, setSearchTerm] = useState('');
-  const [pageSize, setPageSize] = useState(25);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [accountFilter, setAccountFilter] = useState<string>('all');
-  const [fromDate, setFromDate] = useState<string>('');
-  const [toDate, setToDate] = useState<string>('');
+  useEffect(() => {
+    const pendingId = sessionStorage.getItem(PENDING_EXPENSE_OPEN_KEY);
+    if (!pendingId || expenses.length === 0) return;
+    const match = expenses.find((e) => e.id === pendingId);
+    sessionStorage.removeItem(PENDING_EXPENSE_OPEN_KEY);
+    if (match) {
+      setActiveTab('list');
+      setSelectedExpense(match);
+      setIsDrawerOpen(true);
+    }
+  }, [expenses]);
   /** Expense documents whose GL posting was reversed (correction_reversal on the expense JE). */
   const [reversedExpenseIds, setReversedExpenseIds] = useState<Set<string>>(() => new Set());
   const [showReversedExpenses, setShowReversedExpenses] = useState(false);
@@ -361,16 +410,28 @@ export const ExpensesDashboard = () => {
         if (!matchesSearch) filterReason = 'search_term_mismatch';
       }
 
-      // Category filter: main includes its sub-categories
+      // Category filter: sub-category exact match, or main includes its sub-categories
       if (!filterReason && categoryFilter !== 'all') {
-        const main = categoriesFromDb.find((m) => m.name === categoryFilter);
-        if (main) {
-          const catId = (expense as { expense_category_id?: string }).expense_category_id;
-          if (!expenseMatchesMainFilter(expense.category, catId, main, categoriesFromDb)) {
-            filterReason = `category_filter: not under "${categoryFilter}"`;
+        const catId = (expense as { expense_category_id?: string }).expense_category_id;
+        if (subCategoryFilter !== 'all') {
+          if (catId !== subCategoryFilter) {
+            filterReason = `subcategory_filter: expense category id "${catId}" !== "${subCategoryFilter}"`;
           }
-        } else if ((expense.category || '') !== categoryFilter) {
-          filterReason = `category_filter: list shows "${expense.category}" but filter is "${categoryFilter}"`;
+        } else {
+          const main = categoriesFromDb.find((m) => m.name === categoryFilter);
+          if (main) {
+            if (!expenseMatchesMainFilter(expense.category, catId, main, categoriesFromDb)) {
+              filterReason = `category_filter: not under "${categoryFilter}"`;
+            }
+          } else if ((expense.category || '') !== categoryFilter) {
+            filterReason = `category_filter: list shows "${expense.category}" but filter is "${categoryFilter}"`;
+          }
+        }
+      }
+
+      if (!filterReason && branchFilter !== 'all') {
+        if ((expense.location || '') !== branchFilter) {
+          filterReason = 'branch_filter_mismatch';
         }
       }
 
@@ -414,6 +475,8 @@ export const ExpensesDashboard = () => {
     operationalExpenses,
     searchTerm,
     categoryFilter,
+    subCategoryFilter,
+    branchFilter,
     categoriesFromDb,
     accountFilter,
     fromDate,
@@ -435,7 +498,7 @@ export const ExpensesDashboard = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, categoryFilter, accountFilter, fromDate, toDate, showReversedExpenses]);
+  }, [searchTerm, categoryFilter, subCategoryFilter, branchFilter, accountFilter, fromDate, toDate, showReversedExpenses]);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -449,6 +512,8 @@ export const ExpensesDashboard = () => {
   // Active filter count
   const activeFilterCount = [
     categoryFilter !== 'all',
+    subCategoryFilter !== 'all',
+    branchFilter !== 'all',
     accountFilter !== 'all',
     !!fromDate,
     !!toDate,
@@ -458,6 +523,8 @@ export const ExpensesDashboard = () => {
   // Clear filters
   const clearFilters = () => {
     setCategoryFilter('all');
+    setSubCategoryFilter('all');
+    setBranchFilter('all');
     setAccountFilter('all');
     setFromDate('');
     setToDate('');
@@ -472,11 +539,12 @@ export const ExpensesDashboard = () => {
 
   // Export handlers (use filtered list from backend)
   const getExportData = (): ExportData => ({
-    headers: ['Date', 'Reference #', 'Category', 'Expense For', 'Paid Via', 'Amount', 'Status'],
+    headers: ['Date', 'Reference #', 'Category', 'Branch', 'Expense For', 'Paid Via', 'Amount', 'Status'],
     rows: filteredExpenses.map((e) => [
       new Date(e.date).toLocaleDateString(),
       e.expenseNo || '—',
       e.category,
+      resolveExpenseBranchLabel(e.location),
       e.description,
       paymentDisplayForExpense(e),
       e.amount ?? 0,
@@ -836,6 +904,44 @@ export const ExpensesDashboard = () => {
                       </select>
                     </div>
 
+                    {subCategoryFilterOptions.length > 0 && (
+                      <div>
+                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                          Sub-category
+                        </label>
+                        <select
+                          value={subCategoryFilter}
+                          onChange={(e) => setSubCategoryFilter(e.target.value)}
+                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="all">All sub-categories</option>
+                          {subCategoryFilterOptions.map((sub) => (
+                            <option key={sub.id} value={sub.id}>{sub.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {branches.length > 0 && (
+                      <div>
+                        <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
+                          Branch
+                        </label>
+                        <select
+                          value={branchFilter}
+                          onChange={(e) => setBranchFilter(e.target.value)}
+                          className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="all">All Branches</option>
+                          {branches.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.code ? `${b.code} | ${b.name}` : b.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     {/* Account Filter */}
                     <div>
                       <label className="text-xs text-gray-400 uppercase font-medium mb-2 block">
@@ -882,6 +988,7 @@ export const ExpensesDashboard = () => {
                        <th className="px-6 py-3 font-medium">Date</th>
                        <th className="px-6 py-3 font-medium">Reference #</th>
                        <th className="px-6 py-3 font-medium">Category</th>
+                       <th className="px-6 py-3 font-medium">Branch</th>
                        <th className="px-6 py-3 font-medium">Expense For</th>
                        <th className="px-6 py-3 font-medium">Paid Via</th>
                        <th className="px-6 py-3 font-medium text-right">Amount</th>
@@ -891,14 +998,14 @@ export const ExpensesDashboard = () => {
                  <tbody className="divide-y divide-gray-800">
                     {loading ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center">
+                        <td colSpan={8} className="px-6 py-12 text-center">
                           <Loader2 size={48} className="mx-auto text-blue-500 mb-3 animate-spin" />
                           <p className="text-gray-400 text-sm">Loading expenses...</p>
                         </td>
                       </tr>
                     ) : paginatedExpenses.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center">
+                        <td colSpan={8} className="px-6 py-12 text-center">
                           <Receipt size={48} className="mx-auto text-gray-600 mb-3" />
                           <p className="text-gray-400 text-sm">No expenses found</p>
                           <p className="text-gray-600 text-xs mt-1">Try adjusting your search or filters</p>
@@ -920,6 +1027,9 @@ export const ExpensesDashboard = () => {
                              <Badge variant="outline" className={cn("font-normal", getCategoryBadgeStyle(expense.category))}>
                                 {expense.category}
                              </Badge>
+                          </td>
+                          <td className="px-6 py-4 text-gray-400 text-sm">
+                             {resolveExpenseBranchLabel(expense.location)}
                           </td>
                           <td className="px-6 py-4 text-white">
                              {expense.description}

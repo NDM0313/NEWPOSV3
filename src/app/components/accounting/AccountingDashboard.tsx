@@ -39,6 +39,7 @@ import {
   Search,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
+import { DatePicker } from '@/app/components/ui/DatePicker';
 import { Badge } from '@/app/components/ui/badge';
 import { ListToolbar } from '@/app/components/ui/list-toolbar';
 import { cn } from '@/app/components/ui/utils';
@@ -606,6 +607,7 @@ export const AccountingDashboard = () => {
     unmappedTop?: { referenceType: string; amount: number }[];
   }>({ loading: false, error: null, rows: [] });
   const [transactionReference, setTransactionReference] = useState<string | null>(null);
+  const [transactionJournalEntryIdHint, setTransactionJournalEntryIdHint] = useState<string | null>(null);
   /** PF-14.3B: When opening a grouped journal row, pass all entries in the group for the detail trail. */
   const [selectedGroupEntries, setSelectedGroupEntries] = useState<AccountingEntry[] | null>(null);
   /** Open TransactionDetailModal and immediately run unified source-aware edit when true. */
@@ -2480,26 +2482,22 @@ export const AccountingDashboard = () => {
                 <Label htmlFor="account-statement-from" className="text-xs text-gray-400">
                   From
                 </Label>
-                <Input
-                  id="account-statement-from"
-                  type="date"
+                <DatePicker
                   value={accountStatementStart}
-                  max={accountStatementEnd}
-                  onChange={(e) => setAccountStatementStart(e.target.value)}
-                  className="w-[11.5rem] bg-gray-800/90 border-gray-700 text-white"
+                  onChange={(v) => setAccountStatementStart(v)}
+                  maxDate={accountStatementEnd ? new Date(accountStatementEnd + 'T12:00:00') : undefined}
+                  className="w-[11.5rem]"
                 />
               </div>
               <div className="space-y-1">
                 <Label htmlFor="account-statement-to" className="text-xs text-gray-400">
                   To
                 </Label>
-                <Input
-                  id="account-statement-to"
-                  type="date"
+                <DatePicker
                   value={accountStatementEnd}
-                  min={accountStatementStart}
-                  onChange={(e) => setAccountStatementEnd(e.target.value)}
-                  className="w-[11.5rem] bg-gray-800/90 border-gray-700 text-white"
+                  onChange={(v) => setAccountStatementEnd(v)}
+                  minDate={accountStatementStart ? new Date(accountStatementStart + 'T12:00:00') : undefined}
+                  className="w-[11.5rem]"
                 />
               </div>
               <p className="text-xs text-gray-500 pb-2">
@@ -2643,10 +2641,12 @@ export const AccountingDashboard = () => {
           isOpen={!!transactionReference}
           onClose={() => {
             setTransactionReference(null);
+            setTransactionJournalEntryIdHint(null);
             setSelectedGroupEntries(null);
             setTransactionDetailAutoEdit(false);
           }}
           referenceNumber={transactionReference}
+          journalEntryIdHint={transactionJournalEntryIdHint ?? undefined}
           groupEntries={selectedGroupEntries ?? undefined}
           autoLaunchUnifiedEdit={transactionDetailAutoEdit}
           onAutoLaunchUnifiedEditConsumed={() => setTransactionDetailAutoEdit(false)}
@@ -2658,6 +2658,7 @@ export const AccountingDashboard = () => {
         <TransactionDetailListener
           onOpen={(referenceNumber, opts) => {
             setTransactionReference(referenceNumber);
+            setTransactionJournalEntryIdHint(opts?.journalEntryId ?? null);
             setSelectedGroupEntries(null);
             setTransactionDetailAutoEdit(!!opts?.autoLaunchUnifiedEdit);
           }}
@@ -2669,13 +2670,16 @@ export const AccountingDashboard = () => {
 
 // Component to listen for transaction detail events
 const TransactionDetailListener: React.FC<{
-  onOpen: (ref: string, opts?: { autoLaunchUnifiedEdit?: boolean }) => void;
+  onOpen: (ref: string, opts?: { autoLaunchUnifiedEdit?: boolean; journalEntryId?: string }) => void;
 }> = ({ onOpen }) => {
   React.useEffect(() => {
     const handleOpen = (event: CustomEvent) => {
       const d = event.detail || {};
       if (d.referenceNumber == null || d.referenceNumber === '') return;
-      onOpen(String(d.referenceNumber), { autoLaunchUnifiedEdit: !!d.autoLaunchUnifiedEdit });
+      onOpen(String(d.referenceNumber), {
+        autoLaunchUnifiedEdit: !!d.autoLaunchUnifiedEdit,
+        journalEntryId: d.journalEntryId ? String(d.journalEntryId) : undefined,
+      });
     };
 
     window.addEventListener('openTransactionDetail' as any, handleOpen);

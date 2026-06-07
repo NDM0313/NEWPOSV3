@@ -161,8 +161,19 @@ async function fetchV2Rpc(
     p_start_date: dateFrom.slice(0, 10),
     p_end_date: dateTo.slice(0, 10),
   });
-  if (error) return null;
-  return (data as Record<string, unknown>) || null;
+  if (error) {
+    console.warn('[Dashboard V2] get_dashboard_v2_snapshot RPC failed:', error.message);
+    return null;
+  }
+  const raw = (data as Record<string, unknown>) || null;
+  if (!raw) return null;
+  const metrics = raw.metrics as Record<string, unknown> | undefined;
+  const rpcErr = raw.error != null ? String(raw.error) : '';
+  if (rpcErr && (!metrics || Object.keys(metrics).length === 0)) {
+    console.warn('[Dashboard V2] RPC returned error payload:', rpcErr);
+    return null;
+  }
+  return raw;
 }
 
 async function loadSnapshotInner(params: LoadSnapshotParams): Promise<DashboardV2Snapshot> {
@@ -233,9 +244,11 @@ async function loadSnapshotInner(params: LoadSnapshotParams): Promise<DashboardV
   const liquidityAlerts = buildLiquidityAlerts(summary);
   const rentalAlerts = buildRentalAlerts(rentals);
 
-  const salesTrend = metrics.sales_trend ?? [];
-  const expenseTrend = metrics.expense_trend ?? [];
-  const profitTrend = metrics.profit_trend ?? [];
+  const normTrend = (rows: { date: string; value: number }[]) =>
+    (rows ?? []).map((t) => ({ date: String(t.date).slice(0, 10), value: Number(t.value) || 0 }));
+  const salesTrend = normTrend(metrics.sales_trend ?? []);
+  const expenseTrend = normTrend(metrics.expense_trend ?? []);
+  const profitTrend = normTrend(metrics.profit_trend ?? []);
 
   return {
     meta: buildMeta(dateFrom, dateTo, branchNorm, metrics),

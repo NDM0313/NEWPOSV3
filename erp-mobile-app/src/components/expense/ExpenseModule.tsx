@@ -40,7 +40,8 @@ import {
   collectCategoryIdsForClearingFilter,
   collectClearingSlugsUnder,
   displayLabelForCategoryId,
-  expenseMatchesMainFilter,
+  buildExpenseFilterChips,
+  expenseMatchesCategoryFilter,
   resolveExpenseCategoryIdFromLevels,
 } from '../../lib/expenseCategoryTreeUtils';
 
@@ -741,17 +742,7 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
   }, [list, listBranchScope, isolateWorkerData, effectiveUserId, effectiveProfileId]);
 
   const filterChips = useMemo(() => {
-    const all = { value: 'all', label: 'All', icon: '📊' };
-    if (categoryTree.length > 0) {
-      return [
-        all,
-        ...categoryTree.map((m) => ({
-          value: m.name,
-          label: m.name,
-          icon: '📁',
-        })),
-      ];
-    }
+    if (categoryTree.length > 0) return buildExpenseFilterChips(categoryTree);
     return CATEGORIES;
   }, [categoryTree]);
 
@@ -811,20 +802,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
 
   const filtered = useMemo(() => {
     const rows = scopedList.filter((e) => {
-      const matchCat =
-        filterCategory === 'all' ||
-        (() => {
-          const main = categoryTree.find((m) => m.name === filterCategory);
-          if (main) {
-            return expenseMatchesMainFilter(
-              e.category,
-              e.expense_category_id,
-              main,
-              categoryTree,
-            );
-          }
-          return e.category === filterCategory;
-        })();
+      const matchCat = expenseMatchesCategoryFilter(
+        filterCategory,
+        e.category,
+        e.expense_category_id,
+        categoryTree,
+      );
       const label = categoryLabelForRow(e);
       const matchSearch =
         e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1262,10 +1245,12 @@ export function ExpenseModule({ onBack, user, companyId, branch, onRequestCounte
                   onClick={() => setFilterCategory(cat.value)}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-lg whitespace-nowrap transition-all ${
                     filterCategory === cat.value ? 'bg-white text-[#EF4444]' : 'bg-white/10 text-white hover:bg-white/20'
-                  }`}
+                  } ${'isSub' in cat && cat.isSub ? 'text-[11px]' : ''}`}
                 >
                   <span>{cat.icon}</span>
-                  <span className="text-xs font-medium">{cat.label}</span>
+                  <span className={`font-medium ${'isSub' in cat && cat.isSub ? 'text-[11px]' : 'text-xs'}`}>
+                    {cat.label}
+                  </span>
                 </button>
               ))}
             </div>

@@ -53,9 +53,11 @@ function roznamchaCacheKey(
   ].join('|');
 }
 import { exportToPDF, exportToExcel } from '@/app/utils/exportUtils';
+import { shareViaWhatsApp } from '@/app/services/documentShareService';
 import { useFormatDate } from '@/app/hooks/useFormatDate';
 import { DateTimeDisplay } from '../ui/DateTimeDisplay';
-import { Loader2, BookOpen, Wallet, Building2, CreditCard, Smartphone } from 'lucide-react';
+import { Loader2, BookOpen, Wallet, Building2, CreditCard, Smartphone, Search } from 'lucide-react';
+import { Input } from '../ui/input';
 import { cn } from '../ui/utils';
 import { format, parseISO } from 'date-fns';
 import { journalDescriptionForDisplay } from '@/app/utils/journalDescriptionDisplay';
@@ -126,6 +128,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   const [currentPage, setCurrentPage] = useState(1);
   /** When Accounting uses global header dates, still allow a local start/end (or single day) here */
   const [overrideGlobalDates, setOverrideGlobalDates] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     if (!companyId) {
@@ -160,13 +163,46 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     return copy;
   }, [data?.rows, dateSort]);
 
-  const totalRows = orderedRows.length;
+  const filteredRows = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return orderedRows;
+    return orderedRows.filter((r) => {
+      const textHay = [
+        r.ref,
+        r.journalEntryNo,
+        roznamchaRefDisplay(r),
+        roznamchaJournalSubtitle(r),
+        roznamchaDetailsForDisplay(r),
+        r.referenceDisplay,
+        r.partyLine,
+        r.type,
+        r.accountLabel,
+        r.accountName,
+        r.createdBy,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (textHay.includes(q)) return true;
+      const amtHay = [
+        r.amount,
+        r.cashIn,
+        r.cashOut,
+        r.runningBalance,
+      ]
+        .map((n) => String(n ?? ''))
+        .join(' ');
+      return amtHay.includes(q.replace(/,/g, ''));
+    });
+  }, [orderedRows, searchTerm]);
+
+  const totalRows = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
   const paginatedRows = useMemo(() => {
-    if (!orderedRows.length) return [];
+    if (!filteredRows.length) return [];
     const start = (currentPage - 1) * pageSize;
-    return orderedRows.slice(start, start + pageSize);
-  }, [orderedRows, currentPage, pageSize]);
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, currentPage, pageSize]);
 
   const useGlobalRange = Boolean(globalStartDate && globalEndDate);
   const dateFrom = useMemo(() => {
@@ -257,7 +293,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
   }, [currentPage, totalPages]);
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFrom, dateTo, accountFilter, includeVoidedReversed, paymentLedgerAccountId, dateSort, pageSize, overrideGlobalDates]);
+  }, [dateFrom, dateTo, accountFilter, includeVoidedReversed, paymentLedgerAccountId, dateSort, pageSize, overrideGlobalDates, searchTerm]);
 
   const selectedBranchLabel = contextBranchId === 'all' || !contextBranchId ? 'All Branches' : 'Selected branch';
 
@@ -267,7 +303,7 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
     rows: data
       ? [
           ['Opening', '—', 'Opening Balance', '—', '', '', data.summary.openingBalance],
-          ...orderedRows.map((r: RoznamchaRowWithBalance) => {
+          ...filteredRows.map((r: RoznamchaRowWithBalance) => {
             const meta = [r.referenceDisplay, r.partyLine, r.createdBy ? `by ${r.createdBy}` : ''].filter(Boolean).join(' • ');
             const jeSub = roznamchaJournalSubtitle(r);
             const refCol = jeSub ? `${roznamchaRefDisplay(r)}\n${jeSub}` : roznamchaRefDisplay(r);
@@ -290,26 +326,42 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
       <p className="text-xs text-gray-500 border border-gray-800/80 rounded-lg px-3 py-2 bg-gray-950/40 max-w-3xl">
         Cash / bank / wallet receive &amp; pay only — from <strong className="text-gray-400">payments</strong> and{' '}
         <strong className="text-gray-400">rental_payments</strong> (not rental journal vouchers). One row per actual
-        movement. Rental receipts show as <strong className="text-gray-400">REN-*-PAY</strong>, not JE.{' '}
+        movement. Incoming receipts (sale, rental, manual) show as <strong className="text-gray-400">RCV-*</strong>;{' '}
+        <strong className="text-gray-400">JE-*</strong> appears as a subtitle when linked.{' '}
         <span className="text-gray-600">
           Match header date range to payment_date; use All Branches and All accounts if a line is missing.
         </span>
       </p>
-      <ReportActions
-        title="Roznamcha"
-        onPrint={() => window.print()}
-        onPdf={() => exportToPDF(exportData, 'Roznamcha')}
-        onExcel={() => exportToExcel(exportData, 'Roznamcha')}
-        onWhatsapp={() => {}}
-        previewContentRef={rozPrintRef}
-        previewDocumentType="ledger"
-        previewReference={dateFrom && dateTo ? `Roznamcha-${dateFrom}-${dateTo}` : 'Roznamcha'}
-      />
+      <div className="no-print">
+        <ReportActions
+          title="Roznamcha"
+          onPrint={() => window.print()}
+          onPdf={() => exportToPDF(exportData, 'Roznamcha')}
+          onExcel={() => exportToExcel(exportData, 'Roznamcha')}
+          onWhatsapp={() => {
+            const s = data?.summary;
+            const msg = [
+              'Roznamcha (Daily Cash Book)',
+              `Period: ${dateFrom} to ${dateTo}`,
+              s
+                ? `Opening: ${s.openingBalance.toLocaleString()} · In: ${s.cashIn.toLocaleString()} · Out: ${s.cashOut.toLocaleString()} · Closing: ${s.closingBalance.toLocaleString()}`
+                : '',
+              `Rows shown: ${filteredRows.length}`,
+            ]
+              .filter(Boolean)
+              .join('\n');
+            shareViaWhatsApp(msg);
+          }}
+          previewContentRef={rozPrintRef}
+          previewDocumentType="ledger"
+          previewReference={dateFrom && dateTo ? `Roznamcha-${dateFrom}-${dateTo}` : 'Roznamcha'}
+        />
+      </div>
 
       <div ref={rozPrintRef} className="space-y-6">
 
       {/* 1. FILTERS */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-4">
+      <div className="no-print rounded-xl border border-gray-800 bg-gray-900/50 p-4">
         <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Filters</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5 items-start">
           <div className="flex flex-col gap-2 min-w-0">
@@ -475,6 +527,19 @@ export const RoznamchaReport = ({ globalStartDate, globalEndDate }: RoznamchaRep
                 <SelectItem value="100">100</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="flex flex-col gap-2 min-w-0 sm:col-span-2 lg:col-span-2">
+            <Label className="text-xs text-gray-500 uppercase tracking-wide">Search</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Ref, description, party, or amount…"
+                className="pl-9 bg-gray-950 border-gray-700 text-white h-10"
+              />
+            </div>
           </div>
 
           <div className="flex flex-col gap-2 min-w-0 sm:col-span-2 lg:col-span-2">
