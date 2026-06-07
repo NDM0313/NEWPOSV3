@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { businessService } from '@/app/services/businessService';
+import { isCreateBusinessAccountError } from '@/app/utils/authErrorMessages';
 import { suggestFiscalYearEnd } from '@/app/utils/fiscalDates';
 import {
   BUSINESS_TYPE_MODULES,
@@ -202,6 +203,7 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
   };
 
   const handleSubmit = async () => {
+    if (loading) return;
     const err = validateStep(5);
     if (err) {
       setError(err);
@@ -276,9 +278,21 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 space-y-6">
           {error && (
-            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-2 text-red-400">
-              <AlertCircle size={20} />
-              <span className="text-sm">{error}</span>
+            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl space-y-3">
+              <div className="flex items-center gap-2 text-red-400">
+                <AlertCircle size={20} className="shrink-0" />
+                <span className="text-sm">{error}</span>
+              </div>
+              {isCreateBusinessAccountError(error) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onCancel}
+                  className="w-full sm:w-auto bg-gray-800 border-gray-600 text-white hover:bg-gray-700"
+                >
+                  Go to Sign In
+                </Button>
+              )}
             </div>
           )}
 
@@ -359,6 +373,9 @@ export const CreateBusinessWizard: React.FC<CreateBusinessWizardProps> = ({ onSu
                         disabled={loading}
                       />
                     </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Business email use karein (e.g. info@dincouture.pk). admin@ aur demo@ reserved hain — un se nayi business na bane.
+                    </p>
                   </div>
                   <div className="md:col-span-2">
                     <Label className="text-gray-400">Address</Label>

@@ -1,4 +1,10 @@
 import { supabase } from '@/lib/supabase';
+import {
+  ALREADY_HAS_BUSINESS_MESSAGE,
+  formatSignInError,
+  isReservedSystemEmail,
+  RESERVED_SYSTEM_EMAIL_MESSAGE,
+} from '@/app/utils/authErrorMessages';
 
 export interface CreateBusinessRequest {
   businessName: string;
@@ -39,6 +45,52 @@ export interface CreateBusinessResponse {
   error?: string;
 }
 
+/** GoTrue self-hosted may return 500 "Database error saving new user" when email already exists in auth.users. */
+function isSignupExistingEmailError(authError: { message?: string; status?: number } | null): boolean {
+  if (!authError) return false;
+  const msg = authError.message?.toLowerCase() ?? '';
+  return (
+    msg.includes('already registered') ||
+    msg.includes('already exists') ||
+    msg.includes('user already exists') ||
+    msg.includes('database error saving new user') ||
+    authError.status === 422
+  );
+}
+
+async function signInExistingUserForCreateBusiness(
+  email: string,
+  password: string
+): Promise<{ user: { id: string } | null; error?: string }> {
+  const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+  if (signInError) {
+    return {
+      user: null,
+      error: formatSignInError(signInError, { context: 'createBusinessFallback' }),
+    };
+  }
+  return { user: signInData?.user ?? null };
+}
+
+async function assertUserHasNoLinkedBusiness(userId: string): Promise<string | null> {
+  const { data: profile, error } = await supabase
+    .from('users')
+    .select('company_id')
+    .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
+    .maybeSingle();
+
+  if (error) {
+    return error.message || 'Could not verify account status.';
+  }
+  if (profile?.company_id) {
+    return ALREADY_HAS_BUSINESS_MESSAGE;
+  }
+  return null;
+}
+
 /**
  * Create a new business: sign up the user with Supabase Auth, then run the DB transaction.
  * Uses the anon client only (no service role in the browser) to avoid 401 and Multiple GoTrueClient.
@@ -46,6 +98,10 @@ export interface CreateBusinessResponse {
 export const businessService = {
   async createBusiness(data: CreateBusinessRequest): Promise<CreateBusinessResponse> {
     try {
+      if (isReservedSystemEmail(data.email)) {
+        return { success: false, error: RESERVED_SYSTEM_EMAIL_MESSAGE };
+      }
+
       // Step 1: Create auth user (or use existing if email already registered)
       const { data: signUpData, error: authError } = await supabase.auth.signUp({
         email: data.email,
@@ -58,31 +114,26 @@ export const businessService = {
 
       let user = signUpData?.user;
 
-      // If signUp fails with 422 / "already registered", try sign in and use existing user to add this business
-      const isAlreadyRegistered =
-        authError?.message?.toLowerCase().includes('already registered') ||
-        authError?.message?.toLowerCase().includes('already exists') ||
-        authError?.message?.toLowerCase().includes('user already exists') ||
-        (authError as any)?.status === 422;
-
-      if (authError && isAlreadyRegistered) {
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: data.email,
-          password: data.password,
-        });
-        if (signInError) {
-          return {
-            success: false,
-            error: 'This email is already registered. Sign in with your password above, or use a different email to create a new business.',
-          };
+      if (authError && isSignupExistingEmailError(authError)) {
+        if (import.meta.env.DEV) {
+          console.warn('[createBusiness] signUp failed, trying sign-in fallback', authError);
         }
-        user = signInData?.user ?? null;
+        const signInResult = await signInExistingUserForCreateBusiness(data.email, data.password);
+        if (signInResult.error) {
+          return { success: false, error: signInResult.error };
+        }
+        user = signInResult.user;
       } else if (authError) {
         return { success: false, error: authError.message };
       }
 
       if (!user?.id) {
         return { success: false, error: 'Failed to create user' };
+      }
+
+      const linkedBusinessError = await assertUserHasNoLinkedBusiness(user.id);
+      if (linkedBusinessError) {
+        return { success: false, error: linkedBusinessError };
       }
 
       // Step 2: Create company, branch, and public.users row via RPC (allowed for authenticated after migration 22)

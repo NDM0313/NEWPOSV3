@@ -14,9 +14,64 @@ Copy a new block for every build. Keep the newest entry at the top.
 
 API base for production APK: `https://erp.dincouture.pk` from `.env.production` at sync time (not localhost).
 
+### Expenses list: APK vs localhost dev (troubleshooting)
+
+| Symptom | Likely cause | What to do |
+|---------|----------------|------------|
+| **Expenses** show `TypeError: Failed to fetch` on APK; login + category chips OK; localhost:5174 works | Native Capacitor called REST with embedded join `payment_account:accounts(...)`; network layer fails before PostgREST JSON error (no fallback) | Install **build 36+** — plain select on native, payment display via enrichment |
+| Categories load but list empty / Rs. 0 totals | Same as above — only `expenses` list query failed | Rebuild: `npm run android:apk:release:win` |
+| Raw `Failed to fetch` on other screens too | Global network / CORS / stale anon key | [`MOBILE_APK_LOCKED_PATTERN.md`](../../docs/infra/MOBILE_APK_LOCKED_PATTERN.md); Settings → 7-tap version → Connection Debug |
+
 ---
 
-## Latest build — 1.0.5 (build 10 iOS / versionCode 35 Android) — 2026-06-03
+## Latest build — 1.0.5 (build 36 Android) — 2026-06-07
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-06-07 |
+| **versionName** | 1.0.5 |
+| **Android versionCode** | 36 |
+| **Git commit** | `78d0596` |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build36.apk` |
+| **Built with** | `npm run android:apk:release:win` (VPS anon sync + `cap:sync:android:prod`) |
+
+### Problem fixed (build 36)
+
+On installed APK, **Expenses** showed `TypeError: Failed to fetch` while **login** and **expense category chips** worked. Dev on `localhost:5174` showed the full list (e.g. Rs. 51,680 period total).
+
+**Root cause:** `fetchExpensesOnline` used a PostgREST embed (`payment_account:accounts(code,name,type)`). On native WebView → `https://erp.dincouture.pk`, that request failed at the **transport** layer (`Failed to fetch`). Existing retry logic only ran when PostgREST returned a JSON error mentioning `accounts` — not on network failures. Category fetch (simple table, no embed) still worked.
+
+### Changelog (technical) — build 36
+
+- **Fix:** Native APK uses **plain** `expenses` select first (no accounts embed); browser/dev keeps embed-first behavior.
+- **Fix:** Browser embed path retries plain select on `Failed to fetch` / network errors.
+- **New:** [`networkErrorMessages.ts`](../../erp-mobile-app/src/utils/networkErrorMessages.ts) — maps fetch failures to user-facing *"Cannot reach the server..."* on expense list (parity with login errors).
+- **Refactor:** Shared branch filter helper for expense list queries (`applyExpenseListBranchFilter`).
+
+### Changelog (user-facing) — build 36
+
+- **Expenses:** List loads on APK again (same data as web/dev when logged in as same user).
+- **Errors:** Network failures show a clear message instead of raw `TypeError: Failed to fetch`.
+
+### Install notes (build 36)
+
+1. Uninstall old APK or install over: `adb install -r releases/erp-mobile-1.0.5-build36.apk`
+2. API base on device: `https://erp.dincouture.pk` (Settings → 7-tap App Version → Developer Mode → Connection Debug).
+3. Rebuild locally: [`BUILD_AND_GRAPHIFY_COMMANDS.md`](BUILD_AND_GRAPHIFY_COMMANDS.md).
+
+### Mobile test checklist (build 36)
+
+| # | Area | Verify |
+|---|------|--------|
+| 1 | Login | Email or counter PIN against live VPS |
+| 2 | Expenses → list | Rows + period total match web (not Rs. 0 / not Failed to fetch) |
+| 3 | Expenses → filters | Category chips (Other, Service, etc.) filter list |
+| 4 | Expenses → Add | Save one expense; list refresh |
+| 5 | Sales (optional) | List still loads (same branch scope as before) |
+
+---
+
+## Previous latest — 1.0.5 (build 10 iOS / versionCode 35 Android) — 2026-06-03
 
 | Field | Value |
 |--------|--------|
