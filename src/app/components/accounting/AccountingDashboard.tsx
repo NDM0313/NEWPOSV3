@@ -61,6 +61,11 @@ import { AccountingTestPage } from '@/app/components/test/AccountingTestPage';
 import { AddEntryV2 } from './AddEntryV2';
 import { useSupabase } from '@/app/context/SupabaseContext';
 import { INTEGRITY_LAB_SESSION_KEY } from '@/app/lib/integrityLabConstants';
+import {
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+  safeSessionStorageSetItem,
+} from '@/app/lib/safeBrowserStorage';
 import { ControlAccountBreakdownDrawer } from './ControlAccountBreakdownDrawer';
 import type { ControlAccountBreakdownResult, PartyGlRow } from '@/app/services/controlAccountBreakdownService';
 import { fetchControlAccountBreakdown } from '@/app/services/controlAccountBreakdownService';
@@ -68,6 +73,7 @@ import { fetchControlAccountBreakdown } from '@/app/services/controlAccountBreak
 /** Add Entry: V2 = new default (typed, theme-matched). Set false to use legacy AccountingTestPage. */
 const USE_ADD_ENTRY_V2 = true;
 import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
+import { formatLocalDateYYYYMMDD, localNowDateString } from '@/app/utils/localDate';
 import { accountService } from '@/app/services/accountService';
 import { contactService } from '@/app/services/contactService';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
@@ -463,6 +469,10 @@ export const AccountingDashboard = () => {
   const { formatCurrency } = useFormatCurrency();
   const { run, busy } = useSubmitLock();
 
+  useEffect(() => {
+    void accounting.ensureEntriesLoaded();
+  }, [accounting.ensureEntriesLoaded]);
+
   const runJournalMutation = useCallback(
     (label: string, task: () => Promise<void>) => {
       void run(label, task);
@@ -499,25 +509,19 @@ export const AccountingDashboard = () => {
           return;
         }
         if (target.kind === 'sale_return') {
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pendingAccountingOpen_saleReturnId', target.id);
-          }
+          safeSessionStorageSetItem('pendingAccountingOpen_saleReturnId', target.id);
           setCurrentView('sales');
           toast.info('Opening Sales — return details will open on the Returns tab.');
           return;
         }
         if (target.kind === 'purchase_return') {
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pendingAccountingOpen_purchaseReturnId', target.id);
-          }
+          safeSessionStorageSetItem('pendingAccountingOpen_purchaseReturnId', target.id);
           setCurrentView('purchases');
           toast.info('Opening Purchases — return details will open when ready.');
           return;
         }
         if (target.kind === 'rental') {
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pendingRentalDetailsId', target.id);
-          }
+          safeSessionStorageSetItem('pendingRentalDetailsId', target.id);
           setCurrentView('rentals');
           toast.info('Opening Rentals — use the booking drawer to edit.');
         }
@@ -540,12 +544,12 @@ export const AccountingDashboard = () => {
     if (g) return g.slice(0, 10);
     const d = new Date();
     d.setDate(1);
-    return d.toISOString().slice(0, 10);
+    return formatLocalDateYYYYMMDD(d);
   }, [globalStartDate]);
   const reportEndDate = useMemo(() => {
     const g = globalEndDate && String(globalEndDate).trim();
     if (g) return g.slice(0, 10);
-    return new Date().toISOString().slice(0, 10);
+    return localNowDateString();
   }, [globalEndDate]);
 
   /** Account Statements tab: editable period (initialized from global filter; re-syncs when global dates change). */
@@ -879,7 +883,7 @@ export const AccountingDashboard = () => {
   /** Accounting Integrity Lab: deep-link to tab + optional search focus */
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(INTEGRITY_LAB_SESSION_KEY);
+      const raw = safeSessionStorageGetItem(INTEGRITY_LAB_SESSION_KEY);
       if (!raw) return;
       const o = JSON.parse(raw) as {
         tab?: typeof activeTab;
@@ -889,12 +893,12 @@ export const AccountingDashboard = () => {
       if (o.tab) setActiveTab(o.tab);
       if (o.ledgerType) setLedgerType(o.ledgerType);
       if (o.searchTerm) setSearchTerm(o.searchTerm);
-      sessionStorage.removeItem(INTEGRITY_LAB_SESSION_KEY);
+      safeSessionStorageRemoveItem(INTEGRITY_LAB_SESSION_KEY);
       if (o.searchTerm) {
         toast.info(`Filtered journal search: ${o.searchTerm.slice(0, 8)}…`);
       }
     } catch {
-      sessionStorage.removeItem(INTEGRITY_LAB_SESSION_KEY);
+      safeSessionStorageRemoveItem(INTEGRITY_LAB_SESSION_KEY);
     }
   }, []);
 

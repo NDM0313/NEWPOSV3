@@ -1215,6 +1215,7 @@ export async function recordCustomerPayment(params: {
   const {
     companyId,
     branchId,
+    customerId,
     referenceId,
     amount,
     accountId,
@@ -1226,6 +1227,20 @@ export async function recordCustomerPayment(params: {
   } = params;
   if (!companyId || !referenceId || amount <= 0 || !accountId) {
     return { data: null, error: 'Company, reference (sale), amount and account are required.' };
+  }
+  if (customerId) {
+    const { data: contactRow } = await supabase
+      .from('contacts')
+      .select('name')
+      .eq('id', customerId)
+      .maybeSingle();
+    const contactName = (contactRow as { name?: string } | null)?.name?.trim();
+    if (contactName) {
+      await supabase
+        .from('sales')
+        .update({ customer_id: customerId, customer_name: contactName })
+        .eq('id', referenceId);
+    }
   }
   let branchForResolve = branchId;
   if (!isRealBranchUuid(branchForResolve)) {
@@ -1280,6 +1295,20 @@ export async function recordCustomerPayment(params: {
   if (error) return { data: null, error: error.message };
   const res = data as { success?: boolean; payment_id?: string; reference_number?: string; error?: string } | null;
   if (res?.success && res.payment_id) {
+    if (customerId) {
+      const { data: contactRow } = await supabase
+        .from('contacts')
+        .select('name')
+        .eq('id', customerId)
+        .maybeSingle();
+      const contactName = (contactRow as { name?: string } | null)?.name?.trim();
+      if (contactName) {
+        await supabase
+          .from('payments')
+          .update({ contact_id: customerId, contact_name: contactName })
+          .eq('id', res.payment_id);
+      }
+    }
     if (params.paymentAt) {
       const { patchPaymentCreatedAt } = await import('./paymentTimestamp');
       await patchPaymentCreatedAt(res.payment_id, params.paymentAt);

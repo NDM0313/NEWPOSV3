@@ -90,6 +90,10 @@ import {
 } from '@/app/services/barcodeLabelSettingsService';
 import type { LabelPrintLine } from '@/app/services/barcodeLabelPrint';
 import { supabase } from '@/lib/supabase';
+import {
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+} from '@/app/lib/safeBrowserStorage';
 
 type PurchaseStatus = 'received' | 'ordered' | 'pending' | 'final' | 'draft' | 'cancelled';
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
@@ -223,12 +227,12 @@ export const PurchasesPage = () => {
 
   // Check for supplier filter from ContactsPage
   useEffect(() => {
-    const supplierId = sessionStorage.getItem('purchasesFilter_supplierId');
-    const supplierName = sessionStorage.getItem('purchasesFilter_supplierName');
+    const supplierId = safeSessionStorageGetItem('purchasesFilter_supplierId');
+    const supplierName = safeSessionStorageGetItem('purchasesFilter_supplierName');
     if (supplierId) {
       setSupplierFilter(supplierId);
-      sessionStorage.removeItem('purchasesFilter_supplierId');
-      sessionStorage.removeItem('purchasesFilter_supplierName');
+      safeSessionStorageRemoveItem('purchasesFilter_supplierId');
+      safeSessionStorageRemoveItem('purchasesFilter_supplierName');
       if (supplierName) {
         toast.info(`Filtering purchases for ${supplierName}`);
       }
@@ -238,9 +242,9 @@ export const PurchasesPage = () => {
   /** Open a specific purchase return from Accounting → “Open source” on a purchase_return journal row. */
   useEffect(() => {
     if (typeof window === 'undefined' || !companyId) return;
-    const pendingId = sessionStorage.getItem('pendingAccountingOpen_purchaseReturnId');
+    const pendingId = safeSessionStorageGetItem('pendingAccountingOpen_purchaseReturnId');
     if (!pendingId) return;
-    sessionStorage.removeItem('pendingAccountingOpen_purchaseReturnId');
+    safeSessionStorageRemoveItem('pendingAccountingOpen_purchaseReturnId');
     let cancelled = false;
     void (async () => {
       try {

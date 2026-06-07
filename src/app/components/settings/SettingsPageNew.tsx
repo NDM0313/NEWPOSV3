@@ -21,6 +21,10 @@ import { useSupabase } from '@/app/context/SupabaseContext';
 import { userService, User as UserType } from '@/app/services/userService';
 import { useAccounting } from '@/app/context/AccountingContext';
 import { toast } from 'sonner';
+import {
+  safeLocalStorageRemoveItem,
+  safeSessionStorageClear,
+} from '@/app/lib/safeBrowserStorage';
 import { AddUserModal } from '../users/AddUserModal';
 import { AddBranchModal } from '../branches/AddBranchModal';
 import { exportAndDownloadBackup, restoreCompanyBackup, type CompanyBackupData } from '@/app/services/backupService';
@@ -545,8 +549,8 @@ export const SettingsPageNew = () => {
       window.dispatchEvent(new Event('inventory-updated'));
       window.dispatchEvent(new Event('products-updated'));
       try {
-        localStorage.removeItem('erp_modules');
-        sessionStorage.clear();
+        safeLocalStorageRemoveItem('erp_modules');
+        safeSessionStorageClear();
       } catch {
         // no-op
       }
@@ -2770,8 +2774,8 @@ export const SettingsPageNew = () => {
                     className="border-blue-600 text-blue-400 hover:bg-blue-500/10 gap-2"
                     onClick={() => {
                       try {
-                        localStorage.removeItem('erp_modules');
-                        sessionStorage.clear();
+                        safeLocalStorageRemoveItem('erp_modules');
+                        safeSessionStorageClear();
                         toast.success('Cache cleared. Refreshing...');
                         setTimeout(() => window.location.reload(), 500);
                       } catch (e) {

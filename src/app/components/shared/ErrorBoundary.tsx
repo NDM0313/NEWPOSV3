@@ -51,8 +51,10 @@ export class ErrorBoundary extends Component<Props, State> {
             <div>
               <h2 className="text-xl font-semibold text-white mb-2">Something went wrong</h2>
               <p className="text-gray-400 text-sm mb-4">
-                {this.state.error.name === 'SecurityError' && this.state.error.message.includes('localStorage')
-                  ? "Storage access is denied (e.g. in private/incognito or strict privacy). Try a normal window or allow storage for this site."
+                {this.state.error.name === 'SecurityError' &&
+                (this.state.error.message.includes('localStorage') ||
+                  this.state.error.message.includes('sessionStorage'))
+                  ? "Storage access is denied (e.g. in private/incognito, strict privacy, or embedded preview). Try a normal browser window or allow storage for this site."
                   : (this.state.error.message || 'An unexpected error occurred.')}
               </p>
               <Button

@@ -23,6 +23,11 @@ import type { RentalListItem } from '../../api/rentals';
 import { CreateRentalFlow } from './CreateRentalFlow';
 import { RentalCalendarTab } from './RentalCalendarTab';
 import { ViewRentalDetails, type RentalDetailInitialAction } from './ViewRentalDetails';
+import { RentalWorkflowBadges } from './RentalWorkflowBadges';
+import {
+  rentalPrimaryStaffName,
+  rentalShowCreatedBySecondary,
+} from '../../lib/rentalWorkflowDisplay';
 import { openWhatsAppShare } from '../../lib/phoneWhatsApp';
 import { formatDate } from '../accounts/reports/_shared/format';
 import { localNowDateString } from '../../utils/localDate';
@@ -60,11 +65,15 @@ const RENTAL_HIDDEN_DATE_PRESETS: DateRangePreset[] = [
 
 function matchesRentalSearch(r: RentalListItem, q: string): boolean {
   if (!q) return true;
+  const staff = rentalPrimaryStaffName(r.salesmanName, r.createdByName).toLowerCase();
   return (
     r.bookingNo.toLowerCase().includes(q) ||
     r.documentNumber.toLowerCase().includes(q) ||
     r.customer.toLowerCase().includes(q) ||
-    r.status.toLowerCase().includes(q)
+    r.status.toLowerCase().includes(q) ||
+    staff.includes(q) ||
+    (r.salesmanName?.toLowerCase().includes(q) ?? false) ||
+    (r.createdByName?.toLowerCase().includes(q) ?? false)
   );
 }
 
@@ -75,14 +84,27 @@ interface RentalModuleProps {
   branch: Branch | null;
 }
 
-const STATUS_CLASS: Record<string, string> = {
-  draft: 'bg-[#6B7280]/30 text-[#9CA3AF]',
-  booked: 'bg-pink-500/20 text-pink-400 border border-pink-500/30',
-  rented: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
-  returned: 'bg-green-500/20 text-green-400 border border-green-500/30',
-  overdue: 'bg-red-500/20 text-red-400 border border-red-500/30',
-  cancelled: 'bg-[#6B7280]/30 text-[#9CA3AF]',
-};
+
+function RentalStaffLines({
+  salesmanName,
+  createdByName,
+}: {
+  salesmanName?: string | null;
+  createdByName?: string | null;
+}) {
+  const primary = rentalPrimaryStaffName(salesmanName, createdByName);
+  const showSecondary = rentalShowCreatedBySecondary(salesmanName, createdByName);
+  return (
+    <>
+      <p className="text-xs text-[#9CA3AF] mt-0.5">
+        Salesman: <span className="text-[#D1D5DB]">{primary}</span>
+      </p>
+      {showSecondary && createdByName ? (
+        <p className="text-[10px] text-[#6B7280]">Created: {createdByName}</p>
+      ) : null}
+    </>
+  );
+}
 
 export function RentalModule({ onBack, user, companyId, branch }: RentalModuleProps) {
   const effectiveUserId = useEffectiveWorkerId(user?.id ?? '');
@@ -372,6 +394,7 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
                 <p className="text-xs text-[#8B5CF6]/90">Bill: {r.documentNumber}</p>
               ) : null}
               <p className="text-sm text-[#9CA3AF]">{r.customer}</p>
+              <RentalStaffLines salesmanName={r.salesmanName} createdByName={r.createdByName} />
               <div className="mt-1 flex flex-wrap gap-2">
                 <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-[#374151] text-[#D1D5DB]">
                   <Calendar className="w-3.5 h-3.5" /> Pickup: {formatDate(r.pickup)}
@@ -381,11 +404,7 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
                 </span>
               </div>
               {extra}
-              <span
-                className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-medium capitalize ${STATUS_CLASS[r.status] ?? 'bg-[#374151] text-[#9CA3AF]'}`}
-              >
-                {isOverdue ? 'overdue' : r.status}
-              </span>
+              <RentalWorkflowBadges status={isOverdue ? 'overdue' : r.status} due={r.due} compact className="mt-2" />
             </div>
             <div className="text-right shrink-0">
               <p className="text-[#8B5CF6] font-semibold">Rs. {r.total.toLocaleString()}</p>
@@ -411,6 +430,9 @@ export function RentalModule({ onBack, user, companyId, branch }: RentalModulePr
                 <p className="text-sm font-medium text-[#9CA3AF]">{r.bookingNo}</p>
                 {r.documentNumber ? <p className="text-xs text-[#8B5CF6]">Bill: {r.documentNumber}</p> : null}
                 <p className="text-xs text-[#D1D5DB]">{r.customer}</p>
+                <p className="text-[10px] text-[#6B7280]">
+                  Salesman: {rentalPrimaryStaffName(r.salesmanName, r.createdByName)}
+                </p>
               </div>
               <div className="py-2">
                 <button onClick={() => { setMenuRental(null); setSelectedId(r.id); }} className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-[#374151]">

@@ -23,6 +23,7 @@ import {
   NOTIFICATION_ACCOUNTING_NAV_KEY,
   PENDING_EXPENSE_OPEN_KEY,
 } from '@/app/lib/notificationNavConstants';
+import { safeSessionStorageSetItem } from '@/app/lib/safeBrowserStorage';
 
 const MAX_NOTIFICATIONS = 10;
 
@@ -170,7 +171,7 @@ export const NotificationsDropdown: React.FC = () => {
         }
         if (notif.type === 'expense' && notif.entityId) {
           setCurrentView('expenses');
-          sessionStorage.setItem(PENDING_EXPENSE_OPEN_KEY, notif.entityId);
+          safeSessionStorageSetItem(PENDING_EXPENSE_OPEN_KEY, notif.entityId);
           return;
         }
         if (notif.type === 'low_stock' && notif.entityId) {
@@ -185,7 +186,7 @@ export const NotificationsDropdown: React.FC = () => {
           return;
         }
         if (notif.type === 'courier_balance') {
-          sessionStorage.setItem(
+          safeSessionStorageSetItem(
             NOTIFICATION_ACCOUNTING_NAV_KEY,
             JSON.stringify({ tab: 'courier' })
           );

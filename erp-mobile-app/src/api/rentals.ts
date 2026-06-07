@@ -10,6 +10,7 @@ import {
 import { isRealBranchUuid, resolveBranchUuidForWrite } from '../utils/branchId';
 import { fetchProductStockByKey } from '../utils/productStockFetch';
 import { formatRentalPaymentRef } from '../utils/rentalPaymentRef';
+import { enrichRowsWithCreatorNames } from '../lib/resolveCreatorName';
 
 const BLOCKING_RENTAL_STATUSES = ['booked', 'picked_up', 'active', 'overdue'] as const;
 
@@ -208,6 +209,8 @@ export interface RentalListItem {
   bookingDate: string;
   createdBy?: string | null;
   salesmanId?: string | null;
+  salesmanName?: string | null;
+  createdByName?: string | null;
   branchId?: string | null;
 }
 
@@ -255,8 +258,57 @@ export interface RentalDetail {
   /** Pickup-held ID (CNIC etc.) — `document_type` / `document_number` on rental */
   pickupDocumentType: string | null;
   pickupDocumentNumber: string | null;
+  createdBy?: string | null;
+  salesmanId?: string | null;
+  salesmanName?: string | null;
+  createdByName?: string | null;
   items: RentalItemRow[];
   payments: RentalPaymentRow[];
+}
+
+type RentalStaffEnrichable = {
+  createdBy?: string | null;
+  salesmanId?: string | null;
+  salesmanName?: string | null;
+  createdByName?: string | null;
+};
+
+/** Batch-resolve salesman (users.id) and creator display names for rental rows. */
+async function enrichRentalStaffNames<T extends RentalStaffEnrichable>(rows: T[]): Promise<void> {
+  if (rows.length === 0) return;
+
+  const salesmanIds = [
+    ...new Set(
+      rows
+        .map((r) => r.salesmanId)
+        .filter((id): id is string => typeof id === 'string' && id.trim() !== ''),
+    ),
+  ];
+  const salesmanNameById = new Map<string, string>();
+  if (salesmanIds.length > 0) {
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, full_name, email')
+      .in('id', salesmanIds);
+    for (const u of users || []) {
+      const rec = u as { id?: string; full_name?: string | null; email?: string | null };
+      const id = rec.id != null ? String(rec.id) : '';
+      if (!id) continue;
+      const name = String(rec.full_name ?? rec.email ?? '').trim();
+      if (name) salesmanNameById.set(id, name);
+    }
+  }
+
+  const mutable: Array<Record<string, unknown>> = rows.map((r) => ({
+    created_by: r.createdBy ?? null,
+  }));
+  await enrichRowsWithCreatorNames(mutable, 'created_by');
+
+  rows.forEach((row, i) => {
+    const name = mutable[i].created_by_name;
+    row.createdByName = typeof name === 'string' ? name : null;
+    row.salesmanName = row.salesmanId ? salesmanNameById.get(row.salesmanId) ?? null : null;
+  });
 }
 
 export interface GetRentalsOptions {
@@ -695,8 +747,7 @@ export async function getRentals(
   if (opts?.dateTo) q = q.lte('booking_date', opts.dateTo);
   const { data, error } = await q;
   if (error) return { data: [], error: error.message };
-  return {
-    data: (data || []).map((r: Record<string, unknown>) => {
+  const list: RentalListItem[] = (data || []).map((r: Record<string, unknown>) => {
       const customer = r.customer as { phone?: string | null; mobile?: string | null } | null;
       const customerPhone = customer ? getContactWhatsAppPhone(customer) : '';
       const bookingNo = String(r.booking_no || `RNT-${String(r.id ?? '').slice(0, 8)}`);
@@ -724,9 +775,9 @@ export async function getRentals(
         salesmanId: r.salesman_id != null ? String(r.salesman_id) : null,
         branchId: r.branch_id != null ? String(r.branch_id) : null,
       };
-    }),
-    error: null,
-  };
+  });
+  await enrichRentalStaffNames(list);
+  return { data: list, error: null };
 }
 
 /** Calendar availability: rentals with line items; no booking_date range (overlap filtered in UI). */
@@ -845,8 +896,7 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       ? String(r.document_number).trim()
       : null;
 
-  return {
-    data: {
+  const detail: RentalDetail = {
       id: String(r.id),
       bookingNo,
       documentNumber,
@@ -869,6 +919,8 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
       securityStatus: (r.security_status as string) ?? null,
       pickupDocumentType: (r.document_type as string) ?? null,
       pickupDocumentNumber: (r.document_number as string) ?? null,
+      createdBy: r.created_by != null ? String(r.created_by) : null,
+      salesmanId: r.salesman_id != null ? String(r.salesman_id) : null,
       items: itemList.map((i) => ({
         id: String(i.id),
         productId: String(i.product_id),
@@ -895,9 +947,9 @@ export async function getRentalById(rentalId: string): Promise<{ data: RentalDet
           paymentDate,
         };
       }),
-    },
-    error: null,
   };
+  await enrichRentalStaffNames([detail]);
+  return { data: detail, error: null };
 }
 
 export async function receiveReturn(

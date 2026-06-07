@@ -1006,6 +1006,9 @@ export const AccountLedgerReportPage: React.FC<{
   }, [statementType, selectedAccountId, selectedContactType, selectedContactId, selectedWorkerId]);
 
   const selectedAccount = accountById.get(applied.selectedAccountId || selectedAccountId);
+  const isArControlSelected =
+    applied.statementType === 'gl' &&
+    String(selectedAccount?.code || '').trim() === '1100';
 
   const branchScopeResolved = STATEMENT_BRANCH_SCOPE_LABEL;
 
@@ -1609,6 +1612,14 @@ export const AccountLedgerReportPage: React.FC<{
               : 'Audit — shows reversals/adjustments when the include checkboxes allow.'
         }
       />
+
+      {isArControlSelected && (
+        <div className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
+          Customer receipts post to each customer&apos;s <strong>AR sub-ledger</strong>, not the parent 1100 control account.
+          Use <strong>Customer Statement</strong> for party activity, or select the linked receivable account (e.g. Receivable — customer name).
+          Cash receipts appear on the <strong>Cash/Bank</strong> account you paid into.
+        </div>
+      )}
 
       <p className="text-sm text-gray-400">
         {selectedAccount && `${selectedAccount.code || ''} ${selectedAccount.name}`.trim()}

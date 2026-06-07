@@ -58,6 +58,10 @@ import { useGlobalFilter } from '@/app/context/GlobalFilterContext';
 import { getContactWhatsAppPhone, openWhatsAppShare } from '@/app/lib/phoneWhatsApp';
 import { saleService } from '@/app/services/saleService';
 import { supabase } from '@/lib/supabase';
+import {
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+} from '@/app/lib/safeBrowserStorage';
 import { branchService, Branch } from '@/app/services/branchService';
 import { saleReturnService } from '@/app/services/saleReturnService';
 import { shipmentService } from '@/app/services/shipmentService';
@@ -374,12 +378,12 @@ export const SalesPage = () => {
 
   // Check for customer filter from ContactsPage
   useEffect(() => {
-    const customerId = sessionStorage.getItem('salesFilter_customerId');
-    const customerName = sessionStorage.getItem('salesFilter_customerName');
+    const customerId = safeSessionStorageGetItem('salesFilter_customerId');
+    const customerName = safeSessionStorageGetItem('salesFilter_customerName');
     if (customerId) {
       setCustomerFilter(customerId);
-      sessionStorage.removeItem('salesFilter_customerId');
-      sessionStorage.removeItem('salesFilter_customerName');
+      safeSessionStorageRemoveItem('salesFilter_customerId');
+      safeSessionStorageRemoveItem('salesFilter_customerName');
       if (customerName) {
         toast.info(`Filtering sales for ${customerName}`);
       }
@@ -430,9 +434,9 @@ export const SalesPage = () => {
   /** Open a specific sale return from Accounting → “Open source” on a sale_return journal row. */
   useEffect(() => {
     if (typeof window === 'undefined' || !companyId) return;
-    const pendingId = sessionStorage.getItem('pendingAccountingOpen_saleReturnId');
+    const pendingId = safeSessionStorageGetItem('pendingAccountingOpen_saleReturnId');
     if (!pendingId) return;
-    sessionStorage.removeItem('pendingAccountingOpen_saleReturnId');
+    safeSessionStorageRemoveItem('pendingAccountingOpen_saleReturnId');
     let cancelled = false;
     void (async () => {
       try {

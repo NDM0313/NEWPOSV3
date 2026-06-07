@@ -39,14 +39,16 @@ git pull
 npm ci
 cp .env.example .env   # set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 npm run cap:sync:ios:prod
-npx cap open ios
-```
-
-**ML Kit barcode (required):** `@capacitor-mlkit/barcode-scanning` uses CocoaPods on iOS (not SPM). After `cap:sync:ios:prod`:
-
-```bash
 cd ios/App && pod install
 ```
+
+Or one command:
+
+```bash
+npm run ios:prep:mac
+```
+
+**ML Kit barcode (required):** `@capacitor-mlkit/barcode-scanning` uses CocoaPods on iOS (not SPM). After sync, `pod install` is required (`App/Pods` is gitignored).
 
 **Important:** Open **`ios/App/App.xcworkspace`** — never `App.xcodeproj` alone (Pods will not build → “Search path Capacitor not found” errors). From `erp-mobile-app`: `npm run cap:ios`.
 

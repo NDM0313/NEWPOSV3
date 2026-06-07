@@ -388,7 +388,7 @@ export default function App() {
   if (pathname === '/register-contact' || pathname.startsWith('/register-contact')) {
     return (
       <ErrorBoundary>
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+        <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" enableSystem={false}>
           <SupabaseProvider>
             <PublicContactForm />
             <Toaster position="bottom-right" theme="dark" />
@@ -405,7 +405,7 @@ export default function App() {
           // e.g. Sentry.captureException(err, { extra: info });
         }
       }}>
-      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+      <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" enableSystem={false}>
         <FeatureFlagProvider>
           <PermissionV2ThemeSync>
             <SupabaseProvider>

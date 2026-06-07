@@ -33,6 +33,7 @@ import { purchaseService } from '@/app/services/purchaseService';
 import { studioProductionService } from '@/app/services/studioProductionService';
 import { restoreSaleFromCancelled, restorePurchaseFromCancelled } from '@/app/lib/documentLifecycleActions';
 import { INTEGRITY_LAB_SESSION_KEY } from '@/app/lib/integrityLabConstants';
+import { safeSessionStorageSetItem } from '@/app/lib/safeBrowserStorage';
 import { accountService } from '@/app/services/accountService';
 import {
   buildExtendedLabSnapshot,
@@ -399,7 +400,7 @@ export function AccountingIntegrityLabPage() {
       if (a.focusJournalEntryId) payload.searchTerm = a.focusJournalEntryId;
       if (a.focusAccountId) payload.searchTerm = a.focusAccountId;
       if (a.ledgerType) payload.ledgerType = a.ledgerType;
-      sessionStorage.setItem(INTEGRITY_LAB_SESSION_KEY, JSON.stringify(payload));
+      safeSessionStorageSetItem(INTEGRITY_LAB_SESSION_KEY, JSON.stringify(payload));
       setCurrentView('accounting');
       toast.info(`Accounting → ${a.tab}${a.focusJournalEntryId ? ' (search JE id)' : ''}`);
       return;

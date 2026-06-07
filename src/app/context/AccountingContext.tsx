@@ -23,6 +23,7 @@ import {
   shouldAcceptInvalidation,
 } from '@/app/lib/dataInvalidationBus';
 import { isBulkImportActive } from '@/app/lib/bulkImportSession';
+import { formatLocalDateYYYYMMDD } from '@/app/utils/localDate';
 import {
   buildPaymentChainIndex,
   paymentChainFlagsForJournalEntry,
@@ -239,6 +240,8 @@ interface AccountingContextType {
   createReversalEntry: (originalJournalEntryId: string, reason?: string) => Promise<boolean>;
   undoLastPaymentMutation: (paymentId: string) => Promise<boolean>;
   refreshEntries: () => Promise<void>;
+  /** Load journal entries on first accounting/reports open (skipped on app boot for speed). */
+  ensureEntriesLoaded: () => Promise<void>;
   /** Reload COA only (no full journal fetch) — use when opening payment dialogs. */
   refreshAccounts: () => Promise<void>;
   /** Upsert journal rows into local state without a full getAllEntries fetch. */
@@ -528,8 +531,8 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     const start = new Date(end);
     start.setDate(start.getDate() - 29);
     return {
-      start: start.toISOString().slice(0, 10),
-      end: end.toISOString().slice(0, 10),
+      start: formatLocalDateYYYYMMDD(start),
+      end: formatLocalDateYYYYMMDD(end),
     };
   }, []);
 
@@ -541,6 +544,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   const currentUserId = user?.id;
 
   const loadEntriesInFlightRef = useRef<Promise<void> | null>(null);
+  const entriesBootstrappedRef = useRef(false);
   const pendingEntriesReloadRef = useRef(false);
   const loadAccountsInFlightRef = useRef<Promise<void> | null>(null);
   const pendingAccountsReloadRef = useRef(false);
@@ -930,13 +934,11 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             }
           }
 
-          const startDate = startDateISO ? new Date(startDateISO) : null;
-          const endDate = endDateISO ? new Date(endDateISO) : null;
           const data = await accountingService.getAllEntries(
             companyId,
             branchId === 'all' ? undefined : branchId || undefined,
-            startDate,
-            endDate
+            startDateISO || undefined,
+            endDateISO || undefined
           );
           const jeIds = (data as { id?: string }[])
             .map((j) => String(j.id || '').trim())
@@ -991,6 +993,13 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     [companyId, branchId, startDateISO, endDateISO, applyJournalRowsToState, maybeSyncBalancesFromJournal]
   );
 
+  const ensureEntriesLoaded = useCallback(async () => {
+    if (!companyId || entriesBootstrappedRef.current) return;
+    await loadEntries({ showBlockingLoading: true });
+    entriesBootstrappedRef.current = true;
+    await runPaymentAccountSyncOnce();
+  }, [companyId, loadEntries, runPaymentAccountSyncOnce]);
+
   const scheduleCoalescedRefresh = useCallback(
     (opts?: { entries?: boolean; accounts?: boolean; blocking?: boolean }) => {
       if (isBulkImportActive()) {
@@ -1010,10 +1019,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         const o = { ...coalescedRefreshOptsRef.current };
         coalescedRefreshOptsRef.current = { entries: false, accounts: false, blocking: false };
         if (o.accounts) void loadAccounts();
-        if (o.entries) void loadEntries({ showBlockingLoading: o.blocking });
+        if (o.entries) {
+          void ensureEntriesLoaded().then(() => loadEntries({ showBlockingLoading: o.blocking }));
+        }
       }, COALESCED_REFRESH_MS);
     },
-    [loadAccounts, loadEntries]
+    [loadAccounts, loadEntries, ensureEntriesLoaded]
   );
 
   scheduleCoalescedRefreshRef.current = scheduleCoalescedRefresh;
@@ -1152,15 +1163,27 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     };
   }, []);
 
-  // Load accounts and entries on mount and when company/branch/date range changes
+  // Load accounts on mount; journal entries deferred until accounting module opens.
   useEffect(() => {
     if (!companyId) return;
     paymentSyncDoneForCompanyRef.current = null;
+    entriesBootstrappedRef.current = false;
     void loadAccountsRef.current();
-    void loadEntriesRef.current({ showBlockingLoading: true }).then(() => {
-      void runPaymentAccountSyncOnce();
-    });
-  }, [companyId, branchId, startDateISO, endDateISO, runPaymentAccountSyncOnce]);
+  }, [companyId, branchId, startDateISO, endDateISO]);
+
+  useEffect(() => {
+    const onBootstrap = () => {
+      void ensureEntriesLoaded();
+    };
+    window.addEventListener('erp-accounting-bootstrap-entries', onBootstrap);
+    return () => window.removeEventListener('erp-accounting-bootstrap-entries', onBootstrap);
+  }, [ensureEntriesLoaded]);
+
+  // Reload entries when date range changes after bootstrap
+  useEffect(() => {
+    if (!companyId || !entriesBootstrappedRef.current) return;
+    void loadEntriesRef.current({ showBlockingLoading: false });
+  }, [companyId, startDateISO, endDateISO]);
 
   // Listen for purchase/sale delete events
   useEffect(() => {
@@ -3118,11 +3141,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Refresh both accounts and entries
   const refreshEntries = useCallback(async () => {
+    await ensureEntriesLoaded();
     await Promise.all([
       loadAccounts(),
       loadEntries({ showBlockingLoading: false }),
     ]);
-  }, [loadAccounts, loadEntries]);
+  }, [loadAccounts, loadEntries, ensureEntriesLoaded]);
 
   const refreshAccounts = useCallback(async () => {
     await loadAccounts();
@@ -3209,6 +3233,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     createReversalEntry,
     undoLastPaymentMutation,
     refreshEntries,
+    ensureEntriesLoaded,
     refreshAccounts,
     appendOrMergeEntries,
     patchAccountBalances,
@@ -3242,7 +3267,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     getAccountById,
   }), [
     entries, balances, initialLoading, backgroundSync, accounts,
-    createEntry, createReversalEntry, undoLastPaymentMutation, refreshEntries, refreshAccounts, appendOrMergeEntries, patchAccountBalances,
+    createEntry, createReversalEntry, undoLastPaymentMutation, refreshEntries, ensureEntriesLoaded, refreshAccounts, appendOrMergeEntries, patchAccountBalances,
     getEntriesByReference, getEntriesBySource,
     getAccountBalance, getEntriesBySupplier, getEntriesByCustomer, getEntriesByWorker,
     getSupplierBalance, getCustomerBalance, getWorkerBalance,

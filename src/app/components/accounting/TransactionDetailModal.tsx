@@ -22,6 +22,7 @@ import { cn } from '@/app/components/ui/utils';
 import { getAttachmentOpenUrl } from '@/app/utils/paymentAttachmentUrl';
 import type { AccountingEntry, PaymentMethod } from '@/app/context/AccountingContext';
 import { toast } from 'sonner';
+import { safeSessionStorageSetItem } from '@/app/lib/safeBrowserStorage';
 import { getManualReceiptAllocationSummary, type ManualReceiptAllocationSummary } from '@/app/services/paymentAllocationService';
 import { UnifiedPaymentDialog, type PaymentDialogProps } from '@/app/components/shared/UnifiedPaymentDialog';
 import { getSaleDisplayNumber, getPurchaseDisplayNumber } from '@/app/lib/documentDisplayNumbers';
@@ -498,9 +499,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
             onClose();
             return;
           }
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pendingRentalDetailsId', resolution.sourceId);
-          }
+          safeSessionStorageSetItem('pendingRentalDetailsId', resolution.sourceId);
           setCurrentView('rentals');
           onClose();
           toast.info('Opening Rentals — use the booking drawer to edit.');

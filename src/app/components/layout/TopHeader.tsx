@@ -35,6 +35,7 @@ import { Button } from "../ui/button";
 import { Label } from "../ui/label";
 import { DatePicker } from "../ui/DatePicker";
 import { cn } from "../ui/utils";
+import { formatLocalDateYYYYMMDD, parseLocalDateInput } from '@/app/utils/localDate';
 import { toast } from 'sonner';
 import { UserProfilePage } from '../users/UserProfilePage';
 import { ChangePasswordDialog } from '../auth/ChangePasswordDialog';
@@ -466,7 +467,10 @@ export const TopHeader = () => {
             <DropdownMenuSeparator className="bg-border my-2" />
             
             <DropdownMenuItem 
-              onClick={handleLogout}
+              onSelect={(event) => {
+                event.preventDefault();
+                void handleLogout();
+              }}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-destructive hover:bg-destructive/10 cursor-pointer transition-all"
             >
               <LogOut size={16} />
@@ -501,9 +505,9 @@ export const TopHeader = () => {
               <div>
                 <Label className="text-gray-300 mb-2 block">Start Date</Label>
                 <DatePicker
-                  value={startDateObj ? startDateObj.toISOString().split('T')[0] : ''}
+                  value={startDateObj ? formatLocalDateYYYYMMDD(startDateObj) : ''}
                   onChange={(v) => {
-                    const start = v ? new Date(v) : startDateObj;
+                    const start = v ? parseLocalDateInput(v) : startDateObj;
                     if (!start) return;
                     setCustomDateRange(start, endDateObj || start);
                   }}
@@ -514,9 +518,9 @@ export const TopHeader = () => {
               <div>
                 <Label className="text-gray-300 mb-2 block">End Date</Label>
                 <DatePicker
-                  value={endDateObj ? endDateObj.toISOString().split('T')[0] : ''}
+                  value={endDateObj ? formatLocalDateYYYYMMDD(endDateObj) : ''}
                   onChange={(v) => {
-                    const end = v ? new Date(v) : endDateObj;
+                    const end = v ? parseLocalDateInput(v) : endDateObj;
                     if (!end) return;
                     setCustomDateRange(startDateObj || end, end);
                   }}

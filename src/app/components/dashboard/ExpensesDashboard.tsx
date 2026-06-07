@@ -23,6 +23,10 @@ import { ExpenseCategoryTreePanel } from './ExpenseCategoryTreePanel';
 import { ExpenseDetailSheet } from './ExpenseDetailSheet';
 import { expenseMatchesMainFilter, findPathToCategory, formatCategoryPathFromNodes } from '@/app/lib/expenseCategoryTreeUtils';
 import { PENDING_EXPENSE_OPEN_KEY } from '@/app/lib/notificationNavConstants';
+import {
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+} from '@/app/lib/safeBrowserStorage';
 import { Badge } from "../ui/badge";
 import {
   DropdownMenu,
@@ -169,14 +173,18 @@ export const ExpensesDashboard = () => {
   const [deleteAlertOpen, setDeleteAlertOpen] = useState(false);
 
   useEffect(() => {
-    const pendingId = sessionStorage.getItem(PENDING_EXPENSE_OPEN_KEY);
-    if (!pendingId || expenses.length === 0) return;
-    const match = expenses.find((e) => e.id === pendingId);
-    sessionStorage.removeItem(PENDING_EXPENSE_OPEN_KEY);
-    if (match) {
-      setActiveTab('list');
-      setSelectedExpense(match);
-      setIsDrawerOpen(true);
+    try {
+      const pendingId = safeSessionStorageGetItem(PENDING_EXPENSE_OPEN_KEY);
+      if (!pendingId || expenses.length === 0) return;
+      const match = expenses.find((e) => e.id === pendingId);
+      safeSessionStorageRemoveItem(PENDING_EXPENSE_OPEN_KEY);
+      if (match) {
+        setActiveTab('list');
+        setSelectedExpense(match);
+        setIsDrawerOpen(true);
+      }
+    } catch {
+      safeSessionStorageRemoveItem(PENDING_EXPENSE_OPEN_KEY);
     }
   }, [expenses]);
   /** Expense documents whose GL posting was reversed (correction_reversal on the expense JE). */

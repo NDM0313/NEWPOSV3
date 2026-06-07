@@ -16,6 +16,7 @@ import { UnifiedPaymentDialog } from '../shared/UnifiedPaymentDialog';
 import { clsx } from 'clsx';
 import { useRentals, type RentalUI } from '@/app/context/RentalContext';
 import { supabase } from '@/lib/supabase';
+import { safeSessionStorageGetItem, safeSessionStorageRemoveItem } from '@/app/lib/safeBrowserStorage';
 
 export const RentalDashboard = () => {
   const { refreshRentals, markAsPickedUp, receiveReturn, getRentalById } = useRentals();
@@ -47,9 +48,9 @@ export const RentalDashboard = () => {
 
   /** Deep-link from accounting unified edit (rental JE): open booking drawer after navigating to Rentals. */
   useEffect(() => {
-    const pending = typeof window !== 'undefined' ? sessionStorage.getItem('pendingRentalDetailsId') : null;
+    const pending = safeSessionStorageGetItem('pendingRentalDetailsId');
     if (!pending) return;
-    sessionStorage.removeItem('pendingRentalDetailsId');
+    safeSessionStorageRemoveItem('pendingRentalDetailsId');
     void (async () => {
       try {
         await refreshRentals();

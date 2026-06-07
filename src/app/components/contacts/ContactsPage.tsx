@@ -40,6 +40,11 @@ import { supabase } from '@/lib/supabase';
 import { CONTACT_BALANCES_REFRESH_EVENT } from '@/app/lib/contactBalancesRefresh';
 import { CONTACTS_PARTY_DRILLDOWN_KEY } from '@/app/lib/contactsPartyDrilldown';
 import {
+  safeSessionStorageGetItem,
+  safeSessionStorageRemoveItem,
+  safeSessionStorageSetItem,
+} from '@/app/lib/safeBrowserStorage';
+import {
   DATA_INVALIDATED_EVENT,
   type DataInvalidationDetail,
   shouldAcceptInvalidation,
@@ -630,7 +635,7 @@ export const ContactsPage = () => {
     if (listLoading || contacts.length === 0) return;
     let raw: string | null = null;
     try {
-      raw = sessionStorage.getItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+      raw = safeSessionStorageGetItem(CONTACTS_PARTY_DRILLDOWN_KEY);
     } catch {
       return;
     }
@@ -639,21 +644,21 @@ export const ContactsPage = () => {
     try {
       payload = JSON.parse(raw);
     } catch {
-      sessionStorage.removeItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+      safeSessionStorageRemoveItem(CONTACTS_PARTY_DRILLDOWN_KEY);
       return;
     }
     const id = payload.contactId;
     if (!id) {
-      sessionStorage.removeItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+      safeSessionStorageRemoveItem(CONTACTS_PARTY_DRILLDOWN_KEY);
       return;
     }
     const row = contacts.find((c) => String(c.uuid) === String(id));
     if (!row) {
-      sessionStorage.removeItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+      safeSessionStorageRemoveItem(CONTACTS_PARTY_DRILLDOWN_KEY);
       toast.error('Contact not found for drill-down');
       return;
     }
-    sessionStorage.removeItem(CONTACTS_PARTY_DRILLDOWN_KEY);
+    safeSessionStorageRemoveItem(CONTACTS_PARTY_DRILLDOWN_KEY);
     if (payload.tabHint === 'customers') setActiveTab('customers');
     else if (payload.tabHint === 'suppliers') setActiveTab('suppliers');
     else if (payload.tabHint === 'workers') setActiveTab('workers');
@@ -2258,8 +2263,8 @@ export const ContactsPage = () => {
                                     setCurrentView('sales');
                                     // CRITICAL FIX: Use contact.uuid (database UUID) not contact.id (number)
                                     // sale.customer_id matches contacts.id (UUID) in database
-                                    sessionStorage.setItem('salesFilter_customerId', contact.uuid || contact.id?.toString() || '');
-                                    sessionStorage.setItem('salesFilter_customerName', contact.name || '');
+                                    safeSessionStorageSetItem('salesFilter_customerId', contact.uuid || contact.id?.toString() || '');
+                                    safeSessionStorageSetItem('salesFilter_customerName', contact.name || '');
                                     toast.info(`Filtering sales for ${contact.name}`);
                                   }}
                                   className="hover:bg-gray-800 cursor-pointer"
@@ -2340,8 +2345,8 @@ export const ContactsPage = () => {
                                   onClick={() => {
                                     setCurrentView('purchases');
                                     // Store supplier filter in sessionStorage for PurchasesPage to read
-                                    sessionStorage.setItem('purchasesFilter_supplierId', contact.uuid || '');
-                                    sessionStorage.setItem('purchasesFilter_supplierName', contact.name || '');
+                                    safeSessionStorageSetItem('purchasesFilter_supplierId', contact.uuid || '');
+                                    safeSessionStorageSetItem('purchasesFilter_supplierName', contact.name || '');
                                     toast.info(`Filtering purchases for ${contact.name}`);
                                   }}
                                   className="hover:bg-gray-800 cursor-pointer"
