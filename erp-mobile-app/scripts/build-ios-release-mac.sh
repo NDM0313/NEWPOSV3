@@ -17,7 +17,20 @@ EXPORT_PATH="$ROOT/releases/ios-export-build${BUILD_NUM}"
 EXPORT_PLIST="$EXPORT_PATH/ExportOptions.plist"
 
 if [[ ! -f "$EXPORT_PLIST" ]]; then
-  echo "[build-ios-release-mac] Missing $EXPORT_PLIST"
+  SEED=""
+  for d in "$ROOT/releases"/ios-export-build*; do
+    [[ -d "$d" && -f "$d/ExportOptions.plist" ]] || continue
+    SEED="$d"
+  done
+  if [[ -n "$SEED" && "$SEED" != "$EXPORT_PATH" ]]; then
+    echo "[build-ios-release-mac] Seeding $EXPORT_PATH from $(basename "$SEED")"
+    mkdir -p "$EXPORT_PATH"
+    cp "$SEED/ExportOptions.plist" "$EXPORT_PLIST"
+  fi
+fi
+
+if [[ ! -f "$EXPORT_PLIST" ]]; then
+  echo "[build-ios-release-mac] Missing $EXPORT_PLIST (copy from a prior ios-export-buildN folder)"
   exit 1
 fi
 

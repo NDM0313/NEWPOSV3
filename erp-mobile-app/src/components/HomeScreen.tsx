@@ -124,7 +124,7 @@ export function HomeScreen({ user, branch, companyId, onNavigate, onLogout }: Ho
 
   return (
     <div className="min-h-screen erp-content-above-nav">
-      <div className="bg-gradient-to-br from-[#1F2937] to-[#111827] p-6 pb-8">
+      <div className="bg-gradient-to-br from-[#1F2937] to-[#111827] p-6 pb-8 flow-screen-header">
         <div className="flex items-start justify-between mb-6">
           <div>
             <h1 className="text-xl font-bold text-white mb-1">Din Collection</h1>

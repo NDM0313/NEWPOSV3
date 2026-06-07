@@ -11,7 +11,7 @@ cd erp-mobile-app
 npm run android:apk:release:mac
 ```
 
-Output: `releases/erp-mobile-1.0.5-build38.apk` (versionCode must match `android/app/build.gradle`).
+Output: `releases/erp-mobile-1.0.5-build39.apk` (versionCode must match `android/app/build.gradle`).
 
 ### Windows (PowerShell)
 
@@ -29,9 +29,9 @@ cd erp-mobile-app
 npm run ios:ipa:release:mac
 ```
 
-Output: `releases/erp-mobile-1.0.5-build13.ipa` (build number must match `CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`).
+Output: `releases/erp-mobile-1.0.5-build14.ipa` (build number must match `CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`).
 
-See `releases/IOS_DEVELOPMENT_IPA_BUILD13.md` for manual xcodebuild steps.
+See `releases/IOS_DEVELOPMENT_IPA_BUILD14.md` for manual xcodebuild steps.
 
 **Needs:** Xcode, Apple team signing (Development), CocoaPods (`pod install` in `ios/App`). Open **`App.xcworkspace`**, not `.xcodeproj`.
 
@@ -41,10 +41,10 @@ See `releases/IOS_DEVELOPMENT_IPA_BUILD13.md` for manual xcodebuild steps.
 
 ```bash
 adb devices
-adb install -r erp-mobile-app/releases/erp-mobile-1.0.5-build38.apk
+adb install -r erp-mobile-app/releases/erp-mobile-1.0.5-build39.apk
 ```
 
-**iOS:** Xcode → Window → Devices and Simulators → drag `erp-mobile-1.0.5-build13.ipa` onto registered device.
+**iOS:** Xcode → Window → Devices and Simulators → drag `erp-mobile-1.0.5-build14.ipa` onto registered device.
 
 Replace build numbers with the APK/IPA you just built.
 

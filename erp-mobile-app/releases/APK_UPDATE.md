@@ -24,7 +24,29 @@ API base for production APK: `https://erp.dincouture.pk` from `.env.production` 
 
 ---
 
-## Latest build — 1.0.5 (build 12 iOS / versionCode 37 Android) — 2026-06-07
+## Latest build — 1.0.5 (build 14 iOS / versionCode 39 Android) — 2026-06-08
+
+| Field | Value |
+|--------|--------|
+| **Date** | 2026-06-08 |
+| **versionName** | 1.0.5 |
+| **iOS build** | 14 (`CURRENT_PROJECT_VERSION`) |
+| **Android versionCode** | 39 |
+| **APK path (local)** | `releases/erp-mobile-1.0.5-build39.apk` |
+| **IPA path (local)** | `releases/erp-mobile-1.0.5-build14.ipa` |
+| **Install guide (iOS)** | [`releases/IOS_DEVELOPMENT_IPA_BUILD14.md`](IOS_DEVELOPMENT_IPA_BUILD14.md) |
+| **Built on** | Mac — `npm run android:apk:release:mac` / `npm run ios:ipa:release:mac` |
+
+### Changelog (user-facing) — build 14 / 39
+
+- **Home screen:** Safe-area top header (`flow-screen-header`); logout/settings clear of status bar.
+- **iOS camera:** Release builds require `VITE_TARGET=capacitor` (ML Kit, not web stub); verify script fails early.
+- **Mobile storage:** Safe session/local storage for PIN lock + Supabase auth.
+- **Web ERP:** Storage hardening deployed; TopHeader one-click logout.
+
+---
+
+## Previous build — 1.0.5 (build 12 iOS / versionCode 37 Android) — 2026-06-07
 
 | Field | Value |
 |--------|--------|
