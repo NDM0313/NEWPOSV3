@@ -9,7 +9,7 @@ cd "c:\Users\ndm31\dev\Corusr\NEW POSV3\erp-mobile-app"
 npm run android:apk:release:win
 ```
 
-Output: `releases/erp-mobile-1.0.5-build33.apk` (versionCode must match `android/app/build.gradle`).
+Output: `releases/erp-mobile-1.0.5-build36.apk` (versionCode must match `android/app/build.gradle`).
 
 **Needs:** JDK 17 or 21, Android SDK, `android/keystore.properties` for signed release.
 
@@ -17,10 +17,10 @@ Output: `releases/erp-mobile-1.0.5-build33.apk` (versionCode must match `android
 
 ```powershell
 adb devices
-adb install -r "c:\Users\ndm31\dev\Corusr\NEW POSV3\erp-mobile-app\releases\erp-mobile-1.0.5-build33.apk"
+adb install -r "c:\Users\ndm31\dev\Corusr\NEW POSV3\erp-mobile-app\releases\erp-mobile-1.0.5-build36.apk"
 ```
 
-Replace `build33` with the APK you just built.
+Replace `build36` with the APK you just built.
 
 ## 3) Graphify update (repo root, AST only — no API cost)
 

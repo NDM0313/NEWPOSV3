@@ -1,4 +1,6 @@
+import { Capacitor } from '@capacitor/core';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { formatNetworkFetchError, isNetworkFetchError } from '../utils/networkErrorMessages';
 import { listCacheKeys } from '../lib/listCache';
 import { readThroughCache } from '../lib/offlineData';
 import { localNowDateString, getCurrentLocalTimestamp } from '../utils/localDate';
@@ -103,9 +105,12 @@ export async function getExpenses(
     [],
   );
   if (cached.error && (!cached.data || cached.data.length === 0)) {
-    return { data: [], error: cached.error };
+    return { data: [], error: formatNetworkFetchError(cached.error) };
   }
-  return { data: cached.data ?? [], error: cached.error };
+  return {
+    data: cached.data ?? [],
+    error: cached.error ? formatNetworkFetchError(cached.error) : null,
+  };
 }
 
 async function enrichExpenseRowsWithCreatorNames(rows: Record<string, unknown>[]): Promise<void> {
@@ -177,41 +182,61 @@ const EXPENSE_LIST_SELECT = `
   payment_account:accounts(code, name, type)
 `;
 
+const EXPENSE_LIST_SELECT_PLAIN =
+  'id, expense_no, expense_date, category, description, amount, payment_method, payment_account_id, receipt_url, status, created_by, paid_to_user_id, branch_id, created_at, expense_category_id, vendor_name';
+
+const EXPENSE_LIST_SELECT_MINIMAL =
+  'id, expense_no, expense_date, category, description, amount, payment_method, status, created_by, paid_to_user_id, branch_id, created_at';
+
+function applyExpenseListBranchFilter<
+  T extends { eq: (col: string, val: string) => T; in: (col: string, vals: string[]) => T },
+>(
+  query: T,
+  branchId?: string | null,
+  accessibleBranchIds?: string[],
+): T {
+  if (branchId && branchId !== 'all' && branchId !== 'default') {
+    return query.eq('branch_id', branchId);
+  }
+  if (accessibleBranchIds?.length) {
+    return query.in('branch_id', accessibleBranchIds);
+  }
+  return query;
+}
+
+function buildExpenseListQuery(
+  select: string,
+  companyId: string,
+  branchId?: string | null,
+  accessibleBranchIds?: string[],
+) {
+  const query = supabase
+    .from('expenses')
+    .select(select)
+    .eq('company_id', companyId)
+    .order('expense_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(50);
+  return applyExpenseListBranchFilter(query, branchId, accessibleBranchIds);
+}
+
 async function fetchExpensesOnline(
   companyId: string,
   branchId?: string | null,
   accessibleBranchIds?: string[],
 ) {
-  let q = supabase
-    .from('expenses')
-    .select(EXPENSE_LIST_SELECT)
-    .eq('company_id', companyId)
-    .order('expense_date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(50);
-  if (branchId && branchId !== 'all' && branchId !== 'default') {
-    q = q.eq('branch_id', branchId);
-  } else if (accessibleBranchIds?.length) {
-    q = q.in('branch_id', accessibleBranchIds);
-  }
-  let { data, error } = await q;
+  const preferPlain = Capacitor.isNativePlatform();
+  let select = preferPlain ? EXPENSE_LIST_SELECT_PLAIN : EXPENSE_LIST_SELECT;
+  let { data, error } = await buildExpenseListQuery(select, companyId, branchId, accessibleBranchIds);
 
-  if (error?.message?.includes('accounts') || error?.message?.includes('payment_account')) {
-    let q2 = supabase
-      .from('expenses')
-      .select(
-        'id, expense_no, expense_date, category, description, amount, payment_method, payment_account_id, receipt_url, status, created_by, paid_to_user_id, branch_id, created_at, expense_category_id, vendor_name',
-      )
-      .eq('company_id', companyId)
-      .order('expense_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (branchId && branchId !== 'all' && branchId !== 'default') {
-      q2 = q2.eq('branch_id', branchId);
-    } else if (accessibleBranchIds?.length) {
-      q2 = q2.in('branch_id', accessibleBranchIds);
-    }
-    const retry = await q2;
+  if (
+    error &&
+    (error.message?.includes('accounts') ||
+      error.message?.includes('payment_account') ||
+      (!preferPlain && isNetworkFetchError(error.message)))
+  ) {
+    select = EXPENSE_LIST_SELECT_PLAIN;
+    const retry = await buildExpenseListQuery(select, companyId, branchId, accessibleBranchIds);
     data = retry.data as typeof data;
     error = retry.error;
   }
@@ -222,28 +247,15 @@ async function fetchExpensesOnline(
     error?.message?.includes('payment_account_id') ||
     error?.message?.includes('expense_no')
   ) {
-    let q3 = supabase
-      .from('expenses')
-      .select(
-        'id, expense_no, expense_date, category, description, amount, payment_method, status, created_by, paid_to_user_id, branch_id, created_at',
-      )
-      .eq('company_id', companyId)
-      .order('expense_date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(50);
-    if (branchId && branchId !== 'all' && branchId !== 'default') {
-      q3 = q3.eq('branch_id', branchId);
-    } else if (accessibleBranchIds?.length) {
-      q3 = q3.in('branch_id', accessibleBranchIds);
-    }
-    const retry = await q3;
+    select = EXPENSE_LIST_SELECT_MINIMAL;
+    const retry = await buildExpenseListQuery(select, companyId, branchId, accessibleBranchIds);
     data = retry.data as typeof data;
     error = retry.error;
   }
 
-  if (error) return { data: [], error: error.message };
+  if (error) return { data: [], error: formatNetworkFetchError(error.message) };
 
-  const rows = (data || []) as Record<string, unknown>[];
+  const rows = (data || []) as unknown as Record<string, unknown>[];
   await enrichExpenseRowsWithCreatorNames(rows);
   try {
     await enrichExpenseRowsWithPostedPaymentAccount(rows, companyId);
