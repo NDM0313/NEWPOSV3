@@ -31,7 +31,7 @@ API base for production APK: `https://erp.dincouture.pk` from `.env.production` 
 | **Date** | 2026-06-07 |
 | **versionName** | 1.0.5 |
 | **Android versionCode** | 36 |
-| **Git commit** | *(after push)* |
+| **Git commit** | `78d0596` |
 | **APK path (local)** | `releases/erp-mobile-1.0.5-build36.apk` |
 | **Built with** | `npm run android:apk:release:win` (VPS anon sync + `cap:sync:android:prod`) |
 
