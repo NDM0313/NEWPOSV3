@@ -96,3 +96,11 @@ adb install -r erp-mobile-app/releases/erp-mobile-1.0.5-build39.apk
 - `verify-mobile-build-env` — `VITE_TARGET=capacitor` OK
 - `verify-dist-for-capacitor` — no mlkit-stub in dist
 - APK 39 + IPA 14 — **BUILD SUCCESSFUL**
+- iOS SPM: `CapacitorStatusBar` added to `CapApp-SPM/Package.swift` (cap sync)
+
+---
+
+## Not in git (local only)
+
+- `releases/*.apk`, `releases/*.ipa`, `ios-export-build*/` — install via adb / Xcode; share via Drive if needed
+- `data/` import folder, admin CSV scripts — local tooling
