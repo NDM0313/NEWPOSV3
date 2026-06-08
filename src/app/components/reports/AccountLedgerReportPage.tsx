@@ -414,6 +414,7 @@ export const AccountLedgerReportPage: React.FC<{
   const [primaryCashVoucherByPaymentId, setPrimaryCashVoucherByPaymentId] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [statementLoadedOnce, setStatementLoadedOnce] = useState(false);
   const [journalRefreshTick, setJournalRefreshTick] = useState(0);
 
   useEffect(() => {
@@ -688,6 +689,7 @@ export const AccountLedgerReportPage: React.FC<{
           });
         }
       } finally {
+        setStatementLoadedOnce(true);
         setLoading(false);
       }
     })();
@@ -1423,8 +1425,18 @@ export const AccountLedgerReportPage: React.FC<{
 
   if (loadingAccounts) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="flex flex-col items-center justify-center gap-3 py-12">
         <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
+        <p className="text-sm text-gray-400">Loading accounts…</p>
+      </div>
+    );
+  }
+
+  if (loading && !statementLoadedOnce) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16">
+        <Loader2 className="h-10 w-10 animate-spin text-blue-400" />
+        <p className="text-sm text-gray-400">Loading account statement…</p>
       </div>
     );
   }
@@ -1630,7 +1642,14 @@ export const AccountLedgerReportPage: React.FC<{
           : ''}
       </p>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-2 text-xs text-blue-400">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Refreshing statement…
+        </div>
+      ) : null}
+
+      <div className={cn('grid grid-cols-2 md:grid-cols-5 gap-3', loading && 'opacity-60 pointer-events-none')}>
         <div className="rounded-lg border border-gray-800 bg-gray-900/50 p-3">
           <p className="text-xs text-gray-400">Opening Balance</p>
           <p
@@ -1662,8 +1681,9 @@ export const AccountLedgerReportPage: React.FC<{
 
       <div className="overflow-auto rounded-xl border border-gray-800 bg-gray-900/50">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex flex-col items-center justify-center gap-2 py-12">
             <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
+            <p className="text-xs text-gray-400">Refreshing statement…</p>
           </div>
         ) : (
           <table className="w-full text-base leading-snug">

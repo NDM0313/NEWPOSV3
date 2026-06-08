@@ -37,6 +37,7 @@ import {
   ExternalLink,
   Undo2,
   Search,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { DatePicker } from '@/app/components/ui/DatePicker';
@@ -455,6 +456,13 @@ const EXPENSE_ACCOUNTS = new Set([
 ]);
 const AR_ACCOUNTS = new Set(['Accounts Receivable']);
 const AP_ACCOUNTS = new Set(['Accounts Payable', 'Worker Payable']);
+
+const ReportTabSuspenseFallback = ({ label }: { label: string }) => (
+  <div className="flex flex-col items-center justify-center gap-2 py-12 text-gray-400">
+    <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+    <span className="text-sm">{label}</span>
+  </div>
+);
 
 export const AccountingDashboard = () => {
   const { canAccessAccounting, canPostAccounting } = useCheckPermission();
@@ -1334,7 +1342,12 @@ export const AccountingDashboard = () => {
 
             {/* Journal Entries Table with pagination */}
             <div className="bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-              {filteredTransactions.length === 0 ? (
+              {accounting.loading && filteredTransactions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-3 py-16">
+                  <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
+                  <p className="text-sm text-gray-400">Loading journal entries…</p>
+                </div>
+              ) : filteredTransactions.length === 0 ? (
                 <div className="text-center py-12">
                   <FileText size={48} className="mx-auto text-gray-600 mb-3" />
                   {searchTerm.trim() || typeFilter !== 'all' ? (
@@ -1358,6 +1371,12 @@ export const AccountingDashboard = () => {
                 </div>
               ) : (
                 <>
+                {accounting.backgroundSync ? (
+                  <div className="flex items-center justify-center gap-2 py-2 text-xs text-blue-400 border-b border-gray-800">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Refreshing journal entries…
+                  </div>
+                ) : null}
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-900 border-b border-gray-800">
@@ -2015,7 +2034,7 @@ export const AccountingDashboard = () => {
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-white">Day Book (Journal)</h3>
             <p className="text-sm text-gray-400 mb-4">Click voucher number to open transaction detail</p>
-            <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+            <Suspense fallback={<ReportTabSuspenseFallback label="Loading day book…" />}>
               <DayBookReport
                 onVoucherClick={(voucher) => {
                   setTransactionDetailAutoEdit(false);
@@ -2042,7 +2061,7 @@ export const AccountingDashboard = () => {
                 Party lines show customer, supplier, or expense context next to each reference.
               </p>
             </div>
-            <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+            <Suspense fallback={<ReportTabSuspenseFallback label="Loading roznamcha…" />}>
               <RoznamchaReport
                 globalStartDate={globalStartDate}
                 globalEndDate={globalEndDate}
@@ -2508,7 +2527,7 @@ export const AccountingDashboard = () => {
                 Global filter updates the default dates above. Statements include <strong className="text-gray-400 font-medium">all branches</strong> — use the Branch column on each row to see HQ, BR-0002, etc. The header branch selector does not limit this report.
               </p>
             </div>
-            <Suspense fallback={<div className="flex items-center justify-center py-12 text-gray-400">Loading…</div>}>
+            <Suspense fallback={<ReportTabSuspenseFallback label="Loading account statement…" />}>
               <AccountLedgerReportPage
                 startDate={accountStatementStart}
                 endDate={accountStatementEnd}

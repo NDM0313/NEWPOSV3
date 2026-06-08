@@ -1569,7 +1569,9 @@ export const saleService = {
         })
         .eq('id', paymentId);
     } else if (upd.error) {
-      console.warn('[saleService.recordOnAccountPayment] payments patch after RPC:', upd.error.message);
+      throw new Error(
+        `Payment recorded but contact link failed: ${upd.error.message}. Reconcile contact_id on payment ${paymentId}.`
+      );
     }
 
     auditLogService.logPaymentCreated(companyId, paymentId, {

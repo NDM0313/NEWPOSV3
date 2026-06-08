@@ -5,6 +5,9 @@
  */
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/app/utils/formatCurrency';
+import { rentalPaymentLedgerDescription } from '@/app/lib/partyLedgerReference';
+import { appendRentalPaymentMergeItems } from '@/app/lib/rentalPenaltyLedgerLines';
+import { filterLivePaymentsExcludingVoidedJournals } from '@/app/lib/paymentVoidVisibility';
 import type { Customer, Transaction, Invoice, Payment, LedgerData, DetailTransaction } from './customerLedgerTypes';
 
 /** Live = effective customer position; audit = include voided/superseded payment rows (journal history stays full). */
@@ -471,6 +474,20 @@ export async function fetchCustomerReceivedPaymentsForRange(
   const { data: directRows } = await directQ;
   for (const p of directRows || []) pushPayment(p);
 
+  let onAccFallbackQ = supabase
+    .from('payments')
+    .select(PAYMENT_SELECT_LEDGER)
+    .eq('company_id', companyId)
+    .eq('payment_type', 'received')
+    .eq('reference_type', 'on_account')
+    .eq('reference_id', cId)
+    .is('contact_id', null);
+  if (isLiveScope(scope)) onAccFallbackQ = onAccFallbackQ.is('voided_at', null);
+  if (fromDate) onAccFallbackQ = onAccFallbackQ.gte('payment_date', fromDate);
+  if (toDate) onAccFallbackQ = onAccFallbackQ.lte('payment_date', toDate);
+  const { data: onAccFallbackRows } = await onAccFallbackQ;
+  for (const p of onAccFallbackRows || []) pushPayment(p);
+
   let salesQ = supabase.from('sales').select('id').eq('company_id', companyId).eq('customer_id', cId);
   if (pBranch) salesQ = salesQ.eq('branch_id', pBranch);
   const { data: saleRows } = await salesQ;
@@ -511,6 +528,12 @@ export async function fetchCustomerReceivedPaymentsForRange(
     if (toDate) pq = pq.lte('payment_date', toDate);
     const { data: payRows } = await pq;
     for (const p of payRows || []) pushPayment({ ...p, reference_type: 'rental' });
+  }
+
+  if (isLiveScope(scope) && out.length > 0) {
+    return (await filterLivePaymentsExcludingVoidedJournals(companyId, out)).sort((a, b) =>
+      String(a.payment_date).localeCompare(String(b.payment_date)),
+    );
   }
 
   return out.sort((a, b) => String(a.payment_date).localeCompare(String(b.payment_date)));
@@ -996,6 +1019,10 @@ export const customerLedgerAPI = {
     const cId = String(customerId ?? '').trim();
     if (!cId) return [];
 
+    let customerDisplayName = '';
+    const { data: contactRow } = await supabase.from('contacts').select('name').eq('id', cId).maybeSingle();
+    customerDisplayName = String((contactRow as { name?: string } | null)?.name || '').trim();
+
     const sales: any[] = await fetchCustomerLedgerSalesForRange(companyId, cId, fromDate, toDate, ledgerBranch);
     if (process.env.NODE_ENV !== 'production') {
       console.log('[LEDGER] fetchCustomerLedgerSalesForRange', {
@@ -1035,7 +1062,18 @@ export const customerLedgerAPI = {
       .eq('reference_type', 'on_account');
     if (isLiveScope(scope)) onAccFetch = onAccFetch.is('voided_at', null);
     const { data: onAccountPayments } = await onAccFetch;
-    const onAccountList = (onAccountPayments || []).filter((p: any) => {
+    let onAccRefFetch = supabase
+      .from('payments')
+      .select(
+        'id, reference_number, payment_date, amount, payment_method, notes, reference_id, payment_account_id, voided_at, reference_type'
+      )
+      .eq('company_id', companyId)
+      .eq('reference_type', 'on_account')
+      .eq('reference_id', cId)
+      .is('contact_id', null);
+    if (isLiveScope(scope)) onAccRefFetch = onAccRefFetch.is('voided_at', null);
+    const { data: onAccountByRef } = await onAccRefFetch;
+    const onAccountList = [...(onAccountPayments || []), ...(onAccountByRef || [])].filter((p: any) => {
       const d = (p.payment_date || '').toString().slice(0, 10);
       if (fromDate && d < fromDate) return false;
       if (toDate && d > toDate) return false;
@@ -1105,6 +1143,10 @@ export const customerLedgerAPI = {
     const { data: returnPayments, error: returnPaymentsError } = await returnPaymentsQuery.order('payment_date', { ascending: false });
     if (returnPaymentsError) {
       console.error('[CUSTOMER LEDGER API] Error fetching return payments:', returnPaymentsError);
+    }
+
+    if (isLiveScope(scope) && payments.length > 0) {
+      payments = await filterLivePaymentsExcludingVoidedJournals(companyId, payments);
     }
 
     // Fetch notes for sales (RPC doesn't return notes)
@@ -1216,12 +1258,24 @@ export const customerLedgerAPI = {
     if (rentalIds.length > 0) {
       let rpQuery = supabase
         .from('rental_payments')
-        .select('id, rental_id, amount, method, reference, payment_date, created_at, journal_entry_id')
+        .select('id, rental_id, amount, method, reference, payment_date, created_at, journal_entry_id, payment_type')
         .in('rental_id', rentalIds);
       if (fromDate) rpQuery = rpQuery.gte('payment_date', fromDate);
       if (toDate) rpQuery = rpQuery.lte('payment_date', toDate);
       const { data: rpData } = await rpQuery.order('payment_date', { ascending: false });
       customerRentalPayments = rpData ?? [];
+    }
+    if (customerRentals.length > 0) {
+      const rentalIdsForDamage = customerRentals.map((r: any) => r.id).filter(Boolean);
+      const { data: damageRows } = await supabase
+        .from('rentals')
+        .select('id, damage_charges')
+        .in('id', rentalIdsForDamage);
+      const damageById = new Map((damageRows || []).map((r: any) => [String(r.id), Number(r.damage_charges) || 0]));
+      customerRentals = customerRentals.map((r: any) => ({
+        ...r,
+        damage_charges: r.damage_charges ?? damageById.get(String(r.id)) ?? 0,
+      }));
     }
     const rentalsMap = new Map(customerRentals.map((r: any) => [r.id, r]));
 
@@ -1249,28 +1303,38 @@ export const customerLedgerAPI = {
       });
     });
 
-    // Add rental payments as credit transactions (skip when GL already linked — AR journal shows the receipt)
+    // Rental payments: penalty = debit charge + credit receipt; other types skip when GL linked
     customerRentalPayments.forEach((p: any) => {
-      if (p.journal_entry_id) return;
-      const rawDate = p.payment_date || p.created_at;
-      const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
-      if (!d) return;
-      if (fromDate && d < fromDate) return;
-      if (toDate && d > toDate) return;
-      const rental = rentalsMap.get(p.rental_id);
-      const ref = rental?.booking_no || `RN-${(p.rental_id || '').slice(0, 8)}`;
-      transactions.push({
-        id: p.id,
-        date: d,
-        referenceNo: `${ref}-PAY`,
-        documentType: 'Rental Payment' as const,
-        description: `Rental Payment via ${p.method || 'other'}`,
-        paymentAccount: p.method || '',
-        notes: p.reference || '',
-        debit: 0,
-        credit: Number(p.amount) || 0,
-        runningBalance: 0,
-        linkedPayments: [`${ref}-PAY`],
+      const mergeScratch: import('@/app/lib/rentalPenaltyLedgerLines').RentalPenaltyMergeItem[] = [];
+      appendRentalPaymentMergeItems(mergeScratch, {
+        payment: p,
+        rental: rentalsMap.get(p.rental_id),
+        customerDisplayName,
+        ledgerRows: transactions.map((t) => ({
+          rental_id: p.rental_id,
+          debit: t.debit,
+          credit: t.credit,
+          description: t.description,
+        })),
+        startDate: fromDate,
+        endDate: toDate,
+      });
+      mergeScratch.forEach((item, idx) => {
+        const rental = rentalsMap.get(p.rental_id);
+        const ref = rental?.booking_no || `RN-${(p.rental_id || '').slice(0, 8)}`;
+        transactions.push({
+          id: `${p.id}-${idx}`,
+          date: item.date,
+          referenceNo: item.reference_number || `${ref}-PAY`,
+          documentType: (item.document_type === 'Rental Penalty' ? 'Rental' : 'Rental Payment') as Transaction['documentType'],
+          description: item.description,
+          paymentAccount: p.method || '',
+          notes: p.reference || '',
+          debit: item.debit,
+          credit: item.credit,
+          runningBalance: 0,
+          linkedPayments: item.credit > 0 ? [`${ref}-PAY`] : [],
+        });
       });
     });
 
@@ -1283,7 +1347,9 @@ export const customerLedgerAPI = {
       let description = `Payment via ${payment.payment_method || 'other'}`;
       if (isOnAccount) {
         documentType = 'On-account Payment';
-        description = `On-account payment via ${payment.payment_method || 'other'}`;
+        description = payment.notes
+          ? String(payment.notes)
+          : `On-account payment via ${payment.payment_method || 'other'}`;
       } else if (isManualReceipt) {
         documentType = 'Payment';
         description = payment.notes ? `Receipt – ${payment.notes}` : `Manual receipt via ${payment.payment_method || 'other'}`;

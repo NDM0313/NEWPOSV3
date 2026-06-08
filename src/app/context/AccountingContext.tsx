@@ -354,6 +354,8 @@ export interface RentalReturnParams {
   paymentMethod?: PaymentMethod;
   paymentAccountId?: string;
   paymentDate?: string;
+  rentalPaymentId?: string;
+  branchId?: string | null;
 }
 
 export interface StudioSaleParams {
@@ -2696,27 +2698,58 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
   };
 
   const recordRentalReturn = async (params: RentalReturnParams): Promise<boolean> => {
-    const { bookingId, customerName, customerId, securityDepositAmount, damageCharge, paymentMethod, paymentAccountId, paymentDate } = params;
+    const {
+      bookingId,
+      customerName,
+      customerId,
+      securityDepositAmount,
+      damageCharge,
+      paymentMethod,
+      paymentAccountId,
+      paymentDate,
+      rentalPaymentId,
+      branchId: paramBranchId,
+    } = params;
     const postingDate = paymentDate?.slice(0, 10) || new Date().toISOString().split('T')[0];
 
     if (damageCharge && damageCharge > 0) {
-      // Damage charge: Dr payment account (Cash/Bank per CoA), Cr Rental Income
-      await createEntry({
-        source: 'Rental',
-        referenceNo: bookingId,
-        debitAccount: (paymentAccountId ? 'Cash' : paymentMethod || 'Cash') as AccountType,
-        creditAccount: 'Rental Income',
-        amount: damageCharge,
-        description: `Rental damage / penalty - ${customerName}`,
-        module: 'Rental',
-        metadata: {
-          customerId,
+      const cid = String(customerId || '').trim();
+      if (cid && companyId) {
+        const { postRentalPartyPenaltySettlement } = await import('@/app/services/rentalPartyArAccounting');
+        const { chargeJournalEntryId, receiptJournalEntryId } = await postRentalPartyPenaltySettlement({
+          companyId,
+          branchId: paramBranchId ?? (branchId === 'all' ? null : branchId),
+          rentalId: bookingId,
+          rentalPaymentId: rentalPaymentId ?? null,
+          customerId: cid,
           customerName,
-          bookingId,
-          postingDate,
-          ...(paymentAccountId ? { debitAccountId: paymentAccountId } : {}),
-        },
-      });
+          amount: damageCharge,
+          paymentAccountId: paymentAccountId ?? null,
+          entryDate: postingDate,
+          createdBy: user?.id ?? null,
+        });
+        if (!chargeJournalEntryId && !receiptJournalEntryId && paymentAccountId) {
+          console.warn('[AccountingContext] Penalty party AR posting incomplete for rental', bookingId);
+        }
+      } else {
+        // Walk-in: Dr Cash/Bank, Cr Rental Income (no party AR)
+        await createEntry({
+          source: 'Rental',
+          referenceNo: bookingId,
+          debitAccount: (paymentAccountId ? 'Cash' : paymentMethod || 'Cash') as AccountType,
+          creditAccount: 'Rental Income',
+          amount: damageCharge,
+          description: `Rental damage / penalty - ${customerName}`,
+          module: 'Rental',
+          metadata: {
+            customerId,
+            customerName,
+            bookingId,
+            postingDate,
+            ...(paymentAccountId ? { debitAccountId: paymentAccountId } : {}),
+          },
+        });
+      }
     }
 
     // Recognize any unreleased advance as income (handles fully advance-paid rentals on return)

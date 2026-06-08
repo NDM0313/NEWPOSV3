@@ -22,6 +22,7 @@ import {
   isEventDateInRange,
   resolveRoznamchaRowDateTime,
 } from '@/app/utils/transactionEventDateTime';
+import { filterLivePaymentsExcludingVoidedJournals } from '@/app/lib/paymentVoidVisibility';
 
 export { dedupeRoznamchaRows, roznamchaEntityKeys, roznamchaLooseMovementKey, roznamchaMovementKey };
 
@@ -788,6 +789,10 @@ async function fetchPaymentRows(
   }
 
   let paymentList = data || [];
+
+  if (!includeVoidedReversed && paymentList.length > 0) {
+    paymentList = await filterLivePaymentsExcludingVoidedJournals(companyId, paymentList);
+  }
 
   const rentalIdsForBranch = [
     ...new Set(

@@ -15,6 +15,12 @@ export const rentalPartyRevenueFingerprint = (companyId: string, rentalId: strin
 export const rentalPartyPaymentFingerprint = (companyId: string, rentalPaymentId: string) =>
   `rental_party_payment:${companyId}:${rentalPaymentId}`;
 
+export const rentalPartyPenaltyChargeFingerprint = (companyId: string, rentalId: string) =>
+  `rental_party_penalty_charge:${companyId}:${rentalId}`;
+
+export const rentalPartyPenaltyPaymentFingerprint = (companyId: string, rentalPaymentId: string) =>
+  `rental_party_penalty_payment:${companyId}:${rentalPaymentId}`;
+
 /** Amounts for AR / income posting (discount reserved for future column). */
 export interface RentalPartyArAmounts {
   rentalCharges: number;
@@ -326,6 +332,206 @@ export async function postRentalPartyCashReceipt(params: {
   };
   const saved = await accountingService.createEntry(entry, lines);
   return { journalEntryId: (saved as { id?: string } | null)?.id ?? null };
+}
+
+/**
+ * Dr party AR / Cr Rental Income for return penalty/damage (once per rental booking).
+ * Idempotent via action_fingerprint.
+ */
+export async function postRentalPartyPenaltyChargeIfNeeded(params: {
+  companyId: string;
+  branchId: string | null | undefined;
+  rentalId: string;
+  customerId: string | null | undefined;
+  customerName: string;
+  amount: number;
+  entryDate: string;
+  createdBy?: string | null;
+}): Promise<{ journalEntryId: string | null; skipped: boolean }> {
+  const { companyId, branchId, rentalId, customerId, customerName, amount, entryDate, createdBy } = params;
+  if (!customerId || amount <= 0) return { journalEntryId: null, skipped: true };
+
+  const fp = rentalPartyPenaltyChargeFingerprint(companyId, rentalId);
+  const { data: dup } = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('action_fingerprint', fp)
+    .maybeSingle();
+  if (dup?.id) return { journalEntryId: String((dup as { id: string }).id), skipped: true };
+
+  const arId = await resolveReceivablePostingAccountId(companyId, customerId);
+  const incId = await resolveRentalIncomeAccountId(companyId);
+  if (!arId || !incId) return { journalEntryId: null, skipped: false };
+
+  const entryNo = await nextJournalEntryNo(companyId, branchId ?? null);
+  const desc = `Rental penalty / damage — ${customerName}`;
+  const lines: JournalEntryLine[] = [
+    { id: '', journal_entry_id: '', account_id: arId, debit: amount, credit: 0, description: desc },
+    { id: '', journal_entry_id: '', account_id: incId, debit: 0, credit: amount, description: desc },
+  ];
+  const entry: JournalEntry = {
+    id: '',
+    company_id: companyId,
+    branch_id: branchId && branchId !== 'all' ? branchId : undefined,
+    entry_no: entryNo,
+    entry_date: entryDate.slice(0, 10),
+    description: desc,
+    reference_type: 'rental',
+    reference_id: rentalId,
+    created_by: createdBy ?? null,
+    action_fingerprint: fp,
+  };
+  const saved = await accountingService.createEntry(entry, lines);
+  return { journalEntryId: (saved as { id?: string } | null)?.id ?? null, skipped: false };
+}
+
+/**
+ * Penalty cash receipt: Dr payment account / Cr party AR.
+ * Idempotent per rental_payments row.
+ */
+export async function postRentalPartyPenaltyReceipt(params: {
+  companyId: string;
+  branchId: string | null | undefined;
+  rentalId: string;
+  rentalPaymentId: string;
+  customerId: string | null | undefined;
+  customerName: string;
+  amount: number;
+  paymentAccountId: string;
+  entryDate: string;
+  createdBy?: string | null;
+  description?: string;
+}): Promise<{ journalEntryId: string | null }> {
+  const {
+    companyId,
+    branchId,
+    rentalId,
+    rentalPaymentId,
+    customerId,
+    customerName,
+    amount,
+    paymentAccountId,
+    entryDate,
+    createdBy,
+    description,
+  } = params;
+  if (amount <= 0 || !paymentAccountId || !customerId) return { journalEntryId: null };
+
+  const fp = rentalPartyPenaltyPaymentFingerprint(companyId, rentalPaymentId);
+  const { data: dup } = await supabase
+    .from('journal_entries')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('action_fingerprint', fp)
+    .maybeSingle();
+  if (dup?.id) return { journalEntryId: String((dup as { id: string }).id) };
+
+  const payAcc = (
+    await supabase.from('accounts').select('id').eq('id', paymentAccountId).eq('company_id', companyId).maybeSingle()
+  ).data as { id: string } | null;
+  if (!payAcc?.id) return { journalEntryId: null };
+
+  const arId = await resolveReceivablePostingAccountId(companyId, customerId);
+  if (!arId) return { journalEntryId: null };
+
+  const entryNo = await nextJournalEntryNo(companyId, branchId ?? null);
+  const baseDesc = description || `Rental penalty receipt — ${customerName}`;
+  const lines: JournalEntryLine[] = [
+    { id: '', journal_entry_id: '', account_id: payAcc.id, debit: amount, credit: 0, description: baseDesc },
+    { id: '', journal_entry_id: '', account_id: arId, debit: 0, credit: amount, description: baseDesc },
+  ];
+  const entry: JournalEntry = {
+    id: '',
+    company_id: companyId,
+    branch_id: branchId && branchId !== 'all' ? branchId : undefined,
+    entry_no: entryNo,
+    entry_date: entryDate.slice(0, 10),
+    description: baseDesc,
+    reference_type: 'rental',
+    reference_id: rentalId,
+    created_by: createdBy ?? null,
+    action_fingerprint: fp,
+  };
+  const saved = await accountingService.createEntry(entry, lines);
+  return { journalEntryId: (saved as { id?: string } | null)?.id ?? null };
+}
+
+/** Charge + receipt for named customer penalty collected at return. Walk-in: Dr Cash / Cr Income only. */
+export async function postRentalPartyPenaltySettlement(params: {
+  companyId: string;
+  branchId: string | null | undefined;
+  rentalId: string;
+  rentalPaymentId?: string | null;
+  customerId: string | null | undefined;
+  customerName: string;
+  amount: number;
+  paymentAccountId?: string | null;
+  entryDate: string;
+  createdBy?: string | null;
+  description?: string;
+  /** When false, caller posts walk-in Dr Cash / Cr Income via createEntry */
+  usePartyAr?: boolean;
+}): Promise<{ chargeJournalEntryId: string | null; receiptJournalEntryId: string | null }> {
+  const {
+    companyId,
+    branchId,
+    rentalId,
+    rentalPaymentId,
+    customerId,
+    customerName,
+    amount,
+    paymentAccountId,
+    entryDate,
+    createdBy,
+    description,
+    usePartyAr = true,
+  } = params;
+  if (amount <= 0) return { chargeJournalEntryId: null, receiptJournalEntryId: null };
+
+  if (!customerId || !usePartyAr) {
+    return { chargeJournalEntryId: null, receiptJournalEntryId: null };
+  }
+
+  const charge = await postRentalPartyPenaltyChargeIfNeeded({
+    companyId,
+    branchId,
+    rentalId,
+    customerId,
+    customerName,
+    amount,
+    entryDate,
+    createdBy,
+  });
+
+  let receiptJournalEntryId: string | null = null;
+  if (rentalPaymentId && paymentAccountId) {
+    const receipt = await postRentalPartyPenaltyReceipt({
+      companyId,
+      branchId,
+      rentalId,
+      rentalPaymentId,
+      customerId,
+      customerName,
+      amount,
+      paymentAccountId,
+      entryDate,
+      createdBy,
+      description,
+    });
+    receiptJournalEntryId = receipt.journalEntryId;
+    if (receiptJournalEntryId) {
+      await supabase
+        .from('rental_payments')
+        .update({ journal_entry_id: receiptJournalEntryId })
+        .eq('id', rentalPaymentId);
+    }
+  }
+
+  return {
+    chargeJournalEntryId: charge.journalEntryId,
+    receiptJournalEntryId,
+  };
 }
 
 /** Stable key from expense rows for idempotency (same rental + same lines → same fingerprint). */
