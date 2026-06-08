@@ -603,8 +603,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   const { modules, inventorySettings } = useSettings();
   const { formatCurrency } = useFormatCurrency();
 
-  // Load sales from database (all up to cap for client-side filter/sort/pagination)
-  const SALES_LOAD_CAP = 5000;
+  // Load sales from database (server-paginated)
   const loadSales = useCallback(async () => {
     if (!companyId) return;
     try {
@@ -612,7 +611,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
       const result = await saleService.getAllSales(
         companyId,
         branchId === 'all' ? undefined : branchId || undefined,
-        { offset: 0, limit: SALES_LOAD_CAP }
+        { offset: page * pageSize, limit: pageSize }
       );
       const isPaginated = result && typeof result === 'object' && 'data' in result && 'total' in result;
       const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
@@ -627,7 +626,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, branchId]);
+  }, [companyId, branchId, page, pageSize]);
 
   const setPage = useCallback((p: number) => {
     setPageState(Math.max(0, p));
@@ -642,7 +641,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (companyId && activated) loadSales();
     else if (!companyId) setLoading(false);
-  }, [companyId, activated, loadSales]);
+  }, [companyId, activated, loadSales, page]);
 
   const patchSaleInList = useCallback(async (saleId: string) => {
     if (!companyId) return;
@@ -704,6 +703,7 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       const reason = String(detail?.reason ?? '');
+      if (reason.includes('fallback-poll')) return;
       if (
         (reason.includes('sales-context-payment') || reason.includes('sale-payment')) &&
         detail?.entityId
@@ -720,7 +720,11 @@ export const SalesProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [branchId, companyId, loadSales]);
 
-  // When page changes we do not refetch; SalesPage slices the loaded sales for display
+  useEffect(() => {
+    setPageState(0);
+  }, [companyId, branchId]);
+
+  // When page changes we refetch from server; SalesPage filters/sorts the current page only
 
   // Get sale by ID (stable ref — avoids consumer useEffect loops when only unrelated context fields change)
   const getSaleById = useCallback((id: string): Sale | undefined => {

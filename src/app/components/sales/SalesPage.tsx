@@ -1094,16 +1094,12 @@ export const SalesPage = () => {
     invoiceCount: finalSalesForSummary.length,
   }), [finalSalesForSummary, getEffectiveDue]);
 
-  // Client-side pagination: context loads all sales (capped); we filter, sort, then slice for current page
+  // Server-paginated: context holds one page; client filters/sorts within that page
   const pageSize = contextPageSize ?? 50;
-  const totalFilteredCount = sortedSales.length;
-  const totalPages = Math.max(1, Math.ceil(totalFilteredCount / pageSize));
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const currentPage = Math.min(page + 1, totalPages);
 
-  const paginatedSales = useMemo(
-    () => sortedSales.slice(page * pageSize, (page + 1) * pageSize),
-    [sortedSales, page, pageSize]
-  );
+  const paginatedSales = useMemo(() => sortedSales, [sortedSales]);
 
   // Paid amount from payment records (fixes wrong sales.paid_amount in table - same as ViewSaleDetailsDrawer)
   const [paidBySaleId, setPaidBySaleId] = useState<Map<string, number>>(new Map());
@@ -2269,7 +2265,7 @@ export const SalesPage = () => {
                     <p className="text-gray-400 text-sm">No sales found</p>
                     {sales.length > 0 ? (
                       <p className="text-gray-500 text-xs mt-2 max-w-lg mx-auto">
-                        {totalFilteredCount === 0
+                        {sortedSales.length === 0
                           ? 'This company has sales, but none match the current filters. Widen the header date range, set branch to All where applicable, or clear search and column filters.'
                           : 'Try another page or adjust filters.'}
                       </p>
@@ -2521,7 +2517,7 @@ export const SalesPage = () => {
         currentPage={currentPage}
         totalPages={totalPages}
         pageSize={pageSize}
-        totalItems={totalFilteredCount}
+        totalItems={totalCount}
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
       />

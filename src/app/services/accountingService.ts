@@ -616,17 +616,26 @@ function mergeLedgerEntryDescriptionForStatement(
 export const accountingService = {
   // Get all journal entries with lines
   // CRITICAL: Filter out entries for deleted purchases/sales
-  async getAllEntries(companyId: string, branchId?: string, startDate?: string | Date, endDate?: string | Date) {
+  async getAllEntries(
+    companyId: string,
+    branchId?: string,
+    startDate?: string | Date,
+    endDate?: string | Date,
+    opts?: { limit?: number; offset?: number }
+  ): Promise<any[] | { data: any[]; total: number }> {
     try {
       // Normalize dates to ISO YYYY-MM-DD so PostgREST accepts them (Date objects get serialized incorrectly otherwise).
       const startStr = startDate == null ? undefined : typeof startDate === 'string' ? startDate.slice(0, 10) : startDate.toISOString().slice(0, 10);
       const endStr = endDate == null ? undefined : typeof endDate === 'string' ? endDate.slice(0, 10) : endDate.toISOString().slice(0, 10);
+      const limit = opts?.limit ?? 500;
+      const offset = opts?.offset ?? 0;
 
       // SOURCE LOCK (Phase 1): journal_entries + journal_entry_lines only for GL.
       // Embed account name per line for display; avoid payment embed so query works when payment_id column is missing.
       let query = supabase
         .from('journal_entries')
-        .select(`
+        .select(
+          `
           *,
           lines:journal_entry_lines(
             id,
@@ -637,7 +646,9 @@ export const accountingService = {
             description,
             account:accounts(name, code, type)
           )
-        `)
+        `,
+          opts ? { count: 'exact' } : undefined
+        )
         .eq('company_id', companyId)
         .order('entry_date', { ascending: false })
         .order('created_at', { ascending: false });
@@ -655,21 +666,25 @@ export const accountingService = {
         query = query.lte('entry_date', endStr);
       }
 
-      const { data, error } = await query;
+      if (opts) {
+        query = query.range(offset, offset + limit - 1);
+      }
+
+      const { data, error, count } = await query;
       
       // Handle missing table gracefully
       if (error && (error.code === 'PGRST205' || error.message?.includes('does not exist'))) {
         console.warn('[ACCOUNTING SERVICE] journal_entries table does not exist, returning empty array');
-        return [];
+        return opts ? { data: [], total: 0 } : [];
       }
       
       if (error) {
         console.error('[ACCOUNTING SERVICE] Error fetching journal entries:', error);
-        return [];
+        return opts ? { data: [], total: 0 } : [];
       }
 
       if (!data || data.length === 0) {
-        return [];
+        return opts ? { data: [], total: count ?? 0 } : [];
       }
 
       // PF-14.4: Exclude voided entries from business ledgers/reports (audit can show all via raw query).
@@ -1084,10 +1099,10 @@ export const accountingService = {
         return out;
       });
 
-      return enrichedEntries;
+      return opts ? { data: enrichedEntries, total: count ?? enrichedEntries.length } : enrichedEntries;
     } catch (error: any) {
       console.warn('[ACCOUNTING SERVICE] Error:', error.message);
-      return [];
+      return opts ? { data: [], total: 0 } : [];
     }
   },
 

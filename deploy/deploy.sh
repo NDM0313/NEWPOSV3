@@ -230,15 +230,20 @@ run_project_node() {
     node "$@"
   else
     echo "[deploy] node not in PATH; using Docker node:20-alpine for: $*"
-    docker run --rm -v "$(pwd):/w" -w /w node:20-alpine node "$@"
+    docker run --rm --init -v "$(pwd):/w" -w /w node:20-alpine node "$@"
   fi
 }
 run_project_node scripts/verify-mobile-build-env.mjs .env.production || exit 1
 run_project_node scripts/sync-mobile-env.js || true
 COMPOSE_CMD="docker compose -f deploy/docker-compose.prod.yml --env-file .env.production"
-# Build only ERP (avoids studio-injector pull of python:3.11-alpine which can TLS timeout on VPS)
-echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST) - fresh mobile /m/ build..."
-$COMPOSE_CMD build --no-cache erp
+BUILD_FLAGS=""
+if [ "${DEPLOY_NO_CACHE:-0}" = "1" ]; then
+  BUILD_FLAGS="--no-cache"
+  echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST) --no-cache full rebuild..."
+else
+  echo "[deploy] Building ERP (CACHEBUST=$CACHEBUST) with Docker layer cache..."
+fi
+$COMPOSE_CMD build $BUILD_FLAGS erp
 # Fixed container_name= — kill/remove containers, tear down project, drop default network if orphaned, then up erp.
 docker kill erp-frontend erp-backup-page erp-studio-injector 2>/dev/null || true
 docker rm -f erp-frontend erp-backup-page erp-studio-injector 2>/dev/null || true

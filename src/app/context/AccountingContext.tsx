@@ -249,6 +249,11 @@ interface AccountingContextType {
     input: AccountingEntry | AccountingEntry[] | JournalEntryWithLines | JournalEntryWithLines[]
   ) => void;
   patchAccountBalances: (accountIdToBalance: Record<string, number>) => void;
+  /** Total journal rows in DB for current filters (paginated fetch). */
+  entriesTotal: number;
+  entriesPage: number;
+  entriesPageSize: number;
+  setEntriesPage: (page: number) => void;
   getEntriesByReference: (referenceNo: string) => AccountingEntry[];
   getEntriesBySource: (source: TransactionSource) => AccountingEntry[];
   getAccountBalance: (accountType: AccountType) => number;
@@ -497,6 +502,7 @@ const AccountingContext = createContext<AccountingContextType | undefined>(undef
 
 const BALANCE_SYNC_THROTTLE_MS = 60_000;
 const COALESCED_REFRESH_MS = 1200;
+const ENTRIES_FETCH_LIMIT = 500;
 
 /** Reload COA on invalidation only when the chart changed — not payments/sales/realtime noise. */
 function invalidationShouldReloadAccounts(reason?: string): boolean {
@@ -512,13 +518,26 @@ function invalidationShouldReloadAccounts(reason?: string): boolean {
   return /account-created|chart-of-accounts|coa-|new-account|accounts-changed/.test(r);
 }
 
+/** Full journal reload only when accounting module is open — skip fallback-poll noise. */
+function invalidationShouldReloadEntries(reason: string | undefined, entriesBootstrapped: boolean): boolean {
+  if (!entriesBootstrapped) return false;
+  if (!reason) return true;
+  const r = reason.toLowerCase();
+  if (/fallback-poll/.test(r)) return false;
+  return true;
+}
+
 type LoadEntriesOptions = {
   showBlockingLoading?: boolean;
   skipBalanceSync?: boolean;
+  page?: number;
 };
 
 export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [entries, setEntries] = useState<AccountingEntry[]>([]);
+  const [entriesTotal, setEntriesTotal] = useState(0);
+  const [entriesPage, setEntriesPageState] = useState(0);
+  const entriesPageSize = ENTRIES_FETCH_LIMIT;
   const [balances, setBalances] = useState<Map<AccountType, number>>(new Map());
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
@@ -934,12 +953,19 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
             }
           }
 
-          const data = await accountingService.getAllEntries(
+          const page = opts?.page ?? entriesPage;
+          const result = await accountingService.getAllEntries(
             companyId,
             branchId === 'all' ? undefined : branchId || undefined,
             startDateISO || undefined,
-            endDateISO || undefined
+            endDateISO || undefined,
+            { limit: ENTRIES_FETCH_LIMIT, offset: page * ENTRIES_FETCH_LIMIT }
           );
+          const isPaginated =
+            result && typeof result === 'object' && 'data' in result && 'total' in result;
+          const data = isPaginated ? (result as { data: any[]; total: number }).data : (result as any[]);
+          const total = isPaginated ? (result as { data: any[]; total: number }).total : data.length;
+          setEntriesTotal(total);
           const jeIds = (data as { id?: string }[])
             .map((j) => String(j.id || '').trim())
             .filter(Boolean);
@@ -975,6 +1001,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         } catch (error) {
           console.error('[ACCOUNTING CONTEXT] Error loading journal entries:', error);
           setEntries([]);
+          setEntriesTotal(0);
         } finally {
           if (blocking) setInitialLoading(false);
           setBackgroundSync(false);
@@ -990,8 +1017,12 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
       loadEntriesInFlightRef.current = p;
       return p;
     },
-    [companyId, branchId, startDateISO, endDateISO, applyJournalRowsToState, maybeSyncBalancesFromJournal]
+    [companyId, branchId, startDateISO, endDateISO, entriesPage, applyJournalRowsToState, maybeSyncBalancesFromJournal]
   );
+
+  const setEntriesPage = useCallback((p: number) => {
+    setEntriesPageState(Math.max(0, p));
+  }, []);
 
   const ensureEntriesLoaded = useCallback(async () => {
     if (!companyId || entriesBootstrappedRef.current) return;
@@ -1168,8 +1199,9 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     if (!companyId) return;
     paymentSyncDoneForCompanyRef.current = null;
     entriesBootstrappedRef.current = false;
+    setEntriesPageState(0);
     void loadAccountsRef.current();
-  }, [companyId, branchId, startDateISO, endDateISO]);
+  }, [companyId, branchId]);
 
   useEffect(() => {
     const onBootstrap = () => {
@@ -1179,11 +1211,16 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     return () => window.removeEventListener('erp-accounting-bootstrap-entries', onBootstrap);
   }, [ensureEntriesLoaded]);
 
-  // Reload entries when date range changes after bootstrap
+  // Reset journal page when global date filter changes
+  useEffect(() => {
+    setEntriesPageState(0);
+  }, [startDateISO, endDateISO]);
+
+  // Reload entries when date range or page changes after bootstrap
   useEffect(() => {
     if (!companyId || !entriesBootstrappedRef.current) return;
-    void loadEntriesRef.current({ showBlockingLoading: false });
-  }, [companyId, startDateISO, endDateISO]);
+    void loadEntriesRef.current({ showBlockingLoading: false, page: entriesPage });
+  }, [companyId, startDateISO, endDateISO, entriesPage]);
 
   // Listen for purchase/sale delete events
   useEffect(() => {
@@ -1206,6 +1243,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     if (!companyId) return;
 
     const bumpEntriesOnly = () => {
+      if (!entriesBootstrappedRef.current) return;
       void (async () => {
         const handled = await tryIncrementalJournalFromInvalidationRef.current(undefined);
         if (!handled) {
@@ -1226,11 +1264,20 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
         return;
       }
       void (async () => {
-        const handled = await tryIncrementalJournalFromInvalidationRef.current(detail);
+        const reloadEntries = invalidationShouldReloadEntries(
+          detail?.reason,
+          entriesBootstrappedRef.current
+        );
+        if (!reloadEntries && !invalidationShouldReloadAccounts(detail?.reason)) {
+          return;
+        }
+        const handled = reloadEntries
+          ? await tryIncrementalJournalFromInvalidationRef.current(detail)
+          : false;
         if (handled) return;
         const reloadAccounts = invalidationShouldReloadAccounts(detail?.reason);
         scheduleCoalescedRefreshRef.current({
-          entries: true,
+          entries: reloadEntries,
           accounts: reloadAccounts,
         });
       })();
@@ -3237,6 +3284,10 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     refreshAccounts,
     appendOrMergeEntries,
     patchAccountBalances,
+    entriesTotal,
+    entriesPage,
+    entriesPageSize,
+    setEntriesPage,
     getEntriesByReference,
     getEntriesBySource,
     getAccountBalance,
@@ -3266,7 +3317,7 @@ export const AccountingProvider: React.FC<{ children: ReactNode }> = ({ children
     getAccountsByType,
     getAccountById,
   }), [
-    entries, balances, initialLoading, backgroundSync, accounts,
+    entries, entriesTotal, entriesPage, entriesPageSize, setEntriesPage, balances, initialLoading, backgroundSync, accounts,
     createEntry, createReversalEntry, undoLastPaymentMutation, refreshEntries, ensureEntriesLoaded, refreshAccounts, appendOrMergeEntries, patchAccountBalances,
     getEntriesByReference, getEntriesBySource,
     getAccountBalance, getEntriesBySupplier, getEntriesByCustomer, getEntriesByWorker,

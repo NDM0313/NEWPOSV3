@@ -1530,11 +1530,18 @@ export const rentalService = {
     return (data || []) as RentalPayment[];
   },
 
-  async getAllRentals(companyId: string, branchId?: string | null) {
+  async getAllRentals(
+    companyId: string,
+    branchId?: string | null,
+    opts?: { limit?: number; offset?: number }
+  ): Promise<any[] | { data: any[]; total: number }> {
+    const limit = opts?.limit ?? 500;
+    const offset = opts?.offset ?? 0;
     // No created_by_user:users join – production DB may have no FK rentals→users (PGRST200)
     let query = supabase
       .from('rentals')
-      .select(`
+      .select(
+        `
         *,
         customer:contacts(name, phone),
         branch:branches(id, name, code),
@@ -1542,7 +1549,9 @@ export const rentalService = {
           *,
           product:products(name, sku)
         )
-      `)
+      `,
+        opts ? { count: 'exact' } : undefined
+      )
       .eq('company_id', companyId)
       .order('created_at', { ascending: false });
 
@@ -1550,9 +1559,16 @@ export const rentalService = {
       query = query.eq('branch_id', branchId);
     }
 
-    const { data, error } = await query;
+    if (opts) {
+      query = query.range(offset, offset + limit - 1);
+    } else {
+      query = query.limit(limit);
+    }
+
+    const { data, error, count } = await query;
     if (error) throw error;
-    return data || [];
+    const rows = data || [];
+    return opts ? { data: rows, total: count ?? rows.length } : rows;
   },
 
   async getRental(id: string) {
