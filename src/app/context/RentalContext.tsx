@@ -177,10 +177,6 @@ export const useRentals = () => {
     }
     throw new Error('useRentals must be used within RentalProvider');
   }
-  const activate = (ctx as RentalContextType & { __activate?: () => void }).__activate;
-  useEffect(() => {
-    activate?.();
-  }, [activate]);
   return ctx;
 };
 
@@ -190,11 +186,19 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
   const { companyId, branchId, user, requiresBranchSelection } = useSupabase();
   const accounting = useAccountingOptional();
 
+  const loadSeqRef = React.useRef(0);
+  const hasLoadedOnceRef = React.useRef(false);
+
   const loadRentals = useCallback(async () => {
     if (!companyId) return;
+    const seq = ++loadSeqRef.current;
+    const showBlockingLoader = !hasLoadedOnceRef.current;
     try {
-      setLoading(true);
-      await rentalService.markOverdueRentals(companyId);
+      if (showBlockingLoader) setLoading(true);
+      // Non-blocking: overdue marking must not delay the list fetch
+      void rentalService.markOverdueRentals(companyId).catch((e) => {
+        console.warn('[RENTAL CONTEXT] markOverdueRentals:', e);
+      });
       const data = await rentalService.getAllRentals(
         companyId,
         branchId === 'all' ? undefined : branchId || undefined
@@ -206,6 +210,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
           s.full_name || s.name || '',
         ])
       );
+      if (seq !== loadSeqRef.current) return;
       setRentals(
         (data || []).map((row) => {
           const rental = convertFromSupabaseRental(row);
@@ -215,42 +220,46 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
           return rental;
         })
       );
+      hasLoadedOnceRef.current = true;
     } catch (e) {
+      if (seq !== loadSeqRef.current) return;
       console.error('[RENTAL CONTEXT]', e);
       toast.error('Failed to load rentals');
-      setRentals([]);
+      if (!hasLoadedOnceRef.current) setRentals([]);
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current && showBlockingLoader) setLoading(false);
     }
   }, [companyId, branchId]);
 
-  const activatedRef = React.useRef(false);
-  const [activated, setActivated] = React.useState(false);
-  const activate = useCallback(() => {
-    if (!activatedRef.current) { activatedRef.current = true; setActivated(true); }
-  }, []);
-
   useEffect(() => {
-    if (companyId && activated) loadRentals();
-    else if (!companyId) setLoading(false);
-  }, [companyId, activated, loadRentals]);
+    if (companyId) void loadRentals();
+    else setLoading(false);
+  }, [companyId, loadRentals]);
 
-  // Real-time: reload rentals when rentals/rental_payments change (skip if disabled or when WS fails to avoid 403 spam)
+  // Real-time: debounced background refresh (never block list with full-page loader)
   useEffect(() => {
     if (!companyId) return;
     if (import.meta.env.VITE_DISABLE_REALTIME === 'true') return;
     if (isPlaceholderSupabaseAnonKey) return;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const queueReload = () => {
+      if (debounceTimer) return;
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        void loadRentals();
+      }, 400);
+    };
     const channel = supabase
       .channel('rentals-realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rentals' },
-        () => loadRentals()
+        queueReload
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rental_payments' },
-        () => loadRentals()
+        queueReload
       )
       .subscribe((status) => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -260,6 +269,7 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
         }
       });
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       try {
         supabase.removeChannel(channel);
       } catch (_) {}
@@ -600,11 +610,10 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     deletePayment,
     deleteRental,
     markAsPickedUp,
-    __activate: activate,
   }), [
     rentals, loading, getRentalById, loadRentals, createRental, updateRental,
     finalizeRental, receiveReturn, cancelRental, addPayment, deletePayment,
-    deleteRental, markAsPickedUp, activate,
+    deleteRental, markAsPickedUp,
   ]);
 
   return <RentalContext.Provider value={value}>{children}</RentalContext.Provider>;
