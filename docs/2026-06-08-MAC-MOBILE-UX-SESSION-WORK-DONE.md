@@ -2,7 +2,8 @@
 
 **Date:** 2026-06-08  
 **Branch:** `main`  
-**Commits:** `92cc7854` (storage + shell), `2717212e` (build 39/14 + home header)  
+**GitHub:** https://github.com/NDM0313/NEWPOSV3  
+**Commits:** `92cc7854` → `2717212e` → `1fb3fff8` (storage, build 39/14, deploy finish docs)  
 **Scope:** Mobile release tooling, shell UX, payment narration fix, ledger UX, performance, browser storage hardening, VPS deploy.
 
 ---
