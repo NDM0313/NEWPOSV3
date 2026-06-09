@@ -794,21 +794,33 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
     }
   };
 
-  // Void/Cancel: mark JE as void (excluded from GL, reports, balances)
+  // Void/Cancel: payment-linked JEs also void payments.voided_at (Roznamcha / statements / ledger).
   const handleVoidJournal = async () => {
     if (!transaction?.id || !companyId) return;
-    if (!window.confirm('Kya aap is entry ko VOID/CANCEL karna chahte hain? Ye GL, reports aur balances se hat jayegi. Is action ko undo nahi kiya ja sakta.')) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    const confirmMsg = paymentId
+      ? 'Kya aap is receipt/payment ko VOID/CANCEL karna chahte hain? Ye Roznamcha, Statement, Ledger aur GL se hat jayegi. Undo nahi ho sakta.'
+      : 'Kya aap is entry ko VOID/CANCEL karna chahte hain? Ye GL, reports aur balances se hat jayegi. Is action ko undo nahi kiya ja sakta.';
+    if (!window.confirm(confirmMsg)) return;
     try {
-      const { supabase } = await import('@/lib/supabase');
-      const { error } = await supabase
-        .from('journal_entries')
-        .update({ is_void: true, void_reason: 'manual_void', voided_at: new Date().toISOString() })
-        .eq('id', transaction.id);
-      if (error) throw error;
-      toast.success('Entry void/cancel ho gayi hai — GL se remove ho gayi');
+      if (paymentId) {
+        const { voidPaymentAfterJournalReversal } = await import('@/app/services/paymentLifecycleService');
+        await voidPaymentAfterJournalReversal({ companyId, paymentId: String(paymentId) });
+      } else {
+        const { supabase } = await import('@/lib/supabase');
+        const { error } = await supabase
+          .from('journal_entries')
+          .update({ is_void: true, void_reason: 'manual_void', voided_at: new Date().toISOString() })
+          .eq('id', transaction.id);
+        if (error) throw error;
+      }
+      toast.success('Entry void/cancel ho gayi hai — reports se remove ho gayi');
       await loadTransaction();
       dispatchAccountingEditCommitted();
       accounting.refreshEntries?.();
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
     } catch (e: any) {
       toast.error('Void failed: ' + (e?.message || 'Unknown error'));
     }

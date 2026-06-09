@@ -1408,9 +1408,12 @@ export async function recordOnAccountCustomerPayment(params: {
     contact_name: contactName.trim(),
     received_by: createdBy ?? null,
   };
-  let upd = await supabase.from('payments').update(patch).eq('id', paymentId);
+  const upd = await supabase.from('payments').update(patch).eq('id', paymentId);
   if (upd.error) {
-    console.warn('[recordOnAccountCustomerPayment] payments patch:', upd.error.message);
+    return {
+      data: null,
+      error: `Payment recorded but contact link failed: ${upd.error.message}. Reconcile contact_id on payment ${paymentId}.`,
+    };
   }
   if (params.paymentAt) {
     const { patchPaymentCreatedAt } = await import('./paymentTimestamp');

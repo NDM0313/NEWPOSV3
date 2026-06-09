@@ -8,8 +8,11 @@ import {
 import { formatRentalPaymentRef, isRcvReference } from '@/app/lib/rentalPaymentRef';
 import {
   customerReceiptLedgerDescription,
+  rentalPaymentLedgerDescription,
   resolvePartyLedgerReference,
 } from '@/app/lib/partyLedgerReference';
+import { filterLivePaymentsExcludingVoidedJournals } from '@/app/lib/paymentVoidVisibility';
+import { appendRentalPaymentMergeItems } from '@/app/lib/rentalPenaltyLedgerLines';
 
 export interface JournalEntry {
   id?: string;
@@ -2573,6 +2576,14 @@ export const accountingService = {
   ): Promise<AccountLedgerEntry[]> {
     const glJournalOnly = ledgerMode === 'gl_journal_only';
     try {
+      let customerDisplayName = '';
+      const { data: customerContactRow } = await supabase
+        .from('contacts')
+        .select('name')
+        .eq('id', customerId)
+        .maybeSingle();
+      customerDisplayName = String((customerContactRow as { name?: string } | null)?.name || '').trim();
+
       // Accounts Receivable: control 1100 **and all descendants** (per-contact Receivable — … subledgers).
       // Old query only matched code 1100 or name ilike %Accounts Receivable%; party AR children are named
       // "Receivable — {name}" and were excluded — sales/returns on subledgers never appeared in customer ledger.
@@ -2785,13 +2796,25 @@ export const accountingService = {
         if (rentalIds.length > 0) {
           const { data: rpData } = await supabase
             .from('rental_payments')
-            .select('id, rental_id, amount, method, payment_date, created_at, journal_entry_id, reference, voided_at')
+            .select('id, rental_id, amount, method, payment_date, created_at, journal_entry_id, reference, voided_at, payment_type')
             .in('rental_id', rentalIds)
             .is('voided_at', null);
           customerRentalPayments = rpData ?? [];
         }
       } catch (e) {
         console.warn('[ACCOUNTING SERVICE] getCustomerLedger - Rental fetch failed (non-critical):', e);
+      }
+      if (customerRentals.length > 0) {
+        const rentalIdsForDamage = customerRentals.map((r: any) => r.id).filter(Boolean);
+        const { data: damageRows } = await supabase
+          .from('rentals')
+          .select('id, damage_charges')
+          .in('id', rentalIdsForDamage);
+        const damageById = new Map((damageRows || []).map((r: any) => [String(r.id), Number(r.damage_charges) || 0]));
+        customerRentals = customerRentals.map((r: any) => ({
+          ...r,
+          damage_charges: r.damage_charges ?? damageById.get(String(r.id)) ?? 0,
+        }));
       }
       const rentalsMap = new Map(customerRentals.map((r: any) => [r.id, r]));
       const rentalPaymentRefByJeId = new Map<string, string>();
@@ -3200,28 +3223,15 @@ export const accountingService = {
             document_type: 'Rental Invoice',
           });
         });
-        // Rental payments (credit – customer paid)
+        // Rental payments (credit – customer paid; penalty = debit charge + credit receipt)
         customerRentalPayments.forEach((p: any) => {
-          if (p.journal_entry_id) return;
-          const rawDate = p.payment_date || p.created_at;
-          const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
-          if (!d) return;
-          if (startDate && d < startDate) return;
-          if (endDate && d > endDate) return;
-          const rentalMeta = rentalsMap.get(p.rental_id);
-          items.push({
-            date: d,
-            reference_number: resolvePartyLedgerReference({
-              lineKind: 'receipt_credit',
-              rentalBookingNo: rentalMeta?.booking_no,
-              rentalPaymentRef: p.reference,
-            }),
-            description: 'Rental Payment',
-            debit: 0,
-            credit: Number(p.amount) || 0,
-            rental_id: p.rental_id,
-            source_module: 'Rental',
-            document_type: 'Rental Payment',
+          appendRentalPaymentMergeItems(items, {
+            payment: p,
+            rental: rentalsMap.get(p.rental_id),
+            customerDisplayName,
+            ledgerRows: items,
+            startDate,
+            endDate,
           });
         });
         items.sort((a, b) => a.date.localeCompare(b.date) || 0);
@@ -3263,7 +3273,10 @@ export const accountingService = {
       const paymentIdsInJournal = new Set((ledgerEntriesFromRange.map((e: AccountLedgerEntry) => e.payment_id).filter(Boolean)) as string[]);
       const rentalIdsInJournal = new Set((ledgerEntriesFromRange.map((e: AccountLedgerEntry) => e.rental_id).filter(Boolean)) as string[]);
       const missingSales = customerSales.filter((s: any) => !saleIdsInJournal.has(s.id));
-      const missingPayments = customerPayments.filter((p: any) => !paymentIdsInJournal.has(p.id));
+      let missingPayments = customerPayments.filter((p: any) => !paymentIdsInJournal.has(p.id));
+      if (missingPayments.length > 0) {
+        missingPayments = await filterLivePaymentsExcludingVoidedJournals(companyId, missingPayments);
+      }
       const hasRentalsToAdd = customerRentals.length > 0 || customerRentalPayments.length > 0;
       if (!glJournalOnly && (missingSales.length > 0 || missingPayments.length > 0 || hasRentalsToAdd)) {
         const mergeItems: { date: string; reference_number: string; description: string; debit: number; credit: number; sale_id?: string; payment_id?: string; rental_id?: string; source_module: string; document_type: string }[] = [];
@@ -3291,13 +3304,17 @@ export const accountingService = {
             String(p.reference_type || '') === 'sale' && p.reference_id
               ? saleStatusById.get(String(p.reference_id))
               : undefined;
+          const refType = String(p.reference_type || '').toLowerCase();
           mergeItems.push({
             date: d,
             reference_number: resolvePartyLedgerReference({
               lineKind: 'receipt_credit',
               paymentReferenceNumber: p.reference_number,
             }),
-            description: customerReceiptLedgerDescription({ saleStatus, base: 'Payment' }),
+            description:
+              refType === 'on_account' && p.notes
+                ? String(p.notes)
+                : customerReceiptLedgerDescription({ saleStatus, base: 'Payment' }),
             debit: 0,
             credit: Number(p.amount) || 0,
             payment_id: p.id,
@@ -3328,26 +3345,13 @@ export const accountingService = {
           });
         });
         customerRentalPayments.forEach((p: any) => {
-          if (p.journal_entry_id) return;
-          const rawDate = p.payment_date || p.created_at;
-          const d = rawDate ? (typeof rawDate === 'string' && rawDate.length >= 10 ? rawDate.slice(0, 10) : new Date(rawDate).toISOString().slice(0, 10)) : '';
-          if (!d) return;
-          if (startDate && d < startDate) return;
-          if (endDate && d > endDate) return;
-          const rentalMeta = rentalsMap.get(p.rental_id);
-          mergeItems.push({
-            date: d,
-            reference_number: resolvePartyLedgerReference({
-              lineKind: 'receipt_credit',
-              rentalBookingNo: rentalMeta?.booking_no,
-              rentalPaymentRef: p.reference,
-            }),
-            description: 'Rental Payment',
-            debit: 0,
-            credit: Number(p.amount) || 0,
-            rental_id: p.rental_id,
-            source_module: 'Rental',
-            document_type: 'Rental Payment',
+          appendRentalPaymentMergeItems(mergeItems, {
+            payment: p,
+            rental: rentalsMap.get(p.rental_id),
+            customerDisplayName,
+            ledgerRows: [...ledgerEntriesFromRange, ...mergeItems],
+            startDate,
+            endDate,
           });
         });
         if (mergeItems.length > 0) {

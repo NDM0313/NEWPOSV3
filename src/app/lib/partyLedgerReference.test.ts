@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   customerReceiptLedgerDescription,
+  rentalPaymentLedgerDescription,
   resolvePartyLedgerReference,
 } from './partyLedgerReference.ts';
 
@@ -33,5 +34,18 @@ describe('party ledger reference', () => {
       customerReceiptLedgerDescription({ saleStatus: 'final', base: 'Payment' }),
       'Payment'
     );
+  });
+
+  it('builds rental penalty description with customer and penalty ref', () => {
+    const desc = rentalPaymentLedgerDescription({
+      bookingNo: 'REN-0042',
+      customerName: 'Nadeem',
+      penaltyRef: 'Penalty - damage: torn fabric',
+      paymentType: 'penalty',
+    });
+    assert.match(desc, /Rental penalty/);
+    assert.match(desc, /REN-0042/);
+    assert.match(desc, /Nadeem/);
+    assert.match(desc, /torn fabric/);
   });
 });

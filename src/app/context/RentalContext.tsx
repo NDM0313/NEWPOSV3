@@ -413,16 +413,35 @@ export const RentalProvider = ({ children }: { children: ReactNode }) => {
     await rentalService.receiveReturn(id, companyId, payload, user?.id);
     if (payload.penaltyAmount > 0 && rental) {
       if (payload.penaltyPaid) {
-        // Pay now: Dr Cash/Bank, Cr Rental Income (skip if UnifiedPaymentDialog already posted payment + JE)
+        // Party AR: Dr AR / Cr Income (charge) + Dr Cash / Cr AR (receipt). Skip if UnifiedPaymentDialog already posted.
         if (!payload.penaltyPaymentPreRecorded) {
-          accounting?.recordRentalReturn({
-            bookingId: id,
-            customerName: rental.customerName,
-            customerId: rental.customerId || '',
-            securityDepositAmount: 0,
-            damageCharge: payload.penaltyAmount,
-            paymentMethod: (payload.penaltyPaymentMethod || 'Cash') as any,
-          })?.catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
+          let penaltyPaymentId: string | undefined;
+          try {
+            const { supabase } = await import('@/lib/supabase');
+            const { data: penRow } = await supabase
+              .from('rental_payments')
+              .select('id')
+              .eq('rental_id', id)
+              .eq('payment_type', 'penalty')
+              .order('payment_date', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            penaltyPaymentId = (penRow as { id?: string } | null)?.id;
+          } catch {
+            penaltyPaymentId = undefined;
+          }
+          accounting
+            ?.recordRentalReturn({
+              bookingId: id,
+              customerName: rental.customerName,
+              customerId: rental.customerId || '',
+              securityDepositAmount: 0,
+              damageCharge: payload.penaltyAmount,
+              paymentMethod: (payload.penaltyPaymentMethod || 'Cash') as any,
+              rentalPaymentId: penaltyPaymentId,
+              branchId: rental.branchId || branchId,
+            })
+            ?.catch((err) => console.warn('[RentalContext] Ledger penalty posting:', err));
         }
       } else {
         // Credit mode: Dr AR (customer owes), Cr Rental Income

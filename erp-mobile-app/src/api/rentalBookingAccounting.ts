@@ -53,6 +53,12 @@ export const rentalPartyRevenueFingerprint = (companyId: string, rentalId: strin
 export const rentalPartyPaymentFingerprint = (companyId: string, rentalPaymentId: string) =>
   `rental_party_payment:${companyId}:${rentalPaymentId}`;
 
+export const rentalPartyPenaltyChargeFingerprint = (companyId: string, rentalId: string) =>
+  `rental_party_penalty_charge:${companyId}:${rentalId}`;
+
+export const rentalPartyPenaltyPaymentFingerprint = (companyId: string, rentalPaymentId: string) =>
+  `rental_party_penalty_payment:${companyId}:${rentalPaymentId}`;
+
 /** Same stable key + fingerprint as web `rentalPartyArAccounting` (party devaluation JE). */
 export function rentalDevaluationExpenseStableKey(
   expenses: Array<{ description?: string; amount?: number }>
@@ -351,6 +357,113 @@ export async function postRentalExpenseJournalMobile(
     return { journalEntryId: null, error: null };
   }
   return { journalEntryId: row.journal_entry_id ?? null, error: null };
+}
+
+/** Dr AR / Cr Rental Income (charge) + Dr payment / Cr AR (receipt) for return penalty. */
+export async function postRentalPartyPenaltySettlementMobile(params: {
+  companyId: string;
+  branchId: string;
+  rentalId: string;
+  rentalPaymentId: string;
+  customerId: string;
+  customerName: string;
+  amount: number;
+  paymentAccountId: string;
+  entryDate: string;
+  userId: string | null;
+}): Promise<{ chargeJournalEntryId: string | null; receiptJournalEntryId: string | null; error: string | null }> {
+  if (!isSupabaseConfigured) {
+    return { chargeJournalEntryId: null, receiptJournalEntryId: null, error: 'Not configured.' };
+  }
+  const {
+    companyId,
+    branchId,
+    rentalId,
+    rentalPaymentId,
+    customerId,
+    customerName,
+    amount,
+    paymentAccountId,
+    entryDate,
+    userId,
+  } = params;
+  if (amount <= 0) return { chargeJournalEntryId: null, receiptJournalEntryId: null, error: null };
+
+  const arId = await resolveReceivablePostingAccountIdMobile(companyId, customerId);
+  const incId = await resolveRentalIncomeAccountIdMobile(companyId);
+  if (!arId || !incId) {
+    return { chargeJournalEntryId: null, receiptJournalEntryId: null, error: 'AR or Rental Income account not found.' };
+  }
+
+  const chargeFp = rentalPartyPenaltyChargeFingerprint(companyId, rentalId);
+  let chargeJournalEntryId: string | null = null;
+  if (await journalFingerprintExists(companyId, chargeFp)) {
+    const { data: existing } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('action_fingerprint', chargeFp)
+      .maybeSingle();
+    chargeJournalEntryId = (existing as { id?: string } | null)?.id ?? null;
+  } else {
+    const chargeDesc = `Rental penalty / damage — ${customerName}`;
+    const chargeRes = await createJournalEntry({
+      companyId,
+      branchId: branchId === 'all' ? null : branchId,
+      entryDate: entryDate.slice(0, 10),
+      description: chargeDesc,
+      referenceType: 'rental',
+      referenceId: rentalId,
+      actionFingerprint: chargeFp,
+      userId,
+      lines: [
+        { accountId: arId, debit: amount, credit: 0, description: chargeDesc },
+        { accountId: incId, debit: 0, credit: amount, description: chargeDesc },
+      ],
+    });
+    if (chargeRes.error) {
+      return { chargeJournalEntryId: null, receiptJournalEntryId: null, error: chargeRes.error };
+    }
+    chargeJournalEntryId = chargeRes.data?.id ?? null;
+  }
+
+  const receiptFp = rentalPartyPenaltyPaymentFingerprint(companyId, rentalPaymentId);
+  let receiptJournalEntryId: string | null = null;
+  if (await journalFingerprintExists(companyId, receiptFp)) {
+    const { data: existing } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('action_fingerprint', receiptFp)
+      .maybeSingle();
+    receiptJournalEntryId = (existing as { id?: string } | null)?.id ?? null;
+  } else {
+    const receiptDesc = `Rental penalty receipt — ${customerName}`;
+    const receiptRes = await createJournalEntry({
+      companyId,
+      branchId: branchId === 'all' ? null : branchId,
+      entryDate: entryDate.slice(0, 10),
+      description: receiptDesc,
+      referenceType: 'rental',
+      referenceId: rentalId,
+      actionFingerprint: receiptFp,
+      userId,
+      lines: [
+        { accountId: paymentAccountId, debit: amount, credit: 0, description: receiptDesc },
+        { accountId: arId, debit: 0, credit: amount, description: receiptDesc },
+      ],
+    });
+    if (receiptRes.error) {
+      return { chargeJournalEntryId, receiptJournalEntryId: null, error: receiptRes.error };
+    }
+    receiptJournalEntryId = receiptRes.data?.id ?? null;
+  }
+
+  if (receiptJournalEntryId) {
+    await linkRentalPaymentJournalEntry(rentalPaymentId, receiptJournalEntryId);
+  }
+
+  return { chargeJournalEntryId, receiptJournalEntryId, error: null };
 }
 
 export async function linkRentalPaymentJournalEntry(

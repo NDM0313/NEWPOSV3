@@ -28,6 +28,7 @@ export interface TraceVisibilityInput {
   paymentVoided?: boolean;
   paymentContactId?: string | null;
   paymentReferenceType?: string | null;
+  paymentReferenceId?: string | null;
   hasLiquidityLine?: boolean;
   actionFingerprint?: string | null;
   linkedInPaymentsStream?: boolean;
@@ -93,7 +94,10 @@ export function evaluateReportVisibility(input: TraceVisibilityInput): ReportVis
     stmtIncluded = true;
     stmtReason = 'Final sale invoice — AR debit on party statement.';
   } else if (partyPayment && !input.paymentContactId) {
-    stmtReason = 'Payment missing contact_id — may not appear on party statement.';
+    stmtReason =
+      input.paymentReferenceType === 'on_account' && input.paymentReferenceId
+        ? 'On-account payment may match party via reference_id fallback when contact_id was not set at insert.'
+        : 'Payment missing contact_id — may not appear on party statement.';
   } else if (rt === 'sale' && input.saleStatus && input.saleStatus !== 'final') {
     stmtReason = 'Non-final sale — invoice debit excluded from statement.';
   }

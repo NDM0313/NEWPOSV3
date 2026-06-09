@@ -1243,13 +1243,19 @@ export const UnifiedPaymentDialog: React.FC<PaymentDialogProps> = ({
                   paymentMethod,
                   paymentAccountId: selectedAccount,
                   paymentDate: payDay,
+                  rentalPaymentId: rp?.id,
+                  branchId,
                 })
                 .catch((err) => {
                   console.warn('[UnifiedPaymentDialog] Penalty JE failed (payment row recorded):', err);
                 });
-              const jeId = await rentalService.findLatestJournalEntryForRental(companyId, referenceId, journalSince);
-              if (rp?.id && jeId) {
-                await rentalService.syncRentalPaymentGlLink(rp.id, jeId);
+              if (rp?.id) {
+                const linkedJe =
+                  (rp as { journal_entry_id?: string | null }).journal_entry_id ||
+                  (await rentalService.findLatestJournalEntryForRental(companyId, referenceId, journalSince));
+                if (linkedJe) {
+                  await rentalService.syncRentalPaymentGlLink(rp.id, String(linkedJe));
+                }
               }
             } else {
               const rp = await rentalService.addPayment(

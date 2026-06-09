@@ -58,3 +58,28 @@ export function customerReceiptLedgerDescription(opts: {
   }
   return opts.base || 'Payment';
 }
+
+/** Operational / account-statement line for rental payment or penalty receipt. */
+export function rentalPaymentLedgerDescription(opts: {
+  bookingNo?: string | null;
+  customerName?: string | null;
+  penaltyRef?: string | null;
+  paymentType?: string | null;
+  method?: string | null;
+}): string {
+  const booking = String(opts.bookingNo || '').trim();
+  const customer = String(opts.customerName || '').trim();
+  const ref = String(opts.penaltyRef || '').trim();
+  const method = String(opts.method || '').trim();
+  const isPenalty =
+    String(opts.paymentType || '').toLowerCase() === 'penalty' ||
+    /penalty|damage|planty|plant/i.test(ref);
+
+  const head = isPenalty ? 'Rental penalty' : 'Rental payment';
+  const parts: string[] = [head];
+  if (booking) parts.push(booking);
+  if (customer) parts.push(`(${customer})`);
+  if (ref) parts.push(`— ${ref}`);
+  else if (method) parts.push(`via ${method}`);
+  return parts.join(' ').replace(/\s+/g, ' ').trim() || 'Rental Payment';
+}

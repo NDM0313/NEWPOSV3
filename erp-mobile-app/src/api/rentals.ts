@@ -969,7 +969,11 @@ export async function receiveReturn(
   userId?: string | null
 ): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: 'App not configured.' };
-  const { data: rental, error: fetchErr } = await supabase.from('rentals').select('id, status, branch_id, due_amount').eq('id', rentalId).single();
+  const { data: rental, error: fetchErr } = await supabase
+    .from('rentals')
+    .select('id, status, branch_id, due_amount, customer_id, booking_no')
+    .eq('id', rentalId)
+    .single();
   if (fetchErr || !rental) return { error: fetchErr?.message ?? 'Rental not found.' };
   const r = rental as Record<string, unknown>;
   const status = String(r.status ?? '');
@@ -1031,7 +1035,7 @@ export async function receiveReturn(
       const t = String((acc as Record<string, unknown>).type ?? '').toLowerCase();
       penaltyMethod = t === 'bank' || t === 'asset' ? t : t === 'mobile_wallet' ? 'other' : 'cash';
     }
-    await supabase.from('rental_payments').insert({
+    const payInsert: Record<string, unknown> = {
       rental_id: rentalId,
       amount: payload.penaltyAmount,
       method: penaltyMethod,
@@ -1039,7 +1043,40 @@ export async function receiveReturn(
       payment_date: payload.actualReturnDate,
       payment_type: 'penalty',
       created_by: userId ?? null,
-    });
+    };
+    if (payload.penaltyPaymentAccountId) {
+      payInsert.payment_account_id = payload.penaltyPaymentAccountId;
+    }
+    const { data: penPay, error: penPayErr } = await supabase
+      .from('rental_payments')
+      .insert(payInsert)
+      .select('id')
+      .single();
+    if (penPayErr) return { error: penPayErr.message };
+
+    const customerId = String(r.customer_id ?? '').trim();
+    if (customerId && payload.penaltyPaymentAccountId && penPay?.id) {
+      const { postRentalPartyPenaltySettlementMobile } = await import('./rentalBookingAccounting');
+      let customerName = 'Customer';
+      const { data: contact } = await supabase.from('contacts').select('name').eq('id', customerId).maybeSingle();
+      if (contact && (contact as { name?: string }).name) {
+        customerName = String((contact as { name?: string }).name);
+      }
+      const gl = await postRentalPartyPenaltySettlementMobile({
+        companyId,
+        branchId: String(r.branch_id ?? ''),
+        rentalId,
+        rentalPaymentId: String(penPay.id),
+        customerId,
+        customerName,
+        amount: payload.penaltyAmount,
+        paymentAccountId: payload.penaltyPaymentAccountId,
+        entryDate: payload.actualReturnDate,
+        userId: userId ?? null,
+      });
+      if (gl.error) return { error: gl.error };
+    }
+
     const { data: row } = await supabase.from('rentals').select('paid_amount, due_amount').eq('id', rentalId).single();
     const rowr = row as Record<string, number>;
     const newPaid = (rowr?.paid_amount ?? 0) + payload.penaltyAmount;
