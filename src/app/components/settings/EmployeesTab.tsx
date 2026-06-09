@@ -73,7 +73,7 @@ export const EmployeesTab = () => {
     setLoading(true);
     try {
       const [empData, availUsers, branchList] = await Promise.all([
-        employeeService.getAllEmployees(),
+        employeeService.getAllEmployees(companyId),
         employeeService.getAvailableUsers(companyId),
         branchService.getAllBranches(companyId)
       ]);

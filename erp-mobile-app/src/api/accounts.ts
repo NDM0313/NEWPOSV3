@@ -426,9 +426,32 @@ export async function getJournalEntries(
       lines,
       attachments: jeAttachments,
       hasAttachments,
+      _expenseRefId:
+        refType === 'expense' || refType === 'expense_payment'
+          ? e.reference_id != null && String(e.reference_id).trim() !== ''
+            ? String(e.reference_id)
+            : null
+          : expenseId ?? null,
     };
   });
-  return { data: rows, error: null };
+
+  const expenseIdsNeedingCheck = rows
+    .filter((r) => !r.hasAttachments && r._expenseRefId)
+    .map((r) => r._expenseRefId as string);
+  if (expenseIdsNeedingCheck.length > 0) {
+    const { batchExpenseIdsWithReceiptUrl } = await import('../lib/loadMergedAttachments');
+    const withReceipt = await batchExpenseIdsWithReceiptUrl(companyId, expenseIdsNeedingCheck);
+    for (const row of rows) {
+      if (!row.hasAttachments && row._expenseRefId && withReceipt.has(row._expenseRefId)) {
+        row.hasAttachments = true;
+      }
+    }
+  }
+
+  return {
+    data: rows.map(({ _expenseRefId: _, ...rest }) => rest as JournalEntryRow),
+    error: null,
+  };
 }
 
 

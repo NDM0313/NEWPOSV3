@@ -208,7 +208,7 @@ export function ReportsHub({
                       >
                         <MiniTxRow
                           tx={t}
-                          showAttachmentIcon={attachmentActions.transactionShowsAttachmentIcon(t)}
+                          showAttachmentIcon={attachmentActions.hasAnyAttachmentHint({ transactionRow: t })}
                           onAttachmentClick={() => void attachmentActions.previewAttachments(rowAttachParams)}
                         />
                       </LongPressCard>

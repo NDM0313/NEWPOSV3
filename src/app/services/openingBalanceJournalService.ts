@@ -704,6 +704,72 @@ export const openingBalanceJournalService = {
   },
 
   /**
+   * Sync opening_balance_inventory JEs for all opening stock movements in a company.
+   * One active JE per movement (reference_id = movement id). Idempotent / safe to re-run.
+   */
+  async syncInventoryOpeningBalancesForCompany(
+    companyId: string,
+    opts?: { suppressNotify?: boolean; excludeMovementIds?: string[] }
+  ): Promise<{
+    synced: number;
+    posted: number;
+    kept: number;
+    skippedZeroCost: number;
+    totalValue: number;
+    errors: string[];
+  }> {
+    const exclude = new Set(opts?.excludeMovementIds ?? []);
+    const errors: string[] = [];
+    let synced = 0;
+    let posted = 0;
+    let kept = 0;
+    let skippedZeroCost = 0;
+    let totalValue = 0;
+
+    await defaultAccountsService.ensureDefaultAccounts(companyId);
+
+    const { data: movements, error } = await supabase
+      .from('stock_movements')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('reference_type', 'opening_balance');
+    if (error) throw error;
+
+    for (const m of movements || []) {
+      const id = (m as { id: string }).id;
+      if (exclude.has(id)) continue;
+      try {
+        const result = await this.syncInventoryOpeningFromStockMovementId(id, {
+          suppressNotify: opts?.suppressNotify,
+        });
+        synced++;
+        if (result.posted) {
+          posted++;
+          totalValue = roundMoney(totalValue + result.amount);
+        } else if (result.kept) {
+          kept++;
+          totalValue = roundMoney(totalValue + result.amount);
+        } else if (result.skippedZeroCost) {
+          skippedZeroCost++;
+        }
+      } catch (e: unknown) {
+        errors.push(e instanceof Error ? e.message : String(e));
+      }
+    }
+
+    if (!opts?.suppressNotify && (posted > 0 || kept > 0)) {
+      try {
+        const { notifyAccountingEntriesChanged } = await import('@/app/lib/accountingInvalidate');
+        notifyAccountingEntriesChanged();
+      } catch {
+        /* ignore */
+      }
+    }
+
+    return { synced, posted, kept, skippedZeroCost, totalValue, errors };
+  },
+
+  /**
    * Sync opening balance journal entries for ALL contacts in a company that have
    * opening_balance > 0 or supplier_opening_balance > 0.
    * Idempotent: syncFromContactRow() uses reconcileOrVoidOpeningJe() internally.
@@ -762,30 +828,19 @@ export const openingBalanceJournalService = {
     }
 
     // --- 3. Sync inventory opening stock movements to GL
-    // Query all opening_balance rows regardless of movement_type (older rows may have NULL movement_type;
-    // the inner function accepts null/empty as well as 'adjustment' and rejects only explicit non-adjustment types).
     let inventoryMovementsSynced = 0;
     let inventoryJEsPosted = 0;
     let inventoryJEsKept = 0;
     let inventoryZeroCostSkipped = 0;
     let inventoryTotalValue = 0;
     try {
-      const { data: movements } = await supabase
-        .from('stock_movements')
-        .select('id')
-        .eq('company_id', companyId)
-        .eq('reference_type', 'opening_balance');
-      for (const m of movements || []) {
-        try {
-          const result = await this.syncInventoryOpeningFromStockMovementId((m as { id: string }).id);
-          inventoryMovementsSynced++;
-          if (result.posted) { inventoryJEsPosted++; inventoryTotalValue = roundMoney(inventoryTotalValue + result.amount); }
-          else if (result.kept) { inventoryJEsKept++; inventoryTotalValue = roundMoney(inventoryTotalValue + result.amount); }
-          else if (result.skippedZeroCost) inventoryZeroCostSkipped++;
-        } catch (e: any) {
-          errors.push(`Inventory movement: ${e?.message || String(e)}`);
-        }
-      }
+      const inv = await this.syncInventoryOpeningBalancesForCompany(companyId, { suppressNotify: true });
+      inventoryMovementsSynced = inv.synced;
+      inventoryJEsPosted = inv.posted;
+      inventoryJEsKept = inv.kept;
+      inventoryZeroCostSkipped = inv.skippedZeroCost;
+      inventoryTotalValue = inv.totalValue;
+      errors.push(...inv.errors.map((e) => `Inventory movement: ${e}`));
       console.info(
         `[openingBalanceJournalService] Inventory OB sync complete: posted=${inventoryJEsPosted} kept=${inventoryJEsKept} zeroCostSkipped=${inventoryZeroCostSkipped} totalValue=Rs.${inventoryTotalValue}`
       );

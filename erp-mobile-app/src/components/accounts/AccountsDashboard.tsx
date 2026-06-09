@@ -560,7 +560,7 @@ export function AccountsDashboard({
                     </div>
                     <div className="text-right shrink-0">
                       <div className="flex items-center gap-1 justify-end">
-                        {entry.hasAttachments && companyId ? (
+                        {attachmentActions.hasAnyAttachmentHint(rowAttachParams) && companyId ? (
                           <AttachmentIndicatorButton
                             onClick={() => void attachmentActions.previewAttachments(rowAttachParams)}
                             size="sm"
