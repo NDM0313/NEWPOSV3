@@ -56,13 +56,14 @@ export const StockReportPage = () => {
   const { inventorySettings } = useSettings();
   const { setCurrentView } = useNavigation();
   const { formatCurrency } = useFormatCurrency();
-  const reportExport = useReportExport({ companyId, documentType: 'ledger' });
+  const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'stock' });
   const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('landscape');
+  const tabularPrint = reportExport.tabularPrintOptions;
   const enablePacking = inventorySettings.enablePacking;
 
   useEffect(() => {
-    setPrintOrientation(reportExport.reportExportSettings.stockReportOrientation);
-  }, [reportExport.reportExportSettings.stockReportOrientation]);
+    setPrintOrientation(tabularPrint.orientation);
+  }, [tabularPrint.orientation]);
 
   // Data state
   const [overviewRows, setOverviewRows] = useState<InventoryOverviewRow[]>([]);
@@ -270,18 +271,18 @@ export const StockReportPage = () => {
   const visibleCols = columnsList.filter(c => visibleColumns[c.key] !== false).map(c => c.key);
 
   const stockRowValue = useCallback(
-    (row: StockReportRow, key: string, forDisplay = false): string | number => {
+    (row: StockReportRow, key: string, forExport = false): string | number => {
       switch (key) {
         case 'sku': return row.sku;
         case 'product': return row.productName;
         case 'variation': return row.variationLabel;
         case 'category': return row.category;
         case 'unit': return row.unit;
-        case 'purchasePrice': return forDisplay ? formatCurrency(row.purchasePrice) : row.purchasePrice;
-        case 'sellingPrice': return forDisplay ? formatCurrency(row.sellingPrice) : row.sellingPrice;
+        case 'purchasePrice': return forExport ? row.purchasePrice : formatCurrency(row.purchasePrice);
+        case 'sellingPrice': return forExport ? row.sellingPrice : formatCurrency(row.sellingPrice);
         case 'currentStock': return row.currentStock;
-        case 'stockValueCost': return forDisplay ? formatCurrency(row.stockValueAtCost) : row.stockValueAtCost;
-        case 'stockValueRetail': return forDisplay ? formatCurrency(row.stockValueAtRetail) : row.stockValueAtRetail;
+        case 'stockValueCost': return forExport ? row.stockValueAtCost : formatCurrency(row.stockValueAtCost);
+        case 'stockValueRetail': return forExport ? row.stockValueAtRetail : formatCurrency(row.stockValueAtRetail);
         case 'totalSold': return row.totalSold;
         case 'totalTransferred': return row.totalTransferred;
         case 'totalAdjusted': return row.totalAdjusted;
@@ -291,12 +292,23 @@ export const StockReportPage = () => {
     [formatCurrency],
   );
 
+  const stockCurrencyFormatCell = useCallback(
+    (key: string, value: string | number): string | number => {
+      if (typeof value !== 'number') return value;
+      if (['purchasePrice', 'sellingPrice', 'stockValueCost', 'stockValueRetail'].includes(key)) {
+        return formatCurrency(value);
+      }
+      return value;
+    },
+    [formatCurrency],
+  );
+
   const buildStockExportData = useCallback((): ExportData => {
     const snap = buildTabularPrintSnapshot({
       allColumns: columnsList,
       visibleColumns,
       rows: filteredRows,
-      cellValue: (row, key) => stockRowValue(row, key),
+      cellValue: stockRowValue,
     });
     return {
       title: 'Stock Report',
@@ -311,9 +323,10 @@ export const StockReportPage = () => {
         allColumns: columnsList,
         visibleColumns,
         rows: filteredRows,
-        cellValue: (row, key) => stockRowValue(row, key, true),
+        cellValue: stockRowValue,
+        formatCell: stockCurrencyFormatCell,
       }),
-    [columnsList, visibleColumns, filteredRows, stockRowValue],
+    [columnsList, visibleColumns, filteredRows, stockRowValue, stockCurrencyFormatCell],
   );
 
   // --------------- Export ---------------
@@ -328,7 +341,8 @@ export const StockReportPage = () => {
     toast.success('Excel exported');
   }, [buildStockExportData]);
 
-  const handleExportPDF = useCallback(() => {
+  const handleExportPDF = useCallback(async () => {
+    await reportExport.preparePrint();
     void reportExport.openPreview();
   }, [reportExport]);
 
@@ -352,7 +366,7 @@ export const StockReportPage = () => {
           showOrientationToggle
           onOrientationChange={setPrintOrientation}
           fitSinglePage={filteredRows.length <= 50}
-          pageNumbers={reportExport.reportExportSettings.showReportFooter !== false}
+          pageNumbers={tabularPrint.showFooter}
         >
           <TabularReportPreview
             brand={reportExport.brand}
@@ -361,11 +375,13 @@ export const StockReportPage = () => {
             generatedAt={new Date().toLocaleString()}
             columns={previewTable.columns}
             rows={previewTable.rows}
-            fieldVisibility={reportExport.fieldVisibility}
-            showHeader={reportExport.reportExportSettings.showReportHeader !== false}
-            showFooter={reportExport.reportExportSettings.showReportFooter !== false}
+            fieldVisibility={tabularPrint.fieldVisibility}
+            showHeader={tabularPrint.showHeader}
+            showFooter={tabularPrint.showFooter}
             compact={filteredRows.length <= 50}
-            fontSize={reportExport.reportFontSize}
+            fontSize={tabularPrint.fontSize}
+            fontFamily={tabularPrint.fontFamily}
+            margins={tabularPrint.margins}
             orientation={printOrientation}
             stats={[
               { label: 'Closing (Cost)', value: formatCurrency(summary.closingCost) },

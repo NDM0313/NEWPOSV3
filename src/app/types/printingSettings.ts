@@ -84,6 +84,8 @@ export interface PdfExportSettings {
 export interface ReportExportSettings {
   stockReportOrientation: Orientation;
   productSellOrientation: Orientation;
+  /** Ledger Center V2 / party ledger statement PDF default. */
+  ledgerReportOrientation?: Orientation;
   /** Show branded header block on tabular report PDF/print. */
   showReportHeader?: boolean;
   /** Show page-number footer on tabular report PDF/print. */
@@ -175,6 +177,7 @@ export const DEFAULT_PDF: PdfExportSettings = {
 export const DEFAULT_REPORT_EXPORT: ReportExportSettings = {
   stockReportOrientation: 'landscape',
   productSellOrientation: 'portrait',
+  ledgerReportOrientation: 'portrait',
   showReportHeader: true,
   showReportFooter: true,
   reportFontSize: 11,

@@ -21,6 +21,7 @@ export type ReportPrintOrientation = 'portrait' | 'landscape';
 export const REPORT_DEFAULT_ORIENTATION: Record<string, ReportPrintOrientation> = {
   stock: 'landscape',
   product_sell: 'portrait',
+  ledger: 'portrait',
 };
 
 /** Field toggles that apply to tabular report header/footer only. */

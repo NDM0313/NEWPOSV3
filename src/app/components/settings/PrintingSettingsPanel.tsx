@@ -18,7 +18,7 @@ import {
   type PageSetup,
   mergeWithDefaults,
 } from '@/app/types/printingSettings';
-import { pickReportHeaderFieldVisibility } from '@/app/components/reports/shared/reportPrintConfig';
+import { resolveLedgerPrintOptions } from '@/app/components/reports/shared/resolveLedgerPrintOptions';
 import { POS_SILENT_PRINT_GUIDE, getPosPrintAutomationHint } from '@/app/services/printingSettingsService';
 import { PrintingPreviewPanel } from './PrintingPreviewPanel';
 import { AppliesToBanner } from './printing/AppliesToBanner';
@@ -109,14 +109,13 @@ export function PrintingSettingsPanel({
 }: PrintingSettingsPanelProps) {
   const merged = mergeWithDefaults(settings);
   const tab = resolveTab(subTabId);
+  const ledgerPrintOptions = resolveLedgerPrintOptions(settings);
   const [previewDocument, setPreviewDocument] = useState<DocumentTemplateId>('sales_invoice');
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const update = <K extends keyof CompanyPrintingSettings>(key: K, value: CompanyPrintingSettings[K]) => {
     onSettingsChange({ [key]: value });
   };
-
-  const reportFieldVisibility = pickReportHeaderFieldVisibility(merged.fields);
 
   if (loading) {
     return (
@@ -158,6 +157,10 @@ export function PrintingSettingsPanel({
           {tab === 'a4Documents' && (
             <>
               <AppliesToBanner targets="Sales/Purchase Invoice, Ledger, Receipt, Quotation, Proforma, Packing, Courier — unified A4 engine." />
+              <p className="text-xs text-gray-500 -mt-3">
+                Ledger PDF orientation and report header/footer: use <strong className="text-gray-400">Reports &amp; Export</strong> tab.
+                A4 page orientation here applies to invoices; ledger uses report export orientation (A4 orientation as fallback).
+              </p>
 
               <SectionCard title="Page setup" icon={<Layout size={18} />}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -443,7 +446,7 @@ export function PrintingSettingsPanel({
           {/* ─── REPORTS & EXPORT ─── */}
           {tab === 'reportsExport' && (
             <>
-              <AppliesToBanner targets="Stock Report, Product Sell Report — PDF, Print, CSV, Excel exports." />
+              <AppliesToBanner targets="Stock Report, Product Sell Report, Ledger Center V2 — PDF, Print, CSV, Excel exports." />
 
               <SectionCard title="Report layout" icon={<Layout size={18} />}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -463,6 +466,22 @@ export function PrintingSettingsPanel({
                       onCheckedChange={(v) =>
                         update('reportExport', { ...merged.reportExport, showReportFooter: v })
                       }
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-gray-300 text-sm">Report font size (px)</Label>
+                    <Input
+                      type="number"
+                      min={9}
+                      max={14}
+                      value={merged.reportExport.reportFontSize ?? 11}
+                      onChange={(e) =>
+                        update('reportExport', {
+                          ...merged.reportExport,
+                          reportFontSize: Number(e.target.value) || 11,
+                        })
+                      }
+                      className="mt-1 bg-gray-800 border-gray-700 text-white max-w-[120px]"
                     />
                   </div>
                 </div>
@@ -507,6 +526,22 @@ export function PrintingSettingsPanel({
                     >
                       <option value="landscape">Landscape (recommended)</option>
                       <option value="portrait">Portrait</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-gray-300">Ledger Statement (V2)</Label>
+                    <select
+                      value={merged.reportExport.ledgerReportOrientation ?? 'portrait'}
+                      onChange={(e) =>
+                        update('reportExport', {
+                          ...merged.reportExport,
+                          ledgerReportOrientation: e.target.value as 'portrait' | 'landscape',
+                        })
+                      }
+                      className="mt-1 w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2"
+                    >
+                      <option value="portrait">Portrait (recommended)</option>
+                      <option value="landscape">Landscape</option>
                     </select>
                   </div>
                   <div>
@@ -624,10 +659,7 @@ export function PrintingSettingsPanel({
           {showReportPreview && (
             <div className="p-3">
               <ReportExportPreviewPanel
-                fieldVisibility={reportFieldVisibility}
-                stockOrientation={merged.reportExport.stockReportOrientation}
-                showHeader={merged.reportExport.showReportHeader !== false}
-                showFooter={merged.reportExport.showReportFooter !== false}
+                ledgerOptions={ledgerPrintOptions}
               />
             </div>
           )}

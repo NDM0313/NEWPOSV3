@@ -4,12 +4,15 @@
  * Toggles (Show SKU, Discount, Tax, etc.) reflect in real time.
  * Supports: Sales Invoice, Purchase Invoice, Ledger Statement, Payment Receipt, Packing List.
  */
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { DocumentTemplateId } from '@/app/types/printingSettings';
 import type { CompanyPrintingSettings } from '@/app/types/printingSettings';
 import { mergeWithDefaults } from '@/app/types/printingSettings';
 import { useSettings } from '@/app/context/SettingsContext';
 import { useCompanyLogoDisplayUrl } from '@/app/hooks/useCompanyLogoDisplayUrl';
+import { resolveLedgerPrintOptions } from '@/app/components/reports/shared/resolveLedgerPrintOptions';
+import { ReportExportPreviewPanel } from './printing/ReportExportPreviewPanel';
+import type { CompanyBrand } from '@/app/services/companyBrandService';
 
 const PREVIEW_DOCUMENT_OPTIONS: { id: DocumentTemplateId; label: string }[] = [
   { id: 'sales_invoice', label: 'Sales Invoice' },
@@ -39,17 +42,19 @@ const MOCK_INVOICE = {
   notes: 'Thank you for your business.',
 };
 
-const MOCK_LEDGER = {
-  customerName: 'Ali Khan',
-  statementNo: 'STMT-001',
-  period: '1 Jul 2024 – 12 Mar 2025',
-  rows: [
-    { date: '01 Jul 2024', docNo: 'INV-001', description: 'Invoice', debit: 15000, credit: 0, balance: 15000 },
-    { date: '05 Jul 2024', docNo: 'PAY-001', description: 'Payment received', debit: 0, credit: 10000, balance: 5000 },
-    { date: '10 Jul 2024', docNo: 'INV-002', description: 'Invoice', debit: 8200, credit: 0, balance: 13200 },
-  ],
-  closingBalance: 13200,
-};
+function buildPreviewBrand(company: ReturnType<typeof useSettings>['company'], logoUrl: string): CompanyBrand {
+  return {
+    name: company.businessName || 'Your Company',
+    address: company.businessAddress || '',
+    phone: company.businessPhone || null,
+    email: company.businessEmail || null,
+    website: null,
+    taxNumber: company.taxId || null,
+    logoUrl: logoUrl || null,
+    city: '',
+    country: '',
+  };
+}
 
 const MOCK_RECEIPT = {
   receiptNo: 'RCP-00892',
@@ -133,6 +138,11 @@ export function PrintingPreviewPanel({
   const { company } = useSettings();
   const logoDisplayUrl = useCompanyLogoDisplayUrl(company.logoUrl);
   const merged = mergeWithDefaults(settings);
+  const ledgerPrintOptions = useMemo(() => resolveLedgerPrintOptions(settings), [settings]);
+  const previewBrand = useMemo(
+    () => buildPreviewBrand(company, logoDisplayUrl),
+    [company, logoDisplayUrl],
+  );
   const { pageSetup, fields, layout, pdf } = merged;
   const isLandscape = pageSetup.orientation === 'landscape';
   const m = pageSetup.margins;
@@ -197,52 +207,6 @@ export function PrintingPreviewPanel({
           {fields.showTax && <div className="flex justify-end gap-6"><span className="text-gray-500">Tax</span><span>{MOCK_INVOICE.tax.toLocaleString()}</span></div>}
           <div className="flex justify-end gap-6 font-semibold border-t border-gray-300 pt-1 mt-1"><span>Total</span><span>{MOCK_INVOICE.total.toLocaleString()}</span></div>
         </div>
-      </div>
-    </>
-  );
-
-  const renderLedger = () => (
-    <>
-      <div className="grid grid-cols-2 gap-4 mb-3 text-xs">
-        <div>
-          <span className="text-gray-500">Customer</span>
-          <span className="ml-2">{MOCK_LEDGER.customerName}</span>
-        </div>
-        <div className="text-right">
-          <span className="text-gray-500">Statement</span>
-          <span className="ml-2">{MOCK_LEDGER.statementNo}</span>
-        </div>
-        <div className="col-span-2 text-gray-600">Period: {MOCK_LEDGER.period}</div>
-      </div>
-      <div className="flex-1 min-h-0 overflow-hidden">
-        <table className="w-full border-collapse text-xs" style={{ fontSize: '12px' }}>
-          <thead>
-            <tr className="border-b-2 border-gray-800">
-              <th className="text-left py-1.5 font-semibold">Date</th>
-              <th className="text-left py-1.5 font-semibold">Doc No</th>
-              <th className="text-left py-1.5 font-semibold">Description</th>
-              <th className="text-right py-1.5 font-semibold">Debit</th>
-              <th className="text-right py-1.5 font-semibold">Credit</th>
-              <th className="text-right py-1.5 font-semibold">Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {MOCK_LEDGER.rows.map((row, i) => (
-              <tr key={i} className="border-b border-gray-200">
-                <td className="py-1">{row.date}</td>
-                <td className="py-1">{row.docNo}</td>
-                <td className="py-1">{row.description}</td>
-                <td className="text-right py-1">{row.debit > 0 ? row.debit.toLocaleString() : '—'}</td>
-                <td className="text-right py-1">{row.credit > 0 ? row.credit.toLocaleString() : '—'}</td>
-                <td className="text-right py-1 font-medium">{row.balance.toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex justify-end mt-2 text-xs font-semibold border-t border-gray-300 pt-2">
-        <span className="text-gray-500 mr-4">Closing Balance</span>
-        <span>{MOCK_LEDGER.closingBalance.toLocaleString()}</span>
       </div>
     </>
   );
@@ -325,8 +289,6 @@ export function PrintingPreviewPanel({
       case 'delivery_note':
       case 'courier_slip':
         return renderInvoiceTable();
-      case 'ledger_statement':
-        return renderLedger();
       case 'payment_receipt':
         return renderReceipt();
       case 'packing_list':
@@ -351,8 +313,17 @@ export function PrintingPreviewPanel({
             <option key={opt.id} value={opt.id}>{opt.label}</option>
           ))}
         </select>
-        <p className="text-[11px] text-gray-500 mt-1.5">Toggles (e.g. Show SKU) update this preview live.</p>
+        <p className="text-[11px] text-gray-500 mt-1.5">
+          {previewDocument === 'ledger_statement'
+            ? 'Same 7-column layout as Ledger Center V2 PDF. Orientation: Reports & Export tab.'
+            : 'Toggles (e.g. Show SKU) update this preview live.'}
+        </p>
       </div>
+      {previewDocument === 'ledger_statement' ? (
+        <div className="flex-1 min-h-0 p-3 overflow-auto">
+          <ReportExportPreviewPanel brand={previewBrand} ledgerOptions={ledgerPrintOptions} />
+        </div>
+      ) : (
       <div className="flex-1 min-h-0 p-4 overflow-auto flex items-start justify-center">
         <div
           className="bg-white text-black shadow-xl rounded-sm overflow-hidden shrink-0"
@@ -398,8 +369,9 @@ export function PrintingPreviewPanel({
           </div>
         </div>
       </div>
+      )}
       <div className="px-3 py-2 border-t border-gray-800 text-[11px] text-gray-500 shrink-0">
-        A4 {pageSetup.orientation} · Live preview (matches print)
+        A4 {previewDocument === 'ledger_statement' ? ledgerPrintOptions.orientation : pageSetup.orientation} · Live preview (matches print)
       </div>
     </div>
   );

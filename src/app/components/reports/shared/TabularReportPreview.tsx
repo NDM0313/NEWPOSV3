@@ -5,6 +5,8 @@ import type { ReportHeaderFieldVisibility, ReportPrintOrientation } from './repo
 import { ReportBrandHeader } from './ReportBrandHeader';
 import { ReportBrandFooter } from './ReportBrandFooter';
 
+import type { PageMargins } from '@/app/types/printingSettings';
+
 export type TabularReportColumn = {
   key: string;
   label: string;
@@ -30,6 +32,8 @@ export interface TabularReportPreviewProps {
   /** Shorter layout for small reports — avoids forced A4 min-height blank page. */
   compact?: boolean;
   fontSize?: number;
+  fontFamily?: string;
+  margins?: PageMargins;
   orientation?: ReportPrintOrientation;
 }
 
@@ -53,12 +57,23 @@ export const TabularReportPreview: React.FC<TabularReportPreviewProps> = ({
   showFooter = true,
   compact = false,
   fontSize = REPORT_DEFAULT_FONT_SIZE,
+  fontFamily = 'Arial, Helvetica, sans-serif',
+  margins,
   orientation = 'portrait',
 }) => {
   const metaRows: { label: string; value: string }[] = [];
   if (periodLabel) metaRows.push({ label: 'Period', value: periodLabel });
   if (generatedAt) metaRows.push({ label: 'Generated', value: generatedAt });
   if (generatedBy) metaRows.push({ label: 'By', value: generatedBy });
+
+  const marginStyle: React.CSSProperties | undefined = margins
+    ? {
+        paddingTop: margins.top,
+        paddingBottom: margins.bottom,
+        paddingLeft: margins.left,
+        paddingRight: margins.right,
+      }
+    : undefined;
 
   const landscapeClass = orientation === 'landscape' ? 'pdf-document-landscape' : '';
   const rootClass = [
@@ -74,7 +89,12 @@ export const TabularReportPreview: React.FC<TabularReportPreviewProps> = ({
     <div
       className={rootClass}
       data-print-format="a4"
-      style={{ fontFamily: 'Arial, Helvetica, sans-serif', fontSize: tableFontSize, color: '#111' }}
+      style={{
+        fontFamily,
+        fontSize: tableFontSize,
+        color: '#111',
+        ...marginStyle,
+      }}
     >
       {showHeader ? (
         <ReportBrandHeader

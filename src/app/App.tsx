@@ -150,6 +150,16 @@ const AppContent = () => {
   if (pathname === '/test/ar-ap-truth-lab') {
     return (<Layout><ArApTruthLabPage /><GlobalDrawer /></Layout>);
   }
+  if (pathname === '/reports/ledger-statement-center-v2') {
+    return (
+      <Layout>
+        <Suspense fallback={<GlobalSuspenseFallback />}>
+          <ReportsDashboardEnhanced initialReportType="ledger-v2" />
+        </Suspense>
+        <GlobalDrawer />
+      </Layout>
+    );
+  }
   if (pathname === '/admin/permission-inspector' || currentView === 'permission-inspector') {
     return (<Layout><PermissionInspectorPage /><GlobalDrawer /></Layout>);
   }

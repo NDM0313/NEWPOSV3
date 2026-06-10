@@ -154,14 +154,15 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
   const { companyId } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const { formatDate } = useFormatDate();
-  const reportExport = useReportExport({ companyId, documentType: 'ledger' });
+  const reportExport = useReportExport({ companyId, documentType: 'ledger', reportKind: 'product_sell' });
   const [printOrientation, setPrintOrientation] = useState<PdfPreviewOrientation>('portrait');
+  const tabularPrint = reportExport.tabularPrintOptions;
 
   const [view, setView] = useState<ProductSellView>('detailed');
 
   useEffect(() => {
-    setPrintOrientation(reportExport.reportExportSettings.productSellOrientation);
-  }, [reportExport.reportExportSettings.productSellOrientation]);
+    setPrintOrientation(tabularPrint.orientation);
+  }, [tabularPrint.orientation]);
   const [lines, setLines] = useState<ProductSellReportLine[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [saleCount, setSaleCount] = useState(0);
@@ -396,8 +397,8 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
   );
 
   const groupedCellValue = useCallback(
-    (row: Record<string, string | number>, key: string): string | number => {
-      if (key === 'date') return fmtDateCell(String(row.date ?? ''));
+    (row: Record<string, string | number>, key: string, forExport = false): string | number => {
+      if (key === 'date') return forExport ? String(row.date ?? '') : fmtDateCell(String(row.date ?? ''));
       return row[key] ?? '';
     },
     [fmtDateCell],
@@ -415,10 +416,15 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
       if (view === 'detailed' || view === 'detailed_with_purchase') {
         return lineCellValue(row as ProductSellReportLine, key, forExport);
       }
-      return groupedCellValue(row as Record<string, string | number>, key);
+      return groupedCellValue(row as Record<string, string | number>, key, forExport);
     },
     [view, lineCellValue, groupedCellValue],
   );
+
+  const handleOpenPdfPreview = useCallback(async () => {
+    await reportExport.preparePrint();
+    await reportExport.openPreview();
+  }, [reportExport]);
 
   const currencyFormatCell = useCallback(
     (key: string, value: string | number): string | number => {
@@ -567,8 +573,8 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
     <div className="space-y-4 animate-in slide-in-from-bottom-2 duration-300" id="product-sell-report-root">
       <ReportActions
         title="Product Sell Report"
-        onPrint={reportExport.openPreview}
-        onOpenPdfPreview={reportExport.openPreview}
+        onPrint={() => void handleOpenPdfPreview()}
+        onOpenPdfPreview={() => void handleOpenPdfPreview()}
         onExcel={handleExportExcel}
         onCsv={handleExportCsv}
         onWhatsapp={handleWhatsapp}
@@ -591,7 +597,7 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
           showOrientationToggle
           onOrientationChange={setPrintOrientation}
           fitSinglePage={reportCompact}
-          pageNumbers={reportExport.reportExportSettings.showReportFooter !== false}
+          pageNumbers={tabularPrint.showFooter}
         >
           <TabularReportPreview
             brand={reportExport.brand}
@@ -601,11 +607,13 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
             generatedAt={new Date().toLocaleString()}
             columns={previewTable.columns}
             rows={previewTable.rows}
-            fieldVisibility={reportExport.fieldVisibility}
-            showHeader={reportExport.reportExportSettings.showReportHeader !== false}
-            showFooter={reportExport.reportExportSettings.showReportFooter !== false}
+            fieldVisibility={tabularPrint.fieldVisibility}
+            showHeader={tabularPrint.showHeader}
+            showFooter={tabularPrint.showFooter}
             compact={reportCompact}
-            fontSize={reportExport.reportFontSize}
+            fontSize={tabularPrint.fontSize}
+            fontFamily={tabularPrint.fontFamily}
+            margins={tabularPrint.margins}
             orientation={printOrientation}
             stats={previewStats}
           />
@@ -622,11 +630,13 @@ export const ProductSellReportPage: React.FC<Props> = ({ startDate, endDate, bra
             generatedAt={new Date().toLocaleString()}
             columns={previewTable.columns}
             rows={previewTable.rows}
-            fieldVisibility={reportExport.fieldVisibility}
-            showHeader={reportExport.reportExportSettings.showReportHeader !== false}
-            showFooter={reportExport.reportExportSettings.showReportFooter !== false}
+            fieldVisibility={tabularPrint.fieldVisibility}
+            showHeader={tabularPrint.showHeader}
+            showFooter={tabularPrint.showFooter}
             compact={reportCompact}
-            fontSize={reportExport.reportFontSize}
+            fontSize={tabularPrint.fontSize}
+            fontFamily={tabularPrint.fontFamily}
+            margins={tabularPrint.margins}
             orientation={printOrientation}
             stats={previewStats}
           />

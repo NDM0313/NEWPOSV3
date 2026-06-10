@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Users,
   Loader2,
+  BookOpen,
 } from 'lucide-react';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
@@ -52,6 +53,7 @@ import { InventoryValuationPage } from './InventoryValuationPage';
 import { CommissionReportPage } from './CommissionReportPage';
 import { ProductLedger } from './ProductLedger';
 import { ProductSellReportPage } from './ProductSellReportPage';
+import { LedgerStatementCenterV2Page } from '@/app/features/ledger-statement-center-v2/LedgerStatementCenterV2Page';
 import {
   accountingReportsService,
   type ProfitLossResult,
@@ -79,7 +81,22 @@ function isInRange(dateStr: string | undefined, start: Date | null, end: Date): 
   return true;
 }
 
-export const ReportsDashboardEnhanced = () => {
+export type ReportsDashboardReportType =
+  | 'overview'
+  | 'sales'
+  | 'purchases'
+  | 'expenses'
+  | 'financial'
+  | 'commission'
+  | 'product-ledger'
+  | 'product-sell'
+  | 'ledger-v2';
+
+export const ReportsDashboardEnhanced = ({
+  initialReportType = 'overview',
+}: {
+  initialReportType?: ReportsDashboardReportType;
+}) => {
   const sales = useSales();
   const purchases = usePurchases();
   const expenses = useExpenses();
@@ -96,9 +113,7 @@ export const ReportsDashboardEnhanced = () => {
     setCurrentModule('reports');
   }, [setCurrentModule]);
 
-  const [reportType, setReportType] = useState<
-    'overview' | 'sales' | 'purchases' | 'expenses' | 'financial' | 'commission' | 'product-ledger' | 'product-sell'
-  >('overview');
+  const [reportType, setReportType] = useState<ReportsDashboardReportType>(initialReportType);
   /** Overview tab: operational document flow vs canonical GL snapshot (same period as global filter). */
   const [overviewBasis, setOverviewBasis] = useState<'operational' | 'financial_gl'>('operational');
   const [glOverviewLoading, setGlOverviewLoading] = useState(false);
@@ -109,7 +124,14 @@ export const ReportsDashboardEnhanced = () => {
     wpCrMinusDr: number | null;
     cashBankDrMinusCr: number | null;
   } | null>(null);
-  const [financialReportType, setFinancialReportType] = useState<'trial-balance' | 'profit-loss' | 'balance-sheet' | 'sales-profit' | 'inventory-valuation'>('trial-balance');
+  const [financialReportType, setFinancialReportType] = useState<
+    | 'trial-balance'
+    | 'profit-loss'
+    | 'balance-sheet'
+    | 'sales-profit'
+    | 'inventory-valuation'
+    | 'ledger-statement-v2'
+  >('trial-balance');
   /** Expenses whose original expense JE has a correction_reversal — hidden from reports by default. */
   const [reversedExpenseIds, setReversedExpenseIds] = useState<Set<string>>(() => new Set());
   const [showReversedExpenses, setShowReversedExpenses] = useState(false);
@@ -468,6 +490,7 @@ export const ReportsDashboardEnhanced = () => {
               { key: 'commission', label: 'Commission', icon: Users },
               { key: 'product-ledger', label: 'Product Ledger', icon: Package },
               { key: 'product-sell', label: 'Product Sell', icon: ShoppingBag },
+              { key: 'ledger-v2', label: 'Ledger Center V2', icon: BookOpen },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -488,7 +511,9 @@ export const ReportsDashboardEnhanced = () => {
 
       {/* Content – tab-specific (Overview, Sales, Purchases, Expenses only) */}
       <div className="p-6 space-y-6">
-        <div className="text-xs text-gray-500 mb-2">Period: {dateRangeLabel}</div>
+        {reportType !== 'ledger-v2' && (
+          <div className="text-xs text-gray-500 mb-2">Period: {dateRangeLabel}</div>
+        )}
 
         {/* Overview Tab — split: Operational flow vs Financial GL */}
         {reportType === 'overview' && (
@@ -894,6 +919,7 @@ export const ReportsDashboardEnhanced = () => {
                 { key: 'balance-sheet', label: 'Balance Sheet' },
                 { key: 'sales-profit', label: 'Sales Profit' },
                 { key: 'inventory-valuation', label: 'Inventory Valuation' },
+                { key: 'ledger-statement-v2', label: 'Statements / Ledgers V2' },
               ].map((sub) => (
                 <button
                   key={sub.key}
@@ -908,7 +934,9 @@ export const ReportsDashboardEnhanced = () => {
                 </button>
               ))}
             </div>
-            <div className="text-xs text-gray-500 mb-2">Period: {dateRangeLabel}</div>
+            {financialReportType !== 'ledger-statement-v2' && (
+              <div className="text-xs text-gray-500 mb-2">Period: {dateRangeLabel}</div>
+            )}
             {financialReportType === 'trial-balance' && (
               <TrialBalancePage startDate={reportStartDate} endDate={reportEndDate} branchId={branchId} />
             )}
@@ -924,8 +952,11 @@ export const ReportsDashboardEnhanced = () => {
             {financialReportType === 'inventory-valuation' && (
               <InventoryValuationPage asOfDate={reportEndDate} branchId={branchId} />
             )}
+            {financialReportType === 'ledger-statement-v2' && <LedgerStatementCenterV2Page embedded />}
           </>
         )}
+
+        {reportType === 'ledger-v2' && <LedgerStatementCenterV2Page embedded />}
 
         {reportType === 'commission' && (
           <CommissionReportPage

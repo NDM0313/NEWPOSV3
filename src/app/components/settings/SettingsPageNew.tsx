@@ -45,6 +45,7 @@ import { printingSettingsService } from '@/app/services/printingSettingsService'
 import type { InvoiceTemplate } from '@/app/types/invoiceDocument';
 import type { CompanyPrintingSettings } from '@/app/types/printingSettings';
 import { mergeWithDefaults } from '@/app/types/printingSettings';
+import { notifyPrintingSettingsSaved } from '@/app/lib/printingSettingsEvents';
 import { PrintingSettingsPanel } from './PrintingSettingsPanel';
 import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthService';
 import { EmployeesTab } from './EmployeesTab';
@@ -727,6 +728,8 @@ export const SettingsPageNew = () => {
         return;
       }
       setPrintingSettings(toSave);
+
+      notifyPrintingSettingsSaved(companyId);
 
       if (navSubTabId === 'thermalReceipts') {
         const paperSize = toSave.thermal.paperSize ?? '58mm';
