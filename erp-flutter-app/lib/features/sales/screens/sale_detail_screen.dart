@@ -7,6 +7,7 @@ import '../../../app/theme/app_colors.dart';
 import '../../../core/permissions/sale_actions.dart';
 import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/sale_pdf_builder.dart';
 import '../../../core/utils/sale_share_text.dart';
 import '../../../core/widgets/partial_amount_dialog.dart';
 import '../../../core/widgets/app_empty_state.dart';
@@ -268,12 +269,34 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
             child: Text(_actionSuccess!, style: const TextStyle(color: AppColors.success)),
           ),
         const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () => SharePlus.instance.share(
-            ShareParams(text: buildSaleShareText(sale)),
-          ),
-          icon: const Icon(Icons.share),
-          label: const Text('Share invoice'),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => SharePlus.instance.share(
+                  ShareParams(text: buildSaleShareText(sale)),
+                ),
+                icon: const Icon(Icons.share),
+                label: const Text('Share text'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final file = await buildSalePdfFile(sale);
+                  await SharePlus.instance.share(
+                    ShareParams(
+                      text: sale.documentNo,
+                      files: [XFile(file.path)],
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.picture_as_pdf),
+                label: const Text('Share PDF'),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         DetailSection(

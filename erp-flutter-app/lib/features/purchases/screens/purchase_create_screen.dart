@@ -3,7 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../../core/network/network_status_provider.dart';
 import '../../../core/session/session_scope.dart';
+import '../../../core/sync/sync_providers.dart';
+import '../../../data/local/offline_pending_store.dart';
+import '../../../data/sync/enqueue_or_run.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/product.dart';
 import '../../../data/repositories/purchases_write_repository.dart';
@@ -103,38 +107,77 @@ class _PurchaseCreateScreenState extends ConsumerState<PurchaseCreateScreen> {
       _error = null;
     });
 
+    final online = ref.read(connectivityProvider).value ?? true;
+    final supplier = _supplierController.text;
+    final itemPayload = _lines
+        .map(
+          (l) => {
+            'product_id': l.product.id,
+            'product_name': l.product.name,
+            'sku': l.product.sku,
+            'quantity': l.quantity,
+            'unit_price': _unitCost(l.product),
+            'total': l.total,
+          },
+        )
+        .toList();
+    final draftItems = _lines
+        .map(
+          (l) => DraftPurchaseLineInput(
+            productId: l.product.id,
+            productName: l.product.name,
+            sku: l.product.sku,
+            quantity: l.quantity,
+            unitPrice: _unitCost(l.product),
+            total: l.total,
+          ),
+        )
+        .toList();
+
     final repo = ref.read(purchasesWriteRepositoryProvider);
-    final result = await repo.createDraftPurchase(
+    final enqueueResult = await enqueueOrRun(
+      isOnline: online,
+      type: PendingType.draftPurchase,
+      payload: {
+        'company_id': scope.companyId,
+        'branch_id': scope.branchId!,
+        'created_by': scope.authUserId,
+        'supplier_name': supplier,
+        'items': itemPayload,
+      },
       companyId: scope.companyId,
       branchId: scope.branchId!,
-      createdBy: scope.authUserId,
-      supplierName: _supplierController.text,
-      items: _lines
-          .map(
-            (l) => DraftPurchaseLineInput(
-              productId: l.product.id,
-              productName: l.product.name,
-              sku: l.product.sku,
-              quantity: l.quantity,
-              unitPrice: _unitCost(l.product),
-              total: l.total,
-            ),
-          )
-          .toList(),
+      onlineTask: () => repo.createDraftPurchase(
+        companyId: scope.companyId,
+        branchId: scope.branchId!,
+        createdBy: scope.authUserId,
+        supplierName: supplier,
+        items: draftItems,
+      ),
     );
 
     if (!mounted) return;
 
-    if (result.error != null || result.purchaseId == null) {
-      setState(() {
-        _saving = false;
-        _error = result.error ?? 'Failed to save draft.';
-      });
-      return;
+    switch (enqueueResult) {
+      case OfflineQueued():
+        ref.invalidate(pendingSyncCountProvider);
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Purchase queued offline — sync when online.')),
+        );
+        context.pop();
+        return;
+      case OnlineResult(value: final result):
+        if (result.error != null || result.purchaseId == null) {
+          setState(() {
+            _saving = false;
+            _error = result.error ?? 'Failed to save draft.';
+          });
+          return;
+        }
+        ref.invalidate(purchasesListProvider);
+        context.go('/purchases/${result.purchaseId}');
     }
-
-    ref.invalidate(purchasesListProvider);
-    context.go('/purchases/${result.purchaseId}');
   }
 
   @override

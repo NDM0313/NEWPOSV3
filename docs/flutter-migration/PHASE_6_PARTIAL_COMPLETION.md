@@ -16,9 +16,15 @@
 
 - `shared_preferences`, `mobile_scanner`, `share_plus`
 
+## Extended in follow-up pass
+
+- Offline queue: **expense** + **draft purchase**
+- **Rental detail** `/rentals/:id`
+- **Sale PDF** share (`pdf` + `share_plus`)
+
 ## Still future
 
-- Full Drift schema + all pending types (payment, expense, purchase)
+- Full Drift schema + payment/journal offline types
 - Thermal Sunmi / Bluetooth print (native channel)
-- PDF invoice generation + WhatsApp PDF intent
+- WhatsApp PDF intent (Android native)
 - Studio production writes, rental booking writes

@@ -1,75 +1,55 @@
-# DIN Collection ERP — Flutter (Phase 1)
+# DIN Collection ERP — Flutter
 
-Native Flutter client for the **old/live DIN Collection ERP**. Shares the same Supabase backend as [`erp-mobile-app/`](../../erp-mobile-app/) and web [`src/`](../../src/).
+Native Flutter client for the **old/live DIN Collection ERP**. Same Supabase contract as [`erp-mobile-app/`](../../erp-mobile-app/) and web [`src/`](../../src/).
 
-**Phase 1 scope:** auth, permissions, branch selection, home module grid (no transactional modules).
-
-Migration docs: [`docs/flutter-migration/`](../../docs/flutter-migration/).
+Migration docs: [`docs/flutter-migration/`](../../docs/flutter-migration/) — see [`FLUTTER_MIGRATION_STATUS.md`](../../docs/flutter-migration/FLUTTER_MIGRATION_STATUS.md) for current scope.
 
 ## Prerequisites
 
-- Flutter SDK 3.41+ (`flutter --version`)
+- Flutter SDK 3.41+
 - Anon key from repo root `.env.production` → `VITE_SUPABASE_ANON_KEY`
 
 ## Configuration
 
-Native API base is **locked** to `https://erp.dincouture.pk` (see [`docs/infra/MOBILE_APK_LOCKED_PATTERN.md`](../../docs/infra/MOBILE_APK_LOCKED_PATTERN.md)).
-
-Pass the anon key at run/build time:
+API base is **locked** to `https://erp.dincouture.pk` ([`MOBILE_APK_LOCKED_PATTERN.md`](../../docs/infra/MOBILE_APK_LOCKED_PATTERN.md)).
 
 ```bash
 cd erp-flutter-app
 flutter pub get
 
-flutter run \
-  --dart-define=SUPABASE_ANON_KEY='paste_anon_key_from_root_env_production'
+flutter run --dart-define=SUPABASE_ANON_KEY='your_anon_key'
 ```
 
-Optional URL override (default is correct for production):
+## Build release APK
 
 ```bash
-flutter run \
-  --dart-define=SUPABASE_URL=https://erp.dincouture.pk \
-  --dart-define=SUPABASE_ANON_KEY='...'
-```
-
-Copy [`.env.example`](.env.example) for local reference; `.env` is gitignored.
-
-## Run
-
-```bash
-# Android device/emulator
-flutter run --dart-define=SUPABASE_ANON_KEY='...'
-
-# Analyze
 flutter analyze
-
-# Release APK (debug signing by default)
-flutter build apk --dart-define=SUPABASE_ANON_KEY='...'
+flutter build apk --release --dart-define=SUPABASE_ANON_KEY='your_anon_key'
 ```
 
-## Package ID
+APK: `build/app/outputs/flutter-apk/app-release.apk`
 
-`com.dincouture.erp.erp_flutter_app` — parallel to Capacitor `com.dincouture.erp` (pilot install without replacing existing APK).
+**Package ID:** `com.dincouture.erp.erp_flutter_app` (parallel pilot vs Capacitor `com.dincouture.erp`).
+
+## Features (summary)
+
+- Auth, branch picker, permission-gated home
+- Contacts, products, sales, purchases, expenses (CRUD slices)
+- POS with barcode scan
+- Offline queue for draft sale, POS, expense, draft purchase
+- Share sale as text or PDF
+- Rentals/studio/ledger read views
 
 ## Project structure
 
 ```
 lib/
-  app/          # theme, router, config
-  core/         # supabase, auth roles, permissions, widgets
-  data/         # models, repositories
-  features/     # auth, home
+  app/          router, theme, config
+  core/         supabase, permissions, network, widgets
+  data/         models, repositories, local, sync
+  features/     auth, home, sales, pos, …
 ```
 
-## Phase 1 acceptance
+## Not in this build
 
-- Admin login → all permitted modules on home grid
-- Salesman login → restricted modules
-- `modules_config` toggles hide POS / rental / studio / accounts
-- Multi-branch users see branch picker
-- Logout clears session
-
-## Not implemented (Phase 2+)
-
-Sales, POS, payments, offline sync, printing, barcode, studio, purchases, rentals, expenses, accounting writes.
+Thermal print, full Drift offline DB, studio production writes, rental booking create. See migration status doc.

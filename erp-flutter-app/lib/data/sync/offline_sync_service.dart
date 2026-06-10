@@ -1,14 +1,22 @@
-import '../repositories/sales_write_repository.dart';
 import '../local/offline_pending_store.dart';
+import '../repositories/expenses_write_repository.dart';
+import '../repositories/purchases_write_repository.dart';
+import '../repositories/sales_write_repository.dart';
 
 class OfflineSyncService {
   OfflineSyncService({
     required SalesWriteRepository salesWrite,
+    required ExpensesWriteRepository expensesWrite,
+    required PurchasesWriteRepository purchasesWrite,
     OfflinePendingStore? store,
   })  : _salesWrite = salesWrite,
+        _expensesWrite = expensesWrite,
+        _purchasesWrite = purchasesWrite,
         _store = store ?? OfflinePendingStore();
 
   final SalesWriteRepository _salesWrite;
+  final ExpensesWriteRepository _expensesWrite;
+  final PurchasesWriteRepository _purchasesWrite;
   final OfflinePendingStore _store;
 
   Future<({int synced, int failed, String? lastError})> runSync() async {
@@ -50,65 +58,112 @@ class OfflineSyncService {
 
     switch (record.type) {
       case PendingType.draftSale:
-        final itemsRaw = p['items'] as List? ?? [];
-        final items = itemsRaw.map((row) {
-          final m = Map<String, dynamic>.from(row as Map);
-          return DraftSaleLineInput(
-            productId: m['product_id'] as String,
-            productName: m['product_name'] as String,
-            sku: m['sku'] as String,
-            quantity: (m['quantity'] as num).toDouble(),
-            unitPrice: (m['unit_price'] as num).toDouble(),
-            total: (m['total'] as num).toDouble(),
-          );
-        }).toList();
-
-        final result = await _salesWrite.createDraftSale(
-          companyId: p['company_id'] as String,
-          branchId: p['branch_id'] as String,
-          createdBy: p['created_by'] as String,
-          customerName: p['customer_name'] as String? ?? 'Walk-in',
-          customerId: p['customer_id'] as String?,
-          items: items,
-        );
-
-        if (result.error != null) {
-          await _store.update(
-            record.copyWith(status: SyncQueueStatus.error, syncError: result.error),
-          );
-          return false;
-        }
-        return true;
-
+        return _syncDraftSale(record, p);
       case PendingType.posSale:
-        final itemsRaw = p['items'] as List? ?? [];
-        final items = itemsRaw.map((row) {
-          final m = Map<String, dynamic>.from(row as Map);
-          return DraftSaleLineInput(
-            productId: m['product_id'] as String,
-            productName: m['product_name'] as String,
-            sku: m['sku'] as String,
-            quantity: (m['quantity'] as num).toDouble(),
-            unitPrice: (m['unit_price'] as num).toDouble(),
-            total: (m['total'] as num).toDouble(),
-          );
-        }).toList();
-
-        final pos = await _salesWrite.createPosSale(
-          companyId: p['company_id'] as String,
-          branchId: p['branch_id'] as String,
-          createdBy: p['created_by'] as String,
-          customerName: p['customer_name'] as String? ?? 'Walk-in',
-          items: items,
-        );
-
-        if (pos.error != null && pos.saleId == null) {
-          await _store.update(
-            record.copyWith(status: SyncQueueStatus.error, syncError: pos.error),
-          );
-          return false;
-        }
-        return true;
+        return _syncPosSale(record, p);
+      case PendingType.expense:
+        return _syncExpense(record, p);
+      case PendingType.draftPurchase:
+        return _syncDraftPurchase(record, p);
     }
+  }
+
+  Future<bool> _syncDraftSale(PendingRecord record, Map<String, dynamic> p) async {
+    final items = _mapSaleItems(p['items'] as List? ?? []);
+    final result = await _salesWrite.createDraftSale(
+      companyId: p['company_id'] as String,
+      branchId: p['branch_id'] as String,
+      createdBy: p['created_by'] as String,
+      customerName: p['customer_name'] as String? ?? 'Walk-in',
+      customerId: p['customer_id'] as String?,
+      items: items,
+    );
+    if (result.error != null) {
+      await _store.update(
+        record.copyWith(status: SyncQueueStatus.error, syncError: result.error),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  Future<bool> _syncPosSale(PendingRecord record, Map<String, dynamic> p) async {
+    final items = _mapSaleItems(p['items'] as List? ?? []);
+    final pos = await _salesWrite.createPosSale(
+      companyId: p['company_id'] as String,
+      branchId: p['branch_id'] as String,
+      createdBy: p['created_by'] as String,
+      customerName: p['customer_name'] as String? ?? 'Walk-in',
+      items: items,
+    );
+    if (pos.error != null && pos.saleId == null) {
+      await _store.update(
+        record.copyWith(status: SyncQueueStatus.error, syncError: pos.error),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  Future<bool> _syncExpense(PendingRecord record, Map<String, dynamic> p) async {
+    final result = await _expensesWrite.createExpense(
+      companyId: p['company_id'] as String,
+      branchId: p['branch_id'] as String,
+      createdBy: p['created_by'] as String,
+      category: p['category'] as String? ?? 'General',
+      description: p['description'] as String? ?? '',
+      amount: (p['amount'] as num).toDouble(),
+    );
+    if (result.error != null) {
+      await _store.update(
+        record.copyWith(status: SyncQueueStatus.error, syncError: result.error),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  Future<bool> _syncDraftPurchase(PendingRecord record, Map<String, dynamic> p) async {
+    final itemsRaw = p['items'] as List? ?? [];
+    final items = itemsRaw.map((row) {
+      final m = Map<String, dynamic>.from(row as Map);
+      return DraftPurchaseLineInput(
+        productId: m['product_id'] as String,
+        productName: m['product_name'] as String,
+        sku: m['sku'] as String,
+        quantity: (m['quantity'] as num).toDouble(),
+        unitPrice: (m['unit_price'] as num).toDouble(),
+        total: (m['total'] as num).toDouble(),
+      );
+    }).toList();
+
+    final result = await _purchasesWrite.createDraftPurchase(
+      companyId: p['company_id'] as String,
+      branchId: p['branch_id'] as String,
+      createdBy: p['created_by'] as String,
+      supplierName: p['supplier_name'] as String? ?? 'Unknown',
+      items: items,
+    );
+    if (result.error != null) {
+      await _store.update(
+        record.copyWith(status: SyncQueueStatus.error, syncError: result.error),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  List<DraftSaleLineInput> _mapSaleItems(List rows) {
+    return rows.map((row) {
+      final m = Map<String, dynamic>.from(row as Map);
+      return DraftSaleLineInput(
+        productId: m['product_id'] as String,
+        productName: m['product_name'] as String,
+        sku: m['sku'] as String,
+        quantity: (m['quantity'] as num).toDouble(),
+        unitPrice: (m['unit_price'] as num).toDouble(),
+        total: (m['total'] as num).toDouble(),
+      );
+    }).toList();
   }
 }

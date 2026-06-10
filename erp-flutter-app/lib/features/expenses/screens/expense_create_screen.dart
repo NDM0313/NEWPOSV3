@@ -6,6 +6,10 @@ import '../../../app/theme/app_colors.dart';
 import '../../../core/session/session_scope.dart';
 import '../../../core/widgets/module_scaffold.dart';
 import '../../auth/providers/auth_session_provider.dart';
+import '../../../core/network/network_status_provider.dart';
+import '../../../core/sync/sync_providers.dart';
+import '../../../data/local/offline_pending_store.dart';
+import '../../../data/sync/enqueue_or_run.dart';
 import '../../auth/providers/repository_providers.dart';
 import '../providers/expenses_providers.dart';
 
@@ -49,29 +53,57 @@ class _ExpenseCreateScreenState extends ConsumerState<ExpenseCreateScreen> {
       _error = null;
     });
 
+    final online = ref.read(connectivityProvider).value ?? true;
+    final category = _categoryController.text;
+    final description = _descriptionController.text;
+
     final repo = ref.read(expensesWriteRepositoryProvider);
-    final result = await repo.createExpense(
+    final enqueueResult = await enqueueOrRun(
+      isOnline: online,
+      type: PendingType.expense,
+      payload: {
+        'company_id': scope.companyId,
+        'branch_id': scope.branchId!,
+        'created_by': scope.authUserId,
+        'category': category,
+        'description': description,
+        'amount': amount,
+      },
       companyId: scope.companyId,
       branchId: scope.branchId!,
-      createdBy: scope.authUserId,
-      category: _categoryController.text,
-      description: _descriptionController.text,
-      amount: amount,
+      onlineTask: () => repo.createExpense(
+        companyId: scope.companyId,
+        branchId: scope.branchId!,
+        createdBy: scope.authUserId,
+        category: category,
+        description: description,
+        amount: amount,
+      ),
     );
 
     if (!mounted) return;
 
-    if (result.error != null || result.expenseId == null) {
-      setState(() {
-        _saving = false;
-        _error = result.error ?? 'Create failed.';
-      });
-      return;
+    switch (enqueueResult) {
+      case OfflineQueued():
+        ref.invalidate(pendingSyncCountProvider);
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Expense queued offline — sync when online.')),
+        );
+        context.pop();
+        return;
+      case OnlineResult(value: final result):
+        if (result.error != null || result.expenseId == null) {
+          setState(() {
+            _saving = false;
+            _error = result.error ?? 'Create failed.';
+          });
+          return;
+        }
+        ref.invalidate(expensesListProvider);
+        context.pop();
+        context.push('/expenses/${result.expenseId}');
     }
-
-    ref.invalidate(expensesListProvider);
-    context.pop();
-    context.push('/expenses/${result.expenseId}');
   }
 
   @override
