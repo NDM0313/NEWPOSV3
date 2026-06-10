@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../../core/permissions/expense_actions.dart';
+import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
+import '../../auth/providers/auth_session_provider.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_error_state.dart';
 import '../../../core/widgets/app_loading.dart';
@@ -40,10 +43,22 @@ class _ExpensesListScreenState extends ConsumerState<ExpensesListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final session = ref.watch(authSessionProvider);
+    final scope = SessionScope.from(session);
+    final canCreate = scope != null && canCreateExpense(scope.permissions);
     final asyncExpenses = ref.watch(expensesListProvider);
 
     return ModuleScaffold(
       title: 'Expenses',
+      actions: canCreate
+          ? [
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'New expense',
+                onPressed: () => context.push('/expenses/new'),
+              ),
+            ]
+          : null,
       body: Column(
         children: [
           ModuleSearchField(

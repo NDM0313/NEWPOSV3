@@ -4,6 +4,11 @@ import '../../../data/repositories/accounts_read_repository.dart';
 import '../../../data/repositories/auth_repository.dart';
 import '../../../data/repositories/branch_repository.dart';
 import '../../../data/repositories/contacts_repository.dart';
+import '../../../data/repositories/contacts_write_repository.dart';
+import '../../../data/repositories/expenses_write_repository.dart';
+import '../../../data/repositories/journal_read_repository.dart';
+import '../../../data/repositories/party_ledger_repository.dart';
+import '../../../data/repositories/products_write_repository.dart';
 import '../../../data/repositories/dashboard_repository.dart';
 import '../../../data/repositories/expenses_read_repository.dart';
 import '../../../data/repositories/permission_repository.dart';
@@ -58,3 +63,18 @@ final studioReadRepositoryProvider =
 
 final accountsReadRepositoryProvider =
     Provider<AccountsReadRepository>((ref) => AccountsReadRepository());
+
+final contactsWriteRepositoryProvider =
+    Provider<ContactsWriteRepository>((ref) => ContactsWriteRepository());
+
+final productsWriteRepositoryProvider =
+    Provider<ProductsWriteRepository>((ref) => ProductsWriteRepository());
+
+final expensesWriteRepositoryProvider =
+    Provider<ExpensesWriteRepository>((ref) => ExpensesWriteRepository());
+
+final partyLedgerRepositoryProvider =
+    Provider<PartyLedgerRepository>((ref) => PartyLedgerRepository());
+
+final journalReadRepositoryProvider =
+    Provider<JournalReadRepository>((ref) => JournalReadRepository());

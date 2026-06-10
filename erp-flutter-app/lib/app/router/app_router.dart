@@ -6,12 +6,17 @@ import '../../core/widgets/app_loading.dart';
 import '../../features/auth/providers/auth_session_provider.dart';
 import '../../features/auth/screens/branch_selection_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
+import '../../features/contacts/screens/contact_create_screen.dart';
 import '../../features/contacts/screens/contact_detail_screen.dart';
+import '../../features/contacts/screens/contact_ledger_screen.dart';
 import '../../features/contacts/screens/contacts_list_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
+import '../../features/expenses/screens/expense_create_screen.dart';
 import '../../features/expenses/screens/expense_detail_screen.dart';
 import '../../features/expenses/screens/expenses_list_screen.dart';
+import '../../features/ledger/screens/journal_list_screen.dart';
 import '../../features/home/home_screen.dart';
+import '../../features/products/screens/product_create_screen.dart';
 import '../../features/products/screens/product_detail_screen.dart';
 import '../../features/products/screens/products_list_screen.dart';
 import '../../features/purchases/screens/purchase_create_screen.dart';
@@ -80,11 +85,24 @@ GoRouter createAppRouter(AuthSessionState session) {
         builder: (context, state) => const ContactsListScreen(),
         routes: [
           GoRoute(
+            path: 'new',
+            builder: (context, state) => const ContactCreateScreen(),
+          ),
+          GoRoute(
             path: ':id',
             builder: (context, state) {
               final id = state.pathParameters['id']!;
               return ContactDetailScreen(contactId: id);
             },
+            routes: [
+              GoRoute(
+                path: 'ledger',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return ContactLedgerScreen(contactId: id);
+                },
+              ),
+            ],
           ),
         ],
       ),
@@ -92,6 +110,10 @@ GoRouter createAppRouter(AuthSessionState session) {
         path: '/products',
         builder: (context, state) => const ProductsListScreen(),
         routes: [
+          GoRoute(
+            path: 'new',
+            builder: (context, state) => const ProductCreateScreen(),
+          ),
           GoRoute(
             path: ':id',
             builder: (context, state) {
@@ -136,6 +158,10 @@ GoRouter createAppRouter(AuthSessionState session) {
         builder: (context, state) => const ExpensesListScreen(),
         routes: [
           GoRoute(
+            path: 'new',
+            builder: (context, state) => const ExpenseCreateScreen(),
+          ),
+          GoRoute(
             path: ':id',
             builder: (context, state) {
               final id = state.pathParameters['id']!;
@@ -175,7 +201,7 @@ GoRouter createAppRouter(AuthSessionState session) {
       ),
       GoRoute(
         path: '/ledger',
-        builder: (context, state) => const AccountsListScreen(title: 'Ledger'),
+        builder: (context, state) => const JournalListScreen(),
       ),
       GoRoute(
         path: '/pos',

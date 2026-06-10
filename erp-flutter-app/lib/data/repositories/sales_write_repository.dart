@@ -471,6 +471,30 @@ class SalesWriteRepository {
     }
   }
 
+  /// Full void — `cancel_sale_full_void` RPC (stock + GL reversal).
+  Future<({bool success, String? error})> cancelSale({
+    required String saleId,
+    String? userId,
+    String? reason,
+  }) async {
+    try {
+      final raw = await _client.rpc(
+        'cancel_sale_full_void',
+        params: {
+          'p_sale_id': saleId,
+          'p_user_id': userId,
+          'p_reason': reason,
+        },
+      );
+      if (raw is Map && raw['success'] == false) {
+        return (success: false, error: raw['error']?.toString() ?? 'Cancel failed.');
+      }
+      return (success: true, error: null);
+    } catch (e) {
+      return (success: false, error: e.toString());
+    }
+  }
+
   Future<String?> _ensureSaleStockPosted(String saleId) async {
     try {
       final stockRaw = await _client.rpc(

@@ -5,6 +5,7 @@ import '../../../app/theme/app_colors.dart';
 import '../../../core/permissions/purchase_actions.dart';
 import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/partial_amount_dialog.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_error_state.dart';
 import '../../../core/widgets/app_loading.dart';
@@ -66,20 +67,13 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     final due = widget.purchase.due;
     if (due <= 0) return;
 
-    final ok = await showDialog<bool>(
+    final amount = await showPartialAmountDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Pay supplier?'),
-        content: Text(
-          'Record cash payment of ${formatMoney(due)} against this purchase?',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Pay')),
-        ],
-      ),
+      title: 'Pay supplier',
+      maxAmount: due,
+      hint: 'Record cash payment against this purchase.',
     );
-    if (ok != true) return;
+    if (amount == null || amount <= 0) return;
 
     final scope = SessionScope.from(ref.read(authSessionProvider));
     if (scope == null || scope.branchId == null) {
@@ -98,7 +92,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
       companyId: scope.companyId,
       branchId: scope.branchId!,
       purchaseId: widget.purchaseId,
-      amount: due,
+      amount: amount,
       createdBy: scope.authUserId,
     );
 
@@ -116,7 +110,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     ref.invalidate(purchasesListProvider);
     setState(() {
       _busy = false;
-      _actionSuccess = 'Supplier payment recorded.';
+      _actionSuccess = 'Payment of ${formatMoney(amount)} recorded.';
     });
   }
 
@@ -245,7 +239,7 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
           const SizedBox(height: 12),
           OutlinedButton(
             onPressed: _busy ? null : _confirmPaySupplier,
-            child: Text('Pay supplier (${formatMoney(purchase.due)})'),
+            child: Text('Pay supplier (due ${formatMoney(purchase.due)})'),
           ),
         ],
         if (purchase.items.isNotEmpty) ...[

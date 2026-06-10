@@ -19,3 +19,14 @@ bool canEditSale(PermissionState perms) {
       perms.hasPermission('sales.edit') ||
       perms.hasPermission('sales.create');
 }
+
+bool canCancelSale(PermissionState perms) {
+  return perms.isAdminOrOwner ||
+      perms.hasPermission('sales.delete') ||
+      perms.hasPermission('sales.edit');
+}
+
+bool isSaleStatusCancellable(String status) {
+  final s = status.toLowerCase();
+  return s == 'final' || s == 'order' || s == 'draft';
+}

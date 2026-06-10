@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../../core/permissions/product_actions.dart';
 import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_empty_state.dart';
@@ -48,8 +49,19 @@ class _ProductsListScreenState extends ConsumerState<ProductsListScreen> {
     final showStock = scope != null && productStockVisible(scope);
     final showCost = scope != null && productCostVisible(scope);
 
+    final canCreate = scope != null && canCreateProduct(scope.permissions);
+
     return ModuleScaffold(
       title: 'Products',
+      actions: canCreate
+          ? [
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'New product',
+                onPressed: () => context.push('/products/new'),
+              ),
+            ]
+          : null,
       body: Column(
         children: [
           ModuleSearchField(

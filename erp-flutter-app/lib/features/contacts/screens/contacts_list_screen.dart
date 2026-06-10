@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../../core/permissions/contact_actions.dart';
 import '../../../core/permissions/contact_balance_visibility.dart';
 import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
@@ -51,8 +52,19 @@ class _ContactsListScreenState extends ConsumerState<ContactsListScreen> {
     final showBalances = scope != null &&
         canShowContactBalances(scope.permissions, listFilter);
 
+    final canCreate = scope != null && canCreateContact(scope.permissions);
+
     return ModuleScaffold(
       title: 'Contacts',
+      actions: canCreate
+          ? [
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'New contact',
+                onPressed: () => context.push('/contacts/new'),
+              ),
+            ]
+          : null,
       body: Column(
         children: [
           ModuleSearchField(

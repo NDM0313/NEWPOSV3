@@ -6,6 +6,7 @@ import '../../../app/theme/app_colors.dart';
 import '../../../core/permissions/sale_actions.dart';
 import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/partial_amount_dialog.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_error_state.dart';
 import '../../../core/widgets/app_loading.dart';
@@ -114,20 +115,13 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
     final due = widget.sale.due;
     if (due <= 0) return;
 
-    final ok = await showDialog<bool>(
+    final amount = await showPartialAmountDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Receive payment?'),
-        content: Text(
-          'Record cash payment of ${formatMoney(due)} against this sale?',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Receive')),
-        ],
-      ),
+      title: 'Receive payment',
+      maxAmount: due,
+      hint: 'Record cash payment against this sale.',
     );
-    if (ok != true) return;
+    if (amount == null || amount <= 0) return;
 
     final scope = SessionScope.from(ref.read(authSessionProvider));
     if (scope == null || scope.branchId == null) {
@@ -146,7 +140,7 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
       companyId: scope.companyId,
       branchId: scope.branchId!,
       saleId: widget.saleId,
-      amount: due,
+      amount: amount,
       createdBy: scope.authUserId,
     );
 
@@ -164,7 +158,61 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
     ref.invalidate(salesListProvider);
     setState(() {
       _busy = false;
-      _actionSuccess = 'Payment recorded.';
+      _actionSuccess = 'Payment of ${formatMoney(amount)} recorded.';
+    });
+  }
+
+  Future<void> _confirmCancelSale() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel sale?'),
+        content: const Text(
+          'This voids stock and accounting on the server. '
+          'Use only when you need a full invoice cancel.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Back')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Cancel sale'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final scope = SessionScope.from(ref.read(authSessionProvider));
+    if (scope == null) return;
+
+    setState(() {
+      _busy = true;
+      _actionError = null;
+      _actionSuccess = null;
+    });
+
+    final repo = ref.read(salesWriteRepositoryProvider);
+    final result = await repo.cancelSale(
+      saleId: widget.saleId,
+      userId: scope.authUserId,
+    );
+
+    if (!mounted) return;
+
+    if (!result.success) {
+      setState(() {
+        _busy = false;
+        _actionError = result.error ?? 'Cancel failed.';
+      });
+      return;
+    }
+
+    ref.invalidate(saleDetailProvider(widget.saleId));
+    ref.invalidate(salesListProvider);
+    setState(() {
+      _busy = false;
+      _actionSuccess = 'Sale cancelled.';
     });
   }
 
@@ -181,6 +229,10 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
         canReceiveSalePayment(perms) &&
         isSaleStatusPosted(sale.status) &&
         sale.due > 0;
+    final canCancel = perms != null &&
+        canCancelSale(perms) &&
+        isSaleStatusCancellable(sale.status) &&
+        sale.status.toLowerCase() != 'cancelled';
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -242,7 +294,7 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
             child: const Text('Edit sale'),
           ),
         ],
-        if (canFinalize || canPay) ...[
+        if (canFinalize || canPay || canCancel) ...[
           const SizedBox(height: 16),
           if (canFinalize)
             ElevatedButton(
@@ -259,7 +311,15 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
             const SizedBox(height: 8),
             OutlinedButton(
               onPressed: _busy ? null : _confirmReceivePayment,
-              child: Text('Receive payment (${formatMoney(sale.due)})'),
+              child: Text('Receive payment (due ${formatMoney(sale.due)})'),
+            ),
+          ],
+          if (canCancel) ...[
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: _busy ? null : _confirmCancelSale,
+              style: OutlinedButton.styleFrom(foregroundColor: AppColors.error),
+              child: const Text('Cancel sale'),
             ),
           ],
         ],

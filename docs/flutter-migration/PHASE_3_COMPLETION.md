@@ -18,12 +18,14 @@
 | Settings | `/settings` | Profile, branch switch, sign out |
 | Packing | Home → `/sales` | Sales list for shipment context |
 
+## Extended in Phase 4 partial
+
+See `PHASE_4_PARTIAL_COMPLETION.md` — contact/product/expense create, partial payments, sale void, party ledger, journal list.
+
 ## Still out of scope (future)
 
-- Sale void/return, partial payments, contact/product create
-- Studio production pipeline writes, rental booking writes
+- Sale return documents, studio production writes, rental booking writes
 - Offline sync, printing, barcode
-- Full ledger drill-down / journal entry views
 
 ## QA
 

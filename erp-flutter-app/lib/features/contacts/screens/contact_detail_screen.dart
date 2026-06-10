@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_colors.dart';
 import '../../../core/permissions/contact_balance_visibility.dart';
@@ -108,9 +109,16 @@ class ContactDetailScreen extends ConsumerWidget {
                   ],
                 ),
               ],
+              if (showBalance) ...[
+                const SizedBox(height: 16),
+                OutlinedButton(
+                  onPressed: () => context.push('/contacts/$contactId/ledger'),
+                  child: const Text('View party ledger'),
+                ),
+              ],
               const SizedBox(height: 24),
               const Text(
-                'Read-only view — editing arrives in a later phase.',
+                'Contact edit arrives in a later phase.',
                 style: TextStyle(color: AppColors.muted, fontSize: 12),
                 textAlign: TextAlign.center,
               ),
