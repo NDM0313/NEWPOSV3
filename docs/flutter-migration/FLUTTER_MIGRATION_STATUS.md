@@ -2,7 +2,7 @@
 
 **App path:** `erp-flutter-app/`  
 **Backend:** `https://erp.dincouture.pk` (locked)  
-**Last updated:** Phase 6 continuation pass
+**Last updated:** Phase 7 release prep pass
 
 ## Phase summary
 
@@ -16,7 +16,7 @@
 | 4 Accounting adjacency | Partial | `PHASE_4_PARTIAL_COMPLETION.md` |
 | 5 Offline awareness | Partial | `PHASE_5_PARTIAL_COMPLETION.md` |
 | 6 Device features | Partial | `PHASE_6_PARTIAL_COMPLETION.md` |
-| 7 Production release | **Not started** | `10_PRODUCTION_RELEASE_CHECKLIST.md` |
+| 7 Production release | **Prep partial** | `PHASE_7_RELEASE_PREP.md`, `10_PRODUCTION_RELEASE_CHECKLIST.md` |
 
 ## Implemented modules (routes)
 
@@ -29,7 +29,7 @@
 | POS | `/pos` | Checkout + barcode |
 | Purchases | list, detail, create, finalize, pay, cancel | Draft + finalize |
 | Expenses | list, detail, create | Create + GL RPC |
-| Rentals | list, detail | Read |
+| Rentals | list, detail, `/rentals/new` | Create booking |
 | Studio | list | Read |
 | Accounts / Ledger | `/accounts`, `/ledger` | Read |
 | Dashboard / Reports | `/dashboard` | Read |
@@ -44,7 +44,6 @@
 - Drift full schema + payment/journal offline types
 - Thermal Sunmi / Bluetooth native print
 - Studio production pipeline writes
-- Rental booking create
 - Sale return is implemented; studio finalize writes not
 - Counter/PIN mode
 
@@ -52,7 +51,7 @@
 
 1. Run `08_TESTING_QA_CHECKLIST.md` on test company
 2. Compare money flows with Capacitor app (`10_PRODUCTION_RELEASE_CHECKLIST.md`)
-3. Increment `versionCode` and configure release signing
+3. Configure release signing (`versionCode` bumped to `2` in `1.0.1+2`)
 4. User sign-off for production distribution
 
 ## Run

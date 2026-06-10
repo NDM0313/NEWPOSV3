@@ -3,13 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../../core/permissions/rental_actions.dart';
+import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_error_state.dart';
 import '../../../core/widgets/app_loading.dart';
 import '../../../core/widgets/module_scaffold.dart';
-import '../../../core/widgets/read_only_banner.dart';
 import '../../../data/repositories/rentals_read_repository.dart';
+import '../../auth/providers/auth_session_provider.dart';
 import '../providers/rentals_providers.dart';
 
 class RentalsListScreen extends ConsumerWidget {
@@ -17,13 +19,24 @@ class RentalsListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(authSessionProvider);
+    final scope = SessionScope.from(session);
+    final canCreate = scope != null && canCreateRental(scope.permissions);
     final asyncRentals = ref.watch(rentalsListProvider);
 
     return ModuleScaffold(
       title: 'Rentals',
+      actions: canCreate
+          ? [
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'New rental',
+                onPressed: () => context.push('/rentals/new'),
+              ),
+            ]
+          : null,
       body: Column(
         children: [
-          const ReadOnlyBanner(),
           Expanded(
             child: asyncRentals.when(
               loading: () => const AppLoading(message: 'Loading rentals…'),

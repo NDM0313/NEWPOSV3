@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../app/theme/app_colors.dart';
 import '../../../core/widgets/detail_section.dart';
 import '../../../core/widgets/module_scaffold.dart';
 import '../../auth/providers/auth_session_provider.dart';
+
+final packageInfoProvider = FutureProvider<PackageInfo>((ref) async {
+  return PackageInfo.fromPlatform();
+});
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -15,6 +20,13 @@ class SettingsScreen extends ConsumerWidget {
     final session = ref.watch(authSessionProvider);
     final profile = session.profile;
     final branch = session.selectedBranch;
+    final packageInfo = ref.watch(packageInfoProvider);
+
+    final versionLabel = packageInfo.when(
+      data: (info) => '${info.version} (${info.buildNumber})',
+      loading: () => '—',
+      error: (e, st) => '—',
+    );
 
     return ModuleScaffold(
       title: 'Settings',
@@ -27,6 +39,7 @@ class SettingsScreen extends ConsumerWidget {
               DetailRow(label: 'Email', value: profile?.email ?? '—'),
               DetailRow(label: 'Role', value: profile?.role ?? '—'),
               DetailRow(label: 'Branch', value: branch?.name ?? '—'),
+              DetailRow(label: 'App version', value: versionLabel),
             ],
           ),
           const SizedBox(height: 16),

@@ -17,6 +17,7 @@ import '../../../data/repositories/purchases_read_repository.dart';
 import '../../../data/repositories/purchases_write_repository.dart';
 import '../../../data/repositories/sales_read_repository.dart';
 import '../../../data/repositories/rentals_read_repository.dart';
+import '../../../data/repositories/rentals_write_repository.dart';
 import '../../../data/repositories/sales_write_repository.dart';
 import '../../../data/repositories/studio_read_repository.dart';
 import '../../../data/repositories/settings_repository.dart';
@@ -57,6 +58,9 @@ final purchasesWriteRepositoryProvider =
 
 final rentalsReadRepositoryProvider =
     Provider<RentalsReadRepository>((ref) => RentalsReadRepository());
+
+final rentalsWriteRepositoryProvider =
+    Provider<RentalsWriteRepository>((ref) => RentalsWriteRepository());
 
 final studioReadRepositoryProvider =
     Provider<StudioReadRepository>((ref) => StudioReadRepository());

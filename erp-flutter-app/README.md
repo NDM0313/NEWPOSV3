@@ -22,6 +22,15 @@ flutter run --dart-define=SUPABASE_ANON_KEY='your_anon_key'
 
 ## Build release APK
 
+With repo root `.env.production` (reads `VITE_SUPABASE_ANON_KEY`):
+
+```bash
+chmod +x scripts/*.sh
+./scripts/build-release-apk.sh
+```
+
+Or manually:
+
 ```bash
 flutter analyze
 flutter build apk --release --dart-define=SUPABASE_ANON_KEY='your_anon_key'
@@ -38,7 +47,7 @@ APK: `build/app/outputs/flutter-apk/app-release.apk`
 - POS with barcode scan
 - Offline queue for draft sale, POS, expense, draft purchase
 - Share sale as text or PDF
-- Rentals/studio/ledger read views
+- Rental booking create, rentals/studio/ledger read views
 
 ## Project structure
 
@@ -52,4 +61,4 @@ lib/
 
 ## Not in this build
 
-Thermal print, full Drift offline DB, studio production writes, rental booking create. See migration status doc.
+Thermal print, full Drift offline DB, studio production writes. See migration status doc.
