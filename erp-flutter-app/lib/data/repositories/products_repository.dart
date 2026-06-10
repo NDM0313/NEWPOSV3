@@ -1,5 +1,6 @@
 import '../../core/supabase/supabase_bootstrap.dart';
 import '../../core/utils/branch_id.dart';
+import '../local/list_cache_store.dart';
 import '../models/product.dart';
 
 const _productsSelect =
@@ -7,6 +8,7 @@ const _productsSelect =
 
 class ProductsRepository {
   final _client = SupabaseBootstrap.client;
+  final _listCache = ListCacheStore();
 
   Future<Map<String, double>> _fetchStockByProductId({
     required String companyId,
@@ -46,33 +48,63 @@ class ProductsRepository {
     String? branchId,
     bool includeStock = true,
   }) async {
-    final data = await _client
-        .from('products')
-        .select(_productsSelect)
-        .eq('company_id', companyId)
-        .order('name');
+    try {
+      final data = await _client
+          .from('products')
+          .select(_productsSelect)
+          .eq('company_id', companyId)
+          .order('name');
 
-    var rows = (data as List).map((r) => Map<String, dynamic>.from(r as Map)).toList();
+      var rows = (data as List).map((r) => Map<String, dynamic>.from(r as Map)).toList();
+      await _listCache.putProducts(companyId, rows);
 
-    if (branchId != null && isRealBranchUuid(branchId)) {
-      rows = await _filterForBranch(companyId, branchId, rows);
+      if (branchId != null && isRealBranchUuid(branchId)) {
+        rows = await _filterForBranch(companyId, branchId, rows);
+      }
+
+      final simpleIds = rows
+          .where((r) => r['has_variations'] != true)
+          .map((r) => r['id'] as String)
+          .toList();
+
+      final stockMap = includeStock
+          ? await _fetchStockByProductId(
+              companyId: companyId,
+              productIds: simpleIds,
+              branchId: branchId,
+            )
+          : <String, double>{};
+
+      final products = rows.map((row) => _mapRow(row, stockMap)).toList();
+      return (products: products, error: null);
+    } catch (e) {
+      final cached = await _listCache.getProducts(companyId);
+      if (cached == null || cached.isEmpty) {
+        return (products: <Product>[], error: e.toString());
+      }
+
+      var rows = cached;
+      if (branchId != null && isRealBranchUuid(branchId)) {
+        try {
+          rows = await _filterForBranch(companyId, branchId, rows);
+        } catch (_) {
+          // Branch filter may fail offline — show unfiltered cache
+        }
+      }
+
+      final products = rows.map((row) => _mapRow(row, {})).toList();
+      return (products: products, error: 'Offline — showing cached products.');
     }
+  }
 
-    final simpleIds = rows
-        .where((r) => r['has_variations'] != true)
-        .map((r) => r['id'] as String)
-        .toList();
-
-    final stockMap = includeStock
-        ? await _fetchStockByProductId(
-            companyId: companyId,
-            productIds: simpleIds,
-            branchId: branchId,
-          )
-        : <String, double>{};
-
-    final products = rows.map((row) => _mapRow(row, stockMap)).toList();
-    return (products: products, error: null);
+  Product? findByBarcodeOrSku(List<Product> products, String code) {
+    final q = code.trim().toLowerCase();
+    if (q.isEmpty) return null;
+    for (final p in products) {
+      if (p.sku.toLowerCase() == q) return p;
+      if (p.barcode != null && p.barcode!.trim().toLowerCase() == q) return p;
+    }
+    return null;
   }
 
   Future<({Product? product, String? error})> getProductById({

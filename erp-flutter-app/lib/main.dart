@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app/router/app_router.dart';
 import 'app/theme/app_theme.dart';
 import 'core/supabase/supabase_bootstrap.dart';
+import 'core/widgets/auto_sync_listener.dart';
 import 'features/auth/providers/auth_session_provider.dart';
 
 Future<void> main() async {
@@ -34,11 +35,13 @@ class _ErpFlutterAppState extends ConsumerState<ErpFlutterApp> {
     final session = ref.watch(authSessionProvider);
     final router = createAppRouter(session);
 
-    return MaterialApp.router(
-      title: 'Din Collection ERP',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark(),
-      routerConfig: router,
+    return AutoSyncListener(
+      child: MaterialApp.router(
+        title: 'Din Collection ERP',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.dark(),
+        routerConfig: router,
+      ),
     );
   }
 }

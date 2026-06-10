@@ -16,6 +16,9 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   intl: ^0.20.2
   connectivity_plus: ^6.1.4
+  shared_preferences: ^2.5.3
+  mobile_scanner: ^7.0.1
+  share_plus: ^11.0.0
 
 dev_dependencies:
   flutter_test:

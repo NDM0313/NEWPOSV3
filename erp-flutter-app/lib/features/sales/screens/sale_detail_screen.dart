@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme/app_colors.dart';
 import '../../../core/permissions/sale_actions.dart';
 import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/sale_share_text.dart';
 import '../../../core/widgets/partial_amount_dialog.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_error_state.dart';
@@ -265,6 +267,14 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
             padding: const EdgeInsets.only(top: 8),
             child: Text(_actionSuccess!, style: const TextStyle(color: AppColors.success)),
           ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => SharePlus.instance.share(
+            ShareParams(text: buildSaleShareText(sale)),
+          ),
+          icon: const Icon(Icons.share),
+          label: const Text('Share invoice'),
+        ),
         const SizedBox(height: 16),
         DetailSection(
           children: [

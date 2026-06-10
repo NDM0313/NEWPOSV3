@@ -6,7 +6,11 @@ import '../../../app/theme/app_colors.dart';
 import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../data/models/product.dart';
+import '../../../core/network/network_status_provider.dart';
+import '../../../core/sync/sync_providers.dart';
+import '../../../data/local/offline_pending_store.dart';
 import '../../../data/repositories/sales_write_repository.dart';
+import '../../../data/sync/enqueue_or_run.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../auth/providers/repository_providers.dart';
 import '../../products/providers/products_providers.dart';
@@ -103,38 +107,76 @@ class _SaleCreateScreenState extends ConsumerState<SaleCreateScreen> {
       _error = null;
     });
 
+    final online = ref.read(connectivityProvider).value ?? true;
+    final itemPayload = _lines
+        .map(
+          (l) => {
+            'product_id': l.product.id,
+            'product_name': l.product.name,
+            'sku': l.product.sku,
+            'quantity': l.quantity,
+            'unit_price': l.product.retailPrice,
+            'total': l.total,
+          },
+        )
+        .toList();
+    final draftItems = _lines
+        .map(
+          (l) => DraftSaleLineInput(
+            productId: l.product.id,
+            productName: l.product.name,
+            sku: l.product.sku,
+            quantity: l.quantity,
+            unitPrice: l.product.retailPrice,
+            total: l.total,
+          ),
+        )
+        .toList();
+
     final repo = ref.read(salesWriteRepositoryProvider);
-    final result = await repo.createDraftSale(
+    final enqueueResult = await enqueueOrRun(
+      isOnline: online,
+      type: PendingType.draftSale,
+      payload: {
+        'company_id': scope.companyId,
+        'branch_id': scope.branchId!,
+        'created_by': scope.authUserId,
+        'customer_name': _customerController.text,
+        'items': itemPayload,
+      },
       companyId: scope.companyId,
       branchId: scope.branchId!,
-      createdBy: scope.authUserId,
-      customerName: _customerController.text,
-      items: _lines
-          .map(
-            (l) => DraftSaleLineInput(
-              productId: l.product.id,
-              productName: l.product.name,
-              sku: l.product.sku,
-              quantity: l.quantity,
-              unitPrice: l.product.retailPrice,
-              total: l.total,
-            ),
-          )
-          .toList(),
+      onlineTask: () => repo.createDraftSale(
+        companyId: scope.companyId,
+        branchId: scope.branchId!,
+        createdBy: scope.authUserId,
+        customerName: _customerController.text,
+        items: draftItems,
+      ),
     );
 
     if (!mounted) return;
 
-    if (result.error != null || result.saleId == null) {
-      setState(() {
-        _saving = false;
-        _error = result.error ?? 'Failed to save draft.';
-      });
-      return;
+    switch (enqueueResult) {
+      case OfflineQueued():
+        ref.invalidate(pendingSyncCountProvider);
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Draft queued offline — sync when online.')),
+        );
+        context.pop();
+        return;
+      case OnlineResult(value: final result):
+        if (result.error != null || result.saleId == null) {
+          setState(() {
+            _saving = false;
+            _error = result.error ?? 'Failed to save draft.';
+          });
+          return;
+        }
+        ref.invalidate(salesListProvider);
+        context.go('/sales/${result.saleId}');
     }
-
-    ref.invalidate(salesListProvider);
-    context.go('/sales/${result.saleId}');
   }
 
   @override

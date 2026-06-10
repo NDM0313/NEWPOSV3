@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_colors.dart';
 import 'offline_banner.dart';
+import 'sync_pending_banner.dart';
 
 class ModuleScaffold extends StatelessWidget {
   const ModuleScaffold({
@@ -36,6 +37,7 @@ class ModuleScaffold extends StatelessWidget {
       body: Column(
         children: [
           const OfflineBanner(),
+          const SyncPendingBanner(),
           Expanded(child: body),
         ],
       ),
