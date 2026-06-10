@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../../core/permissions/contact_actions.dart';
 import '../../../core/permissions/contact_balance_visibility.dart';
 import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
@@ -43,6 +44,9 @@ class ContactDetailScreen extends ConsumerWidget {
 
           final showBalance = scope != null &&
               canShowContactBalance(scope.permissions, contact);
+          final canEdit = scope != null &&
+              canEditContact(scope.permissions) &&
+              !contact.isSystemGenerated;
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -109,8 +113,15 @@ class ContactDetailScreen extends ConsumerWidget {
                   ],
                 ),
               ],
-              if (showBalance) ...[
+              if (canEdit) ...[
                 const SizedBox(height: 16),
+                OutlinedButton(
+                  onPressed: () => context.push('/contacts/$contactId/edit'),
+                  child: const Text('Edit contact'),
+                ),
+              ],
+              if (showBalance) ...[
+                const SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: () => context.push('/contacts/$contactId/ledger'),
                   child: const Text('View party ledger'),

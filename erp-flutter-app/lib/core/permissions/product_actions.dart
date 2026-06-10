@@ -5,3 +5,9 @@ bool canCreateProduct(PermissionState perms) {
       perms.hasPermission('inventory.create') ||
       perms.hasPermission('inventory.adjust');
 }
+
+bool canEditProduct(PermissionState perms) {
+  return perms.isAdminOrOwner ||
+      perms.hasPermission('inventory.edit') ||
+      perms.hasPermission('inventory.adjust');
+}

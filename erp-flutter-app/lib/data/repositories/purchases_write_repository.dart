@@ -237,4 +237,27 @@ class PurchasesWriteRepository {
       return (success: false, error: e.toString());
     }
   }
+
+  Future<({bool success, String? error})> cancelPurchase({
+    required String purchaseId,
+    String? userId,
+    String? reason,
+  }) async {
+    try {
+      final raw = await _client.rpc(
+        'cancel_purchase_full_void',
+        params: {
+          'p_purchase_id': purchaseId,
+          'p_user_id': userId,
+          'p_reason': reason,
+        },
+      );
+      if (raw is Map && raw['success'] == false) {
+        return (success: false, error: raw['error']?.toString() ?? 'Cancel failed.');
+      }
+      return (success: true, error: null);
+    } catch (e) {
+      return (success: false, error: e.toString());
+    }
+  }
 }

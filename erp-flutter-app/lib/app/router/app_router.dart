@@ -7,6 +7,7 @@ import '../../features/auth/providers/auth_session_provider.dart';
 import '../../features/auth/screens/branch_selection_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/contacts/screens/contact_create_screen.dart';
+import '../../features/contacts/screens/contact_edit_screen.dart';
 import '../../features/contacts/screens/contact_detail_screen.dart';
 import '../../features/contacts/screens/contact_ledger_screen.dart';
 import '../../features/contacts/screens/contacts_list_screen.dart';
@@ -17,6 +18,7 @@ import '../../features/expenses/screens/expenses_list_screen.dart';
 import '../../features/ledger/screens/journal_list_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/products/screens/product_create_screen.dart';
+import '../../features/products/screens/product_edit_screen.dart';
 import '../../features/products/screens/product_detail_screen.dart';
 import '../../features/products/screens/products_list_screen.dart';
 import '../../features/purchases/screens/purchase_create_screen.dart';
@@ -24,6 +26,7 @@ import '../../features/purchases/screens/purchase_detail_screen.dart';
 import '../../features/purchases/screens/purchases_list_screen.dart';
 import '../../features/sales/screens/sale_edit_screen.dart';
 import '../../features/sales/screens/sale_create_screen.dart';
+import '../../features/sales/screens/sale_return_screen.dart';
 import '../../features/sales/screens/sale_detail_screen.dart';
 import '../../features/accounts/screens/accounts_list_screen.dart';
 import '../../features/pos/screens/pos_screen.dart';
@@ -96,6 +99,13 @@ GoRouter createAppRouter(AuthSessionState session) {
             },
             routes: [
               GoRoute(
+                path: 'edit',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return ContactEditScreen(contactId: id);
+                },
+              ),
+              GoRoute(
                 path: 'ledger',
                 builder: (context, state) {
                   final id = state.pathParameters['id']!;
@@ -120,6 +130,15 @@ GoRouter createAppRouter(AuthSessionState session) {
               final id = state.pathParameters['id']!;
               return ProductDetailScreen(productId: id);
             },
+            routes: [
+              GoRoute(
+                path: 'edit',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return ProductEditScreen(productId: id);
+                },
+              ),
+            ],
           ),
         ],
       ),
@@ -147,6 +166,13 @@ GoRouter createAppRouter(AuthSessionState session) {
                 builder: (context, state) {
                   final id = state.pathParameters['id']!;
                   return SaleEditScreen(saleId: id);
+                },
+              ),
+              GoRoute(
+                path: 'return',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return SaleReturnScreen(saleId: id);
                 },
               ),
             ],

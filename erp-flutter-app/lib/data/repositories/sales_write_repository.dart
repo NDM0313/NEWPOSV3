@@ -20,6 +20,24 @@ class DraftSaleLineInput {
   final double total;
 }
 
+class SaleReturnLineInput {
+  const SaleReturnLineInput({
+    required this.saleItemId,
+    required this.productId,
+    required this.productName,
+    required this.sku,
+    required this.quantity,
+    required this.unitPrice,
+  });
+
+  final String saleItemId;
+  final String productId;
+  final String productName;
+  final String sku;
+  final double quantity;
+  final double unitPrice;
+}
+
 /// Phase 3: draft create + finalize (stock + GL via server RPCs).
 class SalesWriteRepository {
   final _client = SupabaseBootstrap.client;
@@ -468,6 +486,116 @@ class SalesWriteRepository {
       return (success: true, error: null);
     } catch (e) {
       return (success: false, error: e.toString());
+    }
+  }
+
+  /// Create and finalize sale return — mirrors `createAndFinalizeSaleReturn`.
+  Future<({String? returnId, String? returnNo, String? error})> createAndFinalizeSaleReturn({
+    required String companyId,
+    required String branchId,
+    required String saleId,
+    required String userId,
+    required String customerName,
+    required List<SaleReturnLineInput> items,
+    String? reason,
+  }) async {
+    if (items.isEmpty) {
+      return (returnId: null, returnNo: null, error: 'Select at least one return item.');
+    }
+
+    final effectiveBranch = safeRpcBranchId(branchId);
+    if (effectiveBranch == null) {
+      return (
+        returnId: null,
+        returnNo: null,
+        error: 'Branch required for sale return.',
+      );
+    }
+
+    final today = localTodayIso();
+    final subtotal = items.fold<double>(0, (sum, i) => sum + i.quantity * i.unitPrice);
+    final total = subtotal;
+
+    try {
+      final numRaw = await _client.rpc(
+        'generate_document_number',
+        params: {
+          'p_company_id': companyId,
+          'p_branch_id': effectiveBranch,
+          'p_document_type': 'sale_return',
+          'p_include_year': false,
+        },
+      );
+      var returnNo = numRaw?.toString() ?? '';
+      if (returnNo.isEmpty) {
+        returnNo = 'SRET-${DateTime.now().millisecondsSinceEpoch % 100000}';
+      }
+
+      final header = await _client
+          .from('sale_returns')
+          .insert({
+            'company_id': companyId,
+            'branch_id': effectiveBranch,
+            'original_sale_id': saleId,
+            'return_no': returnNo,
+            'return_date': today,
+            'customer_name': customerName.trim().isEmpty ? 'Walk-in' : customerName.trim(),
+            'status': 'draft',
+            'subtotal': subtotal,
+            'discount_amount': 0,
+            'tax_amount': 0,
+            'total': total,
+            'reason': reason,
+            'created_by': userId,
+          })
+          .select('id, return_no')
+          .maybeSingle();
+
+      if (header == null || header['id'] == null) {
+        return (returnId: null, returnNo: null, error: 'Failed to create sale return header.');
+      }
+
+      final returnId = header['id'].toString();
+      returnNo = header['return_no']?.toString() ?? returnNo;
+
+      final returnItems = items
+          .map(
+            (i) => {
+              'sale_return_id': returnId,
+              'sale_item_id': i.saleItemId,
+              'product_id': i.productId,
+              'product_name': i.productName,
+              'sku': i.sku,
+              'quantity': i.quantity,
+              'unit': 'piece',
+              'unit_price': i.unitPrice,
+              'total': i.quantity * i.unitPrice,
+            },
+          )
+          .toList();
+
+      await _client.from('sale_return_items').insert(returnItems);
+
+      final finalizeRaw = await _client.rpc(
+        'finalize_sale_return',
+        params: {
+          'p_sale_return_id': returnId,
+          'p_company_id': companyId,
+          'p_created_by': userId,
+        },
+      );
+
+      if (finalizeRaw is Map && finalizeRaw['success'] == false) {
+        return (
+          returnId: null,
+          returnNo: null,
+          error: finalizeRaw['error']?.toString() ?? 'Failed to finalize sale return.',
+        );
+      }
+
+      return (returnId: returnId, returnNo: returnNo, error: null);
+    } catch (e) {
+      return (returnId: null, returnNo: null, error: e.toString());
     }
   }
 

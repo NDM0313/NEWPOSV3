@@ -30,3 +30,9 @@ bool isSaleStatusCancellable(String status) {
   final s = status.toLowerCase();
   return s == 'final' || s == 'order' || s == 'draft';
 }
+
+bool canCreateSaleReturn(PermissionState perms) {
+  return perms.isAdminOrOwner ||
+      perms.hasPermission('sales.edit') ||
+      perms.hasPermission('sales.create');
+}

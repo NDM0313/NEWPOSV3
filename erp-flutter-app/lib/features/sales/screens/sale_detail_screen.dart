@@ -233,6 +233,11 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
         canCancelSale(perms) &&
         isSaleStatusCancellable(sale.status) &&
         sale.status.toLowerCase() != 'cancelled';
+    final canReturn = perms != null &&
+        canCreateSaleReturn(perms) &&
+        isSaleStatusPosted(sale.status) &&
+        !sale.isStudio &&
+        sale.items.isNotEmpty;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -314,6 +319,13 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
               child: Text('Receive payment (due ${formatMoney(sale.due)})'),
             ),
           ],
+          if (canReturn) ...[
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: _busy ? null : () => context.push('/sales/${widget.saleId}/return'),
+              child: const Text('Create sale return'),
+            ),
+          ],
           if (canCancel) ...[
             const SizedBox(height: 8),
             OutlinedButton(
@@ -356,7 +368,7 @@ class _SaleDetailBodyState extends ConsumerState<_SaleDetailBody> {
             children: [DetailRow(label: 'Notes', value: sale.notes!)],
           ),
         ],
-        if (!canFinalize && !canPay) const ReadOnlyBanner(),
+        if (!canFinalize && !canPay && !canReturn && !canCancel) const ReadOnlyBanner(),
       ],
     );
   }

@@ -104,4 +104,37 @@ class ContactsWriteRepository {
       return (contactId: null, error: e.toString());
     }
   }
+
+  Future<({bool success, String? error})> updateContact({
+    required String contactId,
+    required String name,
+    String? phone,
+    String? email,
+    String? city,
+    String? address,
+    bool active = true,
+  }) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      return (success: false, error: 'Name is required.');
+    }
+
+    try {
+      await _client
+          .from('contacts')
+          .update({
+            'name': trimmed,
+            'phone': phone == null || phone.trim().isEmpty ? null : phone.trim(),
+            'email': email == null || email.trim().isEmpty ? null : email.trim(),
+            'city': city == null || city.trim().isEmpty ? null : city.trim(),
+            'address': address == null || address.trim().isEmpty ? null : address.trim(),
+            'is_active': active,
+          })
+          .eq('id', contactId);
+
+      return (success: true, error: null);
+    } catch (e) {
+      return (success: false, error: e.toString());
+    }
+  }
 }

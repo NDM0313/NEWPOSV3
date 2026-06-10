@@ -114,6 +114,60 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
     });
   }
 
+  Future<void> _confirmCancelPurchase() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel purchase?'),
+        content: const Text(
+          'This voids stock and accounting on the server. '
+          'Use only when you need a full purchase cancel.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Back')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Cancel purchase'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final scope = SessionScope.from(ref.read(authSessionProvider));
+    if (scope == null) return;
+
+    setState(() {
+      _busy = true;
+      _actionError = null;
+      _actionSuccess = null;
+    });
+
+    final repo = ref.read(purchasesWriteRepositoryProvider);
+    final result = await repo.cancelPurchase(
+      purchaseId: widget.purchaseId,
+      userId: scope.authUserId,
+    );
+
+    if (!mounted) return;
+
+    if (!result.success) {
+      setState(() {
+        _busy = false;
+        _actionError = result.error ?? 'Cancel failed.';
+      });
+      return;
+    }
+
+    ref.invalidate(purchaseDetailProvider(widget.purchaseId));
+    ref.invalidate(purchasesListProvider);
+    setState(() {
+      _busy = false;
+      _actionSuccess = 'Purchase cancelled.';
+    });
+  }
+
   Future<void> _confirmFinalize() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -178,6 +232,9 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
         purchase.due > 0 &&
         (purchase.status.toLowerCase() == 'final' ||
             purchase.status.toLowerCase() == 'received');
+    final canCancel = perms != null &&
+        canCancelPurchase(perms) &&
+        isPurchaseStatusCancellable(purchase.status);
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -240,6 +297,14 @@ class _PurchaseDetailBodyState extends ConsumerState<_PurchaseDetailBody> {
           OutlinedButton(
             onPressed: _busy ? null : _confirmPaySupplier,
             child: Text('Pay supplier (due ${formatMoney(purchase.due)})'),
+          ),
+        ],
+        if (canCancel) ...[
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: _busy ? null : _confirmCancelPurchase,
+            style: OutlinedButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Cancel purchase'),
           ),
         ],
         if (purchase.items.isNotEmpty) ...[

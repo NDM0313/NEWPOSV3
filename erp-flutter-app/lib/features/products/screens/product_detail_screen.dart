@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../../core/permissions/product_actions.dart';
 import '../../../core/session/session_scope.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_empty_state.dart';
@@ -24,6 +26,7 @@ class ProductDetailScreen extends ConsumerWidget {
     final asyncProduct = ref.watch(productDetailProvider(productId));
     final showStock = scope != null && productStockVisible(scope);
     final showCost = scope != null && productCostVisible(scope);
+    final canEdit = scope != null && canEditProduct(scope.permissions);
 
     return ModuleScaffold(
       title: 'Product',
@@ -108,12 +111,13 @@ class ProductDetailScreen extends ConsumerWidget {
                   ],
                 ),
               ],
-              const SizedBox(height: 24),
-              const Text(
-                'Read-only view — editing arrives in a later phase.',
-                style: TextStyle(color: AppColors.muted, fontSize: 12),
-                textAlign: TextAlign.center,
-              ),
+              if (canEdit) ...[
+                const SizedBox(height: 16),
+                OutlinedButton(
+                  onPressed: () => context.push('/products/$productId/edit'),
+                  child: const Text('Edit product'),
+                ),
+              ],
             ],
           );
         },
