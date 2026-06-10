@@ -110,11 +110,11 @@ export const SETTINGS_NAV: SettingsCategory[] = [
   {
     id: 'usersAccess',
     label: 'Users & Access',
-    description: 'Users, roles aur employee payroll',
+    description: 'Users, roles aur staff payroll settings',
     items: [
       { id: 'users', label: 'Users', contentKey: 'users' },
       { id: 'rolesPermissions', label: 'Roles & Permissions', contentKey: 'rolesPermissions' },
-      { id: 'employees', label: 'Employees', contentKey: 'employees' },
+      { id: 'employees', label: 'Staff & Payroll', contentKey: 'employees' },
     ],
   },
   {

@@ -48,7 +48,7 @@ import { mergeWithDefaults } from '@/app/types/printingSettings';
 import { notifyPrintingSettingsSaved } from '@/app/lib/printingSettingsEvents';
 import { PrintingSettingsPanel } from './PrintingSettingsPanel';
 import { getHealthDashboard, type ErpHealthRow } from '@/app/services/healthService';
-import { EmployeesTab } from './EmployeesTab';
+import { StaffAndPayrollTab } from './StaffAndPayrollTab';
 import { ErpPermissionArchitecturePage } from '@/app/components/erp-permissions/ErpPermissionArchitecturePage';
 import { canAccessTechnicalDeveloperSettings } from '@/app/lib/developerAccountingAccess';
 import { canAccessAccountingDeveloperCenter } from '@/app/lib/accountingDeveloperCenterAccess';
@@ -2634,11 +2634,13 @@ export const SettingsPageNew = () => {
                     <Briefcase className="text-blue-500" size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Employee Payroll & Ledger</h3>
-                    <p className="text-sm text-gray-400">Manage employees, salaries, and commissions</p>
+                    <h3 className="text-xl font-bold text-white">Staff & Payroll</h3>
+                    <p className="text-sm text-gray-400">
+                      Salary settings, generation schedule, and staff configuration (Phase 1)
+                    </p>
                   </div>
                 </div>
-                <EmployeesTab />
+                <StaffAndPayrollTab />
               </div>
             )}
 

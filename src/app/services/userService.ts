@@ -303,13 +303,24 @@ export const userService = {
   },
 
   /**
-   * Get active users eligible for salary (Staff, Salesman, Operator, Admin, Manager).
+   * Get active users eligible for salary (Staff, Salesman, Operator, Admin, Manager, Owner).
    * Used in Expenses → Salary: "Pay to (User)" dropdown. Workers (Dyer, Stitcher, etc.) are NOT included.
    */
   async getUsersForSalary(companyId: string): Promise<User[]> {
     const all = await this.getAllUsers(companyId, { includeInactive: false });
-    const salaryRoles = ['admin', 'manager', 'staff', 'salesman', 'operator', 'cashier', 'inventory'];
-    return (all || []).filter((u) => salaryRoles.includes((u.role || '').toLowerCase()));
+    const salaryRoles = ['owner', 'admin', 'manager', 'staff', 'salesman', 'operator', 'cashier', 'inventory'];
+    return (all || [])
+      .filter((u) => {
+        const role = (u.role || '').toLowerCase();
+        if (salaryRoles.includes(role)) return true;
+        const perms = (u as User & { permissions?: Record<string, unknown> }).permissions ?? {};
+        if (perms.canBeAssignedAsSalesman === true) return true;
+        if ((perms as { sales?: { canBeAssignedAsSalesman?: boolean } }).sales?.canBeAssignedAsSalesman === true) {
+          return true;
+        }
+        return u.can_be_assigned_as_salesman === true;
+      })
+      .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', undefined, { sensitivity: 'base' }));
   },
 
   /** Get branch IDs assigned to a user (for Edit User → Branch Access). userId = auth_user_id (identity). */

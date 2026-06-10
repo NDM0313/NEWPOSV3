@@ -20,6 +20,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../ui/select";
 import { employeeService, Employee, EmployeeLedgerEntry } from '@/app/services/employeeService';
+import { payrollSettingsService } from '@/app/services/payrollSettingsService';
 import { userService, User } from '@/app/services/userService';
 import { branchService, Branch } from '@/app/services/branchService';
 import { useSupabase } from '@/app/context/SupabaseContext';
@@ -27,7 +28,12 @@ import { toast } from 'sonner';
 import { cn } from "../ui/utils";
 import { Switch } from "../ui/switch";
 
-export const EmployeesTab = () => {
+interface EmployeesTabProps {
+  /** Phase 1: hide Run Payroll / Pay actions until approval center (Phase 2+). */
+  phase1HidePaymentActions?: boolean;
+}
+
+export const EmployeesTab = ({ phase1HidePaymentActions = false }: EmployeesTabProps) => {
   const { companyId, userRole } = useSupabase();
   const isAdminOrOwner = (() => {
     if (!userRole) return false;
@@ -103,7 +109,14 @@ export const EmployeesTab = () => {
         Number(newEmployeeSalary), 
         Number(newEmployeeCommission || 0)
       );
-      if (res) {
+      if (res && companyId) {
+        await payrollSettingsService.syncFromEmployeeRecord(
+          companyId,
+          newEmployeeUserId,
+          Number(newEmployeeSalary),
+          Number(newEmployeeCommission || 0),
+          true,
+        );
         toast.success('Employee added successfully');
         setAddEmployeeModalOpen(false);
         loadData();
@@ -202,6 +215,14 @@ export const EmployeesTab = () => {
         is_active: editIsActive
       });
 
+      await payrollSettingsService.syncFromEmployeeRecord(
+        companyId,
+        selectedEmployee.user_id,
+        Number(editSalary),
+        Number(editCommission),
+        editIsActive,
+      );
+
       // 2. Update User Role
       await userService.updateUser(selectedEmployee.user_id, { role: editRole });
 
@@ -275,23 +296,25 @@ export const EmployeesTab = () => {
         <div className="flex items-center gap-2 w-full md:w-auto">
           {isAdminOrOwner && (
             <>
-              <Button 
-                variant="outline" 
-                className="flex-1 md:flex-none border-gray-800 text-gray-300 hover:bg-gray-800"
-                onClick={async () => {
-                  const confirm = window.confirm('Run monthly salary credit for all active employees?');
-                  if (confirm && companyId) {
-                    const res = await employeeService.runMonthlySalaryCredit(companyId);
-                    if (res.success) {
-                      toast.success(`Processed salary for ${res.processed} employees`);
-                      loadData();
+              {!phase1HidePaymentActions && (
+                <Button 
+                  variant="outline" 
+                  className="flex-1 md:flex-none border-gray-800 text-gray-300 hover:bg-gray-800"
+                  onClick={async () => {
+                    const confirm = window.confirm('Run monthly salary credit for all active employees?');
+                    if (confirm && companyId) {
+                      const res = await employeeService.runMonthlySalaryCredit(companyId);
+                      if (res.success) {
+                        toast.success(`Processed salary for ${res.processed} employees`);
+                        loadData();
+                      }
                     }
-                  }
-                }}
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Run Payroll
-              </Button>
+                  }}
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Run Payroll
+                </Button>
+              )}
               <Button 
                 className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white"
                 onClick={() => setAddEmployeeModalOpen(true)}
@@ -354,9 +377,11 @@ export const EmployeesTab = () => {
                           <Button variant="ghost" size="sm" onClick={() => openAction(emp, 'bonus')} className="text-purple-400 hover:text-purple-300">
                             <Plus className="w-4 h-4 mr-1" /> Bonus
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => openAction(emp, 'payment')} className="text-green-400 hover:text-green-300">
-                            <DollarSign className="w-4 h-4 mr-1" /> Pay
-                          </Button>
+                          {!phase1HidePaymentActions && (
+                            <Button variant="ghost" size="sm" onClick={() => openAction(emp, 'payment')} className="text-green-400 hover:text-green-300">
+                              <DollarSign className="w-4 h-4 mr-1" /> Pay
+                            </Button>
+                          )}
                         </>
                       )}
                     </div>
