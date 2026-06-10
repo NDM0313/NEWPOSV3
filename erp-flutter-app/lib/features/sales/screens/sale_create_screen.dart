@@ -1,0 +1,270 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../app/theme/app_colors.dart';
+import '../../../core/session/session_scope.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../data/models/product.dart';
+import '../../../data/repositories/sales_write_repository.dart';
+import '../../auth/providers/auth_session_provider.dart';
+import '../../auth/providers/repository_providers.dart';
+import '../../products/providers/products_providers.dart';
+import '../providers/sales_providers.dart';
+
+class SaleCreateScreen extends ConsumerStatefulWidget {
+  const SaleCreateScreen({super.key});
+
+  @override
+  ConsumerState<SaleCreateScreen> createState() => _SaleCreateScreenState();
+}
+
+class _DraftLine {
+  _DraftLine({
+    required this.product,
+    required this.quantity,
+  });
+
+  final Product product;
+  final double quantity;
+
+  double get total => quantity * product.retailPrice;
+}
+
+class _SaleCreateScreenState extends ConsumerState<SaleCreateScreen> {
+  final _customerController = TextEditingController(text: 'Walk-in');
+  final List<_DraftLine> _lines = [];
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _customerController.dispose();
+    super.dispose();
+  }
+
+  double get _total => _lines.fold(0, (sum, l) => sum + l.total);
+
+  Future<void> _pickProduct() async {
+    final products = await ref.read(productsListProvider.future);
+    if (!mounted) return;
+    if (products.isEmpty) {
+      setState(() => _error = 'No products available.');
+      return;
+    }
+
+    final picked = await showModalBottomSheet<Product>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          builder: (_, controller) {
+            return ListView.builder(
+              controller: controller,
+              itemCount: products.length,
+              itemBuilder: (_, i) {
+                final p = products[i];
+                return ListTile(
+                  title: Text(p.name),
+                  subtitle: Text('${p.sku} · ${formatMoney(p.retailPrice)}'),
+                  onTap: () => Navigator.pop(ctx, p),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _lines.add(_DraftLine(product: picked, quantity: 1));
+        _error = null;
+      });
+    }
+  }
+
+  Future<void> _saveDraft() async {
+    final session = ref.read(authSessionProvider);
+    final scope = SessionScope.from(session);
+    if (scope == null || scope.branchId == null) {
+      setState(() => _error = 'Session or branch missing.');
+      return;
+    }
+    if (_lines.isEmpty) {
+      setState(() => _error = 'Add at least one product line.');
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+
+    final repo = ref.read(salesWriteRepositoryProvider);
+    final result = await repo.createDraftSale(
+      companyId: scope.companyId,
+      branchId: scope.branchId!,
+      createdBy: scope.authUserId,
+      customerName: _customerController.text,
+      items: _lines
+          .map(
+            (l) => DraftSaleLineInput(
+              productId: l.product.id,
+              productName: l.product.name,
+              sku: l.product.sku,
+              quantity: l.quantity,
+              unitPrice: l.product.retailPrice,
+              total: l.total,
+            ),
+          )
+          .toList(),
+    );
+
+    if (!mounted) return;
+
+    if (result.error != null || result.saleId == null) {
+      setState(() {
+        _saving = false;
+        _error = result.error ?? 'Failed to save draft.';
+      });
+      return;
+    }
+
+    ref.invalidate(salesListProvider);
+    context.go('/sales/${result.saleId}');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('New draft sale'),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => context.pop(),
+        ),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                TextField(
+                  controller: _customerController,
+                  decoration: const InputDecoration(
+                    labelText: 'Customer name',
+                    hintText: 'Walk-in',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Text(
+                      'Line items',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: _pickProduct,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add product'),
+                    ),
+                  ],
+                ),
+                if (_lines.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      'No items yet. Tap Add product.',
+                      style: TextStyle(color: AppColors.muted),
+                    ),
+                  ),
+                ..._lines.asMap().entries.map((entry) {
+                  final i = entry.key;
+                  final line = entry.value;
+                  return Card(
+                    color: AppColors.surface,
+                    child: ListTile(
+                      title: Text(line.product.name),
+                      subtitle: Text(
+                        '${line.product.sku} · ${formatMoney(line.product.retailPrice)} × ${line.quantity}',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.remove),
+                            onPressed: () {
+                              if (line.quantity <= 1) {
+                                setState(() => _lines.removeAt(i));
+                              } else {
+                                setState(() => _lines[i] = _DraftLine(
+                                      product: line.product,
+                                      quantity: line.quantity - 1,
+                                    ));
+                              }
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.add),
+                            onPressed: () {
+                              setState(() => _lines[i] = _DraftLine(
+                                    product: line.product,
+                                    quantity: line.quantity + 1,
+                                  ));
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(_error!, style: const TextStyle(color: AppColors.error)),
+                  ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Draft only — finalize and payment come in a later step.',
+                  style: TextStyle(color: AppColors.muted, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              border: Border(top: BorderSide(color: AppColors.border)),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  'Total ${formatMoney(_total)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+                const Spacer(),
+                ElevatedButton(
+                  onPressed: _saving ? null : _saveDraft,
+                  child: _saving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save draft'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
