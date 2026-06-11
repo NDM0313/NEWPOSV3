@@ -24,6 +24,9 @@ export interface UnpostedPostability {
 export interface UnmappedLineDiagnostics {
   isLikelyFalsePositive: boolean;
   falsePositiveReason: string | null;
+  /** Financially correct rental/payment row with JE vs payment metadata mismatch (Phase 2.1 — RCV-0008 class B). */
+  isMetadataReviewOnly: boolean;
+  metadataReviewReason: string | null;
   queueReason: string;
   suggestedAction: string;
   riskLevel: ArApRiskLevel;
@@ -115,6 +118,27 @@ export function isLikelyPaymentOnAccountFalsePositive(input: {
   return true;
 }
 
+/** Rental receipt: payment row reference_type=rental but JE header reference_type=payment (whitelist gap). */
+export function isLikelyRentalPaymentMetadataReview(input: {
+  jeReferenceType?: string | null;
+  paymentReferenceType?: string | null;
+  arLinkedContactId?: string | null;
+  contactMappingStatus?: string | null;
+  controlBucket?: string | null;
+}): boolean {
+  const jeRef = String(input.jeReferenceType ?? '').toLowerCase().trim();
+  const payRef = String(input.paymentReferenceType ?? '').toLowerCase().trim();
+  const bucket = String(input.controlBucket ?? '').toUpperCase().trim();
+  const mapStatus = String(input.contactMappingStatus ?? '').toLowerCase().trim();
+  const arLc = input.arLinkedContactId ? String(input.arLinkedContactId).trim() : '';
+  if (bucket !== 'AR') return false;
+  if (jeRef !== 'payment') return false;
+  if (payRef !== 'rental') return false;
+  if (mapStatus !== 'unclassified_reference') return false;
+  if (!arLc) return false;
+  return true;
+}
+
 export function diagnoseUnmappedLine(
   row: UnmappedJournalRow,
   paymentMeta?: { reference_type?: string | null; contact_id?: string | null; reference_number?: string | null },
@@ -134,8 +158,32 @@ export function diagnoseUnmappedLine(
       isLikelyFalsePositive: true,
       falsePositiveReason:
         'Likely mapped — heuristic false positive: JE reference_type is payment, payment row is on_account, and AR sub-ledger linked_contact_id matches payment contact.',
+      isMetadataReviewOnly: false,
+      metadataReviewReason: null,
       queueReason,
       suggestedAction: 'Mark manual reviewed or hide after Phase 3 whitelist fix. Do not relink unless business confirms wrong customer.',
+      riskLevel: 'low',
+    };
+  }
+
+  const metadataReview = isLikelyRentalPaymentMetadataReview({
+    jeReferenceType: row.reference_type,
+    paymentReferenceType: paymentMeta?.reference_type,
+    arLinkedContactId,
+    contactMappingStatus: row.contact_mapping_status,
+    controlBucket: row.control_bucket,
+  });
+
+  if (metadataReview) {
+    return {
+      isLikelyFalsePositive: false,
+      falsePositiveReason: null,
+      isMetadataReviewOnly: true,
+      metadataReviewReason:
+        'Mapped financially — source metadata needs review: payment row is rental-linked and AR sub-ledger contact is set, but JE reference_type is payment (not on AR whitelist). Do not relink or reverse/repost.',
+      queueReason,
+      suggestedAction:
+        'Metadata review only. Ledger and party sub-ledger appear correct; fix whitelist/JE reference_type in a future controlled change — not Phase 3 repair.',
       riskLevel: 'low',
     };
   }
@@ -144,6 +192,8 @@ export function diagnoseUnmappedLine(
     return {
       isLikelyFalsePositive: false,
       falsePositiveReason: null,
+      isMetadataReviewOnly: false,
+      metadataReviewReason: null,
       queueReason,
       suggestedAction: 'Identify source document or void/repost with audit trail.',
       riskLevel: 'critical',
@@ -154,6 +204,8 @@ export function diagnoseUnmappedLine(
     return {
       isLikelyFalsePositive: false,
       falsePositiveReason: null,
+      isMetadataReviewOnly: false,
+      metadataReviewReason: null,
       queueReason,
       suggestedAction: 'Relink worker contact (Phase 3) or mark ready to relink.',
       riskLevel: 'high',
@@ -163,6 +215,8 @@ export function diagnoseUnmappedLine(
   return {
     isLikelyFalsePositive: false,
     falsePositiveReason: null,
+    isMetadataReviewOnly: false,
+    metadataReviewReason: null,
     queueReason,
     suggestedAction: 'Review payment vs party; relink or reverse/repost in Phase 3.',
     riskLevel: 'medium',

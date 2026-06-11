@@ -19,6 +19,14 @@ export function FalsePositiveBadge() {
   );
 }
 
+export function MetadataReviewBadge() {
+  return (
+    <Badge className="border text-[10px] bg-violet-500/15 text-violet-200 border-violet-500/40">
+      Mapped financially — metadata review
+    </Badge>
+  );
+}
+
 export function PostabilityBadge(props: { label: string; isNonFinal: boolean }) {
   return (
     <Badge

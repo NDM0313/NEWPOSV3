@@ -3,6 +3,7 @@ import {
   diagnoseUnmappedLine,
   diagnoseUnpostedRow,
   isLikelyPaymentOnAccountFalsePositive,
+  isLikelyRentalPaymentMetadataReview,
 } from './arApReconciliationDiagnostics';
 import type { UnmappedJournalRow, UnpostedDocumentRow } from '@/app/services/arApReconciliationCenterService';
 
@@ -86,6 +87,35 @@ describe('diagnoseUnmappedLine', () => {
     const row = baseUnmapped({ entry_no: 'RCV-0017' });
     const d = diagnoseUnmappedLine(row, { reference_type: 'on_account', contact_id: 'c-walkin' }, 'c-walkin');
     expect(d.isLikelyFalsePositive).toBe(true);
+    expect(d.isMetadataReviewOnly).toBe(false);
+    expect(d.riskLevel).toBe('low');
+  });
+
+  it('flags RCV-0008-style rental payment metadata review (class B)', () => {
+    expect(
+      isLikelyRentalPaymentMetadataReview({
+        jeReferenceType: 'payment',
+        paymentReferenceType: 'rental',
+        arLinkedContactId: 'e63ee52a-eca0-43c5-b7cc-bba5e278e646',
+        contactMappingStatus: 'unclassified_reference',
+        controlBucket: 'AR',
+      })
+    ).toBe(true);
+
+    const row = baseUnmapped({
+      entry_no: 'RCV-0008',
+      account_code: 'AR-CUS0060',
+      contact_mapping_status: 'unclassified_reference',
+      reason: 'Reference type is not on the AR/AP whitelist; subledger mapping uncertain.',
+    });
+    const d = diagnoseUnmappedLine(
+      row,
+      { reference_type: 'rental', contact_id: null, reference_number: 'RCV-0008' },
+      'e63ee52a-eca0-43c5-b7cc-bba5e278e646'
+    );
+    expect(d.isLikelyFalsePositive).toBe(false);
+    expect(d.isMetadataReviewOnly).toBe(true);
+    expect(d.metadataReviewReason).toMatch(/Mapped financially/);
     expect(d.riskLevel).toBe('low');
   });
 });

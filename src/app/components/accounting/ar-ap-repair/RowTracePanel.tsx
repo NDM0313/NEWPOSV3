@@ -16,7 +16,7 @@ import {
   type UnpostedTraceBundle,
 } from '@/app/services/arApReconciliationTraceService';
 import { fetchJournalDetailForLab, type JournalDetailForLab } from '@/app/services/arApRepairWorkflowService';
-import { FalsePositiveBadge, PostabilityBadge, RiskBadge } from './ArApRepairBadges';
+import { FalsePositiveBadge, MetadataReviewBadge, PostabilityBadge, RiskBadge } from './ArApRepairBadges';
 
 export type TraceTarget =
   | { kind: 'unposted'; row: UnpostedDocumentRow }
@@ -69,6 +69,8 @@ export function RowTracePanel(props: {
   let queueReason = '';
   let suggested = '';
   let showFp = false;
+  let showMetadataReview = false;
+  let metadataReviewReason: string | null = null;
 
   if (props.target?.kind === 'unposted' && unposted) {
     const d = diagnoseUnpostedRow(unposted.row, unposted.enrichment?.status);
@@ -81,6 +83,8 @@ export function RowTracePanel(props: {
     queueReason = d.queueReason;
     suggested = d.suggestedAction;
     showFp = d.isLikelyFalsePositive;
+    showMetadataReview = d.isMetadataReviewOnly;
+    metadataReviewReason = d.metadataReviewReason;
   } else if (props.target?.kind === 'manual') {
     risk = manualRowRisk(props.target.row);
     queueReason = props.target.row.description || props.target.row.detection_kind || 'Manual/suspense JE';
@@ -111,6 +115,7 @@ export function RowTracePanel(props: {
               <div className="flex flex-wrap gap-2">
                 <RiskBadge level={risk} />
                 {showFp && <FalsePositiveBadge />}
+                {showMetadataReview && <MetadataReviewBadge />}
                 {unposted && (
                   <PostabilityBadge
                     label={diagnoseUnpostedRow(unposted.row, unposted.enrichment?.status).label}
@@ -120,6 +125,9 @@ export function RowTracePanel(props: {
               </div>
 
               <Section title="Why in queue">{queueReason}</Section>
+              {showMetadataReview && metadataReviewReason && (
+                <Section title="Classification">{metadataReviewReason}</Section>
+              )}
               <Section title="Suggested fix">{suggested}</Section>
 
               {unposted && (

@@ -61,7 +61,7 @@ import { PostingDryRunWizard } from '@/app/components/accounting/ar-ap-repair/Po
 import { RelinkDryRunWizard } from '@/app/components/accounting/ar-ap-repair/RelinkDryRunWizard';
 import { StatusChangeModal, type StatusChangeIntent } from '@/app/components/accounting/ar-ap-repair/StatusChangeModal';
 import { RowTracePanel, type TraceTarget } from '@/app/components/accounting/ar-ap-repair/RowTracePanel';
-import { FalsePositiveBadge, PostabilityBadge, RiskBadge } from '@/app/components/accounting/ar-ap-repair/ArApRepairBadges';
+import { FalsePositiveBadge, MetadataReviewBadge, PostabilityBadge, RiskBadge } from '@/app/components/accounting/ar-ap-repair/ArApRepairBadges';
 
 function statusBadgeClass(status: IntegrityLabSummary['status']): string {
   switch (status) {
@@ -353,7 +353,10 @@ export function ArApReconciliationCenterPage() {
     () =>
       unmappedCustomerSupplier
         .filter((r) => rowVisible(unmappedLineItemKey(r)))
-        .filter((r) => !unmappedDiagByKey.get(unmappedLineItemKey(r))?.isLikelyFalsePositive),
+        .filter((r) => {
+          const d = unmappedDiagByKey.get(unmappedLineItemKey(r));
+          return !d?.isLikelyFalsePositive && !d?.isMetadataReviewOnly;
+        }),
     [unmappedCustomerSupplier, rowVisible, unmappedDiagByKey]
   );
 
@@ -362,6 +365,14 @@ export function ArApReconciliationCenterPage() {
       unmappedCustomerSupplier
         .filter((r) => rowVisible(unmappedLineItemKey(r)))
         .filter((r) => unmappedDiagByKey.get(unmappedLineItemKey(r))?.isLikelyFalsePositive),
+    [unmappedCustomerSupplier, rowVisible, unmappedDiagByKey]
+  );
+
+  const unmappedCsMetadataReview = useMemo(
+    () =>
+      unmappedCustomerSupplier
+        .filter((r) => rowVisible(unmappedLineItemKey(r)))
+        .filter((r) => unmappedDiagByKey.get(unmappedLineItemKey(r))?.isMetadataReviewOnly),
     [unmappedCustomerSupplier, rowVisible, unmappedDiagByKey]
   );
   const unmappedWpVisible = useMemo(
@@ -704,6 +715,10 @@ export function ArApReconciliationCenterPage() {
             rows={unpostedNonFinal.length}
             subtitle="Order/draft sales — no urgent missing posting"
           >
+            <p className="text-xs text-slate-400 mb-3 px-1">
+              These are order-stage sales. They are not postable until finalized. Finalize the sale to create normal
+              accounting posting, or leave as order if still pending.
+            </p>
             {renderUnpostedTable(unpostedNonFinal, 'No non-final documents in queue.')}
           </QueueSection>
 
@@ -868,6 +883,75 @@ export function ArApReconciliationCenterPage() {
             </table>
           </QueueSection>
 
+          <QueueSection
+            title="2c · Mapped financially — metadata review"
+            icon={<Eye className="w-5 h-5 text-violet-400" />}
+            rows={unmappedCsMetadataReview.length}
+            subtitle="Rental/payment rows balanced on sub-ledger — JE vs payment reference metadata mismatch only"
+          >
+            <table className="w-full text-sm">
+              <thead className="text-left text-gray-500 border-b border-gray-800">
+                <tr>
+                  <th className="p-2 min-w-[200px]">Document</th>
+                  <th className="p-2">Label</th>
+                  <th className="p-2">Account</th>
+                  <th className="p-2 text-right">Cr</th>
+                  <th className="p-2 w-32">Fix status</th>
+                  <th className="p-2 w-36">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/80">
+                {unmappedCsMetadataReview.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-6 text-center text-gray-500">
+                      No metadata-review rows.
+                    </td>
+                  </tr>
+                ) : (
+                  unmappedCsMetadataReview.map((r) => {
+                    const key = unmappedLineItemKey(r);
+                    const diag = unmappedDiagByKey.get(key);
+                    return (
+                      <tr key={key} className="hover:bg-gray-800/20 opacity-90">
+                        <td className="p-2 align-top">
+                          <AccountingRefDisplayCell ui={jeUiByJournalId.get(r.journal_entry_id)} />
+                        </td>
+                        <td className="p-2 align-top space-y-1">
+                          <MetadataReviewBadge />
+                          {diag?.metadataReviewReason && (
+                            <p className="text-[10px] text-violet-200/80 leading-snug max-w-xs">{diag.metadataReviewReason}</p>
+                          )}
+                        </td>
+                        <td className="p-2 text-xs">
+                          {r.account_name} <span className="text-gray-600">{r.account_code}</span>
+                        </td>
+                        <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.credit) || 0)}</td>
+                        <td className="p-2">
+                          <FixStatusButton
+                            value={getStatus(key)}
+                            disabled={access.readOnly}
+                            onClick={() =>
+                              openStatusModal('unmapped_line', key, { kind: 'mark_reviewed' }, 'Mark metadata reviewed')
+                            }
+                          />
+                        </td>
+                        <td className="p-2">
+                          <RowActionsMenu
+                            readOnly={access.readOnly}
+                            items={[
+                              { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
+                              { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
+                            ]}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </QueueSection>
+
           <QueueSection title="3 · Worker payable unmapped (2010 / Worker Payable only)" icon={<ClipboardList className="w-5 h-5 text-rose-400" />} rows={unmappedWpVisible.length}>
             <table className="w-full text-sm">
               <thead className="text-left text-gray-500 border-b border-gray-800">
@@ -1013,10 +1097,13 @@ export function ArApReconciliationCenterPage() {
             Post, relink apply, and journal execute are disabled or gated — no GL mutations.
           </p>
           <p>
-            <strong className="text-gray-200">Non-final sales (order/draft):</strong> shown in queue 1a with label &quot;Non-final / not postable&quot; — not urgent missing posting.
+            <strong className="text-gray-200">Non-final sales (order/draft):</strong> queue 1a — order-stage sales are not postable until finalized.
           </p>
           <p>
-            <strong className="text-gray-200">False-positive unmapped AR:</strong> payment JE + on_account payment + matching AR linked contact → queue 2b, not default repair.
+            <strong className="text-gray-200">False-positive unmapped AR:</strong> payment JE + on_account payment + matching AR linked contact → queue 2b.
+          </p>
+          <p>
+            <strong className="text-gray-200">Metadata review (e.g. RCV-0008):</strong> rental payment with correct AR sub-ledger but JE reference_type=payment → queue 2c; no relink/repost in Phase 2.
           </p>
           <p>
             <strong className="text-gray-200">Fix status:</strong> stored in <code>ar_ap_reconciliation_review_items.fix_status</code>; mark resolved requires reason and stays reviewed if row remains in SQL view.
