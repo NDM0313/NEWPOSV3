@@ -79,13 +79,13 @@ WITH co AS (
 SELECT
   ROUND(COALESCE(SUM(s.due_amount), 0), 2) AS sales_due_sum_non_cancelled,
   ROUND(COALESCE(SUM(p.due_amount), 0), 2) AS purchases_due_sum_non_cancelled,
-  COUNT(*) FILTER (WHERE s.due_amount > 0 AND lower(trim(s.status)) NOT IN ('cancelled', 'void')) AS sales_with_due_count,
-  COUNT(*) FILTER (WHERE p.due_amount > 0 AND lower(trim(p.status)) NOT IN ('cancelled', 'void')) AS purchases_with_due_count
+  COUNT(*) FILTER (WHERE s.due_amount > 0 AND lower(trim(s.status::text)) NOT IN ('cancelled', 'void')) AS sales_with_due_count,
+  COUNT(*) FILTER (WHERE p.due_amount > 0 AND lower(trim(p.status::text)) NOT IN ('cancelled', 'void')) AS purchases_with_due_count
 FROM co
 LEFT JOIN sales s ON s.company_id = co.company_id
-  AND lower(trim(s.status)) NOT IN ('cancelled', 'void')
+  AND lower(trim(s.status::text)) NOT IN ('cancelled', 'void')
 LEFT JOIN purchases p ON p.company_id = co.company_id
-  AND lower(trim(p.status)) NOT IN ('cancelled', 'void');
+  AND lower(trim(p.status::text)) NOT IN ('cancelled', 'void');
 
 SELECT '=== 1D. Queue counts (AR/AP lab views) ===' AS audit_section;
 
@@ -204,7 +204,8 @@ SELECT
 FROM inayat i
 LEFT JOIN journal_entry_lines jel ON jel.account_id = i.ar_account_id
 LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
-  AND COALESCE(je.is_void, FALSE) = FALSE;
+  AND COALESCE(je.is_void, FALSE) = FALSE
+GROUP BY i.contact_id, i.ar_account_id;
 
 -- ---------------------------------------------------------------------------
 -- Section 3 — Saqib RCV-0008 metadata review (class B)
@@ -220,12 +221,15 @@ WITH saqib AS (
   LIMIT 1
 )
 SELECT
-  s.*,
+  s.contact_id,
+  s.ar_account_id,
+  s.ar_code,
   ROUND(COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0), 2) AS ar_net_dr_minus_cr
 FROM saqib s
 LEFT JOIN journal_entry_lines jel ON jel.account_id = s.ar_account_id
 LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
-  AND COALESCE(je.is_void, FALSE) = FALSE;
+  AND COALESCE(je.is_void, FALSE) = FALSE
+GROUP BY s.contact_id, s.ar_account_id, s.ar_code;
 
 SELECT '=== 3B. RCV-0008 payment + JE metadata ===' AS audit_section;
 
