@@ -35,6 +35,8 @@ export function UnpostedRepairDialog(props: {
   branchId: string | null | undefined;
   canPost: boolean;
   onSuccess: () => void;
+  /** Phase 2: hide live post — use PostingDryRunWizard instead */
+  phase2SafeMode?: boolean;
 }) {
   const { formatCurrency } = useFormatCurrency();
   const [strictBranch, setStrictBranch] = useState(false);
@@ -45,7 +47,7 @@ export function UnpostedRepairDialog(props: {
   }, [props.open]);
 
   const handlePost = async () => {
-    if (!props.row || !props.canPost) return;
+    if (props.phase2SafeMode || !props.row || !props.canPost) return;
     setPosting(true);
     try {
       const res = await validateAndPostUnpostedDocument({
@@ -116,10 +118,16 @@ export function UnpostedRepairDialog(props: {
           <Button variant="outline" className="border-gray-700" onClick={() => props.onOpenChange(false)}>
             Cancel
           </Button>
-          <Button className="bg-blue-600 hover:bg-blue-500" disabled={!props.canPost || posting} onClick={() => void handlePost()}>
-            {posting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            Post document to GL
-          </Button>
+          {props.phase2SafeMode ? (
+            <Button className="bg-gray-700 cursor-not-allowed opacity-60" disabled title="Phase 2 — use posting dry-run wizard">
+              Post document (Phase 3)
+            </Button>
+          ) : (
+            <Button className="bg-blue-600 hover:bg-blue-500" disabled={!props.canPost || posting} onClick={() => void handlePost()}>
+              {posting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Post document to GL
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -133,6 +141,10 @@ export function JournalRepairWizardDialog(props: {
   companyId: string;
   canPost: boolean;
   onSuccess: () => void;
+  phase2SafeMode?: boolean;
+  canDeveloperExecute?: boolean;
+  itemFixStatus?: string | null;
+  onSendToRepairQueue?: () => void | Promise<void>;
 }) {
   const { formatCurrency } = useFormatCurrency();
   const [step, setStep] = useState<1 | 2>(1);
@@ -167,8 +179,13 @@ export function JournalRepairWizardDialog(props: {
     };
   }, [props.open, props.journalEntryId]);
 
+  const canExecuteNow =
+    !props.phase2SafeMode ||
+    props.canDeveloperExecute ||
+    props.itemFixStatus === 'ready_to_reverse_repost';
+
   const runExecute = async () => {
-    if (!props.journalEntryId || !props.canPost) return;
+    if (!canExecuteNow || !props.journalEntryId || !props.canPost) return;
     if (strategy === 'void_only' && !voidReason.trim()) {
       toast.error('Enter a void reason (audit trail).');
       return;
@@ -202,7 +219,7 @@ export function JournalRepairWizardDialog(props: {
         <DialogHeader>
           <DialogTitle>Journal repair wizard</DialogTitle>
           <DialogDescription className="text-gray-400">
-            Step 1: Review entry. Step 2: Explicit reverse/repost — voids canonical document journals before reposting, or voids this entry only.
+            Step 1: Review entry. Step 2: Reverse/repost preview — Phase 2 blocks execute unless status is ready_to_reverse_repost or you are Developer/Super Admin.
           </DialogDescription>
         </DialogHeader>
 
@@ -297,18 +314,38 @@ export function JournalRepairWizardDialog(props: {
                     />
                   </div>
                 )}
-                <div className="flex gap-2">
+                {props.phase2SafeMode && !canExecuteNow && (
+                  <p className="text-amber-300/90 text-xs rounded border border-amber-500/30 bg-amber-950/20 p-2">
+                    Phase 2: execute is gated. Mark row <strong>ready to reverse/repost</strong> or use Send to repair queue. No void/rebuild until Phase 3 or Developer bypass.
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
                   <Button variant="outline" className="border-gray-700" onClick={() => setStep(1)}>
                     Back
                   </Button>
-                  <Button
-                    className="bg-amber-600 hover:bg-amber-500"
-                    disabled={!props.canPost || executing || detail.is_void}
-                    onClick={() => void runExecute()}
-                  >
-                    {executing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                    Confirm
-                  </Button>
+                  {props.phase2SafeMode && props.onSendToRepairQueue && (
+                    <Button
+                      variant="outline"
+                      className="border-blue-500/50 text-blue-300"
+                      onClick={() => void props.onSendToRepairQueue?.()}
+                    >
+                      Send to repair queue
+                    </Button>
+                  )}
+                  {canExecuteNow ? (
+                    <Button
+                      className="bg-amber-600 hover:bg-amber-500"
+                      disabled={!props.canPost || executing || detail.is_void}
+                      onClick={() => void runExecute()}
+                    >
+                      {executing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                      Confirm execute
+                    </Button>
+                  ) : props.phase2SafeMode ? (
+                    <Button className="bg-gray-700 cursor-not-allowed opacity-60" disabled title="Phase 2 gated">
+                      Execute (gated)
+                    </Button>
+                  ) : null}
                 </div>
                 {!props.canPost && <p className="text-amber-400 text-xs">No permission to void/rebuild journals.</p>}
               </div>
@@ -326,6 +363,7 @@ export function RelinkContactDialog(props: {
   row: UnmappedJournalRow | null;
   companyId: string;
   onSuccess: () => void;
+  phase2SafeMode?: boolean;
 }) {
   const [candidates, setCandidates] = useState<PartyCandidate[]>([]);
   const [loading, setLoading] = useState(false);
@@ -355,6 +393,7 @@ export function RelinkContactDialog(props: {
   }, [props.open, props.row, props.companyId]);
 
   const save = async () => {
+    if (props.phase2SafeMode) return;
     if (!props.row || !selected) {
       toast.error('Select a contact');
       return;
@@ -436,10 +475,16 @@ export function RelinkContactDialog(props: {
           <Button variant="outline" className="border-gray-700" onClick={() => props.onOpenChange(false)}>
             Cancel
           </Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-500" disabled={saving || !selected} onClick={() => void save()}>
-            {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            Save mapping
-          </Button>
+          {props.phase2SafeMode ? (
+            <Button className="bg-gray-700 cursor-not-allowed opacity-60" disabled title="Phase 2 — use relink dry-run wizard">
+              Save mapping (Phase 3)
+            </Button>
+          ) : (
+            <Button className="bg-emerald-600 hover:bg-emerald-500" disabled={saving || !selected} onClick={() => void save()}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Save mapping
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

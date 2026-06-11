@@ -3,9 +3,9 @@ import {
   AlertTriangle,
   ArrowLeft,
   BookMarked,
-  CheckCircle2,
   ClipboardList,
   ExternalLink,
+  Eye,
   FileWarning,
   Loader2,
   RefreshCw,
@@ -16,14 +16,12 @@ import {
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
-import { Input } from '@/app/components/ui/input';
 import { DatePicker } from '@/app/components/ui/DatePicker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
 import { cn } from '@/app/components/ui/utils';
@@ -54,18 +52,16 @@ import type { AccountingUiRef } from '@/app/lib/accountingDisplayReference';
 import { resolveJournalUiRefsByJournalIds } from '@/app/services/integrityLabService';
 import {
   JournalRepairWizardDialog,
-  RelinkContactDialog,
-  UnpostedRepairDialog,
 } from '@/app/components/accounting/ArApRepairDialogs';
-
-const FIX_STATUSES: ArApFixStatus[] = [
-  'new',
-  'reviewed',
-  'ready_to_post',
-  'ready_to_relink',
-  'ready_to_reverse_repost',
-  'resolved',
-];
+import { resolveArApReconciliationAccess } from '@/app/lib/arApReconciliationAccess';
+import { diagnoseUnpostedRow, diagnoseUnmappedLine } from '@/app/lib/arApReconciliationDiagnostics';
+import { batchFetchUnpostedDocumentStatuses, loadUnmappedTrace } from '@/app/services/arApReconciliationTraceService';
+import { SourceDocumentDetailModal, UnmappedRowDetailModal } from '@/app/components/accounting/ar-ap-repair/SourceDocumentDetailModal';
+import { PostingDryRunWizard } from '@/app/components/accounting/ar-ap-repair/PostingDryRunWizard';
+import { RelinkDryRunWizard } from '@/app/components/accounting/ar-ap-repair/RelinkDryRunWizard';
+import { StatusChangeModal, type StatusChangeIntent } from '@/app/components/accounting/ar-ap-repair/StatusChangeModal';
+import { RowTracePanel, type TraceTarget } from '@/app/components/accounting/ar-ap-repair/RowTracePanel';
+import { FalsePositiveBadge, PostabilityBadge, RiskBadge } from '@/app/components/accounting/ar-ap-repair/ArApRepairBadges';
 
 function statusBadgeClass(status: IntegrityLabSummary['status']): string {
   switch (status) {
@@ -84,31 +80,29 @@ function statusBadgeClass(status: IntegrityLabSummary['status']): string {
   }
 }
 
-function FixStatusSelect(props: {
+function FixStatusButton(props: {
   value: ArApFixStatus;
-  onChange: (v: ArApFixStatus) => void;
+  onClick: () => void;
   disabled?: boolean;
 }) {
   return (
-    <select
-      value={props.value}
+    <button
+      type="button"
       disabled={props.disabled}
-      onChange={(e) => props.onChange(e.target.value as ArApFixStatus)}
-      className="max-w-[140px] bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-200"
+      onClick={props.onClick}
+      className="max-w-[140px] bg-gray-900 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-200 text-left hover:bg-gray-800 disabled:opacity-50"
+      title="Change status (requires reason)"
     >
-      {FIX_STATUSES.map((s) => (
-        <option key={s} value={s}>
-          {s.replace(/_/g, ' ')}
-        </option>
-      ))}
-    </select>
+      {props.value.replace(/_/g, ' ')}
+    </button>
   );
 }
 
 export function ArApReconciliationCenterPage() {
-  const { companyId, branchId } = useSupabase();
+  const { companyId, branchId, userRole } = useSupabase();
   const { formatCurrency } = useFormatCurrency();
   const { canPostAccounting } = useCheckPermission();
+  const access = useMemo(() => resolveArApReconciliationAccess(userRole), [userRole]);
   const { setCurrentView, setOpenSaleIdForView } = useNavigation();
   const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [loading, setLoading] = useState(true);
@@ -121,10 +115,27 @@ export function ArApReconciliationCenterPage() {
   const [ensuringSuspense, setEnsuringSuspense] = useState(false);
   const [activeTab, setActiveTab] = useState('queues');
 
-  const [unpostedRepairRow, setUnpostedRepairRow] = useState<UnpostedDocumentRow | null>(null);
+  const [sourceDetailRow, setSourceDetailRow] = useState<UnpostedDocumentRow | null>(null);
+  const [postingDryRunRow, setPostingDryRunRow] = useState<UnpostedDocumentRow | null>(null);
+  const [relinkDryRunRow, setRelinkDryRunRow] = useState<UnmappedJournalRow | null>(null);
+  const [unmappedDetailRow, setUnmappedDetailRow] = useState<UnmappedJournalRow | null>(null);
+  const [traceTarget, setTraceTarget] = useState<TraceTarget | null>(null);
   const [journalWizardId, setJournalWizardId] = useState<string | null>(null);
-  const [relinkRow, setRelinkRow] = useState<UnmappedJournalRow | null>(null);
+  const [journalWizardItemKey, setJournalWizardItemKey] = useState<string | null>(null);
+  const [journalWizardItemKind, setJournalWizardItemKind] = useState<string>('unmapped_line');
   const [jeUiByJournalId, setJeUiByJournalId] = useState<Map<string, AccountingUiRef>>(new Map());
+  const [unpostedStatusByKey, setUnpostedStatusByKey] = useState<Map<string, string | null>>(new Map());
+  const [unmappedDiagByKey, setUnmappedDiagByKey] = useState<
+    Map<string, ReturnType<typeof diagnoseUnmappedLine>>
+  >(new Map());
+  const [statusModal, setStatusModal] = useState<{
+    kind: string;
+    key: string;
+    intent: StatusChangeIntent;
+    title: string;
+    description?: string;
+    rowStillInQueue?: boolean;
+  } | null>(null);
 
   const load = useCallback(async () => {
     if (!companyId) {
@@ -157,6 +168,46 @@ export function ArApReconciliationCenterPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!unposted.length) {
+      setUnpostedStatusByKey(new Map());
+      return;
+    }
+    let cancelled = false;
+    void batchFetchUnpostedDocumentStatuses(unposted).then((m) => {
+      if (!cancelled) setUnpostedStatusByKey(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [unposted]);
+
+  useEffect(() => {
+    if (!unmapped.length) {
+      setUnmappedDiagByKey(new Map());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const m = new Map<string, ReturnType<typeof diagnoseUnmappedLine>>();
+      await Promise.all(
+        unmapped.map(async (r) => {
+          const key = unmappedLineItemKey(r);
+          try {
+            const t = await loadUnmappedTrace(r);
+            m.set(key, diagnoseUnmappedLine(r, t.payment ?? undefined, t.lineAccount?.linked_contact_id));
+          } catch {
+            m.set(key, diagnoseUnmappedLine(r));
+          }
+        })
+      );
+      if (!cancelled) setUnmappedDiagByKey(m);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [unmapped]);
 
   useEffect(() => {
     const onInvalidate = (e: Event) => {
@@ -210,15 +261,21 @@ export function ArApReconciliationCenterPage() {
     [getStatus, hideResolved]
   );
 
-  const onFixStatusChange = async (kind: string, key: string, status: ArApFixStatus) => {
-    if (!companyId) return;
+  const onFixStatusChange = async (kind: string, key: string, status: ArApFixStatus, note?: string) => {
+    if (!companyId || access.readOnly) return;
     const r = await upsertArApItemFixStatus(companyId, kind, key, status);
     if (!r.ok) {
       toast.error(r.error || 'Could not save status');
       return;
     }
     setItemStates((prev) => new Map(prev).set(key, status));
-    toast.success('Status updated');
+    toast.success('Status updated', { description: note ? note.slice(0, 120) : undefined });
+  };
+
+  const openJournalWizard = (journalEntryId: string, itemKind: string, itemKey: string) => {
+    setJournalWizardId(journalEntryId);
+    setJournalWizardItemKind(itemKind);
+    setJournalWizardItemKey(itemKey);
   };
 
   const openSourceDocument = (row: UnpostedDocumentRow) => {
@@ -273,9 +330,39 @@ export function ArApReconciliationCenterPage() {
     () => unposted.filter((r) => rowVisible(unpostedItemKey(r))),
     [unposted, rowVisible]
   );
+
+  const unpostedNonFinal = useMemo(
+    () =>
+      unpostedVisible.filter((r) => {
+        const st = unpostedStatusByKey.get(unpostedItemKey(r));
+        return diagnoseUnpostedRow(r, st).isNonFinal;
+      }),
+    [unpostedVisible, unpostedStatusByKey]
+  );
+
+  const unpostedFinalMissing = useMemo(
+    () =>
+      unpostedVisible.filter((r) => {
+        const st = unpostedStatusByKey.get(unpostedItemKey(r));
+        return !diagnoseUnpostedRow(r, st).isNonFinal;
+      }),
+    [unpostedVisible, unpostedStatusByKey]
+  );
+
   const unmappedCsVisible = useMemo(
-    () => unmappedCustomerSupplier.filter((r) => rowVisible(unmappedLineItemKey(r))),
-    [unmappedCustomerSupplier, rowVisible]
+    () =>
+      unmappedCustomerSupplier
+        .filter((r) => rowVisible(unmappedLineItemKey(r)))
+        .filter((r) => !unmappedDiagByKey.get(unmappedLineItemKey(r))?.isLikelyFalsePositive),
+    [unmappedCustomerSupplier, rowVisible, unmappedDiagByKey]
+  );
+
+  const unmappedCsFalsePositive = useMemo(
+    () =>
+      unmappedCustomerSupplier
+        .filter((r) => rowVisible(unmappedLineItemKey(r)))
+        .filter((r) => unmappedDiagByKey.get(unmappedLineItemKey(r))?.isLikelyFalsePositive),
+    [unmappedCustomerSupplier, rowVisible, unmappedDiagByKey]
   );
   const unmappedWpVisible = useMemo(
     () => unmappedWorkerPayable.filter((r) => rowVisible(unmappedLineItemKey(r))),
@@ -285,6 +372,119 @@ export function ArApReconciliationCenterPage() {
     () => manual.filter((r) => rowVisible(manualJeItemKey(r))),
     [manual, rowVisible]
   );
+
+  const openStatusModal = (
+    kind: string,
+    key: string,
+    intent: StatusChangeIntent,
+    title: string,
+    opts?: { description?: string; rowStillInQueue?: boolean }
+  ) => {
+    setStatusModal({ kind, key, intent, title, ...opts });
+  };
+
+  const renderUnpostedTable = (rows: UnpostedDocumentRow[], emptyLabel: string) => (
+    <table className="w-full text-sm">
+      <thead className="text-left text-gray-500 border-b border-gray-800">
+        <tr>
+          <th className="p-2 min-w-[200px]">Document</th>
+          <th className="p-2">Label</th>
+          <th className="p-2">Contact</th>
+          <th className="p-2 text-right">Amount</th>
+          <th className="p-2">Date</th>
+          <th className="p-2 w-32">Fix status</th>
+          <th className="p-2 w-40">Actions</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-800/80">
+        {rows.length === 0 ? (
+          <tr>
+            <td colSpan={7} className="p-6 text-center text-gray-500">
+              {emptyLabel}
+            </td>
+          </tr>
+        ) : (
+          rows.map((r) => {
+            const key = unpostedItemKey(r);
+            const st = unpostedStatusByKey.get(key);
+            const diag = diagnoseUnpostedRow(r, st);
+            return (
+              <tr key={key} className="hover:bg-gray-800/20">
+                <td className="p-2 align-top">
+                  <AccountingRefDisplayCell ui={unpostedDocumentUiRef(r)} />
+                </td>
+                <td className="p-2 align-top">
+                  <div className="flex flex-col gap-1">
+                    <PostabilityBadge label={diag.label} isNonFinal={diag.isNonFinal} />
+                    <RiskBadge level={diag.riskLevel} />
+                  </div>
+                </td>
+                <td className="p-2 text-gray-300">{r.contact_name || '—'}</td>
+                <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.amount) || 0)}</td>
+                <td className="p-2 text-gray-400">{r.document_date || '—'}</td>
+                <td className="p-2">
+                  <FixStatusButton
+                    value={getStatus(key)}
+                    disabled={access.readOnly}
+                    onClick={() =>
+                      openStatusModal('unposted', key, { kind: 'set', status: getStatus(key) }, 'Change fix status', {
+                        description: 'Select a new status and provide a reason.',
+                      })
+                    }
+                  />
+                </td>
+                <td className="p-2">
+                  <RowActionsMenu
+                    readOnly={access.readOnly}
+                    items={[
+                      { label: 'Source detail…', onClick: () => setSourceDetailRow(r) },
+                      { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unposted', row: r }) },
+                      ...(!diag.isNonFinal
+                        ? [{ label: 'Posting dry-run…', onClick: () => setPostingDryRunRow(r) }]
+                        : []),
+                      { label: 'Open in module', onClick: () => openSourceDocument(r) },
+                      {
+                        label: 'Mark reviewed…',
+                        onClick: () =>
+                          openStatusModal('unposted', key, { kind: 'mark_reviewed' }, 'Mark reviewed', {
+                            description: 'Requires a note explaining manual review.',
+                          }),
+                      },
+                      {
+                        label: 'Mark resolved…',
+                        onClick: () =>
+                          openStatusModal('unposted', key, { kind: 'mark_resolved' }, 'Mark resolved', {
+                            description: 'True resolved only if row disappears from queue after refresh.',
+                            rowStillInQueue: true,
+                          }),
+                        className: 'text-emerald-400',
+                      },
+                    ]}
+                  />
+                </td>
+              </tr>
+            );
+          })
+        )}
+      </tbody>
+    </table>
+  );
+
+  if (!access.canAccess) {
+    return (
+      <div className="min-h-screen bg-[#0B0F19] text-white p-8 flex flex-col items-center justify-center gap-4">
+        <ShieldAlert className="w-12 h-12 text-amber-400" />
+        <h1 className="text-xl font-semibold">Access denied</h1>
+        <p className="text-gray-400 text-sm max-w-md text-center">
+          AR/AP Reconciliation Center is available to Admin, Developer, Super Admin, and Accounting Auditor roles only.
+          Sales staff cannot access this page in Phase 2.
+        </p>
+        <Button variant="outline" className="border-gray-600" onClick={() => setCurrentView('contacts')}>
+          Back to Contacts
+        </Button>
+      </div>
+    );
+  }
 
   if (!companyId) {
     return (
@@ -296,30 +496,100 @@ export function ArApReconciliationCenterPage() {
 
   return (
     <div className="min-h-screen bg-[#0B0F19] text-white p-4 md:p-8 space-y-6">
-      <UnpostedRepairDialog
-        open={!!unpostedRepairRow}
-        onOpenChange={(o) => !o && setUnpostedRepairRow(null)}
-        row={unpostedRepairRow}
+      <SourceDocumentDetailModal
+        open={!!sourceDetailRow}
+        onOpenChange={(o) => !o && setSourceDetailRow(null)}
+        row={sourceDetailRow}
+        readOnly={access.readOnly}
+        onOpenDryRun={
+          access.readOnly
+            ? undefined
+            : () => {
+                setPostingDryRunRow(sourceDetailRow);
+                setSourceDetailRow(null);
+              }
+        }
+      />
+      <PostingDryRunWizard
+        open={!!postingDryRunRow}
+        onOpenChange={(o) => !o && setPostingDryRunRow(null)}
+        row={postingDryRunRow}
         companyId={companyId}
         branchId={branchId}
-        canPost={canPostAccounting}
-        onSuccess={() => void load()}
+      />
+      <UnmappedRowDetailModal
+        open={!!unmappedDetailRow}
+        onOpenChange={(o) => !o && setUnmappedDetailRow(null)}
+        row={unmappedDetailRow}
+        readOnly={access.readOnly}
+        onOpenRelinkDryRun={
+          access.readOnly
+            ? undefined
+            : () => {
+                setRelinkDryRunRow(unmappedDetailRow);
+                setUnmappedDetailRow(null);
+              }
+        }
+        onOpenTrace={() => {
+          if (unmappedDetailRow) setTraceTarget({ kind: 'unmapped', row: unmappedDetailRow });
+        }}
+      />
+      <RelinkDryRunWizard
+        open={!!relinkDryRunRow}
+        onOpenChange={(o) => !o && setRelinkDryRunRow(null)}
+        row={relinkDryRunRow}
+        companyId={companyId}
       />
       <JournalRepairWizardDialog
         open={!!journalWizardId}
-        onOpenChange={(o) => !o && setJournalWizardId(null)}
+        onOpenChange={(o) => {
+          if (!o) {
+            setJournalWizardId(null);
+            setJournalWizardItemKey(null);
+          }
+        }}
         journalEntryId={journalWizardId}
         companyId={companyId}
         canPost={canPostAccounting}
         onSuccess={() => void load()}
+        phase2SafeMode
+        canDeveloperExecute={access.canDeveloperBypassExecuteGate}
+        itemFixStatus={journalWizardItemKey ? getStatus(journalWizardItemKey) : null}
+        onSendToRepairQueue={
+          access.readOnly || !journalWizardItemKey
+            ? undefined
+            : async () => {
+                await onFixStatusChange(journalWizardItemKind, journalWizardItemKey, 'ready_to_reverse_repost', 'Sent to repair queue from journal wizard');
+                toast.message('Queued for repair', { description: 'Execute remains gated until Phase 3 or Developer bypass.' });
+              }
+        }
       />
-      <RelinkContactDialog
-        open={!!relinkRow}
-        onOpenChange={(o) => !o && setRelinkRow(null)}
-        row={relinkRow}
-        companyId={companyId}
-        onSuccess={() => void load()}
+      <StatusChangeModal
+        open={!!statusModal}
+        onOpenChange={(o) => !o && setStatusModal(null)}
+        title={statusModal?.title || 'Change status'}
+        description={statusModal?.description}
+        intent={statusModal?.intent || null}
+        currentStatus={statusModal ? getStatus(statusModal.key) : 'new'}
+        rowStillInQueue={statusModal?.rowStillInQueue}
+        readOnly={access.readOnly}
+        onConfirm={async (note, effectiveStatus) => {
+          if (!statusModal) return;
+          await onFixStatusChange(statusModal.kind, statusModal.key, effectiveStatus, note);
+        }}
       />
+      <RowTracePanel open={!!traceTarget} onClose={() => setTraceTarget(null)} target={traceTarget} companyId={companyId} />
+
+      <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-3 text-xs text-blue-100/90 flex gap-2">
+        <ShieldAlert className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
+        <div>
+          <p className="font-semibold">Phase 2 — safe UI only</p>
+          <p className="text-gray-400 mt-0.5">
+            Dry-run previews only. Post, relink apply, and journal execute are disabled or gated. No GL, payment, or journal mutations.
+            {access.readOnly ? ' You have read-only auditor access.' : ''}
+          </p>
+        </div>
+      </div>
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-2">
@@ -428,52 +698,22 @@ export function ArApReconciliationCenterPage() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="queues" className="space-y-6">
-          <QueueSection title="1 · Missing / unposted documents" icon={<FileWarning className="w-5 h-5 text-orange-400" />} rows={unpostedVisible.length}>
-            <table className="w-full text-sm">
-              <thead className="text-left text-gray-500 border-b border-gray-800">
-                <tr>
-                  <th className="p-2 min-w-[200px]">Document</th>
-                  <th className="p-2">Contact</th>
-                  <th className="p-2 text-right">Amount</th>
-                  <th className="p-2">Date</th>
-                  <th className="p-2 w-32">Fix status</th>
-                  <th className="p-2 w-36">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-800/80">
-                {unpostedVisible.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="p-6 text-center text-gray-500">
-                      No rows.
-                    </td>
-                  </tr>
-                ) : (
-                  unpostedVisible.map((r) => {
-                    const key = unpostedItemKey(r);
-                    return (
-                      <tr key={key} className="hover:bg-gray-800/20">
-                        <td className="p-2 align-top">
-                          <AccountingRefDisplayCell ui={unpostedDocumentUiRef(r)} />
-                        </td>
-                        <td className="p-2 text-gray-300">{r.contact_name || '—'}</td>
-                        <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.amount) || 0)}</td>
-                        <td className="p-2 text-gray-400">{r.document_date || '—'}</td>
-                        <td className="p-2">
-                          <FixStatusSelect value={getStatus(key)} onChange={(v) => void onFixStatusChange('unposted', key, v)} />
-                        </td>
-                        <td className="p-2">
-                          <RowMini
-                            onOpenSource={() => openSourceDocument(r)}
-                            onPost={() => setUnpostedRepairRow(r)}
-                            onReviewed={() => void onFixStatusChange('unposted', key, 'reviewed')}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+          <QueueSection
+            title="1a · Non-final documents (not postable)"
+            icon={<FileWarning className="w-5 h-5 text-slate-400" />}
+            rows={unpostedNonFinal.length}
+            subtitle="Order/draft sales — no urgent missing posting"
+          >
+            {renderUnpostedTable(unpostedNonFinal, 'No non-final documents in queue.')}
+          </QueueSection>
+
+          <QueueSection
+            title="1b · Final documents missing posting"
+            icon={<FileWarning className="w-5 h-5 text-orange-400" />}
+            rows={unpostedFinalMissing.length}
+            subtitle="Requires posting dry-run — apply disabled in Phase 2"
+          >
+            {renderUnpostedTable(unpostedFinalMissing, 'No final documents missing posting.')}
           </QueueSection>
 
           <QueueSection title="2 · Customer / supplier AR & supplier AP (unmapped lines)" icon={<Users className="w-5 h-5 text-amber-400" />} rows={unmappedCsVisible.length}>
@@ -514,34 +754,111 @@ export function ArApReconciliationCenterPage() {
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.debit) || 0)}</td>
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.credit) || 0)}</td>
                         <td className="p-2">
-                          <FixStatusSelect value={getStatus(key)} onChange={(v) => void onFixStatusChange('unmapped_line', key, v)} />
+                          <FixStatusButton
+                            value={getStatus(key)}
+                            disabled={access.readOnly}
+                            onClick={() =>
+                              openStatusModal('unmapped_line', key, { kind: 'set', status: getStatus(key) }, 'Change fix status')
+                            }
+                          />
                         </td>
                         <td className="p-2">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 text-blue-400">
-                                <ExternalLink size={14} className="mr-1" /> Actions
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-gray-200">
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => setJournalWizardId(r.journal_entry_id)}>
-                                Open journal wizard
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => setRelinkRow(r)}>
-                                Relink contact…
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => void onFixStatusChange('unmapped_line', key, 'ready_to_reverse_repost')}>
-                                Mark ready to reverse/repost
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => void onFixStatusChange('unmapped_line', key, 'ready_to_relink')}>
-                                Mark ready to relink
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator className="bg-gray-700" />
-                              <DropdownMenuItem className="cursor-pointer text-emerald-400" onClick={() => void onFixStatusChange('unmapped_line', key, 'resolved')}>
-                                <CheckCircle2 size={14} className="mr-2 inline" /> Mark resolved
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <RowActionsMenu
+                            readOnly={access.readOnly}
+                            items={[
+                              { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
+                              { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
+                              { label: 'Relink dry-run…', onClick: () => setRelinkDryRunRow(r) },
+                              {
+                                label: 'Journal wizard (review)',
+                                onClick: () => openJournalWizard(r.journal_entry_id, 'unmapped_line', key),
+                              },
+                              {
+                                label: 'Send to repair queue…',
+                                onClick: () =>
+                                  openStatusModal('unmapped_line', key, { kind: 'send_repair_queue' }, 'Send to repair queue'),
+                              },
+                              {
+                                label: 'Mark ready to relink…',
+                                onClick: () =>
+                                  openStatusModal('unmapped_line', key, { kind: 'set', status: 'ready_to_relink' }, 'Mark ready to relink'),
+                              },
+                              {
+                                label: 'Mark resolved…',
+                                onClick: () =>
+                                  openStatusModal('unmapped_line', key, { kind: 'mark_resolved' }, 'Mark resolved', {
+                                    rowStillInQueue: true,
+                                  }),
+                                className: 'text-emerald-400',
+                              },
+                            ]}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </QueueSection>
+
+          <QueueSection
+            title="2b · Likely mapped — heuristic false positives"
+            icon={<Eye className="w-5 h-5 text-cyan-400" />}
+            rows={unmappedCsFalsePositive.length}
+            subtitle="Payment on_account with matching AR contact — not sent to repair by default"
+          >
+            <table className="w-full text-sm">
+              <thead className="text-left text-gray-500 border-b border-gray-800">
+                <tr>
+                  <th className="p-2 min-w-[200px]">Document</th>
+                  <th className="p-2">Label</th>
+                  <th className="p-2">Account</th>
+                  <th className="p-2 text-right">Cr</th>
+                  <th className="p-2 w-32">Fix status</th>
+                  <th className="p-2 w-36">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/80">
+                {unmappedCsFalsePositive.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-6 text-center text-gray-500">
+                      No heuristic false positives.
+                    </td>
+                  </tr>
+                ) : (
+                  unmappedCsFalsePositive.map((r) => {
+                    const key = unmappedLineItemKey(r);
+                    return (
+                      <tr key={key} className="hover:bg-gray-800/20 opacity-90">
+                        <td className="p-2 align-top">
+                          <AccountingRefDisplayCell ui={jeUiByJournalId.get(r.journal_entry_id)} />
+                        </td>
+                        <td className="p-2">
+                          <FalsePositiveBadge />
+                        </td>
+                        <td className="p-2 text-xs">
+                          {r.account_name} <span className="text-gray-600">{r.account_code}</span>
+                        </td>
+                        <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.credit) || 0)}</td>
+                        <td className="p-2">
+                          <FixStatusButton
+                            value={getStatus(key)}
+                            disabled={access.readOnly}
+                            onClick={() =>
+                              openStatusModal('unmapped_line', key, { kind: 'mark_reviewed' }, 'Mark manual reviewed')
+                            }
+                          />
+                        </td>
+                        <td className="p-2">
+                          <RowActionsMenu
+                            readOnly={access.readOnly}
+                            items={[
+                              { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
+                              { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
+                              { label: 'Relink dry-run (preview)', onClick: () => setRelinkDryRunRow(r) },
+                            ]}
+                          />
                         </td>
                       </tr>
                     );
@@ -584,27 +901,35 @@ export function ArApReconciliationCenterPage() {
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.debit) || 0)}</td>
                         <td className="p-2 text-right tabular-nums">{formatCurrency(Number(r.credit) || 0)}</td>
                         <td className="p-2">
-                          <FixStatusSelect value={getStatus(key)} onChange={(v) => void onFixStatusChange('unmapped_line', key, v)} />
+                          <FixStatusButton
+                            value={getStatus(key)}
+                            disabled={access.readOnly}
+                            onClick={() =>
+                              openStatusModal('unmapped_line', key, { kind: 'set', status: getStatus(key) }, 'Change fix status')
+                            }
+                          />
                         </td>
                         <td className="p-2">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 text-blue-400">
-                                <ExternalLink size={14} className="mr-1" /> Actions
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-gray-200">
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => setJournalWizardId(r.journal_entry_id)}>
-                                Open journal wizard
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => setRelinkRow(r)}>
-                                Relink worker contact…
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="cursor-pointer" onClick={() => void onFixStatusChange('unmapped_line', key, 'resolved')}>
-                                Mark resolved
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <RowActionsMenu
+                            readOnly={access.readOnly}
+                            items={[
+                              { label: 'Line detail…', onClick: () => setUnmappedDetailRow(r) },
+                              { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'unmapped', row: r }) },
+                              {
+                                label: 'Journal wizard (review)',
+                                onClick: () => openJournalWizard(r.journal_entry_id, 'unmapped_line', key),
+                              },
+                              { label: 'Relink dry-run…', onClick: () => setRelinkDryRunRow(r) },
+                              {
+                                label: 'Mark resolved…',
+                                onClick: () =>
+                                  openStatusModal('unmapped_line', key, { kind: 'mark_resolved' }, 'Mark resolved', {
+                                    rowStillInQueue: true,
+                                  }),
+                                className: 'text-emerald-400',
+                              },
+                            ]}
+                          />
                         </td>
                       </tr>
                     );
@@ -649,12 +974,30 @@ export function ArApReconciliationCenterPage() {
                           {r.description}
                         </td>
                         <td className="p-2">
-                          <FixStatusSelect value={getStatus(key)} onChange={(v) => void onFixStatusChange('manual_je', key, v)} />
+                          <FixStatusButton
+                            value={getStatus(key)}
+                            disabled={access.readOnly}
+                            onClick={() =>
+                              openStatusModal('manual_je', key, { kind: 'set', status: getStatus(key) }, 'Change fix status')
+                            }
+                          />
                         </td>
                         <td className="p-2">
-                          <Button variant="ghost" size="sm" className="h-8 text-blue-400" onClick={() => setJournalWizardId(r.journal_entry_id)}>
-                            <ExternalLink size={14} className="mr-1" /> Wizard
-                          </Button>
+                          <RowActionsMenu
+                            readOnly={access.readOnly}
+                            items={[
+                              { label: 'Row trace', onClick: () => setTraceTarget({ kind: 'manual', row: r }) },
+                              {
+                                label: 'Journal wizard (review)',
+                                onClick: () => openJournalWizard(r.journal_entry_id, 'manual_je', key),
+                              },
+                              {
+                                label: 'Send to repair queue…',
+                                onClick: () =>
+                                  openStatusModal('manual_je', key, { kind: 'send_repair_queue' }, 'Send to repair queue'),
+                              },
+                            ]}
+                          />
                         </td>
                       </tr>
                     );
@@ -666,17 +1009,17 @@ export function ArApReconciliationCenterPage() {
         </TabsContent>
         <TabsContent value="about" className="prose prose-invert prose-sm max-w-none text-gray-400 space-y-3">
           <p>
-            <strong className="text-gray-200">Missing posting:</strong> opens validation + <code>postSaleDocumentAccounting</code> /{' '}
-            <code>postPurchaseDocumentAccounting</code>. Branch checkbox blocks post when filter differs.
+            <strong className="text-gray-200">Phase 2 (current):</strong> dry-run wizards, trace panels, and status changes with required notes.
+            Post, relink apply, and journal execute are disabled or gated — no GL mutations.
           </p>
           <p>
-            <strong className="text-gray-200">Journal wizard:</strong> shows lines; sale/purchase → void canonical document JEs + repost; else void this JE with reason.
+            <strong className="text-gray-200">Non-final sales (order/draft):</strong> shown in queue 1a with label &quot;Non-final / not postable&quot; — not urgent missing posting.
           </p>
           <p>
-            <strong className="text-gray-200">Relink:</strong> saves <code>journal_party_contact_mapping</code> (audit). Does not alter posted lines until party_contact_id rollout.
+            <strong className="text-gray-200">False-positive unmapped AR:</strong> payment JE + on_account payment + matching AR linked contact → queue 2b, not default repair.
           </p>
           <p>
-            <strong className="text-gray-200">Fix status:</strong> stored in <code>ar_ap_reconciliation_review_items.fix_status</code>; resolved rows can be hidden.
+            <strong className="text-gray-200">Fix status:</strong> stored in <code>ar_ap_reconciliation_review_items.fix_status</code>; mark resolved requires reason and stays reviewed if row remains in SQL view.
           </p>
         </TabsContent>
       </Tabs>
@@ -700,7 +1043,10 @@ function unpostedDocumentUiRef(r: UnpostedDocumentRow): AccountingUiRef {
   };
 }
 
-function RowMini(props: { onOpenSource: () => void; onPost: () => void; onReviewed: () => void }) {
+function RowActionsMenu(props: {
+  readOnly?: boolean;
+  items: Array<{ label: string; onClick: () => void; className?: string }>;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -709,16 +1055,15 @@ function RowMini(props: { onOpenSource: () => void; onPost: () => void; onReview
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="bg-gray-900 border-gray-700 text-gray-200">
-        <DropdownMenuItem className="cursor-pointer" onClick={props.onOpenSource}>
-          Open source document
-        </DropdownMenuItem>
-        <DropdownMenuItem className="cursor-pointer" onClick={props.onPost}>
-          Validate & create posting…
-        </DropdownMenuItem>
-        <DropdownMenuSeparator className="bg-gray-700" />
-        <DropdownMenuItem className="cursor-pointer text-emerald-400" onClick={props.onReviewed}>
-          Quick: mark reviewed
-        </DropdownMenuItem>
+        {props.items.map((item) => (
+          <DropdownMenuItem
+            key={item.label}
+            className={cn('cursor-pointer', item.className, props.readOnly && 'opacity-50 pointer-events-none')}
+            onClick={() => !props.readOnly && item.onClick()}
+          >
+            {item.label}
+          </DropdownMenuItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -762,14 +1107,23 @@ function SummaryCard(props: {
   );
 }
 
-function QueueSection(props: { title: string; icon: React.ReactNode; rows: number; children: React.ReactNode }) {
+function QueueSection(props: {
+  title: string;
+  icon: React.ReactNode;
+  rows: number;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900/40 overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800 bg-gray-900/80">
         {props.icon}
         <div>
           <h2 className="text-sm font-semibold text-white">{props.title}</h2>
-          <p className="text-xs text-gray-500">{props.rows} row(s) shown</p>
+          <p className="text-xs text-gray-500">
+            {props.rows} row(s) shown
+            {props.subtitle ? ` · ${props.subtitle}` : ''}
+          </p>
         </div>
       </div>
       <div className="p-2 overflow-x-auto">{props.children}</div>
