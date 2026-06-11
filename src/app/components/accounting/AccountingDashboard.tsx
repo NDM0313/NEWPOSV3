@@ -95,6 +95,9 @@ import {
   getJournalEntrySourceDocumentOpenTarget,
   journalReversalBlockedReason,
 } from '@/app/lib/journalEntryEditPolicy';
+import { openJournalSourceDocumentFromEntry } from '@/app/lib/openJournalSourceDocument';
+import { isTransactionActionPanelEnabled } from '@/app/lib/transactionActionRules';
+import { JournalRowTransactionActions } from '@/app/components/accounting/JournalRowTransactionActions';
 
 const StudioCostsTab = lazy(() => import('./StudioCostsTab').then((m) => ({ default: m.StudioCostsTab })));
 const DepositsTab = lazy(() => import('./DepositsTab').then((m) => ({ default: m.DepositsTab })));
@@ -490,55 +493,66 @@ export const AccountingDashboard = () => {
 
   const handleOpenJournalSourceDocument = useCallback(
     async (entry: AccountingEntry) => {
-      const target = getJournalEntrySourceDocumentOpenTarget(entry);
-      if (!target) {
-        toast.message('Open this record from its source module (Sales, Purchases, Rentals, or Inventory).');
-        return;
-      }
-      try {
-        if (target.kind === 'sale') {
-          const { saleService } = await import('@/app/services/saleService');
-          const full = await saleService.getSaleById(target.id);
-          if (!full) {
-            toast.error('Sale not found.');
-            return;
-          }
-          openDrawer('edit-sale', undefined, { sale: full });
-          return;
-        }
-        if (target.kind === 'purchase') {
-          const { purchaseService } = await import('@/app/services/purchaseService');
-          const full = await purchaseService.getPurchase(target.id);
-          if (!full) {
-            toast.error('Purchase not found.');
-            return;
-          }
-          openDrawer('edit-purchase', undefined, { purchase: full });
-          return;
-        }
-        if (target.kind === 'sale_return') {
-          safeSessionStorageSetItem('pendingAccountingOpen_saleReturnId', target.id);
-          setCurrentView('sales');
-          toast.info('Opening Sales — return details will open on the Returns tab.');
-          return;
-        }
-        if (target.kind === 'purchase_return') {
-          safeSessionStorageSetItem('pendingAccountingOpen_purchaseReturnId', target.id);
-          setCurrentView('purchases');
-          toast.info('Opening Purchases — return details will open when ready.');
-          return;
-        }
-        if (target.kind === 'rental') {
-          safeSessionStorageSetItem('pendingRentalDetailsId', target.id);
-          setCurrentView('rentals');
-          toast.info('Opening Rentals — use the booking drawer to edit.');
-        }
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : 'Could not open source document.';
-        toast.error(msg);
-      }
+      await openJournalSourceDocumentFromEntry(entry, { openDrawer, setCurrentView });
     },
-    [openDrawer, setCurrentView]
+    [openDrawer, setCurrentView],
+  );
+
+  const openJournalEntryDetail = useCallback(
+    (entry: AccountingEntry, groupEntries: AccountingEntry[] | null, opts?: { autoEdit?: boolean; autoTrace?: boolean; scrollAudit?: boolean }) => {
+      if (busy) return;
+      setSelectedGroupEntries(groupEntries);
+      setTransactionDetailAutoEdit(!!opts?.autoEdit);
+      setTransactionDetailAutoOpenTrace(!!opts?.autoTrace);
+      setTransactionDetailScrollToAudit(!!opts?.scrollAudit);
+      setTransactionReference(entry.id);
+    },
+    [busy],
+  );
+
+  const handleJournalUndoLastChange = useCallback(
+    (paymentId: string) => {
+      runJournalMutation('Undoing edit...', async () => {
+        if (
+          !window.confirm(
+            'Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.',
+          )
+        ) {
+          return;
+        }
+        await accounting.undoLastPaymentMutation(paymentId);
+      });
+    },
+    [accounting, runJournalMutation],
+  );
+
+  const handleJournalCancelPayment = useCallback(
+    (entryId: string, isMultiMemberChain: boolean) => {
+      runJournalMutation('Cancelling payment...', async () => {
+        const msg = isMultiMemberChain
+          ? 'Cancel this payment entirely? This voids the original posting plus every edit in the chain. Cannot be undone.'
+          : 'Cancel this payment? This posts offsetting entries and removes it from live reports.';
+        if (!window.confirm(msg)) return;
+        await accounting.createReversalEntry(entryId);
+      });
+    },
+    [accounting, runJournalMutation],
+  );
+
+  const handleJournalCancelEntry = useCallback(
+    (entryId: string) => {
+      runJournalMutation('Cancelling entry...', async () => {
+        if (
+          !window.confirm(
+            'Cancel this journal entry? This posts offsetting entries and removes it from live reports.',
+          )
+        ) {
+          return;
+        }
+        await accounting.createReversalEntry(entryId);
+      });
+    },
+    [accounting, runJournalMutation],
   );
 
   useEffect(() => {
@@ -624,6 +638,9 @@ export const AccountingDashboard = () => {
   const [selectedGroupEntries, setSelectedGroupEntries] = useState<AccountingEntry[] | null>(null);
   /** Open TransactionDetailModal and immediately run unified source-aware edit when true. */
   const [transactionDetailAutoEdit, setTransactionDetailAutoEdit] = useState(false);
+  const [transactionDetailAutoOpenTrace, setTransactionDetailAutoOpenTrace] = useState(false);
+  const [transactionDetailScrollToAudit, setTransactionDetailScrollToAudit] = useState(false);
+  const useTransactionActionPanel = isTransactionActionPanelEnabled();
   /** PF-14.3B: Default = grouped (one logical row per sale); audit = all raw JEs. */
   const [journalViewMode, setJournalViewMode] = useState<'grouped' | 'audit'>('grouped');
   
@@ -1259,7 +1276,9 @@ export const AccountingDashboard = () => {
                     ? 'One row per document (e.g. sale); open a row to see original + edit adjustments.'
                     : 'All raw journal entries – audit view.'}
                   {' '}(50 per page).
-                  {canPostAccounting ? ' Manual correction: use Reverse to create a reversal entry, or Manual Entry for adjustments.' : ' Posting and corrections require Manager or Admin role.'}
+                  {canPostAccounting
+                    ? ' Use Cancel Payment or Cancel Entry on eligible rows, or Manual Entry for adjustments.'
+                    : ' Posting and corrections require Manager or Admin role.'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -1550,6 +1569,33 @@ export const AccountingDashboard = () => {
                                 </td>
                                 {canPostAccounting && (
                                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                    {useTransactionActionPanel && !isReversal ? (
+                                      <JournalRowTransactionActions
+                                        entry={entry}
+                                        busy={busy}
+                                        isReversal={isReversal}
+                                        lockPaymentChainReverse={lockPaymentChainReverse}
+                                        allowUnifiedEdit={allowUnifiedEdit}
+                                        onView={() => openJournalEntryDetail(entry, group.entries)}
+                                        onEdit={() => openJournalEntryDetail(entry, group.entries, { autoEdit: true })}
+                                        onOpenSourceDocument={handleOpenJournalSourceDocument}
+                                        onUndoLastChange={handleJournalUndoLastChange}
+                                        onCancelPayment={(id) => {
+                                          const chainMembers = entry.metadata?.paymentChainMemberCount ?? 0;
+                                          handleJournalCancelPayment(
+                                            id,
+                                            chainMembers > 1 && !!entry.metadata?.paymentId,
+                                          );
+                                        }}
+                                        onCancelEntry={handleJournalCancelEntry}
+                                        onViewTrace={() =>
+                                          openJournalEntryDetail(entry, group.entries, { autoTrace: true })
+                                        }
+                                        onViewAudit={() =>
+                                          openJournalEntryDetail(entry, group.entries, { scrollAudit: true })
+                                        }
+                                      />
+                                    ) : (
                                     <div className="flex flex-wrap items-center gap-1">
                                       {!isReversal && (
                                         <>
@@ -1699,6 +1745,7 @@ export const AccountingDashboard = () => {
                                         </>
                                       )}
                                     </div>
+                                    )}
                                   </td>
                                 )}
                               </tr>
@@ -1827,6 +1874,29 @@ export const AccountingDashboard = () => {
                                 </td>
                                 {canPostAccounting && (
                                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                    {useTransactionActionPanel && !isReversal ? (
+                                      <JournalRowTransactionActions
+                                        entry={entry}
+                                        busy={busy}
+                                        isReversal={isReversal}
+                                        lockPaymentChainReverse={lockFlatPaymentChainReverse}
+                                        allowUnifiedEdit={allowUnifiedEditFlat}
+                                        onView={() => openJournalEntryDetail(entry, null)}
+                                        onEdit={() => openJournalEntryDetail(entry, null, { autoEdit: true })}
+                                        onOpenSourceDocument={handleOpenJournalSourceDocument}
+                                        onUndoLastChange={handleJournalUndoLastChange}
+                                        onCancelPayment={(id) => {
+                                          const chainMembers = entry.metadata?.paymentChainMemberCount ?? 0;
+                                          handleJournalCancelPayment(
+                                            id,
+                                            chainMembers > 1 && !!entry.metadata?.paymentId,
+                                          );
+                                        }}
+                                        onCancelEntry={handleJournalCancelEntry}
+                                        onViewTrace={() => openJournalEntryDetail(entry, null, { autoTrace: true })}
+                                        onViewAudit={() => openJournalEntryDetail(entry, null, { scrollAudit: true })}
+                                      />
+                                    ) : (
                                     <div className="flex flex-wrap items-center gap-1">
                                       {!isReversal && (
                                         <>
@@ -1972,6 +2042,7 @@ export const AccountingDashboard = () => {
                                         </>
                                       )}
                                     </div>
+                                    )}
                                   </td>
                                 )}
                               </tr>
@@ -2667,12 +2738,18 @@ export const AccountingDashboard = () => {
             setTransactionJournalEntryIdHint(null);
             setSelectedGroupEntries(null);
             setTransactionDetailAutoEdit(false);
+            setTransactionDetailAutoOpenTrace(false);
+            setTransactionDetailScrollToAudit(false);
           }}
           referenceNumber={transactionReference}
           journalEntryIdHint={transactionJournalEntryIdHint ?? undefined}
           groupEntries={selectedGroupEntries ?? undefined}
           autoLaunchUnifiedEdit={transactionDetailAutoEdit}
           onAutoLaunchUnifiedEditConsumed={() => setTransactionDetailAutoEdit(false)}
+          autoOpenPaymentTrace={transactionDetailAutoOpenTrace}
+          onAutoOpenPaymentTraceConsumed={() => setTransactionDetailAutoOpenTrace(false)}
+          autoScrollToAudit={transactionDetailScrollToAudit}
+          onAutoScrollToAuditConsumed={() => setTransactionDetailScrollToAudit(false)}
         />
       )}
 

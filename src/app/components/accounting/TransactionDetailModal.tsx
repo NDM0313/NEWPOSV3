@@ -38,7 +38,15 @@ import {
 } from '@/app/lib/unifiedTransactionEdit';
 import { journalReversalBlockedReason } from '@/app/lib/journalEntryEditPolicy';
 import { resolvePaymentIdForMutation } from '@/app/lib/paymentRowEditRouting';
-import { getPaymentChainMutationBlockReason } from '@/app/services/paymentChainMutationGuard';
+import { getPaymentChainMutationBlockReason, fetchPaymentChainState } from '@/app/services/paymentChainMutationGuard';
+import {
+  getTransactionActions,
+  isTransactionActionPanelEnabled,
+  type TransactionActionId,
+} from '@/app/lib/transactionActionRules';
+import { TransactionActionPanel } from '@/app/components/accounting/TransactionActionPanel';
+import { openJournalSourceDocumentFromEntry } from '@/app/lib/openJournalSourceDocument';
+import { getJournalEntrySourceDocumentOpenTarget } from '@/app/lib/journalEntryEditPolicy';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/app/components/ui/sheet';
 import {
   fetchPaymentDeepTrace,
@@ -67,6 +75,12 @@ interface TransactionDetailModalProps {
   /** After load, open the same unified editor as the primary Edit action (journal / payment / source). */
   autoLaunchUnifiedEdit?: boolean;
   onAutoLaunchUnifiedEditConsumed?: () => void;
+  /** Open payment trace sheet once transaction is loaded. */
+  autoOpenPaymentTrace?: boolean;
+  onAutoOpenPaymentTraceConsumed?: () => void;
+  /** Scroll to activity / audit section once transaction is loaded. */
+  autoScrollToAudit?: boolean;
+  onAutoScrollToAuditConsumed?: () => void;
 }
 
 function mapRentalRowForPaymentDialog(row: Record<string, any>) {
@@ -217,11 +231,17 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   groupEntries,
   autoLaunchUnifiedEdit = false,
   onAutoLaunchUnifiedEditConsumed,
+  autoOpenPaymentTrace = false,
+  onAutoOpenPaymentTraceConsumed,
+  autoScrollToAudit = false,
+  onAutoScrollToAuditConsumed,
 }) => {
   const { companyId, branchId } = useSupabase();
   const { openDrawer, setCurrentView } = useNavigation();
   const accounting = useAccounting();
   const { run, busy } = useSubmitLock();
+  const useTransactionActionPanel = isTransactionActionPanelEnabled();
+  const activitySectionRef = useRef<HTMLDivElement | null>(null);
   const [transaction, setTransaction] = useState<any>(null);
   /** Active PF-07 reversal child exists for loaded header — locks edit/reverse like Journal list. */
   const [txnHasActiveCorrectionReversal, setTxnHasActiveCorrectionReversal] = useState(false);
@@ -317,21 +337,30 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   );
 
   const [paymentChainBlockReason, setPaymentChainBlockReason] = useState<string | null>(null);
+  const [paymentChainMemberCount, setPaymentChainMemberCount] = useState(0);
 
   useEffect(() => {
     if (!companyId || !transaction?.id) {
       setPaymentChainBlockReason(null);
+      setPaymentChainMemberCount(groupEntries?.length ?? 0);
       return;
     }
     let cancelled = false;
     void (async () => {
       const r = await getPaymentChainMutationBlockReason(companyId, String(transaction.id));
       if (!cancelled) setPaymentChainBlockReason(r);
+      const paymentId = transaction.payment_id ?? transaction.payment?.id;
+      if (paymentId) {
+        const chain = await fetchPaymentChainState(companyId, String(paymentId));
+        if (!cancelled) setPaymentChainMemberCount(chain.memberCount);
+      } else if (!cancelled) {
+        setPaymentChainMemberCount(groupEntries?.length ?? 0);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [companyId, transaction?.id]);
+  }, [companyId, transaction?.id, transaction?.payment_id, transaction?.payment, groupEntries?.length]);
 
   useEffect(() => {
     autoLaunchConsumedRef.current = false;
@@ -411,6 +440,67 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       paymentForReversalPolicy
     );
   }, [transaction, paymentForReversalPolicy, txnHasActiveCorrectionReversal]);
+
+  const paymentForActions = useMemo(() => {
+    if (!transaction) return null;
+    return Array.isArray(transaction.payment) ? transaction.payment[0] : transaction.payment;
+  }, [transaction]);
+
+  const detailModalActions = useMemo(() => {
+    if (!transaction || !useTransactionActionPanel) return [];
+    const sourceOpen = getJournalEntrySourceDocumentOpenTarget({
+      id: String(transaction.id),
+      date: String(transaction.entry_date || ''),
+      description: String(transaction.description || ''),
+      amount: 0,
+      type: 'debit',
+      source: '',
+      metadata: {
+        referenceType: transaction.reference_type,
+        referenceId: transaction.reference_id,
+        paymentId: transaction.payment_id,
+      },
+    } as AccountingEntry);
+    return getTransactionActions(
+      {
+        reference_type: transaction.reference_type,
+        reference_id: transaction.reference_id,
+        payment_id: transaction.payment_id,
+        is_void: transaction.is_void,
+        payment_chain_is_historical: transaction.payment_chain_is_historical,
+        has_active_correction_reversal: txnHasActiveCorrectionReversal,
+        action_fingerprint: transaction.action_fingerprint,
+        description: transaction.description,
+        payment_chain_member_count: paymentChainMemberCount,
+        payment_obj: paymentForActions,
+      },
+      'detail_modal',
+      {
+        includeViewAction: false,
+        paymentChainBlockReason: paymentChainBlockReason,
+        sourceOpenTarget: sourceOpen,
+      }
+    );
+  }, [
+    transaction,
+    useTransactionActionPanel,
+    txnHasActiveCorrectionReversal,
+    paymentChainMemberCount,
+    paymentChainBlockReason,
+    paymentForActions,
+  ]);
+
+  useEffect(() => {
+    if (!autoOpenPaymentTrace || !isOpen || loading || !transaction) return;
+    setPaymentTraceOpen(true);
+    onAutoOpenPaymentTraceConsumed?.();
+  }, [autoOpenPaymentTrace, isOpen, loading, transaction, onAutoOpenPaymentTraceConsumed]);
+
+  useEffect(() => {
+    if (!autoScrollToAudit || !isOpen || loading || !transaction) return;
+    activitySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    onAutoScrollToAuditConsumed?.();
+  }, [autoScrollToAudit, isOpen, loading, transaction, onAutoScrollToAuditConsumed]);
 
   const openJournalQuickEdit = () => {
     if (!transaction) return;
@@ -801,8 +891,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
       transaction.payment_id ??
       (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
     const confirmMsg = paymentId
-      ? 'Kya aap is receipt/payment ko VOID/CANCEL karna chahte hain? Ye Roznamcha, Statement, Ledger aur GL se hat jayegi. Undo nahi ho sakta.'
-      : 'Kya aap is entry ko VOID/CANCEL karna chahte hain? Ye GL, reports aur balances se hat jayegi. Is action ko undo nahi kiya ja sakta.';
+      ? 'Cancel this payment? It will be removed from Roznamcha, statements, ledger, and GL. This cannot be undone.'
+      : 'Cancel this entry? It will be removed from GL, reports, and balances. This cannot be undone.';
     if (!window.confirm(confirmMsg)) return;
     try {
       if (paymentId) {
@@ -816,13 +906,80 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
           .eq('id', transaction.id);
         if (error) throw error;
       }
-      toast.success('Entry void/cancel ho gayi hai — reports se remove ho gayi');
+      toast.success('Entry cancelled — removed from live reports');
       await loadTransaction();
       dispatchAccountingEditCommitted();
       accounting.refreshEntries?.();
       if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rentalPaymentsChanged'));
     } catch (e: any) {
-      toast.error('Void failed: ' + (e?.message || 'Unknown error'));
+      toast.error('Cancel failed: ' + (e?.message || 'Unknown error'));
+    }
+  };
+
+  const handleUndoLastPaymentChange = async () => {
+    if (!transaction || !companyId) return;
+    const paymentId =
+      transaction.payment_id ??
+      (Array.isArray(transaction.payment) ? transaction.payment[0]?.id : transaction.payment?.id);
+    if (!paymentId) return;
+    if (
+      !window.confirm(
+        'Undo the last edit on this payment? This voids the latest adjustment and restores the previous state.',
+      )
+    ) {
+      return;
+    }
+    const ok = await accounting.undoLastPaymentMutation(String(paymentId));
+    if (ok) {
+      toast.success('Last change undone');
+      await loadTransaction();
+      dispatchAccountingEditCommitted();
+    } else {
+      toast.error('Could not undo last change');
+    }
+  };
+
+  const handleOpenSourceDocumentFromModal = async () => {
+    if (!transaction) return;
+    const entry = {
+      id: String(transaction.id),
+      date: String(transaction.entry_date || ''),
+      description: String(transaction.description || ''),
+      amount: 0,
+      type: 'debit' as const,
+      source: '',
+      metadata: {
+        referenceType: transaction.reference_type,
+        referenceId: transaction.reference_id,
+        paymentId: transaction.payment_id,
+      },
+    };
+    await openJournalSourceDocumentFromEntry(entry as AccountingEntry, { openDrawer, setCurrentView });
+  };
+
+  const handleDetailModalAction = (actionId: TransactionActionId) => {
+    switch (actionId) {
+      case 'edit':
+        void run('Opening editor...', () => runUnifiedEdit());
+        break;
+      case 'cancel_payment':
+      case 'cancel_entry':
+        void run('Cancelling...', () => handleVoidJournal());
+        break;
+      case 'undo_last_change':
+        void run('Undoing...', () => handleUndoLastPaymentChange());
+        break;
+      case 'open_source_document':
+        void run('Opening...', () => handleOpenSourceDocumentFromModal());
+        break;
+      case 'view_trace':
+        setPaymentTraceOpen(true);
+        break;
+      case 'view_audit':
+        activitySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        break;
+      default:
+        break;
     }
   };
 
@@ -1074,6 +1231,41 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                   Basic Information
                 </h3>
                 <div className="flex flex-wrap gap-2">
+                  {useTransactionActionPanel ? (
+                    <>
+                      <TransactionActionPanel
+                        actions={detailModalActions}
+                        onAction={handleDetailModalAction}
+                        disabled={actionLocked}
+                        variant="modal"
+                      />
+                      {transaction.id && !transaction.is_void && !editingAccounts && (() => {
+                        const rt = String(transaction.reference_type || '').toLowerCase();
+                        const allowEdit =
+                          !rt.startsWith('sale') &&
+                          !rt.startsWith('purchase') &&
+                          rt !== 'shipment' &&
+                          !rt.startsWith('opening_balance') &&
+                          rt !== 'commission_batch' &&
+                          rt !== 'stock_adjustment';
+                        if (!allowEdit) return null;
+                        return (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="gap-1 border-blue-500/40 text-blue-300"
+                            disabled={actionLocked}
+                            onClick={() => void handleLoadAccountsForEdit()}
+                          >
+                            <ArrowLeftRight size={14} />
+                            Edit Accounts
+                          </Button>
+                        );
+                      })()}
+                    </>
+                  ) : (
+                    <>
                   {(() => {
                     if (paymentChainBlockReason) return null;
                     if (!transactionForUnifiedPolicy) return null;
@@ -1103,7 +1295,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       disabled={actionLocked}
                       onClick={() => setPaymentTraceOpen(true)}
                     >
-                      Full payment trace
+                      View Trace
                     </Button>
                   )}
                   {transaction.id &&
@@ -1123,7 +1315,6 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                         Reverse
                       </Button>
                     )}
-                  {/* Void/Cancel: completely remove from GL */}
                   {transaction.id && !transaction.is_void && (
                     <Button
                       type="button"
@@ -1137,7 +1328,6 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       Void / Cancel
                     </Button>
                   )}
-                  {/* Edit Accounts: only for payment/expense/manual — NOT for sale/purchase/return (those are auto-posted) */}
                   {transaction.id && !transaction.is_void && !editingAccounts && (() => {
                     const rt = String(transaction.reference_type || '').toLowerCase();
                     const allowEdit = !rt.startsWith('sale') && !rt.startsWith('purchase') && rt !== 'shipment' && !rt.startsWith('opening_balance') && rt !== 'commission_batch' && rt !== 'stock_adjustment';
@@ -1156,6 +1346,8 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
                       </Button>
                     );
                   })()}
+                    </>
+                  )}
                   {editingAccounts && (
                     <>
                       <Button
@@ -1643,7 +1835,7 @@ export const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               <p className="text-xs text-gray-400 mt-3">Double-entry: total debit must equal total credit.</p>
             </div>
 
-            <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+            <div ref={activitySectionRef} className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
               <h3 className="text-sm font-semibold text-gray-300 mb-3">Activity</h3>
               {loadingActivityLogs ? (
                 <p className="text-sm text-gray-500">Loading activity…</p>
